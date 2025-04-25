@@ -1,0 +1,9 @@
+crewai
+crewai[tools]
+open-interpreter
+duckduckgo-search
+pandas
+ollama
+langchain_community
+langchain-anthropic
+rich
