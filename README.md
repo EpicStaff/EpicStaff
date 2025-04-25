@@ -119,15 +119,20 @@ To get started with the project, follow these steps:
    ```
 3. Install poetry using following command or manually from official installation page:
    ```
-   curl -sSL https://install.python-poetry.org | python -
+   pip install poetry
    poetry --version
    ```
 4. Install dependencies using poetry
-   ```
-   poetry install
-   ```
+   - Install all dependencies including those required for development (i.e. pytest, flake8 etc.):
+     ```
+      poetry install
+      ```
+   - Or install only the essential dependencies needed to launch the project:
+     ```
+     poetry install --without dev
+     ```
 5. Create and configure a `.env` file in the `./src/ENV` directory for storing API keys and other environment variables:
-   - Create `ENV` directory in `src` directory if none exists already:
+   - Create `ENV` directory in `src` directory if none yet exists:
      ```
      mkdir ./src/ENV
      ```
