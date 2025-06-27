@@ -87,6 +87,7 @@ services:
       - DB_PORT=${DB_PORT}
       - DB_MANAGER_USER=${DB_MANAGER_USER}
       - DB_MANAGER_PASSWORD=${DB_MANAGER_PASSWORD}
+      - CREW_SAVEFILES_PATH=${CREW_SAVEFILES_PATH}
     volumes:
       - ${DOCKER_SOCK_PATH}:${DOCKER_SOCK_PATH}
       - ${DOCKER_BIN_PATH}:${DOCKER_BIN_PATH}
@@ -233,6 +234,15 @@ services:
       redis:
         condition: service_started
 
+  frontend:
+    image: frontend
+    container_name: frontend
+    ports:
+     - "4200:80"
+    networks:
+     - frontend-network
+    volumes:
+     - ../frontend-config/frontend-config.json:/usr/share/nginx/html/config.json:ro
 
 volumes:
   sandbox_venvs:
@@ -250,4 +260,7 @@ volumes:
 
 networks:
   backend-network:
+    driver: bridge
+
+  frontend-network:
     driver: bridge

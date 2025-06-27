@@ -67,8 +67,6 @@ INSTALLED_APPS = [
     "django_redis",
 ]
 
-if DEBUG and not "test" in sys.argv:
-    INSTALLED_APPS += ["silk"]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -83,8 +81,6 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
 ]
 
-if DEBUG and not "test" in sys.argv:
-    MIDDLEWARE.insert(0, "silk.middleware.SilkyMiddleware")
 
 REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",

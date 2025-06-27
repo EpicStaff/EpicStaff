@@ -59,6 +59,7 @@ from tables.views.views import (
     DefaultAgentConfigAPIView,
     DefaultCrewConfigAPIView,
     CollectionStatusAPIView,
+    QuickstartView,
     delete_environment_config,
 )
 
@@ -159,11 +160,7 @@ urlpatterns = [
         CollectionStatusAPIView.as_view(),
         name="collection_status/",
     ),
-    path(
-        "default-config/",
-        DefaultConfigAPIView.as_view(),
-        name="default_config"
-    ),
+    path("default-config/", DefaultConfigAPIView.as_view(), name="default_config"),
     path(
         "default-llm-config/",
         DefaultLLMConfigAPIView.as_view(),
@@ -182,7 +179,7 @@ urlpatterns = [
     path(
         "default-reailtime-config/",
         DefaultRealtimeAgentConfigAPIView.as_view(),
-        name="default_reailtime_config"
+        name="default_reailtime_config",
     ),
     path(
         "default-crew-config/",
@@ -194,4 +191,5 @@ urlpatterns = [
         DefaultToolConfigAPIView.as_view(),
         name="default_tool_config",
     ),
+    path("quickstart/", QuickstartView.as_view(), name="quickstart"),
 ]

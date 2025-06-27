@@ -6,12 +6,14 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - POSTGRESQL_HOST=crewdb
       - CODE_RESULT_CHANNEL=code_results
       - CODE_EXEC_TASK_CHANNEL=code_exec_tasks
-      - ALLOWED_HOSTS=0.0.0.0, 127.0.0.1, localhost
+
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DB_HOST_NAME=crewdb
+      - DB_PORT=5432
+      - ALLOWED_HOSTS=0.0.0.0,127.0.0.1,localhost,django_app
     volumes:
       - crew_config:/home/user/root/app/env_config
 
@@ -37,18 +39,21 @@ services:
       - KNOWLEDGE_SEARCH_GET_CHANNEL=knowledge:search:get
       - KNOWLEDGE_SEARCH_RESPONSE_CHANNEL=knowledge:search:response
       - REALTIME_AGENTS_SCHEMA_CHANNEL=realtime_agents:schema
+
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - MANAGER_HOST=manager_container
       - MANAGER_PORT=8000
       - DB_NAME=crew
       - DB_HOST_NAME=crewdb
-      - DB_REALTIME_PASSWORD=admin
-      - DB_REALTIME_USER=postgres
       - DB_PORT=5432
+      - DB_REALTIME_USER=postgres
+      - DB_REALTIME_PASSWORD=admin
     networks:
       - backend-network
     depends_on:
+      crewdb:
+        condition: service_healthy
       manager:
         condition: service_started
       redis:
@@ -57,6 +62,7 @@ services:
         condition: service_started
       django_app:
         condition: service_healthy
+
   manager:
     image: manager
     container_name: manager_container
@@ -65,17 +71,16 @@ services:
     env_file:
       - .env
     environment:
+      - PULL_TOOL=FALSE
+      - MANAGER_PORT=8000
+
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REBUILD_CREW=FALSE
-      - PULL_TOOL=FALSE
-      - PORT=8000
       - DB_NAME=crew
       - DB_HOST_NAME=crewdb
       - DB_PORT=5432
       - DB_MANAGER_USER=postgres
       - DB_MANAGER_PASSWORD=admin
-
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /usr/bin/docker:/usr/bin/docker
@@ -84,7 +89,10 @@ services:
     tty: true
     stdin_open: true
     depends_on:
-      - redis
+      crewdb:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   crewdb:
     image: ankane/pgvector:v0.5.1
@@ -129,14 +137,13 @@ services:
       - ANONYMIZED_TELEMETRY=False
       - EC_TELEMETRY=False
       - MONITORING_MODE=local
-      - PROCESS_REDIS_HOST=redis
       - DB_NAME=crew
       - DB_HOST_NAME=crewdb
-      - DB_CREW_PASSWORD=admin
-      - DB_CREW_USER=postgres
       - DB_PORT=5432
+      - DB_CREW_USER=postgres
+      - DB_CREW_PASSWORD=admin
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock 
+      - /var/run/docker.sock:/var/run/docker.sock
       - /usr/bin/docker:/usr/bin/docker
       - crew_config:/home/user/root/app/env_config/
     networks:
@@ -146,15 +153,15 @@ services:
     depends_on:
       - redis
 
-  # frontend:
-  #   image: frontend
-  #   container_name: frontend
-  #   ports:
-  #     - "4200:80"
-  #   networks:
-  #     - frontend-network
-  #   volumes:
-  #     - ../frontend-config/frontend-config.json:/usr/share/nginx/html/config.json:ro
+#  frontend:
+#    image: frontend
+#    container_name: frontend
+#    ports:
+#     - "4200:80"
+#    networks:
+#     - frontend-network
+#    volumes:
+#     - ../frontend-config/frontend-config.json:/usr/share/nginx/html/config.json:ro
 
   sandbox:
     image: sandbox
@@ -181,24 +188,44 @@ services:
     image: knowledge
     container_name: knowledge
     environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
       - KNOWLEDGE_SOURCES_CHANNEL=knowledge_sources
       - KNOWLEDGE_SEARCH_GET_CHANNEL=knowledge:search:get
       - KNOWLEDGE_SEARCH_RESPONSE_CHANNEL=knowledge:search:response
+
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - DB_NAME=crew
+      - DB_HOST_NAME=crewdb
+      - DB_PORT=5432
       - DB_KNOWLEDGE_USER=postgres
       - DB_KNOWLEDGE_PASSWORD=admin
-      - DB_PORT=5432
-      - DB_HOST_NAME=crewdb
     networks:
       - backend-network
     tty: true
     stdin_open: true
     depends_on:
-      - redis
-      - crewdb
+      crewdb:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
+  test_runner:
+    container_name: test_runner
+    image: test_runner
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      - OPENAI_KEY=${OPENAI_KEY}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DJANGO_URL=http://django_app:8000/api
+      - MANAGER_URL=http://manager:8000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # - /usr/bin/docker:/usr/bin/docker
+    networks:
+      - backend-network
 
 volumes:
   sandbox_venvs:

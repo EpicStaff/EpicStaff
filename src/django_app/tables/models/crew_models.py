@@ -284,14 +284,14 @@ class ToolConfig(models.Model):
 
 class DefaultToolConfig(DefaultBaseModel):
     llm_config = models.ForeignKey(
-        "DefaultLLMConfig",
+        "LLMConfig",
         on_delete=models.SET_NULL,
         null=True,
         related_name="default_tool_llm_config",
         default=None,
     )
     embedding_config = models.ForeignKey(
-        "DefaultEmbeddingConfig",
+        "EmbeddingConfig",
         on_delete=models.SET_NULL,
         null=True,
         related_name="default_tool_embedding_config",
