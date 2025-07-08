@@ -1,66 +1,92 @@
 ![EpicStaff Logo](logo.png)
 
-**EpicStaff** is an open-source platform designed primarily for developers, yet fully accessible to non-developers for orchestrating high-performance, agent-driven AI workflows. It provides fine-grained, low-level control over task orchestration within a lean, asynchronous architecture.
+# EpicStaff - AI Agent Without The Frustration
 
-The platform includes a clean, modular backend for developers and a graphic interface for building, editing, and managing projects visually – enabling seamless experimentation and debugging whether you prefer code or clicks.
-
-EpicStaff is built for **precision, speed, and flexibility**: rather than relying on fixed templates or hidden abstractions, developers define custom workflows directly in code and can plug in any language model or AI service. This transparency and efficiency make EpicStaff ideal for building custom, event-driven agent systems.
-
-EpicStaff is designed for those who want to go **beyond generic agents** and build **production-grade AI systems** with memory, reasoning, external tools, and model flexibility.
+AI agent don't need to be complicated. EpicStaff gives teams visual workflows and developers full backend control - in one platform.
 
 ---
 
-## 🔧 Key Features
+**EpicStaff** is an open-source platform for building agent-based AI systems with maximum flexebility and minimum friction.
+With **EpicStaff**, you can create AI agents that work quickly and efficiently, remember the context of your tasks and can make decisions based on the information they receive.
 
-### 🧩 Graphic Project Builder (Frontend UI)
-Create, configure, and run your own agentic projects via an intuitive web interface. Define agents, assign tools, track progress – all without touching YAML.
+## We built EpicStaff because we've seen the gap and offers a dual-approach platform:
 
-### 🧠 Memory Persistence
-Enable agents to retain and retrieve memory across steps or workflows, improving long-term consistency and contextual reasoning.
+### 🔹For non-technical users:
 
-### 📚 Knowledge Injection
-Equip agents with knowledge from files, documents, or structured data sources and use it during reasoning, writing, or analysis tasks.
+Create multitasking AI agents through an intuitive interface. Use node-based programming frameworks to connect blocks in charge of actions: text analysis, response generation, working with files and CRM systems, etc.
 
-### 🐍 Custom Python Tools
-Define and integrate your own Python tools – and manage them directly from the frontend. No need to hard-code logic or redeploy.
+### 🔹For developers:
 
-### 🛠️ Developer-Centric Control
-Fine-grained orchestration API letting developers manage each step of AI workflows directly, without hidden abstractions or rigid templates.
+A modular, transparent backend that enables fine-grained control and direct access to orchestration logic.
 
-### ⚡ High-Performance Core
-Asynchronous, minimal-overhead architecture optimized for speed and concurrency, enabling rapid execution of complex tasks.
+Whether you're experementing, prototyping, or deploying to production, EpicStaff adapts to your team:
 
-### 🧱 Modular Backend
-Pluggable, RESTful service architecture built for flexible extension, scalable integration, and easy deployment of custom components.
+- Use drag and drop when needed
+- Dive into code when preferred
+- Or combine both, seamlessly
 
-### 🌍 Open-Source
-Community-driven and permissively licensed, focusing on transparency and developer freedom rather than proprietary lock-in.
+We hide the comlexity, not the logic.
 
-### 🤖 LLM & Workflow Compatibility
-Designed to integrate seamlessly with any language model or AI service and to support explicit, structured multi-step workflows out of the box.
+---
+## 🎯 Who is EpicStaff ideal for?
+
+- AI developers who desire flexibility without templates
+
+- Business teams who wish to quickly create functional AI agents
+
+- No-code users who prefer an interface over YAML
+
+- R&D teams and startups working with agent systems
+
+---
+
+|  Feature                 |  Description                                                                 |
+|--------------------------|------------------------------------------------------------------------------|
+| 🧩 Graphic Project Builder | Build projects using a visual interface without writing any code             |
+| 🧠 Memory Persistence      | Save and retrieve agent memory between steps                                 |
+| 📚 Knowledge Injection     | Inject knowledge from files and structured data to improve results           |
+| 🐍 Python Tools            | Connect your own Python tools without needing to redeploy                    |
+| ⚙️ Developer Control       | Full control for developers via orchestration API                            |
+| ⚡ High-Performance Core   | Asynchronous architecture optimized for speed                                |
+| 🧱 Modular Backend         | Modular architecture that is easy to extend                                  |
+| 🌍 Open-Source             | Open code and freedom for community-driven development                       |
+| 🤖 LLM Compatibility       | Compatible with any language model and supports multi-step workflows         |
+
 ---
 
 ## Mission
 
-We aim to empower businesses and developers with advanced AI-driven solutions that foster **collaboration** and **efficiency**.  
-By embracing the latest advancements in AI, we strive to create a seamless and intuitive experience for users — whether they are automating workflows or developing new applications.
+To empower teams to build intelligant AI agent: quickly, collaboratively and without unnecessary complexity.
 
 ---
 
-## Core Values
+## 💎 Core Values
 
-- **Continuous Innovation**  
-  We are committed to staying at the forefront of AI technology, ensuring our tools remain relevant and effective in a rapidly evolving landscape.
+ **Clarity over complexity**
 
-- **User-Centric Approach**  
-  Our focus is on delivering solutions that meet the diverse needs of our users, from developers to non-technical teams, ensuring everyone can leverage AI to enhance their workflows.
+We hide the overhead, not the logic. Users stay focused on what matters: building, testing and delivering.
 
-- **Collaborative Spirit**  
-  We believe in the power of collaboration — between humans and AI, as well as within our community. This spirit drives us to build tools that facilitate seamless interaction and mutual support.
+ **Collaboration by design**
+
+EpicStaff build for teams: visual first for non-technical users, full code fllexebility for developers. Everyone works better, together.
+
+ **Developer respect**
+ 
+No black boxes. No magic. Just clean, extendable architecture that gives engineers the control they need.
+
+**Open by default**
+
+We believe in open ecosystems. That's why EpicStaff is fully open-source, modular and community driven.
 
 ## Join Us
 
 Join the journey with **EpicStaff**, and together let’s shape the future of intelligent collaboration!
+
+---
+
+## 💫Show Your Support
+
+If u find EpicStaff helpful - give it a ⭐️ on GitHub!
 
 ---
 
@@ -74,63 +100,81 @@ Join the journey with **EpicStaff**, and together let’s shape the future of in
 
 ## 🚀 Getting Started
 
-### 🪟 Windows
+### Windows/Linux
 
 1. **Install dependencies**  
-   - [Git](https://git-scm.com/download/win)  
+   - [Git](https://github.com/EpicStaff/EpicStaff/releases/tag/Hackathon)  
    - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 
 2. **Start Docker Desktop**
 
 3. **Download the project**  
-   Double-click `downloader.bat`
 
-4. **Navigate to the program directory**  
-   ```bash
-   cd run_program/windows
-   ```
+4. **Open the installer file. If Docker is not running, it will start automatically.**
 
-5. **Update the program**  
-   Double-click `update.bat`
+5. **Your browser will open the installer page.**
 
-6. **Run the program**  
-   Double-click `run_project.bat`
+6. **You will see a few basic control buttons:**
+* **Start System**
+*  **Update**
+*  **Stop System**
 
-7. **Open the app**  
+7. **In the “Data Storage Location” section, select the folder on your computer where all system results and data will be stored by clicking the “Select” button.**
+   
+9. **Open the app**
+
+After the system starts, wait until all the containers have finished loading (you will see them appear with the status Running). 
+When everything is ready, a new button will appear: 
+
+(Open Application)
+
+Click it to enter the main application and start using the platform.
+
    Visit: [http://127.0.0.1:4200/](http://127.0.0.1:4200/)
 
 ---
 
-### 🐧 Linux / 🍎 macOS
+### 🍎 macOS
 
 1. **Install dependencies**  
-   - [Git](https://git-scm.com/downloads)  
+   - [Git](https://github.com/EpicStaff/EpicStaff/releases/tag/Hackathon)  
    - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 
 2. **Start Docker Desktop**
 
 3. **Download the project**  
-   ```bash
-   chmod +x downloader.sh
-   ./downloader.sh
-   ```
 
-4. **Navigate to the program directory**  
-   ```bash
-   cd run_program/linux_mac
-   ```
+4. **🛠️ Mandatory steps for macOS**
 
-5. **Update the program**
-   ```bash
-   chmod +x update.sh
-   ./update.sh
-   ```
+For macOS, you will need to run additional commands in the terminal to make the program run in the unpacked directory.
 
-6. **Run the program**
-   ```bash
-   chmod +x run_project.sh
-   ./run_project.sh
-   ```
+Run the following commands to grant permissions and remove the quarantine attribute:
 
-7. **Open the app**  
+```bash
+chmod -R epicstaff.app 
+xattr -r -d com.apple.quarantine epicstaff.app
+```
+
+5. **Open the installer file. If Docker is not running, it will start automatically.**
+
+6. **Your browser will open the installer page.**
+
+7. **You will see a few basic control buttons:**
+* **Start System**
+*  **Update**
+*  **Stop System**
+
+8. **In the “Data Storage Location” section, select the folder on your computer where all system results and data will be stored by clicking the “Select” button.**
+   
+9. **Open the app**
+
+After the system starts, wait until all the containers have finished loading (you will see them appear with the status Running). 
+When everything is ready, a new button will appear: 
+
+(Open Application)
+
+Click it to enter the main application and start using the platform.
+
    Visit: [http://127.0.0.1:4200/](http://127.0.0.1:4200/)
+
+   Full instruction is here [docs.pdf](https://github.com/Valeriia-dovhal-hys/EpicStaff/blob/b423d70c946e4132c910d97f168de6ee8b6f47f2/docs.pdf) 
