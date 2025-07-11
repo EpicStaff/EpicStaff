@@ -1,4 +1,5 @@
 import json
+import uuid
 from typing import Any
 from dotdict import DotDict
 from services.graph.graph_builder import SessionGraphBuilder, State
@@ -83,6 +84,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 if stream_mode == "custom":
                     data = asdict(chunk)
                     assert isinstance(data, dict), "custom chunk must be a dict"
+                    data["uuid"] = str(uuid.uuid4())
 
                     await self.redis_service.async_publish("graph:messages", data)
                 logger.debug(f"Mode: {stream_mode}. Chunk: {chunk}")

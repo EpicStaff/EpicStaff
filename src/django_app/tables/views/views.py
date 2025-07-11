@@ -1,5 +1,6 @@
 from datetime import datetime
 from collections import defaultdict
+import uuid
 
 from tables.models import Tool
 from tables.models import Crew
@@ -27,12 +28,15 @@ from rest_framework import viewsets, mixins
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework import filters
 
 from tables.services.config_service import YamlConfigService
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.converter_service import ConverterService
 from tables.services.redis_service import RedisService
 from tables.services.run_python_code_service import RunPythonCodeService
+from tables.services.quickstart_service import QuickstartService
+
 from django_filters.rest_framework import DjangoFilterBackend
 
 
@@ -50,6 +54,8 @@ from tables.serializers.serializers import (
     RunSessionSerializer,
 )
 from tables.serializers.knowledge_serializers import CollectionStatusSerializer
+from tables.serializers.quickstart_serializers import QuickstartSerializer
+from tables.filters import SessionFilter
 
 from .default_config import *
 
@@ -60,6 +66,7 @@ session_manager_service = SessionManagerService()
 config_service = YamlConfigService()
 run_python_code_service = RunPythonCodeService()
 realtime_service = RealtimeService()
+quickstart_service = QuickstartService()
 
 
 class SessionViewSet(
@@ -69,11 +76,20 @@ class SessionViewSet(
     viewsets.GenericViewSet,
 ):
     serializer_class = SessionSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["graph_id"]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_class  = SessionFilter
+    ordering_fields = ["created_at", "finished_at", "status", "status_updated_at", "id"]  # allowed fields
+    ordering = ["-created_at", "id"]  # default ordering
+
 
     def get_queryset(self):
-        return Session.objects.select_related("graph").all()
+        qs = Session.objects.select_related("graph")
+        if self.request.method == "GET":
+            detailed = self.request.query_params.get("detailed", "true").lower()
+            if detailed == "false":
+                qs = qs.only("id", "graph_id", "status", "status_updated_at", "created_at", "finished_at")
+
+        return qs
 
     @swagger_auto_schema(
         operation_description="Get counts of each status grouped by graph ID",
@@ -355,8 +371,10 @@ class AnswerToLLM(APIView):
                     "crew_id": crew_id,
                     "message_type": "user",
                 },
+                "uuid": str(uuid.uuid4())
             },
         )
+
         redis_service.send_user_input(
             session_id=session_id,
             node_name=name,
@@ -608,3 +626,64 @@ class CollectionStatusAPIView(APIView):
             return Response(
                 {"error": "Collection not found"}, status=status.HTTP_404_NOT_FOUND
             )
+
+
+class QuickstartView(APIView):
+    """
+    API endpoint for managing quickstart configurations
+    """
+
+    @swagger_auto_schema(
+        operation_description="Get list of supported providers",
+        responses={200: openapi.Response(description="List of supported providers")},
+    )
+    def get(self, request):
+        """
+        Get list of supported providers for quickstart configuration
+        """
+        try:
+            supported_providers = list(quickstart_service.get_supported_providers())
+
+            return Response(
+                data={
+                    "supported_providers": supported_providers,
+                    "count": len(supported_providers),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception as e:
+            logger.error(f"Error getting supported providers: {str(e)}")
+            return Response(
+                data={
+                    "detail": "Failed to retrieve supported providers",
+                    "error": "An unexpected error occurred",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @swagger_auto_schema(request_body=QuickstartSerializer)
+    def post(self, request):
+        serializer = QuickstartSerializer(data=request.data)
+        if serializer.is_valid():
+            provider = serializer.validated_data["provider"]
+            api_key = serializer.validated_data["api_key"]
+
+            quickstart = quickstart_service.quickstart(provider, api_key)
+
+            if quickstart.get("success", False):
+                config_name = quickstart.get("config_name")
+                return Response(
+                    data={
+                        "detail": "Quickstart initiated successfully!",
+                        "config_name": config_name,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            else:
+                error = quickstart.get("error")
+                return Response(
+                    data={"detail": "Error quickstart", "error": error},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

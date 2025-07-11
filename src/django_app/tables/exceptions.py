@@ -30,3 +30,8 @@ class GraphEntryPointException(CustomAPIExeption):
 class UploadSourceCollectionSerializerValidationError(CustomAPIExeption):
     status_code = 400
     default_detail = "ValidationError occured in UploadSourceCollectionSerializer"
+
+
+class CrewMemoryValidationError(CustomAPIExeption):
+    status_code = 400
+    default_detail = "ValidationError occured in CrewMemoryValidator -> ConverterService during asigning memory_llm or embedder"

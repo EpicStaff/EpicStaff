@@ -9,8 +9,10 @@ from contextlib import ExitStack
 from models.request_models import KnowledgeSearchMessage
 from loguru import logger
 
+from utils.variables import DJANGO_URL, rhost
 
-DJANGO_URL = "http://127.0.0.1:8000/api"
+
+# DJANGO_URL = "http://django_app:8000/api"
 
 
 def validate_response(response):
@@ -137,7 +139,7 @@ def create_source_collection(embedder_config_id: int) -> int:
             (f"files[{i}]", stack.enter_context(open(file["path"], "rb")))
             for i, file in enumerate(test_files)
         ]
-        response = requests.post(url, data=data, files=files)
+        response = requests.post(url, data=data, files=files, headers={"Host": rhost})
 
     validate_response(response)
     source_collection_data = response.json()
@@ -147,7 +149,7 @@ def create_source_collection(embedder_config_id: int) -> int:
 def knowledge_clean_up(collection_id: int):
     """Clean up the collection after testing."""
     url = f"{DJANGO_URL}/source-collections/{collection_id}/"
-    response = requests.delete(url)
+    response = requests.delete(url, headers={"Host": rhost})
 
     if response.ok:
         logger.info(f"Collection {collection_id} successfully deleted")
@@ -163,10 +165,11 @@ def check_statuses_for_embedding_creation(collection_id: int, max_timeout: int =
     time.sleep(2)
 
     for i in range(max_timeout):
-        time.sleep(1)
-        response = requests.get(f"{DJANGO_URL}/collection_status/{collection_id}/")
+        time.sleep(3)
+        response = requests.get(f"{DJANGO_URL}/collection_status/{collection_id}/", headers={"Host": rhost})
         validate_response(response)
         collection_status_data = response.json()
+        logger.info(f"collection_status_data: {collection_status_data}")
 
         if collection_status_data["collection_status"] == "completed":
             break
@@ -190,7 +193,7 @@ def check_statuses_for_embedding_creation(collection_id: int, max_timeout: int =
 def get_embedder_model(name: str = "text-embedding-3-small") -> int:
     """Get embedder model ID by name."""
     embedder_model_response = requests.get(
-        f"{DJANGO_URL}/embedding-models/?name={name}"
+        f"{DJANGO_URL}/embedding-models/?name={name}", headers={"Host": rhost}
     )
     validate_response(embedder_model_response)
 
@@ -213,7 +216,7 @@ def get_or_create_embedder_config(embedder_model_id: int) -> int:
 
     # Try to find existing config
     embedder_config_response = requests.get(
-        f"{DJANGO_URL}/embedding-configs?custom_name={embedder_config_data['custom_name']}"
+        f"{DJANGO_URL}/embedding-configs?custom_name={embedder_config_data['custom_name']}", headers={"Host": rhost}
     )
     validate_response(embedder_config_response)
 
@@ -223,7 +226,7 @@ def get_or_create_embedder_config(embedder_model_id: int) -> int:
 
     # Create new config if not found
     embedder_config_response = requests.post(
-        f"{DJANGO_URL}/embedding-configs/", json=embedder_config_data
+        f"{DJANGO_URL}/embedding-configs/", json=embedder_config_data, headers={"Host": rhost}
     )
     validate_response(embedder_config_response)
     embedder_config = embedder_config_response.json()

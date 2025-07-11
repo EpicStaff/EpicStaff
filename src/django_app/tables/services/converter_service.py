@@ -35,7 +35,11 @@ from tables.request_models import CrewData
 from utils.singleton_meta import SingletonMeta
 
 from tables.serializers.model_serializers import ToolConfigSerializer
-from tables.validators import ToolConfigValidator, validate_tool_configs
+from tables.validators.tool_config_validator import (
+    ToolConfigValidator,
+    validate_tool_configs,
+)
+from tables.validators.crew_memory_validator import CrewMemoryValidator
 
 tool_config_serializer = ToolConfigSerializer(
     ToolConfigValidator(validate_missing_reqired_fields=True, validate_null_fields=True)
@@ -45,33 +49,8 @@ from tables.models.embedding_models import EmbeddingConfig
 
 class ConverterService(metaclass=SingletonMeta):
 
-    def __init__(self): ...
-
-    # TODO: refactor after hackathon
-    def get_embedder(self, embedding_config):
-        if embedding_config is None:
-            instance = (
-                EmbeddingConfig.objects.filter(custom_name__startswith="quickstart")
-                .order_by("-id")
-                .first()
-            )
-            if instance:
-                return instance
-
-        return embedding_config
-
-    # TODO: refactor after hackathon
-    def get_memory_llm(self, memory_llm_config):
-        if memory_llm_config is None:
-            instance = (
-                LLMConfig.objects.filter(custom_name__startswith="quickstart")
-                .order_by("-id")
-                .first()
-            )
-            if instance:
-                return instance
-
-        return memory_llm_config
+    def __init__(self):
+        self.memory_validator = CrewMemoryValidator()
 
     def convert_crew_to_pydantic(self, crew_id: int) -> CrewData:
         crew = Crew.objects.get(pk=crew_id).fill_with_defaults()
@@ -79,12 +58,15 @@ class ConverterService(metaclass=SingletonMeta):
         manager_llm = self.convert_llm_config_to_pydantic(crew.manager_llm_config)
         planning_llm = self.convert_llm_config_to_pydantic(crew.planning_llm_config)
 
-        # TODO: refactor after hackathon
         embedder = None
         memory_llm = None
         if crew.memory:
-            memory_llm_config = self.get_memory_llm(crew.memory_llm_config)
-            embedding_config = self.get_embedder(crew.embedding_config)
+            memory_llm_config = crew.memory_llm_config
+            embedding_config = crew.embedding_config
+            # memory configs validation
+            self.memory_validator.validate_memory_configs(
+                memory_llm_config, embedding_config
+            )
 
             embedder = self.convert_embedding_config_to_pydantic(embedding_config)
             memory_llm = self.convert_llm_config_to_pydantic(memory_llm_config)

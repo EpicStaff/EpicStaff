@@ -54,7 +54,7 @@ from tables.models.realtime_models import (
 )
 from tables.models.tag_models import AgentTag, CrewTag, GraphTag
 from tables.models.vector_models import MemoryDatabase
-from tables.validators import ToolConfigValidator, eval_any
+from tables.validators.tool_config_validator import ToolConfigValidator, eval_any
 from tables.models import (
     AgentSessionMessage,
     TaskSessionMessage,
@@ -908,4 +908,5 @@ class GraphSerializer(serializers.ModelSerializer):
             "decision_table_node_list",
             "start_node_list",
             "time_to_live",
+            "persistent_variables",
         ]

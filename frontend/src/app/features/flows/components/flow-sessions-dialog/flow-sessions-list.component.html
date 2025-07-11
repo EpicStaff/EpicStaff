@@ -1,23 +1,10 @@
 <div class="dialog-wrapper">
   <div class="dialog-header">
     <h2>Sessions for {{ flow.name }}</h2>
-    <button
-      class="icon-btn close-dialog-btn"
-      (click)="dialogRef.close()"
-      title="Close dialog"
-    >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        class="icon icon-tabler icon-tabler-x"
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        stroke-width="2"
-        stroke="currentColor"
-        fill="none"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
+    <button class="icon-btn close-dialog-btn" (click)="dialogRef.close()" title="Close dialog">
+      <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-x" width="24" height="24"
+        viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
+        stroke-linejoin="round">
         <path stroke="none" d="M0 0h24v24H0z" fill="none" />
         <line x1="18" y1="6" x2="6" y2="18" />
         <line x1="6" y1="6" x2="18" y2="18" />
@@ -27,13 +14,24 @@
   @if (!isLoaded()) {
   <app-loading-spinner size="md" message="Loading sessions..." />
   } @else { @if (sessions().length > 0) {
-  <app-flow-sessions-table
-    [sessions]="sessions()"
-    [flow]="flow"
+  <app-flow-sessions-table [sessions]="sessions()" 
+    [flow]="flow" 
     (deleteSelected)="onDeleteSelected($event)"
-    (viewSession)="onViewSession($event)"
+    (viewSession)="onViewSession($event)" 
     (stopSession)="onStopSession($event)"
-  ></app-flow-sessions-table>
+    (statusFilterChanged)="onStatusFilterChange($event)">
+  </app-flow-sessions-table>
+
+  @if ( totalCount > pageSize()) {
+  <app-pagination-controls 
+    [pageSize]="pageSize()"
+    [totalCount]="totalCount"
+    [currentPage]="currentPage()"
+    [maxPagesToShow]="5" 
+    (pageChange)="onPageChange($event)">
+  </app-pagination-controls>
+  }
+
   } @else {
   <p>No sessions found for this flow.</p>
   } }

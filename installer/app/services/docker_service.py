@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Generator, Literal
 import os
 import time
+import stat
 
 from flask_socketio import emit
 from app.utils import (
@@ -216,7 +217,7 @@ class UpdateImagesState(State):
                 for line in self._run_script(command, prefix=image_name):
                     output_queue.put(line)
 
-            with ThreadPoolExecutor(max_workers=4) as executor:
+            with ThreadPoolExecutor(max_workers=8) as executor:
                 futures = [
                     executor.submit(run_build, name, cfg)
                     for name, cfg in image_build_configs.items()
@@ -238,7 +239,13 @@ class UpdateImagesState(State):
             if tmp_repo_path and tmp_repo_path.exists():
                 yield f"[INFO] Cleaning up temporary directory: {tmp_repo_path}\n"
                 try:
-                    shutil.rmtree(tmp_repo_path)
+                    def handle_remove_readonly(func, path, exc_info):
+                        if not os.access(path, os.W_OK):
+                            os.chmod(path, stat.S_IWRITE)
+                            func(path)
+                        else:
+                            raise
+                    shutil.rmtree(tmp_repo_path, onexc=handle_remove_readonly)
                 except OSError as e:
                     yield f"[WARNING] Failed to remove temporary directory {tmp_repo_path}: {e}\n"
             self.update_images_started = (

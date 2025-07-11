@@ -1,0 +1,65 @@
+/* pagination-controls.component.scss */
+
+:host {
+  display: block;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 0;
+  background: transparent;
+  border-radius: 6px;
+  user-select: none;
+}
+
+/* Base button styling */
+.page-btn {
+  background: var(--color-secondary-btn-background); /* #27272b */
+  color: var(--color-text-primary);                  /* #d9d9de */
+  border: none;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.9rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background‐color 0.2s, color 0.2s;
+
+  &:hover:not(:disabled) {
+    background: var(--color-secondary-btn-background-hover); /* #ffffff17 */
+    color: var(--color-text-primary-hover);                  /* #ececf3 */
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  &.active {
+    background: var(--accent-color);       /* #685fff */
+    color: var(--color-sidenav-background);/* #222225 */
+    pointer-events: none;
+
+    &:hover {
+      background: var(--accent-color-hover);  /* #574fd6 */
+    }
+    &:active {
+      background: var(--accent-color-active); /* #473fb3 */
+    }
+  }
+}
+
+/* Page‐number list + ellipses */
+.page-list {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  gap: 0.25rem;
+
+  /* Hide the dots if you’ve only a handful of pages */
+  li.ellipsis .dots {
+    color: var(--color-text-secondary); /* #c8ceda99 */
+    padding: 0.4rem 0.75rem;
+  }
+}

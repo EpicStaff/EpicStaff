@@ -10,6 +10,13 @@ from mem0.memory.setup import mem0_dir
 from mem0.vector_stores.configs import VectorStoreConfig
 
 
+class RedisConfig(BaseModel):
+    host: str = Field("localhost", description="Redis host")
+    port: int = Field(6379, description="Redis port")
+    db: int = Field(0, description="Redis db")
+    channel: str = Field(..., description="Channel name")
+
+
 class MemoryItem(BaseModel):
     id: str = Field(..., description="The unique identifier for the text data")
     memory: str = Field(
@@ -50,6 +57,11 @@ class MemoryConfig(BaseModel):
     )
     custom_prompt: Optional[str] = Field(
         description="Custom prompt for the memory",
+        default=None,
+    )
+    
+    redis: Optional[RedisConfig] = Field(
+        description="Redis for publishing notifications about memory updates",
         default=None,
     )
 

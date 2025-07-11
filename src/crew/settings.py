@@ -19,5 +19,11 @@ PGVECTOR_MEMORY_CONFIG = {
                 "dbname": os.environ.get("DB_NAME", "crew"),
             },
         },
+        "redis": {
+            "host": os.environ.get("REDIS_HOST", "127.0.0.1"),
+            "port": int(os.environ.get("REDIS_PORT", 6379)),
+            "db": 0,
+            "channel": "memory:update",
+        },
     },
 }

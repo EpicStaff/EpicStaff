@@ -270,3 +270,4 @@ class GraphSessionMessageData(BaseModel):
     execution_order: int
     timestamp: str
     message_data: dict
+    uuid: str

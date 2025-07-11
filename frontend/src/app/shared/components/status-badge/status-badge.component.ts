@@ -80,6 +80,8 @@ export class StatusBadgeComponent {
         return 'Waiting for User';
       case GraphSessionStatus.PENDING:
         return 'Pending';
+      case GraphSessionStatus.EXPIRED:
+        return 'Expired';
       default:
         return 'Unknown';
     }
@@ -97,6 +99,8 @@ export class StatusBadgeComponent {
       case GraphSessionStatus.WAITING_FOR_USER:
         return 'status-waiting';
       case GraphSessionStatus.PENDING:
+        return 'status-pending';
+      case GraphSessionStatus.EXPIRED:
         return 'status-pending';
       default:
         return '';

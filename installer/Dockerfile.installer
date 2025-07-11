@@ -6,4 +6,4 @@ RUN pip install poetry
 COPY . .
 
 RUN poetry install --no-root --without win
-RUN poetry run pyinstaller installer.py --name epicstaff.app --onefile --add-data 'app/templates:app/templates' --add-data 'app/static:app/static' --hidden-import engineio.async_drivers.threading --distpath /out
+RUN poetry run pyinstaller installer.py --name epicstaff.app --onefile  --windowed --add-data 'app/templates:app/templates' --add-data 'app/static:app/static' --hidden-import engineio.async_drivers.threading --distpath /out

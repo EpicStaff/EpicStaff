@@ -40,8 +40,8 @@ export class TasksService {
   }
 
   // GET task by ID
-  getTaskById(taskId: number): Observable<Task> {
-    return this.http.get<Task>(`${this.apiUrl}${taskId}/`);
+  getTaskById(taskId: number): Observable<GetTaskRequest> {
+    return this.http.get<GetTaskRequest>(`${this.apiUrl}${taskId}/`);
   }
 
   // POST create task

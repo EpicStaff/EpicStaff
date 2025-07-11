@@ -1,13 +1,19 @@
+from time import sleep
+
+import pytest
+
 from utils.utils import *
 from utils.knowledge_utils import *
 import uuid
 from loguru import logger
 
+from utils.variables import MANAGER_URL
+
 
 def test_create_and_run_session():
 
     # TODO: create a function to ensure container is running
-    sleep(180)  # sleep to make sure that predifined models uploaded
+    sleep(1)  # sleep to make sure that predifined models uploaded
     set_openai_api_key_to_environment()
 
     # Create configurations
@@ -111,14 +117,15 @@ async def test_knowledges(collection_id, redis_service):
 @pytest.mark.skip
 def test_get_tool_class_data():
 
-    tool_list_response = requests.get(f"{MANAGER_URL}/tool/list")
+    tool_list_response = requests.get(f"{MANAGER_URL}/tool/list", headers={"Host": rhost})
     validate_response(response=tool_list_response)
     tool_alias_list = tool_list_response.json()["tool_list"]
 
     error_tools = []
     for tool_alias in tool_alias_list:
         tool_class_data_response = requests.get(
-            f"{MANAGER_URL}/tool/{tool_alias}/class-data"
+            f"{MANAGER_URL}/tool/{tool_alias}/class-data",
+            headers={"Host": rhost}
         )
         try:
             validate_response(response=tool_class_data_response)
@@ -405,7 +412,7 @@ def main():
 
 
 def get_llm_model(name: str = "gpt-4o-mini"):
-    llm_model_response = requests.get(f"{DJANGO_URL}/llm-models?name={name}")
+    llm_model_response = requests.get(f"{DJANGO_URL}/llm-models?name={name}", headers={"Host": rhost})
     llm_model = None
     if llm_model_response.ok:
         results = llm_model_response.json()["results"]

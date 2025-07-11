@@ -1,3 +1,4 @@
+import uuid
 from django.db import models
 
 
@@ -9,6 +10,10 @@ class Graph(models.Model):
     metadata = models.JSONField(default=dict)
     time_to_live = models.IntegerField(
         default=3600, help_text="Session lifitime duration in seconds."
+    )
+    persistent_variables = models.BooleanField(
+        default=False,
+        help_text="If 'True' -> use variables from last session."
     )
 
 
@@ -117,6 +122,7 @@ class GraphSessionMessage(models.Model):
     name = models.CharField(default="")
     execution_order = models.IntegerField(default=0)
     message_data = models.JSONField()
+    uuid = models.UUIDField(null=False, editable=False, unique=True)
 
 
 class StartNode(models.Model):

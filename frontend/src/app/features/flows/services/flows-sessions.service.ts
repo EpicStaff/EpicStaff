@@ -53,7 +53,7 @@ export const defaultSessionStatusesCounts = (): SessionStatusesCounts => ({
   providedIn: 'root',
 })
 export class GraphSessionService {
-  constructor(private http: HttpClient, private configService: ConfigService) {}
+  constructor(private http: HttpClient, private configService: ConfigService) { }
 
   private get apiUrl(): string {
     return this.configService.apiUrl + 'sessions/';
@@ -90,15 +90,21 @@ export class GraphSessionService {
     return this.http.get<GraphSession>(`${this.apiUrl}${sessionId}/`);
   }
 
-  getSessionsByGraphId(graphId: number): Observable<GraphSession[]> {
-    const params = new HttpParams().set('graph_id', graphId.toString());
-    return this.http
-      .get<ApiGetRequest<GraphSession>>(this.apiUrl, { params })
-      .pipe(
-        map((response) => {
-          return response.results.sort((a, b) => b.id - a.id);
-        })
-      );
+  getSessionsByGraphId(
+    graphId: number,
+    detailed?: boolean,
+    limit?: number,
+    offset?: number,
+    status?: string[],
+  ): Observable<ApiGetRequest<GraphSession>> {
+    let params = new HttpParams().set('graph_id', graphId.toString())
+
+    if (detailed !== undefined) params = params.set('detailed', detailed.toString());
+    if (limit !== undefined) params = params.set('limit', limit.toString());
+    if (offset !== undefined) params = params.set('offset', offset.toString());
+    if (status !== undefined && !status.includes('all')) params = params.set('status', status.join(','));
+
+    return this.http.get<ApiGetRequest<GraphSession>>(this.apiUrl, { params })
   }
 
   deleteSessionById(sessionId: number): Observable<void> {

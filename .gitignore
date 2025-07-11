@@ -247,3 +247,4 @@ Thumbs.db
 
 executions
 openai-realtime-console
+src/django_app/staticfiles/*

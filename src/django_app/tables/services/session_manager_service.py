@@ -1,3 +1,4 @@
+import json
 from tables.exceptions import GraphEntryPointException
 from tables.models.graph_models import (
     ConditionalEdge,
@@ -6,8 +7,7 @@ from tables.models.graph_models import (
     LLMNode,
     StartNode,
 )
-from tables.models.llm_models import LLMConfig
-from tables.validators import validate_tool_configs
+
 from utils.singleton_meta import SingletonMeta
 from utils.logger import logger
 from tables.services.converter_service import ConverterService
@@ -133,11 +133,12 @@ class SessionManagerService(metaclass=SingletonMeta):
         if start_edge is None:
             raise GraphEntryPointException()
 
-
         decision_table_node_data_list: list[DecisionTableNodeData] = []
         for decision_table_node_list_item in decision_table_node_list:
-            decision_table_node_data = self.converter_service.convert_decision_table_node_to_pydantic(
-                decision_table_node=decision_table_node_list_item
+            decision_table_node_data = (
+                self.converter_service.convert_decision_table_node_to_pydantic(
+                    decision_table_node=decision_table_node_list_item
+                )
             )
             decision_table_node_data_list.append(decision_table_node_data)
 
@@ -161,6 +162,11 @@ class SessionManagerService(metaclass=SingletonMeta):
         return session_data
 
     def run_session(self, graph_id: int, variables: dict | None = None) -> int:
+        logger.info(f"'run_session' got variables: {variables}")
+
+        # Choose to use variables from previous flow or left 'variables' param None
+        variables = self.choose_variables(graph_id, variables)
+
         session: Session = self.create_session(graph_id=graph_id, variables=variables)
         session_data: SessionData = self.create_session_data(session=session)
 
@@ -175,8 +181,7 @@ class SessionManagerService(metaclass=SingletonMeta):
 
         return session.pk
 
-    @staticmethod
-    def register_message(data: dict) -> None:
+    def register_message(self, data: dict) -> None:
         if data["message_data"]["message_type"] == "user":
             graph_session_message_data = GraphSessionMessageData.model_validate(data)
             session = Session.objects.get(id=graph_session_message_data.session_id)
@@ -185,9 +190,63 @@ class SessionManagerService(metaclass=SingletonMeta):
                 name=graph_session_message_data.name,
                 execution_order=graph_session_message_data.execution_order,
                 message_data=graph_session_message_data.message_data,
+                uuid=graph_session_message_data.uuid,
             )
+
+            self.redis_service.publish_user_graph_message(session.id, str(graph_session_message_data.uuid), data)
 
         else:
             raise ValueError(
                 f"Unsupported message_type: {data["message_data"]["message_type"]}"
             )
+
+    def choose_variables(
+            self,
+            graph_id: int,
+            variables: dict | None = None
+    ) -> dict | None:
+        """
+        Function returns variables ether from previous session which ended successfully
+        (with status: 'end') if 'persistent_variables' field in graph_obj is True and there
+        is at least one session.
+        OR
+        Returns an emtpy dict
+        """
+
+        use_prev_vars = Graph.objects.filter(pk=graph_id, persistent_variables=True)
+        m1 = "This run will be using variables from the last flow ended with status: 'end'"
+        m2 = "This run will be using new variables"
+        logger.info(f"{m1 if use_prev_vars else m2}")
+
+        if use_prev_vars:
+            # Get last session which ended successfully
+            latest_ended_session_id = (
+                Session.objects
+                .filter(graph_id=graph_id, status=Session.SessionStatus.END)
+                .order_by("-id")
+                .values_list("id", flat=True)
+                .first()
+            )
+            if not latest_ended_session_id:
+                logger.warning(f"There are no sessions for this graph which ended successfully")
+                return variables
+
+            logger.info(f"LAST SESSION /W STATUS: END ID IS: {latest_ended_session_id}")
+
+            try:
+                # Retrieve variables from previous session
+                message = (
+                    GraphSessionMessage.objects
+                    .filter(session_id=latest_ended_session_id)
+                    .order_by("-created_at")
+                    .first()
+                )
+                prev_session_vars = message.message_data["state"]["variables"]
+                logger.info(f"prev_session_var: {prev_session_vars}")
+                variables = prev_session_vars
+                logger.info(f"Variables from previous session are set to current run: {variables}")
+            except Exception as e:
+                logger.error(f"Error while retrieving variables from previous session. {e}")
+                return variables
+
+        return variables

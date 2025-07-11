@@ -1,6 +1,8 @@
+import contextlib
 import os
 import json
 import redis
+import redis.asyncio as async_redis
 from threading import Lock
 
 from tables.request_models import RealtimeAgentChatData, SessionData
@@ -14,6 +16,7 @@ class RedisService(metaclass=SingletonMeta):
     def __init__(self):
         self._redis_client = None
         self._pubsub = None
+        self._async_redis_client = None
         self._redis_host = os.getenv("REDIS_HOST", "localhost")
         self._redis_port = int(os.getenv("REDIS_PORT", 6379))
 
@@ -24,6 +27,12 @@ class RedisService(metaclass=SingletonMeta):
                     host=self._redis_host, port=self._redis_port
                 )
                 self._pubsub = self._redis_client.pubsub()
+
+    def _initialize_async(self):
+        if self._async_redis_client is None:
+            self._async_redis_client = async_redis.Redis(
+                host=self._redis_host, port=self._redis_port, decode_responses=True
+            )
 
     @property
     def redis_client(self):
@@ -38,6 +47,12 @@ class RedisService(metaclass=SingletonMeta):
         if self._pubsub is None:
             self._initialize_redis()
         return self._pubsub
+
+    @property
+    def async_redis_client(self):
+        if self._async_redis_client is None:
+            self._initialize_async()
+        return self._async_redis_client
 
     def publish_session_data(self, session_data: SessionData) -> None:
         self.redis_client.publish(f"sessions:schema", session_data.model_dump_json())
@@ -88,3 +103,51 @@ class RedisService(metaclass=SingletonMeta):
         )
         logger.info(f"Sent realtime agent chat to: realtime_agents:schema.")
         logger.debug(f"Schema: {rt_agent_chat_data.model_dump()}.")
+
+    def publish_user_graph_message(
+        self, session_id: int, uuid: str, data: dict
+    ) -> None:
+        channel = os.environ.get("GRAPH_MESSAGE_UPDATE_CHANNEL", "graph:message:update")
+
+        message = {
+            "uuid": str(uuid),
+            "session_id": session_id,
+        }
+
+        self.redis_client.setex(
+            name=f"graph:message:{session_id}:{uuid}",
+            time=60,
+            value=json.dumps(data),
+        )
+
+        self.redis_client.publish(channel=channel, message=json.dumps(message))
+        logger.info(
+            f"Cached for saving graph message data created by user unput: {uuid} in {session_id=}."
+        )
+
+    async def redis_get_message(self, channels: list, reconnections_left=2):
+        try:
+            pubsub = self.async_redis_client.pubsub()
+            await pubsub.subscribe(*channels)
+
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    yield message
+
+        except Exception as e:
+            logger.warning(
+                f"Redis PubSub connection error: {e}. Reinitializing pubsub. Tries left #{reconnections_left}"
+            )
+            if reconnections_left <= 0:
+                raise
+
+            # Retry with a new pubsub
+            async for message in self.redis_get_message(channels, reconnections_left - 1):
+                yield message
+
+        finally:
+            # Cleanly unsubscribe and close pubsub to avoid Redis leaks
+            with contextlib.suppress(Exception):
+                await pubsub.unsubscribe(*channels)
+                await pubsub.close()
+
