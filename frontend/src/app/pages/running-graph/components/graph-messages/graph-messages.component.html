@@ -1,8 +1,8 @@
 <!-- graph-messages.component.html -->
 <div class="messages-container">
   <!-- Messages list -->
-  <div class="messages-list" *ngIf="messages.length > 0">
-    @for (message of messages; track message.id; let i = $index) {
+  <div class="messages-list" *ngIf="this.sseService.messages().length > 0">
+    @for (message of this.sseService.messages(); track message.uuid; let i = $index) {
     <div class="message">
       <!-- Project transition indicator -->
       <app-project-transition
@@ -44,7 +44,7 @@
 
   <!-- Loading dots for running session -->
   <app-loading-dots
-    *ngIf="shouldPoll"
+    *ngIf="isProcessing"
     class="loading-indicator"
   ></app-loading-dots>
 

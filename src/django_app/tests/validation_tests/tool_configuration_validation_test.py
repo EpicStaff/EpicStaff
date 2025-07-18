@@ -1,7 +1,8 @@
 import pytest
-from tables.validators import ToolConfigValidator
+from tables.validators.tool_config_validator import ToolConfigValidator
 from tests.fixtures import *
 from django.core.exceptions import ValidationError
+
 
 @pytest.mark.django_db
 def test_partial_tool_configuration_validation_with_all_fields_set(
@@ -19,6 +20,7 @@ def test_partial_tool_configuration_validation_with_all_fields_set(
     )
 
     validator.validate(name=name, tool=tool, configuration=configuration)
+
 
 @pytest.mark.django_db
 def test_partial_tool_configuration_validation_without_all_fields_set(
@@ -77,11 +79,7 @@ def test_full_configuration_validation_invalid_field_types(
 ):
     tool = test_tool_with_fields
     name = "tool_configuration_validation config"
-    configuration = {
-        "llm_config": "foo",
-        "embedding_config": ["bar"],
-        "url": 5
-    }
+    configuration = {"llm_config": "foo", "embedding_config": ["bar"], "url": 5}
     validator = ToolConfigValidator(
         validate_null_fields=True, validate_missing_reqired_fields=True
     )
@@ -95,14 +93,9 @@ def test_partial_configuration_validation_invalid_field_types(
 ):
     tool = test_tool_with_fields
     name = "tool_configuration_validation config"
-    configuration = {
-        "llm_config": "foo",
-        "embedding_config": ["bar"],
-        "url": 5
-    }
+    configuration = {"llm_config": "foo", "embedding_config": ["bar"], "url": 5}
     validator = ToolConfigValidator(
         validate_null_fields=False, validate_missing_reqired_fields=False
     )
     with pytest.raises(ValueError):
         validator.validate(name=name, tool=tool, configuration=configuration)
-

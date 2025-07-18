@@ -12,8 +12,6 @@ import { NodeType } from '../core/enums/node-type';
 import { FDropToGroupEvent } from '@foblex/flow';
 import { GroupNodeModel } from '../core/models/group.model';
 
-// Define types for port IDs and flattened port structure
-
 export interface FlattenedPort {
   nodeId: string;
   port: ViewPort;
@@ -32,6 +30,10 @@ export class FlowService {
   public readonly nodes = computed(() => this.flowSignal().nodes);
   public readonly connections = computed(() => this.flowSignal().connections);
   public readonly groups = computed(() => this.flowSignal().groups);
+
+  public readonly noteNodes = computed(() =>
+    this.nodes().filter((node) => node.type === NodeType.NOTE)
+  );
 
   public visibleConnections = computed(() => {
     const connections = this.connections();

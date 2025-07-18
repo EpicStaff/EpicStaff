@@ -10,12 +10,27 @@ services:
     environment:
       - CODE_RESULT_CHANNEL=code_results
       - CODE_EXEC_TASK_CHANNEL=code_exec_tasks
+      - GRAPH_MESSAGE_UPDATE_CHANNEL=graph:message:update
+      - GRAPH_MESSAGES_CHANNEL=graph:messages
+      - SESSION_STATUS_CHANNEL=sessions:session_status
+      - MEMORY_UPDATE_CHANNEL=memory:update
 
+      - DEBUG=${DEBUG:-True}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+    
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
+
       - DB_HOST_NAME=${DB_HOST_NAME}
       - DB_PORT=${DB_PORT}
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - DB_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_NAME=${POSTGRES_DB}      
+      
+
+      - GUNICORN_WORKERS=${GUNICORN_WORKERS}
+      - GUNICORN_THREADS=${GUNICORN_THREADS}
     volumes:
       - crew_config:/home/user/root/app/env_config
 
@@ -139,7 +154,7 @@ services:
       interval: 15s
       timeout: 10s
       retries: 10
-      start_period: 60s
+      start_period: 15s
       
   redis:
     image: redis
@@ -170,6 +185,8 @@ services:
       - DB_PORT=${DB_PORT}
       - DB_CREW_USER=${DB_CREW_USER}
       - DB_CREW_PASSWORD=${DB_CREW_PASSWORD}
+      - SESSION_STATUS_CHANNEL=sessions:session_status
+      - CODE_RESULT_CHANNEL=code_results
     volumes:
       - ${DOCKER_SOCK_PATH}:${DOCKER_SOCK_PATH}
       - ${DOCKER_BIN_PATH}:${DOCKER_BIN_PATH}

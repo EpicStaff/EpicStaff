@@ -1,0 +1,22 @@
+<div class="visual-slider">
+  <label *ngIf="label && label.trim() !== ''" for="tempSlider">
+    {{ label }} {{ getFormattedValue() }}
+  </label>
+
+  <input
+    type="range"
+    id="tempSlider"
+    [min]="min"
+    [max]="max"
+    [step]="step"
+    [value]="value"
+    (input)="onSliderInput($event)"
+  />
+  <div class="scale-markers">
+    <span>{{ min }}</span>
+    <span class="current-value" [style.left]="valuePosition">{{
+      getFormattedValue()
+    }}</span>
+    <span>{{ max }}</span>
+  </div>
+</div>

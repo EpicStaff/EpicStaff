@@ -169,7 +169,7 @@ import { GetProjectRequest } from '../../../../../../features/projects/models/pr
       .finish-content {
         display: flex;
         flex-direction: column;
-        gap: 1.5rem;
+        gap: 0.5rem;
         padding-left: 5.5rem;
         margin-top: 1.25rem;
         overflow: hidden;

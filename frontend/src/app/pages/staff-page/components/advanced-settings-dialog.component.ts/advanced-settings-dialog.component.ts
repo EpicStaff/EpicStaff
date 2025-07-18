@@ -16,16 +16,16 @@ import { forkJoin, Subject, takeUntil } from 'rxjs';
 import { LLM_Config_Service } from '../../../../features/settings-dialog/services/llms/LLM_config.service';
 import { LLM_Models_Service } from '../../../../features/settings-dialog/services/llms/LLM_models.service';
 import { CollectionsService } from '../../../knowledge-sources/services/source-collections.service';
-import { KnowledgeSelectorComponent } from './knowledge-selector/knowledge-selector.component';
-import { FormSliderComponent } from '../../../../shared/components/forms/slider/form-slider.component';
+import { KnowledgeSelectorComponent } from '../../../../shared/components/knowledge-selector/knowledge-selector.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { IconButtonComponent } from '../../../../shared/components/buttons/icon-button/icon-button.component';
-import { ToggleSwitchComponent } from '../../../../shared/components/forms/small-toggler/toggle-switch.component';
 import {
   FullLLMConfig,
   FullLLMConfigService,
 } from '../../../../features/settings-dialog/services/llms/full-llm-config.service';
 import { LlmModelSelectorComponent } from '../../../../shared/components/llm-model-selector/llm-model-selector.component';
+import { FormSliderComponent } from '../../../../shared/components/form-controls/slider/form-slider.component';
+import { ToggleSwitchComponent } from '../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 
 export interface AdvancedSettingsData {
   fullFcmLlmConfig?: FullLLMConfig;
@@ -46,8 +46,7 @@ export interface AdvancedSettingsData {
   selector: 'app-advanced-settings-dialog',
   imports: [
     FormsModule,
-    NgIf,
-    NgFor,
+
     KnowledgeSelectorComponent,
     FormSliderComponent,
     HelpTooltipComponent,

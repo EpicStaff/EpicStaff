@@ -161,7 +161,10 @@
           </div>
           <app-form-slider
             [value]="temperatureValue"
-            label=""
+            [min]="0"
+            [max]="100"
+            [step]="1"
+            valueFormat="decimal"
             (valueChange)="onSliderInput($event)"
           ></app-form-slider>
         </div>
@@ -247,6 +250,7 @@
             </div>
           </div>
 
+          <!-- Commented out memory field
           <div class="form-group">
             <div class="label-row toggle-container">
               <div class="toggle-label-wrapper">
@@ -260,6 +264,7 @@
               <app-toggle-switch formControlName="memory"></app-toggle-switch>
             </div>
           </div>
+          -->
 
           <div class="form-group">
             <div class="label-row toggle-container">

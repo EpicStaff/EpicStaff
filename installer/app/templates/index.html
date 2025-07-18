@@ -189,6 +189,28 @@
                         </button>
                     </div>
                 </div>
+
+                <!-- Git fields (gitBuildRepository and gitBuildTag) -->
+                <div id="gitFields" class="git-fields">
+                    <div class="flex items-center margin-top-2">
+                        <input type="text" id="gitBuildRepository" name="gitBuildRepository" 
+                            class="input"
+                            value="{{ git_build_repository }}">
+                        <button type="button" onclick="saveGitBuildRepository()"
+                            class="save-button">
+                            Save Git Repository
+                        </button>
+                    </div>
+                    <div class="flex items-center margin-top-2">
+                        <input type="text" id="gitBuildBranch" name="gitBuildBranch" 
+                            class="input"
+                            value="{{ git_build_branch }}">
+                        <button type="button" onclick="saveGitBuildBranch()"
+                            class="save-button">
+                            Save Git Branch
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -253,16 +275,20 @@
             const dockerFields = document.getElementById('dockerFields');
             const gitLabel = document.getElementById('gitLabel');
             const dockerLabel = document.getElementById('dockerLabel');
+            const gitFields = document.getElementById('gitFields');
             
             if (sourceSwitch.checked) {
                 // Docker option selected
                 dockerFields.classList.remove('hidden');
+                gitFields.classList.add('hidden');
                 dockerLabel.classList.add('active');
                 gitLabel.classList.remove('active');
                 localStorage.setItem('sourceType', 'pull');
+
             } else {
                 // Git option selected
                 dockerFields.classList.add('hidden');
+                gitFields.classList.remove('hidden');
                 gitLabel.classList.add('active');
                 dockerLabel.classList.remove('active');
                 localStorage.setItem('sourceType', 'build');
@@ -530,7 +556,23 @@
             }
             socket.emit('save_image_tag', { image_tag: image_tag });
         }
+        async function saveGitBuildRepository() {
+            const git_build_repository = document.getElementById('gitBuildRepository').value;
+            if (git_build_repository.trim() === '') {
+                showToast('Please enter a valid git repository.', true);
+                return;
+            }
+            socket.emit('save_git_build_repository', { git_build_repository: git_build_repository });
+        }
 
+        async function saveGitBuildBranch() {
+            const git_build_branch = document.getElementById('gitBuildBranch').value;
+            if (git_build_branch.trim() === '') {
+                showToast('Please enter a valid git build branch.', true);
+                return;
+            }
+            socket.emit('save_git_build_branch', { git_build_branch: git_build_branch });
+        }
         // Volume Management Functions
         function exportVolume() {
             if (!confirm('Are you sure you want to export the database volume? This may take a few moments.')) {

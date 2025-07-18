@@ -29,7 +29,6 @@ import { AppIconComponent } from '../../../shared/components/app-icon/app-icon.c
 import { ButtonComponent } from '../../../shared/components/buttons/button/button.component';
 import { HelpTooltipComponent } from '../../../shared/components/help-tooltip/help-tooltip.component';
 
-// Models
 import {
   ArgsSchema,
   CreatePythonCodeToolRequest,
@@ -38,7 +37,6 @@ import {
 } from '../../../features/tools/models/python-code-tool.model';
 import { PythonCodeToolCard } from '../models/pythonTool-card.model';
 
-// **Import** the utility function
 import { buildArgsSchema } from './arg-shema-builder/build-args-schema.util';
 
 interface DialogData {

@@ -41,7 +41,6 @@ class CustomSessionMessageWriter:
             session_id=session_id,
             name=node_name,
             execution_order=execution_order,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             message_data=start_message_data,
         )
         writer(graph_message)
@@ -82,7 +81,6 @@ class CustomSessionMessageWriter:
             session_id=session_id,
             name=node_name,
             execution_order=execution_order,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             message_data=finish_message_data,
         )
         writer(graph_message)
@@ -117,7 +115,6 @@ class CustomSessionMessageWriter:
             session_id=session_id,
             name=node_name,
             execution_order=execution_order,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             message_data=error_message_data,
         )
         writer(graph_message)
@@ -136,7 +133,6 @@ class CustomSessionMessageWriter:
             session_id=session_id,
             name=node_name,
             execution_order=execution_order,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             message_data=message_data,
         )
         writer(graph_message)
@@ -159,7 +155,6 @@ class CustomSessionMessageWriter:
             session_id=session_id,
             name=node_name,
             execution_order=execution_order,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             message_data=error_message_data,
         )
         writer(graph_message)
@@ -175,14 +170,12 @@ class CustomSessionMessageWriter:
         execution_order: int,
     ):
         error_message_data = ConditonGroupManipulationMessageData(
-            group_name=group_name,
-            state=cls._convert_state(state=state)
+            group_name=group_name, state=cls._convert_state(state=state)
         )
         graph_message = GraphMessage(
             session_id=session_id,
             name=node_name,
             execution_order=execution_order,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             message_data=error_message_data,
         )
         writer(graph_message)

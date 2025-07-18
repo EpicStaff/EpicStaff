@@ -18,7 +18,7 @@ import {
   NG_VALUE_ACCESSOR,
 } from '@angular/forms';
 import { AppIconComponent } from '../app-icon/app-icon.component';
-import { getProviderIconPath } from '../../../features/settings-dialog/constants/provider-icons.constants';
+import { getProviderIconPath } from '../../../features/settings-dialog/utils/get-provider-icon';
 import { FullEmbeddingConfig } from '../../../features/settings-dialog/services/embeddings/full-embedding.service';
 import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-model-item.component';
 

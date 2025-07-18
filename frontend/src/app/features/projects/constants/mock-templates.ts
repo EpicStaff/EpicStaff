@@ -22,6 +22,7 @@ export const TEMPLATE_PROJECTS: GetProjectRequest[] = [
     planning_llm_config: null,
     manager_llm_config: null,
     embedding_config: null,
+    memory_llm_config: null,
     tags: [1, 2, 3],
   },
   {
@@ -42,6 +43,7 @@ export const TEMPLATE_PROJECTS: GetProjectRequest[] = [
     planning_llm_config: null,
     manager_llm_config: null,
     embedding_config: null,
+    memory_llm_config: null,
     tags: [4, 5, 6],
   },
   {
@@ -62,6 +64,7 @@ export const TEMPLATE_PROJECTS: GetProjectRequest[] = [
     planning_llm_config: null,
     manager_llm_config: null,
     embedding_config: null,
+    memory_llm_config: null,
     tags: [7, 8, 9],
   },
   {
@@ -82,6 +85,7 @@ export const TEMPLATE_PROJECTS: GetProjectRequest[] = [
     planning_llm_config: null,
     manager_llm_config: null,
     embedding_config: null,
+    memory_llm_config: null,
     tags: [10, 11, 12],
   },
   {
@@ -102,6 +106,7 @@ export const TEMPLATE_PROJECTS: GetProjectRequest[] = [
     planning_llm_config: null,
     manager_llm_config: null,
     embedding_config: null,
+    memory_llm_config: null,
     tags: [13, 14, 15],
   },
 ];

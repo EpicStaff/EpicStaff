@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -17,8 +17,10 @@ export class LLM_Providers_Service {
   }
 
   getProviders(): Observable<LLM_Provider[]> {
+    const params = new HttpParams().set('limit', '1000');
+
     return this.http
-      .get<ApiGetRequest<LLM_Provider>>(this.apiUrl)
+      .get<ApiGetRequest<LLM_Provider>>(this.apiUrl, { params })
       .pipe(map((response: ApiGetRequest<LLM_Provider>) => response.results));
   }
 }

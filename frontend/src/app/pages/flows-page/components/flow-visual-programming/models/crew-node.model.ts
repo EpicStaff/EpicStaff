@@ -4,10 +4,11 @@ export interface CrewNode {
   id: number;
   node_name: string;
   graph: number;
-  crew: number;
+  crew: GetProjectRequest;
   input_map: Record<string, any>;
   output_variable_path: string | null;
 }
+
 export interface CreateCrewNodeRequest {
   node_name: string;
   graph: number;

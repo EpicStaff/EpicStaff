@@ -1,20 +1,23 @@
-/* Styles for FlowSessionsTableComponent */
-
 .sessions-table-wrapper {
   flex: 1 1 auto;
-  overflow-y: auto;
+  overflow: hidden;
   border-radius: 8px;
   border: 1px solid var(--color-divider-regular);
   background: var(--color-nodes-actionbar-bg);
-  height: 65vh;
-  max-height: 1000px;
-  /* Adjust max-height as needed for your dialog size */
+  height: 100%;
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 0;
+  table-layout: fixed;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 
   th,
   td {
@@ -23,13 +26,91 @@ table {
     border-bottom: 1px solid var(--color-divider-subtle);
   }
 
+  /* Checkbox column */
+  th:nth-child(1),
+  td:nth-child(1) {
+    width: 40px;
+    min-width: 40px;
+  }
+
+  /* ID column */
+  th:nth-child(2),
+  td:nth-child(2) {
+    width: 70px;
+    min-width: 70px;
+  }
+
+  /* Status column */
+  th:nth-child(3),
+  td:nth-child(3) {
+    width: 100px;
+    min-width: 100px;
+  }
+
+  /* Created At column */
+  th:nth-child(4),
+  td:nth-child(4) {
+    width: 150px;
+    min-width: 150px;
+  }
+
+  /* Finished At column */
+  th:nth-child(5),
+  td:nth-child(5) {
+    width: 150px;
+    min-width: 150px;
+  }
+
+  /* Actions column - ensure sufficient width */
+  th:nth-child(6),
+  td:nth-child(6) {
+    min-width: 100px;
+    width: 100px;
+  }
+
+  /* Delete icon column - ensure sufficient width */
+  th:nth-child(7),
+  td:nth-child(7) {
+    min-width: 45px;
+    width: 45px;
+    text-align: center;
+  }
+
+  /* Remove border for empty state and loading state rows */
+  td[colspan="7"] {
+    border-bottom: none;
+  }
+
+  thead {
+    flex-shrink: 0;
+    display: table-header-group;
+  }
+
+  tbody {
+    overflow-y: auto;
+    display: block;
+    max-height: 400px;
+    min-height: 200px; /* Ensure minimum height for professional appearance */
+    flex: 1; /* Take remaining space in the flex container */
+  }
+
+  thead tr,
+  tbody tr {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+  }
+
+  /* Ensure loading and empty state cells maintain table height */
+  td[colspan="7"] {
+    padding: 40px;
+    vertical-align: middle;
+  }
+
   th {
     background-color: var(--color-sidenav-background);
     color: var(--color-text-primary);
     font-weight: 600;
-    position: sticky;
-    top: 0;
-    z-index: 1;
   }
 
   td {
@@ -39,6 +120,8 @@ table {
     display: flex;
     align-items: center;
     gap: 8px;
+    min-width: 100px;
+    flex-shrink: 0;
   }
 }
 
@@ -53,6 +136,9 @@ table {
   font-weight: 500;
   cursor: pointer;
   transition: background 0.18s, color 0.18s;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 60px;
 }
 
 .view-btn {
@@ -91,7 +177,17 @@ table {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
 }
+
+.delete-icon-btn svg {
+  width: 20px !important;
+  height: 20px !important;
+  flex-shrink: 0;
+}
+
 .delete-icon-btn:hover {
   background: rgba(0, 0, 0, 0.06);
 }
@@ -147,8 +243,33 @@ table {
   font-weight: 500;
   cursor: pointer;
   transition: background 0.18s, color 0.18s;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 60px;
 }
 .stop-btn:hover {
   background: #b32b36;
   color: #fff;
+}
+
+.no-sessions-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem;
+  height: 100%; /* Take full height of the table cell */
+  min-height: 180px; /* Ensure adequate space for the message */
+
+  p {
+    margin: 0 0 8px 0;
+    font-size: 1.1em;
+    color: var(--color-text-primary);
+  }
+
+  small {
+    color: var(--color-text-secondary);
+    font-size: 0.9em;
+  }
 }

@@ -29,7 +29,7 @@ import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom
     FormsModule,
     ReactiveFormsModule,
     JsonEditorComponent,
-    NgIf,
+
     HelpTooltipComponent,
   ],
 })

@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Generator
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 import shutil
 import pytest
 from django.core.management import call_command
@@ -257,6 +257,19 @@ def fake_redis_client() -> Generator[MagicMock, None, None]:
     with patch("redis.Redis", redis_mock):
         redis_mock.return_value = fake_redis_client
         yield fake_redis_client
+
+
+@pytest.fixture
+def mock_redis_service_async():
+    with patch("tables.services.redis_service_async.RedisServiceAsync", autospec=True) as MockService:
+        mock = MockService.return_value
+        mock.connect = AsyncMock()
+        mock.disconnect = AsyncMock()
+        mock.async_subscribe = AsyncMock()
+        mock.async_unsubscribe = AsyncMock()
+        mock.async_publish = AsyncMock()
+        mock.listen_to_channel = AsyncMock(return_value=None)
+        yield mock
 
 
 @pytest.fixture

@@ -1,4 +1,5 @@
 import json
+import os
 import time
 from typing import Callable, Optional, Union
 from crewai.agents.crew_agent_executor import KNOWLEDGE_KEYWORD
@@ -21,6 +22,11 @@ import asyncio
 from loguru import logger
 
 
+SESSION_STATUS_CHANNEL = os.environ.get(
+    "SESSION_STATUS_CHANNEL", "sessions:session_status"
+)
+
+
 class GraphSessionCallbackFactory:
 
     def __init__(
@@ -40,7 +46,7 @@ class GraphSessionCallbackFactory:
                 if task.cancelled():
                     logger.warning(f"Session {self.session_id} was cancelled.")
                     self.redis_service.sync_publish(
-                        f"sessions:session_status",
+                        SESSION_STATUS_CHANNEL,
                         {"session_id": self.session_id, "status": "cancelled"},
                     )
                 elif task.exception():
@@ -51,7 +57,7 @@ class GraphSessionCallbackFactory:
                     )
 
                     self.redis_service.sync_publish(
-                        f"sessions:session_status",
+                        SESSION_STATUS_CHANNEL,
                         {
                             "session_id": self.session_id,
                             "status": "error",
@@ -69,7 +75,7 @@ class GraphSessionCallbackFactory:
                     last_state = state_history[-1]
 
                     self.redis_service.sync_publish(
-                        f"sessions:session_status",
+                        SESSION_STATUS_CHANNEL,
                         {
                             "session_id": self.session_id,
                             "status": "end",
@@ -155,7 +161,6 @@ class CrewCallbackFactory:
                 session_id=self.session_id,
                 name=self.node_name,
                 execution_order=self.execution_order,
-                timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 message_data=agent_finish_message_data,
             )
 
@@ -193,7 +198,6 @@ class CrewCallbackFactory:
                 session_id=self.session_id,
                 name=self.node_name,
                 execution_order=self.execution_order,
-                timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 message_data=agent_message_data,
             )
 
@@ -224,7 +228,6 @@ class CrewCallbackFactory:
                     session_id=self.session_id,
                     name=self.node_name,
                     execution_order=self.execution_order,
-                    timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     message_data=task_message_data,
                 )
 
@@ -258,7 +261,6 @@ class CrewCallbackFactory:
                 session_id=self.session_id,
                 name=self.node_name,
                 execution_order=self.execution_order,
-                timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 message_data=update_session_status_message_data,
             )
 
@@ -303,7 +305,6 @@ class CrewCallbackFactory:
                 session_id=self.session_id,
                 name=self.node_name,
                 execution_order=self.execution_order,
-                timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 message_data=update_session_status_message_data,
             )
 

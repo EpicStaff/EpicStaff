@@ -18,18 +18,15 @@ import { map, Subscription, switchMap, takeUntil, forkJoin } from 'rxjs';
 import { Subject } from 'rxjs';
 
 import { RealtimeAgentService } from '../../../services/realtime-agent.service';
-import { IconPickerComponent } from '../forms/icon-selector/icon-picker.component';
-import { ToggleSwitchComponent } from '../forms/small-toggler/toggle-switch.component';
-import { FormHeaderComponent } from '../forms/header/form-header.component';
-import { FormFooterComponent } from '../forms/footer/form-footer.component';
-import { FormSliderComponent } from '../forms/slider/form-slider.component';
+
 import { AgentsService } from '../../../services/staff.service';
 import { ToastService } from '../../../services/notifications/toast.service';
 import { ShortcutListenerDirective } from '../../../visual-programming/core/directives/shortcut-listener.directive';
 import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 import { IconButtonComponent } from '../buttons/icon-button/icon-button.component';
 import { AppIconComponent } from '../app-icon/app-icon.component';
-import { KnowledgeSelectorComponent } from '../../../pages/staff-page/components/advanced-settings-dialog.component.ts/knowledge-selector/knowledge-selector.component';
+import { FormSliderComponent } from '../form-controls/slider/form-slider.component';
+import { KnowledgeSelectorComponent } from '../knowledge-selector/knowledge-selector.component';
 import { CollectionsService } from '../../../pages/knowledge-sources/services/source-collections.service';
 import { GetSourceCollectionRequest } from '../../../pages/knowledge-sources/models/source-collection.model';
 import { ToolsSelectorComponent } from '../../components/tools-selector/tools-selector.component';
@@ -39,10 +36,12 @@ import {
   FullLLMConfig,
 } from '../../../features/settings-dialog/services/llms/full-llm-config.service';
 import {
-  AgentDto,
   CreateAgentRequest,
   GetAgentRequest,
+  ToolUniqueName,
 } from '../../models/agent.model';
+import { ToggleSwitchComponent } from '../form-controls/toggle-switch/toggle-switch.component';
+import { buildToolIdsArray } from '../../utils/tool-ids-builder.util';
 
 @Component({
   selector: 'app-create-agent-form',
@@ -132,13 +131,13 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
       backstory: '',
       // Basic Advanced Fields
       allow_delegation: true,
-      memory: false,
+      memory: true,
       max_iter: 10,
       // Advanced Settings
       max_rpm: 10,
       max_execution_time: 60,
-      cache: false,
-      allow_code_execution: false,
+      cache: true,
+      allow_code_execution: true,
       max_retry_limit: 3,
       respect_context_window: true,
       default_temperature: 0,
@@ -163,13 +162,13 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
         backstory: [agent.backstory, Validators.required],
         // Basic Advanced Fields
         allow_delegation: [agent.allow_delegation],
-        memory: [agent.memory],
+        memory: [agent.memory ?? true],
         max_iter: [agent.max_iter, [Validators.min(1)]],
         // Advanced Settings
         max_rpm: [agent.max_rpm || 10],
         max_execution_time: [agent.max_execution_time || 60],
-        cache: [agent.cache || false],
-        allow_code_execution: [agent.allow_code_execution || false],
+        cache: [agent.cache ?? true],
+        allow_code_execution: [agent.allow_code_execution ?? true],
         max_retry_limit: [agent.max_retry_limit || 3],
         respect_context_window: [agent.respect_context_window || true],
         default_temperature: [
@@ -201,7 +200,7 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
         backstory: ['', Validators.required],
         // Basic Advanced Fields
         allow_delegation: [defaultValues.allow_delegation],
-        memory: [defaultValues.memory],
+        memory: [defaultValues.memory], // This field is hidden in the UI but kept in the form for backend compatibility
         max_iter: [defaultValues.max_iter, [Validators.min(1)]],
         // Advanced Settings
         max_rpm: [defaultValues.max_rpm],
@@ -316,9 +315,19 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
     const llmId = formValues.llmId;
     const functionLlmId = formValues.functionLlmId;
 
+    // Build tool_ids array
+    const configuredToolIds = formValues.configured_tools || [];
+    const pythonToolIds = formValues.python_code_tools || [];
+    const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds);
+
+    console.log('=== Agent Form Submission ===');
     console.log('Form values:', formValues);
     console.log('Selected LLM ID:', llmId);
     console.log('Selected Function LLM ID:', functionLlmId);
+    console.log('Configured Tool IDs:', configuredToolIds);
+    console.log('Python Tool IDs:', pythonToolIds);
+    console.log('Built tool_ids array:', toolIds);
+    console.log('=== End Agent Form Data ===');
 
     if (this.isEditMode && this.agentToEdit) {
       // Edit mode - update existing agent
@@ -340,16 +349,23 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
         llm_config: llmId,
         fcm_llm_config: functionLlmId,
         knowledge_collection: formValues.knowledge_collection,
-        configured_tools: formValues.configured_tools,
-        python_code_tools: formValues.python_code_tools,
+        configured_tools: configuredToolIds,
+        python_code_tools: pythonToolIds,
+        tool_ids: toolIds as ToolUniqueName[],
       };
 
       console.log('Update request:', updateRequest);
 
       this.agentService.updateAgent(updateRequest).subscribe({
-        next: (updatedAgent: GetAgentRequest) => {
+        next: (updatedAgent) => {
           this.isSubmitting = false;
-          this.dialogRef.close(updatedAgent);
+
+          const completeAgent: GetAgentRequest = {
+            ...this.agentToEdit!,
+            ...updatedAgent,
+            tools: this.agentToEdit!.tools,
+          };
+          this.dialogRef.close(completeAgent);
           this.cdr.markForCheck();
         },
         error: (error) => {
@@ -378,8 +394,9 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
         llm_config: llmId,
         fcm_llm_config: functionLlmId,
         knowledge_collection: formValues.knowledge_collection,
-        configured_tools: formValues.configured_tools,
-        python_code_tools: formValues.python_code_tools,
+        configured_tools: configuredToolIds,
+        python_code_tools: pythonToolIds,
+        tool_ids: toolIds as ToolUniqueName[],
       };
 
       console.log('Create request:', agentRequest);

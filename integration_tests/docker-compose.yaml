@@ -8,12 +8,27 @@ services:
     environment:
       - CODE_RESULT_CHANNEL=code_results
       - CODE_EXEC_TASK_CHANNEL=code_exec_tasks
+      - GRAPH_MESSAGE_UPDATE_CHANNEL=graph:message:update
+      - GRAPH_MESSAGES_CHANNEL=graph:messages
+      - SESSION_STATUS_CHANNEL=sessions:session_status
+      - MEMORY_UPDATE_CHANNEL=memory:update
+
+      - DEBUG=True
+      - SECRET_KEY=integration-secret-key
+      - ALLOWED_HOSTS=0.0.0.0,127.0.0.1,localhost,django_app
 
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+
       - DB_HOST_NAME=crewdb
       - DB_PORT=5432
-      - ALLOWED_HOSTS=0.0.0.0,127.0.0.1,localhost,django_app
+      - DB_USER=postgres
+      - POSTGRES_PASSWORD=admin
+      - DB_NAME=crew 
+
+
+      - GUNICORN_WORKERS=1
+      - GUNICORN_THREADS=4
     volumes:
       - crew_config:/home/user/root/app/env_config
 
@@ -21,9 +36,8 @@ services:
       - backend-network
     depends_on:
       crewdb:
-        condition: service_healthy
-      manager:
         condition: service_started
+    
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/ht/"]
       interval: 30s
@@ -47,8 +61,8 @@ services:
       - DB_NAME=crew
       - DB_HOST_NAME=crewdb
       - DB_PORT=5432
-      - DB_REALTIME_USER=postgres
-      - DB_REALTIME_PASSWORD=admin
+      - DB_REALTIME_USER=realtime_user_integ
+      - DB_REALTIME_PASSWORD=realtime_password_integ
     networks:
       - backend-network
     depends_on:
@@ -79,8 +93,9 @@ services:
       - DB_NAME=crew
       - DB_HOST_NAME=crewdb
       - DB_PORT=5432
-      - DB_MANAGER_USER=postgres
-      - DB_MANAGER_PASSWORD=admin
+      - DB_MANAGER_USER=manager_user_integ
+      - DB_MANAGER_PASSWORD=manager_password_integ
+      - CREW_SAVEFILES_PATH=/home/root/integration_test/savefiles
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /usr/bin/docker:/usr/bin/docker
@@ -95,7 +110,7 @@ services:
         condition: service_started
 
   crewdb:
-    image: ankane/pgvector:v0.5.1
+    image: crewdb
     container_name: crewdb
     ports:
       - "5432:5432"
@@ -103,15 +118,35 @@ services:
       - POSTGRES_DB=crew
       - POSTGRES_PASSWORD=admin
       - PGDATA=/var/lib/postgresql/data/pgdata
+
+      - DB_MANAGER_USER=manager_user_integ
+      - DB_MANAGER_PASSWORD=manager_password_integ
+
+      - DB_KNOWLEDGE_USER=knowledge_user_integ
+      - DB_KNOWLEDGE_PASSWORD=knowledge_password_integ
+
+      - DB_REALTIME_USER=realtime_user_integ
+      - DB_REALTIME_PASSWORD=realtime_password_integ
+
+      - DB_CREW_USER=crew_user_integ
+      - DB_CREW_PASSWORD=crew_password_integ
     volumes:
       - crew_pgdata:/var/lib/postgresql/data/pgdata
     networks:
       - backend-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: |
+        bash -c '
+          # First check if postgres is ready
+          pg_isready -U postgres || exit 1
+          
+          # Then check if users have been created
+          /usr/local/bin/custom-docker-entrypoint.sh healthcheck-users
+        '
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 15s
 
   redis:
     image: redis
@@ -140,8 +175,10 @@ services:
       - DB_NAME=crew
       - DB_HOST_NAME=crewdb
       - DB_PORT=5432
-      - DB_CREW_USER=postgres
-      - DB_CREW_PASSWORD=admin
+      - DB_CREW_USER=crew_user_integ
+      - DB_CREW_PASSWORD=crew_password_integ
+      - SESSION_STATUS_CHANNEL=sessions:session_status
+      - CODE_RESULT_CHANNEL=code_results
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /usr/bin/docker:/usr/bin/docker
@@ -151,7 +188,10 @@ services:
     tty: true
     stdin_open: true
     depends_on:
-      - redis
+      crewdb:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
 #  frontend:
 #    image: frontend
@@ -176,7 +216,7 @@ services:
     volumes:
       - sandbox_venvs:/home/user/root/app/venvs/
       - sandbox_executions:/home/user/root/app/executions/
-      - ${CREW_SAVEFILES_PATH}:/home/user/root/app/savefiles/
+      - sandbox_savefiles:/home/user/root/app/savefiles/
     networks:
       - backend-network
     tty: true
@@ -197,8 +237,8 @@ services:
       - DB_NAME=crew
       - DB_HOST_NAME=crewdb
       - DB_PORT=5432
-      - DB_KNOWLEDGE_USER=postgres
-      - DB_KNOWLEDGE_PASSWORD=admin
+      - DB_KNOWLEDGE_USER=knowledge_user_integ
+      - DB_KNOWLEDGE_PASSWORD=knowledge_password_integ
     networks:
       - backend-network
     tty: true
@@ -232,6 +272,7 @@ volumes:
   sandbox_executions:
   crew_pgdata:
   crew_config:
+  sandbox_savefiles:
 
 networks:
   backend-network:

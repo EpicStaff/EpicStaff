@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ToolConfigService } from '../../../../services/tool_config.service';
-import { ToolConfigDto } from '../../../../shared/models/tool_config.model';
+import { ToolConfig } from '../../../../features/tools/models/tool_config.model';
 import { NodeType } from '../../../core/enums/node-type';
 
 @Component({
@@ -100,10 +100,10 @@ export class ToolsMenuComponent implements OnInit {
   @Input() public searchTerm: string = '';
   @Output() public nodeSelected = new EventEmitter<{
     type: NodeType.TOOL;
-    data: ToolConfigDto;
+    data: ToolConfig;
   }>();
 
-  public tools: ToolConfigDto[] = [];
+  public tools: ToolConfig[] = [];
 
   constructor(
     private toolConfigService: ToolConfigService,
@@ -112,7 +112,7 @@ export class ToolsMenuComponent implements OnInit {
 
   ngOnInit(): void {
     this.toolConfigService.getToolConfigs().subscribe({
-      next: (tools: ToolConfigDto[]) => {
+      next: (tools: ToolConfig[]) => {
         console.log('Tools:', tools);
 
         this.tools = tools;
@@ -122,17 +122,17 @@ export class ToolsMenuComponent implements OnInit {
     });
   }
 
-  public get filteredTools(): ToolConfigDto[] {
+  public get filteredTools(): ToolConfig[] {
     return this.tools.filter((tool) =>
       tool.name.toLowerCase().includes(this.searchTerm.toLowerCase())
     );
   }
 
-  public onToolClicked(tool: ToolConfigDto): void {
+  public onToolClicked(tool: ToolConfig): void {
     this.nodeSelected.emit({ type: NodeType.TOOL, data: tool });
   }
 
-  public trackByToolId(index: number, tool: ToolConfigDto): number {
+  public trackByToolId(index: number, tool: ToolConfig): number {
     return tool.id;
   }
 }

@@ -3,7 +3,7 @@ from tables.models import ToolConfig
 from tables.serializers.model_serializers import ToolConfigSerializer
 from tests.fixtures import *
 from rest_framework.exceptions import ValidationError
-from tables.validators import ToolConfigValidator
+from tables.validators.tool_config_validator import ToolConfigValidator
 
 
 @pytest.mark.django_db

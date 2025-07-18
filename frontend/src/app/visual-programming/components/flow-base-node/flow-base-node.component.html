@@ -1,12 +1,21 @@
 <!-- Node name wrapper -->
-<div class="node-name-wrapper">
-  <div class="node-name-label" *ngIf="!startNode">
+<div class="node-name-wrapper" *ngIf="!startNode && !noteNode">
+  <div class="node-name-label">
     {{ node.node_name || "Unnamed Node" }}
   </div>
 </div>
 
 <!-- Control buttons positioned above the node -->
 <div class="actions" (mousedown)="$event.stopPropagation()">
+  <!-- Edit Button for Note -->
+  <div
+    *ngIf="node.type === NodeType.NOTE"
+    class="action-button edit-button"
+    title="Edit Note"
+    (click)="onEditClick($event)"
+  >
+    <i class="ti ti-edit"></i>
+  </div>
   <!-- Ungroup Icon -->
   <div
     *ngIf="node.type === NodeType.PROJECT"
@@ -59,7 +68,7 @@
   </div>
   <span class="port-label">{{ port.label }}</span>
 </div>
-} @if (!edgeNode ) {
+} @if (!edgeNode && !noteNode) {
 
 <div class="interactive-node-body" clickOrDrag (actualClick)="onEditClick()">
   <!-- Header Section -->
@@ -89,6 +98,8 @@
   clickOrDrag
   (actualClick)="onEditClick()"
 ></app-conditional-edge-node>
+} @else if (noteNode) {
+<app-note-node [node]="noteNode"></app-note-node>
 } @if (node.type === NodeType.TABLE) {
 <app-decision-table-node [node]="tableNode"></app-decision-table-node>
 } @if (showVariables && isBaseNode(node) && node.input_map &&

@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import platform
 import shutil
+import socket
 import tempfile
 import threading
 import webbrowser
@@ -11,7 +12,11 @@ from flask_socketio import SocketIO, emit
 import socketio
 
 from app.utils import (
+    get_git_build_branch,
+    get_git_build_repository,
     init_env_file,
+    save_git_build_repository,
+    save_git_build_branch,
     save_savefiles_path,
     get_savefiles_path,
     select_folder,
@@ -54,6 +59,8 @@ def index():
         savefiles_path=get_savefiles_path(),
         image_repository=get_image_repository(),
         image_tag=get_image_tag(),
+        git_build_repository=get_git_build_repository(),
+        git_build_branch=get_git_build_branch(),
     )
 
 
@@ -228,23 +235,86 @@ def handle_save_image_tag(data):
     except Exception as e:
         emit("image_tag_saved", {"success": False, "error": str(e)})
 
+@socketio.on("save_git_build_repository")
+def handle_save_git_build_repository(data):
+    try:
+        git_build_repository = data["git_build_repository"]
+        if save_git_build_repository(git_build_repository):
+            emit("git_build_repository_saved", {"success": True, "path": git_build_repository})
+        else:
+            emit(
+                "git_build_repository_saved",
+                {"success": False, "error": "Invalid repository path"},
+            )
+    except Exception as e:
+        emit("git_build_repository_saved", {"success": False, "error": str(e)})
+
+@socketio.on("save_git_build_branch")
+def handle_save_git_build_branch(data):
+    try:
+        git_build_branch = data["git_build_branch"]
+        if save_git_build_branch(git_build_branch):
+            emit("git_build_branch_saved", {"success": True, "path": git_build_branch})
+        else:
+            emit("git_build_branch_saved", {"success": False, "error": "Invalid git_build_branch"})
+    except Exception as e:
+        emit("git_build_branch_saved", {"success": False, "error": str(e)})
+
+
+def is_port_in_use(port):
+    """
+    Checks if a given port is currently in use.
+    Returns True if the port is in use, False otherwise.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(("localhost", port))
+            return False  # Port is free
+        except socket.error:
+            return True  # Port is in use
 
 def start_flask_app():
+    """
+    Starts the Flask application, dynamically finding an available port
+    starting from 9000 if the initial port is in use.
+    """
     if platform.system() == "Darwin":
         additional_paths = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
         current_path = os.environ.get("PATH", "")
         for p in additional_paths:
             if p not in current_path:
                 os.environ["PATH"] += os.pathsep + p
-    
+
+    # Initial port to try
     port = 9000
+    max_port_attempts = 100 # Limit the number of port attempts to avoid infinite loops
+
+    # Find an available port
+    found_port = False
+    for _ in range(max_port_attempts):
+        if not is_port_in_use(port):
+            found_port = True
+            break
+        print(f"Port {port} is in use, trying next port...")
+        port += 1
+    
+    if not found_port:
+        print(f"Could not find an available port after {max_port_attempts} attempts, starting from 9000.")
+        print("Please ensure no other applications are using a large range of ports.")
+        input("Press Enter to exit...")
+        return
+
     url = f"http://localhost:{port}"
 
     if not docker_service.ensure_docker_running():
         print("Docker is required to run this application.")
         input("Press Enter to exit...")
+        return
 
     threading.Timer(1.0, lambda: webbrowser.open(url=url, new=0)).start()
+    
     init_env_file(get_savefiles_path())
-    start_docker_monitoring()  # Start Docker events monitoring
+    start_docker_monitoring()
+
+    print(f"Starting Flask app on port {port}...")
     app.run(port=port)

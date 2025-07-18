@@ -1,4 +1,5 @@
 from typing import Iterable
+from tables.serializers.serializers import BaseToolSerializer
 from tables.models.llm_models import (
     RealtimeConfig,
     RealtimeTranscriptionConfig,
@@ -9,7 +10,7 @@ from tables.models import (
     Task,
     TaskContext,
     TaskPythonCodeTools,
-    TaskTools,
+    TaskConfiguredTools,
     ToolConfig,
     LLMConfig,
     EmbeddingConfig,
@@ -35,7 +36,11 @@ from tables.request_models import CrewData
 from utils.singleton_meta import SingletonMeta
 
 from tables.serializers.model_serializers import ToolConfigSerializer
-from tables.validators import ToolConfigValidator, validate_tool_configs
+from tables.validators.tool_config_validator import (
+    ToolConfigValidator,
+    validate_tool_configs,
+)
+from tables.validators.crew_memory_validator import CrewMemoryValidator
 
 tool_config_serializer = ToolConfigSerializer(
     ToolConfigValidator(validate_missing_reqired_fields=True, validate_null_fields=True)
@@ -45,33 +50,8 @@ from tables.models.embedding_models import EmbeddingConfig
 
 class ConverterService(metaclass=SingletonMeta):
 
-    def __init__(self): ...
-
-    # TODO: refactor after hackathon
-    def get_embedder(self, embedding_config):
-        if embedding_config is None:
-            instance = (
-                EmbeddingConfig.objects.filter(custom_name__startswith="quickstart")
-                .order_by("-id")
-                .first()
-            )
-            if instance:
-                return instance
-
-        return embedding_config
-
-    # TODO: refactor after hackathon
-    def get_memory_llm(self, memory_llm_config):
-        if memory_llm_config is None:
-            instance = (
-                LLMConfig.objects.filter(custom_name__startswith="quickstart")
-                .order_by("-id")
-                .first()
-            )
-            if instance:
-                return instance
-
-        return memory_llm_config
+    def __init__(self):
+        self.memory_validator = CrewMemoryValidator()
 
     def convert_crew_to_pydantic(self, crew_id: int) -> CrewData:
         crew = Crew.objects.get(pk=crew_id).fill_with_defaults()
@@ -79,19 +59,31 @@ class ConverterService(metaclass=SingletonMeta):
         manager_llm = self.convert_llm_config_to_pydantic(crew.manager_llm_config)
         planning_llm = self.convert_llm_config_to_pydantic(crew.planning_llm_config)
 
-        # TODO: refactor after hackathon
         embedder = None
         memory_llm = None
         if crew.memory:
-            memory_llm_config = self.get_memory_llm(crew.memory_llm_config)
-            embedding_config = self.get_embedder(crew.embedding_config)
+            memory_llm_config = crew.memory_llm_config
+            embedding_config = crew.embedding_config
+            # memory configs validation
+            self.memory_validator.validate_memory_configs(
+                memory_llm_config, embedding_config
+            )
 
             embedder = self.convert_embedding_config_to_pydantic(embedding_config)
             memory_llm = self.convert_llm_config_to_pydantic(memory_llm_config)
         task_list = Task.objects.filter(crew_id=crew_id)
 
         task_data_list: list[TaskData] = []
+
+        crew_base_tools: list[BaseToolData] = []
         for task in task_list:
+
+            base_tools = self._get_task_base_tools(task=task)
+            crew_base_tools.extend(base_tools)  # TODO: make it unique
+            assert not (
+                crew.process == "sequential" and task.agent is None
+            ), f"Task {task.name} has no agent, but it's required for sequential process."
+
             task_data_list.append(
                 TaskData(
                     id=task.pk,
@@ -104,12 +96,7 @@ class ConverterService(metaclass=SingletonMeta):
                     async_execution=task.async_execution,
                     config=task.config,
                     output_model=task.output_model,
-                    task_tool_id_list=TaskTools.objects.filter(task=task).values_list(
-                        "tool_id", flat=True
-                    ),
-                    task_python_code_tool_id_list=TaskPythonCodeTools.objects.filter(
-                        task=task
-                    ).values_list("python_code_tool_id", flat=True),
+                    tool_unique_name_list=[tool.unique_name for tool in base_tools],
                     task_context_id_list=TaskContext.objects.filter(
                         task=task
                     ).values_list("context_id", flat=True),
@@ -123,22 +110,10 @@ class ConverterService(metaclass=SingletonMeta):
         ]
         crew_agents: Iterable[Agent] = crew.agents.all()
 
-        configured_tools: Iterable[ToolConfig] = ToolConfig.objects.filter(
-            agent__in=crew_agents
-        ).distinct()
-
-        python_code_tools = set()
         for agent in crew_agents:
-            python_code_tools.update(agent.python_code_tools.all())
+            agent_base_tools = self._get_agent_base_tools(agent=agent)
+            crew_base_tools.extend(agent_base_tools)
 
-        tool_data_list = [
-            self.convert_configured_tool_to_pydantic(tool_config)
-            for tool_config in configured_tools
-        ]
-        python_code_tool_data_list = [
-            self.convert_python_code_tool_to_pydantic(python_code_tool=python_code_tool)
-            for python_code_tool in python_code_tools
-        ]
         knowledge_collection_id = None
         if crew.knowledge_collection is not None:
             knowledge_collection_id = crew.knowledge_collection.pk
@@ -159,16 +134,43 @@ class ConverterService(metaclass=SingletonMeta):
             memory_llm=memory_llm,
             manager_llm=manager_llm,
             planning_llm=planning_llm,
-            tools=tool_data_list,
-            python_code_tools=python_code_tool_data_list,
+            tools=list(
+                {tool.unique_name: tool for tool in crew_base_tools}.values()
+            ),  # TODO: Unique only
             knowledge_collection_id=knowledge_collection_id,
         )
 
         return crew_data
 
+    def _get_agent_base_tools(self, agent: Agent) -> list[BaseToolData]:
+        tools = list(agent.python_code_tools.all()) + list(agent.configured_tools.all())
+        return [self.convert_tool_to_base_tool_pydantic(tool) for tool in tools]
+
+    def _get_task_base_tools(self, task: Task) -> list[BaseToolData]:
+        tools = [entry.tool for entry in task.task_configured_tool_list.all()] + [
+            entry.tool for entry in task.task_python_code_tool_list.all()
+        ]
+        return [self.convert_tool_to_base_tool_pydantic(tool) for tool in tools]
+
+    def convert_tool_to_base_tool_pydantic(
+        self, tool: PythonCodeTool | ToolConfig
+    ) -> BaseToolData:
+        if isinstance(tool, PythonCodeTool):
+            unique_name = f"python-code-tool:{tool.pk}"
+            data = self.convert_python_code_tool_to_pydantic(tool)
+        elif isinstance(tool, ToolConfig):
+            unique_name = f"configured-tool:{tool.pk}"
+            data = self.convert_configured_tool_to_pydantic(tool)
+        else:
+            raise TypeError(f"Tool type of {type(tool)} is not supported")
+
+        return BaseToolData(unique_name=unique_name, data=data)
+
     def convert_agent_to_pydantic(self, agent: Agent) -> AgentData:
         agent = agent.fill_with_defaults()
-        python_code_tool_id_list = agent.python_code_tools.values_list("id", flat=True)
+        agent_base_tool_list = self._get_agent_base_tools(
+            agent=agent
+        )  # TODO: optimize it, duplicated db requests may occur
 
         llm = self.convert_llm_config_to_pydantic(agent.llm_config)
         function_calling_llm = self.convert_llm_config_to_pydantic(agent.fcm_llm_config)
@@ -181,8 +183,7 @@ class ConverterService(metaclass=SingletonMeta):
             role=agent.role,
             goal=agent.goal,
             backstory=agent.backstory,
-            tool_id_list=agent.configured_tools.values_list("id", flat=True),
-            python_code_tool_id_list=python_code_tool_id_list,
+            tool_unique_name_list=[tool.unique_name for tool in agent_base_tool_list],
             allow_delegation=agent.allow_delegation,
             memory=agent.memory,
             max_iter=agent.max_iter,
@@ -219,14 +220,7 @@ class ConverterService(metaclass=SingletonMeta):
             knowledge_collection_id=knowledge_collection_id,
             llm=self.convert_llm_config_to_pydantic(agent.llm_config),
             memory=agent.memory,
-            tools=[
-                self.convert_configured_tool_to_pydantic(configured_tool)
-                for configured_tool in agent.configured_tools.all()
-            ],
-            python_code_tools=[
-                self.convert_python_code_tool_to_pydantic(python_code_tool)
-                for python_code_tool in agent.python_code_tools.all()
-            ],
+            tools=self._get_agent_base_tools(agent=agent),
             rt_model_name=rt_config.realtime_model.name,
             rt_api_key=rt_config.api_key,
             transcript_model_name=rt_transcription_config.realtime_transcription_model.name,
@@ -273,7 +267,9 @@ class ConverterService(metaclass=SingletonMeta):
 
         return python_code_tool_data
 
-    def convert_configured_tool_to_pydantic(self, tool_config: ToolConfig) -> ToolData:
+    def convert_configured_tool_to_pydantic(
+        self, tool_config: ToolConfig
+    ) -> ConfiguredToolData:
 
         data: dict = tool_config_serializer.to_representation(
             tool_config, format="pydantic"
@@ -300,7 +296,7 @@ class ConverterService(metaclass=SingletonMeta):
             tool_init_configuration=configuration,
         )
 
-        return ToolData(
+        return ConfiguredToolData(
             name_alias=tool_config.tool.name_alias,
             tool_config=tool_config_data,
         )

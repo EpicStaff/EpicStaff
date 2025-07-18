@@ -1,5 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import defaultdict
+import uuid
 
 from tables.models import Tool
 from tables.models import Crew
@@ -27,6 +28,7 @@ from rest_framework import viewsets, mixins
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework import filters
 
 from tables.services.config_service import YamlConfigService
 from tables.services.session_manager_service import SessionManagerService
@@ -41,6 +43,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from tables.models import Session, SourceCollection
 from tables.serializers.model_serializers import (
     SessionSerializer,
+    SessionLightSerializer,
     DefaultLLMConfigSerializer,
     DefaultEmbeddingConfigSerializer,
     ToolSerializer,
@@ -53,6 +56,7 @@ from tables.serializers.serializers import (
 )
 from tables.serializers.knowledge_serializers import CollectionStatusSerializer
 from tables.serializers.quickstart_serializers import QuickstartSerializer
+from tables.filters import SessionFilter
 
 from .default_config import *
 
@@ -72,12 +76,49 @@ class SessionViewSet(
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
+    """
+    API endpoints for managing session objects.
+
+    Supports listing, retrieving, deleting sessions,
+    bulk deletion, and reporting aggregated status counts.
+    """
+
     serializer_class = SessionSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["graph_id"]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_class = SessionFilter
+    ordering_fields = [
+        "created_at",
+        "finished_at",
+        "status",
+        "status_updated_at",
+        "id",
+    ]  # allowed fields
+    ordering = ["-created_at", "id"]  # default ordering
+
+    @swagger_auto_schema(
+        operation_description="Retrieve a list of sessions.",
+        manual_parameters=[
+            openapi.Parameter(
+                name="detailed",
+                in_=openapi.IN_QUERY,
+                description="Whether to include all session details. Set to `false` to return only minimal fields. The `true` value is deprecated and will be removed in a future version.",
+                required=False,
+                type=openapi.TYPE_BOOLEAN,
+                default=True,
+            )
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    def get_serializer_class(self):
+        detailed = self.request.query_params.get("detailed", "true").lower()
+        if detailed == "false":
+            return SessionLightSerializer
+        return SessionSerializer
 
     def get_queryset(self):
-        return Session.objects.select_related("graph").all()
+        return Session.objects.select_related("graph")
 
     @swagger_auto_schema(
         operation_description="Get counts of each status grouped by graph ID",
@@ -140,9 +181,10 @@ class SessionViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        sessions = Session.objects.filter(id__in=ids)
-        deleted_count = sessions.count()
-        sessions.delete()
+        with transaction.atomic():
+            sessions = Session.objects.filter(id__in=ids)
+            deleted_count = sessions.count()
+            sessions.delete()
         return Response(
             {"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK
         )
@@ -348,19 +390,27 @@ class AnswerToLLM(APIView):
                 status=status.HTTP_418_IM_A_TEAPOT,
             )
 
+        created_at_dt = datetime.now(timezone.utc)
+        created_at_iso = created_at_dt.isoformat(timespec="milliseconds").replace(
+            "+00:00", "Z"
+        )
+
         session_manager_service.register_message(
             data={
                 "session_id": session_id,
                 "name": name,
                 "execution_order": execution_order,
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "timestamp": created_at_iso,
                 "message_data": {
                     "text": answer,
                     "crew_id": crew_id,
                     "message_type": "user",
                 },
+                "uuid": str(uuid.uuid4()),
             },
+            created_at_dt=created_at_dt,
         )
+
         redis_service.send_user_input(
             session_id=session_id,
             node_name=name,

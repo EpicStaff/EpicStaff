@@ -13,7 +13,7 @@ import { HelpTooltipComponent } from '../../../shared/components/help-tooltip/he
 @Component({
   selector: 'app-input-map',
   standalone: true,
-  imports: [ReactiveFormsModule, CommonModule, HelpTooltipComponent],
+  imports: [ReactiveFormsModule, CommonModule],
   viewProviders: [
     {
       provide: ControlContainer,

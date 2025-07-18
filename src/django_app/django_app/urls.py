@@ -18,12 +18,17 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 from .yasg import urlpatterns as doc_urls
+from django.conf import settings
+from django.conf.urls.static import static
 
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", include("tables.urls")),
-    path(r"ht/", include("health_check.urls")),
+    path("ht/", include("health_check.urls")),
 ]
 
 urlpatterns += doc_urls
+
+if settings.DEBUG:
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

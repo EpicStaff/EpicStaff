@@ -48,7 +48,7 @@ class ToolConfigData(BaseModel):
     tool_init_configuration: dict[str, Any] | None = None
 
 
-class ToolData(BaseModel):
+class ConfiguredToolData(BaseModel):
     name_alias: str
     tool_config: ToolConfigData
 
@@ -102,6 +102,33 @@ class AgentData(BaseModel):
     function_calling_llm: LLMData | None
     knowledge_collection_id: int | None
 
+class BaseToolData(BaseModel):
+    unique_name: str
+    data: PythonCodeToolData | ConfiguredToolData
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_data(cls, values: dict):
+        unique_name = values.get("unique_name", "")
+        data = values.get("data", {})
+
+        try:
+            prefix, id = unique_name.split(":")
+            assert prefix != ''
+            assert id != ''
+        except ValueError as e:
+            raise ValueError(
+                "Invalid unique_name. Unique name should be splited by `:`. \nFor example: python-code-tool:1"
+            )
+        if prefix == "python-code-tool":
+            values["data"] = PythonCodeToolData(**data)
+        elif prefix == "configured-tool":
+            values["data"] = ConfiguredToolData(**data)
+        else:
+            raise ValueError(f"Unknown tool prefix: {prefix}")
+
+        return values
+
 
 class RealtimeAgentChatData(BaseModel):
     role: str
@@ -117,8 +144,7 @@ class RealtimeAgentChatData(BaseModel):
     search_limit: int = 3
     distance_threshold: float
     memory: bool
-    tools: list[ToolData] = []
-    python_code_tools: list[PythonCodeToolData] = []
+    tools: list[BaseToolData] = []
     connection_key: str
     wake_word: str | None
     stop_prompt: str | None
@@ -154,7 +180,7 @@ class CrewData(BaseModel):
     embedder: EmbedderData | None
     manager_llm: LLMData | None
     planning_llm: LLMData | None
-    tools: List[ToolData]
+    tools: List[ConfiguredToolData]
     python_code_tools: list[PythonCodeToolData]
     knowledge_collection_id: int | None
 

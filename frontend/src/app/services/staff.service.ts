@@ -3,7 +3,6 @@ import { Injectable } from '@angular/core';
 import { forkJoin, map, Observable } from 'rxjs';
 import {
   Agent,
-  AgentDto,
   CreateAgentRequest,
   GetAgentRequest,
   UpdateAgentRequest,
@@ -48,8 +47,8 @@ export class AgentsService {
   }
 
   // POST create agent
-  createAgent(agent: CreateAgentRequest): Observable<AgentDto> {
-    return this.http.post<AgentDto>(this.apiUrl, agent, {
+  createAgent(agent: CreateAgentRequest): Observable<GetAgentRequest> {
+    return this.http.post<GetAgentRequest>(this.apiUrl, agent, {
       headers: this.headers,
     });
   }

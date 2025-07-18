@@ -32,19 +32,19 @@ interface StatusOption {
         <span class="selected-icons">
           @if (selectedValues().length === 0) {
           <i [class]="options[0].icon"></i> {{ options[0].label }}
-          } @if (selectedValues().length === 1) {
+          } @else if (selectedValues().length === 1) {
           <i
             [class]="selectedOptions()[0].icon"
             [style.color]="selectedOptions()[0].color"
           ></i>
           {{ selectedOptions()[0].label }}
-          } @if (selectedValues().length > 1) { Mixed
+          } @else {
           <span class="icon-multi">
             @for (opt of selectedOptions(); track opt.value) {
             <i [class]="opt.icon" [style.color]="opt.color"></i>
             }
           </span>
-          }
+          Mixed ({{ selectedValues().length }}) }
         </span>
         <span class="dropdown-arrow-wrapper">
           <svg
@@ -171,12 +171,15 @@ export class FlowSessionStatusFilterDropdownComponent {
     let newValues = [...this.selectedValues()];
     if (value === 'all') {
       newValues = [];
+      // Close dropdown when selecting "All"
+      this.closeDropdown();
     } else {
       if (newValues.includes(value)) {
         newValues = newValues.filter((v) => v !== value);
       } else {
         newValues.push(value);
       }
+      // Don't close dropdown when selecting individual options
     }
     this.valueChange.emit(newValues.length === 0 ? ['all'] : newValues);
   }

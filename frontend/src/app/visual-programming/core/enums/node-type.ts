@@ -9,4 +9,5 @@ export enum NodeType {
   START = 'start',
   GROUP = 'group',
   TABLE = 'table',
+  NOTE = 'note',
 }

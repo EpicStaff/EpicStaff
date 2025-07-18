@@ -11,4 +11,5 @@ export const NODE_TYPE_PREFIXES: Record<NodeType, string> = {
   [NodeType.START]: 'Start-Node',
   [NodeType.GROUP]: 'Group',
   [NodeType.TABLE]: 'Decision Table',
+  [NodeType.NOTE]: 'Note',
 };

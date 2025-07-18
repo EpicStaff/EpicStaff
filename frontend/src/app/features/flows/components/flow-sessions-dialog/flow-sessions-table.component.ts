@@ -8,14 +8,14 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CheckboxComponent } from '../../../../shared/components/form-controls/checkbox/checkbox.component';
+import { FlowSessionStatusBadgeComponent } from './flow-session-status-badge.component';
+import { LoadingSpinnerComponent } from '../../../../shared/components/loading-spinner/loading-spinner.component';
 import {
   GraphSession,
+  GraphSessionLight,
   GraphSessionStatus,
 } from '../../services/flows-sessions.service';
 import { GraphDto } from '../../models/graph.model';
-import { FlowSessionStatusBadgeComponent } from './flow-session-status-badge.component';
-import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-filter-dropdown.component';
-
 @Component({
   selector: 'app-flow-sessions-table',
   standalone: true,
@@ -23,33 +23,24 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
     CommonModule,
     CheckboxComponent,
     FlowSessionStatusBadgeComponent,
-    FlowSessionStatusFilterDropdownComponent,
+    LoadingSpinnerComponent,
   ],
   template: `
     <div
       style="margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px;"
     >
       <div style="flex: 1; display: flex; align-items: center; gap: 10px;">
-        <!-- <input
-          type="text"
-          placeholder="Search sessions..."
-          class="session-search-input"
-          [value]="searchQuery"
-          (input)="onSearch($event)"
-        /> -->
-        <app-flow-session-status-filter-dropdown
-          [value]="statusFilter"
-          (valueChange)="onStatusFilterChange($event)"
-        ></app-flow-session-status-filter-dropdown>
+        <!-- Search functionality can be added here later -->
       </div>
       <div style="display: flex; align-items: center; gap: 12px;">
-        <button
-          *ngIf="selectedSessionIds().size > 0"
-          class="delete-btn"
-          (click)="onBulkDelete()"
+        <div
+          *ngIf="selectedIds().size > 0 && !isLoading && sessions.length > 0"
+          class="bulk-actions"
         >
-          Delete Selected
-        </button>
+          <button class="delete-btn" (click)="bulkDelete()">
+            Delete Selected
+          </button>
+        </div>
       </div>
     </div>
     <div class="sessions-table-wrapper">
@@ -58,7 +49,8 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
           <tr>
             <th>
               <app-checkbox
-                [checked]="areAllSessionsSelected()"
+                [checked]="areAllSelected()"
+                [disabled]="isLoading || sessions.length === 0"
                 (checkedChange)="toggleSelectAll($event)"
                 id="select-all-checkbox"
                 label=""
@@ -73,11 +65,30 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let session of filteredSessions(); trackBy: trackById">
+          @if (isLoading) {
+          <tr>
+            <td colspan="7" style="text-align: center; padding: 40px;">
+              <app-loading-spinner size="md" message="Loading sessions..." />
+            </td>
+          </tr>
+          } @else if (showEmptyState) {
+          <tr>
+            <td colspan="7" style="text-align: center; padding: 40px;">
+              <div class="no-sessions-message">
+                <p>No sessions found for the selected filters.</p>
+                <small
+                  >Try adjusting your filter criteria or create a new
+                  session.</small
+                >
+              </div>
+            </td>
+          </tr>
+          } @else {
+          <tr *ngFor="let session of sessions; trackBy: trackById">
             <td>
               <app-checkbox
-                [checked]="isSessionSelected(session.id)"
-                (checkedChange)="toggleSessionSelection(session.id, $event)"
+                [checked]="isSelected(session.id)"
+                (checkedChange)="toggleSelection(session.id, $event)"
                 [id]="'session-checkbox-' + session.id"
               ></app-checkbox>
             </td>
@@ -97,17 +108,13 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
             </td>
             <td>
               <div class="actions-container">
-                <button class="view-btn" (click)="onViewSession(session.id)">
+                <button class="view-btn" (click)="viewSession.emit(session.id)">
                   View
                 </button>
                 <button
-                  *ngIf="
-                    session.status === GraphSessionStatus.RUNNING ||
-                    session.status === GraphSessionStatus.WAITING_FOR_USER ||
-                    session.status === GraphSessionStatus.PENDING
-                  "
+                  *ngIf="canStop(session.status)"
                   class="stop-btn"
-                  (click)="onStopSession(session.id)"
+                  (click)="stopSession.emit(session.id)"
                   title="Stop session"
                   style="margin-left: 8px;"
                 >
@@ -118,7 +125,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
             <td>
               <button
                 class="icon-btn delete-icon-btn"
-                (click)="onDeleteSession(session.id)"
+                (click)="deleteSelected.emit([session.id])"
                 title="Delete session"
               >
                 <svg
@@ -140,6 +147,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
               </button>
             </td>
           </tr>
+          }
         </tbody>
       </table>
     </div>
@@ -147,123 +155,64 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
   styleUrls: ['./flow-sessions-table.component.scss'],
 })
 export class FlowSessionsTableComponent {
-  @Input() public sessions: GraphSession[] = [];
-  @Input() public flow!: GraphDto;
-  @Output() public deleteSelected = new EventEmitter<number[]>();
-  @Output() public viewSession = new EventEmitter<number>();
-  @Output() public stopSession = new EventEmitter<number>();
+  @Input() sessions: GraphSessionLight[] = [];
+  @Input() flow!: GraphDto;
+  @Input() isLoading: boolean = false;
+  @Input() showEmptyState: boolean = false;
 
-  public selectedSessionIds = signal<Set<number>>(new Set<number>());
-  public searchQuery = '';
-  public statusFilter: string[] = ['all'];
+  @Output() deleteSelected = new EventEmitter<number[]>();
+  @Output() viewSession = new EventEmitter<number>();
+  @Output() stopSession = new EventEmitter<number>();
+
+  public selectedIds = signal<Set<number>>(new Set());
 
   public readonly GraphSessionStatus = GraphSessionStatus;
 
-  public statusOptions = [
-    { value: GraphSessionStatus.RUNNING, label: 'Running' },
-    { value: GraphSessionStatus.ERROR, label: 'Error' },
-    { value: GraphSessionStatus.ENDED, label: 'Completed' },
-    { value: GraphSessionStatus.WAITING_FOR_USER, label: 'Waiting' },
-    { value: GraphSessionStatus.PENDING, label: 'Pending' },
-    { value: GraphSessionStatus.EXPIRED, label: 'Expired' },
-  ];
-
-  public filteredSessions = signal<GraphSession[]>([]);
-
   constructor(private cdr: ChangeDetectorRef) {}
 
-  public ngOnChanges() {
-    this.applyFilter();
-    this.cdr.markForCheck();
+  // row-selection
+  isSelected(id: number) {
+    return this.selectedIds().has(id);
   }
 
-  public applyFilter() {
-    const query = this.searchQuery.toLowerCase();
-    this.filteredSessions.set(
-      this.sessions.filter((s) => {
-        const matchesQuery =
-          !query ||
-          s.id.toString().includes(query) ||
-          (s.status && s.status.toLowerCase().includes(query));
-        const statusFilter = this.statusFilter;
-        const matchesStatus =
-          !statusFilter ||
-          statusFilter.includes('all') ||
-          statusFilter.includes(s.status);
-        return matchesQuery && matchesStatus;
-      })
-    );
-    this.cdr.markForCheck();
-  }
-
-  public onStatusFilterChange(values: string[]) {
-    this.statusFilter = values;
-    this.applyFilter();
-    this.cdr.markForCheck();
-  }
-
-  public onSearch(event: Event) {
-    this.searchQuery = (event.target as HTMLInputElement).value;
-    this.applyFilter();
-    this.cdr.markForCheck();
-  }
-
-  public isSessionSelected(sessionId: number): boolean {
-    return this.selectedSessionIds().has(sessionId);
-  }
-
-  public toggleSessionSelection(sessionId: number, checked: boolean): void {
-    this.selectedSessionIds.update((set) => {
-      const newSet = new Set(set);
-      if (checked) {
-        newSet.add(sessionId);
-      } else {
-        newSet.delete(sessionId);
-      }
-      return newSet;
+  toggleSelection(id: number, checked: boolean) {
+    this.selectedIds.update((set) => {
+      const s = new Set(set);
+      checked ? s.add(id) : s.delete(id);
+      return s;
     });
     this.cdr.markForCheck();
   }
 
-  public areAllSessionsSelected(): boolean {
-    const allIds = this.filteredSessions().map((s) => s.id);
+  areAllSelected() {
     return (
-      allIds.length > 0 &&
-      allIds.every((id) => this.selectedSessionIds().has(id))
+      this.sessions.length > 0 &&
+      this.sessions.every((s) => this.selectedIds().has(s.id))
     );
   }
 
-  public toggleSelectAll(checked: boolean): void {
-    if (checked) {
-      this.selectedSessionIds.set(
-        new Set(this.filteredSessions().map((s) => s.id))
-      );
-    } else {
-      this.selectedSessionIds.set(new Set());
-    }
+  toggleSelectAll(checked: boolean) {
+    this.selectedIds.set(
+      checked ? new Set(this.sessions.map((s) => s.id)) : new Set()
+    );
     this.cdr.markForCheck();
   }
 
-  public onBulkDelete(): void {
-    this.deleteSelected.emit(Array.from(this.selectedSessionIds()));
-    this.selectedSessionIds.set(new Set());
+  bulkDelete() {
+    this.deleteSelected.emit(Array.from(this.selectedIds()));
+    this.selectedIds.set(new Set());
     this.cdr.markForCheck();
   }
 
-  public onDeleteSession(sessionId: number): void {
-    this.deleteSelected.emit([sessionId]);
-    this.cdr.markForCheck();
+  canStop(status: GraphSessionStatus) {
+    return [
+      GraphSessionStatus.RUNNING,
+      GraphSessionStatus.WAITING_FOR_USER,
+      GraphSessionStatus.PENDING,
+    ].includes(status);
   }
 
-  public onViewSession(sessionId: number): void {
-    this.viewSession.emit(sessionId);
-  }
-
-  public onStopSession(sessionId: number): void {
-    this.stopSession.emit(sessionId);
-  }
-
-  public trackById(index: number, item: GraphSession) {
+  trackById(_: number, item: GraphSessionLight) {
     return item.id;
   }
 }

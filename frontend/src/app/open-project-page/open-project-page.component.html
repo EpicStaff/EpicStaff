@@ -62,7 +62,11 @@
         >
           <!-- Special handling for SettingsSectionComponent -->
           @if (section.id === 'settings') {
-          <app-settings-section [project]="project"> </app-settings-section>
+          <app-settings-section
+            [project]="project"
+            (settingsChange)="onSettingsChanged($event)"
+          >
+          </app-settings-section>
           } @else {
           <ng-container
             [ngComponentOutlet]="section.component"

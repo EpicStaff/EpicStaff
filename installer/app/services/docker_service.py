@@ -15,10 +15,13 @@ from pathlib import Path
 from typing import List, Dict, Any, Generator, Literal
 import os
 import time
+import stat
 
 from flask_socketio import emit
 from app.utils import (
     get_env_file_path,
+    get_git_build_branch,
+    get_git_build_repository,
     get_savefiles_path,
     get_compose_file_path,
     get_image_repository,
@@ -165,10 +168,9 @@ class UpdateImagesState(State):
         }
 
         # Use the branch from the original code
-        branch = "main"
-        # Use the GitLab repository URL
+        branch = get_git_build_branch()
         # repo_url = "https://gitlab.hysdev.com/sheetsui/crewai-sheetsui.git"
-        repo_url = "https://github.com/EpicStaff/EpicStaff.git"
+        repo_url = get_git_build_repository()
         tmp_repo_path = None  # Initialize to None for cleanup in finally block
         try:
             # 1. Create a temporary directory
@@ -216,7 +218,7 @@ class UpdateImagesState(State):
                 for line in self._run_script(command, prefix=image_name):
                     output_queue.put(line)
 
-            with ThreadPoolExecutor(max_workers=4) as executor:
+            with ThreadPoolExecutor(max_workers=8) as executor:
                 futures = [
                     executor.submit(run_build, name, cfg)
                     for name, cfg in image_build_configs.items()
@@ -238,7 +240,13 @@ class UpdateImagesState(State):
             if tmp_repo_path and tmp_repo_path.exists():
                 yield f"[INFO] Cleaning up temporary directory: {tmp_repo_path}\n"
                 try:
-                    shutil.rmtree(tmp_repo_path)
+                    def handle_remove_readonly(func, path, exc_info):
+                        if not os.access(path, os.W_OK):
+                            os.chmod(path, stat.S_IWRITE)
+                            func(path)
+                        else:
+                            raise
+                    shutil.rmtree(tmp_repo_path, onexc=handle_remove_readonly)
                 except OSError as e:
                     yield f"[WARNING] Failed to remove temporary directory {tmp_repo_path}: {e}\n"
             self.update_images_started = (

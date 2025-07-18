@@ -174,7 +174,6 @@ import { expandCollapseAnimation } from '../../../../../../shared/animations/ani
         overflow: auto;
         max-height: 400px;
         margin-left: 23px;
-        padding-inline: 3px;
       }
     `,
   ],

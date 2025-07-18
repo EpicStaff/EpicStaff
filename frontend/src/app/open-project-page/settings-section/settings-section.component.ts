@@ -2,6 +2,8 @@ import {
   Component,
   ChangeDetectionStrategy,
   Input,
+  Output,
+  EventEmitter,
   OnInit,
   OnChanges,
   SimpleChanges,
@@ -16,9 +18,9 @@ import { LLM_Config_Service } from '../../features/settings-dialog/services/llms
 import { EmbeddingConfigsService } from '../../features/settings-dialog/services/embeddings/embedding_configs.service';
 import { GetLlmConfigRequest } from '../../features/settings-dialog/models/llms/LLM_config.model';
 import { GetEmbeddingConfigRequest } from '../../features/settings-dialog/models/embeddings/embedding-config.model';
-import { ProjectsApiService } from '../../features/projects/services/projects-api.service';
+
 import { HelpTooltipComponent } from '../../shared/components/help-tooltip/help-tooltip.component';
-import { ToastService } from '../../services/notifications/toast.service';
+
 import { LlmModelSelectorComponent } from '../../shared/components/llm-model-selector/llm-model-selector.component';
 import { EmbeddingModelSelectorComponent } from '../../shared/components/embedding-model-selector/embedding-model-selector.component';
 import { FullLLMConfigService } from '../../features/settings-dialog/services/llms/full-llm-config.service';
@@ -40,12 +42,16 @@ import { FullEmbeddingConfigService } from '../../features/settings-dialog/servi
 })
 export class SettingsSectionComponent implements OnInit, OnChanges {
   @Input() public project!: GetProjectRequest;
+  @Output() public settingsChange = new EventEmitter<
+    Partial<GetProjectRequest>
+  >();
 
   // Project settings as signals
   public memory = signal<boolean>(false);
   public max_rpm = signal<number>(15);
   public process = signal<'sequential' | 'hierarchical'>('sequential');
   public manager_llm_config = signal<number | null>(null);
+  public memory_llm_config = signal<number | null>(null);
   public embedding_config = signal<number | null>(null);
   public settings = signal<{
     temperature: number;
@@ -70,14 +76,15 @@ export class SettingsSectionComponent implements OnInit, OnChanges {
   public isLoading = signal(true);
   public configsLoaded = signal(false);
 
+  private tempCurrentValue: number = 0;
+  private rpmCurrentValue: number = 15;
+
   constructor(
     private llmConfigService: LLM_Config_Service,
     private embeddingConfigService: EmbeddingConfigsService,
     private fullLLMConfigService: FullLLMConfigService,
     private fullEmbeddingConfigService: FullEmbeddingConfigService,
-    private projectsApiService: ProjectsApiService,
-    private cdr: ChangeDetectorRef,
-    private toastService: ToastService
+    private cdr: ChangeDetectorRef
   ) {}
 
   public ngOnInit(): void {
@@ -97,26 +104,32 @@ export class SettingsSectionComponent implements OnInit, OnChanges {
   private initializeBasicSettings(): void {
     if (this.project) {
       this.memory.set(this.project.memory ?? false);
-      this.max_rpm.set(this.project.max_rpm ?? 15);
+      const rpm = this.project.max_rpm ?? 15;
+      this.max_rpm.set(rpm);
+      this.rpmCurrentValue = rpm;
       this.process.set(this.project.process ?? 'sequential');
 
+      const temperature = this.project.default_temperature ?? 0.7;
+      this.tempCurrentValue = Math.round(temperature * 100);
+
       this.settings.set({
-        temperature: this.project.default_temperature ?? 0.7,
+        temperature: temperature,
         cache: this.project.cache ?? false,
         full_output: this.project.full_output ?? false,
         planning: this.project.planning ?? false,
       });
 
-      this.cdr.markForCheck();
+      //   this.cdr.markForCheck();
     }
   }
 
   private initializeHierarchicalSettings(): void {
     if (this.project) {
       this.manager_llm_config.set(this.project.manager_llm_config);
+      this.memory_llm_config.set(this.project.memory_llm_config);
       this.embedding_config.set(this.project.embedding_config);
 
-      this.cdr.markForCheck();
+      //   this.cdr.markForCheck();
     }
   }
 
@@ -204,12 +217,12 @@ export class SettingsSectionComponent implements OnInit, OnChanges {
     this.onSettingChange(setting, newValue);
   }
 
-  public onRpmChange(): void {
-    this.onSettingChange('max_rpm', this.max_rpm());
-  }
-
   public onLLMConfigChange(): void {
     this.onSettingChange('manager_llm_config', this.manager_llm_config());
+  }
+
+  public onMemoryLLMConfigChange(): void {
+    this.onSettingChange('memory_llm_config', this.memory_llm_config());
   }
 
   public onEmbeddingConfigChange(): void {
@@ -223,48 +236,31 @@ export class SettingsSectionComponent implements OnInit, OnChanges {
       [setting]: value,
     };
 
-    const settingDisplayName = this.getSettingDisplayName(setting);
+    console.log(`🔧 Settings component emitting change:`, {
+      setting,
+      value,
+      updateData,
+    });
 
-    this.projectsApiService
-      .patchUpdateProject(this.project.id, updateData)
-      .subscribe({
-        next: (updatedProject) => {
-          console.log(
-            `Setting ${setting} updated successfully`,
-            updatedProject
-          );
-          this.toastService.success(
-            `${settingDisplayName} updated successfully`
-          );
-        },
-        error: (error) => {
-          console.error(`Error updating setting ${setting}:`, error);
-          this.toastService.error(`Failed to update ${settingDisplayName}`);
-
-          // Revert the change on error
-          this.initializeBasicSettings();
-          if (this.configsLoaded()) {
-            this.initializeHierarchicalSettings();
-          }
-        },
-      });
+    // Emit the change to the parent component instead of calling API directly
+    this.settingsChange.emit(updateData);
   }
 
-  private getSettingDisplayName(setting: string): string {
-    // Map internal setting names to user-friendly names
-    const settingMap: { [key: string]: string } = {
-      memory: 'Memory',
-      process: 'Process type',
-      max_rpm: 'Max RPM',
-      manager_llm_config: 'LLM configuration',
-      embedding_config: 'Embedding configuration',
-      cache: 'Cache setting',
-      full_output: 'Full output setting',
-      planning: 'Planning setting',
-      default_temperature: 'Temperature',
-    };
+  public onTemperatureSliderMove(value: number): void {
+    this.tempCurrentValue = value;
+    // Update local UI without saving
+    const currentSettings = this.settings();
+    const newTemperature = parseFloat((value / 100).toFixed(1));
+    this.settings.set({
+      ...currentSettings,
+      temperature: newTemperature,
+    });
+  }
 
-    return settingMap[setting] || setting;
+  public onTemperatureSliderEnd(): void {
+    // Save changes only when slider movement ends
+    const newTemperature = parseFloat((this.tempCurrentValue / 100).toFixed(1));
+    this.onSettingChange('default_temperature', newTemperature);
   }
 
   public get temperaturePercent(): number {
@@ -281,5 +277,15 @@ export class SettingsSectionComponent implements OnInit, OnChanges {
     });
 
     this.onSettingChange('default_temperature', newTemperature);
+  }
+
+  public onRpmSliderMove(value: number): void {
+    this.rpmCurrentValue = value;
+    this.max_rpm.set(value);
+  }
+
+  public onRpmSliderEnd(): void {
+    // Only save changes when slider movement ends
+    this.onSettingChange('max_rpm', this.rpmCurrentValue);
   }
 }

@@ -3,3 +3,4 @@ ENV
 */venv
 */.venv
 */.django_venv
+staticfiles/

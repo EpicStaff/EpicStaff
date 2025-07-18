@@ -1,1 +1,4 @@
 * text eol=lf
+
+# Explicitly mark PNGs as binary
+*.png binary

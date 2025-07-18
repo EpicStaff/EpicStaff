@@ -6,7 +6,7 @@ from services.redis_service import RedisService
 from models.response_models import ToolResponse
 from models.request_models import (
     PythonCodeToolData,
-    ToolData,
+    ConfiguredToolData,
     ToolInitConfigurationModel,
 )
 from crewai.tools import BaseTool
@@ -64,7 +64,7 @@ class ProxyToolFactory:
             name=name, description=description, args_schema=args_schema, func=_run
         )
 
-    def create_proxy_tool(self, tool_data: ToolData) -> Type[BaseTool]:
+    def create_proxy_tool(self, tool_data: ConfiguredToolData) -> Type[BaseTool]:
 
         tool_init_configuration = None
         if tool_data.tool_config is not None:
@@ -82,7 +82,7 @@ class ProxyToolFactory:
             data["args_schema"]
         )  # TODO: rename
         data["args_schema"].model_rebuild()
-        
+
         logger.info(data)
 
         proxy_tool_factory = self  # VERY BAD CODE!!
@@ -104,12 +104,15 @@ class ProxyToolFactory:
             )
 
         return Tool(
-            name=data["name"], description=data["description"], args_schema=data["args_schema"], func=_run
+            name=data["name"],
+            description=data["description"],
+            args_schema=data["args_schema"],
+            func=_run,
         )
 
     def run_tool_in_container(
         self,
-        tool_data: ToolData,
+        tool_data: ConfiguredToolData,
         run_kwargs: dict[str, Any],
     ) -> str:
 

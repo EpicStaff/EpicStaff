@@ -17,7 +17,7 @@ import {
 } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { ToolsService } from '../../../../features/tools/services/tools.service';
-import { Tool, ToolField } from '../../../../shared/models/tool.model';
+import { Tool, ToolField } from '../../../../features/tools/models/tool.model';
 // Import the specific node model for tool nodes.
 import { ToolNodeModel } from '../../../core/models/node.model';
 
