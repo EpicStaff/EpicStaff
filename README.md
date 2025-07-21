@@ -100,10 +100,9 @@ If u find EpicStaff helpful - give it a ⭐️ on GitHub!
 
 ## 🚀 Getting Started
 
-### Windows/Linux/macOS
-
 1. **Install dependencies**  
    - [Git](https://git-scm.com/downloads)  
+
    - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 
 2. **Start Docker Desktop**
@@ -124,7 +123,3 @@ xattr -r -d com.apple.quarantine epicstaff.app
 4. **Run the program**
  
 **For more [details](https://github.com/EpicStaff/EpicStaff/blob/main/docs/docs.pdf)**
-
-
-
-   
