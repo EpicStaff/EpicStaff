@@ -1,9 +1,20 @@
-from rest_framework import serializers
-from tables.models import DocumentMetadata, DocumentContent
-from .file_text_extractor import extract_text_from_file
-from loguru import logger
+import asyncio
+import os
 import json
 import re
+import time
+from typing import AsyncGenerator, AsyncIterable, Callable, Union
+from abc import ABC, abstractmethod
+
+from rest_framework import serializers
+from loguru import logger
+from asgiref.sync import sync_to_async
+from django.http import StreamingHttpResponse, HttpResponse
+from django.core.serializers.json import DjangoJSONEncoder
+from django.views import View
+
+from tables.models import DocumentMetadata, DocumentContent
+from .file_text_extractor import extract_text_from_file
 
 ALLOWED_FILE_TYPES = {choice[0] for choice in DocumentMetadata.DocumentFileType.choices}
 MAX_FILE_SIZE = 12 * 1024 * 1024  # 12MB
@@ -168,3 +179,112 @@ class SourceSerializerMixin:
             )
 
         return None
+
+
+class SSEMixin(View, ABC):
+    """
+    A reusable mixin to stream server-sent events (SSE).
+    Override `get_initial_data()` and `get_live_updates()` in your view.
+    """
+
+    ping_interval = 15  # seconds
+    last_ping = None
+
+    async def async_orm_generator(self, queryset):
+        entities = await sync_to_async(list)(
+            queryset
+        )  # Convert queryset to a list asynchronously
+        for entity in entities:
+            yield entity  # Yield one entity at a time asynchronously
+
+    @abstractmethod
+    async def get_initial_data(self):
+        """
+        Overwrite this function with generator yielding initial data
+        Each item should be either:
+            - a dict with optional 'event' and required 'data' keys
+            - or any JSON-serializable primitive (str, int, etc)
+        """
+        pass
+
+    @abstractmethod
+    async def get_live_updates(self):
+        """
+        Overwrite this function with generator yielding updates in while True loop
+        Each item should be either:
+            - a dict with optional 'event' and required 'data' keys
+            - or any JSON-serializable primitive (str, int, etc)
+        """
+        pass
+
+    async def _data_generator(
+        self,
+        callback: Callable[[], AsyncIterable[Union[dict, str, int, float, bool, None]]],
+    ) -> AsyncGenerator[str, None]:
+        """
+        SSE data generator.
+
+        Args:
+            callback: A callable returning an async iterable of items.
+                Each item should be either:
+                    - a dict with optional 'event' and required 'data' keys
+                    - or any JSON-serializable primitive (str, int, etc)
+
+        Yields:
+            str: Server-Sent Events (SSE) formatted strings.
+        """
+
+        async for item in callback():
+            if isinstance(item, dict):
+                if "event" in item:
+                    yield f"event: {item['event']}\n"
+
+                self.last_ping = time.time()
+                yield f"data: {json.dumps(item.get('data', ''), cls=DjangoJSONEncoder)}\n\n"
+
+            else:
+                self.last_ping = time.time()
+                yield f"data: {json.dumps(item, cls=DjangoJSONEncoder)}\n\n"
+
+        # Yield a ping message if needed.
+        if time.time() - self.last_ping > self.ping_interval:
+            self.last_ping = time.time()
+            yield ": ping\n\n"
+
+    async def event_stream(self, test_mode=False):
+        self.last_ping = time.time()
+        try:
+            async for data in self._data_generator(self.get_initial_data):
+                yield data
+
+            if test_mode:
+                for i in range(3):
+                    yield f"data: test event #{i + 1}\n\n"
+                raise GeneratorExit()
+
+            while True:
+                async for data in self._data_generator(self.get_live_updates):
+                    yield data
+
+        except (GeneratorExit, KeyboardInterrupt):
+            logger.warning("Sending fatal-error event due to manual stop")
+            yield f"\n\nevent: fatal-error\ndata: event stream was stopped manually\n\n"
+        except Exception as e:
+            logger.error(f"Sending fatal-error event due to error: {e}")
+            yield f"\n\nevent: fatal-error\ndata: unexpected error\n\n"
+
+    async def get(self, request, *args, **kwargs):
+        test_mode = bool(request.GET.get("test", ""))
+        logger.debug(f"Started SSE {'with' if test_mode else 'without'} test mode")
+
+        return StreamingHttpResponse(
+            self.event_stream(test_mode=test_mode),
+            content_type="text/event-stream",
+            headers={
+                "Connection": "keep-alive",
+                "Cache-Control": "no-cache",
+                "Access-Control-Allow-Origin": "*",
+                "X-Accel-Buffering": "no",
+                "Transfer-Encoding": "chunked",
+            },
+        )

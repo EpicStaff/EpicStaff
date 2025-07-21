@@ -34,6 +34,8 @@ from utils.logger import logger
 from django.db.models import IntegerField
 from django.db.models.functions import Cast
 from tables.serializers.model_serializers import (
+    AgentReadSerializer,
+    AgentWriteSerializer,
     CrewTagSerializer,
     AgentTagSerializer,
     DecisionTableNodeSerializer,
@@ -46,6 +48,8 @@ from tables.serializers.model_serializers import (
     StartNodeSerializer,
     ConditionGroupSerializer,
     ConditionSerializer,
+    TaskReadSerializer,
+    TaskWriteSerializer,
 )
 
 
@@ -101,9 +105,7 @@ from tables.serializers.model_serializers import (
     LLMModelSerializer,
     EmbeddingModelSerializer,
     EmbeddingConfigSerializer,
-    AgentSerializer,
     CrewSerializer,
-    TaskSerializer,
     ToolConfigSerializer,
     UserSessionMessageSerializer,
     RealtimeModelSerializer,
@@ -225,19 +227,20 @@ class EmbeddingConfigReadWriteViewSet(ModelViewSet):
     filterset_class = EmbeddingConfigFilter
 
 
-class AgentReadWriteViewSet(ModelViewSet):
+class AgentViewSet(ModelViewSet):
     queryset = Agent.objects.all()
-    serializer_class = AgentSerializer
-
     filter_backends = [DjangoFilterBackend]
     filterset_fields = [
-        "configured_tools",
-        "python_code_tools",
         "memory",
         "allow_delegation",
         "cache",
         "allow_code_execution",
     ]
+
+    def get_serializer_class(self):
+        if self.action in ["list", "retrieve"]:
+            return AgentReadSerializer
+        return AgentWriteSerializer
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -248,6 +251,24 @@ class AgentReadWriteViewSet(ModelViewSet):
 
         return queryset
 
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        write_serializer = self.get_serializer(instance, data=request.data, partial=False)
+        write_serializer.is_valid(raise_exception=True)
+        self.perform_update(write_serializer)
+
+        # Use AgentReadSerializer for the response
+        read_serializer = AgentReadSerializer(instance, context=self.get_serializer_context())
+        return Response(read_serializer.data, status=status.HTTP_200_OK)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        write_serializer = self.get_serializer(instance, data=request.data, partial=True)
+        write_serializer.is_valid(raise_exception=True)
+        self.perform_update(write_serializer)
+
+        read_serializer = AgentReadSerializer(instance, context=self.get_serializer_context())
+        return Response(read_serializer.data, status=status.HTTP_200_OK)
 
 class CrewReadWriteViewSet(ModelViewSet):
     queryset = Crew.objects.all()
@@ -269,7 +290,6 @@ class CrewReadWriteViewSet(ModelViewSet):
 
 class TaskReadWriteViewSet(ModelViewSet):
     queryset = Task.objects.all()
-    serializer_class = TaskSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = [
         "crew",
@@ -279,6 +299,37 @@ class TaskReadWriteViewSet(ModelViewSet):
         "async_execution",
         "task_context_list",
     ]
+
+    def get_serializer_class(self):
+        if self.action in ["list", "retrieve"]:
+            return TaskReadSerializer
+        return TaskWriteSerializer
+
+    def create(self, request, *args, **kwargs):
+        write_serializer = self.get_serializer(data=request.data)
+        write_serializer.is_valid(raise_exception=True)
+        self.perform_create(write_serializer)
+
+        read_serializer = TaskReadSerializer(write_serializer.instance, context=self.get_serializer_context())
+        return Response(read_serializer.data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        write_serializer = self.get_serializer(instance, data=request.data)
+        write_serializer.is_valid(raise_exception=True)
+        self.perform_update(write_serializer)
+
+        read_serializer = TaskReadSerializer(instance, context=self.get_serializer_context())
+        return Response(read_serializer.data, status=status.HTTP_200_OK)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        write_serializer = self.get_serializer(instance, data=request.data, partial=True)
+        write_serializer.is_valid(raise_exception=True)
+        self.perform_update(write_serializer)
+
+        read_serializer = TaskReadSerializer(instance, context=self.get_serializer_context())
+        return Response(read_serializer.data, status=status.HTTP_200_OK)
 
 
 class ToolConfigViewSet(ModelViewSet):

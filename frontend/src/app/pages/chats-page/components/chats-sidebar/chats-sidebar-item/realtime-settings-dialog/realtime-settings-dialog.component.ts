@@ -192,7 +192,7 @@ export class RealtimeSettingsDialogComponent implements OnInit {
 
       // Send PUT request to update the realtime agent
       this.agentsService
-        .updateAgent(updatedAgent)
+        .updateAgent(updatedAgent as any)
         .pipe(
           finalize(() => {
             this.submitting = false;

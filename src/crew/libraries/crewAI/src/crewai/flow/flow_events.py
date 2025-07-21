@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -10,7 +11,8 @@ class Event:
     timestamp: datetime = field(init=False)
 
     def __post_init__(self):
-        self.timestamp = datetime.now()
+        now = datetime.now(timezone.utc)
+        self.timestamp = now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 @dataclass

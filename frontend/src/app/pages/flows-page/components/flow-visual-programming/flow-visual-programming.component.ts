@@ -97,6 +97,7 @@ export class FlowVisualProgrammingComponent
 
   private initialState: FlowModel | undefined;
   private readonly destroy$ = new Subject<void>();
+  private isNavigatingToRun = false;
 
   constructor(
     private readonly route: ActivatedRoute,
@@ -248,13 +249,63 @@ export class FlowVisualProgrammingComponent
       });
   }
 
+  private saveGraphForRun(): Observable<any> {
+    const flowState: FlowModel = this.flowService.getFlowState();
+
+    const startNodeInFlow = flowState.nodes.find(
+      (node) => node.type === NodeType.START
+    ) as StartNodeModel | undefined;
+
+    if (!startNodeInFlow) {
+      return this.graphUpdateService.saveGraph(flowState, this.graph).pipe(
+        tap((result) => {
+          this.graph = result.graph;
+          this.initialState = flowState;
+        })
+      );
+    }
+
+    const initialStateData = startNodeInFlow.data.initialState;
+
+    return this.startNodeService.getStartNodes().pipe(
+      switchMap((startNodes) => {
+        const matchingStartNode = startNodes.find(
+          (sn) => sn.graph === this.graph.id
+        );
+
+        if (matchingStartNode) {
+          return this.startNodeService.updateStartNode(matchingStartNode.id, {
+            graph: this.graph.id,
+            variables: initialStateData,
+          });
+        }
+
+        return this.startNodeService.createStartNode({
+          graph: this.graph.id,
+          variables: initialStateData,
+        });
+      }),
+      switchMap(() => this.graphUpdateService.saveGraph(flowState, this.graph)),
+      tap((result) => {
+        this.graph = result.graph;
+        this.initialState = flowState;
+      })
+    );
+  }
+
   public handleRunFlow(): void {
     if (this.isRunning || !this.graph?.id) return;
 
     this.isRunning = true;
-    this.runGraphService
-      .runGraph(this.graph.id)
+
+    // Check if we have unsaved changes and save first if needed
+    const saveFirst$ = this.hasUnsavedChanges()
+      ? this.saveGraphForRun()
+      : of(null);
+
+    saveFirst$
       .pipe(
+        switchMap(() => this.runGraphService.runGraph(this.graph.id)),
         takeUntil(this.destroy$),
         finalize(() => {
           this.isRunning = false;
@@ -262,7 +313,8 @@ export class FlowVisualProgrammingComponent
         })
       )
       .subscribe({
-        next: (response) => {
+        next: (response: any) => {
+          this.isNavigatingToRun = true;
           this.router.navigate([
             'graph',
             this.graph.id,
@@ -270,7 +322,7 @@ export class FlowVisualProgrammingComponent
             response.session_id,
           ]);
         },
-        error: (error) => {
+        error: (error: any) => {
           this.toastService.error(
             `Failed to run graph: ${error?.error?.error || 'Unknown error'}`
           );
@@ -302,6 +354,11 @@ export class FlowVisualProgrammingComponent
   }
 
   public canDeactivate(): boolean | Observable<boolean> {
+    // Allow navigation if it's triggered by the run button
+    if (this.isNavigatingToRun) {
+      return true;
+    }
+
     if (this.hasUnsavedChanges()) {
       return this.confirmationDialogService
         .confirm({

@@ -156,15 +156,28 @@ export class ProjectsStorageService {
   }
 
   getProjectById(id: number): Observable<GetProjectRequest | undefined> {
+    console.log('🎯 getProjectById called for ID:', id);
+
     const cachedProject = this.projectsSignal().find(
       (project) => project.id === id
     );
+
     if (cachedProject) {
+      console.log('🎯 Found cached project:', cachedProject);
+      console.log('🎯 Cached project memory:', cachedProject.memory);
       return of(cachedProject);
     }
-    return this.projectsApiService
-      .getProjectById(id)
-      .pipe(catchError(() => of(undefined)));
+
+    console.log('🎯 No cached project found, fetching from API');
+    return this.projectsApiService.getProjectById(id).pipe(
+      tap((project) => {
+        if (project) {
+          console.log('🎯 API returned project:', project);
+          console.log('🎯 API project memory:', project.memory);
+        }
+      }),
+      catchError(() => of(undefined))
+    );
   }
 
   // --- Data Manipulation Methods (CRUD Operations) ---
@@ -194,17 +207,46 @@ export class ProjectsStorageService {
     id: number,
     updateData: Partial<GetProjectRequest>
   ): Observable<GetProjectRequest> {
+    console.log('💫 patchUpdateProject called with:', { id, updateData });
+
     return this.projectsApiService.patchUpdateProject(id, updateData).pipe(
       tap((updatedProject) => {
+        console.log('💫 TAP operator fired with:', updatedProject);
+        console.log('💫 Memory in TAP:', updatedProject.memory);
+
         const currentProjects = this.projectsSignal();
         const index = currentProjects.findIndex((p) => p.id === id);
+        console.log('💫 TAP - Found project at index:', index);
+
         if (index !== -1) {
+          const oldProject = currentProjects[index];
+          console.log('💫 TAP - Old project memory:', oldProject.memory);
+
           const updatedProjectsList = [...currentProjects];
           updatedProjectsList[index] = {
             ...updatedProjectsList[index],
             ...updatedProject,
           } as GetProjectRequest;
+
+          console.log(
+            '💫 TAP - New project memory:',
+            updatedProjectsList[index].memory
+          );
+
           this.projectsSignal.set(updatedProjectsList);
+
+          // Verify TAP update
+          const verifyTapUpdate = this.projectsSignal().find(
+            (p) => p.id === id
+          );
+          console.log(
+            '💫 TAP Verification - project in cache:',
+            verifyTapUpdate
+          );
+          console.log(
+            '💫 TAP Verification - memory field:',
+            verifyTapUpdate?.memory
+          );
         }
       })
     );
@@ -228,21 +270,45 @@ export class ProjectsStorageService {
   }
 
   public updateProjectInCache(updatedProject: GetProjectRequest) {
+    console.log('🚀 updateProjectInCache called with:', updatedProject);
+    console.log('🚀 Memory field in update:', updatedProject.memory);
+
     const currentProjects = this.projectsSignal();
+    console.log('🚀 Current projects in cache:', currentProjects.length);
+
     const index = currentProjects.findIndex((p) => p.id === updatedProject.id);
+    console.log('🚀 Found project at index:', index);
 
     if (index !== -1) {
+      const oldProject = currentProjects[index];
+      console.log('🚀 Old project memory:', oldProject.memory);
+
       const updatedProjects = [...currentProjects];
       // Create a new object reference to ensure change detection works
       updatedProjects[index] = { ...updatedProject };
+
+      console.log('🚀 New project memory:', updatedProjects[index].memory);
+
       this.projectsSignal.set(updatedProjects);
+
+      // Verify the update
+      const verifyUpdate = this.projectsSignal().find(
+        (p) => p.id === updatedProject.id
+      );
+      console.log(
+        '🚀 Verification - project in cache after set:',
+        verifyUpdate
+      );
+      console.log('🚀 Verification - memory field:', verifyUpdate?.memory);
+
       console.log(
         'Updated project in cache:',
         updatedProject.id,
-        'with tags:',
-        updatedProject.tags
+        'with memory:',
+        updatedProject.memory
       );
     } else {
+      console.log('🚀 Project not found in cache, adding it');
       // If project not found, add it
       this.addProjectToCache(updatedProject);
     }

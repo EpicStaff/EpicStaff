@@ -42,6 +42,7 @@ import { FlowsApiService } from '../../features/flows/services/flows-api.service
 
       <div class="content-container">
         <app-graph-messages
+          [graphId]="graphId"
           [sessionId]="sessionId"
           (sessionStatusChanged)="handleSessionStatusChange($event)"
           (messagesChanged)="handleMessagesChanged($event)"
@@ -65,7 +66,7 @@ import { FlowsApiService } from '../../features/flows/services/flows-api.service
           display: flex;
           overflow: hidden;
           gap: 1rem;
-          padding: 1rem 3rem;
+          padding: 1rem 0rem;
           padding-top: 0;
         }
       }
@@ -138,13 +139,11 @@ export class RunningGraphComponent implements OnInit, OnDestroy {
   }
 
   public handleSessionStatusChange(status: GraphSessionStatus): void {
-    console.log('Session status changed:', status);
     this.currentSessionStatus = status;
     this.cdr.markForCheck();
   }
 
   public handleMessagesChanged(newMessages: GraphMessage[]): void {
-    console.log('Received new messages:', newMessages);
     this.messages = newMessages;
     this.cdr.markForCheck();
   }

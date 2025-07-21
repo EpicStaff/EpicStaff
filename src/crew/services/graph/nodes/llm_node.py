@@ -64,7 +64,6 @@ class LLMNode(BaseNode):
             session_id=self.session_id,
             name=self.node_name,
             execution_order=execution_order,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             message_data=llm_message_data,
         )
         writer(graph_message)

@@ -8,7 +8,7 @@ import {
 } from '@angular/core';
 import { GetPythonCodeToolRequest } from '../../../../../../models/python-code-tool.model';
 import { AppIconComponent } from '../../../../../../../../shared/components/app-icon/app-icon.component';
-import { ToggleSwitchComponent } from '../../../../../../../../shared/components/toggle-switch/toggle-switch.component';
+import { ToggleSwitchComponent } from '../../../../../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 import { ButtonComponent } from '../../../../../../../../shared/components/buttons/button/button.component';
 
 @Component({

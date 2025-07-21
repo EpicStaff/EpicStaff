@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { map, Observable } from 'rxjs';
 
 import { ApiGetRequest } from '../shared/models/api-request.model';
@@ -7,7 +7,7 @@ import {
   CreateToolConfigRequest,
   GetToolConfigRequest,
   ToolConfig,
-} from '../shared/models/tool_config.model';
+} from '../features/tools/models/tool_config.model';
 import { ConfigService } from './config/config.service';
 
 @Injectable({
@@ -25,13 +25,14 @@ export class ToolConfigService {
 
   // GET all tool configs
   getToolConfigs(): Observable<GetToolConfigRequest[]> {
+    const params = new HttpParams().set('limit', '1000');
     return this.http
       .get<ApiGetRequest<GetToolConfigRequest>>(this.apiUrl, {
         headers: this.headers,
+        params,
       })
-      .pipe(map((response) => response.results));
+      .pipe(map((res) => res.results));
   }
-
   // POST create tool config
   createToolConfig(config: CreateToolConfigRequest): Observable<ToolConfig> {
     return this.http.post<ToolConfig>(this.apiUrl, config, {

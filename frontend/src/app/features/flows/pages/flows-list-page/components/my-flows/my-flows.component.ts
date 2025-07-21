@@ -22,6 +22,7 @@ import { FlowsApiService } from '../../../../services/flows-api.service';
 import { ConfirmationDialogComponent } from '../../../../../../shared/components/cofirm-dialog/confirmation-dialog.component';
 import { FlowRenameDialogComponent } from '../../../../components/flow-rename-dialog/flow-rename-dialog.component';
 import { RunGraphService } from '../../../../../../services/run-graph-session.service';
+import { ToastService } from '../../../../../../services/notifications/toast.service';
 
 @Component({
   selector: 'app-my-flows',
@@ -42,6 +43,7 @@ export class MyFlowsComponent implements OnInit {
   private readonly runGraphService = inject(RunGraphService);
   private readonly router = inject(Router);
   private readonly dialog = inject(Dialog);
+  private readonly toastService = inject(ToastService);
 
   public readonly error = signal<string | null>(null);
   public readonly filteredFlows = this.flowsService.filteredFlows;
@@ -96,18 +98,21 @@ export class MyFlowsComponent implements OnInit {
   }
 
   private confirmAndDeleteFlow(flow: GraphDto): void {
-    const dialogRef = this.dialog.open<boolean>(ConfirmationDialogComponent, {
-      data: {
-        title: 'Delete Flow',
-        message: `Are you sure you want to delete the flow "${flow.name}"? This action cannot be undone.`,
-        confirmText: 'Delete',
-        cancelText: 'Cancel',
-        type: 'danger',
-      },
-    });
+    const dialogRef = this.dialog.open<'confirm' | 'cancel' | 'close'>(
+      ConfirmationDialogComponent,
+      {
+        data: {
+          title: 'Delete Flow',
+          message: `Are you sure you want to delete the flow "${flow.name}"? This action cannot be undone.`,
+          confirmText: 'Delete',
+          cancelText: 'Cancel',
+          type: 'danger',
+        },
+      }
+    );
 
-    dialogRef.closed.subscribe((confirmed) => {
-      if (confirmed) {
+    dialogRef.closed.subscribe((result) => {
+      if (result === 'confirm') {
         this.flowsService.deleteFlow(flow.id).subscribe({
           next: () => {
             console.log(`Flow ${flow.id} - ${flow.name} deleted successfully.`);
@@ -162,6 +167,20 @@ export class MyFlowsComponent implements OnInit {
       },
       error: (err) => {
         console.error(`Error running flow ${flow.id}`, err);
+
+        // Extract error message from backend response
+        let errorMessage = 'Failed to run flow';
+        if (err.error && err.error.message) {
+          errorMessage = err.error.message;
+        } else if (err.error && typeof err.error === 'string') {
+          errorMessage = err.error;
+        } else if (err.message) {
+          errorMessage = err.message;
+        }
+
+        this.toastService.error(
+          `Error running flow "${flow.name}": ${errorMessage}`
+        );
       },
     });
   }

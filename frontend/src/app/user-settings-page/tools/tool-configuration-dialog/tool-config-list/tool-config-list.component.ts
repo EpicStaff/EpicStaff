@@ -7,9 +7,8 @@ import {
   SimpleChanges,
   ChangeDetectionStrategy,
 } from '@angular/core';
-import { ToolConfig } from '../../../../shared/models/tool_config.model';
+import { ToolConfig } from '../../../../features/tools/models/tool_config.model';
 import { NgClass, NgFor, NgIf } from '@angular/common';
-import { MatIconModule } from '@angular/material/icon';
 
 @Component({
   selector: 'app-tool-config-list',
@@ -20,7 +19,6 @@ import { MatIconModule } from '@angular/material/icon';
         class="search-input-wrapper"
         [ngClass]="{ 'input-has-content': searchHasContent }"
       >
-        <mat-icon class="search-icon">search</mat-icon>
         <input
           type="text"
           class="search-input"
@@ -52,9 +50,7 @@ import { MatIconModule } from '@angular/material/icon';
                 class="delete-button"
                 (click)="onDelete(config, $event)"
                 aria-label="Delete Configuration"
-              >
-                <mat-icon>delete</mat-icon>
-              </button>
+              ></button>
             </div>
           </li>
         </ul>
@@ -62,7 +58,6 @@ import { MatIconModule } from '@angular/material/icon';
 
       <!-- "Create New" button stays at the bottom, outside the scrollable area -->
       <button class="create-config-button" (click)="onCreateNewConfig()">
-        <mat-icon>add</mat-icon>
         Create new form
       </button>
     </div>
@@ -334,7 +329,7 @@ import { MatIconModule } from '@angular/material/icon';
     `,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgFor, NgIf, NgClass, MatIconModule],
+  imports: [NgFor, NgIf, NgClass],
   standalone: true,
 })
 export class ToolConfigListComponent implements OnChanges {

@@ -10,6 +10,7 @@ export interface GraphMessage {
   execution_order: number; // Snake case from API
   created_at: string; // This is the timestamp
   message_data: MessageData; // Snake case from API - This will be one of the specific message types
+  uuid?: string;
 }
 
 // Message type constants

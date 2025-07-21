@@ -1,4 +1,5 @@
 import json
+import os
 import redis.asyncio as aioredis
 from redis import Redis
 from loguru import logger
@@ -6,6 +7,10 @@ from typing import List, Union
 from redis.client import PubSub
 
 from utils.singleton_meta import SingletonMeta
+
+SESSION_STATUS_CHANNEL = os.environ.get(
+    "SESSION_STATUS_CHANNEL", "sessions:session_status"
+)
 
 
 class RedisService(metaclass=SingletonMeta):
@@ -84,8 +89,7 @@ class RedisService(metaclass=SingletonMeta):
             "status": status,
             "status_data": kwargs,
         }
-        channel_name = "sessions:session_status"
-        await self.async_publish(channel_name, message)
+        await self.async_publish(SESSION_STATUS_CHANNEL, message)
 
     def update_session_status(self, session_id: int, status: str, **kwargs):
 
@@ -95,5 +99,4 @@ class RedisService(metaclass=SingletonMeta):
             "status_data": kwargs,
         }
 
-        channel_name = "sessions:session_status"
-        self.sync_publish(channel=channel_name, message=message)
+        self.sync_publish(channel=SESSION_STATUS_CHANNEL, message=message)

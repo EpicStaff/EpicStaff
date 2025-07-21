@@ -1,0 +1,100 @@
+.knowledge-selector {
+  position: relative;
+  width: 100%;
+
+  label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  .selector {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    background-color: var(--color-input-background);
+    border: 1px solid var(--color-input-border);
+    border-radius: 6px;
+    padding: 0.625rem 0.75rem;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+    min-height: 42px;
+
+    &:hover {
+      border-color: var(--accent-color);
+    }
+
+    &.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    &.loading {
+      opacity: 0.7;
+      cursor: wait;
+    }
+
+    &.placeholder {
+      color: rgba(255, 255, 255, 0.3);
+    }
+
+    .selected-collection {
+      font-weight: normal;
+    }
+
+    .selector-arrow {
+      display: flex;
+      align-items: center;
+      color: var(--color-text-secondary);
+      margin-left: 8px;
+      transition: transform 0.2s ease;
+
+      &.open {
+        transform: rotate(180deg);
+      }
+    }
+  }
+
+  .dropdown-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    max-height: 300px;
+    overflow-y: auto;
+    background-color: var(--color-modals-background);
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 6px;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+    .dropdown-item {
+      padding: 0.625rem 0.75rem;
+      color: var(--color-text-primary);
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+
+      &:hover {
+        background-color: rgba(255, 255, 255, 0.05);
+      }
+
+      &.selected {
+        background-color: rgba(104, 95, 255, 0.1);
+        color: var(--accent-color);
+      }
+    }
+
+    .no-results {
+      padding: 12px;
+      text-align: center;
+      color: var(--color-text-secondary);
+      font-size: 0.875rem;
+      font-style: italic;
+    }
+  }
+}

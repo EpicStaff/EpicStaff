@@ -79,13 +79,9 @@ export class AdvancedTaskSettingsDialogComponent implements OnInit {
   public ngOnInit(): void {
     if (this.taskData.output_model) {
       try {
-        // For existing models, only show properties and required (hide type and title)
+        // Show the complete output model, including type and title
         const outputModel = this.taskData.output_model;
-        const displayModel = {
-          properties: outputModel.properties || {},
-          required: outputModel.required || [],
-        };
-        this.jsonConfig.set(JSON.stringify(displayModel, null, 2));
+        this.jsonConfig.set(JSON.stringify(outputModel, null, 2));
       } catch (e) {
         this.jsonConfig.set(this.getDefaultJsonSchema());
       }
@@ -95,8 +91,10 @@ export class AdvancedTaskSettingsDialogComponent implements OnInit {
   }
 
   private getDefaultJsonSchema(): string {
-    // Return properties and required objects only in the default schema (hide type and title)
+    // Return a complete default schema including type and title
     const defaultSchema = {
+      type: 'object',
+      title: 'TaskOutputModel',
       properties: {},
       required: [],
     };
@@ -139,7 +137,7 @@ export class AdvancedTaskSettingsDialogComponent implements OnInit {
     try {
       const parsedJson = JSON.parse(jsonString);
 
-      // If properties are empty, return null
+      // If properties are empty or don't exist, return null
       const hasProperties =
         parsedJson.properties && Object.keys(parsedJson.properties).length > 0;
 
@@ -147,15 +145,8 @@ export class AdvancedTaskSettingsDialogComponent implements OnInit {
         return null;
       }
 
-      // Add type and title that were hidden from the user
-      const completeModel = {
-        type: 'object',
-        title: 'TaskOutputModel',
-        properties: parsedJson.properties,
-        required: Array.isArray(parsedJson.required) ? parsedJson.required : [],
-      };
-
-      return completeModel;
+      // Use the JSON as provided by the user, don't modify it
+      return parsedJson;
     } catch (e) {
       console.error('Error processing output model:', e);
       return null;

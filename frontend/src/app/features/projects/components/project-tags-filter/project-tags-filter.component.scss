@@ -117,22 +117,4 @@
       background: var(--color-nodes-background);
     }
   }
-
-  /* Scrollbar styling */
-  .tags-list::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  .tags-list::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .tags-list::-webkit-scrollbar-thumb {
-    background: var(--color-components-card-border);
-    border-radius: 3px;
-  }
-
-  .tags-list::-webkit-scrollbar-thumb:hover {
-    background: var(--color-text-tertiary);
-  }
 }

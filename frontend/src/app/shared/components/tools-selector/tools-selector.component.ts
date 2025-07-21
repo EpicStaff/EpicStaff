@@ -19,7 +19,7 @@ import {
 } from '../../../services/full-tool-config.service';
 import { PythonCodeToolService } from '../../../user-settings-page/tools/custom-tool-editor/services/pythonCodeToolService.service';
 import { GetPythonCodeToolRequest } from '../../../features/tools/models/python-code-tool.model';
-import { GetToolConfigRequest } from '../../models/tool_config.model';
+import { GetToolConfigRequest } from '../../../features/tools/models/tool_config.model';
 import { IconButtonComponent } from '../buttons/icon-button/icon-button.component';
 import { AppIconComponent } from '../app-icon/app-icon.component';
 

@@ -16,14 +16,10 @@ export class EmbeddingModelsService {
 
   constructor(private http: HttpClient, private configService: ConfigService) {}
 
-  // Dynamically retrieve the API URL from ConfigService
   private get apiUrl(): string {
     return this.configService.apiUrl + 'embedding-models/';
   }
 
-  /**
-   * Gets embedding models from the API
-   */
   getEmbeddingModels(): Observable<EmbeddingModel[]> {
     return this.http
       .get<ApiGetRequest<EmbeddingModel>>(this.apiUrl, {
@@ -32,9 +28,6 @@ export class EmbeddingModelsService {
       .pipe(map((response: ApiGetRequest<EmbeddingModel>) => response.results));
   }
 
-  /**
-   * Get a specific embedding model by ID.
-   */
   getEmbeddingModelById(id: number): Observable<EmbeddingModel> {
     return this.http.get<EmbeddingModel>(`${this.apiUrl}${id}/`, {
       headers: this.headers,

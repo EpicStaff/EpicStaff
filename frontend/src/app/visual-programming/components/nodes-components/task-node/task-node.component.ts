@@ -4,7 +4,6 @@ import {
   ChangeDetectionStrategy,
   signal,
 } from '@angular/core';
-import { TaskDto } from '../../../../shared/models/task.model';
 import { NgIf, SlicePipe } from '@angular/common';
 import { TaskNodeModel } from '../../../core/models/node.model';
 

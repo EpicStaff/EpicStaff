@@ -1,11 +1,12 @@
 from typing import Any, Literal
 from decimal import Decimal
 
+from tables.serializers.serializers import BaseToolSerializer
 from tables.models import (
     Agent,
     Task,
     TaskContext,
-    TaskTools,
+    TaskConfiguredTools,
     TemplateAgent,
     Tool,
     ToolConfigField,
@@ -54,7 +55,7 @@ from tables.models.realtime_models import (
 )
 from tables.models.tag_models import AgentTag, CrewTag, GraphTag
 from tables.models.vector_models import MemoryDatabase
-from tables.validators import ToolConfigValidator, eval_any
+from tables.validators.tool_config_validator import ToolConfigValidator, eval_any
 from tables.models import (
     AgentSessionMessage,
     TaskSessionMessage,
@@ -217,23 +218,9 @@ class RealtimeAgentSerializer(serializers.ModelSerializer):
         exclude = ["agent"]
 
 
-class AgentSerializer(serializers.ModelSerializer):
-    llm_config = serializers.PrimaryKeyRelatedField(
-        queryset=LLMConfig.objects.all(),
-        required=False,
-        allow_null=True,
-    )
-    configured_tools = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=ToolConfig.objects.all(),
-        required=False,
-    )
-    python_code_tools = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=PythonCodeTool.objects.all(),
-        required=False,
-    )
-    realtime_agent = RealtimeAgentSerializer(required=False)
+class AgentReadSerializer(serializers.ModelSerializer):
+    tools = serializers.SerializerMethodField()
+    realtime_agent = RealtimeAgentSerializer(read_only=True)
 
     class Meta:
         model = Agent
@@ -242,8 +229,7 @@ class AgentSerializer(serializers.ModelSerializer):
             "role",
             "goal",
             "backstory",
-            "configured_tools",
-            "python_code_tools",
+            "tools",
             "max_iter",
             "max_rpm",
             "max_execution_time",
@@ -256,31 +242,121 @@ class AgentSerializer(serializers.ModelSerializer):
             "default_temperature",
             "llm_config",
             "fcm_llm_config",
-            "python_code_tools",
             "knowledge_collection",
             "realtime_agent",
         ]
 
-    def create(self, validated_data):
-        realtime_agent_data = validated_data.pop("realtime_agent", None)
+    def get_tools(self, agent: Agent) -> list[dict]:
 
-        agent = super().create(validated_data)
-        if not realtime_agent_data:
-            RealtimeAgent.objects.create(agent=agent)
-        else:
+        tools = []
+
+        # TODO: DRY
+        for tool in agent.python_code_tools.all():
+            serialized = BaseToolSerializer(tool).data
+            tools.append(serialized)
+
+        for tool in agent.configured_tools.all():
+            serialized = BaseToolSerializer(tool).data
+            tools.append(serialized)
+
+        return tools
+
+
+class AgentWriteSerializer(serializers.ModelSerializer):
+    tool_ids = serializers.ListField(
+        child=serializers.CharField(),
+        # write_only=True,
+        required=False,
+    )
+    realtime_agent = RealtimeAgentSerializer(required=False)
+    llm_config = serializers.PrimaryKeyRelatedField(
+        queryset=LLMConfig.objects.all(), required=False, allow_null=True
+    )
+
+    class Meta:
+        model = Agent
+        fields = [
+            "id",
+            "role",
+            "goal",
+            "backstory",
+            "tool_ids",
+            "max_iter",
+            "max_rpm",
+            "max_execution_time",
+            "memory",
+            "allow_delegation",
+            "cache",
+            "allow_code_execution",
+            "max_retry_limit",
+            "respect_context_window",
+            "default_temperature",
+            "llm_config",
+            "fcm_llm_config",
+            "knowledge_collection",
+            "realtime_agent",
+        ]
+
+    def _resolve_tool_ids(self, tool_ids: list[str]) -> dict[str, list[int]]:
+        tools = {
+            "configured-tool-list": [],
+            "python-code-tool-list": [],
+        }
+        for tool_id in tool_ids:
+            try:
+                prefix, pk = tool_id.split(":")
+                if prefix == "configured-tool":
+                    tools["configured-tool-list"].append(pk)
+                elif prefix == "python-code-tool":
+                    tools["python-code-tool-list"].append(pk)
+                else:
+                    raise ValueError(f"Unknown tool prefix: {prefix}")
+            except Exception as e:
+                raise serializers.ValidationError({"tool_ids": str(e)})
+
+        return tools
+
+    def create(self, validated_data: dict):
+        tool_ids = validated_data.pop("tool_ids", [])
+        tools = self._resolve_tool_ids(tool_ids)
+
+        realtime_agent_data = validated_data.pop("realtime_agent", None)
+        agent: Agent = super().create(validated_data)
+
+        
+        agent.configured_tools.set(
+            ToolConfig.objects.filter(id__in=tools["configured-tool-list"])
+        )
+    
+        agent.python_code_tools.set(
+            PythonCodeTool.objects.filter(id__in=tools["python-code-tool-list"])
+        )
+
+        if realtime_agent_data:
             RealtimeAgent.objects.create(agent=agent, **realtime_agent_data)
+        else:
+            RealtimeAgent.objects.create(agent=agent)
 
         return agent
 
-    def update(self, instance, validated_data):
-        realtime_agent_data = validated_data.pop("realtime_agent", None)
+    def update(self, instance: Agent, validated_data: dict):
+        tool_ids = validated_data.pop("tool_ids", [])
+        tools = self._resolve_tool_ids(tool_ids)
 
+        realtime_agent_data: dict | None = validated_data.pop("realtime_agent", None)
         instance = super().update(instance, validated_data)
 
+        
+        instance.configured_tools.set(
+            ToolConfig.objects.filter(id__in=tools["configured-tool-list"])
+        )
+        
+        instance.python_code_tools.set(
+            PythonCodeTool.objects.filter(id__in=tools["python-code-tool-list"])
+        )
+
         if realtime_agent_data:
-            realtime_agent, created = RealtimeAgent.objects.get_or_create(
-                agent=instance
-            )
+            realtime_agent, _ = RealtimeAgent.objects.get_or_create(agent=instance)
             for attr, value in realtime_agent_data.items():
                 setattr(realtime_agent, attr, value)
             realtime_agent.save()
@@ -390,14 +466,35 @@ class TaskContextListField(serializers.Field):
         return context_ids
 
 
-class TaskSerializer(serializers.ModelSerializer):
-    task_context_list = TaskContextListField(required=False)
-
-    task_tool_list = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=TaskTools.objects.all(), required=False
+class TaskReadSerializer(serializers.ModelSerializer):
+    task_context_list = TaskContextListField(read_only=True)
+    tools = (
+        serializers.SerializerMethodField()
     )
-    task_python_code_tool_list = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=TaskPythonCodeTools.objects.all(), required=False
+
+    class Meta:
+        model = Task
+        fields = "__all__"
+
+    def get_tools(self, task: Task) -> list[dict]:
+
+        tools = []
+        for task_tool in task.task_configured_tool_list.all():
+            serialized = BaseToolSerializer(task_tool.tool).data
+            tools.append(serialized)
+        for task_tool in task.task_python_code_tool_list.all():
+            serialized = BaseToolSerializer(task_tool.tool).data
+            tools.append(serialized)
+
+        return tools
+
+
+class TaskWriteSerializer(serializers.ModelSerializer):
+    task_context_list = TaskContextListField(required=False)
+    tool_ids = serializers.ListField(
+        child=serializers.CharField(),
+        # write_only=True,
+        required=False,
     )
 
     class Meta:
@@ -405,63 +502,88 @@ class TaskSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def validate(self, attrs):
-        """Validate the entire serializer data"""
         attrs = super().validate(attrs)
-
+        context_ids = self.initial_data.get("task_context_list", [])
         task_context_field = self.fields["task_context_list"]
 
-        context_ids = self.initial_data.get("task_context_list", [])
-
         if context_ids:
-            validated_context_ids = task_context_field.validate_context_tasks(
+            validated = task_context_field.validate_context_tasks(
                 context_ids, task_instance=self.instance, task_data=attrs
             )
-            # Store validated context IDs for create/update methods
-            attrs["_validated_context_ids"] = validated_context_ids
+            attrs["_validated_context_ids"] = validated
         else:
             attrs["_validated_context_ids"] = []
 
         return attrs
 
     def create(self, validated_data):
-        """Create task and handle context relationships"""
         context_ids = validated_data.pop("_validated_context_ids", [])
-
-        # Remove task_context_list from validated_data as it's not a model field
         validated_data.pop("task_context_list", None)
+
+        tool_ids = validated_data.pop("tool_ids", None)
 
         task = super().create(validated_data)
-        self._update_task_contexts(task, context_ids)
-        return task
-
-    def update(self, instance, validated_data):
-        """Update task and handle context relationships"""
-        context_ids = validated_data.pop("_validated_context_ids", None)
-
-        # Remove task_context_list from validated_data as it's not a model field
-        validated_data.pop("task_context_list", None)
-
-        task = super().update(instance, validated_data)
+        
+        if tool_ids is not None:
+            self._update_task_tools(task=task, tool_ids=tool_ids)
 
         if context_ids is not None:
             self._update_task_contexts(task, context_ids)
 
         return task
 
-    def _update_task_contexts(self, task, context_ids):
-        """Update task contexts - remove old ones and create new ones"""
-        TaskContext.objects.filter(task=task).delete()
+    def update(self, instance, validated_data):
+        context_ids = validated_data.pop("_validated_context_ids", None)
+        validated_data.pop("task_context_list", None)
 
-        context_objects = []
-        if context_ids:
-            for context_id in context_ids:
-                context = Task.objects.get(id=context_id)  # Needed for context.order
-                instance = TaskContext(task=task, context=context)
+        tool_ids = validated_data.pop("tool_ids", None)
 
+        task = super().update(instance, validated_data)
+
+        if tool_ids is not None:
+            self._update_task_tools(task=task, tool_ids=tool_ids)
+
+        if context_ids is not None:
+            self._update_task_contexts(task, context_ids)
+
+        return  task # TODO: responce
+
+    def _update_task_tools(self, task: Task, tool_ids: list[str]):
+        TaskPythonCodeTools.objects.filter(task=task).delete()
+        TaskConfiguredTools.objects.filter(task=task).delete()
+
+        python_code_tool_list = []
+        configured_tool_list = []
+        for tool_id in tool_ids:
+
+            prefix, id_ = tool_id.split(":")
+            if prefix == "python-code-tool":
+                python_code_tool = PythonCodeTool.objects.get(pk=id_)
+                instance = TaskPythonCodeTools(
+                    task=task, tool=python_code_tool
+                )
                 instance.full_clean()
+                python_code_tool_list.append(instance)
+            if prefix == "configured-tool":
+                configured_tool = ToolConfig.objects.get(pk=id_)
+                instance = TaskConfiguredTools(task=task, tool=configured_tool)
+                instance.full_clean()
+                configured_tool_list.append(instance)
 
-                context_objects.append(instance)
-            TaskContext.objects.bulk_create(context_objects)
+        TaskPythonCodeTools.objects.bulk_create(python_code_tool_list)
+        TaskConfiguredTools.objects.bulk_create(configured_tool_list)
+
+    def _update_task_contexts(self, task, context_ids):
+        TaskContext.objects.filter(task=task).delete()
+        context_objects = []
+
+        for context_id in context_ids:
+            context = Task.objects.get(id=context_id)
+            instance = TaskContext(task=task, context=context)
+            instance.full_clean()
+            context_objects.append(instance)
+
+        TaskContext.objects.bulk_create(context_objects)
 
 
 class CrewSerializer(serializers.ModelSerializer):
@@ -772,6 +894,19 @@ class SessionSerializer(serializers.ModelSerializer):
         ]
 
 
+class SessionLightSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Session
+        fields = (
+            "id",
+            "graph_id",
+            "status",
+            "status_updated_at",
+            "created_at",
+            "finished_at",
+        )
+
+
 class GraphSessionMessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = GraphSessionMessage
@@ -908,4 +1043,5 @@ class GraphSerializer(serializers.ModelSerializer):
             "decision_table_node_list",
             "start_node_list",
             "time_to_live",
+            "persistent_variables",
         ]

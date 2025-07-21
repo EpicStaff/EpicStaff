@@ -10,8 +10,8 @@ import { AppIconComponent } from '../../../../../shared/components/app-icon/app-
 import { IconButtonComponent } from '../../../../../shared/components/buttons/icon-button/icon-button.component';
 import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
 import { FullRealtimeConfig } from '../../../services/realtime-llms/full-reamtime-config.service';
-import { getProviderIconPath } from '../../../constants/provider-icons.constants';
-import { ToggleSwitchComponent } from '../../../../../shared/components/toggle-switch/toggle-switch.component';
+import { getProviderIconPath } from '../../../utils/get-provider-icon';
+import { ToggleSwitchComponent } from '../../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 
 @Component({
   selector: 'app-voice-config-item',

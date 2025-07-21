@@ -7,7 +7,7 @@ import {
   computed,
   DestroyRef,
 } from '@angular/core';
-import { Tool } from '../../../../../../shared/models/tool.model';
+import { Tool } from '../../../../models/tool.model';
 import { BuiltInToolCardComponent } from './components/built-in-tool-card/built-in-tool-card.component';
 import { LoadingSpinnerComponent } from '../../../../../../shared/components/loading-spinner/loading-spinner.component';
 import { NgIf, NgFor } from '@angular/common';

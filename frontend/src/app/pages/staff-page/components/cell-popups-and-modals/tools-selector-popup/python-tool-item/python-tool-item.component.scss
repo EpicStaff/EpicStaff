@@ -1,0 +1,90 @@
+// Variables
+$bg-item: #2a2a2a;
+$bg-item-hover: #333333;
+$accent-blue: #4f46e5;
+$text-primary: #f5f5f5;
+$text-secondary: #a0a0a0;
+$border-color: rgba(255, 255, 255, 0.1);
+
+.python-tool-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  background-color: $bg-item;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid #404040;
+  gap: 12px;
+
+  &:focus {
+    outline: none;
+    border-color: $accent-blue;
+  }
+
+  &:hover {
+    background-color: $bg-item-hover;
+  }
+
+  &.selected-tool {
+    background-color: rgba($accent-blue, 0.15);
+    border-color: $accent-blue;
+    box-shadow: 0 0 0 1px rgba($accent-blue, 0.4);
+  }
+
+  .tool-icon {
+    font-size: 14px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+  }
+
+  .tool-name {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+    color: $text-primary;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    margin-right: 16px;
+  }
+
+  input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid $border-color;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+
+    &:checked {
+      background-color: $accent-blue;
+      border-color: $accent-blue;
+
+      &::after {
+        content: "✓";
+        color: white;
+        font-size: 10px;
+      }
+    }
+
+    &:hover:not(:checked) {
+      background-color: rgba($accent-blue, 0.8);
+      color: white;
+    }
+  }
+}

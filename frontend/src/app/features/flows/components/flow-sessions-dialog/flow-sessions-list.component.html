@@ -24,17 +24,38 @@
       </svg>
     </button>
   </div>
-  @if (!isLoaded()) {
-  <app-loading-spinner size="md" message="Loading sessions..." />
-  } @else { @if (sessions().length > 0) {
-  <app-flow-sessions-table
-    [sessions]="sessions()"
-    [flow]="flow"
-    (deleteSelected)="onDeleteSelected($event)"
-    (viewSession)="onViewSession($event)"
-    (stopSession)="onStopSession($event)"
-  ></app-flow-sessions-table>
-  } @else {
-  <p>No sessions found for this flow.</p>
-  } }
+
+  <div class="dialog-content">
+    <!-- Always show the filter controls -->
+    <div class="filter-controls">
+      <app-flow-session-status-filter-dropdown
+        [value]="statusFilter()"
+        (valueChange)="onStatusFilterChange($event)"
+      >
+      </app-flow-session-status-filter-dropdown>
+    </div>
+
+    <!-- Always show the table structure -->
+    <app-flow-sessions-table
+      [sessions]="sessions()"
+      [flow]="flow"
+      [isLoading]="!isLoaded()"
+      [showEmptyState]="isLoaded() && sessions().length === 0"
+      (deleteSelected)="onDeleteSelected($event)"
+      (viewSession)="onViewSession($event)"
+      (stopSession)="onStopSession($event)"
+    >
+    </app-flow-sessions-table>
+
+    @if (isLoaded() && totalCount > pageSize()) {
+    <app-pagination-controls
+      [pageSize]="pageSize()"
+      [totalCount]="totalCount"
+      [currentPage]="currentPage()"
+      [maxPagesToShow]="5"
+      (pageChange)="onPageChange($event)"
+    >
+    </app-pagination-controls>
+    }
+  </div>
 </div>

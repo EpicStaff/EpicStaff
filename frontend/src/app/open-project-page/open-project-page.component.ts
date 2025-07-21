@@ -22,8 +22,9 @@ import { TasksService } from '../services/tasks.service';
 import { finalize, forkJoin, Subscription } from 'rxjs';
 import { GetProjectRequest } from '../features/projects/models/project.model';
 import { Dialog } from '@angular/cdk/dialog';
-import { FullTask } from './models/full-task.model';
+import { FullTask } from '../shared/models/full-task.model';
 import { FullAgentService, FullAgent } from '../services/full-agent.service';
+import { FullTaskService } from '../services/full-task.service';
 import { ProjectStateService } from './services/project-state.service';
 import {
   trigger,
@@ -101,6 +102,7 @@ interface FlowModel {
   ],
   animations: [expandCollapseAnimation],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [ProjectStateService],
 })
 export class OpenProjectPageComponent implements OnInit, OnDestroy {
   @Input() showHeader: boolean = true;
@@ -111,20 +113,16 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy {
   private subscription = new Subscription();
   public isLoading = signal(true);
 
-  // Track active tab
   public activeTab: TabType = 'overview';
 
-  // Mock flow data for the flow graph component
   public mockFlowData: FlowModel = {
     nodes: [],
     connections: [],
     groups: [],
   };
 
-  // Track expanded sections with a Set
   public expandedSections = new Set<string>();
 
-  // Sections configuration
   public sections: SectionConfig[] = [];
 
   constructor(
@@ -132,6 +130,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy {
     private tasksService: TasksService,
     private cdr: ChangeDetectorRef,
     private fullAgentService: FullAgentService,
+    private fullTaskService: FullTaskService,
     public projectStateService: ProjectStateService,
     private toastService: ToastService,
     private route: ActivatedRoute,
@@ -139,7 +138,6 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit() {
-    // Use input projectId if provided, otherwise get from route
     if (this.inputProjectId) {
       this.projectId = String(this.inputProjectId);
       console.log('ngOnInit - using input projectId:', this.projectId);
@@ -216,7 +214,10 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy {
     console.log('loadData - Starting to load project with ID:', this.projectId);
 
     const projectRequest = this.projectsService.getProjectById(+this.projectId);
-    const tasksRequest = this.tasksService.getTasksByProjectId(this.projectId);
+
+    const tasksRequest = this.fullTaskService.getFullTasksByProject(
+      +this.projectId
+    );
     const agentsRequest = this.fullAgentService.getFullAgentsByProject(
       +this.projectId
     );
@@ -259,16 +260,9 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy {
               );
             }
             this.project = project;
+            console.log('project', this.project);
 
-            // Map tasks to FullTaskModel by finding the complete agent data
-            const fullTaskModels: FullTask[] = tasks.map((task) => ({
-              ...task,
-              agentData: task.agent
-                ? agents.find((agent) => agent.id === task.agent) || null
-                : null,
-            }));
-            // Set the tasks and agents state
-            this.projectStateService.updateTasks(fullTaskModels);
+            this.projectStateService.updateTasks(tasks);
             this.projectStateService.updateAgents(agents);
 
             this.cdr.markForCheck();
@@ -332,6 +326,11 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy {
   }
 
   onSettingsChanged(updatedSettings: Partial<GetProjectRequest>) {
+    console.log(
+      '🎯 Parent component received settings change:',
+      updatedSettings
+    );
+
     const keys = Object.keys(
       updatedSettings
     ) as (keyof Partial<GetProjectRequest>)[];
@@ -354,23 +353,75 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy {
   }
 
   private updateProjectSetting(key: string, value: any) {
-    // Create a copy of the current project and update the specific field
-    const updatedProject = { ...this.project, [key]: value };
+    // Create patch data with only the changed field
+    const patchData = { [key]: value };
 
-    // Log the updated project and the patch data
-    console.log(`Sending update for ${key} with new value:`, updatedProject);
+    // Log the patch data
+    console.log(`Sending patch update for ${key} with new value:`, value);
 
-    // Send the updated project with PUT request
-    this.projectsService.updateProject(updatedProject).subscribe({
-      next: (response) => {
-        this.toastService.success('Project updated successfully');
-        console.log('Project updated successfully:', response);
-      },
-      error: (error) => {
-        // Log the error if the update fails
-        console.error(`Error updating project field ${key}:`, error);
-      },
-    });
+    // Send PATCH request with only the changed field
+    this.projectsService
+      .patchUpdateProject(this.project.id, patchData)
+      .subscribe({
+        next: (updatedProject) => {
+          console.log('🔥 PATCH Response received:', updatedProject);
+          console.log('🔥 Current project before update:', this.project);
+          console.log('🔥 Memory field in response:', updatedProject.memory);
+
+          // Update local component state with the response
+          this.project = updatedProject;
+
+          // Update ProjectStateService with the latest project data
+          this.projectStateService.setProject(updatedProject);
+
+          // Debug: Check current cache state before update
+          const currentCachedProject = this.projectsService
+            .projects()
+            .find((p) => p.id === updatedProject.id);
+          console.log(
+            '🔥 Project in cache BEFORE update:',
+            currentCachedProject
+          );
+
+          // Explicitly update the ProjectsStorageService cache to ensure consistency
+          this.projectsService.updateProjectInCache(updatedProject);
+
+          // Debug: Check cache state after update
+          const updatedCachedProject = this.projectsService
+            .projects()
+            .find((p) => p.id === updatedProject.id);
+          console.log(
+            '🔥 Project in cache AFTER update:',
+            updatedCachedProject
+          );
+          console.log(
+            '🔥 Memory field in cache after update:',
+            updatedCachedProject?.memory
+          );
+
+          // Trigger change detection
+          this.cdr.markForCheck();
+
+          this.toastService.success('Project updated successfully');
+          console.log('Project updated successfully:', updatedProject);
+        },
+        error: (error) => {
+          // Log the error if the update fails
+          console.error(`Error updating project field ${key}:`, error);
+
+          // Extract error message for user feedback
+          let errorMessage = 'Failed to update project';
+          if (error.error && error.error.message) {
+            errorMessage = error.error.message;
+          } else if (error.error && typeof error.error === 'string') {
+            errorMessage = error.error;
+          } else if (error.message) {
+            errorMessage = error.message;
+          }
+
+          this.toastService.error(`Error updating project: ${errorMessage}`);
+        },
+      });
   }
 
   ngOnDestroy() {

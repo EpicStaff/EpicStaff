@@ -19,10 +19,11 @@
   }
 
   .segment-type-boolean > .segment-value {
-    color: #dc3545 !important;
+    color: #9370db !important;
   }
 
   .segment-type-null > .segment-value {
     color: #6c757d !important;
+    background-color: transparent !important;
   }
 }

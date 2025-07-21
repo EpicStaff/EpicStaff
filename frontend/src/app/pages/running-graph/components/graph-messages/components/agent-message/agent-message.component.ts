@@ -121,7 +121,7 @@ import { GetAgentRequest } from '../../../../../../shared/models/agent.model';
                 <ngx-json-viewer
                   *ngIf="isValidJson(getResult())"
                   [json]="getParsedJson('result')"
-                  [expanded]="false"
+                  [expanded]="true"
                 ></ngx-json-viewer>
                 <div
                   class="formatted-content"

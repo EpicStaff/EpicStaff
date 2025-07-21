@@ -21,7 +21,7 @@ import {
 import { FullAgent } from '../../../../../services/full-agent.service';
 import { AgentMenuComponent } from './header-sub-menu/header-sub-menu.component';
 import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
-import { getProviderIconPath } from '../../../../../features/settings-dialog/constants/provider-icons.constants';
+import { getProviderIconPath } from '../../../../../features/settings-dialog/utils/get-provider-icon';
 
 export type CardState = 'default' | 'adding' | 'removing';
 
@@ -156,11 +156,12 @@ export class StaffAgentCardComponent implements OnInit, OnChanges {
       return [];
     }
 
-    if (this.toolsExpanded || this.agent.mergedTools.length <= 4) {
-      return this.agent.mergedTools;
-    } else {
-      return this.agent.mergedTools.slice(0, 4);
-    }
+    // if (this.toolsExpanded || this.agent.mergedTools.length <= 4) {
+    //   return this.agent.mergedTools;
+    // } else {
+    //   return this.agent.mergedTools.slice(0, 4);
+    // }
+    return [];
   }
 
   public shouldShowToolsToggle(): boolean {

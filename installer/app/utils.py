@@ -223,6 +223,60 @@ def save_image_tag(image_tag: str):
     save_config("image_tag", image_tag)
     return True
 
+def save_git_build_repository(git_build_repository: str):
+    
+    allowed_regex = r"^[a-zA-Z0-9][a-zA-Z0-9_.:\-\/]{1,127}$"
+    if not git_build_repository or not re.match(allowed_regex, git_build_repository):
+        print(f"Invalid git_build_repository: {git_build_repository}")
+        return False
+    if not git_build_repository:
+        return False
+
+    lines = []
+
+    path_line = f'GIT_BUILD_REPOSITORY="{git_build_repository}"\n'
+    path_exists = False
+
+    for i, line in enumerate(lines):
+        if line.startswith("GIT_BUILD_REPOSITORY="):
+            lines[i] = path_line
+            path_exists = True
+            break
+
+    if not path_exists:
+        lines.append(path_line)
+
+    # Save to system config
+    save_config("git_build_repository", git_build_repository)
+    return True
+
+def save_git_build_branch(git_build_branch: str):
+    """Save the image tag to the appropriate storage"""
+    allowed_regex = r"^[a-zA-Z0-9][a-zA-Z0-9_.\-\/]{1,127}$"
+    if not git_build_branch or not re.match(allowed_regex, git_build_branch):
+        return False
+
+    if not git_build_branch:
+        return False
+
+    lines: list[str] = []
+
+    path_line = f'GIT_BUILD_BRANCH="{git_build_branch}"\n'
+    path_exists = False
+
+    for i, line in enumerate(lines):
+        if line.startswith("GIT_BUILD_BRANCH="):
+            lines[i] = path_line
+            path_exists = True
+            break
+
+    if not path_exists:
+        lines.append(path_line)
+
+    # Save to system config
+    save_config("git_build_branch", git_build_branch)
+    return True
+
 
 def get_savefiles_path():
     """Get the savefiles path from the appropriate storage"""
@@ -256,6 +310,17 @@ def get_image_tag():
         return image_tag
     return "latest-main"
 
+def get_git_build_branch():
+    git_build_branch = get_config("git_build_branch")
+    if git_build_branch and git_build_branch.lower() != "none":
+        return git_build_branch
+    return "main"
+
+def get_git_build_repository():
+    git_build_repository = get_config("git_build_repository")
+    if git_build_repository and git_build_repository.lower() != "none":
+        return git_build_repository
+    return "https://github.com/EpicStaff/EpicStaff.git"
 
 def _tk_dialog() -> str:
     """

@@ -36,10 +36,10 @@ import {
   AdvancedSettingsDialogComponent,
   AdvancedSettingsData,
 } from '../../../pages/staff-page/components/advanced-settings-dialog.component.ts/advanced-settings-dialog.component';
-import { LLMPopupComponent } from '../../../pages/staff-page/components/cell-renderers/cell-popup/llm-popup/llm-popup.component';
-import { TagsPopupComponent } from '../../../pages/staff-page/components/cell-renderers/cell-popup/tags-popup/tags-popup.component';
-import { IndexCellRendererComponent } from '../../../pages/staff-page/components/cell-renderers/cell-popup/test-row-height/custom-row-height.component';
-import { ToolsPopupComponent } from '../../../pages/staff-page/components/cell-renderers/cell-popup/tools-popup/tools-popup.component';
+import { LLMPopupComponent } from '../../../pages/staff-page/components/cell-popups-and-modals/llm-selector-popup/llm-popup.component';
+import { TagsPopupComponent } from '../../../pages/staff-page/components/cell-popups-and-modals/tags-popup/tags-popup.component';
+import { IndexCellRendererComponent } from '../../../pages/staff-page/components/cell-renderers/index-row-cell-renderer/custom-row-height.component';
+import { ToolsPopupComponent } from '../../../pages/staff-page/components/cell-popups-and-modals/tools-selector-popup/tools-popup.component';
 import { AgGridContextMenuComponent } from '../../../pages/staff-page/components/context-menu/ag-grid-context-menu.component';
 import { PreventContextMenuDirective } from '../../../pages/staff-page/components/directives/prevent-context-menu.directive';
 import { DelegationHeaderComponent } from '../../../pages/staff-page/components/header-renderers/delegation-header.component';
@@ -55,13 +55,15 @@ import {
   CreateAgentRequest,
   UpdateAgentRequest,
 } from '../../../shared/models/agent.model';
-import { FullTask } from '../../models/full-task.model';
+import { FullTask } from '../../../shared/models/full-task.model';
 import {
   CreateTaskRequest,
   GetTaskRequest,
   TableFullTask,
   UpdateTaskRequest,
 } from '../../../shared/models/task.model';
+import { FullTaskService } from '../../../services/full-task.service';
+import { buildToolIdsArray } from '../../../shared/utils/tool-ids-builder.util';
 import { AgentSelectionPopupComponent } from './popups/agent-select-popup/agent-selection-popup.component';
 import { GetProjectRequest } from '../../../features/projects/models/project.model';
 import { TasksService } from '../../../services/tasks.service';
@@ -151,7 +153,8 @@ export class TasksTableComponent {
     public dialog: Dialog,
     private projectStateService: ProjectStateService,
     private tasksService: TasksService,
-    private toastService: ToastService
+    private toastService: ToastService,
+    private fullTaskService: FullTaskService
   ) {}
 
   ngOnInit(): void {
@@ -187,7 +190,8 @@ export class TasksTableComponent {
       agent: null,
       agentData: null,
       task_context_list: [],
-      task_tool_list: [],
+      tools: [],
+      mergedTools: [],
     };
   }
   myTheme = themeQuartz.withParams({
@@ -204,7 +208,7 @@ export class TasksTableComponent {
     headerTextColor: '#d9d9de', // --color-text-primary
     cellTextColor: '#d9d9de', // --color-text-primary
     spacing: 3.3,
-    oddRowBackgroundColor: '#222226', // More subtle, closer to main background
+    oddRowBackgroundColor: '#222226',
   });
 
   // Column definitions
@@ -341,16 +345,34 @@ export class TasksTableComponent {
     //   width: 60,
     // },
 
-    // {
-    //   headerName: 'Tools',
-    //   field: 'mergedTools',
-    //   editable: false,
-    //   minWidth: 240,
-    //   maxWidth: 260,
-    //   cellRenderer: () => {
-    //     return '<div class="no-tools">Feature not implemented</div>';
-    //   },
-    // },
+    {
+      headerName: 'Tools',
+      field: 'mergedTools',
+      editable: false,
+      flex: 1,
+      minWidth: 200,
+      maxWidth: 400,
+      cellRenderer: (params: { value: any[] }) => {
+        const tools = params.value || [];
+
+        if (!tools || tools.length === 0) {
+          return '<div class="no-tools">No tools assigned</div>';
+        }
+
+        const toolsHtml = tools
+          .map((tool: { configName: any; toolName: any }) => {
+            return `
+                <div class="tool-item">
+                  <i class="tool-icon">🔧</i>
+                  <span class="tool-name-text" title="${tool.toolName}">${tool.toolName}</span>
+                </div>
+              `;
+          })
+          .join('');
+
+        return `<div class="tools-cell-wrapper">${toolsHtml}</div>`;
+      },
+    },
     {
       headerName: 'Assigned Agent',
       field: 'agentData', // Reference the agentData field
@@ -390,7 +412,7 @@ export class TasksTableComponent {
   };
 
   gridOptions: GridOptions = {
-    rowHeight: 100,
+    rowHeight: 106,
     headerHeight: 50,
     columnDefs: this.columnDefs,
     undoRedoCellEditing: true,
@@ -454,22 +476,30 @@ export class TasksTableComponent {
       this.updateTaskOrders();
     }
   }
+  private parseTaskData(taskData: FullTask) {
+    const agentData = taskData.agentData || null;
+    const agentId = agentData ? agentData.id : null;
+    const crew = this.project ? this.project.id : null;
+
+    // Process merged tools similar to agents table
+    const mergedTools = (taskData as any).mergedTools || [];
+
+    return {
+      ...taskData,
+      agent: agentId,
+      crew: crew,
+      configured_tools: mergedTools
+        .filter((tool: any) => tool.type === 'tool-config')
+        .map((tool: any) => tool.id),
+      python_code_tools: mergedTools
+        .filter((tool: any) => tool.type === 'python-tool')
+        .map((tool: any) => tool.id),
+    };
+  }
+
   private onCellValueChanged(event: CellValueChangedEvent): void {
     const colId = event.column.getColId();
     const fieldsToValidate = ['name', 'instructions', 'expected_output'];
-
-    // Function to parse the necessary fields (with updated fields)
-    const parseTaskData = (taskData: FullTask) => {
-      const agentData = taskData.agentData || null;
-      const agentId = agentData ? agentData.id : null;
-      const crew = this.project ? this.project.id : null;
-
-      return {
-        ...taskData,
-        agent: agentId,
-        crew: crew,
-      };
-    };
 
     // Check if this is a temporary task
     const isTempTask =
@@ -490,7 +520,12 @@ export class TasksTableComponent {
       }
 
       // Parse the task data
-      const parsedData = parseTaskData(event.data);
+      const parsedData = this.parseTaskData(event.data);
+
+      // Build tool_ids array for task creation
+      const configuredToolIds = parsedData.configured_tools || [];
+      const pythonToolIds = parsedData.python_code_tools || [];
+      const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds);
 
       // Create the new task
       const createTaskData: CreateTaskRequest = {
@@ -505,49 +540,40 @@ export class TasksTableComponent {
         crew: parsedData.crew,
         agent: parsedData.agent,
         task_context_list: parsedData.task_context_list ?? [],
-        task_tool_list: parsedData.task_tool_list ?? [],
+        tool_ids: toolIds,
       };
 
       this.tasksService.createTask(createTaskData).subscribe({
         next: (newTask: GetTaskRequest) => {
           console.log('Task created successfully:', newTask);
 
-          // Update the ID in our data model
           event.data.id = newTask.id;
 
-          // Refresh the row to reflect the new ID
           this.gridApi.refreshCells({
             rowNodes: [event.node],
             force: true,
           });
 
-          // Map agent data from the agents array based on agent id
           const agentData = this.agents.find(
             (agent) => agent.id === newTask.agent
           );
 
-          // Create a FullTask by merging GetTaskRequest and agent data
           const fullTask: FullTask = {
             ...newTask,
             agentData: agentData || null,
           };
 
-          // Add the task to the state
           this.projectStateService.addTask(fullTask);
 
-          // Create an empty task
           const emptyTask = this.createEmptyFullTask();
 
-          // Add to the end using transaction API
           this.rowData.push(emptyTask);
           this.gridApi.applyTransaction({ add: [emptyTask] });
 
           this.toastService.success('Task added successfully');
 
-          // Mark for change detection
           this.cdr.markForCheck();
 
-          // Update task orders
           this.updateTaskOrders();
         },
         error: (err) => console.error('Error creating task:', err),
@@ -556,7 +582,6 @@ export class TasksTableComponent {
       return;
     }
 
-    // For rows with a valid id, validate and update
     let allValid = true;
     fieldsToValidate.forEach((field) => {
       const fieldValue = event.data[field] ? event.data[field].trim() : '';
@@ -566,7 +591,6 @@ export class TasksTableComponent {
       }
     });
 
-    // Refresh only the edited cell
     this.gridApi.refreshCells({
       rowNodes: [event.node],
       columns: [colId],
@@ -577,15 +601,27 @@ export class TasksTableComponent {
       return;
     }
 
-    // Parse the task data
-    const parsedUpdateData = parseTaskData(event.data);
+    const parsedUpdateData = this.parseTaskData(event.data);
 
-    // Convert ID to number if it's a string
+    // Build tool_ids array for task update
+    const updateConfiguredToolIds = parsedUpdateData.configured_tools || [];
+    const updatePythonToolIds = parsedUpdateData.python_code_tools || [];
+    const updateToolIds = buildToolIdsArray(
+      updateConfiguredToolIds,
+      updatePythonToolIds
+    );
+
     if (typeof parsedUpdateData.id === 'string') {
       parsedUpdateData.id = +parsedUpdateData.id;
     }
 
-    this.tasksService.updateTask(parsedUpdateData).subscribe({
+    // Create update request with tool_ids
+    const updateTaskRequest: UpdateTaskRequest = {
+      ...parsedUpdateData,
+      tool_ids: updateToolIds,
+    };
+
+    this.tasksService.updateTask(updateTaskRequest).subscribe({
       next: (updatedResponse) => {
         console.log('Task updated successfully:', updatedResponse);
         this.toastService.success('Task updated successfully');
@@ -690,6 +726,17 @@ export class TasksTableComponent {
       return;
     }
 
+    // Parse the task data to extract tools
+    const parsedTaskData = this.parseTaskData(updatedTask as any);
+
+    // Build tool_ids array for settings update
+    const settingsConfiguredToolIds = parsedTaskData.configured_tools || [];
+    const settingsPythonToolIds = parsedTaskData.python_code_tools || [];
+    const settingsToolIds = buildToolIdsArray(
+      settingsConfiguredToolIds,
+      settingsPythonToolIds
+    );
+
     // Prepare the payload for the backend update request
     const updateTaskData = {
       id: +updatedTask.id,
@@ -704,7 +751,7 @@ export class TasksTableComponent {
       crew: updatedTask.crew,
       agent: updatedTask.agent,
       task_context_list: updatedTask.task_context_list,
-      task_tool_list: updatedTask.task_tool_list,
+      tool_ids: settingsToolIds,
     };
 
     // Call the update service
@@ -884,6 +931,17 @@ export class TasksTableComponent {
     // Mark for change detection
     this.cdr.markForCheck();
 
+    // Parse the task data to extract tools
+    const parsedTaskData = this.parseTaskData(newTaskData);
+
+    // Build tool_ids array for paste operation
+    const pasteConfiguredToolIds = parsedTaskData.configured_tools || [];
+    const pastePythonToolIds = parsedTaskData.python_code_tools || [];
+    const pasteToolIds = buildToolIdsArray(
+      pasteConfiguredToolIds,
+      pastePythonToolIds
+    );
+
     const createTaskData: CreateTaskRequest = {
       name: newTaskData.name,
       instructions: newTaskData.instructions,
@@ -896,7 +954,7 @@ export class TasksTableComponent {
       crew: newTaskData.crew ?? null,
       agent: newTaskData.agent ?? null,
       task_context_list: newTaskData.task_context_list ?? [],
-      task_tool_list: newTaskData.task_tool_list ?? [],
+      tool_ids: pasteToolIds,
     };
 
     this.tasksService.createTask(createTaskData).subscribe({
@@ -1069,31 +1127,34 @@ export class TasksTableComponent {
     if (event.colDef.field === 'actions') {
       const taskData: TableFullTask = event.data;
       this.closePopup();
-
       this.openSettingsDialog(taskData);
+      return;
     }
     const columnId = event.column.getColId();
     // Process only specific columns.
-    if (columnId !== 'agentData') {
+    if (columnId === 'mergedTools' || columnId === 'agentData') {
+      const rowIndex = event.rowIndex ?? 0;
+      const cell: CellInfo = { columnId, rowIndex };
+
+      if (
+        this.popupOverlayRef &&
+        this.currentPopupCell &&
+        this.currentPopupCell.columnId === cell.columnId &&
+        this.currentPopupCell.rowIndex === cell.rowIndex
+      ) {
+        return;
+      }
+
+      this.closePopup();
+      this.openPopup(event, cell);
       return;
     }
 
-    const rowIndex = event.rowIndex ?? 0;
-    const cell: CellInfo = { columnId, rowIndex };
-
-    // Avoid reopening the popup if it is already open on the same cell.
-    if (
-      this.popupOverlayRef &&
-      this.currentPopupCell &&
-      this.currentPopupCell.columnId === cell.columnId &&
-      this.currentPopupCell.rowIndex === cell.rowIndex
-    ) {
-      return;
+    // Prevent default behavior if needed.
+    const keyboardEvent = event.event as KeyboardEvent;
+    if (keyboardEvent) {
+      keyboardEvent.preventDefault();
     }
-
-    // Close any existing popup before opening a new one.
-    this.closePopup();
-    this.openPopup(event, cell);
   }
 
   private onCellKeyDown(event: CellKeyDownEvent<any, any>): void {
@@ -1286,6 +1347,37 @@ export class TasksTableComponent {
           }
         }
         // Close the popup after selecting an agent
+        this.closePopup();
+      });
+    }
+
+    if (cell.columnId === 'mergedTools') {
+      const portal = new ComponentPortal(ToolsPopupComponent);
+      const popupRef = this.popupOverlayRef.attach(portal);
+      popupRef.instance.mergedTools = event.data?.mergedTools || [];
+
+      popupRef.instance.mergedToolsUpdated.subscribe(
+        (
+          updatedMergedTools: {
+            id: number;
+            configName: string;
+            toolName: string;
+            type: string;
+          }[]
+        ) => {
+          if (this.currentPopupCell) {
+            const rowIndex = this.currentPopupCell.rowIndex;
+            const rowNode = this.gridApi.getDisplayedRowAtIndex(rowIndex);
+            if (rowNode) {
+              rowNode.setDataValue('mergedTools', updatedMergedTools);
+            }
+          }
+          this.closePopup();
+        }
+      );
+
+      // Handle cancel event
+      popupRef.instance.cancel.subscribe(() => {
         this.closePopup();
       });
     }

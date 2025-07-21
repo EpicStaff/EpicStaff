@@ -11,7 +11,7 @@ import {
   animate,
   sequence,
 } from '@angular/animations';
-import { AgentDto } from '../../../../shared/models/agent.model';
+import { GetAgentRequest } from '../../../../shared/models/agent.model';
 import { NgFor, NgIf, SlicePipe } from '@angular/common';
 import { AgentNodeModel } from '../../../core/models/node.model';
 

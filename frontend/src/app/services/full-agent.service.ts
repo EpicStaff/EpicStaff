@@ -12,14 +12,14 @@ import { LLM_Providers_Service } from '../features/settings-dialog/services/LLM_
 import { ToolsService } from '../features/tools/services/tools.service';
 
 import { GetAgentRequest } from '../shared/models/agent.model';
-import { GetToolConfigRequest } from '../shared/models/tool_config.model';
+import { GetToolConfigRequest } from '../features/tools/models/tool_config.model';
 import { GetPythonCodeToolRequest } from '../features/tools/models/python-code-tool.model';
 import { RealtimeModelConfigsService } from '../features/settings-dialog/services/realtime-llms/real-time-model-config.service';
 import { RealtimeModelsService } from '../features/settings-dialog/services/realtime-llms/real-time-models.service';
 import { LLM_Provider } from '../features/settings-dialog/models/LLM_provider.model';
 import { FullLLMConfig } from '../features/settings-dialog/services/llms/full-llm-config.service';
 import { FullRealtimeConfig } from '../features/settings-dialog/services/realtime-llms/full-reamtime-config.service';
-import { Tool } from '../shared/models/tool.model';
+import { Tool } from '../features/tools/models/tool.model';
 
 export interface MergedConfig {
   id: number;
@@ -36,7 +36,12 @@ export interface FullAgent extends GetAgentRequest {
   fullRealtimeConfig?: FullRealtimeConfig | null;
   fullConfiguredTools: GetToolConfigRequest[];
   fullPythonTools: GetPythonCodeToolRequest[];
-  mergedTools: { id: number; name: string; type: string }[];
+  mergedTools: {
+    id: number;
+    configName: string;
+    toolName: string;
+    type: string;
+  }[];
   mergedConfigs: MergedConfig[];
   tags: string[];
 }
@@ -152,15 +157,28 @@ export class FullAgentService {
               agent.realtime_agent?.realtime_config
             );
 
-            // Tool configs
+            // Parse tools from the unified tools array
+            const configuredToolIds: number[] = [];
+            const pythonToolIds: number[] = [];
+
+            if (agent.tools && Array.isArray(agent.tools)) {
+              agent.tools.forEach((tool) => {
+                if (tool.unique_name.startsWith('configured-tool:')) {
+                  configuredToolIds.push(tool.data.id);
+                } else if (tool.unique_name.startsWith('python-code-tool:')) {
+                  pythonToolIds.push(tool.data.id);
+                }
+              });
+            }
+
+            // Tool configs based on parsed IDs
             const fullConfiguredTools = toolConfigs.filter((tool) =>
-              agent.configured_tools.includes(tool.id)
+              configuredToolIds.includes(tool.id)
             );
             const fullPythonTools = pythonTools.filter((pt) =>
-              agent.python_code_tools.includes(pt.id)
+              pythonToolIds.includes(pt.id)
             );
 
-            // Create a map of tool IDs to tool names
             const toolsMap = new Map<number, string>();
             tools.forEach((tool: Tool) => {
               toolsMap.set(tool.id, tool.name);
@@ -170,12 +188,14 @@ export class FullAgentService {
             const mergedTools = [
               ...fullConfiguredTools.map((tc) => ({
                 id: tc.id,
-                name: toolsMap.get(tc.tool) || tc.name, // Use the actual tool name instead of config name
+                configName: tc.name, // This is the config name
+                toolName: toolsMap.get(tc.tool) || 'Unknown Tool', // This is the actual tool name
                 type: 'tool-config',
               })),
               ...fullPythonTools.map((pt) => ({
                 id: pt.id,
-                name: pt.name,
+                configName: pt.name, // For python tools, the name is both config and tool name
+                toolName: pt.name, // Python tools have the same name for both
                 type: 'python-tool',
               })),
             ];
@@ -211,6 +231,8 @@ export class FullAgentService {
 
             return {
               ...agent,
+              configured_tools: configuredToolIds, // For backward compatibility
+              python_code_tools: pythonToolIds, // For backward compatibility
               fullLlmConfig,
               fullFcmLlmConfig,
               fullRealtimeConfig,
@@ -326,12 +348,26 @@ export class FullAgentService {
               agent.realtime_agent?.realtime_config
             );
 
-            // Tool configs
+            // Parse tools from the unified tools array
+            const configuredToolIds: number[] = [];
+            const pythonToolIds: number[] = [];
+
+            if (agent.tools && Array.isArray(agent.tools)) {
+              agent.tools.forEach((tool) => {
+                if (tool.unique_name.startsWith('configured-tool:')) {
+                  configuredToolIds.push(tool.data.id);
+                } else if (tool.unique_name.startsWith('python-code-tool:')) {
+                  pythonToolIds.push(tool.data.id);
+                }
+              });
+            }
+
+            // Tool configs based on parsed IDs
             const fullConfiguredTools = toolConfigs.filter((tool) =>
-              agent.configured_tools.includes(tool.id)
+              configuredToolIds.includes(tool.id)
             );
             const fullPythonTools = pythonTools.filter((pt) =>
-              agent.python_code_tools.includes(pt.id)
+              pythonToolIds.includes(pt.id)
             );
 
             // Create a map of tool IDs to tool names
@@ -344,12 +380,14 @@ export class FullAgentService {
             const mergedTools = [
               ...fullConfiguredTools.map((tc) => ({
                 id: tc.id,
-                name: toolsMap.get(tc.tool) || tc.name, // Use the actual tool name instead of config name
+                configName: tc.name, // This is the config name
+                toolName: toolsMap.get(tc.tool) || 'Unknown Tool', // This is the actual tool name
                 type: 'tool-config',
               })),
               ...fullPythonTools.map((pt) => ({
                 id: pt.id,
-                name: pt.name,
+                configName: pt.name, // For python tools, the name is both config and tool name
+                toolName: pt.name, // Python tools have the same name for both
                 type: 'python-tool',
               })),
             ];
@@ -385,6 +423,8 @@ export class FullAgentService {
 
             return {
               ...agent,
+              configured_tools: configuredToolIds, // For backward compatibility
+              python_code_tools: pythonToolIds, // For backward compatibility
               fullLlmConfig,
               fullFcmLlmConfig,
               fullRealtimeConfig,
@@ -495,12 +535,26 @@ export class FullAgentService {
             agent.realtime_agent?.realtime_config
           );
 
-          // Tool configs
+          // Parse tools from the unified tools array
+          const configuredToolIds: number[] = [];
+          const pythonToolIds: number[] = [];
+
+          if (agent.tools && Array.isArray(agent.tools)) {
+            agent.tools.forEach((tool) => {
+              if (tool.unique_name.startsWith('configured-tool:')) {
+                configuredToolIds.push(tool.data.id);
+              } else if (tool.unique_name.startsWith('python-code-tool:')) {
+                pythonToolIds.push(tool.data.id);
+              }
+            });
+          }
+
+          // Tool configs based on parsed IDs
           const fullConfiguredTools = toolConfigs.filter((tool) =>
-            agent.configured_tools.includes(tool.id)
+            configuredToolIds.includes(tool.id)
           );
           const fullPythonTools = pythonTools.filter((pt) =>
-            agent.python_code_tools.includes(pt.id)
+            pythonToolIds.includes(pt.id)
           );
 
           // Create a map of tool IDs to tool names
@@ -513,12 +567,14 @@ export class FullAgentService {
           const mergedTools = [
             ...fullConfiguredTools.map((tc) => ({
               id: tc.id,
-              name: toolsMap.get(tc.tool) || tc.name, // Use the actual tool name instead of config name
+              configName: tc.name, // This is the config name
+              toolName: toolsMap.get(tc.tool) || 'Unknown Tool', // This is the actual tool name
               type: 'tool-config',
             })),
             ...fullPythonTools.map((pt) => ({
               id: pt.id,
-              name: pt.name,
+              configName: pt.name, // For python tools, the name is both config and tool name
+              toolName: pt.name, // Python tools have the same name for both
               type: 'python-tool',
             })),
           ];
@@ -553,6 +609,8 @@ export class FullAgentService {
 
           return {
             ...agent,
+            configured_tools: configuredToolIds, // For backward compatibility
+            python_code_tools: pythonToolIds, // For backward compatibility
             fullLlmConfig,
             fullFcmLlmConfig,
             fullRealtimeConfig,

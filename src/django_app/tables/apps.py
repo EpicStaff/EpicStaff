@@ -1,4 +1,7 @@
+from loguru import logger
 from django.apps import AppConfig
+from django.conf import settings
+import sys
 
 
 class TablesConfig(AppConfig):
@@ -12,6 +15,10 @@ class TablesConfig(AppConfig):
         from tables.services.session_manager_service import SessionManagerService
         from tables.services.run_python_code_service import RunPythonCodeService
         from tables.services.realtime_service import RealtimeService
+
+        if "runserver" in sys.argv:
+            logger.info(f"{settings.DEBUG=}")
+
         redis_service = RedisService()
         converter_service = ConverterService()
         SessionManagerService(
@@ -20,4 +27,6 @@ class TablesConfig(AppConfig):
         )
         YamlConfigService()
         RunPythonCodeService(redis_service=redis_service)
-        RealtimeService(redis_service=redis_service, converter_service=converter_service)
+        RealtimeService(
+            redis_service=redis_service, converter_service=converter_service
+        )

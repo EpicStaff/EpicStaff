@@ -6,11 +6,11 @@ import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
 } from '@angular/core';
-import { Tool } from '../../../../../../../../shared/models/tool.model';
+import { Tool } from '../../../../../../models/tool.model';
 import { CommonModule } from '@angular/common';
 import { AppIconComponent } from '../../../../../../../../shared/components/app-icon/app-icon.component';
 import { TOOL_CATEGORIES_CONFIG } from '../../../../../../constants/built-in-tools-categories';
-import { ToggleSwitchComponent } from '../../../../../../../../shared/components/toggle-switch/toggle-switch.component';
+import { ToggleSwitchComponent } from '../../../../../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 import { ButtonComponent } from '../../../../../../../../shared/components/buttons/button/button.component';
 import { TOOL_PROVIDERS_AND_DESCRIPTIONS } from '../../../../../../constants/tool-providers-and-descriptions';
 

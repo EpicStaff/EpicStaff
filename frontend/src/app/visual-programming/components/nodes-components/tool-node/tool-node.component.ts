@@ -1,6 +1,6 @@
 import { Component, Input, signal } from '@angular/core';
 
-import { ToolConfigDto } from '../../../../shared/models/tool_config.model';
+import { ToolConfig } from '../../../../features/tools/models/tool_config.model';
 import { KeyValuePipe, NgFor, NgIf, TitleCasePipe } from '@angular/common';
 import { ToolNodeModel } from '../../../core/models/node.model';
 

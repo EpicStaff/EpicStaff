@@ -11,7 +11,6 @@ import {
   GraphDto,
   CreateGraphDtoRequest,
 } from '../../../../features/flows/models/graph.model';
-import { IconPickerComponent } from '../../../../shared/components/forms/icon-selector/icon-picker.component';
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
 import { finalize } from 'rxjs/operators';
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';

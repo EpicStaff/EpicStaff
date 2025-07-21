@@ -23,7 +23,7 @@ from tables.views.model_view_sets import (
     LLMModelReadWriteViewSet,
     EmbeddingModelReadWriteViewSet,
     EmbeddingConfigReadWriteViewSet,
-    AgentReadWriteViewSet,
+    AgentViewSet,
     CrewReadWriteViewSet,
     TaskReadWriteViewSet,
     ToolConfigViewSet,
@@ -59,6 +59,7 @@ from tables.views.views import (
     DefaultAgentConfigAPIView,
     DefaultCrewConfigAPIView,
     CollectionStatusAPIView,
+    QuickstartView,
     delete_environment_config,
 )
 
@@ -68,6 +69,8 @@ from tables.views.default_config import (
     DefaultToolConfigAPIView,
 )
 
+from tables.views.sse_views import RunSessionSSEView, RunSessionSSEViewSwagger
+
 router = DefaultRouter()
 router.register(r"template-agents", TemplateAgentReadWriteViewSet)
 router.register(r"providers", ProviderReadWriteViewSet)
@@ -75,7 +78,7 @@ router.register(r"llm-models", LLMModelReadWriteViewSet)
 router.register(r"llm-configs", LLMConfigReadWriteViewSet)
 router.register(r"embedding-models", EmbeddingModelReadWriteViewSet)
 router.register(r"embedding-configs", EmbeddingConfigReadWriteViewSet)
-router.register(r"agents", AgentReadWriteViewSet)
+router.register(r"agents", AgentViewSet)
 router.register(r"crews", CrewReadWriteViewSet)
 router.register(r"tasks", TaskReadWriteViewSet)
 router.register(r"tools", ToolListRetrieveUpdateGenericViewSet)
@@ -159,11 +162,7 @@ urlpatterns = [
         CollectionStatusAPIView.as_view(),
         name="collection_status/",
     ),
-    path(
-        "default-config/",
-        DefaultConfigAPIView.as_view(),
-        name="default_config"
-    ),
+    path("default-config/", DefaultConfigAPIView.as_view(), name="default_config"),
     path(
         "default-llm-config/",
         DefaultLLMConfigAPIView.as_view(),
@@ -182,7 +181,7 @@ urlpatterns = [
     path(
         "default-reailtime-config/",
         DefaultRealtimeAgentConfigAPIView.as_view(),
-        name="default_reailtime_config"
+        name="default_reailtime_config",
     ),
     path(
         "default-crew-config/",
@@ -193,5 +192,16 @@ urlpatterns = [
         "default-tool-config/",
         DefaultToolConfigAPIView.as_view(),
         name="default_tool_config",
+    ),
+    path("quickstart/", QuickstartView.as_view(), name="quickstart"),
+    path(
+        "run-session/subscribe/<int:session_id>/",
+        RunSessionSSEView.as_view(),
+        name="run-session-subscribe",
+    ),
+    path(
+        "run-session/subscribe/<int:session_id>/swagger/",
+        RunSessionSSEViewSwagger.as_view(),
+        name="run-session-subscribe-swagger",
     ),
 ]

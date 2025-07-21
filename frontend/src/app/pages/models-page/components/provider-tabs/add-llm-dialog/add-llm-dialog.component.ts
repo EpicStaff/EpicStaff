@@ -9,10 +9,10 @@ import {
 } from '@angular/forms';
 import { LLM_Provider } from '../../../../../features/settings-dialog/models/LLM_provider.model';
 import { GetLlmModelRequest } from '../../../../../features/settings-dialog/models/llms/LLM.model';
-import { LLM_Config_Service } from '../../../../../services/GetLlmConfigRequest.service';
 import { FullLLMConfig } from '../../../../../features/settings-dialog/services/llms/full-llm-config.service';
 import { ToastService } from '../../../../../services/notifications/toast.service';
-import { CreateLLMConfigRequest } from '../../../../../shared/models/GetLlmConfigRequest.model';
+import { LLM_Config_Service } from '../../../../../features/settings-dialog/services/llms/LLM_config.service';
+import { CreateLLMConfigRequest } from '../../../../../features/settings-dialog/models/llms/LLM_config.model';
 
 export interface AddLLMDialogData {
   provider: LLM_Provider;
@@ -417,6 +417,7 @@ export class AddLLMDialogComponent implements OnInit {
           const fullConfig: FullLLMConfig = {
             ...createdConfig,
             modelDetails,
+            providerDetails: this.data.provider,
           };
           this.toastService.success(
             `LLM "${fullConfig.custom_name}" has been successfully created`

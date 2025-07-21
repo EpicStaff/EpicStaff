@@ -6,8 +6,10 @@ import uuid
 import warnings
 from datetime import datetime
 from typing import Any, Dict
+from threading import Lock
 
 import pytz
+import redis
 from pydantic import ValidationError
 
 from mem0.configs.base import MemoryConfig, MemoryItem
@@ -30,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 
 class Memory(MemoryBase):
+    _lock: Lock = Lock()
+
     def __init__(self, config: MemoryConfig = MemoryConfig()):
         self.config = config
 
@@ -53,7 +57,27 @@ class Memory(MemoryBase):
             self.graph = MemoryGraph(self.config)
             self.enable_graph = True
 
+        self._redis_client = None
+
         capture_event("mem0.init", self)
+
+    @property
+    def redis_client(self):
+        """Lazy initialize redis_client"""
+        if self._redis_client is None:
+            self._initialize_redis()
+        return self._redis_client
+
+    def _initialize_redis(self):
+        if self.config.redis:
+            with self._lock:
+                self.redis_client = redis.Redis(
+                    host=self.config.redis.host,
+                    port=self.config.redis.port,
+                    db=self.config.redis.db,
+                    decode_responses=True,
+                )
+                self._redis_channel = self.config.redis.channel
 
     @classmethod
     def from_config(cls, config_dict: Dict[str, Any]):
@@ -74,6 +98,7 @@ class Memory(MemoryBase):
         filters=None,
         prompt=None,
         search_limit=5,
+        memory_update_callback=None
     ):
         """
         Create a new memory.
@@ -225,7 +250,7 @@ class Memory(MemoryBase):
                             }
                         )
                     elif resp["event"] == "UPDATE":
-                        self._update_memory(
+                        memory_id = self._update_memory(
                             memory_id=temp_uuid_mapping[resp["id"]],
                             data=resp["text"],
                             existing_embeddings=new_message_embeddings,
@@ -240,7 +265,9 @@ class Memory(MemoryBase):
                             }
                         )
                     elif resp["event"] == "DELETE":
-                        self._delete_memory(memory_id=temp_uuid_mapping[resp["id"]])
+                        memory_id = self._delete_memory(
+                            memory_id=temp_uuid_mapping[resp["id"]]
+                        )
                         returned_memories.append(
                             {
                                 "id": temp_uuid_mapping[resp["id"]],
@@ -252,6 +279,12 @@ class Memory(MemoryBase):
                         logging.info("NOOP for Memory.")
                 except Exception as e:
                     logging.error(f"Error in new_memories_with_actions: {e}")
+                finally:
+                    if memory_id:
+                        # TODO: replace with abstract callback to not depend on redis
+                        self._publish_update(
+                            {"uuid": memory_id, "session_id": metadata["run_id"]}
+                        )
         except Exception as e:
             logging.error(f"Error in new_memories_with_actions: {e}")
 
@@ -701,6 +734,16 @@ class Memory(MemoryBase):
         self.db.add_history(memory_id, prev_value, None, "DELETE", is_deleted=1)
         capture_event("mem0._delete_memory", self, {"memory_id": memory_id})
         return memory_id
+
+    def _publish_update(self, data: dict):
+        if self.redis_client:
+            try:
+                self.redis_client.publish(self.redis_channel, json.dumps(data))
+                logging.info(
+                    f"Redis publish into {self.redis_channel} {data.get('uuid')}"
+                )
+            except Exception as e:
+                logging.error(f"Redis publish failed: {e}")
 
     def reset(self):
         """

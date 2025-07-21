@@ -3,6 +3,7 @@ import {
   NodeModel,
   ProjectNodeModel,
   PythonNodeModel,
+  NoteNodeModel,
 } from '../models/node.model';
 
 export function getNodeTitle(node: NodeModel): string {
@@ -26,6 +27,8 @@ export function getNodeTitle(node: NodeModel): string {
       return (node as any).data.custom_name || '';
     case NodeType.START:
       return 'Start';
+    case NodeType.NOTE:
+      return 'Note';
     default:
       return '';
   }

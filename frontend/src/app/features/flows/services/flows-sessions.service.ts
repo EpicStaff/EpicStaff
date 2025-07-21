@@ -29,6 +29,15 @@ export interface GraphSession {
   finished_at: string | null;
 }
 
+export interface GraphSessionLight {
+  id: number;
+  graph_id: number;
+  status: GraphSessionStatus;
+  status_updated_at: string;
+  created_at: string;
+  finished_at: string | null;
+}
+
 export type SessionStatusesCounts = {
   run: number;
   wait_for_user: number;
@@ -90,15 +99,47 @@ export class GraphSessionService {
     return this.http.get<GraphSession>(`${this.apiUrl}${sessionId}/`);
   }
 
-  getSessionsByGraphId(graphId: number): Observable<GraphSession[]> {
-    const params = new HttpParams().set('graph_id', graphId.toString());
-    return this.http
-      .get<ApiGetRequest<GraphSession>>(this.apiUrl, { params })
-      .pipe(
-        map((response) => {
-          return response.results.sort((a, b) => b.id - a.id);
-        })
-      );
+  getSessionsByGraphId(
+    graphId: number,
+    detailed: true,
+    limit?: number,
+    offset?: number,
+    status?: string[]
+  ): Observable<ApiGetRequest<GraphSession>>;
+
+  getSessionsByGraphId(
+    graphId: number,
+    detailed: false,
+    limit?: number,
+    offset?: number,
+    status?: string[]
+  ): Observable<ApiGetRequest<GraphSessionLight>>;
+
+  getSessionsByGraphId(
+    graphId: number,
+    detailed?: boolean,
+    limit?: number,
+    offset?: number,
+    status?: string[]
+  ): Observable<ApiGetRequest<GraphSession | GraphSessionLight>> {
+    let params = new HttpParams().set('graph_id', graphId.toString());
+
+    if (detailed !== undefined)
+      params = params.set('detailed', detailed.toString());
+    if (limit !== undefined) params = params.set('limit', limit.toString());
+    if (offset !== undefined) params = params.set('offset', offset.toString());
+    if (status !== undefined && !status.includes('all'))
+      params = params.set('status', status.join(','));
+
+    if (detailed === false) {
+      return this.http.get<ApiGetRequest<GraphSessionLight>>(this.apiUrl, {
+        params,
+      });
+    } else {
+      return this.http.get<ApiGetRequest<GraphSession>>(this.apiUrl, {
+        params,
+      });
+    }
   }
 
   deleteSessionById(sessionId: number): Observable<void> {

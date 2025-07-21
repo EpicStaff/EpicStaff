@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import Any, List, Literal, Union
-from pydantic import BaseModel, HttpUrl, model_validator
+from pydantic import BaseModel, HttpUrl, model_validator, root_validator
 from decimal import Decimal
 
 
@@ -49,7 +49,7 @@ class ToolConfigData(BaseModel):
     tool_init_configuration: dict[str, Any] | None = None
 
 
-class ToolData(BaseModel):
+class ConfiguredToolData(BaseModel):
     name_alias: str
     tool_config: ToolConfigData
 
@@ -70,6 +70,10 @@ class PythonCodeToolData(BaseModel):
     python_code: PythonCodeData
 
 
+class BaseToolData(BaseModel):
+    unique_name: str
+    data: PythonCodeToolData | ConfiguredToolData
+
 class RunToolParamsModel(BaseModel):
     tool_config: ToolConfigData | None = None
     run_args: list[str]
@@ -81,8 +85,7 @@ class AgentData(BaseModel):
     role: str
     goal: str
     backstory: str
-    tool_id_list: list[int]
-    python_code_tool_id_list: list[int]
+    tool_unique_name_list: list[str]
     max_iter: int
     max_rpm: int
     max_execution_time: int
@@ -111,8 +114,7 @@ class RealtimeAgentChatData(BaseModel):
     search_limit: int = 3
     distance_threshold: Decimal = 0.65
     memory: bool
-    tools: list[ToolData] = []
-    python_code_tools: list[PythonCodeToolData] = []
+    tools: list[BaseToolData] = []
     connection_key: str
     wake_word: str | None
     stop_prompt: str | None
@@ -141,8 +143,7 @@ class CrewData(BaseModel):
     memory_llm: LLMData | None
     manager_llm: LLMData | None
     planning_llm: LLMData | None
-    tools: List[ToolData]
-    python_code_tools: list[PythonCodeToolData]
+    tools: List[BaseToolData]
     knowledge_collection_id: int | None
 
 
@@ -157,8 +158,7 @@ class TaskData(BaseModel):
     async_execution: bool
     config: dict | None
     output_model: dict | None
-    task_tool_id_list: list[int]
-    task_python_code_tool_id_list: list[int]
+    tool_unique_name_list: list[str]
     task_context_id_list: list[int]
 
 
@@ -270,3 +270,4 @@ class GraphSessionMessageData(BaseModel):
     execution_order: int
     timestamp: str
     message_data: dict
+    uuid: str

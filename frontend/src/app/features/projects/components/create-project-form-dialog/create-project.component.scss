@@ -112,6 +112,12 @@ form {
       color: #aaa;
       margin-bottom: 0.5rem;
 
+      .required-asterisk {
+        color: #ff4444;
+        margin-left: 2px;
+        font-weight: bold;
+      }
+
       .required {
         color: #ff4444;
         margin-left: 4px;
@@ -129,6 +135,12 @@ form {
         align-items: center;
         font-size: 0.875rem;
         color: #aaa;
+
+        .required-asterisk {
+          color: #ff4444;
+          margin-left: 2px;
+          font-weight: bold;
+        }
 
         .required {
           color: #ff4444;
@@ -241,7 +253,8 @@ form {
     }
   }
 
-  .manager-settings {
+  .manager-settings,
+  .memory-settings {
     margin-top: 1rem;
     padding: 1rem;
     background-color: rgba(104, 95, 255, 0.05);

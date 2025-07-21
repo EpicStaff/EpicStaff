@@ -44,12 +44,12 @@
         <div class="form-group">
           <div class="label-row">
             <label for="name" class="field-label">
-              Project Name
+              Project Name <span class="required-asterisk">*</span>
               <span
                 class="required"
                 *ngIf="projectForm.get('name')?.errors?.['required'] && projectForm.get('name')?.dirty"
               >
-                Name is required *
+                Name is required
               </span>
             </label>
             <app-help-tooltip
@@ -118,7 +118,9 @@
 
           <div class="form-group">
             <div class="label-row">
-              <label class="field-label">Manager LLM</label>
+              <label class="field-label"
+                >Manager LLM <span class="required-asterisk">*</span></label
+              >
               <app-help-tooltip
                 [text]="
                   'Choose the LLM configuration that will manage the hierarchical process.'
@@ -129,25 +131,8 @@
               [llmConfigs]="llmConfigs"
               placeholder="Select a manager LLM configuration"
               formControlName="manager_llm_config"
-              (modelSelected)="onLLMChange($event)"
+              (modelSelected)="onManagerLLMChange($event)"
             ></app-llm-model-selector>
-          </div>
-
-          <div class="form-group">
-            <div class="label-row">
-              <label class="field-label">Embedding Model</label>
-              <app-help-tooltip
-                [text]="
-                  'Select the embedding model to use for knowledge and context.'
-                "
-              ></app-help-tooltip>
-            </div>
-            <app-embedding-model-selector
-              [embeddingConfigs]="embeddingConfigs"
-              placeholder="Select an embedding configuration"
-              formControlName="embedding_config"
-              (modelSelected)="onEmbeddingChange($event)"
-            ></app-embedding-model-selector>
           </div>
 
           <div class="form-group">
@@ -186,8 +171,53 @@
             </div>
           </div>
 
-          <!-- Additional toggle switches for cache, full_output, and planning -->
-          <div class="form-group">
+          <!-- Memory Settings (only when memory is enabled) -->
+          <div
+            class="memory-settings"
+            [hidden]="!projectForm.get('memory')?.value"
+          >
+            <p class="info-message">Memory configuration:</p>
+
+            <div class="form-group">
+              <div class="label-row">
+                <label class="field-label"
+                  >Memory LLM <span class="required-asterisk">*</span></label
+                >
+                <app-help-tooltip
+                  [text]="'Choose the LLM configuration for memory operations.'"
+                ></app-help-tooltip>
+              </div>
+              <app-llm-model-selector
+                [llmConfigs]="llmConfigs"
+                placeholder="Select a memory LLM configuration"
+                formControlName="memory_llm_config"
+                (modelSelected)="onMemoryLLMChange($event)"
+              ></app-llm-model-selector>
+            </div>
+
+            <div class="form-group">
+              <div class="label-row">
+                <label class="field-label"
+                  >Memory Embedding Model
+                  <span class="required-asterisk">*</span></label
+                >
+                <app-help-tooltip
+                  [text]="
+                    'Select the embedding model for memory operations and context storage.'
+                  "
+                ></app-help-tooltip>
+              </div>
+              <app-embedding-model-selector
+                [embeddingConfigs]="embeddingConfigs"
+                placeholder="Select an embedding configuration"
+                formControlName="embedding_config"
+                (modelSelected)="onEmbeddingChange($event)"
+              ></app-embedding-model-selector>
+            </div>
+          </div>
+
+          <!-- Cache Setting - Commented -->
+          <!-- <div class="form-group">
             <div class="label-row toggle-container">
               <div class="toggle-label-wrapper">
                 <label class="toggle-label">Cache</label>
@@ -199,9 +229,10 @@
               </div>
               <app-toggle-switch formControlName="cache"></app-toggle-switch>
             </div>
-          </div>
+          </div> -->
 
-          <div class="form-group">
+          <!-- Full Output Setting - Commented -->
+          <!-- <div class="form-group">
             <div class="label-row toggle-container">
               <div class="toggle-label-wrapper">
                 <label class="toggle-label">Full Output</label>
@@ -215,9 +246,10 @@
                 formControlName="full_output"
               ></app-toggle-switch>
             </div>
-          </div>
+          </div> -->
 
-          <div class="form-group">
+          <!-- Planning Setting - Commented -->
+          <!-- <div class="form-group">
             <div class="label-row toggle-container">
               <div class="toggle-label-wrapper">
                 <label class="toggle-label">Planning</label>
@@ -227,7 +259,7 @@
               </div>
               <app-toggle-switch formControlName="planning"></app-toggle-switch>
             </div>
-          </div>
+          </div> -->
         </div>
 
         <!-- Max Requests Per Minute -->

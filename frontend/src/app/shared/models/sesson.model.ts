@@ -1,4 +1,4 @@
-import { Tool } from './tool.model';
+import { Tool } from '../../features/tools/models/tool.model';
 
 export interface Session {
   id: number;
