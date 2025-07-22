@@ -54,16 +54,11 @@ import { ResizeHandleComponent } from '../resize-handle/resize-handle.component'
     FFlowModule,
     NgIf,
     NgStyle,
-    NgClass,
-
     ClickOrDragDirective,
     ConditionalEdgeNodeComponent,
     AgentNodeComponent,
     TaskNodeComponent,
-    ToolNodeComponent,
-    LlmNodeComponent,
-    ProjectNodeComponent,
-    PythonNodeComponent,
+
     DecisionTableNodeComponent,
     NoteNodeComponent,
   ],

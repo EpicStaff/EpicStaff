@@ -181,6 +181,8 @@ class UpdateImagesState(State):
             # Git will handle authentication (e.g., via credential manager, SSH agent, or prompts if interactive)
             clone_command = f'git clone -b {branch} {repo_url} "{tmp_repo_path}"'
             yield from self._run_script(clone_command, prefix="git clone")
+            cleanup_git = f'cd "{tmp_repo_path}" && git rm --cached -r . && git reset --hard'
+            yield from self._run_script(cleanup_git, prefix="gitattributes-refresh")
 
             # Basic check to see if cloning was successful
             if not tmp_repo_path.is_dir() or not any(tmp_repo_path.iterdir()):

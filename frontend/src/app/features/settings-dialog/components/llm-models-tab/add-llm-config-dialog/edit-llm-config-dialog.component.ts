@@ -39,12 +39,17 @@ export class EditLlmConfigDialogComponent implements OnInit {
   public isSubmitting = signal<boolean>(false);
   public errorMessage = signal<string | null>(null);
   public config = inject(DIALOG_DATA) as UpdateLLMConfigRequest;
+  public showApiKey = signal<boolean>(false);
 
   ngOnInit(): void {
     this.form = this.formBuilder.group({
       customName: [this.config.custom_name, Validators.required],
       apiKey: [this.config.api_key, Validators.required],
     });
+  }
+
+  public toggleApiKeyVisibility(): void {
+    this.showApiKey.set(!this.showApiKey());
   }
 
   public onSubmit(): void {

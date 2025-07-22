@@ -21,7 +21,6 @@ import { ToggleSwitchComponent } from '../../../../../shared/components/form-con
     AppIconComponent,
     IconButtonComponent,
     ButtonComponent,
-    ToggleSwitchComponent,
   ],
   templateUrl: './voice-config-item.component.html',
   styleUrls: ['./voice-config-item.component.scss'],

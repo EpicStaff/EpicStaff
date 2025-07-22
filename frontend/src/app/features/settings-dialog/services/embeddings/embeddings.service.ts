@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -20,10 +20,17 @@ export class EmbeddingModelsService {
     return this.configService.apiUrl + 'embedding-models/';
   }
 
-  getEmbeddingModels(): Observable<EmbeddingModel[]> {
+  getEmbeddingModels(providerId?: number): Observable<EmbeddingModel[]> {
+    let params = new HttpParams().set('limit', '1000');
+
+    if (providerId) {
+      params = params.set('embedding_provider', providerId.toString());
+    }
+
     return this.http
       .get<ApiGetRequest<EmbeddingModel>>(this.apiUrl, {
         headers: this.headers,
+        params,
       })
       .pipe(map((response: ApiGetRequest<EmbeddingModel>) => response.results));
   }

@@ -20,23 +20,12 @@ export class LLM_Models_Service {
     return this.configService.apiUrl + 'llm-models/';
   }
 
-  getLLMModels(): Observable<GetLlmModelRequest[]> {
-    const params = new HttpParams().set('limit', '1000');
+  getLLMModels(providerId?: number): Observable<LLM_Model[]> {
+    let params = new HttpParams().set('limit', '1000');
 
-    return this.http
-      .get<ApiGetRequest<GetLlmModelRequest>>(this.apiUrl, {
-        headers: this.headers,
-        params,
-      })
-      .pipe(
-        map((response: ApiGetRequest<GetLlmModelRequest>) => response.results)
-      );
-  }
-
-  getModelsByProviderId(providerId: number): Observable<LLM_Model[]> {
-    const params = new HttpParams()
-      .set('llm_provider', providerId.toString())
-      .set('limit', '1000');
+    if (providerId) {
+      params = params.set('llm_provider', providerId.toString());
+    }
 
     return this.http
       .get<ApiGetRequest<LLM_Model>>(this.apiUrl, {

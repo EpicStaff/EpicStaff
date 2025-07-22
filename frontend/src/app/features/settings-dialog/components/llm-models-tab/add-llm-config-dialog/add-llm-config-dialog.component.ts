@@ -108,7 +108,7 @@ export class AddLlmConfigDialogComponent implements OnInit, OnDestroy {
   private loadModels(providerId: number): void {
     this.isLoading.set(true);
     this.modelsService
-      .getModelsByProviderId(providerId)
+      .getLLMModels(providerId)
       .pipe(finalize(() => this.isLoading.set(false)))
       .subscribe({
         next: (models) => {

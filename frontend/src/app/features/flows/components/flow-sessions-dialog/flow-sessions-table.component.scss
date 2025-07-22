@@ -1,13 +1,34 @@
+.table-header {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+
+  .search-section {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .bulk-actions-section {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+}
+
 .sessions-table-wrapper {
   flex: 1 1 auto;
   overflow: hidden;
-  border-radius: 8px;
   border: 1px solid var(--color-divider-regular);
   background: var(--color-nodes-actionbar-bg);
-  height: 100%;
-  min-height: 400px;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  min-height: 300px;
 }
 
 table {
@@ -18,6 +39,7 @@ table {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 
   th,
   td {
@@ -26,49 +48,42 @@ table {
     border-bottom: 1px solid var(--color-divider-subtle);
   }
 
-  /* Checkbox column */
   th:nth-child(1),
   td:nth-child(1) {
     width: 40px;
     min-width: 40px;
   }
 
-  /* ID column */
   th:nth-child(2),
   td:nth-child(2) {
     width: 70px;
     min-width: 70px;
   }
 
-  /* Status column */
   th:nth-child(3),
   td:nth-child(3) {
     width: 100px;
     min-width: 100px;
   }
 
-  /* Created At column */
   th:nth-child(4),
   td:nth-child(4) {
     width: 150px;
     min-width: 150px;
   }
 
-  /* Finished At column */
   th:nth-child(5),
   td:nth-child(5) {
     width: 150px;
     min-width: 150px;
   }
 
-  /* Actions column - ensure sufficient width */
   th:nth-child(6),
   td:nth-child(6) {
     min-width: 100px;
     width: 100px;
   }
 
-  /* Delete icon column - ensure sufficient width */
   th:nth-child(7),
   td:nth-child(7) {
     min-width: 45px;
@@ -76,7 +91,6 @@ table {
     text-align: center;
   }
 
-  /* Remove border for empty state and loading state rows */
   td[colspan="7"] {
     border-bottom: none;
   }
@@ -89,9 +103,22 @@ table {
   tbody {
     overflow-y: auto;
     display: block;
-    max-height: 400px;
-    min-height: 200px; /* Ensure minimum height for professional appearance */
-    flex: 1; /* Take remaining space in the flex container */
+    flex: 1;
+    min-height: 0;
+    &::-webkit-scrollbar {
+      width: 8px;
+    }
+    &::-webkit-scrollbar-track {
+      background: var(--color-divider-subtle);
+      border-radius: 4px;
+    }
+    &::-webkit-scrollbar-thumb {
+      background: var(--color-divider-regular);
+      border-radius: 4px;
+      &:hover {
+        background: var(--color-divider-strong);
+      }
+    }
   }
 
   thead tr,
@@ -101,7 +128,6 @@ table {
     table-layout: fixed;
   }
 
-  /* Ensure loading and empty state cells maintain table height */
   td[colspan="7"] {
     padding: 40px;
     vertical-align: middle;
@@ -259,8 +285,8 @@ table {
   justify-content: center;
   text-align: center;
   padding: 2rem;
-  height: 100%; /* Take full height of the table cell */
-  min-height: 180px; /* Ensure adequate space for the message */
+  height: 100%;
+  min-height: 180px;
 
   p {
     margin: 0 0 8px 0;

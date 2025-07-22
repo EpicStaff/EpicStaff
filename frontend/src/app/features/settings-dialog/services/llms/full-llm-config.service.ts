@@ -31,7 +31,6 @@ export class FullLLMConfigService {
       providers: this.llmProvidersService.getProviders(),
     }).pipe(
       map(({ configs, models, providers }) => {
-        // Create lookup tables
         const modelMap: Record<number, GetLlmModelRequest> = {};
         models.forEach((model) => {
           modelMap[model.id] = model;

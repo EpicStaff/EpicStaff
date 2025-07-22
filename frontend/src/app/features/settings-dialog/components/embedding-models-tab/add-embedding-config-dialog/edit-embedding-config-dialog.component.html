@@ -29,12 +29,23 @@
       </div>
       <div class="form-field">
         <label for="apiKey">API Key <span class="required">*</span></label>
-        <app-custom-input
-          id="apiKey"
-          type="password"
-          placeholder="Enter your API key"
-          formControlName="apiKey"
-        ></app-custom-input>
+        <div class="api-key-container">
+          <app-custom-input
+            id="apiKey"
+            [type]="showApiKey() ? 'text' : 'password'"
+            placeholder="Enter your API key"
+            formControlName="apiKey"
+            class="api-key-input"
+          ></app-custom-input>
+          <button
+            type="button"
+            class="toggle-visibility-btn"
+            (click)="toggleApiKeyVisibility()"
+            [attr.aria-label]="showApiKey() ? 'Hide API key' : 'Show API key'"
+          >
+            <i [class]="showApiKey() ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
+          </button>
+        </div>
         <div
           *ngIf="form.get('apiKey')?.invalid && form.get('apiKey')?.touched"
           class="error-hint"

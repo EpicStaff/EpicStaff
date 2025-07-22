@@ -12,7 +12,7 @@ import { AppIconComponent } from '../../../../../../shared/components/app-icon/a
 @Component({
   selector: 'app-python-tool-item',
   standalone: true,
-  imports: [NgClass, NgIf, AppIconComponent],
+  imports: [NgClass, AppIconComponent],
   template: `
     <div
       class="python-tool-item"

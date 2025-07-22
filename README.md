@@ -1,92 +1,83 @@
 ![EpicStaff Logo](logo.png)
 
-# EpicStaff - AI Agent Without The Frustration
+# EpicStaff: Open-Source Multi-Agent Orchestration Platform
 
-AI agent don't need to be complicated. EpicStaff gives teams visual workflows and developers full backend control - in one platform.
+### AI Agents Without The Frustration. Build Production-Grade Agentic Systems with Visual Workflows and Full Backend Control.
 
----
+EpicStaff is an open-source **production-grade platform** for building **multi-agent AI systems** with maximum flexibility and minimum friction. We bridge the gap between no-code simplicity and developer centric power, offering a unified **custom AI agent workflow platform**.
 
-**EpicStaff** is an open-source platform for building agent-based AI systems with maximum flexebility and minimum friction.
-With **EpicStaff**, you can create AI agents that work quickly and efficiently, remember the context of your tasks and can make decisions based on the information they receive.
-
-## We built EpicStaff because we've seen the gap and offers a dual-approach platform:
-
-### 🔹For non-technical users:
-
-Create multitasking AI agents through an intuitive interface. Use node-based programming frameworks to connect blocks in charge of actions: text analysis, response generation, working with files and CRM systems, etc.
-
-### 🔹For developers:
-
-A modular, transparent backend that enables fine-grained control and direct access to orchestration logic.
-
-Whether you're experementing, prototyping, or deploying to production, EpicStaff adapts to your team:
-
-- Use drag and drop when needed
-- Dive into code when preferred
-- Or combine both, seamlessly
-
-We hide the comlexity, not the logic.
-
----
-## 🎯 Who is EpicStaff ideal for?
-
-- AI developers who desire flexibility without templates
-
-- Business teams who wish to quickly create functional AI agents
-
-- No-code users who prefer an interface over YAML
-
-- R&D teams and startups working with agent systems
+Create intelligent agents that operate with high performance, retain memory across complex tasks and reason based on injected knowledge. Our **asynchronous, low-latency AI orchestration engine** built on **FastAPI** ensures your AI workflows are both fast and scalable.
 
 ---
 
-|  Feature                 |  Description                                                                 |
-|--------------------------|------------------------------------------------------------------------------|
-| 🧩 Graphic Project Builder | Build projects using a visual interface without writing any code             |
-| 🧠 Memory Persistence      | Save and retrieve agent memory between steps                                 |
-| 📚 Knowledge Injection     | Inject knowledge from files and structured data to improve results           |
-| 🐍 Python Tools            | Connect your own Python tools without needing to redeploy                    |
-| ⚙️ Developer Control       | Full control for developers via orchestration API                            |
-| ⚡ High-Performance Core   | Asynchronous architecture optimized for speed                                |
-| 🧱 Modular Backend         | Modular architecture that is easy to extend                                  |
-| 🌍 Open-Source             | Open code and freedom for community-driven development                       |
-| 🤖 LLM Compatibility       | Compatible with any language model and supports multi-step workflows         |
+### Watch EpicStaff in Action!
+
+[![Watch the EpicStaff Demo](https://img.youtube.com/vi/fEaBBupvWRE/maxresdefault.jpg)](https://youtu.be/fEaBBupvWRE)
 
 ---
 
-## Mission
+## A Dual-Approach Platform for Modern Teams
 
-To empower teams to build intelligant AI agent: quickly, collaboratively and without unnecessary complexity.
+We built EpicStaff to serve everyone involved in building AI-powered solutions, from business analysts to senior developers.
 
----
+### 🔹 For Business Teams & No-Code Users: Visual AI Project Builder
 
-## 💎 Core Values
+Create powerful, multitasking AI agents through our intuitive **visual AI workflow builder**. Use a node-based **graphic interface** to connect pre-built blocks for text analysis, response generation, file management, CRM integration and more. Go from idea to a functional AI agent **without writing a single line of code**.
 
- **Clarity over complexity**
+### 🔹 For Developers: A High-Performance FastAPI Multi-Agent Backend
 
-We hide the overhead, not the logic. Users stay focused on what matters: building, testing and delivering.
+Get full control with a modular transparent **open-source FastAPI backend**. Dive deep into our **event-driven architecture** to customize orchestration logic define **fine-grained task control** and integrate custom Python tools seamlessly. No black boxes, no magic just a clean extensible **RESTful agent orchestration** framework that respects your need for control.
 
- **Collaboration by design**
+**Whether you're experimenting, prototyping or deploying to production EpicStaff adapts to you:**
+* Use the **drag-and-drop visual interface** when speed is key.
+* Dive into the **Python backend** when custom logic is required.
+* Combine both approaches seamlessly in a single project.
 
-EpicStaff build for teams: visual first for non-technical users, full code fllexebility for developers. Everyone works better, together.
-
- **Developer respect**
- 
-No black boxes. No magic. Just clean, extendable architecture that gives engineers the control they need.
-
-**Open by default**
-
-We believe in open ecosystems. That's why EpicStaff is fully open-source, modular and community driven.
-
-## Join Us
-
-Join the journey with **EpicStaff**, and together let’s shape the future of intelligent collaboration!
+> We hide the complexity, not the logic.
 
 ---
 
-## 💫Show Your Support
+## Key Features
 
-If u find EpicStaff helpful - give it a ⭐️ on GitHub!
+| Feature                        | Description                                                                                                                                                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🧩 **Visual AI Workflow Builder** | Visually build, debug, and manage complex AI workflows with our intuitive **graphic interface**. This **no-code** tool is perfect for rapid prototyping and team collaboration.                                 |
+| 🧠 **Memory & Contextual Reasoning** | Implement robust **memory persistence**, allowing agents to retain context across multi-step workflows. Develop a powerful, **context-aware reasoning engine** for smarter decision-making.                   |
+| 📚 **Knowledge Injection (RAG)** | **Inject knowledge from files** and structured data to ground LLM responses, enhance accuracy and reduce hallucinations.                                                                                    |
+| 🐍 **Custom Python Tools** | Easily extend agent capabilities by connecting your own **Python tools**. Integrate any custom logic or API without needing to redeploy the entire system.                                                     |
+| ⚙️ **Full Developer Control via API** | Gain complete **control over the orchestration layer** via a flexible **RESTful API**. Manage task execution with **fine-grained task control** for maximum precision.                                     |
+| ⚡ **High-Performance Core** | Powered by a **high-performance asynchronous core** built with **FastAPI**. Our **event-driven architecture** is optimized for **low-latency** agent responses making it suitable for real-time applications. |
+| 🧱 **Modular & Extensible Backend** | We provide a **modular open-source backend** that is easy to extend and modify. Adapt the platform to the unique needs of your project.                                                               |
+| 🤖 **Multi-Agent Orchestration** | Design complex **multi-agent systems** where agents can collaborate to solve sophisticated problems. The platform is LLM-agnostic and supports any language model.                                          |
+
+
+---
+
+## 🎯 Who is EpicStaff For?
+
+* **AI Developers** seeking a flexible **FastAPI agent framework** without rigid templates.
+* **Business Teams** who need to quickly **build custom AI workflows** for automation.
+* **No-code/Low-code users** who prefer a **visual interface** over YAML or complex scripts.
+* **R&D Teams & Startups** prototyping and deploying **scalable agentic systems**.
+
+## Our Mission & Values
+
+**Mission:** To empower teams to build intelligent AI agents: quickly, collaboratively and without unnecessary complexity.
+
+* 💎 **Clarity over complexity:** We hide the overhead, not the logic.
+* 🤝 **Collaboration by design:** Visual-first for non-technical users, full code flexibility for developers.
+* ⚙️ **Developer Respect:** No black boxes. Just a clean, extensible architecture that gives engineers the control they need.
+* 🌐 **Open by Default:** Fully open-source, modular and community-driven.
+
+---
+
+**Join us on the journey to shape the future of intelligent, collaborative systems!**
+
+---
+
+## 🚀 Get Started
+
+**Star us on GitHub!** ⭐
 
 ---
 
@@ -100,9 +91,10 @@ If u find EpicStaff helpful - give it a ⭐️ on GitHub!
 
 ## 🚀 Getting Started
 
+### Windows/Linux/macOS
+
 1. **Install dependencies**  
    - [Git](https://git-scm.com/downloads)  
-
    - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 
 2. **Start Docker Desktop**

@@ -26,13 +26,9 @@ import { GraphDto } from '../../models/graph.model';
     LoadingSpinnerComponent,
   ],
   template: `
-    <div
-      style="margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px;"
-    >
-      <div style="flex: 1; display: flex; align-items: center; gap: 10px;">
-        <!-- Search functionality can be added here later -->
-      </div>
-      <div style="display: flex; align-items: center; gap: 12px;">
+    <div class="table-header">
+      <div class="search-section"></div>
+      <div class="bulk-actions-section">
         <div
           *ngIf="selectedIds().size > 0 && !isLoading && sessions.length > 0"
           class="bulk-actions"
@@ -170,7 +166,6 @@ export class FlowSessionsTableComponent {
 
   constructor(private cdr: ChangeDetectorRef) {}
 
-  // row-selection
   isSelected(id: number) {
     return this.selectedIds().has(id);
   }

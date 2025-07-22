@@ -2,7 +2,6 @@ import {
   Component,
   Input,
   ElementRef,
-  HostListener,
   OnDestroy,
   ChangeDetectionStrategy,
 } from '@angular/core';
@@ -12,6 +11,7 @@ import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { EmbeddingConfigsService } from '../../../../../features/settings-dialog/services/embeddings/embedding_configs.service';
 import { ConfirmationDialogService } from '../../../../../shared/components/cofirm-dialog/confimation-dialog.service';
+import { ClickOutsideDirective } from '../../../../../shared/directives/click-outside.directive';
 import {
   CollectionStatus,
   GetSourceCollectionRequest,
@@ -24,7 +24,7 @@ import { RenameCollectionDialogComponent } from '../rename-collection-dialog/ren
 @Component({
   selector: 'app-collection-item',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, ClickOutsideDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div
@@ -46,7 +46,7 @@ import { RenameCollectionDialogComponent } from '../rename-collection-dialog/ren
 
       <div class="collection-name">{{ collection.collection_name }}</div>
 
-      <div class="dropdown">
+      <div class="dropdown" clickOutside (clickOutside)="onClickOutside()">
         <button class="more-options-button" (click)="toggleDropdown($event)">
           <svg width="16" height="16" viewBox="0 0 24 24">
             <circle cx="12" cy="6" r="2" fill="currentColor" />
@@ -169,18 +169,21 @@ import { RenameCollectionDialogComponent } from '../rename-collection-dialog/ren
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
             z-index: 10;
             overflow: hidden;
-            min-width: 120px;
+            min-width: 150px;
+            padding: 8px 0;
 
             &.show {
               display: block;
             }
 
             .dropdown-item {
-              padding: 8px 12px;
+              padding: 6px 12px;
               font-size: 14px;
               color: rgba(255, 255, 255, 0.9);
               cursor: pointer;
               transition: background-color 0.2s ease;
+              margin: 2px 8px;
+              border-radius: 4px;
 
               &:hover {
                 background-color: rgba(255, 255, 255, 0.1);
@@ -196,8 +199,7 @@ export class CollectionItemComponent implements OnDestroy {
   @Input() collection!: GetSourceCollectionRequest;
   @Input() isActive: boolean = false;
 
-  // Make the enum accessible in the template
-  CollectionStatus = CollectionStatus;
+  public CollectionStatus = CollectionStatus;
 
   private _destroy$ = new Subject<void>();
   isDropdownOpen = false;
@@ -221,47 +223,38 @@ export class CollectionItemComponent implements OnDestroy {
   }
 
   toggleDropdown(event: MouseEvent): void {
-    event.stopPropagation(); // Prevent collection selection
+    event.stopPropagation();
     this.isDropdownOpen = !this.isDropdownOpen;
   }
 
-  public onRenameClick(event: MouseEvent): void {
-    event.stopPropagation(); // Prevent collection selection
-    this.renameCollection(this.collection);
-    this.toggleDropdown(event); // Close the dropdown after renaming
+  onClickOutside(): void {
+    if (this.isDropdownOpen) {
+      this.isDropdownOpen = false;
+      console.log('Dropdown closed (outside click)');
+    }
   }
 
-  /**
-   * Handle delete click - confirm and delete collection
-   */
+  public onRenameClick(event: MouseEvent): void {
+    event.stopPropagation();
+    this.renameCollection(this.collection);
+    this.toggleDropdown(event);
+  }
+
   public onDeleteClick(event: MouseEvent): void {
-    event.stopPropagation(); // Prevent collection selection
+    event.stopPropagation();
     console.log('Delete collection:', this.collection.collection_name);
     this.deleteCollection(this.collection);
     this.isDropdownOpen = false;
   }
   public onCopyClick(event: MouseEvent): void {
-    event.stopPropagation(); // Prevent collection selection
+    event.stopPropagation();
     console.log('Copy collection:', this.collection.collection_name);
-    // Implement copy logic here
-    this.isDropdownOpen = false; // Close the dropdown after copying
-  }
-  @HostListener('document:click', ['$event'])
-  onDocumentClick(event: MouseEvent) {
-    // Check if the click was outside of this component
-    if (!this.elementRef.nativeElement.contains(event.target)) {
-      if (this.isDropdownOpen) {
-        this.isDropdownOpen = false;
-        console.log('Dropdown closed (outside click)');
-      }
-    }
+    this.isDropdownOpen = false;
   }
 
   private selectCollection(collection: GetSourceCollectionRequest): void {
     this._pageService.setSelectedCollection(collection);
-    // this._pageService.setSelectedEmbeddingConfig(null);
 
-    // Fetch the embedding model for this collection
     if (collection.embedder) {
       this._embeddingConfigsService
         .getEmbeddingConfigById(collection.embedder)
@@ -296,7 +289,6 @@ export class CollectionItemComponent implements OnDestroy {
           .pipe(takeUntil(this._destroy$))
           .subscribe({
             next: () => {
-              // Update the collection name in our service
               this._pageService.updateCollection(collection.collection_id, {
                 collection_name: newName,
               });
@@ -316,16 +308,14 @@ export class CollectionItemComponent implements OnDestroy {
       .pipe(takeUntil(this._destroy$))
       .subscribe({
         next: (confirmed) => {
-          if (confirmed) {
+          if (confirmed === true) {
             this._GetSourceCollectionRequestsService
               .deleteGetSourceCollectionRequest(collection.collection_id)
               .pipe(takeUntil(this._destroy$))
               .subscribe({
                 next: () => {
-                  // Remove the collection from service
                   this._pageService.removeCollection(collection.collection_id);
 
-                  // If the deleted collection was selected, select another one if available
                   if (
                     this._pageService.selectedCollection()?.collection_id ===
                     collection.collection_id

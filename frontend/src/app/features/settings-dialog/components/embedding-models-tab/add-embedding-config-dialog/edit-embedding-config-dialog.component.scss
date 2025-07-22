@@ -47,6 +47,44 @@
   }
 }
 
+.api-key-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+
+  .api-key-input {
+    flex: 1;
+    padding-right: 2.5rem;
+  }
+
+  .toggle-visibility-btn {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: 4px;
+    transition: color 0.2s ease;
+
+    &:hover {
+      color: var(--color-text-primary);
+    }
+
+    &:focus {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+    }
+
+    i {
+      font-size: 1rem;
+    }
+  }
+}
+
 .dialog-actions {
   display: flex;
   justify-content: flex-end;

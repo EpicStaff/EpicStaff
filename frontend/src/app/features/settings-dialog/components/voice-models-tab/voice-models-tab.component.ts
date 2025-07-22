@@ -23,12 +23,7 @@ import { EditVoiceConfigDialogComponent } from './add-voice-config-dialog/edit-v
 @Component({
   selector: 'app-voice-models-tab',
   standalone: true,
-  imports: [
-    CommonModule,
-    AppIconComponent,
-    VoiceConfigItemComponent,
-    ButtonComponent,
-  ],
+  imports: [CommonModule, VoiceConfigItemComponent, ButtonComponent],
   templateUrl: './voice-models-tab.component.html',
   styleUrls: ['./voice-models-tab.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -82,7 +77,7 @@ export class VoiceModelsTabComponent implements OnInit {
       custom_name: config.custom_name,
       api_key: config.api_key,
       realtime_model: config.realtime_model,
-      is_visible: event.value as any, // Add is_visible if your backend supports it
+      is_visible: event.value as any,
     } as any;
     this.realtimeConfigService.updateConfig(updateReq).subscribe({
       next: (updated) => {

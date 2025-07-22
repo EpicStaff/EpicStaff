@@ -49,10 +49,9 @@ import { ProcessSelectorComponent } from '../process-selector/process-selector.c
     ToggleSwitchComponent,
     LlmModelSelectorComponent,
     EmbeddingModelSelectorComponent,
-    EmbeddingModelItemComponent,
     IconButtonComponent,
     NgIf,
-    NgStyle,
+
     AppIconComponent,
   ],
 })

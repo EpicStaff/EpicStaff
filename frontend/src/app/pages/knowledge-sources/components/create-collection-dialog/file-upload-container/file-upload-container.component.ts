@@ -1,4 +1,10 @@
-import { Component, Input, Output, EventEmitter } from '@angular/core';
+import {
+  Component,
+  Input,
+  Output,
+  EventEmitter,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
   FormArray,
@@ -33,6 +39,7 @@ export interface FileWithSettings {
   ],
   templateUrl: './file-upload-container.component.html',
   styleUrls: ['./file-upload-container.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FileUploadContainerComponent {
   @Input() fileSettingsFormArray!: FormArray;

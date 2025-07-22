@@ -32,7 +32,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
   standalone: true,
   imports: [
     CommonModule,
-    LoadingSpinnerComponent,
+
     FlowSessionsTableComponent,
     PaginationControlsComponent,
     FlowSessionStatusFilterDropdownComponent,
@@ -63,7 +63,7 @@ export class FlowSessionsListComponent implements OnInit {
       const page = this.currentPage();
       const size = this.pageSize();
       const status = this.statusFilter();
-      this.reloadTrigger(); // Include this to trigger reload when needed
+      this.reloadTrigger();
       this.loadSessions(size, (page - 1) * size, status);
     });
   }
@@ -101,7 +101,6 @@ export class FlowSessionsListComponent implements OnInit {
 
     this.graphSessionService.bulkDeleteSessions(ids).subscribe({
       next: () => {
-        // Always reload the data to get the correct state from server
         this.reloadAfterDeletion(ids);
         console.log('Sessions deleted successfully', ids);
       },
@@ -112,34 +111,20 @@ export class FlowSessionsListComponent implements OnInit {
   }
 
   private reloadAfterDeletion(deletedIds: number[]): void {
-    // Calculate how many sessions would remain on current page
     const currentSessions = this.sessions();
     const remainingSessionsOnPage = currentSessions.filter(
       (session) => !deletedIds.includes(session.id)
     );
     const currentPageNumber = this.currentPage();
 
-    console.log('Reloading after deletion:', {
-      deletedIds,
-      currentPageNumber,
-      remainingOnPage: remainingSessionsOnPage.length,
-      totalCount: this.totalCount,
-    });
-
-    // If current page becomes empty and we're not on page 1, go to previous page
     if (remainingSessionsOnPage.length === 0 && currentPageNumber > 1) {
-      console.log('Page is empty, going to previous page');
-      // Go to previous page and let it load
       this.currentPage.set(currentPageNumber - 1);
     } else {
-      console.log('Triggering reload via signal');
-      // Trigger reload through the signal system
       this.reloadTrigger.update((val) => val + 1);
     }
   }
 
   public onViewSession(sessionId: number): void {
-    // Always use router navigation to ensure route parameter subscriptions fire
     this.router.navigate(['/graph', this.flow.id, 'session', sessionId]);
     this.dialogRef.close();
   }
@@ -152,7 +137,6 @@ export class FlowSessionsListComponent implements OnInit {
             s.id === sessionId ? { ...s, status: GraphSessionStatus.ENDED } : s
           )
         );
-        console.log('Session stopped', sessionId, response);
       },
       error: (err) => {
         console.error('Failed to stop session', err);
