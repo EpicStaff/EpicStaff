@@ -24,7 +24,7 @@ class MemoryMonitor(metaclass=SingletonMeta):
         if self.start is None:
             self.start = mem
             self.last_change = mem
-            self.previous_snapshot = tracemalloc.take_snapshot()
+            # self.previous_snapshot = tracemalloc.take_snapshot()
         else:
             if self.last_change != mem:
                 delta = (mem - self.last_change) / 1024

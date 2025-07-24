@@ -27,7 +27,7 @@ class DefaultCrewConfig(DefaultBaseModel):
     )
     memory = models.BooleanField(default=False)
     max_rpm = models.IntegerField(null=True, default=100)
-    cache = models.BooleanField(default=True)
+    cache = models.BooleanField(default=False)
     default_temperature = models.FloatField(default=0.7, null=False)
 
     def __str__(self):
@@ -41,7 +41,7 @@ class DefaultAgentConfig(DefaultBaseModel):
     max_execution_time = models.IntegerField(null=True, default=True)
     memory = models.BooleanField(default=False)
     allow_delegation = models.BooleanField(default=False)
-    cache = models.BooleanField(default=True)
+    cache = models.BooleanField(default=False)
     allow_code_execution = models.BooleanField(default=False)
     max_retry_limit = models.IntegerField(default=2)
     respect_context_window = models.BooleanField(default=True)

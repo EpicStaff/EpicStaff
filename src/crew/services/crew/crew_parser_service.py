@@ -38,7 +38,6 @@ class CrewParserService(metaclass=SingletonMeta):
         self.proxy_tool_factory = ProxyToolFactory(
             host=manager_host,
             port=manager_port,
-            redis_service=redis_service,
             python_code_executor_service=python_code_executor_service,
         )
         self.knowledge_search_service = knowledge_search_service
@@ -100,6 +99,7 @@ class CrewParserService(metaclass=SingletonMeta):
         tools = [
             tool_map[unique_name] for unique_name in task_data.tool_unique_name_list
         ]
+        output_model.model_rebuild()
         return Task(
             name=task_data.name,
             description=task_data.instructions,
@@ -133,7 +133,7 @@ class CrewParserService(metaclass=SingletonMeta):
             "memory": crew_data.memory,
             "config": crew_data.config,
             "max_rpm": crew_data.max_rpm,
-            "cache": crew_data.cache,
+            "cache": False, # crew_data.cache, # TODO: remove False after frontend create cache field
             "full_output": crew_data.full_output,
             "planning_llm": crew_data.planning,
             "knowledge_collection_id": crew_data.knowledge_collection_id,

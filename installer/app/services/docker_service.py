@@ -6,6 +6,7 @@ import json
 import platform
 from queue import Empty, Queue
 import shutil
+import sys
 import tempfile
 import threading
 import docker
@@ -689,19 +690,28 @@ class DockerService:
 
         print("Docker is running.")
         return True
-
     def _is_docker_running(self):
+        startupinfo = None
+
+        # Only apply on Windows to hide terminal window
+        if sys.platform == "win32":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            creationflags = subprocess.CREATE_NO_WINDOW
+        else:
+            creationflags = 0
+
         try:
             subprocess.run(
                 ["docker", "info"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 check=True,
+                startupinfo=startupinfo,
+                creationflags=creationflags,
             )
             return True
-        except subprocess.CalledProcessError:
-            return False
-        except FileNotFoundError:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             return False
 
     def _wait_for_docker(self, timeout: float = 300.0, interval: float = 0.5) -> bool:

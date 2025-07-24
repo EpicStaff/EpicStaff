@@ -57,8 +57,10 @@ async def main():
         session_manager_service.start()
         logger.info("Session Manager Service started.")
         # Run indefinitely
+        # monitor = MemoryMonitor()
         while True:
             await asyncio.sleep(1)
+            # monitor.log_memory_usage()
 
 
     except Exception as e:
