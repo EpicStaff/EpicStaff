@@ -4,7 +4,7 @@ from typing import Any
 import aiohttp
 from loguru import logger
 from models.request_models import (
-    ToolData,
+    ConfiguredToolData,
     ToolInitConfigurationModel,
 )
 from models.response_models import ToolResponse
@@ -16,7 +16,7 @@ from .base_tool_executor import BaseToolExecutor
 
 
 class ConfiguredToolExecutor(BaseToolExecutor):
-    def __init__(self, configured_tool_data: ToolData, host: int, port: int):
+    def __init__(self, configured_tool_data: ConfiguredToolData, host: int, port: int):
         super().__init__(tool_name=configured_tool_data.name_alias)
         self.configured_tool_data = configured_tool_data
         self.host = host
@@ -38,7 +38,7 @@ class ConfiguredToolExecutor(BaseToolExecutor):
         return ToolResponse.model_validate(response_data).data
 
     async def _gen_configured_realtime_tool_model(
-        self, configured_tool_data: ToolData
+        self, configured_tool_data: ConfiguredToolData
     ) -> RealtimeTool:
         tool_init_configuration = None
         if configured_tool_data.tool_config is not None:

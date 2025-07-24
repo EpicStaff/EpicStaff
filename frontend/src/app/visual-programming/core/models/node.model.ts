@@ -1,9 +1,9 @@
 import { CustomConditionalEdgeModelForNode } from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
-import { AgentDto } from '../../../shared/models/agent.model';
+import { GetAgentRequest } from '../../../shared/models/agent.model';
 import { GetLlmConfigRequest } from '../../../features/settings-dialog/models/llms/LLM_config.model';
 import { GetProjectRequest } from '../../../features/projects/models/project.model';
-import { CreateTaskRequest, TaskDto } from '../../../shared/models/task.model';
-import { ToolConfigDto } from '../../../shared/models/tool_config.model';
+import { CreateTaskRequest } from '../../../shared/models/task.model';
+import { ToolConfig } from '../../../features/tools/models/tool_config.model';
 import { GetPythonCodeToolRequest } from '../../../features/tools/models/python-code-tool.model';
 import {
   CreatePythonCodeRequest,
@@ -56,11 +56,11 @@ export interface TaskNodeModel extends BaseNodeModel {
 
 export interface AgentNodeModel extends BaseNodeModel {
   type: NodeType.AGENT;
-  data: AgentDto;
+  data: GetAgentRequest;
 }
 export interface ToolNodeModel extends BaseNodeModel {
   type: NodeType.TOOL;
-  data: ToolConfigDto;
+  data: ToolConfig;
 }
 export interface LLMNodeModel extends BaseNodeModel {
   type: NodeType.LLM;
@@ -80,6 +80,14 @@ export interface DecisionTableNodeModel extends BaseNodeModel {
   };
 }
 
+export interface NoteNodeModel extends BaseNodeModel {
+  type: NodeType.NOTE;
+  data: {
+    content: string;
+    backgroundColor?: string;
+  };
+}
+
 export type NodeModel =
   | AgentNodeModel
   | TaskNodeModel
@@ -90,4 +98,5 @@ export type NodeModel =
   | EdgeNodeModel
   | StartNodeModel
   | GroupNodeModel
-  | DecisionTableNodeModel;
+  | DecisionTableNodeModel
+  | NoteNodeModel;

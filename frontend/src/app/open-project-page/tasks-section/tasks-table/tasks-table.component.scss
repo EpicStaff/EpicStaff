@@ -80,6 +80,44 @@ $transition-default: all 0.2s ease;
 }
 //tools column
 //cells
+::ng-deep .ag-grid-staff .tools-cell-wrapper {
+  display: flex;
+  flex-direction: column;
+
+  gap: 4px;
+  margin: 5px 0;
+  padding: 5px;
+  color: #f0f0f0; // Light text for visibility
+
+  .tool-item {
+    display: flex;
+    align-items: center;
+    background-color: #2a2a2a;
+    border: 1px solid $border-color;
+
+    border-radius: 4px;
+    padding: 6px 8px;
+
+    margin-bottom: 4px; // Adds spacing between tool items
+
+    .tool-icon {
+      margin-right: 6px;
+      font-style: normal;
+      color: #f0f0f0; // Light icon color
+    }
+    &:hover {
+      background-color: #3a3a3a;
+    }
+    .tool-name-text {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 13px;
+      font-weight: 500;
+      color: #f0f0f0; // Light text color
+    }
+  }
+}
 
 ::ng-deep .ag-grid-staff .no-tools {
   height: 100%;
@@ -88,7 +126,6 @@ $transition-default: all 0.2s ease;
   justify-content: flex-end;
   color: $text-secondary;
   font-style: italic;
-
   padding: 4px 8px;
   font-size: 0.8rem;
 }

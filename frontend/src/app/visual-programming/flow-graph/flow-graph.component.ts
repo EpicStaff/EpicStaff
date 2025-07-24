@@ -44,6 +44,7 @@ import {
   NodeModel,
   ProjectNodeModel,
   StartNodeModel,
+  NoteNodeModel,
 } from '../core/models/node.model';
 import { ConnectionModel } from '../core/models/connection.model';
 
@@ -87,6 +88,8 @@ import { SidePanelService } from '../services/side-panel.service';
 import { map, takeUntil } from 'rxjs/operators';
 import { Dialog } from '@angular/cdk/dialog';
 import { ProjectDialogComponent } from '../components/project-dialog/project-dialog.component';
+import { NoteNodeComponent } from '../components/nodes-components/note-node/note-node.component';
+import { NoteEditDialogComponent } from '../components/note-edit-dialog/note-edit-dialog.component';
 
 @Component({
   selector: 'app-flow-graph',
@@ -108,7 +111,6 @@ import { ProjectDialogComponent } from '../components/project-dialog/project-dia
     ClickOutsideDirective,
     DynamicSidePanelHostComponent,
     FlowActionPanelComponent,
-
     FlowNodePanelComponent,
     NodesSearchComponent,
   ],
@@ -146,6 +148,9 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
   private selectedNode$!: Observable<NodeModel | null>;
 
   public showVariables = signal<boolean>(false);
+
+  // Expose NodeType enum to the template
+  public NodeType = NodeType;
 
   constructor(
     public readonly flowService: FlowService,
@@ -583,16 +588,26 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
         this.contextMenuPostion.y
       )
     );
-    const nodeSize: { width: number; height: number } = {
-      width: 330,
-      height: 60,
-    };
 
-    const ports: ViewPort[] = generatePortsForNode(
-      newNodeId,
-      event.type,
-      event.data
-    );
+    // Set different size for note nodes
+    let nodeSize: { width: number; height: number };
+    if (event.type === NodeType.NOTE) {
+      nodeSize = {
+        width: 200,
+        height: 150,
+      };
+    } else {
+      nodeSize = {
+        width: 330,
+        height: 60,
+      };
+    }
+
+    // Generate ports for non-note nodes
+    const ports: ViewPort[] =
+      event.type === NodeType.NOTE
+        ? []
+        : generatePortsForNode(newNodeId, event.type, event.data);
 
     // Build the display name
     const currentNodes = this.flowService.getFlowState().nodes;
@@ -666,11 +681,42 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
 
   // side panel logic
   public onEditNode(node: NodeModel): void {
-    this.sidePanelService.trySelectNode(node).then((selected) => {
-      if (!selected) {
-        console.log('Node selection was cancelled or failed');
-      }
-    });
+    // Special handling for note nodes
+    if (node.type === NodeType.NOTE) {
+      const noteNode = node as NoteNodeModel;
+
+      // Open the note edit dialog
+      const dialogRef = this.dialog.open(NoteEditDialogComponent, {
+        data: { node: noteNode },
+      });
+
+      // Handle dialog close with save
+      dialogRef.closed.subscribe((result: any) => {
+        if (result && result.content !== undefined) {
+          // Update the note content
+          const updatedNode: NoteNodeModel = {
+            ...noteNode,
+            data: {
+              ...noteNode.data,
+              content: result.content,
+            },
+          };
+
+          // Update the node in the flow service
+          this.flowService.updateNode(updatedNode);
+
+          // Trigger change detection to refresh the view
+          this.cd.detectChanges();
+        }
+      });
+    } else {
+      // For all other node types, use the existing side panel method
+      this.sidePanelService.trySelectNode(node).then((selected) => {
+        if (!selected) {
+          console.log('Node selection was cancelled or failed');
+        }
+      });
+    }
   }
 
   public onCloseSidePanel(): void {

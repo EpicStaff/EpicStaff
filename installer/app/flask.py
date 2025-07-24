@@ -12,7 +12,11 @@ from flask_socketio import SocketIO, emit
 import socketio
 
 from app.utils import (
+    get_git_build_branch,
+    get_git_build_repository,
     init_env_file,
+    save_git_build_repository,
+    save_git_build_branch,
     save_savefiles_path,
     get_savefiles_path,
     select_folder,
@@ -55,6 +59,8 @@ def index():
         savefiles_path=get_savefiles_path(),
         image_repository=get_image_repository(),
         image_tag=get_image_tag(),
+        git_build_repository=get_git_build_repository(),
+        git_build_branch=get_git_build_branch(),
     )
 
 
@@ -228,6 +234,31 @@ def handle_save_image_tag(data):
             emit("image_tag_saved", {"success": False, "error": "Invalid image tag"})
     except Exception as e:
         emit("image_tag_saved", {"success": False, "error": str(e)})
+
+@socketio.on("save_git_build_repository")
+def handle_save_git_build_repository(data):
+    try:
+        git_build_repository = data["git_build_repository"]
+        if save_git_build_repository(git_build_repository):
+            emit("git_build_repository_saved", {"success": True, "path": git_build_repository})
+        else:
+            emit(
+                "git_build_repository_saved",
+                {"success": False, "error": "Invalid repository path"},
+            )
+    except Exception as e:
+        emit("git_build_repository_saved", {"success": False, "error": str(e)})
+
+@socketio.on("save_git_build_branch")
+def handle_save_git_build_branch(data):
+    try:
+        git_build_branch = data["git_build_branch"]
+        if save_git_build_branch(git_build_branch):
+            emit("git_build_branch_saved", {"success": True, "path": git_build_branch})
+        else:
+            emit("git_build_branch_saved", {"success": False, "error": "Invalid git_build_branch"})
+    except Exception as e:
+        emit("git_build_branch_saved", {"success": False, "error": str(e)})
 
 
 def is_port_in_use(port):

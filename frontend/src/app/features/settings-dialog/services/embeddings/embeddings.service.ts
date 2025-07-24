@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -16,25 +16,25 @@ export class EmbeddingModelsService {
 
   constructor(private http: HttpClient, private configService: ConfigService) {}
 
-  // Dynamically retrieve the API URL from ConfigService
   private get apiUrl(): string {
     return this.configService.apiUrl + 'embedding-models/';
   }
 
-  /**
-   * Gets embedding models from the API
-   */
-  getEmbeddingModels(): Observable<EmbeddingModel[]> {
+  getEmbeddingModels(providerId?: number): Observable<EmbeddingModel[]> {
+    let params = new HttpParams().set('limit', '1000');
+
+    if (providerId) {
+      params = params.set('embedding_provider', providerId.toString());
+    }
+
     return this.http
       .get<ApiGetRequest<EmbeddingModel>>(this.apiUrl, {
         headers: this.headers,
+        params,
       })
       .pipe(map((response: ApiGetRequest<EmbeddingModel>) => response.results));
   }
 
-  /**
-   * Get a specific embedding model by ID.
-   */
   getEmbeddingModelById(id: number): Observable<EmbeddingModel> {
     return this.http.get<EmbeddingModel>(`${this.apiUrl}${id}/`, {
       headers: this.headers,

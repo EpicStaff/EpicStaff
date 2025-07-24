@@ -22,11 +22,12 @@ export interface GetProjectRequest {
   planning_llm_config: number | null;
   manager_llm_config: number | null;
   embedding_config: number | null;
-
+  memory_llm_config: number | null;
   metadata?: any | null;
 }
 
 // Create Project Request
+
 export interface CreateProjectRequest {
   name: string;
   description: string | null;
@@ -43,7 +44,8 @@ export interface CreateProjectRequest {
   planning?: boolean;
   planning_llm_config?: number | null;
   manager_llm_config?: number | null;
-  embedding_config?: any;
+  embedding_config?: number | null;
+  memory_llm_config?: number | null;
   metadata?: any | null;
 }
 
@@ -65,5 +67,6 @@ export interface UpdateProjectRequest {
   planning?: boolean;
   planning_llm_config?: number | null;
   manager_llm_config?: number | null;
-  embedding_config?: any;
+  embedding_config?: number | null;
+  memory_llm_config?: number | null;
 }

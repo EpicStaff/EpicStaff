@@ -348,11 +348,11 @@ class Task(models.Model):
         return self.name
 
 
-class TaskTools(models.Model):
+class TaskConfiguredTools(models.Model):
     task = models.ForeignKey(
-        "Task", on_delete=models.CASCADE, related_name="task_tool_list"
+        "Task", on_delete=models.CASCADE, related_name="task_configured_tool_list"
     )
-    tool = models.ForeignKey(Tool, on_delete=models.CASCADE)
+    tool = models.ForeignKey(ToolConfig, on_delete=models.CASCADE)
 
     class Meta:
         unique_together = ("task", "tool")
@@ -362,10 +362,10 @@ class TaskPythonCodeTools(models.Model):
     task = models.ForeignKey(
         "Task", on_delete=models.CASCADE, related_name="task_python_code_tool_list"
     )
-    python_code_tool = models.ForeignKey("PythonCodeTool", on_delete=models.CASCADE)
+    tool = models.ForeignKey("PythonCodeTool", on_delete=models.CASCADE)
 
     class Meta:
-        unique_together = ("task", "python_code_tool")
+        unique_together = ("task", "tool")
 
 
 class TaskContext(models.Model):

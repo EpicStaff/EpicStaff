@@ -1,0 +1,96 @@
+<!-- Tools Selection Popup -->
+<div class="tools-popup-container">
+  <!-- Header -->
+
+  <div class="header">
+    <div class="list-header">
+      <input
+        #searchInput
+        type="text"
+        [(ngModel)]="searchTerm"
+        placeholder="Search tools..."
+      />
+      <!-- Commented out filter button as requested -->
+      <!-- <button class="filter-button"><i class="ti ti-filter"></i> Filter</button> -->
+    </div>
+
+    <div class="menu-header">
+      <button [class.active]="!showPythonTools" (click)="toggleToolType(false)">
+        Built-in Tools
+      </button>
+      <button [class.active]="showPythonTools" (click)="toggleToolType(true)">
+        Custom Tools
+      </button>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div class="body">
+    <!-- Built-in Tools -->
+    <div class="tools-list" *ngIf="!showPythonTools">
+      <!-- Loading Spinner -->
+      <div *ngIf="loading" class="loading-spinner">
+        <div class="dots">
+          <div class="dot"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+        </div>
+      </div>
+
+      <!-- No tools message -->
+      <div class="no-tools" *ngIf="!loading && tools.length === 0">
+        <p>No built-in tools available</p>
+      </div>
+
+      <!-- Using Tool Item Component for each tool -->
+      <app-tool-item
+        *ngFor="let tool of filteredTools"
+        [tool]="tool"
+        [isSelected]="isToolSelected(tool)"
+        [isExpanded]="expandedToolConfigs.has(tool.id)"
+        [selectedConfigIds]="selectedToolConfigs"
+        (toolToggled)="onCheckboxToggle($event)"
+        (configToggled)="onConfigToggle($event)"
+        (toolConfigsToggled)="toggleToolConfigs($event)"
+      >
+      </app-tool-item>
+    </div>
+
+    <!-- Python/Custom Tools -->
+    <div class="python-tools" *ngIf="showPythonTools">
+      <!-- Loading Spinner -->
+      <div *ngIf="loading" class="loading-spinner">
+        <div class="dots">
+          <div class="dot"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+        </div>
+      </div>
+
+      <!-- No python tools message -->
+      <div class="no-tools" *ngIf="!loading && pythonTools.length === 0">
+        <p>No custom tools available</p>
+        <button class="create-tool-btn">
+          <span class="plus-icon">+</span> Create Custom Tool
+        </button>
+      </div>
+
+      <!-- Using Python Tool Item Component for each tool -->
+      <div class="tools-list" *ngIf="!loading && pythonTools.length > 0">
+        <app-python-tool-item
+          *ngFor="let pTool of filteredPythonTools"
+          [tool]="pTool"
+          [isSelected]="selectedPythonTools.has(pTool.id)"
+          (toolToggled)="onPythonToolToggle($event)"
+        >
+        </app-python-tool-item>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <button class="cancel-button" (click)="onCancel()">Cancel</button>
+    <button class="save-btn" (click)="save()">Save Selection</button>
+  </div>
+</div>

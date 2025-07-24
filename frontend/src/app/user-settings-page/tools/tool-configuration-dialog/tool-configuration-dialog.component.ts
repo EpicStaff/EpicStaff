@@ -8,12 +8,12 @@ import {
 } from '@angular/core';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 
-import { Tool } from '../../../shared/models/tool.model';
+import { Tool } from '../../../features/tools/models/tool.model';
 import {
   ToolConfig,
   CreateToolConfigRequest,
   GetToolConfigRequest,
-} from '../../../shared/models/tool_config.model';
+} from '../../../features/tools/models/tool_config.model';
 import { ToolConfigService } from '../../../services/tool_config.service';
 import { NgIf, NgFor, NgClass } from '@angular/common';
 import { ToolConfigFormComponent } from './tool-config-form/tool-config-form.component';

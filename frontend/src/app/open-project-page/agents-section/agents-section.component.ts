@@ -15,9 +15,6 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-// Make sure to add Tabler Icons to your project
-// You can add it to your angular.json or include the CDN in your index.html
-// <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.30.0/tabler-icons.min.css">;
 
 import { Subscription } from 'rxjs';
 import { ProjectStateService } from '../services/project-state.service';
@@ -121,7 +118,7 @@ export class AgentsSectionComponent implements OnInit, OnDestroy {
     dialogRef.closed.subscribe((updatedAgent) => {
       if (updatedAgent) {
         // Update the agent via service
-        this.agentsService.updateAgent(updatedAgent).subscribe({
+        this.agentsService.updateAgent(updatedAgent as any).subscribe({
           next: (result) => {
             // After updating the agent, refresh the full agent data
             this.projectStateService.refreshAgent(result.id);

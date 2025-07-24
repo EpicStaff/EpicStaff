@@ -6,15 +6,9 @@ import {
   Validators,
 } from '@angular/forms';
 import { DialogModule, DialogRef } from '@angular/cdk/dialog';
-import { FormSliderComponent } from '../../../../shared/components/forms/slider/form-slider.component';
 import { Subject, takeUntil } from 'rxjs';
 import { ToastService } from '../../../../services/notifications/toast.service';
-import {
-  IconPickerComponent,
-  UI_ICONS,
-} from '../../../../shared/components/forms/icon-selector/icon-picker.component';
-import { ProcessSelectorComponent } from '../../../../shared/components/forms/process-selector/process-selector.component';
-import { ToggleSwitchComponent } from '../../../../shared/components/toggle-switch/toggle-switch.component';
+
 import { IconButtonComponent } from '../../../../shared/components/buttons/icon-button/icon-button.component';
 import {
   FullEmbeddingConfig,
@@ -35,6 +29,9 @@ import { LlmModelSelectorComponent } from '../../../../shared/components/llm-mod
 import { EmbeddingModelSelectorComponent } from '../../../../shared/components/embedding-model-selector/embedding-model-selector.component';
 import { EmbeddingModelItemComponent } from '../../../../shared/components/embedding-model-selector/embedding-model-item/embedding-model-item.component';
 import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
+import { FormSliderComponent } from '../../../../shared/components/form-controls/slider/form-slider.component';
+import { ToggleSwitchComponent } from '../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
+import { ProcessSelectorComponent } from '../process-selector/process-selector.component';
 
 @Component({
   selector: 'app-create-project',
@@ -43,18 +40,18 @@ import { AppIconComponent } from '../../../../shared/components/app-icon/app-ico
   styleUrls: ['./create-project.component.scss'],
   imports: [
     DialogModule,
-    ProcessSelectorComponent,
+
     HelpTooltipComponent,
     ReactiveFormsModule,
     FormSliderComponent,
-    IconPickerComponent,
+    ProcessSelectorComponent,
+
     ToggleSwitchComponent,
     LlmModelSelectorComponent,
     EmbeddingModelSelectorComponent,
-    EmbeddingModelItemComponent,
     IconButtonComponent,
     NgIf,
-    NgStyle,
+
     AppIconComponent,
   ],
 })
@@ -64,44 +61,41 @@ export class CreateProjectComponent implements OnInit, OnDestroy {
   public maxRpmSliderValue = 15;
   public activeTab: 'overview' | 'configurations' = 'overview';
 
-  // Updated to use the full config services
   public llmConfigs: FullLLMConfig[] = [];
   public embeddingConfigs: FullEmbeddingConfig[] = [];
 
-  // Icon Picker property
-  public selectedIcon: string | null = 'star'; // Default icon
+  public selectedIcon: string | null = 'star';
 
-  // Active color for consistency with design patterns
   public get activeColor(): string {
-    return '#685fff'; // Default accent color
+    return '#685fff';
   }
 
-  // For managing RxJS subscriptions
   private destroy$ = new Subject<void>();
 
   public isSubmitting = false;
 
   constructor(
     private fb: FormBuilder,
-    private dialogRef: DialogRef<GetProjectRequest | undefined>, // Update the generic type
+    private dialogRef: DialogRef<GetProjectRequest | undefined>,
     private fullLlmConfigService: FullLLMConfigService,
     private fullEmbeddingConfigService: FullEmbeddingConfigService,
     private projectsService: ProjectsStorageService,
-    private toastService: ToastService // Updated to use ToastService
+    private toastService: ToastService
   ) {
     this.projectForm = this.fb.group({
       name: ['', Validators.required],
       description: [''],
       process_type: ['sequential'],
       manager_llm_config: [null],
+      memory_llm_config: [null],
       embedding_config: [null],
-      planning_llm_config: [null], // Default to some neutral value
+      planning_llm_config: [null],
       default_temperature: [0],
-      memory: [true],
-      cache: [true], // Default to true (neutral value)
-      full_output: [true], // Default to true (neutral value)
+      memory: [false],
+      cache: [true],
+      full_output: [true],
       planning: [false],
-      project_icon: ['ui/star'], // Default icon path
+      project_icon: ['ui/star'],
 
       tasks: [[]],
       agents: [[]],
@@ -136,6 +130,77 @@ export class CreateProjectComponent implements OnInit, OnDestroy {
           console.error('Error fetching embedding configs:', error);
         },
       });
+
+    // Setup dynamic validation
+    this.setupDynamicValidation();
+  }
+
+  private setupDynamicValidation(): void {
+    // Watch for changes in memory toggle
+    this.projectForm
+      .get('memory')
+      ?.valueChanges.pipe(takeUntil(this.destroy$))
+      .subscribe((memoryEnabled: boolean) => {
+        const memoryLlmControl = this.projectForm.get('memory_llm_config');
+        const embeddingControl = this.projectForm.get('embedding_config');
+
+        if (memoryEnabled) {
+          // Add required validators when memory is enabled
+          memoryLlmControl?.setValidators([Validators.required]);
+          embeddingControl?.setValidators([Validators.required]);
+        } else {
+          // Remove validators when memory is disabled
+          memoryLlmControl?.clearValidators();
+          embeddingControl?.clearValidators();
+        }
+
+        // Update validation status
+        memoryLlmControl?.updateValueAndValidity();
+        embeddingControl?.updateValueAndValidity();
+      });
+
+    // Watch for changes in process type
+    this.projectForm
+      .get('process_type')
+      ?.valueChanges.pipe(takeUntil(this.destroy$))
+      .subscribe((processType: string) => {
+        const managerLlmControl = this.projectForm.get('manager_llm_config');
+
+        if (processType === 'hierarchical') {
+          // Add required validator when hierarchical is selected
+          managerLlmControl?.setValidators([Validators.required]);
+        } else {
+          // Remove validator when sequential is selected
+          managerLlmControl?.clearValidators();
+        }
+
+        // Update validation status
+        managerLlmControl?.updateValueAndValidity();
+      });
+
+    // Trigger initial validation based on current values
+    const currentMemory = this.projectForm.get('memory')?.value;
+    const currentProcessType = this.projectForm.get('process_type')?.value;
+
+    if (currentMemory) {
+      this.projectForm
+        .get('memory_llm_config')
+        ?.setValidators([Validators.required]);
+      this.projectForm
+        .get('embedding_config')
+        ?.setValidators([Validators.required]);
+    }
+
+    if (currentProcessType === 'hierarchical') {
+      this.projectForm
+        .get('manager_llm_config')
+        ?.setValidators([Validators.required]);
+    }
+
+    // Update all validations
+    this.projectForm.get('memory_llm_config')?.updateValueAndValidity();
+    this.projectForm.get('embedding_config')?.updateValueAndValidity();
+    this.projectForm.get('manager_llm_config')?.updateValueAndValidity();
   }
 
   public ngOnDestroy(): void {
@@ -147,13 +212,18 @@ export class CreateProjectComponent implements OnInit, OnDestroy {
     this.activeTab = tab;
   }
 
-  public setProcessType(type: string): void {
+  public setProcessType(type: 'sequential' | 'hierarchical'): void {
     this.projectForm.get('process_type')?.setValue(type);
   }
 
-  public onLLMChange(value: number | null): void {
-    console.log('Selected LLM Config ID:', value);
+  public onManagerLLMChange(value: number | null): void {
+    console.log('Selected Manager LLM Config ID:', value);
     this.projectForm.get('manager_llm_config')?.setValue(value);
+  }
+
+  public onMemoryLLMChange(value: number | null): void {
+    console.log('Selected Memory LLM Config ID:', value);
+    this.projectForm.get('memory_llm_config')?.setValue(value);
   }
 
   public onEmbeddingChange(value: number | null): void {
@@ -169,19 +239,6 @@ export class CreateProjectComponent implements OnInit, OnDestroy {
   public onMaxRpmSliderInput(newValue: number): void {
     this.maxRpmSliderValue = newValue;
     this.projectForm.get('max_rpm')?.setValue(newValue);
-  }
-
-  public onIconSelected(icon: string | null): void {
-    this.selectedIcon = icon;
-    // Get the full icon path from the UI_ICONS dictionary
-    const fullIconPath = icon ? this.getIconPath(icon) : '';
-    this.projectForm.get('project_icon')?.setValue(fullIconPath);
-    console.log('Icon selected:', icon, 'Path:', fullIconPath);
-  }
-
-  private getIconPath(iconName: string): string {
-    // Use the imported UI_ICONS dictionary
-    return UI_ICONS[iconName] || '';
   }
 
   // Updated onCancelForm method to just close the dialog
@@ -215,6 +272,7 @@ export class CreateProjectComponent implements OnInit, OnDestroy {
 
         // Configuration-related fields
         manager_llm_config: this.projectForm.get('manager_llm_config')?.value,
+        memory_llm_config: this.projectForm.get('memory_llm_config')?.value,
         embedding_config: this.projectForm.get('embedding_config')?.value,
         planning_llm_config: this.projectForm.get('planning_llm_config')?.value,
 

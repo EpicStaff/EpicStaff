@@ -1,5 +1,5 @@
 import json
-from services.python_code_executor_service import RunPythonCodeService
+from services.run_python_code_service import RunPythonCodeService
 from services.graph.exceptions import ReturnCodeError
 from models.request_models import PythonCodeData
 from .base_node import *
@@ -49,7 +49,6 @@ class PythonNode(BaseNode):
             session_id=self.session_id,
             name=self.node_name,
             execution_order=execution_order,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             message_data=python_message_data,
         )
         writer(graph_message)

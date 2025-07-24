@@ -363,6 +363,9 @@ export class PythonMessageComponent implements OnInit {
 
   toggleMessage(): void {
     this.isMessageExpanded = !this.isMessageExpanded;
+    if (this.isMessageExpanded) {
+      this.isRawDataExpanded = true;
+    }
   }
 
   toggleSection(

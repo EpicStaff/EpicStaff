@@ -1,0 +1,156 @@
+.dialog-container {
+  background: var(--color-sidenav-background);
+  border-radius: 12px;
+  padding: 1.5rem;
+  width: 500px;
+  max-width: 100%;
+  color: var(--color-text-primary);
+
+  .dialog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+
+    .dialog-title {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--color-text-primary);
+    }
+
+    .close-button {
+      background: none;
+      border: none;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      margin-left: 10px;
+
+      &:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+        color: var(--color-text-primary);
+      }
+    }
+  }
+
+  .dialog-content {
+    margin-bottom: 1.5rem;
+
+    .form-group {
+      margin-bottom: 1rem;
+      position: relative;
+
+      label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
+
+        .required {
+          color: var(--accent-color);
+          margin-left: 2px;
+        }
+      }
+
+      .form-control {
+        width: 100%;
+        padding: 0.525rem;
+        background-color: var(--color-input-background);
+        border: 1px solid var(--color-input-border);
+        border-radius: 6px;
+        color: var(--color-text-primary);
+        font-size: 0.875rem;
+        transition: border-color 0.2s;
+        resize: vertical;
+
+        &:focus {
+          outline: none;
+          border-color: var(--accent-color);
+        }
+
+        &::placeholder {
+          color: var(--color-input-text-placeholder);
+        }
+      }
+
+      .error-message {
+        font-size: 12px;
+        color: #ff4d4f;
+        margin-top: 4px;
+      }
+
+      &.name-with-icon {
+        .input-with-icon {
+          display: flex;
+          align-items: center;
+          background-color: var(--color-input-background);
+          border: 1px solid var(--color-input-border);
+          border-radius: 6px;
+          padding: 0.125rem;
+          padding-left: 0.35rem;
+
+          &:focus-within {
+            border-color: var(--accent-color);
+          }
+
+          input {
+            background-color: transparent;
+            border: none;
+            box-shadow: none;
+            flex: 1;
+            padding-inline: 0.875rem;
+            color: var(--color-text-primary);
+
+            &:focus {
+              border: none;
+              box-shadow: none;
+              background-color: transparent;
+              outline: none;
+            }
+
+            &::placeholder {
+              color: var(--color-input-text-placeholder);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  .dialog-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+  }
+}
+
+.dialog-error-message {
+  color: #ff4d4f;
+  font-size: 13px;
+  text-align: center;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+.spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: #fff;
+  animation: spin 1s ease-in-out infinite;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

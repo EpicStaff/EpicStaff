@@ -40,7 +40,7 @@ import { ButtonComponent } from '../../../../shared/components/buttons/button/bu
   standalone: true,
   imports: [
     NgIf,
-    NgFor,
+  
     ReactiveFormsModule,
     AppIconComponent,
     ButtonComponent,

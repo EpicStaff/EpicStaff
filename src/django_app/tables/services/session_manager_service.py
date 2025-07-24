@@ -181,7 +181,7 @@ class SessionManagerService(metaclass=SingletonMeta):
 
         return session.pk
 
-    def register_message(self, data: dict) -> None:
+    def register_message(self, data: dict, created_at_dt) -> None:
         if data["message_data"]["message_type"] == "user":
             graph_session_message_data = GraphSessionMessageData.model_validate(data)
             session = Session.objects.get(id=graph_session_message_data.session_id)
@@ -191,9 +191,12 @@ class SessionManagerService(metaclass=SingletonMeta):
                 execution_order=graph_session_message_data.execution_order,
                 message_data=graph_session_message_data.message_data,
                 uuid=graph_session_message_data.uuid,
+                created_at=created_at_dt,
             )
 
-            self.redis_service.publish_user_graph_message(session.id, str(graph_session_message_data.uuid), data)
+            self.redis_service.publish_user_graph_message(
+                session.id, str(graph_session_message_data.uuid), data
+            )
 
         else:
             raise ValueError(
@@ -201,9 +204,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             )
 
     def choose_variables(
-            self,
-            graph_id: int,
-            variables: dict | None = None
+        self, graph_id: int, variables: dict | None = None
     ) -> dict | None:
         """
         Function returns variables ether from previous session which ended successfully
@@ -221,14 +222,17 @@ class SessionManagerService(metaclass=SingletonMeta):
         if use_prev_vars:
             # Get last session which ended successfully
             latest_ended_session_id = (
-                Session.objects
-                .filter(graph_id=graph_id, status=Session.SessionStatus.END)
+                Session.objects.filter(
+                    graph_id=graph_id, status=Session.SessionStatus.END
+                )
                 .order_by("-id")
                 .values_list("id", flat=True)
                 .first()
             )
             if not latest_ended_session_id:
-                logger.warning(f"There are no sessions for this graph which ended successfully")
+                logger.warning(
+                    f"There are no sessions for this graph which ended successfully"
+                )
                 return variables
 
             logger.info(f"LAST SESSION /W STATUS: END ID IS: {latest_ended_session_id}")
@@ -236,17 +240,22 @@ class SessionManagerService(metaclass=SingletonMeta):
             try:
                 # Retrieve variables from previous session
                 message = (
-                    GraphSessionMessage.objects
-                    .filter(session_id=latest_ended_session_id)
+                    GraphSessionMessage.objects.filter(
+                        session_id=latest_ended_session_id
+                    )
                     .order_by("-created_at")
                     .first()
                 )
                 prev_session_vars = message.message_data["state"]["variables"]
                 logger.info(f"prev_session_var: {prev_session_vars}")
                 variables = prev_session_vars
-                logger.info(f"Variables from previous session are set to current run: {variables}")
+                logger.info(
+                    f"Variables from previous session are set to current run: {variables}"
+                )
             except Exception as e:
-                logger.error(f"Error while retrieving variables from previous session. {e}")
+                logger.error(
+                    f"Error while retrieving variables from previous session. {e}"
+                )
                 return variables
 
         return variables

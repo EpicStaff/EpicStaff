@@ -1,5 +1,11 @@
 from typing import Any, TypedDict
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+
+
+def iso_utc_timestamp():
+    now = datetime.now(timezone.utc)
+    return now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 @dataclass
@@ -7,8 +13,8 @@ class GraphMessage:
     session_id: int
     name: str
     execution_order: int
-    timestamp: str
     message_data: dict
+    timestamp: str = field(default_factory=iso_utc_timestamp)
 
 
 @dataclass
@@ -97,8 +103,8 @@ class ConditionGroupMessageData:
     group_name: int
     result: bool
 
+
 @dataclass
 class ConditonGroupManipulationMessageData:
     group_name: int
     state: dict
-    

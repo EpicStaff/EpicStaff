@@ -27,7 +27,6 @@ import { CommonModule } from '@angular/common';
         user-select: text;
         text-align: left;
         z-index: 1000;
-        font-family: monospace;
         line-height: 1.5;
       }
     `,

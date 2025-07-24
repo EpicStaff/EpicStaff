@@ -2,7 +2,7 @@ import { Injectable, signal, computed, inject } from '@angular/core';
 import { Observable, of } from 'rxjs';
 import { tap, delay, shareReplay, catchError, switchMap } from 'rxjs/operators';
 
-import { Tool } from '../../../../shared/models/tool.model';
+import { Tool } from '../../models/tool.model';
 import { BuiltinToolsApiService } from './builtin-tools-api.service';
 import { TOOL_CATEGORIES_CONFIG } from '../../constants/built-in-tools-categories';
 

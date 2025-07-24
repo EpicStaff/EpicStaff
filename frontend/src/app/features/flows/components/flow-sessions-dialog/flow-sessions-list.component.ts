@@ -12,6 +12,7 @@ import {
 import { GraphDto } from '../../models/graph.model';
 import {
   GraphSession,
+  GraphSessionLight,
   GraphSessionService,
   GraphSessionStatus,
 } from '../../services/flows-sessions.service';
@@ -22,23 +23,31 @@ import { CheckboxComponent } from '../../../../shared/components/form-controls/c
 import { LoadingSpinnerComponent } from '../../../../shared/components/loading-spinner/loading-spinner.component';
 import { FlowSessionsTableComponent } from './flow-sessions-table.component';
 import { PaginationControlsComponent } from '../../../../shared/components/pagination-controls/pagination-controls.component';
+import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-filter-dropdown.component';
 
 @Component({
   selector: 'app-flow-sessions-list',
   templateUrl: './flow-sessions-list.component.html',
   styleUrls: ['./flow-sessions-list.component.scss'],
   standalone: true,
-  imports: [CommonModule, LoadingSpinnerComponent, FlowSessionsTableComponent, PaginationControlsComponent],
+  imports: [
+    CommonModule,
+
+    FlowSessionsTableComponent,
+    PaginationControlsComponent,
+    FlowSessionStatusFilterDropdownComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FlowSessionsListComponent implements OnInit {
   public flow!: GraphDto;
-  public sessions = signal<GraphSession[]>([]);
+  public sessions = signal<GraphSessionLight[]>([]);
   public isLoaded = signal<boolean>(false);
   public currentPage = signal(1);
   public pageSize = signal(10);
   public statusFilter = signal<string[]>(['all']);
   public totalCount = 0;
+  private reloadTrigger = signal(0);
 
   @ViewChild('sessionSearchInput')
   sessionSearchInput!: ElementRef<HTMLInputElement>;
@@ -54,8 +63,9 @@ export class FlowSessionsListComponent implements OnInit {
       const page = this.currentPage();
       const size = this.pageSize();
       const status = this.statusFilter();
+      this.reloadTrigger();
       this.loadSessions(size, (page - 1) * size, status);
-    })
+    });
   }
 
   public ngOnInit(): void {
@@ -65,20 +75,22 @@ export class FlowSessionsListComponent implements OnInit {
   private loadSessions(limit: number, offset: number, status: string[]): void {
     this.isLoaded.set(false);
     if (this.flow && this.flow.id) {
-      this.graphSessionService.getSessionsByGraphId(this.flow.id, false, limit, offset, status).subscribe({
-        next: (sessions) => {
-          this.sessions.set(sessions.results);
-          this.isLoaded.set(true);
-          this.totalCount = sessions.count;
-        },
-        error: () => {
-          this.totalCount = 0;
-          this.sessions.set([]);
-          this.isLoaded.set(true);
-          this.pageSize.set(10);
-          this.currentPage.set(1);
-        },
-      });
+      this.graphSessionService
+        .getSessionsByGraphId(this.flow.id, false, limit, offset, status)
+        .subscribe({
+          next: (sessions) => {
+            this.sessions.set(sessions.results);
+            this.isLoaded.set(true);
+            this.totalCount = sessions.count;
+          },
+          error: () => {
+            this.totalCount = 0;
+            this.sessions.set([]);
+            this.isLoaded.set(true);
+            this.pageSize.set(10);
+            this.currentPage.set(1);
+          },
+        });
     } else {
       this.isLoaded.set(true);
     }
@@ -86,9 +98,11 @@ export class FlowSessionsListComponent implements OnInit {
 
   public onDeleteSelected(ids: number[]): void {
     if (ids.length === 0) return;
+
     this.graphSessionService.bulkDeleteSessions(ids).subscribe({
       next: () => {
-        this.currentPage.set(1);
+        this.reloadAfterDeletion(ids);
+        console.log('Sessions deleted successfully', ids);
       },
       error: (err) => {
         console.error('Failed to bulk delete sessions', err);
@@ -96,8 +110,21 @@ export class FlowSessionsListComponent implements OnInit {
     });
   }
 
+  private reloadAfterDeletion(deletedIds: number[]): void {
+    const currentSessions = this.sessions();
+    const remainingSessionsOnPage = currentSessions.filter(
+      (session) => !deletedIds.includes(session.id)
+    );
+    const currentPageNumber = this.currentPage();
+
+    if (remainingSessionsOnPage.length === 0 && currentPageNumber > 1) {
+      this.currentPage.set(currentPageNumber - 1);
+    } else {
+      this.reloadTrigger.update((val) => val + 1);
+    }
+  }
+
   public onViewSession(sessionId: number): void {
-    // Always use router navigation to ensure route parameter subscriptions fire
     this.router.navigate(['/graph', this.flow.id, 'session', sessionId]);
     this.dialogRef.close();
   }
@@ -110,7 +137,6 @@ export class FlowSessionsListComponent implements OnInit {
             s.id === sessionId ? { ...s, status: GraphSessionStatus.ENDED } : s
           )
         );
-        console.log('Session stopped', sessionId, response);
       },
       error: (err) => {
         console.error('Failed to stop session', err);

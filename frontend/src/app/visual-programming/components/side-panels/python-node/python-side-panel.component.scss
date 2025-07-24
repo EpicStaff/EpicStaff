@@ -239,10 +239,15 @@
   }
 }
 
+// FIX: this scss is not good i just dont have time to refactor it now
 :host ::ng-deep .tool-libraries .header h3 {
   color: #ddd !important;
 }
 
+:host ::ng-deep .tool-libraries {
+  margin-bottom: 1rem;
+  color: #ddd !important;
+}
 :host ::ng-deep .tool-libraries .input-group .library-input:focus {
   border-color: #ddd !important;
 }

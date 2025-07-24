@@ -186,7 +186,12 @@
 
         <!-- TOOLS SECTION -->
         <div class="details-subsection">
-          <h5 class="subsection-title">TOOLS</h5>
+          <h5 class="subsection-title">
+            TOOLS
+            <span class="tool-count" *ngIf="getTotalToolsCount() > 0"
+              >({{ getTotalToolsCount() }})</span
+            >
+          </h5>
           <div
             *ngIf="
               agent.mergedTools && agent.mergedTools.length > 0;
@@ -195,8 +200,17 @@
           >
             <div class="tools-container">
               <div class="tool-item" *ngFor="let tool of getDisplayedTools()">
-                <app-icon icon="ui/tools" size="16px"></app-icon>
-                <span class="tool-name">{{ tool.name }}</span>
+                <i
+                  *ngIf="tool.type === 'python-tool'"
+                  class="ti ti-brand-python python-icon"
+                ></i>
+                <app-icon
+                  *ngIf="tool.type !== 'python-tool'"
+                  icon="ui/tools"
+                  size="16px"
+                  [class.tool-config]="tool.type === 'tool-config'"
+                ></app-icon>
+                <span class="tool-name">{{ getToolDisplayName(tool) }}</span>
               </div>
 
               <button
@@ -207,7 +221,9 @@
                 {{
                   toolsExpanded
                     ? "Show Less"
-                    : "Show More (" + (agent.mergedTools.length - 4) + ")"
+                    : "Show More (" +
+                      (getTotalToolsCount() - getVisibleToolsCount()) +
+                      ")"
                 }}
               </button>
             </div>

@@ -2,7 +2,6 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { map, Observable } from 'rxjs';
 import {
-  Task,
   CreateTaskRequest,
   GetTaskRequest,
   UpdateTaskRequest,
@@ -18,12 +17,10 @@ export class TasksService {
 
   constructor(private http: HttpClient, private configService: ConfigService) {}
 
-  // Dynamically retrieve the API URL from ConfigService
   private get apiUrl(): string {
     return this.configService.apiUrl + 'tasks/';
   }
 
-  // GET all tasks (limit=1000 by default)
   getTasks(): Observable<GetTaskRequest[]> {
     const url = `${this.apiUrl}?limit=1000`;
     return this.http
@@ -31,7 +28,6 @@ export class TasksService {
       .pipe(map((response) => response.results));
   }
 
-  // GET tasks filtered by project (crew) ID using query parameter
   getTasksByProjectId(projectId: string): Observable<GetTaskRequest[]> {
     const url = `${this.apiUrl}?crew=${projectId}`;
     return this.http
@@ -44,14 +40,12 @@ export class TasksService {
     return this.http.get<GetTaskRequest>(`${this.apiUrl}${taskId}/`);
   }
 
-  // POST create task
   createTask(task: CreateTaskRequest): Observable<GetTaskRequest> {
     return this.http.post<GetTaskRequest>(this.apiUrl, task, {
       headers: this.headers,
     });
   }
 
-  // PUT update task
   updateTask(task: UpdateTaskRequest): Observable<GetTaskRequest> {
     return this.http.put<GetTaskRequest>(`${this.apiUrl}${task.id}/`, task, {
       headers: this.headers,

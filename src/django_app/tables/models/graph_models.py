@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from django.utils import timezone
 
 
 class Graph(models.Model):
@@ -12,8 +13,7 @@ class Graph(models.Model):
         default=3600, help_text="Session lifitime duration in seconds."
     )
     persistent_variables = models.BooleanField(
-        default=False,
-        help_text="If 'True' -> use variables from last session."
+        default=False, help_text="If 'True' -> use variables from last session."
     )
 
 
@@ -118,7 +118,7 @@ class ConditionalEdge(models.Model):
 
 class GraphSessionMessage(models.Model):
     session = models.ForeignKey("Session", on_delete=models.CASCADE)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField()
     name = models.CharField(default="")
     execution_order = models.IntegerField(default=0)
     message_data = models.JSONField()
@@ -143,6 +143,7 @@ class DecisionTableNode(BaseNode):
     )
     default_next_node = models.CharField(max_length=255, null=True, default=None)
     next_error_node = models.CharField(max_length=255, null=True, default=None)
+
     class Meta:
         constraints = [
             models.UniqueConstraint(
@@ -172,7 +173,6 @@ class ConditionGroup(models.Model):
             ),
         ]
         ordering = ["order"]
-        
 
 
 class Condition(models.Model):
@@ -183,7 +183,6 @@ class Condition(models.Model):
     order = models.PositiveIntegerField(blank=False, default=0)
     condition = models.CharField(max_length=5000, blank=False)
 
-
     class Meta:
         constraints = [
             models.UniqueConstraint(
@@ -192,4 +191,3 @@ class Condition(models.Model):
             )
         ]
         ordering = ["order"]
-

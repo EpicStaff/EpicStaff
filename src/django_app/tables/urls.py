@@ -23,7 +23,7 @@ from tables.views.model_view_sets import (
     LLMModelReadWriteViewSet,
     EmbeddingModelReadWriteViewSet,
     EmbeddingConfigReadWriteViewSet,
-    AgentReadWriteViewSet,
+    AgentViewSet,
     CrewReadWriteViewSet,
     TaskReadWriteViewSet,
     ToolConfigViewSet,
@@ -78,7 +78,7 @@ router.register(r"llm-models", LLMModelReadWriteViewSet)
 router.register(r"llm-configs", LLMConfigReadWriteViewSet)
 router.register(r"embedding-models", EmbeddingModelReadWriteViewSet)
 router.register(r"embedding-configs", EmbeddingConfigReadWriteViewSet)
-router.register(r"agents", AgentReadWriteViewSet)
+router.register(r"agents", AgentViewSet)
 router.register(r"crews", CrewReadWriteViewSet)
 router.register(r"tasks", TaskReadWriteViewSet)
 router.register(r"tools", ToolListRetrieveUpdateGenericViewSet)

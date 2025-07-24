@@ -20,7 +20,7 @@ import {
   RouterLinkActive,
 } from '@angular/router';
 
-import { CreateFlowDialogComponent } from '../../../../pages/flows-page/components/flow-dialog/create-flow-dialog.component';
+import { CreateFlowDialogComponent } from '../../components/create-flow-dialog/create-flow-dialog.component';
 
 import { Dialog } from '@angular/cdk/dialog';
 
@@ -58,10 +58,8 @@ export class FlowsListPageComponent implements OnDestroy {
     { label: 'Templates', link: 'templates' },
   ];
 
-  // Search term for ngModel binding
   public searchTerm: string = '';
 
-  // For debounce
   private searchTerms = new Subject<string>();
   private subscription: Subscription;
 
@@ -71,7 +69,6 @@ export class FlowsListPageComponent implements OnDestroy {
   private cdr = inject(ChangeDetectorRef);
 
   constructor() {
-    // Setup search with debounce
     this.subscription = this.searchTerms
       .pipe(debounceTime(300), distinctUntilChanged())
       .subscribe((term) => {
@@ -84,7 +81,6 @@ export class FlowsListPageComponent implements OnDestroy {
       this.subscription.unsubscribe();
     }
 
-    // Reset search filter when component is destroyed
     this.searchTerm = '';
     this.flowStorageService.setFilter(null);
   }

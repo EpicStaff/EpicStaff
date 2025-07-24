@@ -7,7 +7,7 @@ import {
   ChangeDetectorRef,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FullTask } from '../models/full-task.model';
+import { FullTask } from '../../shared/models/full-task.model';
 import { FullAgent } from '../../services/full-agent.service';
 import { ProjectStateService } from '../services/project-state.service';
 import { Subscription } from 'rxjs';

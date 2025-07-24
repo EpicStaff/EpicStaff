@@ -105,6 +105,12 @@ export class FlowGraphCoreMenuComponent {
       icon: NODE_ICONS[NodeType.GROUP],
       color: '#ffffff',
     },
+    {
+      label: 'Note',
+      type: NodeType.NOTE,
+      icon: NODE_ICONS[NodeType.NOTE],
+      color: NODE_COLORS[NodeType.NOTE],
+    },
     // {
     //   label: 'Decision Table',
     //   type: NodeType.TABLE,
@@ -151,6 +157,11 @@ export class FlowGraphCoreMenuComponent {
           node_name: '',
           default_next_node: null,
         },
+      };
+    } else if (type === NodeType.NOTE) {
+      data = {
+        content: 'Add your note here...',
+        backgroundColor: NODE_COLORS[NodeType.NOTE],
       };
     }
 

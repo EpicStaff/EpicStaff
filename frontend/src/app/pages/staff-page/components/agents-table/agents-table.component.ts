@@ -31,16 +31,16 @@ import { themeQuartz } from 'ag-grid-community';
 
 import { ConnectedPosition, Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { LLMPopupComponent } from '../cell-renderers/cell-popup/llm-popup/llm-popup.component';
+import { LLMPopupComponent } from '../cell-popups-and-modals/llm-selector-popup/llm-popup.component';
 
-import { ToolsPopupComponent } from '../cell-renderers/cell-popup/tools-popup/tools-popup.component';
-import { TagsPopupComponent } from '../cell-renderers/cell-popup/tags-popup/tags-popup.component';
+import { ToolsPopupComponent } from '../cell-popups-and-modals/tools-selector-popup/tools-popup.component';
+import { TagsPopupComponent } from '../cell-popups-and-modals/tags-popup/tags-popup.component';
 import {
   FullAgent,
   FullAgentService,
   TableFullAgent,
 } from '../../../../services/full-agent.service';
-import { IndexCellRendererComponent } from '../cell-renderers/cell-popup/test-row-height/custom-row-height.component';
+import { IndexCellRendererComponent } from '../cell-renderers/index-row-cell-renderer/custom-row-height.component';
 import { MemoryHeaderComponent } from '../header-renderers/memory-header.component';
 import { DelegationHeaderComponent } from '../header-renderers/delegation-header.component';
 import {
@@ -56,6 +56,7 @@ import {
 import { AgentsService } from '../../../../services/staff.service';
 import {
   CreateAgentRequest,
+  ToolUniqueName,
   UpdateAgentRequest,
 } from '../../../../shared/models/agent.model';
 import { NgClass, NgIf, NgStyle } from '@angular/common';
@@ -64,7 +65,8 @@ import { AgGridContextMenuComponent } from '../context-menu/ag-grid-context-menu
 import { ClickOutsideDirective } from '../../../../shared/directives/click-outside.directive';
 import { ToastService } from '../../../../services/notifications/toast.service';
 import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.component';
-import { ConfigCellRendererComponent } from '../cell-renderers/cell-popup/realtime-and-llm-config-cell-renderer/realtime-config-cell-renderer.component';
+import { buildToolIdsArray } from '../../../../shared/utils/tool-ids-builder.util';
+import { ConfigCellRendererComponent } from '../cell-renderers/llm-cell-renderer/realtime-config-cell-renderer.component';
 import { map, switchMap } from 'rxjs';
 import { CreateRealtimeAgentRequest } from '../../../../shared/models/realtime-agent.model';
 import { RealtimeAgentService } from '../../../../services/realtime-agent.service';
@@ -100,14 +102,12 @@ export class AgentsTableComponent {
   public isLoading = signal<boolean>(true);
   private loadStartTime: number = 0;
   public rowData: TableFullAgent[] = [];
+  private copiedRowData: TableFullAgent | null = null;
   //context-menu
   public contextMenuVisible = signal(false);
   menuLeft = 0;
   menuTop = 0;
   private selectedRowData: TableFullAgent | null = null;
-
-  // Used to store a copy of the row for "Paste" actions
-  private copiedRowData: TableFullAgent | null = null;
 
   //overlay
   private popupOverlayRef: OverlayRef | null = null;
@@ -135,6 +135,7 @@ export class AgentsTableComponent {
         // Sort and set data
         this.rowData = data.sort((a, b) => b.id - a.id);
         this.rowData.push(this.createEmptyFullAgent());
+        console.log(this.rowData);
 
         this.cdr.markForCheck();
       },
@@ -211,6 +212,7 @@ export class AgentsTableComponent {
       default_temperature: 0,
       tags: [],
       knowledge_collection: null,
+      tools: [],
       // Replace realtime_config with realtime_agent object using provided defaults
       realtime_agent: {
         distance_threshold: '0.65',
@@ -293,8 +295,8 @@ export class AgentsTableComponent {
         'text-align': 'left',
         'font-size': '14px',
       },
-      flex: 1, // Increased flex weight
-      minWidth: 190, // Minimum width needed for content
+      flex: 1,
+      minWidth: 190,
       maxWidth: 400,
       //   rowDrag: true,
       editable: true,
@@ -327,8 +329,8 @@ export class AgentsTableComponent {
         'text-align': 'left',
         'font-size': '14px',
       },
-      flex: 1, // Higher flex because this needs more space
-      minWidth: 280, // Minimum readable width
+      flex: 1,
+      minWidth: 280,
 
       editable: true,
     },
@@ -360,8 +362,8 @@ export class AgentsTableComponent {
         'text-align': 'left',
         'font-size': '14px',
       },
-      flex: 1, // Higher flex because this needs more space
-      minWidth: 280, // Minimum readable width
+      flex: 1,
+      minWidth: 280,
 
       editable: true,
     },
@@ -379,19 +381,19 @@ export class AgentsTableComponent {
       minWidth: 50,
       maxWidth: 50,
     },
-    {
-      headerName: 'Memory',
+    // {
+    //   headerName: 'Memory',
 
-      headerComponent: MemoryHeaderComponent,
-      field: 'memory',
-      cellRenderer: 'agCheckboxCellRenderer',
-      cellEditor: 'agCheckboxCellEditor',
-      editable: true,
-      cellClass: 'memory-checkbox',
-      width: 50,
-      minWidth: 50,
-      maxWidth: 50,
-    },
+    //   headerComponent: MemoryHeaderComponent,
+    //   field: 'memory',
+    //   cellRenderer: 'agCheckboxCellRenderer',
+    //   cellEditor: 'agCheckboxCellEditor',
+    //   editable: true,
+    //   cellClass: 'memory-checkbox',
+    //   width: 50,
+    //   minWidth: 50,
+    //   maxWidth: 50,
+    // },
     {
       headerName: 'LLMs',
       field: 'mergedConfigs',
@@ -405,8 +407,8 @@ export class AgentsTableComponent {
       headerName: 'Tools',
       field: 'mergedTools',
       editable: false,
-      flex: 1, // Use flex instead of fixed width
-      minWidth: 200, // Minimum width needed
+      flex: 1,
+      minWidth: 200,
       maxWidth: 400,
       cellRenderer: (params: { value: any[] }) => {
         const tools = params.value || [];
@@ -416,11 +418,11 @@ export class AgentsTableComponent {
         }
 
         const toolsHtml = tools
-          .map((tool: { name: any }) => {
+          .map((tool: { configName: any; toolName: any }) => {
             return `
               <div class="tool-item">
                 <i class="tool-icon">🔧</i>
-                <span class="tool-name-text" title="${tool.name}">${tool.name}</span>
+                <span class="tool-name-text" title="${tool.toolName}">${tool.toolName}</span>
               </div>
             `;
           })
@@ -484,21 +486,7 @@ export class AgentsTableComponent {
     stopEditingWhenCellsLoseFocus: true,
 
     onFirstDataRendered: (params) => {
-      console.log('hello data rendered');
-
-      const loadTime = Date.now() - this.loadStartTime;
-      const minLoadTime = 500; // 500ms (half a second) minimum
-
-      if (loadTime >= minLoadTime) {
-        this.isLoading.set(false);
-        console.log(this.isLoading());
-      } else {
-        // Otherwise, wait until we've reached at least 500ms
-        setTimeout(() => {
-          this.isLoading.set(false);
-          console.log(this.isLoading());
-        }, minLoadTime - loadTime);
-      }
+      this.isLoading.set(false);
     },
     getRowId: (params) => {
       // If the ID exists and is not null, use it
@@ -637,13 +625,18 @@ export class AgentsTableComponent {
       const parsedData = parseAgentData(event.data);
       console.log(parsedData);
 
+      // Build tool_ids array
+      const configuredToolIds = parsedData.configured_tools || [];
+      const pythonToolIds = parsedData.python_code_tools || [];
+      const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds);
+
       // Create the new agent by sending the full row data
       const createAgentData: CreateAgentRequest = {
         role: parsedData.role,
         goal: parsedData.goal,
         backstory: parsedData.backstory,
-        configured_tools: parsedData.configured_tools || [],
-        python_code_tools: parsedData.python_code_tools || [],
+        configured_tools: configuredToolIds,
+        python_code_tools: pythonToolIds,
         llm_config: parsedData.llm_config,
         fcm_llm_config: parsedData.fcm_llm_config,
         realtime_agent: parsedData.realtime_agent, // Use the nested structure
@@ -658,6 +651,7 @@ export class AgentsTableComponent {
         respect_context_window: parsedData.respect_context_window ?? null,
         default_temperature: parsedData.default_temperature ?? null,
         knowledge_collection: parsedData.knowledge_collection ?? null,
+        tool_ids: toolIds,
       };
 
       // Use the new syntax with next, error, and complete
@@ -740,14 +734,22 @@ export class AgentsTableComponent {
     const parsedUpdateData = parseAgentData(event.data);
     console.log(parsedUpdateData);
 
+    // Build tool_ids array for update
+    const updateConfiguredToolIds = parsedUpdateData.configured_tools || [];
+    const updatePythonToolIds = parsedUpdateData.python_code_tools || [];
+    const updateToolIds = buildToolIdsArray(
+      updateConfiguredToolIds,
+      updatePythonToolIds
+    );
+
     // Update the agent using the id if all fields are valid
     const updateAgentData: UpdateAgentRequest = {
       id: parsedUpdateData.id,
       role: parsedUpdateData.role,
       goal: parsedUpdateData.goal,
       backstory: parsedUpdateData.backstory,
-      configured_tools: parsedUpdateData.configured_tools || [],
-      python_code_tools: parsedUpdateData.python_code_tools || [],
+      configured_tools: updateConfiguredToolIds,
+      python_code_tools: updatePythonToolIds,
       llm_config: parsedUpdateData.llm_config,
       fcm_llm_config: parsedUpdateData.fcm_llm_config,
       realtime_agent: parsedUpdateData.realtime_agent, // Use the nested structure instead of realtime_config
@@ -762,6 +764,7 @@ export class AgentsTableComponent {
       respect_context_window: parsedUpdateData.respect_context_window ?? false,
       default_temperature: parsedUpdateData.default_temperature ?? undefined,
       knowledge_collection: parsedUpdateData.knowledge_collection ?? null,
+      tool_ids: updateToolIds,
     };
 
     this.agentsService.updateAgent(updateAgentData).subscribe({
@@ -886,14 +889,22 @@ export class AgentsTableComponent {
       realtime_config: realtimeConfigId,
     };
 
+    // Build tool_ids array for settings update
+    const settingsConfiguredToolIds = updatedAgent.configured_tools || [];
+    const settingsPythonToolIds = updatedAgent.python_code_tools || [];
+    const settingsToolIds = buildToolIdsArray(
+      settingsConfiguredToolIds,
+      settingsPythonToolIds
+    );
+
     // Prepare the payload for the backend update request
     const updateAgentData: UpdateAgentRequest = {
       id: +updatedAgent.id,
       role: updatedAgent.role,
       goal: updatedAgent.goal,
       backstory: updatedAgent.backstory,
-      configured_tools: updatedAgent.configured_tools || [],
-      python_code_tools: updatedAgent.python_code_tools || [],
+      configured_tools: settingsConfiguredToolIds,
+      python_code_tools: settingsPythonToolIds,
       llm_config: updatedAgent.llm_config ?? null,
       fcm_llm_config: updatedAgent.fullFcmLlmConfig?.id
         ? updatedAgent.fullFcmLlmConfig?.id
@@ -910,6 +921,7 @@ export class AgentsTableComponent {
       respect_context_window: updatedAgent.respect_context_window ?? null,
       default_temperature: updatedAgent.default_temperature ?? null,
       knowledge_collection: updatedAgent.knowledge_collection ?? null,
+      tool_ids: settingsToolIds,
     };
 
     // Make the API call directly instead of trying to reuse onCellValueChanged
@@ -961,14 +973,11 @@ export class AgentsTableComponent {
     const rowId = this.selectedRowData.id;
     console.log('Selected row ID for deletion:', rowId, 'Type:', typeof rowId);
 
-    // Check if this is a temporary row (hasn't been saved to backend yet)
     const isTempRow = typeof rowId === 'string' && rowId.startsWith('temp_');
 
     if (isTempRow) {
-      // For temporary rows, just remove them locally without backend call
       console.log('Deleting temporary row:', rowId);
 
-      // Find the row in our local data array
       const index = this.rowData.findIndex((row) => row.id === rowId);
 
       if (index !== -1) {
@@ -1143,12 +1152,16 @@ export class AgentsTableComponent {
       realtime_config: realtimeConfigId,
     };
 
+    const configuredToolIds = newAgentData.configured_tools || [];
+    const pythonToolIds = newAgentData.python_code_tools || [];
+    const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds);
+
     const createAgentData: CreateAgentRequest = {
       role: newAgentData.role,
       goal: newAgentData.goal,
       backstory: newAgentData.backstory,
-      configured_tools: newAgentData.configured_tools || [],
-      python_code_tools: newAgentData.python_code_tools || [],
+      configured_tools: configuredToolIds,
+      python_code_tools: pythonToolIds,
       llm_config: newAgentData.llm_config ?? null,
       fcm_llm_config: newAgentData.fcm_llm_config ?? null,
       realtime_agent: realtime_agent, // Use the nested structure instead of realtime_config
@@ -1163,6 +1176,7 @@ export class AgentsTableComponent {
       respect_context_window: newAgentData.respect_context_window ?? null,
       default_temperature: newAgentData.default_temperature ?? null,
       knowledge_collection: newAgentData.knowledge_collection ?? null,
+      tool_ids: toolIds as ToolUniqueName[],
     };
 
     this.agentsService.createAgent(createAgentData).subscribe({
@@ -1483,8 +1497,7 @@ export class AgentsTableComponent {
       // Subscribe to the mergedToolsSaved event
       popupRef.instance.mergedToolsUpdated.subscribe(
         (updatedMergedTools: string[]) => {
-          console.log('Updated merged tools:', updatedMergedTools);
-
+          console.log('Returned from tools popup:', updatedMergedTools);
           if (this.currentPopupCell) {
             const rowIndex = this.currentPopupCell.rowIndex;
 
@@ -1500,6 +1513,11 @@ export class AgentsTableComponent {
           this.closePopup();
         }
       );
+
+      // Handle cancel event
+      popupRef.instance.cancel.subscribe(() => {
+        this.closePopup();
+      });
     } else if (cell.columnId === 'tags') {
       const portal = new ComponentPortal(TagsPopupComponent);
       const popupRef = this.popupOverlayRef.attach(portal);

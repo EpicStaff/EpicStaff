@@ -12,6 +12,7 @@ export const NODE_ICONS: Record<NodeType, string> = {
   [NodeType.START]: 'ti ti-player-play-filled',
   [NodeType.GROUP]: 'ti ti-apps',
   [NodeType.TABLE]: 'ti ti-table',
+  [NodeType.NOTE]: 'ti ti-note',
 };
 
 /** NodeType to Color Mapping */
@@ -26,4 +27,5 @@ export const NODE_COLORS: Record<NodeType, string> = {
   [NodeType.START]: '#d3d3d3',
   [NodeType.GROUP]: '#d3d3d3',
   [NodeType.TABLE]: '#00aaff',
+  [NodeType.NOTE]: '#ffffd1',
 };

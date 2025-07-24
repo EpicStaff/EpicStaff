@@ -108,19 +108,14 @@ export class AddEmbeddingConfigDialogComponent implements OnInit, OnDestroy {
   private loadModels(providerId: number): void {
     this.isLoading.set(true);
     this.embeddingModelsService
-      .getEmbeddingModels()
+      .getEmbeddingModels(providerId)
       .pipe(finalize(() => this.isLoading.set(false)))
       .subscribe({
         next: (models) => {
-          // Filter models by provider ID
-          const filteredModels = models.filter(
-            (model) => model.embedding_provider === providerId
-          );
-          this.models.set(filteredModels);
+          this.models.set(models);
 
-          // If there are models, select the first one. If not, set modelId to null.
-          if (filteredModels.length > 0) {
-            this.form.get('modelId')?.setValue(filteredModels[0].id);
+          if (models.length > 0) {
+            this.form.get('modelId')?.setValue(models[0].id);
           } else {
             this.form.get('modelId')?.setValue(null);
           }

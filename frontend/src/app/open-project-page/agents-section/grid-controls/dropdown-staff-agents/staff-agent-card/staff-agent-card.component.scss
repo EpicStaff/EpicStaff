@@ -245,9 +245,19 @@
           margin: -2px -4px 6px -4px;
           border-radius: 3px;
           transition: background-color 0.2s ease;
+          display: flex;
+          align-items: center;
+          gap: 8px;
 
           &:hover {
             background-color: var(--gray-850, rgba(255, 255, 255, 0.05));
+          }
+
+          .tool-count {
+            font-size: 10px;
+            color: var(--gray-500);
+            font-weight: 400;
+            text-transform: none;
           }
         }
       }
@@ -331,22 +341,37 @@
         gap: 8px;
         padding: 4px 0;
         height: 28px;
+        position: relative;
 
         app-icon {
           color: var(--gray-400);
+          flex-shrink: 0;
+
+          &.tool-config {
+            color: var(--green-400);
+          }
+        }
+
+        .python-icon {
+          color: var(--blue-400);
+          font-size: 16px;
           flex-shrink: 0;
         }
 
         .tool-name {
           font-size: 14px;
           color: var(--gray-200);
+          flex: 1;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          min-width: 0;
         }
       }
     }
   }
 }
 
-// Size variations
 :host([size="small"]) {
   .agent-card {
     transition: height 0.3s ease-in-out;
@@ -355,11 +380,10 @@
       border-bottom-color: transparent;
       border-radius: 12px;
       .header-left {
-        gap: 16px; // Increase gap between emoji & title
+        gap: 16px;
         max-width: calc(100% - 70px);
       }
     }
-    /* Increase header spacing, icon sizes, etc. */
 
     .body {
       max-height: 0;
@@ -378,7 +402,7 @@
 
     .header {
       .header-left {
-        gap: 16px; // Increase gap between emoji & title
+        gap: 16px;
         max-width: calc(100% - 70px);
       }
     }
@@ -389,10 +413,9 @@
   .agent-card {
     transition: height 0.3s ease-in-out;
 
-    /* Increase header spacing, icon sizes, etc. */
     .header {
       .header-left {
-        gap: 16px; // Increase gap between emoji & title
+        gap: 16px;
 
         max-width: calc(100% - 170px);
       }

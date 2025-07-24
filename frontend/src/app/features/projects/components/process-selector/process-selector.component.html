@@ -1,0 +1,59 @@
+<div class="process-selector">
+  <div class="process-options">
+    <div
+      class="process-option"
+      [class.selected]="selectedValue === 'sequential'"
+      (click)="onProcessTypeSelect('sequential')"
+    >
+      <div class="option-icon">
+        <app-icon
+          icon="ui/list-numbers"
+          size="1.5rem"
+          [style.color]="
+            selectedValue === 'sequential'
+              ? 'var(--accent-color)'
+              : 'var(--text-secondary-color)'
+          "
+        ></app-icon>
+      </div>
+      <div class="option-content">
+        <div class="option-title">Sequential</div>
+        <div class="option-description">
+          Tasks are executed in sequence, one after another
+        </div>
+      </div>
+      <div
+        class="option-indicator"
+        [class.active]="selectedValue === 'sequential'"
+      ></div>
+    </div>
+
+    <div
+      class="process-option"
+      [class.selected]="selectedValue === 'hierarchical'"
+      (click)="onProcessTypeSelect('hierarchical')"
+    >
+      <div class="option-icon">
+        <app-icon
+          icon="ui/hierarchy"
+          size="1.5rem"
+          [style.color]="
+            selectedValue === 'hierarchical'
+              ? 'var(--accent-color)'
+              : 'var(--text-secondary-color)'
+          "
+        ></app-icon>
+      </div>
+      <div class="option-content">
+        <div class="option-title">Hierarchical</div>
+        <div class="option-description">
+          Complex workflows with manager-worker structure
+        </div>
+      </div>
+      <div
+        class="option-indicator"
+        [class.active]="selectedValue === 'hierarchical'"
+      ></div>
+    </div>
+  </div>
+</div>

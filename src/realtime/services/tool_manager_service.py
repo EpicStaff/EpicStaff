@@ -1,5 +1,9 @@
 from models.ai_models import RealtimeTool
-from models.request_models import RealtimeAgentChatData
+from models.request_models import (
+    ConfiguredToolData,
+    PythonCodeToolData,
+    RealtimeAgentChatData,
+)
 from tool_executors.stop_agent_tool_executor import StopAgentToolExecutor
 from services.python_code_executor_service import PythonCodeExecutorService
 from services.redis_service import RedisService
@@ -62,23 +66,26 @@ class ToolManagerService(metaclass=SingletonMeta):
                 knowledge_tool_executor
             )
 
-        for configured_tool_data in realtime_agent_chat_data.tools:
-            configured_tool_executor = ConfiguredToolExecutor(
-                configured_tool_data=configured_tool_data,
-                host=self.manager_host,
-                port=self.manager_port,
-            )
-            self.connection_tool_executors[connection_key].append(
-                configured_tool_executor
-            )
-        for python_code_tool_data in realtime_agent_chat_data.python_code_tools:
-            python_code_tool_executor = PythonCodeToolExecutor(
-                python_code_tool_data=python_code_tool_data,
-                python_code_executor_service=self.python_code_executor_service,
-            )
-            self.connection_tool_executors[connection_key].append(
-                python_code_tool_executor
-            )
+        # TODO: change this
+        for base_tool_data in realtime_agent_chat_data.tools:
+            tool_data = base_tool_data.data
+            if isinstance(tool_data, ConfiguredToolData):
+                tool_executor = ConfiguredToolExecutor(
+                    configured_tool_data=tool_data,
+                    host=self.manager_host,
+                    port=self.manager_port,
+                )
+
+            elif isinstance(tool_data, PythonCodeToolData):
+                tool_executor = PythonCodeToolExecutor(
+                    python_code_tool_data=tool_data,
+                    python_code_executor_service=self.python_code_executor_service,
+                )
+            else:
+                raise ValueError(
+                    f"Unknown tool data type: {type(tool_data)} for tool {base_tool_data.unique_name}"
+                )
+            self.connection_tool_executors[connection_key].append(tool_executor)
 
     async def get_realtime_tool_models(self, connection_key: str) -> list[RealtimeTool]:
         realtime_tool_models: list[RealtimeTool] = []

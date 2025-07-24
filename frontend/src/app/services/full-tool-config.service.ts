@@ -1,13 +1,13 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable, forkJoin, of, map, switchMap } from 'rxjs';
-import { Tool } from '../shared/models/tool.model';
+import { Tool } from '../features/tools/models/tool.model';
 import { ToolsService } from '../features/tools/services/tools.service';
 import { ToolConfigService } from './tool_config.service';
 import {
   CreateToolConfigRequest,
   GetToolConfigRequest,
-} from '../shared/models/tool_config.model';
+} from '../features/tools/models/tool_config.model';
 
 export interface FullToolConfig extends Tool {
   toolConfigs: GetToolConfigRequest[]; // List of related tool configurations
@@ -97,7 +97,7 @@ export class FullToolConfigService {
     tool: Tool
   ): Observable<GetToolConfigRequest> {
     const createConfig: CreateToolConfigRequest = {
-      name: `${tool.name} Tool Config`,
+      name: `${tool.name}`,
       configuration: {},
       tool: tool.id,
     };

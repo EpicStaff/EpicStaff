@@ -66,7 +66,7 @@ import { FlowsApiService } from '../../features/flows/services/flows-api.service
           display: flex;
           overflow: hidden;
           gap: 1rem;
-          padding: 1rem 3rem;
+          padding: 1rem 0rem;
           padding-top: 0;
         }
       }

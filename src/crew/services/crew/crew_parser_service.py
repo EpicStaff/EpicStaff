@@ -1,18 +1,20 @@
 import os
 from textwrap import dedent
-from typing import Any
+from typing import Any, Type
 from crewai import Agent, Crew, Task, LLM
 from langchain_core.tools import BaseTool
 from utils.parse_llm import parse_llm, parse_memory_llm, parse_memory_embedder
 from callbacks.session_callback_factory import CrewCallbackFactory
 from services.schema_converter.converter import generate_model_from_schema
-from services.python_code_executor_service import RunPythonCodeService
+from services.run_python_code_service import RunPythonCodeService
 from services.knowledge_search_service import KnowledgeSearchService
 from utils.singleton_meta import SingletonMeta
 from services.redis_service import RedisService
 from models.request_models import (
     AgentData,
+    ConfiguredToolData,
     CrewData,
+    PythonCodeToolData,
     TaskData,
 )
 
@@ -90,10 +92,14 @@ class CrewParserService(metaclass=SingletonMeta):
         agent: Agent,
         task_callback: Any,
         context_tasks: list[Task],
+        tool_map: dict[str, Type],
     ) -> Task:
         output_model = None
         if task_data.output_model is not None:
             output_model = generate_model_from_schema(task_data.output_model)
+        tools = [
+            tool_map[unique_name] for unique_name in task_data.tool_unique_name_list
+        ]
         return Task(
             name=task_data.name,
             description=task_data.instructions,
@@ -105,6 +111,7 @@ class CrewParserService(metaclass=SingletonMeta):
             config=task_data.config,
             output_pydantic=output_model,
             context=context_tasks,
+            tools=tools,
         )
 
     def parse_crew(
@@ -158,30 +165,32 @@ class CrewParserService(metaclass=SingletonMeta):
             )
             crew_config["memory_config"] = memory_config
 
-        config_id_tool_map = {
-            tool_data.tool_config.id: self.proxy_tool_factory.create_proxy_tool(
-                tool_data=tool_data
-            )
-            for tool_data in crew_data.tools
-        }
-        id_python_code_tool_map = {
-            python_code_tool_data.id: self.proxy_tool_factory.create_python_code_proxy_tool(
-                python_code_tool_data=python_code_tool_data,
-                global_kwargs=global_kwargs,
-            )
-            for python_code_tool_data in crew_data.python_code_tools
-        }
+        tool_map = {}
+        for base_tool_data in crew_data.tools:
+
+            if isinstance(base_tool_data.data, PythonCodeToolData):
+                callback = self.proxy_tool_factory.create_python_code_proxy_tool(
+                    python_code_tool_data=base_tool_data.data,
+                    global_kwargs=global_kwargs,
+                )
+            elif isinstance(base_tool_data.data, ConfiguredToolData):
+                callback = self.proxy_tool_factory.create_proxy_tool(
+                    tool_data=base_tool_data.data,
+                )
+            else:
+                raise TypeError(
+                    f"Tool with type {type(base_tool_data.data)} is not supported."
+                )
+
+            tool_map[base_tool_data.unique_name] = callback
 
         agent_data_list: list[AgentData] = crew_data.agents
 
         id_agent_map: dict[int, Agent] = {}
         for agent_data in agent_data_list:
             tool_list = [
-                config_id_tool_map[tool_id] for tool_id in agent_data.tool_id_list
-            ]
-            python_code_tool_list = [
-                id_python_code_tool_map[tool_id]
-                for tool_id in agent_data.python_code_tool_id_list
+                tool_map[unique_name]
+                for unique_name in agent_data.tool_unique_name_list
             ]
 
             id_agent_map[agent_data.id] = self.parse_agent(
@@ -194,7 +203,7 @@ class CrewParserService(metaclass=SingletonMeta):
                     agent_knowledge_collection_id=agent_data.knowledge_collection_id,
                 ),
                 inputs=inputs,
-                tool_list=tool_list + python_code_tool_list,
+                tool_list=tool_list,
             )
         crew_config["agents"] = id_agent_map.values()
 
@@ -214,7 +223,7 @@ class CrewParserService(metaclass=SingletonMeta):
 
         id_task_map: dict[int, Task] = {}
         for task_data in task_list_data:
-            # Adding previous taks to context by id
+            # Adding previous task to context by id
             context_task_list = []
             for context_id in task_data.task_context_id_list:
                 task = id_task_map.get(context_id)
@@ -228,6 +237,7 @@ class CrewParserService(metaclass=SingletonMeta):
                 task_callback=crew_callback_factory.get_task_callback(
                     task_id=task_data.id,
                 ),
+                tool_map=tool_map,
                 context_tasks=context_task_list,
             )
 

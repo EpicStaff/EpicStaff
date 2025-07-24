@@ -1,6 +1,7 @@
 import { Component, Input, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MarkdownModule } from 'ngx-markdown';
+import { NgxJsonViewerModule } from 'ngx-json-viewer';
 import {
   AgentFinishMessageData,
   GraphMessage,
@@ -12,7 +13,7 @@ import { GetAgentRequest } from '../../../../../../shared/models/agent.model';
 @Component({
   selector: 'app-agent-finish-message',
   standalone: true,
-  imports: [CommonModule, MarkdownModule],
+  imports: [CommonModule, MarkdownModule, NgxJsonViewerModule],
   animations: [expandCollapseAnimation],
   template: `
     <div class="agent-flow-container">
@@ -80,7 +81,13 @@ import { GetAgentRequest } from '../../../../../../shared/models/agent.model';
       *ngIf="agentFinishMessageData?.output"
     >
       <div class="result-content">
+        <ngx-json-viewer
+          *ngIf="isValidJson(agentFinishMessageData?.output)"
+          [json]="getParsedJson(agentFinishMessageData?.output)"
+          [expanded]="true"
+        ></ngx-json-viewer>
         <markdown
+          *ngIf="!isValidJson(agentFinishMessageData?.output)"
           [data]="cleanOutput(agentFinishMessageData?.output)"
           class="markdown-content"
         >
@@ -239,6 +246,7 @@ export class AgentFinishMessageComponent implements OnInit {
   isMessageExpanded = false;
   isThoughtExpanded = true;
   isCollapsed = true;
+  private outputJsonData: any = null;
 
   ngOnInit() {
     // Any initialization logic here
@@ -320,5 +328,27 @@ export class AgentFinishMessageComponent implements OnInit {
       return name.length > 50 ? name.substring(0, 50) + '...' : name;
     }
     return 'Unknown';
+  }
+
+  isValidJson(str: string | undefined): boolean {
+    if (!str) return false;
+    try {
+      JSON.parse(str);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  getParsedJson(str: string | undefined): any {
+    if (!str) return null;
+    if (this.outputJsonData === null) {
+      try {
+        this.outputJsonData = JSON.parse(str);
+      } catch (e) {
+        this.outputJsonData = null;
+      }
+    }
+    return this.outputJsonData;
   }
 }

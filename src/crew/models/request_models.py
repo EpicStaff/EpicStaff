@@ -48,7 +48,7 @@ class ToolConfigData(BaseModel):
     tool_init_configuration: dict[str, Any] | None = None
 
 
-class ToolData(BaseModel):
+class ConfiguredToolData(BaseModel):
     name_alias: str
     tool_config: ToolConfigData
 
@@ -69,6 +69,34 @@ class PythonCodeToolData(BaseModel):
     python_code: PythonCodeData
 
 
+class BaseToolData(BaseModel):
+    unique_name: str
+    data: PythonCodeToolData | ConfiguredToolData
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_data(cls, values: dict):
+        unique_name = values.get("unique_name", "")
+        data = values.get("data", {})
+
+        try:
+            prefix, id = unique_name.split(":")
+            assert prefix != ''
+            assert id != ''
+        except ValueError as e:
+            raise ValueError(
+                "Invalid unique_name. Unique name should be splited by `:`. \nFor example: python-code-tool:1"
+            )
+        if prefix == "python-code-tool":
+            values["data"] = PythonCodeToolData(**data)
+        elif prefix == "configured-tool":
+            values["data"] = ConfiguredToolData(**data)
+        else:
+            raise ValueError(f"Unknown tool prefix: {prefix}")
+
+        return values
+
+
 class RunToolParamsModel(BaseModel):
     tool_config: ToolConfigData | None = None
     run_args: list[str]
@@ -80,8 +108,7 @@ class AgentData(BaseModel):
     role: str
     goal: str
     backstory: str
-    tool_id_list: list[int]
-    python_code_tool_id_list: list[int]
+    tool_unique_name_list: list[str] = []
     max_iter: int
     max_rpm: int
     max_execution_time: int
@@ -103,7 +130,7 @@ class RealtimeAgentData(BaseModel):
     knowledge_collection_id: int | None
     llm: LLMData | None = None
     memory: bool
-    tools: list[ToolData] = []
+    tools: list[ConfiguredToolData] = []
     python_code_tools: list[PythonCodeToolData] = []
     connection_key: str
 
@@ -128,8 +155,7 @@ class CrewData(BaseModel):
     memory_llm: LLMData | None
     manager_llm: LLMData | None
     planning_llm: LLMData | None
-    tools: List[ToolData]
-    python_code_tools: list[PythonCodeToolData]
+    tools: List[BaseToolData] = []
     knowledge_collection_id: int | None
 
 
@@ -144,9 +170,8 @@ class TaskData(BaseModel):
     async_execution: bool
     config: dict | None
     output_model: dict | None
-    task_tool_id_list: list[int]
-    task_python_code_tool_id_list: list[int]
-    task_context_id_list: list[int]
+    tool_unique_name_list: list[str] = []
+    task_context_id_list: list[int] = []
 
 
 class SessionData(BaseModel):

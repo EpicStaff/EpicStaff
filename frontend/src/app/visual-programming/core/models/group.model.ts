@@ -5,21 +5,19 @@ import { ViewPort } from './port.model';
 export interface ConnectionData {
   inputs: ConnectionModel[];
   outputs: ConnectionModel[];
-  internal: ConnectionModel[]; // Added internal connections
+  internal: ConnectionModel[];
 }
 
 export interface GroupData {
   name: string;
-  connectionData: ConnectionData | null; // Renamed from externalConnections to connectionData
-  // Future fields can be added here
+  connectionData: ConnectionData | null;
 }
 
-// Updated GroupNodeModel interface with data as an object
 export interface GroupNodeModel {
   id: string;
   category: 'web';
   type: NodeType.GROUP;
-  data: GroupData; // Object that includes a name property
+  data: GroupData;
   collapsed: boolean;
   position: { x: number; y: number };
   collapsedPosition: { x: number; y: number };

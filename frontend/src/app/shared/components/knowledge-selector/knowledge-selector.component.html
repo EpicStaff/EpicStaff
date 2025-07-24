@@ -1,0 +1,50 @@
+<div class="knowledge-selector" clickOutside (clickOutside)="closeDropdown()">
+  <!-- <label *ngIf="label">{{ label }}</label> -->
+  <div
+    class="selector"
+    [class.disabled]="disabled"
+    [class.loading]="loading"
+    [class.placeholder]="selectedCollectionId === null && isPlaceholder"
+    (click)="toggleDropdown()"
+  >
+    <div class="selected-collection">{{ getSelectedCollectionName() }}</div>
+    <div class="selector-arrow" [class.open]="isOpen">
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M6 9L12 15L18 9"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
+    </div>
+  </div>
+
+  <div class="dropdown-menu" *ngIf="isOpen">
+    <div
+      class="dropdown-item"
+      [class.selected]="selectedCollectionId === null && !isPlaceholder"
+      (click)="selectCollection(null, false)"
+    >
+      No knowledge source
+    </div>
+    <div
+      *ngFor="let collection of collections"
+      class="dropdown-item"
+      [class.selected]="collection.collection_id === selectedCollectionId"
+      (click)="selectCollection(collection.collection_id)"
+    >
+      {{ collection.collection_name }}
+    </div>
+    <div *ngIf="collections.length === 0" class="no-results">
+      No knowledge sources available
+    </div>
+  </div>
+</div>

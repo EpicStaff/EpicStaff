@@ -20,6 +20,8 @@ import stat
 from flask_socketio import emit
 from app.utils import (
     get_env_file_path,
+    get_git_build_branch,
+    get_git_build_repository,
     get_savefiles_path,
     get_compose_file_path,
     get_image_repository,
@@ -166,10 +168,9 @@ class UpdateImagesState(State):
         }
 
         # Use the branch from the original code
-        branch = "main"
-        # Use the GitLab repository URL
+        branch = get_git_build_branch()
         # repo_url = "https://gitlab.hysdev.com/sheetsui/crewai-sheetsui.git"
-        repo_url = "https://github.com/EpicStaff/EpicStaff.git"
+        repo_url = get_git_build_repository()
         tmp_repo_path = None  # Initialize to None for cleanup in finally block
         try:
             # 1. Create a temporary directory
@@ -180,6 +181,8 @@ class UpdateImagesState(State):
             # Git will handle authentication (e.g., via credential manager, SSH agent, or prompts if interactive)
             clone_command = f'git clone -b {branch} {repo_url} "{tmp_repo_path}"'
             yield from self._run_script(clone_command, prefix="git clone")
+            cleanup_git = f'cd "{tmp_repo_path}" && git rm --cached -r . && git reset --hard'
+            yield from self._run_script(cleanup_git, prefix="gitattributes-refresh")
 
             # Basic check to see if cloning was successful
             if not tmp_repo_path.is_dir() or not any(tmp_repo_path.iterdir()):

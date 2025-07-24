@@ -45,9 +45,9 @@ export class ShortcutListenerDirective implements OnInit, OnDestroy {
     this.ngZone.runOutsideAngular(() => {
       this.sub = fromEvent<KeyboardEvent>(window, 'keydown')
         .pipe(
-          filter((evt) => {
-            const key = evt.key.toLowerCase();
-            const mod = evt.ctrlKey || evt.metaKey;
+          filter((evt: KeyboardEvent) => {
+            const key: string = evt.key.toLowerCase();
+            const mod: boolean = evt.ctrlKey || evt.metaKey;
 
             // 1) only keep delete/backspace/escape OR keys with ctrl/meta
             if (

@@ -302,6 +302,38 @@
   height: auto;
 }
 
+:host(.type-note) {
+  // Make the node container fit the note component
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+
+  // Fill the entire node container with the component
+  app-note-node {
+    width: 100%;
+    height: 100%;
+  }
+
+  // Make sure edit button is visible on hover
+  &:hover {
+    .actions {
+      opacity: 1;
+    }
+  }
+
+  // Keep edit button visible when selected
+  &.f-selected {
+    .actions {
+      opacity: 1;
+    }
+  }
+}
+
 .inputs-overlay {
   position: absolute;
   left: -18rem;

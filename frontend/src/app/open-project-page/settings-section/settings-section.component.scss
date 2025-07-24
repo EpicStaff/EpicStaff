@@ -40,7 +40,8 @@ $purple-accent: rgba(104, 95, 255, 0.5);
       }
     }
 
-    &.hierarchical-group {
+    &.hierarchical-group,
+    &.memory-group {
       margin-top: 2rem;
       background: rgba(255, 255, 255, 0.03);
       border: 1px solid rgba(255, 255, 255, 0.08);

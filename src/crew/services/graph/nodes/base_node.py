@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any
 
+from utils.psutil_wrapper import psutil_wrapper
 from services.graph.custom_message_writer import CustomSessionMessageWriter
 from models.graph_models import *
 from models.state import *

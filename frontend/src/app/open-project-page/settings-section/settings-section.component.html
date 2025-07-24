@@ -21,9 +21,21 @@
           </div>
         </div>
         <div class="setting-value">
-          <div class="toggle-wrapper" (click)="toggleMemory()">
-            <div class="toggle-option" [class.active]="memory()">Enabled</div>
-            <div class="toggle-option" [class.active]="!memory()">Disabled</div>
+          <div class="toggle-wrapper">
+            <div
+              class="toggle-option"
+              [class.active]="memory()"
+              (click)="!memory() && toggleMemory()"
+            >
+              Enabled
+            </div>
+            <div
+              class="toggle-option"
+              [class.active]="!memory()"
+              (click)="memory() && toggleMemory()"
+            >
+              Disabled
+            </div>
           </div>
         </div>
       </div>
@@ -42,16 +54,18 @@
           </div>
         </div>
         <div class="setting-value">
-          <div class="toggle-wrapper" (click)="toggleProcess()">
+          <div class="toggle-wrapper">
             <div
               class="toggle-option"
               [class.active]="process() === 'sequential'"
+              (click)="process() !== 'sequential' && toggleProcess()"
             >
               Sequential
             </div>
             <div
               class="toggle-option"
               [class.active]="process() === 'hierarchical'"
+              (click)="process() !== 'hierarchical' && toggleProcess()"
             >
               Hierarchical
             </div>
@@ -59,39 +73,8 @@
         </div>
       </div>
 
-      <!-- Temperature Setting -->
-      <!-- <div class="setting-item">
-        <div class="setting-label">
-          <div class="setting-title">
-            Temperature
-            <app-help-tooltip text="Controls the randomness of the AI's responses. Lower values yield more deterministic, precise responses. Higher values produce more creative, varied outputs."></app-help-tooltip>
-          </div>
-          <div class="setting-description">
-            Adjust for more precise or creative responses
-          </div>
-        </div>
-        <div class="setting-value">
-          <div class="slider-container">
-            <span class="slider-value">{{ temperaturePercent }}%</span>
-            <input
-              id="temperature"
-              [(ngModel)]="temperaturePercent"
-              type="range"
-              step="1"
-              min="0"
-              max="100"
-              class="gradient-slider"
-            />
-            <div class="slider-labels">
-              <span>Precise</span>
-              <span>Creative</span>
-            </div>
-          </div>
-        </div>
-      </div> -->
-
       <!-- Cache Setting -->
-      <div class="setting-item">
+      <!-- <div class="setting-item">
         <div class="setting-label">
           <div class="setting-title">
             Cache
@@ -104,16 +87,24 @@
           </div>
         </div>
         <div class="setting-value">
-          <div class="toggle-wrapper" (click)="toggleSetting('cache')">
-            <div class="toggle-option" [class.active]="settings().cache">
+          <div class="toggle-wrapper">
+            <div
+              class="toggle-option"
+              [class.active]="settings().cache"
+              (click)="!settings().cache && toggleSetting('cache')"
+            >
               Enabled
             </div>
-            <div class="toggle-option" [class.active]="!settings().cache">
+            <div
+              class="toggle-option"
+              [class.active]="!settings().cache"
+              (click)="settings().cache && toggleSetting('cache')"
+            >
               Disabled
             </div>
           </div>
         </div>
-      </div>
+      </div> -->
 
       <!-- Full Output Setting -->
       <!-- <div class="setting-item">
@@ -125,11 +116,11 @@
           <div class="setting-description">Return complete model output</div>
         </div>
         <div class="setting-value">
-          <div class="toggle-wrapper" (click)="toggleSetting('full_output')">
-            <div class="toggle-option" [class.active]="settings().full_output">
+          <div class="toggle-wrapper">
+            <div class="toggle-option" [class.active]="settings().full_output" (click)="!settings().full_output && toggleSetting('full_output')">
               Enabled
             </div>
-            <div class="toggle-option" [class.active]="!settings().full_output">
+            <div class="toggle-option" [class.active]="!settings().full_output" (click)="settings().full_output && toggleSetting('full_output')">
               Disabled
             </div>
           </div>
@@ -148,13 +139,12 @@
           </div>
         </div>
         <div class="setting-value">
-          <div class="toggle-wrapper" (click)="toggleSetting('planning')">
-            <div class="toggle-option" [class.active]="settings().planning">
+          <div class="toggle-wrapper">
+            <div class="toggle-option" [class.active]="settings().planning" (click)="!settings().planning && toggleSetting('planning')">
               Enabled
             </div>
-            <div class="toggle-option" [class.active]="!settings().planning">
+            <div class="toggle-option" [class.active]="!settings().planning" (click)="settings().planning && toggleSetting('planning')">
               Disabled
-
             </div>
           </div>
         </div>
@@ -176,7 +166,8 @@
             <span class="slider-value">{{ max_rpm() }}</span>
             <input
               [ngModel]="max_rpm()"
-              (ngModelChange)="max_rpm.set($event); onRpmChange()"
+              (ngModelChange)="onRpmSliderMove($event)"
+              (change)="onRpmSliderEnd()"
               type="range"
               step="1"
               min="1"
@@ -188,6 +179,76 @@
               <span>50</span>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Memory Settings Group (conditionally displayed) -->
+  <div class="settings-group memory-group" *ngIf="memory()">
+    <div class="group-header">
+      <h3>Memory Configuration</h3>
+      <p>Configure memory settings for your project</p>
+    </div>
+
+    <div class="settings-grid">
+      <!-- Memory LLM Configuration -->
+      <div class="setting-item">
+        <div class="setting-label">
+          <div class="setting-title">
+            Memory LLM Configuration
+            <app-help-tooltip
+              text="Select the language model that will be used for memory operations, including storing and retrieving context from previous interactions."
+            ></app-help-tooltip>
+          </div>
+          <div class="setting-description">
+            Select the LLM for memory operations
+          </div>
+        </div>
+        <div class="setting-value">
+          <app-llm-model-selector
+            [llmConfigs]="fullLLMConfigs()"
+            [placeholder]="'Select memory LLM model'"
+            [ngModel]="memory_llm_config()"
+            (ngModelChange)="
+              memory_llm_config.set($event); onMemoryLLMConfigChange()
+            "
+          ></app-llm-model-selector>
+          <i
+            *ngIf="memory_llm_config() === null"
+            class="ti ti-alert-triangle warning-icon"
+            title="No memory LLM configuration specified"
+          ></i>
+        </div>
+      </div>
+
+      <!-- Memory Embedding Configuration -->
+      <div class="setting-item">
+        <div class="setting-label">
+          <div class="setting-title">
+            Memory Embedding Configuration
+            <app-help-tooltip
+              text="Choose the embedding model to be used for memory operations, semantic search, and context understanding within your project's memory system."
+            ></app-help-tooltip>
+          </div>
+          <div class="setting-description">
+            Select the embedding model for memory
+          </div>
+        </div>
+        <div class="setting-value">
+          <app-embedding-model-selector
+            [embeddingConfigs]="fullEmbeddingConfigs()"
+            [placeholder]="'Select memory embedding model'"
+            [ngModel]="embedding_config()"
+            (ngModelChange)="
+              embedding_config.set($event); onEmbeddingConfigChange()
+            "
+          ></app-embedding-model-selector>
+          <i
+            *ngIf="embedding_config() === null"
+            class="ti ti-alert-triangle warning-icon"
+            title="No memory embedding configuration specified"
+          ></i>
         </div>
       </div>
     </div>
@@ -234,33 +295,38 @@
         </div>
       </div>
 
-      <!-- Default Embedding Configuration -->
+      <!-- Manager Creativity Level (Temperature) Setting -->
       <div class="setting-item">
         <div class="setting-label">
           <div class="setting-title">
-            Default Embedding Configuration
+            Manager Creativity Level
             <app-help-tooltip
-              text="Choose the embedding model to be used for knowledge retrieval, semantic search, and context understanding within your project."
+              text="Controls the creativity level of the manager agent. Lower values yield more deterministic, precise responses. Higher values produce more creative, varied outputs."
             ></app-help-tooltip>
           </div>
           <div class="setting-description">
-            Select the default embedding model
+            Adjust between precise and creative manager responses
           </div>
         </div>
         <div class="setting-value">
-          <app-embedding-model-selector
-            [embeddingConfigs]="fullEmbeddingConfigs()"
-            [placeholder]="'Select embedding model'"
-            [ngModel]="embedding_config()"
-            (ngModelChange)="
-              embedding_config.set($event); onEmbeddingConfigChange()
-            "
-          ></app-embedding-model-selector>
-          <i
-            *ngIf="embedding_config() === null"
-            class="ti ti-alert-triangle warning-icon"
-            title="No embedding configuration specified"
-          ></i>
+          <div class="slider-container">
+            <span class="slider-value">{{ temperaturePercent }}%</span>
+            <input
+              id="temperature"
+              [ngModel]="temperaturePercent"
+              (ngModelChange)="onTemperatureSliderMove($event)"
+              (change)="onTemperatureSliderEnd()"
+              type="range"
+              step="1"
+              min="0"
+              max="100"
+              class="gradient-slider"
+            />
+            <div class="slider-labels">
+              <span>Precise</span>
+              <span>Creative</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

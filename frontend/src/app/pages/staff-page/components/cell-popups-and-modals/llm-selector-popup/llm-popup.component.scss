@@ -1,0 +1,256 @@
+$bg-dark: #121212;
+$bg-card: #1e1e1e;
+$bg-input: #2d2d2d;
+$bg-item: #2a2a2a;
+$bg-item-hover: #333333;
+$accent-blue: #4f46e5;
+$accent-hover: #6366f1;
+$text-primary: #f5f5f5;
+$text-secondary: #a0a0a0;
+$text-tertiary: #777777;
+$border-color: rgba(255, 255, 255, 0.1);
+$shadow-color: rgba(0, 0, 0, 0.5);
+$transition-default: all 0.2s ease;
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dot-animation {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.5);
+    opacity: 0.5;
+  }
+}
+
+.llm-list-container {
+  background-color: $bg-card;
+  border-radius: 8px;
+  width: 350px;
+  color: $text-primary;
+  box-shadow: 0 10px 40px $shadow-color;
+  border: 1px solid $border-color;
+  animation: fadeIn 0.3s ease;
+  max-height: 500px;
+  display: flex;
+  flex-direction: column;
+
+  .list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px;
+    padding-bottom: 0px;
+
+    input {
+      flex: 1;
+      padding: 7px 14px;
+      border-radius: 6px;
+      background-color: $bg-input;
+      color: $text-primary;
+      font-size: 13px;
+      border: 1px solid $border-color;
+      transition: $transition-default;
+      outline: none;
+
+      &::placeholder {
+        color: $text-tertiary;
+      }
+
+      &:focus {
+        border-color: $accent-blue;
+        box-shadow: 0 0 0 2px rgba($accent-blue, 0.15);
+      }
+    }
+
+    .filter-button {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background-color: $bg-input;
+      color: $text-secondary;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: $transition-default;
+      border: none;
+
+      i {
+        font-size: 14px;
+        width: 14px;
+        height: 14px;
+        margin-bottom: 2px;
+      }
+
+      &:hover {
+        background-color: lighten($bg-input, 5%);
+        color: $text-primary;
+      }
+    }
+  }
+
+  .tabs-header {
+    display: flex;
+    border-bottom: 1px solid $border-color;
+    margin-bottom: 8px;
+
+    gap: 10px;
+    margin-inline: 16px;
+    .tab {
+      padding: 8px 16px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: $transition-default;
+      color: $text-secondary;
+      border-bottom: 2px solid transparent;
+      border-radius: 4px 4px 0 0;
+      min-width: auto;
+      margin-bottom: -1px;
+
+      &:hover {
+        color: $text-primary;
+      }
+
+      &.active {
+        color: $accent-blue;
+        border-bottom: 2px solid $accent-blue;
+      }
+    }
+  }
+  // Body Section - Match LLM popup structure
+  .body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  // List wrapper for scrolling
+  .llm-list-wrapper {
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  // Loading spinner
+  .loading-spinner {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100px;
+    width: 100%;
+  }
+
+  .dots {
+    display: flex;
+    gap: 6px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: $accent-blue;
+    animation: dot-animation 1.5s infinite ease-in-out;
+  }
+
+  .dot:nth-child(1) {
+    animation-delay: 0s;
+  }
+
+  .dot:nth-child(2) {
+    animation-delay: 0.3s;
+  }
+
+  .dot:nth-child(3) {
+    animation-delay: 0.6s;
+  }
+
+  .llms-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+
+    .no-results {
+      padding: 20px 0;
+
+      .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: $text-secondary;
+
+        i {
+          font-size: 24px;
+          margin-bottom: 8px;
+          opacity: 0.7;
+        }
+
+        p {
+          font-size: 13px;
+          text-align: center;
+        }
+      }
+    }
+  }
+
+  // Controls footer
+  .controls-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px;
+    border-top: 1px solid $border-color;
+
+    .cancel-button {
+      padding: 7px 14px;
+      background-color: transparent;
+      border: none;
+      color: $text-secondary;
+      font-size: 13px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: $transition-default;
+
+      &:hover {
+        color: $text-primary;
+        background-color: rgba(255, 255, 255, 0.1);
+      }
+    }
+
+    .save-button {
+      padding: 7px 16px;
+      background-color: $accent-blue;
+      border: none;
+      color: white;
+      font-size: 13px;
+      font-weight: 500;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: $transition-default;
+
+      &:hover {
+        background-color: $accent-hover;
+      }
+    }
+  }
+}

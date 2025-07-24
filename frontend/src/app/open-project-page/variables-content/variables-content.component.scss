@@ -1,6 +1,5 @@
 @use "sass:color";
 
-// Color variables with improved palette
 $accent-color: var(--accent-color, #685fff);
 $accent-light: var(--accent-light, #8c7fff);
 $background-color: var(--gray-900);
@@ -11,7 +10,6 @@ $muted-text-color: var(--gray-400);
 $error-color: var(--red-500, #ff4444);
 $success-color: var(--green-500, #4caf50);
 
-// Keyframes for animations
 @keyframes shake {
   0%,
   100% {

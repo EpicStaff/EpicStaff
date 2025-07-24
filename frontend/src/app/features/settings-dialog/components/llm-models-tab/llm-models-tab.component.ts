@@ -74,6 +74,7 @@ export class LlmModelsTabComponent implements OnInit {
     this.fullLlmConfigService.getFullLLMConfigs().subscribe({
       next: (configs) => {
         this.llmConfigs.set(configs);
+        console.log('configs', configs);
         this.status.set(LoadingState.LOADED);
       },
       error: (err) => {

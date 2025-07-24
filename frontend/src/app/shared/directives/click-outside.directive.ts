@@ -21,15 +21,12 @@ export class ClickOutsideDirective implements OnDestroy {
     private ngZone: NgZone,
     private renderer: Renderer2
   ) {
-    // Run listener registration outside Angular for performance
     this.ngZone.runOutsideAngular(() => {
       this.removeClickListener = this.renderer.listen(
         'document',
         'click',
         (event: Event) => {
-          // Check if the clicked element is not contained within the host element
           if (!this.elementRef.nativeElement.contains(event.target)) {
-            // Reenter Angular zone before emitting
             this.ngZone.run(() => this.clickOutside.emit(event));
           }
         }

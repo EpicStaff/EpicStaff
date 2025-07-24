@@ -6,7 +6,6 @@ import {
   transition,
 } from '@angular/animations';
 
-// Improved animations that work properly with content visibility
 export const expandCollapseAnimation = trigger('expandCollapse', [
   state(
     'collapsed',
@@ -14,16 +13,14 @@ export const expandCollapseAnimation = trigger('expandCollapse', [
       maxHeight: '0',
       opacity: '0',
       visibility: 'hidden',
-      overflow: 'hidden',
     })
   ),
   state(
     'expanded',
     style({
-      maxHeight: '1000px', // Set to a value larger than expected content
+      maxHeight: '1000px',
       opacity: '1',
       visibility: 'visible',
-      overflow: 'visible',
     })
   ),
   transition('expanded <=> collapsed', [animate('180ms ease-in-out')]),

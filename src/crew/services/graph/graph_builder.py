@@ -20,14 +20,13 @@ from models.request_models import (
     PythonCodeData,
     SessionData,
 )
-from services.python_code_executor_service import RunPythonCodeService
+from services.run_python_code_service import RunPythonCodeService
 from services.knowledge_search_service import KnowledgeSearchService
 from langgraph.types import StreamWriter
 from utils import map_variables_to_input
 
-
+from utils.psutil_wrapper import psutil_wrapper
 class ReturnCodeError(Exception): ...
-
 
 class SessionGraphBuilder:
     def __init__(
@@ -84,6 +83,7 @@ class SessionGraphBuilder:
             input_map = {}
 
         # name = f"{from_node}_conditional_edge"
+        # @psutil_wrapper
         async def inner_decision_function(state: State):
             input_ = map_variables_to_input(state["variables"], input_map)
             additional_global_kwargs = {
@@ -111,7 +111,7 @@ class SessionGraphBuilder:
             return result
 
         self._graph_builder.add_conditional_edges(
-            source=from_node, path=inner_decision_function, then=then
+            source=from_node, path=inner_decision_function,
         )
 
     def add_edge(self, start_key: str, end_key: str):

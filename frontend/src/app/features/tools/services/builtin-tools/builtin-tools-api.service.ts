@@ -3,7 +3,7 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable, forkJoin } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { ApiGetRequest } from '../../../../shared/models/api-request.model';
-import { Tool } from '../../../../shared/models/tool.model';
+import { Tool } from '../../models/tool.model';
 import { ConfigService } from '../../../../services/config/config.service';
 
 @Injectable({

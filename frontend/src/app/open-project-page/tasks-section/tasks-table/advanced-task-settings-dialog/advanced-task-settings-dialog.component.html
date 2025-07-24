@@ -36,16 +36,19 @@
         Output Model
         <app-help-tooltip
           position="right"
-          text="The Output Model defines the structure of data your task will return. Two main sections:
+          text="The Output Model defines the structure of data your task will return. Key sections:
 
+'type': Usually 'object' for output models
+'title': A name for your output model (e.g. 'TaskOutputModel')
 'properties': Define each property with:
-- 'type': 'string', 'number', 'array', etc.
-- 'description': Explain what the property contains
-
+  - 'type': 'string', 'number', 'array', etc.
+  - 'description': Explain what the property contains
 'required': Add property names to this list if they must be included in the result
 
 Example:
 {
+  'type': 'object',
+  'title': 'TaskOutputModel',
   'properties': {
     'summary': {
       'type': 'string',
@@ -57,7 +60,9 @@ Example:
     }
   },
   'required': ['summary']
-}"
+}
+
+Note: If properties is empty, the output model will be set to null."
         ></app-help-tooltip>
       </h3>
       <div class="form-group json-group">

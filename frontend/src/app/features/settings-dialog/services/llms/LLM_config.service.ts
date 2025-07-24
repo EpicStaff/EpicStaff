@@ -20,15 +20,17 @@ export class LLM_Config_Service {
 
   constructor(private http: HttpClient, private configService: ConfigService) {}
 
-  // Dynamically retrieve the API URL from ConfigService
   private get apiUrl(): string {
     return this.configService.apiUrl + 'llm-configs/';
   }
 
   getAllConfigsLLM(): Observable<GetLlmConfigRequest[]> {
+    const params = new HttpParams().set('limit', '1000');
+
     return this.http
       .get<ApiGetRequest<GetLlmConfigRequest>>(this.apiUrl, {
         headers: this.headers,
+        params,
       })
       .pipe(map((response) => response.results));
   }
@@ -36,10 +38,9 @@ export class LLM_Config_Service {
   getConfigsByProviderId(
     providerId: number
   ): Observable<GetLlmConfigRequest[]> {
-    const params = new HttpParams().set(
-      'model_provider_id',
-      providerId.toString()
-    );
+    const params = new HttpParams()
+      .set('model_provider_id', providerId.toString())
+      .set('limit', '1000');
 
     return this.http
       .get<ApiGetRequest<GetLlmConfigRequest>>(this.apiUrl, {

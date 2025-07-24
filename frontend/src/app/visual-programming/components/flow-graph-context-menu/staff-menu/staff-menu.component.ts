@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AgentsService } from '../../../../services/staff.service';
-import { AgentDto } from '../../../../shared/models/agent.model';
+import { GetAgentRequest } from '../../../../shared/models/agent.model';
 import { NodeType } from '../../../core/enums/node-type';
 
 @Component({
@@ -80,10 +80,10 @@ export class StaffMenuComponent implements OnInit {
   @Input() public searchTerm: string = '';
   @Output() public nodeSelected = new EventEmitter<{
     type: NodeType.AGENT;
-    data: AgentDto;
+    data: GetAgentRequest;
   }>();
 
-  public agents: AgentDto[] = [];
+  public agents: GetAgentRequest[] = [];
 
   constructor(
     private agentsService: AgentsService,
@@ -92,7 +92,7 @@ export class StaffMenuComponent implements OnInit {
 
   ngOnInit(): void {
     this.agentsService.getAgents().subscribe({
-      next: (agents: AgentDto[]) => {
+      next: (agents: GetAgentRequest[]) => {
         console.log('Agents:', agents);
         this.agents = agents;
         this.cdr.markForCheck();
@@ -101,18 +101,18 @@ export class StaffMenuComponent implements OnInit {
     });
   }
 
-  public get filteredAgents(): AgentDto[] {
-    return this.agents.filter((agent: AgentDto) =>
+  public get filteredAgents(): GetAgentRequest[] {
+    return this.agents.filter((agent: GetAgentRequest) =>
       agent.role.toLowerCase().includes(this.searchTerm.toLowerCase())
     );
   }
 
-  public onAgentClicked(agent: AgentDto): void {
+  public onAgentClicked(agent: GetAgentRequest): void {
     console.log('Agent clicked:', agent);
     this.nodeSelected.emit({ type: NodeType.AGENT, data: agent });
   }
 
-  public trackByAgentId(index: number, agent: AgentDto): number {
+  public trackByAgentId(index: number, agent: GetAgentRequest): number {
     return agent.id;
   }
 }

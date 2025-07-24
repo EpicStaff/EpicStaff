@@ -42,6 +42,7 @@ export class EditVoiceConfigDialogComponent implements OnInit {
   public form!: FormGroup;
   public isSubmitting = signal<boolean>(false);
   public errorMessage = signal<string | null>(null);
+  public showApiKey = signal<boolean>(false);
 
   ngOnInit(): void {
     this.initForm();
@@ -52,6 +53,10 @@ export class EditVoiceConfigDialogComponent implements OnInit {
       customName: [this.dialogData.custom_name, Validators.required],
       apiKey: [this.dialogData.api_key, Validators.required],
     });
+  }
+
+  public toggleApiKeyVisibility(): void {
+    this.showApiKey.set(!this.showApiKey());
   }
 
   public onSubmit(): void {

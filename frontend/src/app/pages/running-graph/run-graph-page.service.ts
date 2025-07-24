@@ -5,7 +5,6 @@ import { Memory } from './components/memory-sidebar/models/memory.model';
   providedIn: 'root',
 })
 export class RunGraphPageService {
-  // Create a signal to hold the array of memories
   private memories = signal<Memory[]>([]);
 
   constructor() {}

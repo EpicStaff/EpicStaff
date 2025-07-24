@@ -30,6 +30,7 @@ import {
   ProjectNodeModel,
   PythonNodeModel,
   BaseNodeModel,
+  NoteNodeModel,
 } from '../../core/models/node.model';
 import { NodeType } from '../../core/enums/node-type';
 import { FlowService } from '../../services/flow.service';
@@ -40,6 +41,7 @@ import { ProjectNodeComponent } from '../nodes-components/project-node/project-n
 import { PythonNodeComponent } from '../nodes-components/python-node/python-node.component';
 import { ConditionalEdgeNodeComponent } from '../nodes-components/conditional-edge/conditional-edge.component';
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
+import { NoteNodeComponent } from '../nodes-components/note-node/note-node.component';
 import { getNodeTitle } from '../../core/enums/node-title.util';
 import { ResizeHandleComponent } from '../resize-handle/resize-handle.component';
 
@@ -52,17 +54,13 @@ import { ResizeHandleComponent } from '../resize-handle/resize-handle.component'
     FFlowModule,
     NgIf,
     NgStyle,
-    NgClass,
-
     ClickOrDragDirective,
     ConditionalEdgeNodeComponent,
     AgentNodeComponent,
     TaskNodeComponent,
-    ToolNodeComponent,
-    LlmNodeComponent,
-    ProjectNodeComponent,
-    PythonNodeComponent,
+
     DecisionTableNodeComponent,
+    NoteNodeComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
@@ -90,14 +88,12 @@ export class FlowBaseNodeComponent {
       return {};
     }
 
-    // Add null check for ports
     if (!this.node.ports) {
       return {};
     }
 
     const fullMap = this.flowService.portConnectionsMap();
     return this.node.ports.reduce((acc, port) => {
-      // Example logic to combine port information:
       acc[port.id] = fullMap[port.id] || [];
       return acc;
     }, {} as Record<string, CustomPortId[]>);
@@ -140,6 +136,8 @@ export class FlowBaseNodeComponent {
         return 'type-start';
       case NodeType.TABLE:
         return 'type-table';
+      case NodeType.NOTE:
+        return 'type-note';
       default:
         return 'type-default';
     }
@@ -177,7 +175,11 @@ export class FlowBaseNodeComponent {
   public get startNode() {
     return this.node.type === NodeType.START ? (this.node as any) : null;
   }
-
+  public get noteNode() {
+    return this.node.type === NodeType.NOTE
+      ? (this.node as NoteNodeModel)
+      : null;
+  }
   public onExpandProjectClick(): void {
     this.projectExpandToggled.emit(this.node as ProjectNodeModel);
   }

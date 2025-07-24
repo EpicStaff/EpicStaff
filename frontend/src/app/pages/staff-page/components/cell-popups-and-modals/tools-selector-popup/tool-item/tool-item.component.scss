@@ -1,0 +1,206 @@
+// Variables
+$bg-item: #2a2a2a;
+$bg-item-hover: #333333;
+$accent-blue: #4f46e5;
+$text-primary: #f5f5f5;
+$text-secondary: #a0a0a0;
+$border-color: rgba(255, 255, 255, 0.1);
+$status-green: #22c55e;
+$status-red: #ef4444;
+
+.tool-item-container {
+  margin-bottom: 8px;
+}
+
+.tool-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  background-color: $bg-item;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid #404040;
+  gap: 12px;
+
+  &:focus {
+    outline: none;
+    border-color: $accent-blue;
+  }
+
+  &:hover {
+    background-color: $bg-item-hover;
+  }
+
+  &.selected-item {
+    background-color: rgba($accent-blue, 0.15);
+    border-color: $accent-blue;
+    box-shadow: 0 0 0 1px rgba($accent-blue, 0.4);
+  }
+
+  .tool-icon {
+    font-size: 14px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+  }
+
+  .tool-name {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+    color: $text-primary;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    margin-right: 16px;
+  }
+
+  .chevron-icon {
+    transition: transform 0.3s ease;
+    color: $text-secondary;
+    flex-shrink: 0;
+    margin-left: auto;
+
+    &.expanded {
+      transform: rotate(180deg);
+    }
+  }
+
+  input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid $border-color;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+
+    &:checked {
+      background-color: $accent-blue;
+      border-color: $accent-blue;
+
+      &::after {
+        content: "✓";
+        color: white;
+        font-size: 10px;
+      }
+    }
+
+    &:hover:not(:checked) {
+      background-color: rgba($accent-blue, 0.8);
+      color: white;
+    }
+  }
+}
+
+.tool-configs {
+  margin-top: 4px;
+  margin-left: 16px;
+  margin-bottom: 8px;
+  overflow: hidden;
+
+  .tool-config-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: rgba($bg-item, 0.7);
+    border-radius: 4px;
+    margin-top: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    gap: 8px;
+    border: 1px solid transparent;
+
+    &:hover {
+      background-color: $bg-item-hover;
+    }
+
+    &.selected-config {
+      background-color: rgba($accent-blue, 0.15);
+      border-color: $accent-blue;
+      box-shadow: 0 0 0 1px rgba($accent-blue, 0.4);
+    }
+
+    .config-name {
+      flex: 1;
+      font-size: 12px;
+      color: $text-primary;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-right: auto;
+    }
+
+    .status-indicator {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-left: 8px;
+
+      &.green {
+        background-color: $status-green;
+        box-shadow: 0 0 5px rgba($status-green, 0.5);
+      }
+
+      &.red {
+        background-color: $status-red;
+        box-shadow: 0 0 5px rgba($status-red, 0.5);
+      }
+    }
+
+    input[type="checkbox"] {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      background-color: rgba(255, 255, 255, 0.1);
+      border: 1px solid $border-color;
+      border-radius: 3px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      flex-shrink: 0;
+
+      &:checked {
+        background-color: $accent-blue;
+        border-color: $accent-blue;
+
+        &::after {
+          content: "✓";
+          color: white;
+          font-size: 9px;
+        }
+      }
+
+      &:hover:not(:checked) {
+        background-color: rgba($accent-blue, 0.8);
+        color: white;
+      }
+    }
+  }
+
+  .no-config-message {
+    padding: 8px 12px;
+    background-color: rgba($bg-item, 0.7);
+    border-radius: 4px;
+    margin-top: 4px;
+    font-size: 12px;
+    color: $text-secondary;
+    text-align: center;
+  }
+}
