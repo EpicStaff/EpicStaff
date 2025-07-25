@@ -208,7 +208,6 @@ export class RunningGraphHeaderComponent {
   @Input() sessionStatus: GraphSessionStatus | null = null;
   @Input() graphData: GraphDto | null = null;
 
-  // Sidebar state
   public showMemoriesSidebar = false;
 
   constructor(
@@ -218,7 +217,6 @@ export class RunningGraphHeaderComponent {
     private router: Router
   ) {}
 
-  // Close sidebar when pressing ESC
   @HostListener('document:keydown.escape')
   handleEscapeKey() {
     this.closeSidebar();

@@ -1,4 +1,3 @@
-// message-helper.ts
 import {
   GraphMessage,
   MessageType,

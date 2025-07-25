@@ -10,21 +10,33 @@ export class RunSessionSSEService {
 
   private eventSource: EventSource | null = null;
   private currentSessionId: string | null = null;
+  private reconnectTimeout: any = null;
 
   // Signals
   private messagesSignal = signal<GraphMessage[]>([]);
   private statusSignal = signal<GraphSessionStatus>(GraphSessionStatus.RUNNING);
   private memoriesSignal = signal<Memory[]>([]);
   private streamOpen = signal(false);
+  private connectionStatusSignal = signal<
+    | 'connected'
+    | 'connecting'
+    | 'disconnected'
+    | 'reconnecting'
+    | 'manually_disconnected'
+  >('disconnected');
 
   public readonly isStreaming = this.streamOpen.asReadonly();
   public readonly messages = this.messagesSignal.asReadonly();
   public readonly status = this.statusSignal.asReadonly();
   public readonly memories = this.memoriesSignal.asReadonly();
+  public readonly connectionStatus = this.connectionStatusSignal.asReadonly();
 
+  // Reconnection configuration
   private reconnectAttempts = 0;
-  private readonly maxReconnectAttempts = 10;
-  private readonly reconnectDelayMs = 2000;
+  private readonly maxReconnectAttempts = 5;
+  private readonly baseReconnectDelayMs = 1000;
+  private readonly maxReconnectDelayMs = 30000;
+  private isManualDisconnect = false;
 
   private get apiUrl(): string {
     return `${this.configService.apiUrl}run-session/subscribe/${this.currentSessionId}`;
@@ -34,16 +46,21 @@ export class RunSessionSSEService {
     if (this.currentSessionId === sessionId && this.eventSource) return;
     this.cleanup();
     this.currentSessionId = sessionId;
+    this.isManualDisconnect = false;
     this.connect(sessionId);
   }
 
   public resumeStream(): void {
     if (!this.currentSessionId) return;
+    this.isManualDisconnect = false;
     this.connect(this.currentSessionId);
   }
 
   public stopStream(): void {
+    this.isManualDisconnect = true;
     this.disconnect();
+    // Set to manually_disconnected to distinguish from actual connection loss
+    this.connectionStatusSignal.set('manually_disconnected');
   }
 
   private connect(sessionId: string): void {
@@ -52,12 +69,14 @@ export class RunSessionSSEService {
       return;
     }
 
+    this.connectionStatusSignal.set('connecting');
     this.eventSource = new EventSource(this.apiUrl);
 
     this.eventSource.onopen = () => {
       console.log('SSE connection established');
       this.reconnectAttempts = 0;
       this.streamOpen.set(true);
+      this.connectionStatusSignal.set('connected');
     };
 
     this.eventSource.onmessage = (event) => {
@@ -127,65 +146,113 @@ export class RunSessionSSEService {
 
     this.eventSource.addEventListener('fatal-error', (event: MessageEvent) => {
       console.error('Fatal SSE error received');
-      this.disconnect();
-      this.reconnectAttempts = this.maxReconnectAttempts;
+      this.handleConnectionLoss();
     });
 
     this.eventSource.onerror = (err) => {
       console.error('SSE error:', err);
-      this.reconnect(sessionId);
+      this.handleConnectionLoss();
     };
   }
 
-  private reconnect(sessionId: string): void {
-    if (!this.streamOpen) {
-      console.warn('SSE service is inactive. Skipping reconnect.');
+  private handleConnectionLoss(): void {
+    if (this.isManualDisconnect) {
+      console.log('Manual disconnect - not attempting reconnection');
       return;
     }
+
+    this.connectionStatusSignal.set('reconnecting');
+    this.streamOpen.set(false);
 
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('Max SSE reconnect attempts reached. Giving up.');
-      this.eventSource?.close();
-      this.eventSource = null;
+      console.error(
+        `Max SSE reconnect attempts (${this.maxReconnectAttempts}) reached. Giving up.`
+      );
+      this.finalDisconnect();
       return;
     }
 
-    if (this.eventSource?.readyState === EventSource.CLOSED) {
-      console.warn('EventSource closed. Attempting to reconnect...');
-    }
-
-    this.eventSource?.close();
-    this.eventSource = null;
     this.reconnectAttempts++;
+    const delay = this.calculateReconnectDelay();
 
-    setTimeout(() => {
-      this.startStream(sessionId);
-    }, this.reconnectDelayMs * this.reconnectAttempts);
+    console.log(
+      `Connection lost. Attempting reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`
+    );
+    console.log(`Current session ID: ${this.currentSessionId}`);
+
+    this.reconnectTimeout = setTimeout(() => {
+      if (!this.isManualDisconnect && this.currentSessionId) {
+        console.log(
+          `Attempting to reconnect to session: ${this.currentSessionId}`
+        );
+        this.connect(this.currentSessionId);
+      } else {
+        console.log(
+          'Reconnection cancelled - manual disconnect or no session ID'
+        );
+      }
+    }, delay);
+  }
+
+  private calculateReconnectDelay(): number {
+    // Exponential backoff with jitter to prevent thundering herd
+    const exponentialDelay =
+      this.baseReconnectDelayMs * Math.pow(2, this.reconnectAttempts - 1);
+    const jitter = Math.random() * 0.1 * exponentialDelay; // 10% jitter
+    const finalDelay = Math.min(
+      exponentialDelay + jitter,
+      this.maxReconnectDelayMs
+    );
+
+    console.log(
+      `Reconnect delay calculation: base=${this.baseReconnectDelayMs}, attempt=${this.reconnectAttempts}, exponential=${exponentialDelay}, jitter=${jitter}, final=${finalDelay}`
+    );
+
+    return finalDelay;
+  }
+
+  private finalDisconnect(): void {
+    console.log('Final disconnect after max reconnection attempts');
+    this.disconnect();
+    this.connectionStatusSignal.set('disconnected');
   }
 
   private disconnect(): void {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
     if (this.eventSource) {
       this.eventSource.close();
       this.eventSource = null;
-      console.log('Stop SSE');
+      console.log('SSE connection closed');
     }
 
     this.streamOpen.set(false);
+    this.connectionStatusSignal.set('disconnected');
   }
 
   private cleanup(): void {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
     if (this.eventSource) {
       this.eventSource.close();
       this.eventSource = null;
-      console.log('Stop SSE');
+      console.log('SSE cleanup completed');
     }
 
     this.reconnectAttempts = 0;
     this.currentSessionId = null;
+    this.isManualDisconnect = false;
 
     this.messagesSignal.set([]);
     this.memoriesSignal.set([]);
     this.statusSignal.set(GraphSessionStatus.RUNNING);
     this.streamOpen.set(false);
+    this.connectionStatusSignal.set('disconnected');
   }
 }

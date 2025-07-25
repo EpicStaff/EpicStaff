@@ -16,6 +16,57 @@
 
   //   background-color: rgba(255, 255, 255, 0.03);
   //   border-radius: 12px;
+
+  .connection-status {
+    width: 100%;
+    max-width: 850px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.5rem;
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: all 0.3s ease;
+
+      &.reconnecting {
+        background-color: rgba(245, 158, 11, 0.1);
+        color: #f59e0b;
+        border: 1px solid rgba(245, 158, 11, 0.2);
+      }
+
+      &.disconnected {
+        background-color: rgba(239, 68, 68, 0.1);
+        color: #ef4444;
+        border: 1px solid rgba(239, 68, 68, 0.2);
+      }
+
+      .status-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+
+        i {
+          font-size: 14px;
+
+          &.ti-spin {
+            animation: spin 1s linear infinite;
+          }
+        }
+      }
+
+      .status-text {
+        flex: 1;
+      }
+    }
+  }
+
   .messages-list {
     width: 100%;
     max-width: 850px;
@@ -59,5 +110,14 @@
   100% {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }

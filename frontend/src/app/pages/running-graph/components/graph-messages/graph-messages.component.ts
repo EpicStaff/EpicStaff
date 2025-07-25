@@ -95,6 +95,16 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges {
   // New property for storing update status data from messages
   public updateSessionStatusData: SessionStatusMessageData | null = null;
   public statusWaitForUser: boolean = false;
+
+  // Connection status
+  public connectionStatus:
+    | 'connected'
+    | 'connecting'
+    | 'disconnected'
+    | 'reconnecting'
+    | 'manually_disconnected' = 'disconnected';
+  public reconnectAttempts: number = 0;
+
   // Lookup maps for quick reference
   private agentMap: Map<number, GetAgentRequest> = new Map();
   private taskMap: Map<number, GetTaskRequest> = new Map();
@@ -107,7 +117,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges {
     private tasksService: TasksService,
     private cdr: ChangeDetectorRef,
     private answerToLLMService: AnswerToLLMService,
-    private runGraphPageService: RunGraphPageService, // Use RunGraphPageService
+    private runGraphPageService: RunGraphPageService,
     private flowService: FlowsApiService
   ) {
     effect(() => {
@@ -130,6 +140,12 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges {
     effect(() => {
       const memories = this.sseService.memories();
       this.runGraphPageService.setMemories(memories);
+    });
+
+    effect(() => {
+      const connectionStatus = this.sseService.connectionStatus();
+      this.connectionStatus = connectionStatus;
+      this.cdr.markForCheck();
     });
   }
 
@@ -320,12 +336,9 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges {
   public getProjectFromMessage(
     message: GraphMessage
   ): GetProjectRequest | null {
-    // Return null if message is invalid
     if (!message) return null;
 
-    // Try to find project through message name
     if (message.name) {
-      console.log('Using message name for finish message:', message.name);
       return { name: message.name } as GetProjectRequest;
     }
 

@@ -7,17 +7,13 @@ RUN npm ci
 
 COPY . .
 
-ARG CONFIG=production
-# Add --base-href /epicstaff/ here:
-RUN npm run build -- --configuration=$CONFIG 
+RUN npm run build
 
 FROM nginx:alpine AS production-stage
 
 COPY --from=build-stage /home/user/root/app/dist/frontend-crewai/browser/ /usr/share/nginx/html/
 
-# Copy the custom error page
 COPY 50x.html /usr/share/nginx/html/
-
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80

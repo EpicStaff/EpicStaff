@@ -108,7 +108,7 @@ class AgentData(BaseModel):
     role: str
     goal: str
     backstory: str
-    tool_unique_name_list: list[str]
+    tool_unique_name_list: list[str] = []
     max_iter: int
     max_rpm: int
     max_execution_time: int
@@ -155,7 +155,7 @@ class CrewData(BaseModel):
     memory_llm: LLMData | None
     manager_llm: LLMData | None
     planning_llm: LLMData | None
-    tools: List[BaseToolData]
+    tools: List[BaseToolData] = []
     knowledge_collection_id: int | None
 
 
@@ -170,8 +170,8 @@ class TaskData(BaseModel):
     async_execution: bool
     config: dict | None
     output_model: dict | None
-    tool_unique_name_list: list[str]
-    task_context_id_list: list[int]
+    tool_unique_name_list: list[str] = []
+    task_context_id_list: list[int] = []
 
 
 class SessionData(BaseModel):

@@ -1,4 +1,6 @@
-* text eol=lf
+* text=auto eol=lf
+*.sh text eol=lf
+*.py text eol=lf
 
 # Explicitly mark as binary
 *.png binary

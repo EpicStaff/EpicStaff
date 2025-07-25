@@ -88,14 +88,12 @@ export class FlowBaseNodeComponent {
       return {};
     }
 
-    // Add null check for ports
     if (!this.node.ports) {
       return {};
     }
 
     const fullMap = this.flowService.portConnectionsMap();
     return this.node.ports.reduce((acc, port) => {
-      // Example logic to combine port information:
       acc[port.id] = fullMap[port.id] || [];
       return acc;
     }, {} as Record<string, CustomPortId[]>);

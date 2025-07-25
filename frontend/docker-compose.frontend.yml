@@ -3,8 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.fe
-      args:
-        CONFIG: "production"
     ports:
       - "4200:80"
     networks:

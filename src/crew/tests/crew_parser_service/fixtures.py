@@ -20,7 +20,7 @@ from models.request_models import (
     LLMData,
     TaskData,
 )
-from services.python_code_executor_service import RunPythonCodeService
+from services.run_python_code_service import RunPythonCodeService
 
 
 class CrewDataFactory(ModelFactory[CrewData]):

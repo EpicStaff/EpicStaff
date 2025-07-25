@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from services.schema_converter.converter import generate_model_from_schema
 from services.pickle_encode import txt_to_obj
 from loguru import logger
-from services.python_code_executor_service import RunPythonCodeService
+from services.run_python_code_service import RunPythonCodeService
 import asyncio
 
 

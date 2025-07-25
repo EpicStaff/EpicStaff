@@ -1,14 +1,18 @@
 import { Component, Input } from '@angular/core';
 import { GraphSessionStatus } from '../../../features/flows/services/flows-sessions.service';
-import { NgClass } from '@angular/common';
+import { NgClass, NgIf } from '@angular/common';
 
 @Component({
   selector: 'app-status-badge',
   standalone: true,
-  imports: [NgClass],
+  imports: [NgClass, NgIf],
   template: `
     <span class="status-badge" [ngClass]="statusClass">
-      <i [ngClass]="statusIcon" aria-hidden="true"></i>
+      <i
+        *ngIf="sessionStatus !== GraphSessionStatus.EXPIRED"
+        [ngClass]="statusIcon"
+        aria-hidden="true"
+      ></i>
       {{ statusText }}
     </span>
   `,
@@ -67,8 +71,11 @@ import { NgClass } from '@angular/common';
 export class StatusBadgeComponent {
   @Input() sessionStatus: GraphSessionStatus | null = null;
 
+  protected readonly GraphSessionStatus = GraphSessionStatus;
+
   get statusText(): string {
     if (!this.sessionStatus) return '';
+
     switch (this.sessionStatus) {
       case GraphSessionStatus.RUNNING:
         return 'Running';
@@ -120,6 +127,8 @@ export class StatusBadgeComponent {
         return 'ti ti-hourglass';
       case GraphSessionStatus.PENDING:
         return 'ti ti-circle-dot';
+      case GraphSessionStatus.EXPIRED:
+        return '';
       default:
         return '';
     }

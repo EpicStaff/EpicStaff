@@ -11,7 +11,7 @@ from models.graph_models import (
     TaskMessageData,
     UpdateSessionStatusMessageData,
 )
-from services.redis_service import RedisService
+from services.redis_service import RedisService, SyncPubsubSubscriber
 from services.knowledge_search_service import KnowledgeSearchService
 from datetime import datetime
 from crewai.agents.parser import AgentAction, AgentFinish
@@ -45,7 +45,7 @@ class GraphSessionCallbackFactory:
             try:
                 if task.cancelled():
                     logger.warning(f"Session {self.session_id} was cancelled.")
-                    self.redis_service.sync_publish(
+                    self.redis_service.publish(
                         SESSION_STATUS_CHANNEL,
                         {"session_id": self.session_id, "status": "cancelled"},
                     )
@@ -56,7 +56,7 @@ class GraphSessionCallbackFactory:
                         f"Session {self.session_id} task completed with exception"
                     )
 
-                    self.redis_service.sync_publish(
+                    self.redis_service.publish(
                         SESSION_STATUS_CHANNEL,
                         {
                             "session_id": self.session_id,
@@ -74,7 +74,7 @@ class GraphSessionCallbackFactory:
 
                     last_state = state_history[-1]
 
-                    self.redis_service.sync_publish(
+                    self.redis_service.publish(
                         SESSION_STATUS_CHANNEL,
                         {
                             "session_id": self.session_id,
@@ -263,9 +263,14 @@ class CrewCallbackFactory:
                 execution_order=self.execution_order,
                 message_data=update_session_status_message_data,
             )
-
-            pubsub = self.redis_service.sync_subscribe(
-                f"sessions:{self.session_id}:user_input"
+            crew_callback_receiver = CrewUserCallbackReceiver(
+                crew_id=self.crew_id,
+                node_name=self.node_name,
+                execution_order=self.execution_order,
+            )
+            subscriber = SyncPubsubSubscriber(crew_callback_receiver.callback)
+            self.redis_service.subscribe(
+                f"sessions:{self.session_id}:user_input", subscriber
             )
 
             self.redis_service.update_session_status(
@@ -280,17 +285,14 @@ class CrewCallbackFactory:
 
             logger.info(f"Waiting for user input...")
             while True:
-                message = pubsub.get_message()
-                if message and message["type"] == "message":
-                    message_data: dict = json.loads(message["data"])
-
-                    if (
-                        message_data["crew_id"] == self.crew_id
-                        and message_data["node_name"] == self.node_name
-                        and message_data["execution_order"] == self.execution_order
-                    ):
-                        logger.info(f"Received user input: {message_data}")
-                        break
+                user_input = crew_callback_receiver.results
+                if user_input is not None:
+                    # TODO: remove logging
+                    logger.success(f"get_wait_for_user_callback, {user_input=}")
+                    self.redis_service.unsubscribe(
+                        f"sessions:{self.session_id}:user_input", subscriber
+                    )
+                    break
                 time.sleep(0.1)
 
             update_session_status_message_data = UpdateSessionStatusMessageData(
@@ -311,9 +313,6 @@ class CrewCallbackFactory:
             if self.stream_writer is not None:
                 self.stream_writer(graph_message)
 
-            pubsub.unsubscribe(f"sessions:{self.session_id}:user_input")
-
-            user_input = message_data.get("text", "<NO USER INPUT>")
             if user_input != "</done/>":
 
                 user_input_with_knowledges = ""
@@ -348,6 +347,38 @@ class CrewCallbackFactory:
                 return user_input_with_knowledges
 
             else:
+                self.redis_service.update_session_status(
+                    session_id=self.session_id,
+                    status="run",
+                    crew_id=self.crew_id,
+                    execution_order=self.execution_order,
+                    name=self.node_name,
+                )
                 return user_input
 
         return inner
+
+
+class CrewUserCallbackReceiver:
+
+    def __init__(self, crew_id: int, node_name: str, execution_order: int):
+        self.crew_id = crew_id
+        self.node_name = node_name
+        self.execution_order = execution_order
+        self._results: Optional[str] = None
+
+    @property
+    def results(self) -> Optional[str]:
+        return self._results
+
+    def callback(self, message: dict) -> None:
+        message_data: dict = json.loads(message["data"])
+        if (
+            message_data.get("crew_id") == self.crew_id
+            and message_data.get("node_name") == self.node_name
+            and message_data.get("execution_order") == self.execution_order
+        ):
+
+            self._results = message_data.get("text", "<NO USER INPUT>")
+            # TODO: remove logging
+            logger.success(f"CrewUserCallbackReceiver, {self._results=}")

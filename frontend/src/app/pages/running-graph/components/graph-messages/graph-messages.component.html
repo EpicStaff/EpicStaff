@@ -1,15 +1,40 @@
 <!-- graph-messages.component.html -->
 <div class="messages-container">
+  <!-- Connection status indicator -->
+  <div
+    class="connection-status"
+    *ngIf="
+      connectionStatus === 'reconnecting' || connectionStatus === 'disconnected'
+    "
+  >
+    <div class="status-indicator" [class]="connectionStatus">
+      <span class="status-icon">
+        <i
+          class="ti"
+          [class.ti-loader]="connectionStatus === 'reconnecting'"
+          [class.ti-alert-triangle]="connectionStatus === 'disconnected'"
+          [class.ti-spin]="connectionStatus === 'reconnecting'"
+        >
+        </i>
+      </span>
+      <span class="status-text">
+        <ng-container [ngSwitch]="connectionStatus">
+          <span *ngSwitchCase="'reconnecting'">Reconnecting...</span>
+          <span *ngSwitchCase="'disconnected'">Connection lost</span>
+        </ng-container>
+      </span>
+    </div>
+  </div>
+
   <!-- Messages list -->
   <div class="messages-list" *ngIf="this.sseService.messages().length > 0">
-    @for (message of this.sseService.messages(); track message.uuid; let i = $index) {
+    @for (message of this.sseService.messages(); track message.uuid; let i =
+    $index) {
     <div class="message">
-      <!-- Project transition indicator -->
       <app-project-transition
         *ngIf="shouldShowTransition(message, i)"
       ></app-project-transition>
 
-      <!-- Using ngSwitch instead of multiple ngIf statements -->
       @switch (message.message_data.message_type) { @case ('start') {
       <app-start-message [message]="message"></app-start-message>
       } @case ('user') {

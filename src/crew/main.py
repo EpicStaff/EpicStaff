@@ -1,11 +1,14 @@
 import asyncio
 import os
+import psutil
+from utils.memory_monitor import MemoryMonitor
 from services.graph.graph_session_manager_service import GraphSessionManagerService
-from services.python_code_executor_service import RunPythonCodeService
+from services.run_python_code_service import RunPythonCodeService
 from services.crew.crew_parser_service import CrewParserService
 from services.knowledge_search_service import KnowledgeSearchService
 from services.redis_service import RedisService
 from utils.logger import logger
+from gc import collect as gc_collect
 
 
 async def main():
@@ -55,7 +58,8 @@ async def main():
         logger.info("Session Manager Service started.")
         # Run indefinitely
         while True:
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(1)
+
 
     except Exception as e:
         logger.error(f"An error occurred: {e}", exc_info=True)
