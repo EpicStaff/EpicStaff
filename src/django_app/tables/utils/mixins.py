@@ -24,6 +24,9 @@ from .file_text_extractor import extract_text_from_file
 
 from tables.services.redis_service import RedisService
 from functools import partial
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 
 ALLOWED_FILE_TYPES = {choice[0] for choice in DocumentMetadata.DocumentFileType.choices}
 MAX_FILE_SIZE = 12 * 1024 * 1024  # 12MB
@@ -425,6 +428,15 @@ class ImportExportMixin:
 
 
 class DeepCopyMixin:
+    """
+    A mixin that can extend ModelSerializer class with deep copy functionality.
+    Creates new action method: `copy`.
+
+    Params:
+        `copy_serializer_class`: A serializer class that used for creating copy of the entity (agent, crew, graph).
+        `copy_deserializer_class`: A serializer class that used for creating entity from copied entity.
+        `copy_serializer_response_class`: A serializer class that used in repose body.
+    """
 
     copy_serializer_class = None
     copy_deserializer_class = None
@@ -454,8 +466,10 @@ class DeepCopyMixin:
         serializer_class = self.get_copy_serializer_class()
 
         data = serializer_class(instance).data
+        data = dict(data)
 
-        deserializer = self.copy_deserializer_class(data=data)
+        deserializer_class = self.get_copy_deserializer_class()
+        deserializer = deserializer_class(data=data)
         deserializer.is_valid(raise_exception=True)
 
         try:
@@ -466,6 +480,13 @@ class DeepCopyMixin:
                 {"message": f"Database error: {str(e)}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        new_name = request.data.get("name")
+        current_name = getattr(new_instance, "name", None)
+
+        if new_name and current_name:
+            new_instance.name = new_name
+            new_instance.save()
 
         response_serializer_class = self.get_copy_serializer_response_class()
         serializer = response_serializer_class(new_instance)

@@ -25,4 +25,3 @@ class PythonCodeResult(models.Model):
     stderr = models.TextField(default="")
     stdout = models.TextField(default="")
     returncode = models.IntegerField(default=0)
-

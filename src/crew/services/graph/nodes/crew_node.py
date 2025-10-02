@@ -1,4 +1,5 @@
 import json
+from typing import override
 from callbacks.session_callback_factory import CrewCallbackFactory
 from services.crew.crew_parser_service import CrewParserService
 from services.redis_service import RedisService
@@ -58,7 +59,7 @@ class CrewNode(BaseNode):
             },
         }
 
-        crew = self.crew_parser_service.parse_crew(
+        crew = await self.crew_parser_service.parse_crew(
             crew_data=self.crew_data,
             session_id=self.session_id,
             crew_callback_factory=crew_callback_factory,

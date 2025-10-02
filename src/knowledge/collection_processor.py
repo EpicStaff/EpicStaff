@@ -21,8 +21,9 @@ from embedder.together_ai import TogetherAIEmbedder
 
 import sys
 from dotenv import load_dotenv, find_dotenv
-
+from loguru import logger
 if "--debug" in sys.argv:
+    logger.info("RUNNING IN DEBUG MODE")
     load_dotenv(find_dotenv("debug.env"))
 else:
     load_dotenv(find_dotenv(".env"))

@@ -2,6 +2,8 @@ from enum import Enum
 from rest_framework import serializers
 from django.db.models import Prefetch
 
+from tables.models.mcp_models import McpTool
+from tables.models.crew_models import AgentConfiguredTools, AgentPythonCodeTools
 from tables.models import (
     Agent,
     LLMConfig,
@@ -22,6 +24,10 @@ from tables.serializers.model_serializers import (
     ConditionalEdgeSerializer,
     FileExtractorNodeSerializer,
     EndNodeSerializer,
+)
+from tables.serializers.utils.mixins import (
+    NestedAgentExportMixin,
+    NestedCrewExportMixin,
 )
 
 
@@ -58,6 +64,10 @@ class ToolConfigExportSerializer(serializers.ModelSerializer):
     def get_tool(self, instance):
         return instance.tool.name_alias
 
+class McpToolExportSerilizer(serializers.ModelSerializer):
+    class Meta:
+        model = McpTool
+        fields = "__all__"
 
 class GeneralToolExportSerializer(serializers.Serializer):
 
@@ -67,6 +77,7 @@ class GeneralToolExportSerializer(serializers.Serializer):
         tool_classes = (
             (PythonCodeTool, PythonCodeToolExportSerializer),
             (ToolConfig, ToolConfigExportSerializer),
+            (McpTool, McpToolExportSerilizer)
         )
         tool = {}
 
@@ -176,17 +187,25 @@ class AgentExportSerializer(serializers.ModelSerializer):
         model = Agent
         exclude = [
             "knowledge_collection",
-            "python_code_tools",
-            "configured_tools",
         ]
 
     def get_tools(self, agent: Agent) -> list[dict]:
         return {
             "python_tools": GeneralToolExportSerializer(
-                instance=agent.python_code_tools.all(), many=True
+                instance=PythonCodeTool.objects.filter(
+                    agentpythoncodetools__agent_id=agent.pk
+                ),
+                many=True,
             ).data,
             "configured_tools": GeneralToolExportSerializer(
-                instance=agent.configured_tools.all(), many=True
+                instance=ToolConfig.objects.filter(
+                    agentconfiguredtools__agent_id=agent.pk
+                ),
+                many=True,
+            ).data,
+            "mcp_tools": GeneralToolExportSerializer(
+                instance=McpTool.objects.filter(agentmcptools__agent_id=agent.pk),
+                many=True,
             ).data,
         }
 
@@ -194,7 +213,7 @@ class AgentExportSerializer(serializers.ModelSerializer):
         return EntityType.AGENT.value
 
 
-class NestedAgentExportSerializer(AgentExportSerializer):
+class NestedAgentExportSerializer(NestedAgentExportMixin, AgentExportSerializer):
 
     llm_config = serializers.SerializerMethodField()
     fcm_llm_config = serializers.SerializerMethodField()
@@ -203,10 +222,19 @@ class NestedAgentExportSerializer(AgentExportSerializer):
     def get_tools(self, agent):
         return {
             "python_tools": list(
-                agent.python_code_tools.all().values_list("id", flat=True)
+                PythonCodeTool.objects.filter(
+                    agentpythoncodetools__agent_id=agent.pk
+                ).values_list("id", flat=True)
             ),
             "configured_tools": list(
-                agent.configured_tools.all().values_list("id", flat=True)
+                ToolConfig.objects.filter(
+                    agentconfiguredtools__agent_id=agent.pk
+                ).values_list("id", flat=True)
+            ),
+            "mcp_tools": list(
+                McpTool.objects.filter(
+                    agentmcptools__agent_id=agent.pk
+                ).values_list("id", flat=True)
             ),
         }
 
@@ -240,6 +268,9 @@ class TaskExportSerializer(serializers.ModelSerializer):
             "configured_tools": list(
                 task.task_configured_tool_list.all().values_list("tool_id", flat=True)
             ),
+            "mcp_tools": list(
+                task.task_mcp_tool_list.all().values_list("tool_id", flat=True)
+            ),
         }
 
     def get_context_tasks(self, task: Task):
@@ -262,6 +293,8 @@ class CrewExportSerializer(serializers.ModelSerializer):
 
     llm_configs = serializers.SerializerMethodField()
 
+    agent_serializer_class = NestedAgentExportSerializer
+
     class Meta:
         model = Crew
         exclude = ["id", "tags", "knowledge_collection"]
@@ -272,28 +305,43 @@ class CrewExportSerializer(serializers.ModelSerializer):
 
     def get_agents(self, crew: Crew):
         agents = crew.get_agents()
-        return NestedAgentExportSerializer(agents, many=True).data
+        return self.agent_serializer_class(agents, many=True).data
 
     def get_tools(self, crew: Crew):
-        agent_configured_tools = ToolConfig.objects.filter(agent__crew=crew).distinct()
-        agent_python_tools = PythonCodeTool.objects.filter(agent__crew=crew).distinct()
+        agent_configured_tools = ToolConfig.objects.filter(
+            agentconfiguredtools__agent__crew=crew
+        ).distinct()
+        agent_python_tools = PythonCodeTool.objects.filter(
+            agentpythoncodetools__agent__crew=crew
+        ).distinct()
+        agent_mcp_tools = McpTool.objects.filter(
+            agentmcptools__agent__crew=crew
+        ).distinct()
+
         task_configured_tools = ToolConfig.objects.filter(
             taskconfiguredtools__task__crew=crew
         ).distinct()
         task_python_tools = PythonCodeTool.objects.filter(
             taskpythoncodetools__task__crew=crew
         ).distinct()
+        task_mcp_tools = McpTool.objects.filter(
+            taskmcptools__task__crew=crew
+        ).distinct()
 
         all_configured_tools = agent_configured_tools.union(task_configured_tools)
         all_python_tools = agent_python_tools.union(task_python_tools)
+        all_mcp_tools = agent_mcp_tools.union(task_mcp_tools)
 
         return {
             "configured_tools": GeneralToolExportSerializer(
                 instance=all_configured_tools, many=True
             ).data,
-            "python_tools": list(
-                GeneralToolExportSerializer(instance=all_python_tools, many=True).data
-            ),
+            "python_tools": GeneralToolExportSerializer(
+                instance=all_python_tools, many=True
+            ).data,
+            "mcp_tools": GeneralToolExportSerializer(
+                instance=all_mcp_tools, many=True
+            ).data,
         }
 
     def get_memory_llm_config(self, crew: Crew):
@@ -376,7 +424,7 @@ class CrewExportSerializer(serializers.ModelSerializer):
         return EntityType.CREW.value
 
 
-class NestedCrewExportSerializer(CrewExportSerializer):
+class NestedCrewExportSerializer(NestedCrewExportMixin, CrewExportSerializer):
 
     tools = None
     llm_configs = None
@@ -384,10 +432,6 @@ class NestedCrewExportSerializer(CrewExportSerializer):
 
     class Meta(CrewExportSerializer.Meta):
         exclude = ["tags", "knowledge_collection"]
-
-    def get_agents(self, crew):
-        agents = list(crew.agents.all().values_list("id", flat=True))
-        return agents
 
 
 class CrewNodeExportSerializer(CrewNodeSerializer):
@@ -423,6 +467,9 @@ class GraphExportSerializer(GraphSerializer):
     realtime_agents = serializers.SerializerMethodField()
     entity_type = serializers.SerializerMethodField()
 
+    crew_serializer_class = NestedCrewExportSerializer
+    agent_serializer_class = NestedAgentExportSerializer
+
     class Meta(GraphSerializer.Meta):
         fields = "__all__"
 
@@ -433,30 +480,39 @@ class GraphExportSerializer(GraphSerializer):
             .values_list("crew", flat=True)
         )
         crews = Crew.objects.filter(id__in=unique_crews)
-        serializer = NestedCrewExportSerializer(instance=crews, many=True)
+        serializer = self.crew_serializer_class(instance=crews, many=True)
         return serializer.data
 
     def get_agents(self, graph):
         agents = Agent.objects.filter(crew__crewnode__graph=graph).distinct()
-        serializer = NestedAgentExportSerializer(instance=agents, many=True)
+        serializer = self.agent_serializer_class(instance=agents, many=True)
         return serializer.data
 
     def get_tools(self, graph):
         agent_configured_tools = ToolConfig.objects.filter(
-            agent__crew__crewnode__graph=graph
+            agentconfiguredtools__agent__crew__crewnode__graph=graph
         ).distinct()
         agent_python_tools = PythonCodeTool.objects.filter(
-            agent__crew__crewnode__graph=graph
+            agentpythoncodetools__agent__crew__crewnode__graph=graph
         ).distinct()
+        agent_mcp_tools = McpTool.objects.filter(
+            agentmcptools__agent__crew__crewnode__graph=graph
+        ).distinct()
+
         task_configured_tools = ToolConfig.objects.filter(
             taskconfiguredtools__task__crew__crewnode__graph=graph
         ).distinct()
         task_python_tools = PythonCodeTool.objects.filter(
             taskpythoncodetools__task__crew__crewnode__graph=graph
         ).distinct()
+        task_mcp_tools = McpTool.objects.filter(
+            taskmcptools__task__crew__crewnode__graph=graph
+        ).distinct()
 
+        
         all_configured_tools = agent_configured_tools.union(task_configured_tools)
         all_python_tools = agent_python_tools.union(task_python_tools)
+        all_mcp_tools = agent_mcp_tools.union(task_mcp_tools)
 
         return {
             "configured_tools": GeneralToolExportSerializer(
@@ -465,6 +521,9 @@ class GraphExportSerializer(GraphSerializer):
             "python_tools": list(
                 GeneralToolExportSerializer(instance=all_python_tools, many=True).data
             ),
+            "mcp_tools": list(
+                GeneralToolExportSerializer(instance=all_mcp_tools, many=True).data
+            )
         }
 
     def get_llm_configs(self, graph):

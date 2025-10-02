@@ -16,6 +16,7 @@ from utils.shorten import shorten_dict
 from utils.instructions_concatenator import generate_instruction
 
 if "--debug" in sys.argv:
+    logger.info("RUNNING IN DEBUG MODE")
     load_dotenv(find_dotenv("debug.env"))
 else:
     load_dotenv(find_dotenv(".env"))

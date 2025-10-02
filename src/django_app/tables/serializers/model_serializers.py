@@ -2,6 +2,7 @@ from typing import Any, Literal
 from decimal import Decimal
 from itertools import chain
 
+from tables.models.mcp_models import McpTool
 from tables.serializers.serializers import BaseToolSerializer
 from tables.models import (
     Agent,
@@ -31,8 +32,12 @@ from rest_framework import serializers
 from tables.exceptions import ToolConfigSerializerError
 from tables.models import PythonCode, PythonCodeResult, PythonCodeTool
 from tables.models.crew_models import (
+    AgentConfiguredTools,
+    AgentMcpTools,
+    AgentPythonCodeTools,
     DefaultAgentConfig,
     DefaultCrewConfig,
+    TaskMcpTools,
     TaskPythonCodeTools,
 )
 from tables.models.embedding_models import DefaultEmbeddingConfig
@@ -210,6 +215,12 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
         return self.update(instance, validated_data)
 
 
+class McpToolSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = McpTool
+        fields = "__all__"
+
+
 class RealtimeAgentSerializer(serializers.ModelSerializer):
 
     similarity_threshold = serializers.DecimalField(
@@ -265,21 +276,31 @@ class AgentReadSerializer(serializers.ModelSerializer):
         ]
 
     def get_tools(self, agent: Agent) -> list[dict]:
-
         tools = []
 
-        # TODO: DRY
-        for tool in agent.python_code_tools.all():
-            serialized = BaseToolSerializer(tool).data
-            tools.append(serialized)
+        python_tools = PythonCodeTool.objects.filter(
+            id__in=AgentPythonCodeTools.objects.filter(agent_id=agent.id)
+            .values_list("pythoncodetool_id", flat=True)
+        )
+        for tool in python_tools:
+            tools.append(BaseToolSerializer(tool).data)
 
-        for tool in agent.configured_tools.all():
-            serialized = BaseToolSerializer(tool).data
-            tools.append(serialized)
+        configured_tools = ToolConfig.objects.filter(
+            id__in=AgentConfiguredTools.objects.filter(agent_id=agent.id)
+            .values_list("toolconfig_id", flat=True)
+        )
+        for tool in configured_tools:
+            tools.append(BaseToolSerializer(tool).data)
+
+        mcp_tools = McpTool.objects.filter(
+            id__in=AgentMcpTools.objects.filter(agent_id=agent.id)
+            .values_list("mcptool_id", flat=True)
+        )
+        for tool in mcp_tools:
+            tools.append(BaseToolSerializer(tool).data)
 
         return tools
-
-
+    
 class AgentWriteSerializer(serializers.ModelSerializer):
     tool_ids = serializers.ListField(
         child=serializers.CharField(),
@@ -329,6 +350,7 @@ class AgentWriteSerializer(serializers.ModelSerializer):
         tools = {
             "configured-tool-list": [],
             "python-code-tool-list": [],
+            "mcp-tool-list": [],
         }
         for tool_id in tool_ids:
             try:
@@ -337,6 +359,8 @@ class AgentWriteSerializer(serializers.ModelSerializer):
                     tools["configured-tool-list"].append(pk)
                 elif prefix == "python-code-tool":
                     tools["python-code-tool-list"].append(pk)
+                elif prefix == "mcp-tool":
+                    tools["mcp-tool-list"].append(pk)
                 else:
                     raise ValueError(f"Unknown tool prefix: {prefix}")
             except Exception as e:
@@ -351,13 +375,25 @@ class AgentWriteSerializer(serializers.ModelSerializer):
         realtime_agent_data = validated_data.pop("realtime_agent", None)
         agent: Agent = super().create(validated_data)
 
-        agent.configured_tools.set(
-            ToolConfig.objects.filter(id__in=tools["configured-tool-list"])
-        )
 
-        agent.python_code_tools.set(
-            PythonCodeTool.objects.filter(id__in=tools["python-code-tool-list"])
-        )
+
+        AgentConfiguredTools.objects.filter(agent_id=agent.id).delete()
+        AgentConfiguredTools.objects.bulk_create([
+            AgentConfiguredTools(agent_id=agent.id, toolconfig_id=tool.id)
+            for tool in ToolConfig.objects.filter(id__in=tools.get("configured-tool-list", []))
+        ])
+
+        AgentPythonCodeTools.objects.filter(agent_id=agent.id).delete()
+        AgentPythonCodeTools.objects.bulk_create([
+            AgentPythonCodeTools(agent_id=agent.id, pythoncodetool_id=tool.id)
+            for tool in PythonCodeTool.objects.filter(id__in=tools.get("python-code-tool-list", []))
+        ])
+
+        AgentMcpTools.objects.filter(agent_id=agent.id).delete()
+        AgentMcpTools.objects.bulk_create([
+            AgentMcpTools(agent_id=agent.id, mcptool_id=tool.id)
+            for tool in McpTool.objects.filter(id__in=tools.get("mcp-tool-list", []))
+        ])
 
         if realtime_agent_data:
             RealtimeAgent.objects.create(agent=agent, **realtime_agent_data)
@@ -365,7 +401,6 @@ class AgentWriteSerializer(serializers.ModelSerializer):
             RealtimeAgent.objects.create(agent=agent)
 
         return agent
-
     def update(self, instance: Agent, validated_data: dict):
         tool_ids = validated_data.pop("tool_ids", [])
         tools = self._resolve_tool_ids(tool_ids)
@@ -373,13 +408,27 @@ class AgentWriteSerializer(serializers.ModelSerializer):
         realtime_agent_data: dict | None = validated_data.pop("realtime_agent", None)
         instance = super().update(instance, validated_data)
 
-        instance.configured_tools.set(
-            ToolConfig.objects.filter(id__in=tools["configured-tool-list"])
-        )
+        # configured_tools
+        AgentConfiguredTools.objects.filter(agent_id=instance.id).delete()
+        AgentConfiguredTools.objects.bulk_create([
+            AgentConfiguredTools(agent_id=instance.id, toolconfig_id=tool.id)
+            for tool in ToolConfig.objects.filter(id__in=tools.get("configured-tool-list", []))
+        ])
 
-        instance.python_code_tools.set(
-            PythonCodeTool.objects.filter(id__in=tools["python-code-tool-list"])
-        )
+        # python_code_tools
+        AgentPythonCodeTools.objects.filter(agent_id=instance.id).delete()
+        AgentPythonCodeTools.objects.bulk_create([
+            AgentPythonCodeTools(agent_id=instance.id, pythoncodetool_id=tool.id)
+            for tool in PythonCodeTool.objects.filter(id__in=tools.get("python-code-tool-list", []))
+        ])
+
+        # mcp_tools
+        AgentMcpTools.objects.filter(agent_id=instance.id).delete()
+        AgentMcpTools.objects.bulk_create([
+            AgentMcpTools(agent_id=instance.id, mcptool_id=tool.id)
+            for tool in McpTool.objects.filter(id__in=tools.get("mcp-tool-list", []))
+        ])
+
 
         if realtime_agent_data:
             realtime_agent, _ = RealtimeAgent.objects.get_or_create(agent=instance)
@@ -388,7 +437,6 @@ class AgentWriteSerializer(serializers.ModelSerializer):
             realtime_agent.save()
 
         return instance
-
 
 class TemplateAgentSerializer(serializers.ModelSerializer):
     configured_tools = serializers.PrimaryKeyRelatedField(
@@ -502,7 +550,9 @@ class TaskReadSerializer(serializers.ModelSerializer):
 
     def get_tools(self, task: Task) -> list[dict]:
         all_task_tools = chain(
-            task.task_configured_tool_list.all(), task.task_python_code_tool_list.all()
+            task.task_configured_tool_list.all(),
+            task.task_python_code_tool_list.all(),
+            task.task_mcp_tool_list.all(),
         )
         return [BaseToolSerializer(task_tool.tool).data for task_tool in all_task_tools]
 
@@ -569,9 +619,11 @@ class TaskWriteSerializer(serializers.ModelSerializer):
     def _update_task_tools(self, task: Task, tool_ids: list[str]):
         TaskPythonCodeTools.objects.filter(task=task).delete()
         TaskConfiguredTools.objects.filter(task=task).delete()
+        TaskMcpTools.objects.filter(task=task).delete()
 
         python_code_tool_list = []
         configured_tool_list = []
+        mcp_tool_list = []
         for tool_id in tool_ids:
 
             prefix, id_ = tool_id.split(":")
@@ -580,14 +632,20 @@ class TaskWriteSerializer(serializers.ModelSerializer):
                 instance = TaskPythonCodeTools(task=task, tool=python_code_tool)
                 instance.full_clean()
                 python_code_tool_list.append(instance)
-            if prefix == "configured-tool":
+            elif prefix == "configured-tool":
                 configured_tool = ToolConfig.objects.get(pk=id_)
                 instance = TaskConfiguredTools(task=task, tool=configured_tool)
                 instance.full_clean()
                 configured_tool_list.append(instance)
+            elif prefix == "mcp-tool":
+                mcp_tool = McpTool.objects.get(pk=id_)
+                instance = TaskMcpTools(task=task, tool=mcp_tool)
+                instance.full_clean()
+                mcp_tool_list.append(instance)
 
         TaskPythonCodeTools.objects.bulk_create(python_code_tool_list)
         TaskConfiguredTools.objects.bulk_create(configured_tool_list)
+        TaskMcpTools.objects.bulk_create(mcp_tool_list)
 
     def _update_task_contexts(self, task, context_ids):
         TaskContext.objects.filter(task=task).delete()

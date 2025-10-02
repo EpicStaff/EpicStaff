@@ -1,0 +1,19 @@
+version: "3.9"
+
+services:
+  fastmcp:
+    build: .
+
+    ports:
+      - "8082:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - FASTMCP_LOG_LEVEL=debug
+    volumes:
+      - .:/app
+    networks:
+        - mcp-network
+networks:
+  mcp-network:
+    driver: bridge
+    external: true

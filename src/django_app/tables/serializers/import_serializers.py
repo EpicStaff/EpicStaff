@@ -1,6 +1,7 @@
 from django.db.models import Q, Value, JSONField
 from rest_framework import serializers
 
+from tables.models.mcp_models import McpTool
 from tables.models import (
     Agent,
     LLMConfig,
@@ -123,10 +124,36 @@ class ToolConfigImportSerilizer(serializers.ModelSerializer):
         return config
 
 
+class McpToolImportSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = McpTool
+        fields = "__all__"
+        extra_kwargs = {
+            "name": {"validators": []},
+            "id": {"required": False, "read_only": False, "validators": []},
+        }
+
+    def create(self, validated_data: dict):
+        validated_data.pop("id", None)
+        full_match = McpTool.objects.filter(**validated_data).first()
+        if full_match is not None:
+            return full_match
+
+        name = validated_data.pop("name")
+        if McpTool.objects.filter(name=name).exists():
+            existing_names = McpTool.objects.values_list("name", flat=True)
+            name = generate_new_unique_name(name, existing_names)
+
+        mcp_tool = McpTool.objects.create(name=name, **validated_data)
+        return mcp_tool
+
+
 class ToolsImportSerializer(serializers.Serializer):
 
     python_tools = PythonCodeToolImportSerializer(many=True)
     configured_tools = ToolConfigImportSerilizer(many=True)
+    mcp_tools = McpToolImportSerializer(many=True)
 
 
 class BaseConfigImportSerializer(serializers.ModelSerializer):
@@ -447,7 +474,9 @@ class RealtimeAgentImportSerializer(serializers.ModelSerializer):
             )
             transcription_configs_service.create_configs()
 
-        realtime_agent = RealtimeAgent.objects.create(agent=agent, **validated_data)
+        realtime_agent, _ = RealtimeAgent.objects.get_or_create(
+            agent=agent, **validated_data
+        )
 
         if configs_service:
             realtime_agent.realtime_config = configs_service.get_config(
@@ -525,8 +554,6 @@ class AgentImportSerializer(serializers.ModelSerializer):
         exclude = [
             "tags",
             "knowledge_collection",
-            "configured_tools",
-            "python_code_tools",
         ]
         extra_kwargs = {
             "tools": {"validators": []},
@@ -583,6 +610,7 @@ class AgentImportSerializer(serializers.ModelSerializer):
             "configured_tools": [
                 t_data["id"] for t_data in tools_data["configured_tools"]
             ],
+            "mcp_tools": [t_data["id"] for t_data in tools_data["mcp_tools"]],
         }
 
 
@@ -627,6 +655,8 @@ class CrewImportSerializer(serializers.ModelSerializer):
     planning_llm_config = serializers.IntegerField(required=False, allow_null=True)
     llm_configs = LLMConfigImportSerializer(many=True, required=False, allow_null=True)
     realtime_agents = RealtimeDataImportSerializer(required=False, allow_null=True)
+
+    agent_serializer_class = NestedAgentImportSerializer
 
     class Meta:
         model = Crew
@@ -682,7 +712,7 @@ class CrewImportSerializer(serializers.ModelSerializer):
 
             current_id = a_data.pop("id")
 
-            agent_serializer = NestedAgentImportSerializer(data=a_data)
+            agent_serializer = self.agent_serializer_class(data=a_data)
             agent_serializer.is_valid(raise_exception=True)
             agent = agent_serializer.save()
 
@@ -934,6 +964,9 @@ class GraphImportSerializer(serializers.ModelSerializer):
 
     metadata = GraphMetadataSerializer()
 
+    agent_serializer_class = NestedAgentImportSerializer
+    crew_serializer_class = NestedCrewImportSerializer
+
     class Meta:
         model = Graph
         exclude = ["id", "tags"]
@@ -984,7 +1017,9 @@ class GraphImportSerializer(serializers.ModelSerializer):
             llm_configs_service.create_configs()
 
         if agents_data:
-            agents_service = AgentsImportService(agents_data)
+            agents_service = AgentsImportService(
+                agents_data, self.agent_serializer_class
+            )
             agents_service.create_agents(tools_service, llm_configs_service)
 
         if realtime_agents_data and agents_data:
@@ -994,7 +1029,7 @@ class GraphImportSerializer(serializers.ModelSerializer):
             realtime_agents_serializer.create(realtime_agents_data)
 
         if crews_data:
-            crews_service = CrewsImportService(crews_data)
+            crews_service = CrewsImportService(crews_data, self.crew_serializer_class)
             crews_service.create_crews(
                 agents_service, tools_service, llm_configs_service
             )

@@ -238,3 +238,5 @@ class BaseNode(ABC):
                 "output": copy.deepcopy(output),
             }
         )
+
+    async def post_init(self, *args, **kwargs): ...

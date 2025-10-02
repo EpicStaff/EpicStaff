@@ -1,6 +1,6 @@
 from enum import Enum
-from typing import Any, List, Literal, Union
-from pydantic import BaseModel, HttpUrl, model_validator
+from typing import Any, List, Literal, Optional, Union
+from pydantic import AnyUrl, BaseModel, HttpUrl, model_validator
 
 
 class LLMConfigData(BaseModel):
@@ -53,6 +53,28 @@ class ConfiguredToolData(BaseModel):
     tool_config: ToolConfigData
 
 
+class McpToolData(BaseModel):
+    """
+    Configuration for a FastMCP client connecting to remote MCP tools via SSE.
+    """
+
+    transport: str
+    """URL of the remote MCP server (SSE). Required."""
+    tool_name: str
+
+    timeout: Optional[float] = 30
+    """Request timeout in seconds. Recommended to set."""
+
+    auth: Optional[str] = None
+    """Authorization token or OAuth string, if the server requires it."""
+
+    init_timeout: Optional[float] = 10
+    """Timeout for session initialization. Optional, default is 10 seconds."""
+
+    class Config:
+        extra = "ignore"
+
+
 class PythonCodeData(BaseModel):
     venv_name: str
     code: str
@@ -71,7 +93,7 @@ class PythonCodeToolData(BaseModel):
 
 class BaseToolData(BaseModel):
     unique_name: str
-    data: PythonCodeToolData | ConfiguredToolData
+    data: PythonCodeToolData | ConfiguredToolData | McpToolData
 
     @model_validator(mode="before")
     @classmethod
@@ -91,6 +113,8 @@ class BaseToolData(BaseModel):
             values["data"] = PythonCodeToolData(**data)
         elif prefix == "configured-tool":
             values["data"] = ConfiguredToolData(**data)
+        elif prefix == "mcp-tool":
+            values["data"] = McpToolData(**data)
         else:
             raise ValueError(f"Unknown tool prefix: {prefix}")
 

@@ -14,6 +14,7 @@ from models.request_models import (
     AgentData,
     ConfiguredToolData,
     CrewData,
+    McpToolData,
     PythonCodeToolData,
     TaskData,
 )
@@ -21,6 +22,7 @@ from models.request_models import (
 from settings import PGVECTOR_MEMORY_CONFIG
 import copy
 from services.crew.proxy_tool_factory import ProxyToolFactory
+from services.crew.mcp_tool_factory import CrewaiMcpToolFactory
 from loguru import logger
 
 
@@ -33,6 +35,7 @@ class CrewParserService(metaclass=SingletonMeta):
         redis_service: RedisService,
         python_code_executor_service: RunPythonCodeService,
         knowledge_search_service: KnowledgeSearchService,
+        mcp_tool_factory: CrewaiMcpToolFactory,
     ):
         self.redis_service = redis_service
 
@@ -41,6 +44,7 @@ class CrewParserService(metaclass=SingletonMeta):
             port=manager_port,
             python_code_executor_service=python_code_executor_service,
         )
+        self.mcp_tool_factory = mcp_tool_factory
         self.knowledge_search_service = knowledge_search_service
 
     def parse_agent(
@@ -105,7 +109,6 @@ class CrewParserService(metaclass=SingletonMeta):
         output_model = None
         if task_data.output_model is not None:
             output_model = generate_model_from_schema(task_data.output_model)
-            output_model.model_rebuild()
         tools = [
             tool_map[unique_name] for unique_name in task_data.tool_unique_name_list
         ]
@@ -123,7 +126,7 @@ class CrewParserService(metaclass=SingletonMeta):
             tools=tools,
         )
 
-    def parse_crew(
+    async def parse_crew(
         self,
         crew_data: CrewData,
         session_id: int,
@@ -180,12 +183,16 @@ class CrewParserService(metaclass=SingletonMeta):
         for base_tool_data in crew_data.tools:
 
             if isinstance(base_tool_data.data, PythonCodeToolData):
-                callback = self.proxy_tool_factory.create_python_code_proxy_tool(
+                tool = self.proxy_tool_factory.create_python_code_proxy_tool(
                     python_code_tool_data=base_tool_data.data,
                     global_kwargs=global_kwargs,
                 )
             elif isinstance(base_tool_data.data, ConfiguredToolData):
-                callback = self.proxy_tool_factory.create_proxy_tool(
+                tool = self.proxy_tool_factory.create_proxy_tool(
+                    tool_data=base_tool_data.data,
+                )
+            elif isinstance(base_tool_data.data, McpToolData):
+                tool = await self.mcp_tool_factory.create(
                     tool_data=base_tool_data.data,
                 )
             else:
@@ -193,7 +200,7 @@ class CrewParserService(metaclass=SingletonMeta):
                     f"Tool with type {type(base_tool_data.data)} is not supported."
                 )
 
-            tool_map[base_tool_data.unique_name] = callback
+            tool_map[base_tool_data.unique_name] = tool
 
         agent_data_list: list[AgentData] = crew_data.agents
 

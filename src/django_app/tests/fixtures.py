@@ -12,7 +12,7 @@ from tables.models.llm_models import (
     RealtimeTranscriptionConfig,
     RealtimeTranscriptionModel,
 )
-from tables.models.crew_models import DefaultAgentConfig, DefaultCrewConfig
+from tables.models.crew_models import AgentConfiguredTools, DefaultAgentConfig, DefaultCrewConfig
 from tables.services.config_service import YamlConfigService
 from tables.services.redis_service import RedisService
 from tables.services.session_manager_service import SessionManagerService
@@ -166,10 +166,13 @@ def wikipedia_agent(
         fcm_llm_config=llm_config,
     )
     agent.save()
-    agent.configured_tools.set([wikipedia_tool_config.pk])
-    agent.save()
-    return agent
 
+    AgentConfiguredTools.objects.create(
+        agent_id=agent.id,
+        toolconfig_id=wikipedia_tool_config.id
+    )
+
+    return agent
 
 @pytest.fixture
 def embedding_model(openai_provider: Provider) -> EmbeddingModel:

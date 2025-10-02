@@ -11,3 +11,4 @@ from .vector_models import MemoryDatabase
 from .knowledge_models import *
 from .tag_models import *
 from .realtime_models import *
+from .mcp_models import *

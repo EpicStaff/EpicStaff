@@ -104,7 +104,8 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     self.redis_service.publish("graph:messages", data)
                 logger.debug(f"Mode: {stream_mode}. Chunk: {chunk}")
 
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.01)
+            
             graph_end_data = GraphMessage(
                 session_id=session_id,
                 name="",

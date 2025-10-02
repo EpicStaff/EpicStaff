@@ -28,7 +28,7 @@ open-interpreter = "0.4.3"
 langgraph = ">=0.3.16"
 typing-extensions = "4.12.2"
 pyyaml = "6.0.2"
-python-dotenv = "1.0.1"
+python-dotenv = "1.1.0"
 datamodel-code-generator = "^0.26.0"
 redis = "^5.2.0"
 loguru = "^0.7.2"
@@ -36,6 +36,7 @@ psycopg2 = "^2.9.10"
 litellm = "1.67.0"
 crewai = {path = "libraries/crewAI"}
 openai = {extras = ["voice-helpers"], version = "^1.95.0"}
+fastmcp = "^2.12.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"

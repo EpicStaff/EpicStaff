@@ -1,4 +1,6 @@
 from typing import Iterable
+from tables.models.crew_models import AgentConfiguredTools, AgentMcpTools, AgentPythonCodeTools
+from tables.models.mcp_models import McpTool
 from tables.serializers.serializers import BaseToolSerializer
 from tables.models.llm_models import (
     RealtimeConfig,
@@ -150,17 +152,34 @@ class ConverterService(metaclass=SingletonMeta):
         return crew_data
 
     def _get_agent_base_tools(self, agent: Agent) -> list[BaseToolData]:
-        tools = list(agent.python_code_tools.all()) + list(agent.configured_tools.all())
-        return [self.convert_tool_to_base_tool_pydantic(tool) for tool in tools]
 
+        python_tools = PythonCodeTool.objects.filter(
+            id__in=AgentPythonCodeTools.objects.filter(agent_id=agent.id)
+            .values_list("pythoncodetool_id", flat=True)
+        )
+        configured_tools = ToolConfig.objects.filter(
+            id__in=AgentConfiguredTools.objects.filter(agent_id=agent.id)
+            .values_list("toolconfig_id", flat=True)
+        )
+        mcp_tools = McpTool.objects.filter(
+            id__in=AgentMcpTools.objects.filter(agent_id=agent.id)
+            .values_list("mcptool_id", flat=True)
+        )
+
+        all_tools = list(python_tools) + list(configured_tools) + list(mcp_tools)
+
+        return [self.convert_tool_to_base_tool_pydantic(tool) for tool in all_tools]
+    
     def _get_task_base_tools(self, task: Task) -> list[BaseToolData]:
-        tools = [entry.tool for entry in task.task_configured_tool_list.all()] + [
-            entry.tool for entry in task.task_python_code_tool_list.all()
-        ]
+        tools = (
+            [entry.tool for entry in task.task_configured_tool_list.all()]
+            + [entry.tool for entry in task.task_python_code_tool_list.all()]
+            + [entry.tool for entry in task.task_mcp_tool_list.all()]
+        )
         return [self.convert_tool_to_base_tool_pydantic(tool) for tool in tools]
 
     def convert_tool_to_base_tool_pydantic(
-        self, tool: PythonCodeTool | ToolConfig
+        self, tool: PythonCodeTool | ToolConfig | McpTool
     ) -> BaseToolData:
         if isinstance(tool, PythonCodeTool):
             unique_name = f"python-code-tool:{tool.pk}"
@@ -168,6 +187,9 @@ class ConverterService(metaclass=SingletonMeta):
         elif isinstance(tool, ToolConfig):
             unique_name = f"configured-tool:{tool.pk}"
             data = self.convert_configured_tool_to_pydantic(tool)
+        elif isinstance(tool, McpTool):
+            unique_name = f"mcp-tool:{tool.pk}"
+            data = self.convert_mcp_tool_to_pydantic(tool)
         else:
             raise TypeError(f"Tool type of {type(tool)} is not supported")
 
@@ -308,6 +330,15 @@ class ConverterService(metaclass=SingletonMeta):
         return ConfiguredToolData(
             name_alias=tool_config.tool.name_alias,
             tool_config=tool_config_data,
+        )
+
+    def convert_mcp_tool_to_pydantic(self, mcp_tool: McpTool) -> McpToolData:
+        return McpToolData(
+            transport=mcp_tool.transport,
+            tool_name=mcp_tool.tool_name,
+            timeout=mcp_tool.timeout,
+            auth=mcp_tool.auth,
+            init_timeout=mcp_tool.init_timeout,
         )
 
     def convert_llm_config_to_pydantic(self, config: LLMConfig) -> LLMData | None:

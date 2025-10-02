@@ -153,33 +153,34 @@ class ToolConfigValidator:
         if not tool_instance:
             return False
 
-        if hasattr(tool_instance, 'prefetched_config_fields'):
+        if hasattr(tool_instance, "prefetched_config_fields"):
             tool_required_fields = [
-                field for field in tool_instance.prefetched_config_fields 
+                field
+                for field in tool_instance.prefetched_config_fields
                 if field.required
             ]
         else:
             tool_required_fields = ToolConfigField.objects.filter(
                 tool_id=tool_instance.id, required=True
             )
-        
+
         for field in tool_required_fields:
             if field.name not in configuration:
                 return False
-            
+
             value = configuration.get(field.name)
             validation_function = self.VALIDATION_FUNCTIONS.get(field.data_type.lower())
-            
+
             if not validation_function:
                 raise KeyError(
                     f"Validation function for '{field.data_type}' does not exist."
                 )
-            
+
             try:
                 validation_function(field.name, value)
             except ValidationError:
                 return False
-        
+
         return is_completed
 
     def __validate_missing_fields(
@@ -238,7 +239,9 @@ def validate_tool_configs(crew: Crew) -> list[ToolConfig]:
         validate_missing_reqired_fields=True, validate_null_fields=True
     )
 
-    configured_tool_set = ToolConfig.objects.filter(pk__in=configured_tool_ids)
+    configured_tool_set = ToolConfig.objects.filter(
+        agentconfiguredtools__agent__crew=crew
+    ).distinct()
 
     evaled_tool_confgs = list()
     for tool_config in configured_tool_set:

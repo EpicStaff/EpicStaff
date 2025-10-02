@@ -1,23 +1,20 @@
 import time
 from typing import Any, Type
 from crewai.tools.base_tool import Tool
-from models.request_models import CodeResultData, CodeTaskData
-from services.redis_service import RedisService
 from models.response_models import ToolResponse
 from models.request_models import (
+    McpToolData,
     PythonCodeToolData,
     ConfiguredToolData,
     ToolInitConfigurationModel,
 )
 from crewai.tools import BaseTool
 import requests
-from pydantic import BaseModel
 from services.schema_converter.converter import generate_model_from_schema
 from services.pickle_encode import txt_to_obj
 from loguru import logger
 from services.run_python_code_service import RunPythonCodeService
 import asyncio
-
 
 class ProxyToolFactory:
 
@@ -26,6 +23,7 @@ class ProxyToolFactory:
         host: str,
         port: int,
         python_code_executor_service: RunPythonCodeService,
+        
     ):
         self.host = host
         self.port = port
@@ -34,9 +32,8 @@ class ProxyToolFactory:
 
     def create_python_code_proxy_tool(
         self, python_code_tool_data: PythonCodeToolData, global_kwargs: dict[str, Any]
-    ):
+    ) -> Tool:
         args_schema = generate_model_from_schema(python_code_tool_data.args_schema)
-        args_schema.model_rebuild()
         name = python_code_tool_data.name
         description = python_code_tool_data.description
 
@@ -62,7 +59,7 @@ class ProxyToolFactory:
             name=name, description=description, args_schema=args_schema, func=_run
         )
 
-    def create_proxy_tool(self, tool_data: ConfiguredToolData) -> Type[BaseTool]:
+    def create_proxy_tool(self, tool_data: ConfiguredToolData) -> Tool:
 
         tool_init_configuration = None
         if tool_data.tool_config is not None:
@@ -79,7 +76,6 @@ class ProxyToolFactory:
         data["args_schema"] = generate_model_from_schema(
             data["args_schema"]
         )  # TODO: rename
-        data["args_schema"].model_rebuild()
 
         logger.info(data)
 
@@ -106,7 +102,7 @@ class ProxyToolFactory:
             description=data["description"],
             args_schema=data["args_schema"],
             func=_run,
-        )
+        )    
 
     def run_tool_in_container(
         self,

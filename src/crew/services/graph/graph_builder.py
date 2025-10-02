@@ -61,7 +61,7 @@ class SessionGraphBuilder:
         self.knowledge_search_service = knowledge_search_service
 
         self._graph_builder = StateGraph(State)
-        self._end_node_result: dict | None = None
+        self._end_node_result: dict | None = {}
 
     def add_conditional_edges(
         self,

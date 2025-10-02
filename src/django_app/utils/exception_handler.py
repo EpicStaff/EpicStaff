@@ -26,7 +26,7 @@ def custom_exception_handler(exc, context):
             "message": (
                 f"{exc.__class__.__name__}: {exc.args[0]}"
                 if exc.args
-                else f"{exc.__class__.__name__}: {exc.default_detail}"
+                else f"{exc.__class__.__name__}: {exc.detail or exc.default_detail}"
             ),
         }
         return response
