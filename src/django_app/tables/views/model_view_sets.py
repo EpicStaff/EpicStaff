@@ -457,10 +457,21 @@ class TaskReadWriteViewSet(ModelViewSet):
         if "tools" in request.data:
             raise TaskSerializerError(detail="Use tool_ids instead of tools")
 
+        old_order = instance.order
+
         write_serializer = self.get_serializer(instance, data=request.data)
         write_serializer.is_valid(raise_exception=True)
         self.perform_update(write_serializer)
         instance.refresh_from_db()
+
+        if "order" in request.data and instance.order != old_order:
+            with transaction.atomic():
+                invalid_contexts = TaskContext.objects.filter(
+                    task=instance,
+                    context__order__gte=instance.order,  # context comes *after* the task
+                )
+                if invalid_contexts.exists():
+                    invalid_contexts.delete()
 
         read_serializer = TaskReadSerializer(
             instance, context=self.get_serializer_context()
@@ -472,12 +483,23 @@ class TaskReadWriteViewSet(ModelViewSet):
         if "tools" in request.data:
             raise TaskSerializerError(detail="Use tool_ids instead of tools")
 
+        old_order = instance.order
+
         write_serializer = self.get_serializer(
             instance, data=request.data, partial=True
         )
         write_serializer.is_valid(raise_exception=True)
         self.perform_update(write_serializer)
         instance.refresh_from_db()
+
+        if "order" in request.data and instance.order != old_order:
+            with transaction.atomic():
+                invalid_contexts = TaskContext.objects.filter(
+                    task=instance,
+                    context__order__gte=instance.order,  # context comes *after* the task
+                )
+                if invalid_contexts.exists():
+                    invalid_contexts.delete()
 
         read_serializer = TaskReadSerializer(
             instance, context=self.get_serializer_context()
