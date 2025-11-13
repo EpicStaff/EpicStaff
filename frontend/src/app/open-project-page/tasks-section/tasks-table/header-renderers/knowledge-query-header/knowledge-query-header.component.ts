@@ -22,9 +22,8 @@ import { MatTooltipModule } from '@angular/material/tooltip';
     </div>
   `,
     styles: [
-        `:host { display: flex; align-items: center; justify-content: center; width: 100%; }
+        `:host { display: flex; align-items: center; width: 100%; }
     .knowledge-header { display: flex; align-items: center; gap: 6px; }
-    .knowledge-label { font-size: 14px; font-weight: 500; }
     .create-agent__help-icon { font-size: 1rem;
     width: 1rem;
     height: 1rem;
