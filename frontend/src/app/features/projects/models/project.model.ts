@@ -29,8 +29,6 @@ export interface GetProjectRequest {
     embedding_config: number | null;
     memory_llm_config: number | null;
     metadata?: any | null;
-
-    is_template: boolean;
 }
 
 export interface CreateProjectRequest {
@@ -55,8 +53,6 @@ export interface CreateProjectRequest {
     metadata?: any | null;
     similarity_threshold?: string | null;
     search_limit?: number | null;
-    is_template: boolean;
-
 }
 
 export interface UpdateProjectRequest {
@@ -78,6 +74,4 @@ export interface UpdateProjectRequest {
     manager_llm_config?: number | null;
     embedding_config?: number | null;
     memory_llm_config?: number | null;
-    is_template?: boolean;
-
 }

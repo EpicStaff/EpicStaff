@@ -19,38 +19,48 @@
 
   <!-- Header with Menu Options -->
   <div class="menu-header">
-    @for (item of menuItems; track item.type) {
-      <button
-        [class.active]="item.type === selectedMenu"
-        (click)="onSelectMenu(item.type)"
-      >
-        {{ item.label }}
-      </button>
-    }
+    <button
+      *ngFor="let item of menuItems"
+      [class.active]="item.type === selectedMenu"
+      (click)="onSelectMenu(item.type)"
+    >
+      {{ item.label }}
+    </button>
   </div>
 
   <!-- Content Area -->
   <div class="menu-content">
-    @switch (selectedMenu) {
-      @case (MenuType.FlowCore) {
-        <app-flow-graph-core-context-menu
-          [searchTerm]="searchTerm"
-          (nodeSelected)="onNodeSelected($event)"
-        ></app-flow-graph-core-context-menu>
-      }
-      @case (MenuType.Templates) {
-        <app-templates-context-menu
-          [searchTerm]="searchTerm"
-          (nodeSelected)="onNodeSelected($event)"
-          (createNewProject)="onCreateNewProject()"
-        ></app-templates-context-menu>
-      }
-      @case (MenuType.Llms) {
-        <app-llm-menu
-          [searchTerm]="searchTerm"
-          (nodeSelected)="onNodeSelected($event)"
-        ></app-llm-menu>
-      }
-    }
+    <ng-container [ngSwitch]="selectedMenu">
+      <app-flow-graph-core-menu
+        *ngSwitchCase="'flow-core'"
+        [searchTerm]="searchTerm"
+        (nodeSelected)="onNodeSelected($event)"
+      ></app-flow-graph-core-menu>
+      <app-project-graph-core-menu
+        *ngSwitchCase="'project-core'"
+        [searchTerm]="searchTerm"
+        (nodeSelected)="onNodeSelected($event)"
+      ></app-project-graph-core-menu>
+      <app-flow-projects-context-menu
+        *ngSwitchCase="'projects'"
+        [searchTerm]="searchTerm"
+        (nodeSelected)="onNodeSelected($event)"
+      ></app-flow-projects-context-menu>
+      <app-llm-menu
+        *ngSwitchCase="'llms'"
+        [searchTerm]="searchTerm"
+        (nodeSelected)="onNodeSelected($event)"
+      ></app-llm-menu>
+      <app-tools-menu
+        *ngSwitchCase="'tools'"
+        [searchTerm]="searchTerm"
+        (nodeSelected)="onNodeSelected($event)"
+      ></app-tools-menu>
+      <app-staff-menu
+        *ngSwitchCase="'staff'"
+        [searchTerm]="searchTerm"
+        (nodeSelected)="onNodeSelected($event)"
+      ></app-staff-menu>
+    </ng-container>
   </div>
 </div>

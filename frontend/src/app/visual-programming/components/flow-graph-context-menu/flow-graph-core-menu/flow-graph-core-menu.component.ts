@@ -19,7 +19,7 @@ interface FlowGraphBlock {
 }
 
 @Component({
-    selector: 'app-flow-graph-core-context-menu',
+    selector: 'app-flow-graph-core-menu',
     standalone: true,
     template: `
         <ul>
@@ -85,7 +85,7 @@ interface FlowGraphBlock {
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [NgFor],
 })
-export class FlowGraphCoreContextMenuComponent {
+export class FlowGraphCoreMenuComponent {
     @Input() public searchTerm: string = '';
 
     @Output() public nodeSelected: EventEmitter<{

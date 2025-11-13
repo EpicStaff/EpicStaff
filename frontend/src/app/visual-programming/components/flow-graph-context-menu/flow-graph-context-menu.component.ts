@@ -5,12 +5,24 @@ import {
   Output,
   EventEmitter,
 } from '@angular/core';
-import { NgStyle } from '@angular/common';
+import { NgFor, NgStyle, NgSwitch, NgSwitchCase } from '@angular/common';
 import { NodeType } from '../../core/enums/node-type';
-import { MenuType } from '../../core/enums/menu-type.enum';
-import { FlowGraphCoreContextMenuComponent } from './flow-graph-core-context-menu/flow-graph-core-context-menu.component';
-import { TemplatesContextMenuComponent } from './templates-context-menu/templates-context-menu.component';
+import { FlowGraphCoreMenuComponent } from './flow-graph-core-menu/flow-graph-core-menu.component';
+import { FlowProjectsContextMenuComponent } from './section-projects/section-projects.component';
 import { LlmMenuComponent } from './llm-menu/llm-menu.component';
+import { ToolsMenuComponent } from './tools-menu/tools-menu.component';
+import { StaffMenuComponent } from './staff-menu/staff-menu.component';
+import { ProjectGraphCoreMenuComponent } from './project-graph-core-menu/project-graph-core-menu';
+
+export type MenuType =
+  | 'flow-core'
+  | 'project-core'
+  | 'projects'
+  | 'llms'
+  | 'tools'
+  | 'staff';
+
+export type MenuContext = 'flow-graph' | 'project-graph';
 
 @Component({
   selector: 'app-flow-graph-context-menu',
@@ -19,47 +31,74 @@ import { LlmMenuComponent } from './llm-menu/llm-menu.component';
   styleUrls: ['./flow-graph-context-menu.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    NgSwitch,
+    NgSwitchCase,
+    NgFor,
     NgStyle,
-    FlowGraphCoreContextMenuComponent,
-    TemplatesContextMenuComponent,
+    FlowGraphCoreMenuComponent,
+    FlowProjectsContextMenuComponent,
     LlmMenuComponent,
+    ToolsMenuComponent,
+    StaffMenuComponent,
+    ProjectGraphCoreMenuComponent,
   ],
 })
 export class FlowGraphContextMenuComponent {
   @Input({ required: true })
   public position: { x: number; y: number } = { x: 0, y: 0 };
 
+  private _menuContext: MenuContext = 'flow-graph';
+  @Input()
+  set menuContext(value: MenuContext) {
+    this._menuContext = value;
+    this.selectedMenu = value === 'flow-graph' ? 'flow-core' : 'project-core';
+  }
+  get menuContext(): MenuContext {
+    return this._menuContext;
+  }
+  public get topPosition(): number {
+    return this.menuContext === 'flow-graph'
+      ? this.position.y - 80
+      : this.position.y - 130;
+  }
+
+  public get leftPosition(): number {
+    return this.menuContext === 'flow-graph'
+      ? this.position.x - 70
+      : this.position.x - 70;
+  }
   @Output() public nodeSelected = new EventEmitter<{
     type: NodeType;
     data?: any;
   }>();
 
-  @Output() public createNewProject = new EventEmitter<void>();
-
-  public readonly MenuType = MenuType;
-
-  public get topPosition(): number {
-    return this.position.y - 80;
-  }
-
-  public get leftPosition(): number {
-    return this.position.x - 70;
-  }
-
   public searchTerm: string = '';
 
-  public selectedMenu: MenuType = MenuType.FlowCore;
+  public selectedMenu: MenuType =
+    this.menuContext === 'flow-graph' ? 'flow-core' : 'project-core';
 
   public get menuItems(): { label: string; type: MenuType }[] {
-    return [
-      { label: 'Core', type: MenuType.FlowCore },
-      { label: 'Templates', type: MenuType.Templates },
-      // { label: 'Models', type: MenuType.Llms },
-    ];
+    if (this.menuContext === 'flow-graph') {
+      return [
+        { label: 'Core', type: 'flow-core' },
+        { label: 'Projects', type: 'projects' },
+        // { label: 'Models', type: 'llms' },
+      ];
+    } else {
+      return [
+        { label: 'Core', type: 'project-core' },
+        { label: 'Staff', type: 'staff' },
+        { label: 'Tools', type: 'tools' },
+        { label: 'Models', type: 'llms' },
+      ];
+    }
   }
 
   public get menuWidth(): string {
-    if (this.selectedMenu === MenuType.FlowCore) {
+    if (
+      this.selectedMenu === 'flow-core' ||
+      this.selectedMenu === 'project-core'
+    ) {
       return 'auto';
     }
     return '380px';
@@ -77,9 +116,5 @@ export class FlowGraphContextMenuComponent {
   public onNodeSelected(event: { type: NodeType; data: any }): void {
     console.log('Node selected:', event.data);
     this.nodeSelected.emit(event);
-  }
-
-  public onCreateNewProject(): void {
-    this.createNewProject.emit();
   }
 }

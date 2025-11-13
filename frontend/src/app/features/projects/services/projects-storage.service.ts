@@ -32,7 +32,7 @@ export class ProjectsStorageService {
     public readonly filteredProjects = computed(() => {
         const projects = this.projectsSignal();
         const filter = this.filterSignal();
-        let filtered = projects.filter((project) => project.is_template);
+        let filtered = projects;
         if (filter) {
             // Filter by search term
             if (filter.searchTerm) {
@@ -256,18 +256,6 @@ export class ProjectsStorageService {
 
     public copyProject(id: number): Observable<GetProjectRequest> {
         return this.projectsApiService.copyProject(id).pipe(
-            tap((newProject: GetProjectRequest) => {
-                this.addProjectToCache(newProject);
-            })
-        );
-    }
-
-    public saveAsProject(id: number): Observable<GetProjectRequest> {
-        return this.projectsApiService.saveAsProject(id).pipe(
-            map((newProject) => ({
-                ...newProject,
-                is_template: false,
-            })),
             tap((newProject: GetProjectRequest) => {
                 this.addProjectToCache(newProject);
             })

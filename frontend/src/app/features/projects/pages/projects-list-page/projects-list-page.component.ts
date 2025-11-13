@@ -40,8 +40,8 @@ import { AppIconComponent } from '../../../../shared/components/app-icon/app-ico
 })
 export class ProjectsListPageComponent implements OnDestroy {
     public tabs = [
-        { label: 'My templates', link: 'my' },
-        // { label: 'Templates', link: 'templates' },
+        { label: 'My projects', link: 'my' },
+        { label: 'Templates', link: 'templates' },
     ];
 
     public searchTerm: string = '';
