@@ -1,12 +1,19 @@
 <!-- Node name wrapper -->
-<div class="node-name-wrapper" *ngIf="!startNode && !noteNode && !endNode">
+<div
+    class="node-name-wrapper"
+    *ngIf="!startNode && !noteNode && !endNode && node.type !== NodeType.TABLE"
+>
     <div class="node-name-label">
         {{ node.node_name || "Unnamed Node" }}
     </div>
 </div>
 
 <!-- Control buttons positioned above the node -->
-<div class="actions" (mousedown)="$event.stopPropagation()">
+<div
+    class="actions"
+    *ngIf="node.type !== NodeType.TABLE"
+    (mousedown)="$event.stopPropagation()"
+>
     <!-- Edit Button for Note -->
     <div
         *ngIf="node.type === NodeType.NOTE"
@@ -75,7 +82,7 @@
 }} <ng-template #interactiveNode>
 <div class="interactive-node-body" clickOrDrag (actualClick)="onEditClick()">
     <!-- Header Section -->
-    <div class="header">
+    <div class="header" *ngIf="node.type !== NodeType.TABLE">
         <div class="icon-wrapper">
             <i [class]="node.icon" [style.color]="node.color"></i>
         </div>
@@ -94,8 +101,10 @@
 } @case (NodeType.NOTE) {
 <app-note-node [node]="noteNode!"></app-note-node>
 } @case (NodeType.TABLE) {
-<ng-container *ngTemplateOutlet="interactiveNode"></ng-container>
-<app-decision-table-node [node]="tableNode!"></app-decision-table-node>
+<app-decision-table-node
+    [node]="tableNode!"
+    (actualClick)="onEditClick($event)"
+></app-decision-table-node>
 } @default {
 <ng-container *ngTemplateOutlet="interactiveNode"></ng-container>
 }

@@ -199,7 +199,7 @@ class DocumentMetadata(models.Model):
             self.source_collection.update_collection_status()
         return res
 
-    def delete(self, using=..., keep_parents=...):
+    def delete(self, using=None, keep_parents=False):
         res = super().delete(using, keep_parents)
         if self.source_collection is None:
             logger.warning(

@@ -226,17 +226,15 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
                 const validGroups = conditionGroups.filter(
                     (group: any) => group?.valid === true
                 );
-                const hasDefault = Boolean(tableData?.default_next_node);
-                const hasError = Boolean(tableData?.next_error_node);
                 const expectedPortCount =
-                    1 + validGroups.length + (hasDefault ? 1 : 0) + (hasError ? 1 : 0);
+                    1 + validGroups.length + 2;
 
                 if (node.ports.length !== expectedPortCount) {
                     node.ports = generatePortsForDecisionTableNode(
                         node.id,
                         conditionGroups,
-                        hasDefault,
-                        hasError
+                        true,
+                        true
                     );
                 }
             }
@@ -636,9 +634,12 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
             const headerHeight = 60;
             const rowHeight = 46;
             const validGroupsCount = conditionGroups.filter((g: any) => g.valid).length;
-            const hasDefaultRow = tableData?.default_next_node ? 1 : 0;
-            const hasErrorRow = tableData?.next_error_node ? 1 : 0;
-            const totalRows = Math.max(validGroupsCount + hasDefaultRow + hasErrorRow, 2);
+            const hasDefaultRow = 1;
+            const hasErrorRow = 1;
+            const totalRows = Math.max(
+                validGroupsCount + hasDefaultRow + hasErrorRow,
+                2
+            );
             const calculatedHeight = headerHeight + rowHeight * totalRows;
             nodeSize = {
                 width: 330,
@@ -776,6 +777,8 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
                 height: '800px',
                 maxWidth: '90vw',
                 maxHeight: '90vh',
+                panelClass: 'domain-dialog-panel',
+                backdropClass: 'domain-dialog-backdrop',
                 data: {
                     initialData: startNodeInitialState,
                 },
@@ -812,6 +815,13 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
             updatedNode
         );
         this.flowService.updateNode(updatedNode);
+    }
+
+    public flushOpenSidePanelState(): void {
+        const updatedNode = this.nodePanelShell?.captureCurrentNodeState();
+        if (updatedNode) {
+            this.flowService.updateNode(updatedNode);
+        }
     }
 
     public onGroupSizeChanged(event: IRect, group: GroupNodeModel): void {
@@ -2186,6 +2196,8 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
             height: '800px',
             maxWidth: '90vw',
             maxHeight: '90vh',
+            panelClass: 'domain-dialog-panel',
+            backdropClass: 'domain-dialog-backdrop',
             data: {
                 initialData: startNodeInitialState,
             },

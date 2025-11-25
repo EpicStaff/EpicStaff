@@ -2,7 +2,11 @@ import { Injectable, signal, computed } from '@angular/core';
 import { Observable, of } from 'rxjs';
 import { delay, map } from 'rxjs/operators';
 import { FlowModel } from '../core/models/flow.model';
-import { NodeModel, StartNodeModel } from '../core/models/node.model';
+import {
+    DecisionTableNodeModel,
+    NodeModel,
+    StartNodeModel,
+} from '../core/models/node.model';
 import { ConnectionModel } from '../core/models/connection.model';
 
 import { IPoint, IRect } from '@foblex/2d';
@@ -265,6 +269,8 @@ export class FlowService {
         }));
 
         console.log('New connection added to the flow state:', conn);
+
+        this.updateDecisionTableNextNodeFromConnection(conn);
     }
     public addConnectionsInBatch(connections: ConnectionModel[]): void {
         if (!connections || connections.length === 0) {
@@ -291,13 +297,35 @@ export class FlowService {
         }));
 
         console.log(`Batch removed ${connectionIds.length} connections`);
+
+        const remainingConnections = this.connections();
+        connectionIds.forEach((connectionId) => {
+            this.clearDecisionTableNextNodeForConnection(
+                connectionId,
+                remainingConnections
+            );
+        });
     }
 
     public removeConnection(connId: string) {
+        let removedConnection: ConnectionModel | undefined;
         this.flowSignal.update((flow: FlowModel) => ({
             ...flow,
-            connections: flow.connections.filter((c) => c.id !== connId),
+            connections: flow.connections.filter((c) => {
+                if (c.id === connId) {
+                    removedConnection = c;
+                    return false;
+                }
+                return true;
+            }),
         }));
+
+        if (removedConnection) {
+            this.clearDecisionTableNextNodeForConnection(
+                removedConnection.id,
+                this.connections()
+            );
+        }
     }
 
     public resetDecisionTableConnections(
@@ -388,7 +416,26 @@ export class FlowService {
             };
         });
     }
-    public updateNode(updatedNode: NodeModel) {
+    public updateNode(
+        updatedNode: NodeModel,
+        options?: { skipDecisionTableReset?: boolean }
+    ) {
+        const { skipDecisionTableReset = false } = options || {};
+        const currentFlow = this.flowSignal();
+        const existingNodeIndex = currentFlow.nodes.findIndex(
+            (n) => n.id === updatedNode.id
+        );
+
+        const existingNode =
+            existingNodeIndex >= 0 ? currentFlow.nodes[existingNodeIndex] : null;
+
+        const shouldResetDecisionTableConnections =
+            updatedNode.type === NodeType.TABLE &&
+            this.haveDecisionTableTargetsChanged(
+                existingNode as DecisionTableNodeModel | null,
+                updatedNode as DecisionTableNodeModel
+            );
+
         this.flowSignal.update((flow: FlowModel) => {
             // Find the index of the node to update
             const index: number = flow.nodes.findIndex(
@@ -410,7 +457,7 @@ export class FlowService {
             };
         });
 
-        if (updatedNode.type === NodeType.TABLE) {
+        if (shouldResetDecisionTableConnections && !skipDecisionTableReset) {
             const tableData = (updatedNode as any)?.data?.table;
             if (tableData) {
                 const conditionGroups = tableData.condition_groups || [];
@@ -422,6 +469,43 @@ export class FlowService {
                 );
             }
         }
+    }
+
+    private haveDecisionTableTargetsChanged(
+        previousNode: DecisionTableNodeModel | null,
+        updatedNode: DecisionTableNodeModel
+    ): boolean {
+        if (!updatedNode) {
+            return false;
+        }
+
+        const previousKey = this.getDecisionTableConnectionsKey(
+            previousNode?.data?.table ?? null
+        );
+        const updatedKey = this.getDecisionTableConnectionsKey(
+            updatedNode.data?.table ?? null
+        );
+
+        return previousKey !== updatedKey;
+    }
+
+    private getDecisionTableConnectionsKey(
+        table: DecisionTableNode | null
+    ): string {
+        if (!table) {
+            return '';
+        }
+
+        const groupsKey = (table.condition_groups ?? [])
+            .filter((group) => group.valid === true && !!group.next_node)
+            .map((group) => `${group.group_name ?? ''}::${group.next_node ?? ''}`)
+            .sort()
+            .join('|');
+
+        const defaultKey = table.default_next_node ?? '';
+        const errorKey = table.next_error_node ?? '';
+
+        return `${groupsKey}__default:${defaultKey}__error:${errorKey}`;
     }
     public updateGroupsInBatch(groups: GroupNodeModel[]): void {
         if (!groups || groups.length === 0) {
@@ -541,6 +625,170 @@ export class FlowService {
         return existingConnections;
     }
 
+    private updateDecisionTableNextNodeFromConnection(
+        connection: ConnectionModel
+    ): void {
+        const sourceNode = this.nodes().find(
+            (node) => node.id === connection.sourceNodeId
+        );
+
+        if (!sourceNode || sourceNode.type !== NodeType.TABLE) {
+            return;
+        }
+
+        const tableData = (sourceNode as DecisionTableNodeModel).data?.table;
+        if (!tableData) {
+            return;
+        }
+
+        const targetNode = this.nodes().find(
+            (node) => node.id === connection.targetNodeId
+        );
+        if (!targetNode) {
+            return;
+        }
+
+        const sourcePortRole = this.extractPortRole(connection.sourcePortId);
+        if (!sourcePortRole) {
+            return;
+        }
+
+        const normalizedSourceRole =
+            this.normalizeDecisionPortRole(sourcePortRole);
+
+        const updatedTable: DecisionTableNode = {
+            ...tableData,
+            condition_groups: (tableData.condition_groups || []).map((group) => {
+                const normalizedGroupRole = group.group_name
+                    ? this.normalizeDecisionPortRole(
+                          `decision-out-${group.group_name}`
+                      )
+                    : null;
+
+                if (normalizedGroupRole === normalizedSourceRole) {
+                    return {
+                        ...group,
+                        next_node:
+                            targetNode.node_name || targetNode.id || null,
+                    };
+                }
+
+                return group;
+            }),
+        };
+
+        let defaultNextNode = tableData.default_next_node;
+        let nextErrorNode = tableData.next_error_node;
+
+        if (normalizedSourceRole === 'decision-default') {
+            defaultNextNode = targetNode.node_name || targetNode.id || null;
+        } else if (normalizedSourceRole === 'decision-error') {
+            nextErrorNode = targetNode.node_name || targetNode.id || null;
+        }
+
+        const updatedNode: DecisionTableNodeModel = {
+            ...(sourceNode as DecisionTableNodeModel),
+            data: {
+                ...(sourceNode as DecisionTableNodeModel).data,
+                table: {
+                    ...updatedTable,
+                    default_next_node: defaultNextNode,
+                    next_error_node: nextErrorNode,
+                },
+            },
+        };
+
+        this.updateNode(updatedNode, { skipDecisionTableReset: true });
+    }
+
+    private clearDecisionTableNextNodeForConnection(
+        connectionId: string,
+        remainingConnections: ConnectionModel[]
+    ): void {
+        const [sourcePortId] = connectionId.split('+');
+        if (!sourcePortId) {
+            return;
+        }
+
+        const sourceNodeId = sourcePortId.split('_')[0];
+        const sourceNode = this.nodes().find((node) => node.id === sourceNodeId);
+
+        if (!sourceNode || sourceNode.type !== NodeType.TABLE) {
+            return;
+        }
+
+        const tableData = (sourceNode as DecisionTableNodeModel).data?.table;
+        if (!tableData) {
+            return;
+        }
+
+        const sourceRole = this.extractPortRole(sourcePortId);
+        if (!sourceRole) {
+            return;
+        }
+
+        const normalizedSourceRole =
+            this.normalizeDecisionPortRole(sourceRole);
+
+        const stillConnected = remainingConnections.some((conn) => {
+            if (conn.sourceNodeId !== sourceNodeId) {
+                return false;
+            }
+            const connRole = this.extractPortRole(conn.sourcePortId);
+            if (!connRole) {
+                return false;
+            }
+            return (
+                this.normalizeDecisionPortRole(connRole) === normalizedSourceRole
+            );
+        });
+
+        if (stillConnected) {
+            return;
+        }
+
+        const updatedTable: DecisionTableNode = {
+            ...tableData,
+            condition_groups: (tableData.condition_groups || []).map((group) => {
+                const normalizedGroupRole = group.group_name
+                    ? this.normalizeDecisionPortRole(
+                          `decision-out-${group.group_name}`
+                      )
+                    : null;
+                if (normalizedGroupRole === normalizedSourceRole) {
+                    return {
+                        ...group,
+                        next_node: null,
+                    };
+                }
+                return group;
+            }),
+        };
+
+        let defaultNextNode = tableData.default_next_node;
+        let nextErrorNode = tableData.next_error_node;
+
+        if (normalizedSourceRole === 'decision-default') {
+            defaultNextNode = null;
+        } else if (normalizedSourceRole === 'decision-error') {
+            nextErrorNode = null;
+        }
+
+        const updatedNode: DecisionTableNodeModel = {
+            ...(sourceNode as DecisionTableNodeModel),
+            data: {
+                ...(sourceNode as DecisionTableNodeModel).data,
+                table: {
+                    ...updatedTable,
+                    default_next_node: defaultNextNode,
+                    next_error_node: nextErrorNode,
+                },
+            },
+        };
+
+        this.updateNode(updatedNode, { skipDecisionTableReset: true });
+    }
+
     private normalizeDecisionPortRole(role: string): string {
         if (!role.startsWith('decision-out-')) {
             return role;
@@ -548,6 +796,54 @@ export class FlowService {
 
         const suffix = role.substring('decision-out-'.length);
         return `decision-out-${suffix.toLowerCase().replace(/\s+/g, '-')}`;
+    }
+
+    private normalizeDecisionPortId(portId: string): string {
+        const underscoreIndex = portId.indexOf('_');
+        if (underscoreIndex === -1) {
+            return portId;
+        }
+
+        const nodeId = portId.substring(0, underscoreIndex);
+        const role = portId.substring(underscoreIndex + 1);
+
+        if (!role.startsWith('decision-out-')) {
+            return portId;
+        }
+
+        const normalizedRole = this.normalizeDecisionPortRole(role);
+        return `${nodeId}_${normalizedRole}`;
+    }
+
+    private normalizeConnectionId(connId: string): string {
+        if (!connId.includes('+')) {
+            return connId;
+        }
+
+        const [sourcePortId, ...rest] = connId.split('+');
+        if (!sourcePortId || rest.length === 0) {
+            return connId;
+        }
+
+        const targetPortId = rest.join('+');
+        const normalizedSourcePortId =
+            this.normalizeDecisionPortId(sourcePortId);
+
+        return `${normalizedSourcePortId}+${targetPortId}`;
+    }
+
+    private isGroupPortId(portId: string): boolean {
+        const role = this.extractPortRole(portId);
+        return role?.startsWith('group-') ?? false;
+    }
+
+    private extractPortRole(portId: string): string | null {
+        const underscoreIndex = portId.indexOf('_');
+        if (underscoreIndex === -1) {
+            return null;
+        }
+
+        return portId.substring(underscoreIndex + 1);
     }
 
     private isDecisionTableSourcePort(
@@ -625,24 +921,39 @@ export class FlowService {
         fGroupIds: string[];
     }): void {
         // Filter out any virtual connections from deletion requests
-        const nonVirtualConnectionIds = selections.fConnectionIds.filter(
-            (connId) => {
-                const conn = this.connections().find((c) => c.id === connId);
-                if (!conn) return false;
-
-                // Check if it's a virtual connection (connected to a group port)
-                const isVirtual =
-                    conn.sourcePortId.includes('group-') ||
-                    conn.targetPortId.includes('group-');
-
-                return !isVirtual; // Keep only non-virtual connections
-            }
-        );
-
         this.flowSignal.update((flow: FlowModel) => {
             const nodeIdsToRemove = new Set(selections.fNodeIds);
             const groupIdsToRemove = new Set(selections.fGroupIds);
-            const connectionIdsToRemove = new Set(nonVirtualConnectionIds);
+            const connectionIdsToRemove = new Set<string>();
+
+            const connectionsById = new Map(
+                flow.connections.map((conn) => [conn.id, conn] as const)
+            );
+
+            selections.fConnectionIds.forEach((originalId) => {
+                const normalizedId = this.normalizeConnectionId(originalId);
+                const connection =
+                    connectionsById.get(normalizedId) ??
+                    connectionsById.get(originalId);
+
+                if (!connection) {
+                    console.warn(
+                        'Connection not found when attempting to delete:',
+                        originalId
+                    );
+                    return;
+                }
+
+                const isVirtual =
+                    this.isGroupPortId(connection.sourcePortId) ||
+                    this.isGroupPortId(connection.targetPortId);
+
+                if (isVirtual) {
+                    return;
+                }
+
+                connectionIdsToRemove.add(connection.id);
+            });
 
             // Track nodes and groups that need parentId update
             const nodesToUpdate: NodeModel[] = [];

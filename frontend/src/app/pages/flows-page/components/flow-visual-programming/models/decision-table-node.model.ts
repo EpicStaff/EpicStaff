@@ -7,6 +7,7 @@ export interface ConditionGroupBackend {
     conditions: ConditionBackend[];
     manipulation: string | null;
     next_node: string | null;
+    order: number;
 }
 
 export interface CreateConditionGroupRequest {
@@ -16,6 +17,7 @@ export interface CreateConditionGroupRequest {
     conditions: CreateConditionRequest[];
     manipulation: string | null;
     next_node: string | null;
+    order: number;
 }
 
 export interface ConditionBackend {

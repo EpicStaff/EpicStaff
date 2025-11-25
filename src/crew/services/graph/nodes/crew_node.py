@@ -68,6 +68,9 @@ class CrewNode(BaseNode):
             inputs=input_,
             global_kwargs=gloabl_kwargs,
             stop_event=self.stop_event,
+            node_name=self.node_name,
+            execution_order=execution_order,
+            stream_writer=writer,
         )
         crew_output = await crew.kickoff_async(inputs=input_)
 

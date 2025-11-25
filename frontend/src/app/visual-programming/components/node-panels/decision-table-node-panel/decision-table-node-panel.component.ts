@@ -16,6 +16,7 @@ import { CommonModule } from '@angular/common';
 import {
     DecisionTableNode,
     ConditionGroup,
+    Condition,
 } from '../../../core/models/decision-table.model';
 import { DecisionTableGridComponent } from './decision-table-grid/decision-table-grid.component';
 import { FlowService } from '../../../services/flow.service';
@@ -51,6 +52,7 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
             .filter((node) => 
                 node.type !== NodeType.NOTE && 
                 node.type !== NodeType.START &&
+                node.type !== NodeType.WEBHOOK_TRIGGER &&
                 node.id !== currentNodeId
             )
             .map((node) => ({
@@ -73,14 +75,20 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
             next_error_node: [decisionTableData.next_error_node || ''],
         });
 
-        this.conditionGroups.set(decisionTableData.condition_groups || []);
+        const groupsCopy = this.cloneConditionGroups(
+            decisionTableData.condition_groups || []
+        );
+
+        this.conditionGroups.set(groupsCopy);
 
         return form;
     }
 
     createUpdatedNode(): DecisionTableNodeModel {
         const currentNode = this.node();
-        const conditionGroups = this.conditionGroups() || [];
+        const conditionGroups = this.cloneConditionGroups(
+            this.conditionGroups() || []
+        );
 
         const decisionTableData: DecisionTableNode = {
             default_next_node: this.form.value.default_next_node || null,
@@ -91,9 +99,12 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
         const headerHeight = 60;
         const rowHeight = 46;
         const validGroupsCount = conditionGroups.filter(g => g.valid).length;
-        const hasDefaultRow = decisionTableData.default_next_node ? 1 : 0;
-        const hasErrorRow = decisionTableData.next_error_node ? 1 : 0;
-        const totalRows = Math.max(validGroupsCount + hasDefaultRow + hasErrorRow, 2);
+        const hasDefaultRow = 1;
+        const hasErrorRow = 1;
+        const totalRows = Math.max(
+            validGroupsCount + hasDefaultRow + hasErrorRow,
+            2
+        );
         const calculatedHeight = headerHeight + rowHeight * totalRows;
 
         const updatedSize = {
@@ -121,7 +132,16 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
     }
 
     public onConditionGroupsChange(groups: ConditionGroup[]): void {
-        this.conditionGroups.set(groups);
+        this.conditionGroups.set(this.cloneConditionGroups(groups));
         this.cdr.markForCheck();
+    }
+
+    private cloneConditionGroups(groups: ConditionGroup[]): ConditionGroup[] {
+        return groups.map((group) => ({
+            ...group,
+            conditions: (group.conditions || []).map((condition: Condition) => ({
+                ...condition,
+            })),
+        }));
     }
 }

@@ -15,6 +15,7 @@ export const DEFAULT_FILE_EXTRACTOR_NODE_PORTS: BasePort[] = [
             'llm-out-right',
             'file-extractor-out',
             'webhook-trigger-out',
+            
         ],
         position: 'left',
         color: '#2196F3',

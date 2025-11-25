@@ -31,6 +31,7 @@ export const DEFAULT_TABLE_NODE_PORTS: BasePort[] = [
       'llm-out-left',
       'end-in',
       'webhook-trigger-in',
+      'file-extractor-in',
     ],
     position: 'right',
     color: '#00aaff',

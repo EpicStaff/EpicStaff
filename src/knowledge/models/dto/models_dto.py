@@ -3,6 +3,7 @@ from typing import List, Optional
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
+
 class ProviderDTO(BaseModel):
     id: int
     name: str
@@ -86,3 +87,22 @@ class SourceCollectionDTO(BaseModel):
     embeddings_coll: List[DocumentEmbeddingDTO] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class KnowledgeChunkDTO(BaseModel):
+    chunk_order: int
+    chunk_similarity: float
+    chunk_text: str
+    chunk_source: str = ""
+
+
+class KnowledgeQueryResultDTO(BaseModel):
+    uuid: str
+    collection_id: int
+    retrieved_chunks: int
+    similarity_threshold: float
+    search_limit: int
+    knowledge_query: str
+    chunks: List[KnowledgeChunkDTO]
+    # Support backwards compatibility
+    results: List[str] = []  # deprecated, use chunks instead

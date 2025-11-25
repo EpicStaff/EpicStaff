@@ -39,6 +39,25 @@
         display: flex;
         align-items: center;
         gap: 0.3rem;
+
+        .tooltip-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            color: rgba(255, 255, 255, 0.6);
+            background: rgba(255, 255, 255, 0.08);
+            font-size: 0.75rem;
+            cursor: help;
+            transition: background 0.2s ease, color 0.2s ease;
+
+            &:hover {
+                color: #fff;
+                background: rgba(104, 95, 255, 0.35);
+            }
+        }
     }
 }
 

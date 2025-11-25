@@ -194,10 +194,13 @@ export class FlowGraphCoreMenuComponent {
                             conditions: [],
                             manipulation: null,
                             next_node: null,
+                            order: 1,
+                            valid: false,
                         }
                     ],
                     node_name: '',
                     default_next_node: null,
+                    next_error_node: null,
                 },
             };
         } else if (type === NodeType.NOTE) {

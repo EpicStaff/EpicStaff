@@ -1,9 +1,11 @@
 import os
+from typing import Optional
 from textwrap import dedent
 from typing import Any, Type
 from services.graph.events import StopEvent
 from crewai import Agent, Crew, Task, LLM
 from langchain_core.tools import BaseTool
+from langgraph.types import StreamWriter
 from utils.parse_llm import parse_llm, parse_memory_llm, parse_memory_embedder
 from callbacks.session_callback_factory import CrewCallbackFactory
 from services.schema_converter.converter import generate_model_from_schema
@@ -35,7 +37,6 @@ class CrewParserService(metaclass=SingletonMeta):
         manager_port: int,
         redis_service: RedisService,
         python_code_executor_service: RunPythonCodeService,
-        knowledge_search_service: KnowledgeSearchService,
         mcp_tool_factory: CrewaiMcpToolFactory,
     ):
         self.redis_service = redis_service
@@ -46,7 +47,6 @@ class CrewParserService(metaclass=SingletonMeta):
             python_code_executor_service=python_code_executor_service,
         )
         self.mcp_tool_factory = mcp_tool_factory
-        self.knowledge_search_service = knowledge_search_service
 
     def parse_agent(
         self,
@@ -55,7 +55,12 @@ class CrewParserService(metaclass=SingletonMeta):
         wait_for_user_callback: Any,
         inputs: dict[str, Any],
         stop_event: StopEvent,
+        node_name: str,
+        session_id: int,
+        crew_id: int,
+        execution_order: int,
         tool_list: list[BaseTool] | None = None,
+        stream_writer: Optional[StreamWriter] = None,
     ) -> Agent:
 
         llm = None
@@ -77,6 +82,15 @@ class CrewParserService(metaclass=SingletonMeta):
                 agent_data.function_calling_llm, stop_event=stop_event
             )
 
+        knowledge_search_service = KnowledgeSearchService(
+            redis_service=self.redis_service,
+            session_id=session_id,
+            node_name=node_name,
+            crew_id=crew_id,
+            agent_id=agent_data.id,
+            execution_order=execution_order,
+            stream_writer=stream_writer,
+        )
         agent_config = {
             "role": agent_data.role,
             "goal": agent_data.goal,
@@ -95,7 +109,7 @@ class CrewParserService(metaclass=SingletonMeta):
             "ask_human_input_callback": wait_for_user_callback,
             "step_callback": step_callback,
             "knowledge_collection_id": agent_data.knowledge_collection_id,
-            "search_knowledges": self.knowledge_search_service.search_knowledges,
+            "search_knowledges": knowledge_search_service.search_knowledges,
             "search_limit": agent_data.search_limit,
             "similarity_threshold": agent_data.similarity_threshold,
             "stop_event": stop_event,
@@ -141,7 +155,10 @@ class CrewParserService(metaclass=SingletonMeta):
         session_id: int,
         crew_callback_factory: CrewCallbackFactory,
         stop_event: StopEvent,
+        node_name: str,
+        execution_order: int,
         inputs: dict[str, Any] | None = None,
+        stream_writer: Optional[StreamWriter] = None,
         global_kwargs: dict[str, Any] | None = None,
     ) -> Crew:
         if inputs is None:
@@ -240,6 +257,11 @@ class CrewParserService(metaclass=SingletonMeta):
                 ),
                 inputs=inputs,
                 tool_list=tool_list,
+                session_id=session_id,
+                node_name=node_name,
+                crew_id=crew_data.id,
+                execution_order=execution_order,
+                stream_writer=stream_writer,
             )
         crew_config["agents"] = id_agent_map.values()
 

@@ -6,6 +6,7 @@ import {
     OnDestroy,
     HostListener,
     AfterViewInit,
+    ViewChild,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
@@ -98,6 +99,9 @@ export class FlowVisualProgrammingComponent
     private readonly destroy$ = new Subject<void>();
     private isNavigatingToRun = false;
 
+    @ViewChild(FlowGraphComponent)
+    private flowGraphComponent?: FlowGraphComponent;
+
     constructor(
         private readonly route: ActivatedRoute,
         private readonly router: Router,
@@ -154,6 +158,7 @@ export class FlowVisualProgrammingComponent
         }
 
         this.isSaving = true;
+        this.flushActiveSidePanelState();
 
         this.sidePanelService.triggerAutosave();
 
@@ -272,6 +277,7 @@ export class FlowVisualProgrammingComponent
 
     private saveGraphForRun(): Observable<any> {
         // Trigger autosave before getting flow state
+        this.flushActiveSidePanelState();
         this.sidePanelService.triggerAutosave();
 
         // Wait for autosave to complete before getting flow state
@@ -486,5 +492,9 @@ export class FlowVisualProgrammingComponent
     public ngOnDestroy(): void {
         // this.destroy$.next();
         // this.destroy$.complete();
+    }
+
+    private flushActiveSidePanelState(): void {
+        this.flowGraphComponent?.flushOpenSidePanelState();
     }
 }

@@ -1,0 +1,7 @@
+tool-data:
+  name: "picture-tool"
+  description: "Write your OpenAI API key and savefiles path in the domain variables in the format: {\"OPENAI_API_KEY\": \"YOUR_SECRET_KEY\"}. A tool that generates images using OpenAI's DALL-E model based on a text prompt and saves them in the configured savefiles directory."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

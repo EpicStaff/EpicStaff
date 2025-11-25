@@ -44,7 +44,6 @@ async def main():
         manager_port=manager_port,
         redis_service=redis_service,
         python_code_executor_service=python_code_executor_service,
-        knowledge_search_service=knowledge_search_service,
         mcp_tool_factory=mcp_tool_factory,
     )
     session_manager_service = GraphSessionManagerService(
@@ -55,6 +54,7 @@ async def main():
         stop_session_channel=stop_session_channel,
         python_code_executor_service=python_code_executor_service,
         crewai_output_channel=crewai_output_channel,
+        # Note:  Used for process human_input
         knowledge_search_service=knowledge_search_service,
     )
 

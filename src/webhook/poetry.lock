@@ -30,7 +30,7 @@ version = "4.11.0"
 description = "High-level concurrency and networking framework on top of asyncio or Trio"
 optional = false
 python-versions = ">=3.9"
-groups = ["main"]
+groups = ["main", "tests"]
 files = [
     {file = "anyio-4.11.0-py3-none-any.whl", hash = "sha256:0287e96f4d26d4149305414d4e3bc32f0dcd0862365a4bddea19d7a1ec38c4fc"},
     {file = "anyio-4.11.0.tar.gz", hash = "sha256:82a8d0b81e318cc5ce71a5f1f8b5c4e63619620b63141ef8c995fa0db95a57c4"},
@@ -43,6 +43,18 @@ typing_extensions = {version = ">=4.5", markers = "python_version < \"3.13\""}
 
 [package.extras]
 trio = ["trio (>=0.31.0)"]
+
+[[package]]
+name = "certifi"
+version = "2025.11.12"
+description = "Python package for providing Mozilla's CA Bundle."
+optional = false
+python-versions = ">=3.7"
+groups = ["tests"]
+files = [
+    {file = "certifi-2025.11.12-py3-none-any.whl", hash = "sha256:97de8790030bbd5c2d96b7ec782fc2f7820ef8dba6db909ccf95449f2d062d4b"},
+    {file = "certifi-2025.11.12.tar.gz", hash = "sha256:d8ab5478f2ecd78af242878415affce761ca6bc54a22a27e026d7c25357c3316"},
+]
 
 [[package]]
 name = "click"
@@ -101,11 +113,33 @@ version = "0.16.0"
 description = "A pure-Python, bring-your-own-I/O implementation of HTTP/1.1"
 optional = false
 python-versions = ">=3.8"
-groups = ["main"]
+groups = ["main", "tests"]
 files = [
     {file = "h11-0.16.0-py3-none-any.whl", hash = "sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86"},
     {file = "h11-0.16.0.tar.gz", hash = "sha256:4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1"},
 ]
+
+[[package]]
+name = "httpcore"
+version = "1.0.9"
+description = "A minimal low-level HTTP client."
+optional = false
+python-versions = ">=3.8"
+groups = ["tests"]
+files = [
+    {file = "httpcore-1.0.9-py3-none-any.whl", hash = "sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55"},
+    {file = "httpcore-1.0.9.tar.gz", hash = "sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8"},
+]
+
+[package.dependencies]
+certifi = "*"
+h11 = ">=0.16"
+
+[package.extras]
+asyncio = ["anyio (>=4.0,<5.0)"]
+http2 = ["h2 (>=3,<5)"]
+socks = ["socksio (==1.*)"]
+trio = ["trio (>=0.22.0,<1.0)"]
 
 [[package]]
 name = "httptools"
@@ -161,12 +195,37 @@ files = [
 ]
 
 [[package]]
+name = "httpx"
+version = "0.28.1"
+description = "The next generation HTTP client."
+optional = false
+python-versions = ">=3.8"
+groups = ["tests"]
+files = [
+    {file = "httpx-0.28.1-py3-none-any.whl", hash = "sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad"},
+    {file = "httpx-0.28.1.tar.gz", hash = "sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc"},
+]
+
+[package.dependencies]
+anyio = "*"
+certifi = "*"
+httpcore = "==1.*"
+idna = "*"
+
+[package.extras]
+brotli = ["brotli ; platform_python_implementation == \"CPython\"", "brotlicffi ; platform_python_implementation != \"CPython\""]
+cli = ["click (==8.*)", "pygments (==2.*)", "rich (>=10,<14)"]
+http2 = ["h2 (>=3,<5)"]
+socks = ["socksio (==1.*)"]
+zstd = ["zstandard (>=0.18.0)"]
+
+[[package]]
 name = "idna"
 version = "3.11"
 description = "Internationalized Domain Names in Applications (IDNA)"
 optional = false
 python-versions = ">=3.8"
-groups = ["main"]
+groups = ["main", "tests"]
 files = [
     {file = "idna-3.11-py3-none-any.whl", hash = "sha256:771a87f49d9defaf64091e6e6fe9c18d4833f140bd19464795bc32d966ca37ea"},
     {file = "idna-3.11.tar.gz", hash = "sha256:795dafcc9c04ed0c1fb032c2aa73654d8e8c5023a7df64a53f39190ada629902"},
@@ -509,7 +568,7 @@ version = "1.3.1"
 description = "Sniff out which async library your code is running under"
 optional = false
 python-versions = ">=3.7"
-groups = ["main"]
+groups = ["main", "tests"]
 files = [
     {file = "sniffio-1.3.1-py3-none-any.whl", hash = "sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2"},
     {file = "sniffio-1.3.1.tar.gz", hash = "sha256:f4324edc670a0f49750a81b895f35c3adb843cca46f0530f79fc1babb23789dc"},
@@ -540,7 +599,7 @@ version = "4.15.0"
 description = "Backported and Experimental Type Hints for Python 3.9+"
 optional = false
 python-versions = ">=3.9"
-groups = ["main"]
+groups = ["main", "tests"]
 files = [
     {file = "typing_extensions-4.15.0-py3-none-any.whl", hash = "sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548"},
     {file = "typing_extensions-4.15.0.tar.gz", hash = "sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466"},
@@ -872,4 +931,4 @@ dev = ["black (>=19.3b0) ; python_version >= \"3.6\"", "pytest (>=4.6.2)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.13"
-content-hash = "82d62d6e1fb8ce9fb86bd818f4082dacae0b123362b7c5d34f76be58e72216a3"
+content-hash = "877c6bbf8a3398ddaecab8c794544fc9cedbecdf3a342d73fadffdb5f5747902"

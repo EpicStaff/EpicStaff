@@ -29,11 +29,14 @@
 
     <div class="decision-table__groups">
         @if (conditionGroups.length > 0) {
-            @for (group of conditionGroups; track $index) {
+            @for (
+                group of conditionGroups;
+                track trackConditionGroup($index, group)
+            ) {
             <div class="decision-table__group">
                 <span class="group-name">{{ group.group_name || 'Group ' + ($index + 1) }}</span>
                 
-                @if (getPortForGroup($index); as port) {
+                @if (getPortForGroup(group); as port) {
                 <div class="port-wrapper">
                     <div
                         class="port-circle"
@@ -61,10 +64,16 @@
             </div>
         }
 
-        @if (defaultNextNode) {
         <div class="decision-table__group">
-            <span class="group-name">Default</span>
-            
+            <span class="group-name">
+                Default
+                @if (!defaultNextNode) {
+                <span class="group-status">(not set)</span>
+                } @else {
+                <span class="group-status">({{ defaultNextNode }})</span>
+                }
+            </span>
+
             @if (defaultPort; as port) {
             <div class="port-wrapper">
                 <div
@@ -86,12 +95,17 @@
             </div>
             }
         </div>
-        }
 
-        @if (nextErrorNode) {
         <div class="decision-table__group">
-            <span class="group-name">Error</span>
-            
+            <span class="group-name">
+                Error
+                @if (!nextErrorNode) {
+                <span class="group-status">(not set)</span>
+                } @else {
+                <span class="group-status">({{ nextErrorNode }})</span>
+                }
+            </span>
+
             @if (errorPort; as port) {
             <div class="port-wrapper">
                 <div
@@ -113,6 +127,5 @@
             </div>
             }
         </div>
-        }
     </div>
 </div>

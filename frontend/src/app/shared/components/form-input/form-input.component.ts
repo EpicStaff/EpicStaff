@@ -22,14 +22,25 @@ import { MatIconModule } from '@angular/material/icon';
         <div class="form-group">
             <div class="label-container" *ngIf="label">
                 <label [for]="id">{{ label }}</label>
-                <mat-icon
-                    *ngIf="tooltipText"
-                    matTooltip="{{ tooltipText }}"
-                    matTooltipPosition="right"
-                    matTooltipClass="custom-tooltip"
-                    class="help-icon"
-                    >help</mat-icon
-                >
+                <ng-container *ngIf="tooltipText">
+                    <mat-icon
+                        *ngIf="!isClassIcon"
+                        [matTooltip]="tooltipText"
+                        matTooltipPosition="right"
+                        matTooltipClass="custom-tooltip"
+                        class="help-icon"
+                    >
+                        {{ icon || 'help' }}
+                    </mat-icon>
+                    <i
+                        *ngIf="isClassIcon"
+                        [class]="icon"
+                        [matTooltip]="tooltipText"
+                        matTooltipPosition="right"
+                        matTooltipClass="custom-tooltip"
+                        class="help-icon class-icon"
+                    ></i>
+                </ng-container>
             </div>
             <input
                 [type]="type"
@@ -76,6 +87,12 @@ import { MatIconModule } from '@angular/material/icon';
 
                     &:hover {
                         color: rgba(255, 255, 255, 0.9);
+                    }
+
+                    &.class-icon {
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
                     }
                 }
 
@@ -133,6 +150,7 @@ export class CustomInputComponent implements ControlValueAccessor {
     @Input() name: string = '';
     @Input() autofocus: boolean = false;
     @Input() tooltipText: string = '';
+    @Input() icon: string = 'help';
     @Input() activeColor: string = '#685fff';
     @Input() errorMessage: string = '';
 
@@ -158,6 +176,10 @@ export class CustomInputComponent implements ControlValueAccessor {
 
     set disabled(val: boolean) {
         this._disabled = val;
+    }
+
+    get isClassIcon(): boolean {
+        return !!this.icon && this.icon.trim().includes(' ');
     }
 
     writeValue(value: string): void {

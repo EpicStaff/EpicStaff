@@ -1,7 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  OnDestroy,
+  DestroyRef,
   OnInit,
   inject,
   signal,
@@ -21,7 +21,7 @@ import { EmbeddingModelsService } from '../../../services/embeddings/embeddings.
 import { EmbeddingConfigsService } from '../../../services/embeddings/embedding_configs.service';
 import { CreateEmbeddingConfigRequest } from '../../../models/embeddings/embedding-config.model';
 import { finalize } from 'rxjs/operators';
-import { Subject, takeUntil } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CustomInputComponent } from '../../../../../shared/components/form-input/form-input.component';
 import { EmbeddingModel } from '../../../models/embeddings/embedding.model';
 
@@ -38,13 +38,13 @@ import { EmbeddingModel } from '../../../models/embeddings/embedding.model';
   styleUrls: ['./add-embedding-config-dialog.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AddEmbeddingConfigDialogComponent implements OnInit, OnDestroy {
+export class AddEmbeddingConfigDialogComponent implements OnInit {
   private dialogRef = inject(DialogRef);
   private formBuilder = inject(FormBuilder);
   private providersService = inject(LLM_Providers_Service);
   private embeddingModelsService = inject(EmbeddingModelsService);
   private configService = inject(EmbeddingConfigsService);
-  private destroy$ = new Subject<void>();
+  private destroyRef = inject(DestroyRef);
 
   public form!: FormGroup;
   public providers = signal<LLM_Provider[]>([]);
@@ -52,15 +52,19 @@ export class AddEmbeddingConfigDialogComponent implements OnInit, OnDestroy {
   public isLoading = signal<boolean>(false);
   public isSubmitting = signal<boolean>(false);
   public errorMessage = signal<string | null>(null);
+  private lastAutoCustomName: string | null = null;
 
   ngOnInit(): void {
     this.initForm();
     this.loadProviders();
+    this.setupProviderIdSubscription();
+    this.setupModelIdSubscription();
+  }
 
-    // Listen to provider changes to load models
+  private setupProviderIdSubscription(): void {
     this.form
       .get('providerId')
-      ?.valueChanges.pipe(takeUntil(this.destroy$))
+      ?.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((providerId) => {
         if (providerId) {
           this.loadModels(providerId);
@@ -68,12 +72,16 @@ export class AddEmbeddingConfigDialogComponent implements OnInit, OnDestroy {
           this.models.set([]);
           this.form.get('modelId')?.setValue(null);
         }
+
+        this.updateCustomNameIfNeeded();
       });
   }
 
-  ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
+  private setupModelIdSubscription(): void {
+    this.form
+      .get('modelId')
+      ?.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.updateCustomNameIfNeeded());
   }
 
   private initForm(): void {
@@ -96,6 +104,7 @@ export class AddEmbeddingConfigDialogComponent implements OnInit, OnDestroy {
           // Automatically select the first provider if available
           if (providers.length > 0) {
             this.form.get('providerId')?.setValue(providers[0].id);
+            this.updateCustomNameIfNeeded();
           }
         },
         error: (error) => {
@@ -116,6 +125,7 @@ export class AddEmbeddingConfigDialogComponent implements OnInit, OnDestroy {
 
           if (models.length > 0) {
             this.form.get('modelId')?.setValue(models[0].id);
+            this.updateCustomNameIfNeeded();
           } else {
             this.form.get('modelId')?.setValue(null);
           }
@@ -163,5 +173,31 @@ export class AddEmbeddingConfigDialogComponent implements OnInit, OnDestroy {
 
   public onCancel(): void {
     this.dialogRef.close(false);
+  }
+
+  private updateCustomNameIfNeeded(): void {
+    const providerId = this.form.get('providerId')?.value;
+    const modelId = this.form.get('modelId')?.value;
+
+    if (!providerId || !modelId) {
+      return;
+    }
+
+    const provider = this.providers().find((p) => p.id === providerId);
+    const model = this.models().find((m) => m.id === modelId);
+
+    if (!provider || !model) {
+      return;
+    }
+
+    const autoName = `${provider.name}/${model.name}`;
+    const customNameControl = this.form.get('customName');
+
+    if (!customNameControl) {
+      return;
+    }
+
+    this.lastAutoCustomName = autoName;
+    customNameControl.setValue(autoName, { emitEvent: false });
   }
 }

@@ -486,8 +486,13 @@ export class GraphUpdateService {
                     const conditionGroups: CreateConditionGroupRequest[] = (
                         tableData?.condition_groups || []
                     )
-                        .filter((group: any) => group.valid === true)
-                        .map((group: any) => {
+                        .filter((group: any) => group.valid !== false)
+                        .sort(
+                            (a: any, b: any) =>
+                                (a.order ?? Number.MAX_SAFE_INTEGER) -
+                                (b.order ?? Number.MAX_SAFE_INTEGER)
+                        )
+                        .map((group: any, index: number) => {
                             const conditions =
                                 (group.conditions || []).map(
                                     (condition: any) => ({
@@ -503,6 +508,10 @@ export class GraphUpdateService {
                                 conditions,
                                 manipulation: group.manipulation,
                                 next_node: group.next_node || null,
+                                order:
+                                    typeof group.order === 'number'
+                                        ? group.order
+                                        : index + 1,
                             };
                         });
 

@@ -12,6 +12,10 @@ import { CustomInputComponent } from '../../../../shared/components/form-input/f
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { CommonModule } from '@angular/common';
+import { SidePanelService } from '../../../services/side-panel.service';
+import { Subject } from 'rxjs';
+import { debounceTime } from 'rxjs/operators';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 interface InputMapPair {
     key: string;
@@ -230,9 +234,15 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     pythonCode: string = '';
     initialPythonCode: string = '';
     codeEditorHasError: boolean = false;
+    private readonly pythonCodeChange$ = new Subject<string>();
 
-    constructor() {
+    constructor(private readonly sidePanelService: SidePanelService) {
         super();
+        this.pythonCodeChange$
+            .pipe(debounceTime(300), takeUntilDestroyed())
+            .subscribe(() => {
+                this.sidePanelService.triggerAutosave();
+            });
     }
 
     get activeColor(): string {
@@ -245,6 +255,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
     onPythonCodeChange(code: string): void {
         this.pythonCode = code;
+        this.pythonCodeChange$.next(code);
     }
 
     onCodeErrorChange(hasError: boolean): void {

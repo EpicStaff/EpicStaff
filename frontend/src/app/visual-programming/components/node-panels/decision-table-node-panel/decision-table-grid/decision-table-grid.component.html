@@ -1,6 +1,14 @@
 <div class="decision-table-grid-container">
     <div class="grid-header">
-        <h3>Condition Groups</h3>
+        <h3>
+            Condition Groups
+            <span
+                class="tooltip-icon"
+                title="Evaluate groups top-to-bottom; first match routes the flow."
+            >
+                <i class="ti ti-help-circle"></i>
+            </span>
+        </h3>
         <app-button
             type="primary"
             [leftIcon]="'ui/plus'"
@@ -12,7 +20,8 @@
 
     <ag-grid-angular
         class="decision-grid ag-theme-quartz-dark"
-        style="width: 100%"
+        [class.empty-state]="isEmpty()"
+        style="width: 100%; min-height: 0"
         [rowData]="rowData()"
         [columnDefs]="columnDefs"
         [defaultColDef]="defaultColDef"

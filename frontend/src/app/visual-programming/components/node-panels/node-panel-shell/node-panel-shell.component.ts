@@ -212,4 +212,19 @@ export class NodePanelShellComponent {
             }
         }
     }
+
+    public captureCurrentNodeState(): NodeModel | null {
+        if (
+            this.panelInstance &&
+            typeof this.panelInstance.onSaveSilently === 'function'
+        ) {
+            try {
+                return this.panelInstance.onSaveSilently();
+            } catch (error) {
+                console.error('Failed to capture node panel state silently', error);
+                return null;
+            }
+        }
+        return null;
+    }
 }

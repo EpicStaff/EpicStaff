@@ -2,10 +2,17 @@ FROM node:20.17.0 AS build-stage
 
 WORKDIR /home/user/root/app
 
-COPY . .
+# Copy package files first for better layer caching
 
+COPY package*.json ./
+
+# Install dependencies (this layer will be cached if package files don't change)
 RUN npm install --force && npm cache clean --force
 
+# Copy the rest of the application code
+COPY . .
+
+# Build the application
 RUN npm run build -- --configuration production
 
 FROM docker.io/library/nginx:alpine AS production-stage
