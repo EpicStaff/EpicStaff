@@ -13,7 +13,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
       <span class="knowledge-label">Knowledge Query</span>
       <mat-icon
         class="create-agent__help-icon"
-        matTooltip="Choose a knowledge source to provide additional context and information for this agent."
+        matTooltip="Enter a query for knowledge extraction, or leave this field empty to auto-generate it"
         matTooltipPosition="above"
         matTooltipClass="create-agent__tooltip"
         >
