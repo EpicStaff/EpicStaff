@@ -44,6 +44,8 @@ import { WaitForUserInputComponent } from './components/user-input-component/use
 import { SessionStatusMessageData } from '../../models/update-session-status.model';
 import { AnswerToLLMService } from '../../../../services/answerToLLMService.service';
 import { UserMessageComponent } from './components/user-message/user-message.component';
+import { SubgraphStartMessageComponent } from './components/subgraph-start-message/subgraph-start-message.component';
+import { SubgraphFinishMessageComponent } from './components/subgraph-finish-message/subgraph-finish-message.component';
 import { isMessageType } from './helper_functions/message-helper';
 import { RunGraphPageService } from '../../run-graph-page.service';
 import { RunSessionSSEService } from '../../../run-graph-page/run-graph-page-body/graph-session-sse.service';
@@ -69,6 +71,8 @@ import { ExtractedChunksMessageComponent } from './components/extracted-chunks/e
     WaitForUserInputComponent,
     UserMessageComponent,
     ExtractedChunksMessageComponent,
+    SubgraphStartMessageComponent,
+    SubgraphFinishMessageComponent,
   ],
   templateUrl: './graph-messages.component.html',
   styleUrls: ['./graph-messages.component.scss'],
@@ -364,6 +368,85 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges {
       isMessageType(currentMessage, MessageType.START) &&
       isMessageType(prevMessage, MessageType.FINISH)
     );
+  }
+
+  // Check if message is inside a subflow (but not the start/finish messages themselves)
+  public isInsideSubflow(message: GraphMessage, index: number): boolean {
+    const messages = this.sseService.messages();
+    if (index === 0) return false;
+
+    const msgType = message.message_data?.message_type;
+    // Don't mark subgraph_start and subgraph_finish as inside subflow
+    if (
+      msgType === MessageType.SUBGRAPH_START ||
+      msgType === MessageType.SUBGRAPH_FINISH
+    ) {
+      return false;
+    }
+
+    // Track active subflows (stack-based for nested subflows)
+    const subflowStack: Array<{ name: string; startIndex: number }> = [];
+
+    for (let i = 0; i < index; i++) {
+      const msg = messages[i];
+      const currentMsgType = msg.message_data?.message_type;
+
+      if (currentMsgType === MessageType.SUBGRAPH_START) {
+        subflowStack.push({ name: msg.name, startIndex: i });
+      } else if (currentMsgType === MessageType.SUBGRAPH_FINISH) {
+        // Find matching subflow start (by name, most recent)
+        const matchingIndex = subflowStack.findIndex(
+          (sf) => sf.name === msg.name
+        );
+        if (matchingIndex !== -1) {
+          // Remove this subflow and all nested ones after it
+          subflowStack.splice(matchingIndex);
+        }
+      }
+    }
+
+    // If there are active subflows, this message is inside one
+    return subflowStack.length > 0;
+  }
+
+  // Get the level of subflow nesting (0 = not in subflow, 1 = in one subflow, etc.)
+  public getSubflowLevel(message: GraphMessage, index: number): number {
+    const messages = this.sseService.messages();
+    if (index === 0) return 0;
+
+    const msgType = message.message_data?.message_type;
+
+    // Track active subflows (stack-based for nested subflows)
+    const subflowStack: Array<{ name: string; startIndex: number }> = [];
+
+    for (let i = 0; i < index; i++) {
+      const msg = messages[i];
+      const currentMsgType = msg.message_data?.message_type;
+
+      if (currentMsgType === MessageType.SUBGRAPH_START) {
+        subflowStack.push({ name: msg.name, startIndex: i });
+      } else if (currentMsgType === MessageType.SUBGRAPH_FINISH) {
+        // Find matching subflow start (by name, most recent)
+        const matchingIndex = subflowStack.findIndex(
+          (sf) => sf.name === msg.name
+        );
+        if (matchingIndex !== -1) {
+          // Remove this subflow and all nested ones after it
+          subflowStack.splice(matchingIndex);
+        }
+      }
+    }
+
+    // For subgraph_start and subgraph_finish, return the level they are starting/finishing at
+    // (which is the current stack length before they are added/removed)
+    if (
+      msgType === MessageType.SUBGRAPH_START ||
+      msgType === MessageType.SUBGRAPH_FINISH
+    ) {
+      return subflowStack.length;
+    }
+
+    return subflowStack.length;
   }
 
   onUserMessageSubmitted(message: string) {

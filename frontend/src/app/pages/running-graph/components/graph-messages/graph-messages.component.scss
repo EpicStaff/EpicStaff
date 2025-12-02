@@ -79,6 +79,191 @@
       &.animate-message {
         animation: messageAppear 0.5s forwards;
       }
+
+      // Subflow grouping styles - Tree-like visualization with connecting lines
+      &.inside-subflow {
+        position: relative;
+        padding-left: 2.5rem;
+        transition: all 0.2s ease;
+
+        // Level 1 - First nesting level
+        &.subflow-level-1 {
+          padding-left: 2.5rem;
+          margin-left: 0.5rem;
+          background-color: rgba(0, 191, 165, 0.015);
+          border-left: 2px solid rgba(0, 191, 165, 0.2);
+          border-radius: 0 8px 8px 0;
+        }
+
+        // Level 2 - Second nesting level
+        &.subflow-level-2 {
+          padding-left: 2.5rem;
+          margin-left: 1rem;
+          background-color: rgba(0, 191, 165, 0.03);
+          border-left: 2px solid rgba(0, 191, 165, 0.3);
+          border-radius: 0 8px 8px 0;
+        }
+
+        // Level 3 - Third nesting level
+        &.subflow-level-3 {
+          padding-left: 2.5rem;
+          margin-left: 1.5rem;
+          background-color: rgba(0, 191, 165, 0.045);
+          border-left: 2px solid rgba(0, 191, 165, 0.4);
+          border-radius: 0 8px 8px 0;
+        }
+
+        // Level 4+ - Deep nesting
+        &.subflow-level-4 {
+          padding-left: 2.5rem;
+          margin-left: 2rem;
+          background-color: rgba(0, 191, 165, 0.06);
+          border-left: 2px solid rgba(0, 191, 165, 0.5);
+          border-radius: 0 8px 8px 0;
+        }
+      }
+
+      // Subflow connector line - separate element to avoid conflicts
+      .subflow-connector {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 2.5rem;
+        pointer-events: none;
+        z-index: 0;
+
+        // Vertical connector line (tree branch)
+        &::before {
+          content: '';
+          position: absolute;
+          left: 0.75rem;
+          top: -0.5rem;
+          bottom: 0;
+          width: 2px;
+          background-color: rgba(0, 191, 165, 0.3);
+          transition: all 0.2s ease;
+        }
+
+        // Level 1
+        &.subflow-level-1 {
+          &::before {
+            left: 0.75rem;
+            background-color: rgba(0, 191, 165, 0.25);
+          }
+        }
+
+        // Level 2
+        &.subflow-level-2 {
+          &::before {
+            left: 1.25rem;
+            background-color: rgba(0, 191, 165, 0.35);
+          }
+        }
+
+        // Level 3
+        &.subflow-level-3 {
+          &::before {
+            left: 1.75rem;
+            background-color: rgba(0, 191, 165, 0.45);
+          }
+        }
+
+        // Level 4+
+        &.subflow-level-4 {
+          &::before {
+            left: 2.25rem;
+            background-color: rgba(0, 191, 165, 0.55);
+          }
+        }
+      }
+
+      // Subflow boundary messages (start/finish) - Tree visualization
+      &.subflow-boundary {
+        position: relative;
+        transition: all 0.2s ease;
+
+        // Level 0 - Root level subflow
+        &.subflow-level-0 {
+          margin-left: 0;
+        }
+
+        // Level 1 - First nesting
+        &.subflow-level-1 {
+          margin-left: 0.5rem;
+          padding-left: 2rem;
+          border-left: 2px solid rgba(0, 191, 165, 0.2);
+          background-color: rgba(0, 191, 165, 0.015);
+
+          &::before {
+            content: '';
+            position: absolute;
+            left: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0.75rem;
+            height: 2px;
+            background-color: rgba(0, 191, 165, 0.25);
+          }
+        }
+
+        // Level 2 - Second nesting
+        &.subflow-level-2 {
+          margin-left: 1rem;
+          padding-left: 2rem;
+          border-left: 2px solid rgba(0, 191, 165, 0.3);
+          background-color: rgba(0, 191, 165, 0.03);
+
+          &::before {
+            content: '';
+            position: absolute;
+            left: 1.25rem;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0.75rem;
+            height: 2px;
+            background-color: rgba(0, 191, 165, 0.35);
+          }
+        }
+
+        // Level 3 - Third nesting
+        &.subflow-level-3 {
+          margin-left: 1.5rem;
+          padding-left: 2rem;
+          border-left: 2px solid rgba(0, 191, 165, 0.4);
+          background-color: rgba(0, 191, 165, 0.045);
+
+          &::before {
+            content: '';
+            position: absolute;
+            left: 1.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0.75rem;
+            height: 2px;
+            background-color: rgba(0, 191, 165, 0.45);
+          }
+        }
+
+        // Level 4+ - Deep nesting
+        &.subflow-level-4 {
+          margin-left: 2rem;
+          padding-left: 2rem;
+          border-left: 2px solid rgba(0, 191, 165, 0.5);
+          background-color: rgba(0, 191, 165, 0.06);
+
+          &::before {
+            content: '';
+            position: absolute;
+            left: 2.25rem;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0.75rem;
+            height: 2px;
+            background-color: rgba(0, 191, 165, 0.55);
+          }
+        }
+      }
     }
   }
 

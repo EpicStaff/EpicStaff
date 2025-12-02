@@ -30,7 +30,29 @@
   <div class="messages-list" *ngIf="this.sseService.messages().length > 0">
     @for (message of this.sseService.messages(); track message.uuid; let i =
     $index) {
-    <div class="message">
+    <div
+      class="message"
+      [class.inside-subflow]="isInsideSubflow(message, i)"
+      [class.subflow-level-0]="getSubflowLevel(message, i) === 0"
+      [class.subflow-level-1]="getSubflowLevel(message, i) === 1"
+      [class.subflow-level-2]="getSubflowLevel(message, i) === 2"
+      [class.subflow-level-3]="getSubflowLevel(message, i) === 3"
+      [class.subflow-level-4]="getSubflowLevel(message, i) >= 4"
+      [class.subflow-boundary]="
+        message.message_data.message_type === 'subgraph_start' ||
+        message.message_data.message_type === 'subgraph_finish'
+      "
+      [attr.data-subflow-level]="getSubflowLevel(message, i)"
+    >
+      <!-- Subflow connector lines wrapper -->
+      <div
+        class="subflow-connector"
+        *ngIf="isInsideSubflow(message, i)"
+        [class.subflow-level-1]="getSubflowLevel(message, i) === 1"
+        [class.subflow-level-2]="getSubflowLevel(message, i) === 2"
+        [class.subflow-level-3]="getSubflowLevel(message, i) === 3"
+        [class.subflow-level-4]="getSubflowLevel(message, i) >= 4"
+      ></div>
       <app-project-transition
         *ngIf="shouldShowTransition(message, i)"
       ></app-project-transition>
@@ -66,6 +88,10 @@
         [message]="message"
         [project]="getProjectFromMessage(message)"
       ></app-finish-message>
+      } @case ('subgraph_start') {
+      <app-subgraph-start-message [message]="message"></app-subgraph-start-message>
+      } @case ('subgraph_finish') {
+      <app-subgraph-finish-message [message]="message"></app-subgraph-finish-message>
       } }
     </div>
     }

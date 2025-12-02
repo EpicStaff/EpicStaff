@@ -11,6 +11,7 @@ from langgraph.graph import StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
 from services.graph.custom_message_writer import CustomSessionMessageWriter
+from utils.set_output_variables import set_output_variables
 
 
 class SubGraphNode:
@@ -166,50 +167,28 @@ class SubGraphNode:
     def _process_subgraph_result(self, state, subgraph_input, result) -> dict:
         """Process subgraph result and update parent state."""
         subgraph_output = result["variables"].model_dump()
-        updated_variables = state["variables"].model_dump()
+
+        temp_state = {"variables": DotDict(state["variables"].model_dump())}
 
         if self.output_variable_path:
-            path = self.output_variable_path
-            if path.startswith("variables."):
-                path = path[len("variables.") :]
-            self._set_nested_value(updated_variables, path, subgraph_output)
+            if self.output_variable_path.startswith("variables."):
+                full_path = self.output_variable_path
+            else:
+                full_path = f"variables.{self.output_variable_path}"
+        else:
+            full_path = "variables"
+
+        set_output_variables(temp_state, full_path, subgraph_output)
 
         state_history_item = self._create_state_history_item(
-            subgraph_input, subgraph_output, updated_variables
+            subgraph_input, subgraph_output, dict(temp_state["variables"])
         )
 
         return {
-            "variables": DotDict(updated_variables),
+            "variables": temp_state["variables"],
             "state_history": state["state_history"] + [state_history_item],
             "system_variables": state.get("system_variables", {}),
         }
-
-    def _merge_output_to_variables(
-        self, parent_variables: dict, subgraph_output: dict
-    ) -> dict:
-        """Merge subgraph output into parent variables based on output_variable_path."""
-        updated_variables = parent_variables.copy()
-
-        if self.output_variable_path:
-            self._set_nested_value(
-                updated_variables, self.output_variable_path, subgraph_output
-            )
-        else:
-            updated_variables.update(subgraph_output)
-
-        return updated_variables
-
-    def _set_nested_value(self, variables: dict, path: str, value):
-        """Set a value at a nested path in the variables dictionary."""
-        keys = path.split(".")
-        current = variables
-
-        for key in keys[:-1]:
-            if key not in current:
-                current[key] = {}
-            current = current[key]
-
-        current[keys[-1]] = value
 
     def _create_state_history_item(
         self, subgraph_input, subgraph_output, updated_variables
