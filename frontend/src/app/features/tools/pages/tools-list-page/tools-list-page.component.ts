@@ -2,7 +2,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   ChangeDetectorRef,
-  OnDestroy,
 } from '@angular/core';
 import {
   RouterOutlet,
@@ -14,13 +13,14 @@ import { Dialog } from '@angular/cdk/dialog';
 import { TabButtonComponent } from '../../../../shared/components/tab-button/tab-button.component';
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
 import { CustomToolDialogComponent } from '../../../../user-settings-page/tools/custom-tool-editor/custom-tool-dialog.component';
-import { CustomToolsStorageService } from '../../services/custom-tools/custom-tools-storage.service';
-import { BuiltinToolsStorageService } from '../../services/builtin-tools/builtin-tools-storage.service';
+import { CustomToolsService } from '../../services/custom-tools/custom-tools.service';
 import { GetPythonCodeToolRequest } from '../../models/python-code-tool.model';
-import { Subject, Subscription } from 'rxjs';
-import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { FormsModule } from '@angular/forms';
 import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
+import { McpToolDialogComponent } from '../../components/mcp-tool-dialog/mcp-tool-dialog.component';
+import { GetMcpToolRequest } from '../../models/mcp-tool.model';
+import { ToolsEventsService } from '../../services/tools-events.service';
+import { ToolsSearchService } from '../../services/tools-search.service';
 
 @Component({
   selector: 'app-tools-list-page',
@@ -38,85 +38,99 @@ import { AppIconComponent } from '../../../../shared/components/app-icon/app-ico
   styleUrls: ['./tools-list-page.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ToolsListPageComponent implements OnDestroy {
+export class ToolsListPageComponent {
   public tabs = [
     { label: 'Built-in', link: 'built-in' },
     { label: 'Custom', link: 'custom' },
+    { label: 'MCP', link: 'mcp' },
   ];
 
-  // Search term for ngModel binding
   public searchTerm: string = '';
-
-  // For debounce
-  private searchTerms = new Subject<string>();
-  private subscription: Subscription;
 
   constructor(
     private readonly cdkDialog: Dialog,
     private readonly cdr: ChangeDetectorRef,
     private readonly router: Router,
-    private readonly customToolsStorageService: CustomToolsStorageService,
-    private readonly builtinToolsStorageService: BuiltinToolsStorageService
-  ) {
-    // Setup search with debounce
-    this.subscription = this.searchTerms
-      .pipe(debounceTime(300), distinctUntilChanged())
-      .subscribe((term) => {
-        this.updateSearch(term);
-      });
+    private readonly customToolsService: CustomToolsService,
+    private readonly toolsEventsService: ToolsEventsService,
+    private readonly toolsSearchService: ToolsSearchService
+  ) {}
+
+  public get isCustomTabActive(): boolean {
+    return this.router.url.includes('/custom');
   }
 
-  ngOnDestroy(): void {
-    if (this.subscription) {
-      this.subscription.unsubscribe();
-    }
+  public get isMcpTabActive(): boolean {
+    return this.router.url.includes('/mcp');
+  }
 
-    // Reset search filters when component is destroyed
-    this.searchTerm = '';
-    this.builtinToolsStorageService.setSearchTerm('');
-    this.customToolsStorageService.setSearchTerm('');
+  public get createButtonLabel(): string {
+    if (this.isMcpTabActive) {
+      return 'Add MCP tool';
+    }
+    return 'Create custom tool';
+  }
+
+  public get createButtonIcon(): string {
+    return 'ui/plus';
   }
 
   public onSearchTermChange(term: string): void {
-    this.searchTerms.next(term);
+    this.searchTerm = term;
+    this.toolsSearchService.setSearchTerm(term);
   }
 
   public clearSearch(): void {
     this.searchTerm = '';
-    this.updateSearch('');
+    this.toolsSearchService.clearSearch();
   }
 
-  private updateSearch(searchTerm: string): void {
-    // Update both storage services with the search term
-    const trimmedTerm = searchTerm?.trim() || '';
-
-    // Only update if the search term actually changed to prevent unnecessary resets
-    const currentBuiltinFilter = this.builtinToolsStorageService.filters();
-    const currentCustomFilter = this.customToolsStorageService.filters();
-
-    if (currentBuiltinFilter?.searchTerm !== trimmedTerm) {
-      this.builtinToolsStorageService.setSearchTerm(trimmedTerm);
+  public onCreateToolClick(): void {
+    if (this.isMcpTabActive) {
+      this.openMcpToolDialog();
+    } else {
+      this.openCustomToolDialog();
     }
-
-    if (currentCustomFilter?.searchTerm !== trimmedTerm) {
-      this.customToolsStorageService.setSearchTerm(trimmedTerm);
-    }
-
-    // Force change detection to update the view
-    this.cdr.markForCheck();
   }
 
   public openCustomToolDialog(): void {
-    const dialogRef = this.cdkDialog.open(CustomToolDialogComponent, {
-      data: { pythonTools: this.customToolsStorageService.allTools() }, // Pass cached tools
+    // Load tools fresh for the dialog
+    this.customToolsService.getPythonCodeTools().subscribe(tools => {
+      const dialogRef = this.cdkDialog.open<GetPythonCodeToolRequest>(CustomToolDialogComponent, {
+        data: { pythonTools: tools },
+      });
+
+      dialogRef.closed.subscribe((result) => {
+        if (result) {
+          console.log('New custom tool created:', result);
+          // Emit event to notify custom tools component
+          this.toolsEventsService.emitCustomToolCreated(result);
+          // Navigate to custom tools tab after creating a tool
+          this.router.navigate(['/tools/custom']);
+          this.cdr.markForCheck();
+        }
+      });
     });
+  }
+
+  public openMcpToolDialog(): void {
+    const dialogRef = this.cdkDialog.open<GetMcpToolRequest>(
+      McpToolDialogComponent,
+      {
+        data: {},
+        maxWidth: '95vw',
+        maxHeight: '90vh',
+        autoFocus: true,
+      }
+    );
 
     dialogRef.closed.subscribe((result) => {
       if (result) {
-        console.log('New tool created:', result);
-        // The tool is automatically added to cache via the storage service
-        // Navigate to custom tools tab after creating a tool
-        this.router.navigate(['/tools/custom']);
+        console.log('New MCP tool created:', result);
+        // Emit event to notify MCP tools component
+        this.toolsEventsService.emitMcpToolCreated(result);
+        // Navigate to MCP tools tab after creating a tool
+        this.router.navigate(['/tools/mcp']);
         this.cdr.markForCheck();
       }
     });

@@ -196,6 +196,7 @@ token.json
 
 # Additional tool
 additional_tools/
+make_scripts/backups
 
 # Savefiles
 **/savefiles
@@ -258,3 +259,6 @@ src/django_app/staticfiles/*
 
 # Cursor AI rules
 .cursorrules
+
+#knowledge data
+knowledge/graph_data/

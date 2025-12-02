@@ -17,6 +17,12 @@
         display: flex;
         align-items: center;
         gap: 12px;
+
+        .delete-btn {
+            min-width: auto;
+            max-width: none;
+            padding: 8px 16px;
+        }
     }
 }
 

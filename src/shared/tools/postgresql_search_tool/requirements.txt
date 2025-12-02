@@ -1,0 +1,3 @@
+sqlparse
+psycopg2-binary
+sqlalchemy

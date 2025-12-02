@@ -247,6 +247,7 @@ class Crew(AbstractDefaultFillableModel):
         blank=True,
         help_text="Float between 0.00 and 1.00 for knowledge",
     )
+    is_template = models.BooleanField(default=False)
 
     def get_default_model(self):
         return DefaultCrewConfig.load()

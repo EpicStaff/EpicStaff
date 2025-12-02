@@ -1,0 +1,27 @@
+<div class="mcp-tools">
+  @if (!isLoaded()) {
+  <app-loading-spinner
+    size="md"
+    message="Loading MCP tools..."
+  ></app-loading-spinner>
+  } @else { @if (error()) {
+  <div class="error">{{ error() }}</div>
+  <button type="button" (click)="refreshTools()">Retry</button>
+  } @else {
+  <div class="mcp-tools-grid">
+    @if (tools().length === 0) {
+    <div class="empty-message">
+      <p>No MCP tools found.</p>
+    </div>
+    } @else { @for (tool of tools(); track tool.id) {
+    <app-mcp-tool-card
+      [tool]="tool"
+      (configure)="onConfigure($event)"
+      (delete)="onDelete($event)"
+    ></app-mcp-tool-card>
+    } }
+  </div>
+  } }
+</div>
+
+

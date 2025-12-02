@@ -1,4 +1,4 @@
-import { Component, Inject, OnInit } from '@angular/core';
+import { Component, DestroyRef, Inject, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import {
@@ -15,6 +15,7 @@ import {
   GetTranscriptionConfigRequest,
 } from '../../../../../../../shared/models/transcription-config.model';
 import { ApiGetResponse, RealtimeTranscriptionModelsService } from '../../../../../../../services/transcription-models.service';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 export interface AddTranscriptionConfigDialogData {
   providerId?: number;
@@ -32,6 +33,8 @@ export class AddTranscriptionConfigDialogComponent implements OnInit {
   showApiKey = false;
   models: GetRealtimeTranscriptionModelRequest[] = [];
   submitting = false;
+  private lastAutoCustomName: string | null = null;
+  private destroyRef = inject(DestroyRef);
 
   constructor(
     private fb: FormBuilder,
@@ -45,14 +48,22 @@ export class AddTranscriptionConfigDialogComponent implements OnInit {
   ngOnInit(): void {
     this.loadModels();
     this.initForm();
+    this.setupModelSubscription();
   }
 
   private initForm(): void {
     this.transcriptionForm = this.fb.group({
-      realtime_transcription_model: ['', Validators.required],
+      realtime_transcription_model: [null, Validators.required],
       custom_name: ['', Validators.required],
       api_key: ['', Validators.required],
     });
+  }
+
+  private setupModelSubscription(): void {
+    this.transcriptionForm
+      .get('realtime_transcription_model')
+      ?.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.updateCustomName());
   }
 
   showError(controlName: string): boolean {
@@ -69,7 +80,8 @@ export class AddTranscriptionConfigDialogComponent implements OnInit {
   loadModels(): void {
     this.realtimeTranscriptionModelsService.getAllModels()
       .subscribe((res: ApiGetResponse<GetRealtimeTranscriptionModelRequest>) => {
-        this.models = res.results
+        this.models = res.results;
+        this.updateCustomName();
       })
   }
 
@@ -79,9 +91,7 @@ export class AddTranscriptionConfigDialogComponent implements OnInit {
       const formValue = this.transcriptionForm.value;
 
       const config: CreateTranscriptionConfigRequest = {
-        realtime_transcription_model: Number(
-          formValue.realtime_transcription_model
-        ),
+        realtime_transcription_model: formValue.realtime_transcription_model,
         api_key: formValue.api_key,
         custom_name: formValue.custom_name,
       };
@@ -114,5 +124,28 @@ export class AddTranscriptionConfigDialogComponent implements OnInit {
 
   onCancel(): void {
     this.dialogRef.close();
+  }
+
+  private updateCustomName(): void {
+    const modelControl = this.transcriptionForm.get('realtime_transcription_model');
+    const customNameControl = this.transcriptionForm.get('custom_name');
+
+    if (!modelControl || !customNameControl) {
+      return;
+    }
+
+    const modelId = modelControl.value;
+    if (!modelId) {
+      return;
+    }
+
+    const selectedModel = this.models.find((model) => model.id === modelId);
+    if (!selectedModel) {
+      return;
+    }
+
+    const autoName = selectedModel.name;
+    this.lastAutoCustomName = autoName;
+    customNameControl.setValue(autoName, { emitEvent: false });
   }
 }

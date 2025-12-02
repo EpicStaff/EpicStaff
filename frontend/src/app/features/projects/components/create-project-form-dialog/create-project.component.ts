@@ -3,6 +3,7 @@ import {
     OnInit,
     ChangeDetectionStrategy,
     signal,
+    Input,
 } from '@angular/core';
 import {
     FormBuilder,
@@ -49,6 +50,8 @@ interface ProjectFormData {
     ],
 })
 export class CreateProjectComponent implements OnInit {
+    public isTemplate: boolean = true;
+    
     public projectForm!: FormGroup<{
         name: FormControl<string>;
         description: FormControl<string>;
@@ -66,7 +69,10 @@ export class CreateProjectComponent implements OnInit {
         private fb: FormBuilder,
         private dialogRef: DialogRef<any>,
         private projectsStorageService: ProjectsStorageService
-    ) {}
+    ) {
+        // Get isTemplate from dialog data, default to true if not provided
+        this.isTemplate = this.dialogRef.config.data?.isTemplate ?? true;
+    }
 
     ngOnInit(): void {
         this.initializeForm();
@@ -153,6 +159,7 @@ export class CreateProjectComponent implements OnInit {
             max_rpm: formData.max_rpm,
             search_limit: formData.search_limit,
             similarity_threshold: formData.similarity_threshold.toString(),
+            is_template: this.isTemplate,
         };
 
         // Call the actual service

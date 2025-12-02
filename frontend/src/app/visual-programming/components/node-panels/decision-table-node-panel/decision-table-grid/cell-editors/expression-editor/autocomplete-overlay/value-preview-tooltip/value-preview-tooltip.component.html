@@ -1,0 +1,18 @@
+<div class="value-preview">
+    <div class="preview-header">
+        <span class="type">{{ getType() }}</span>
+    </div>
+    <div class="preview-content">
+        @if (isPrimitive()) {
+            <span class="value">{{ getDisplayValue() }}</span>
+        } @else {
+            <app-json-editor
+                [jsonData]="formatJson()"
+                [editorHeight]="200"
+                [fullHeight]="false"
+                [editorOptions]="editorOptions"
+            ></app-json-editor>
+        }
+    </div>
+</div>
+

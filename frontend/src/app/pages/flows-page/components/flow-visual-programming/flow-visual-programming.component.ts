@@ -6,6 +6,7 @@ import {
     OnDestroy,
     HostListener,
     AfterViewInit,
+    ViewChild,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
@@ -75,7 +76,7 @@ import { UnsavedChangesDialogService } from '../../../../shared/components/unsav
 import { isEqual } from 'lodash';
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { ConfigService } from '../../../../services/config/config.service';
-import { SidepanelAutosaveService } from '../../../../visual-programming/services/sidepanel-autosave.service';
+import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 
 @Component({
     selector: 'app-flow-visual-programming',
@@ -98,6 +99,9 @@ export class FlowVisualProgrammingComponent
     private readonly destroy$ = new Subject<void>();
     private isNavigatingToRun = false;
 
+    @ViewChild(FlowGraphComponent)
+    private flowGraphComponent?: FlowGraphComponent;
+
     constructor(
         private readonly route: ActivatedRoute,
         private readonly router: Router,
@@ -112,7 +116,7 @@ export class FlowVisualProgrammingComponent
         private readonly dialog: CdkDialog,
         private readonly unsavedChangesDialogService: UnsavedChangesDialogService,
         private readonly configService: ConfigService,
-        private readonly autosaveService: SidepanelAutosaveService
+        private readonly sidePanelService: SidePanelService
     ) {}
 
     public ngOnInit(): void {
@@ -154,8 +158,9 @@ export class FlowVisualProgrammingComponent
         }
 
         this.isSaving = true;
+        this.flushActiveSidePanelState();
 
-        this.autosaveService.triggerAutosave('manual-save');
+        this.sidePanelService.triggerAutosave();
 
         return of(null).pipe(
             switchMap(() => new Promise((resolve) => setTimeout(resolve, 200))),
@@ -272,7 +277,8 @@ export class FlowVisualProgrammingComponent
 
     private saveGraphForRun(): Observable<any> {
         // Trigger autosave before getting flow state
-        this.autosaveService.triggerAutosave('run-save');
+        this.flushActiveSidePanelState();
+        this.sidePanelService.triggerAutosave();
 
         // Wait for autosave to complete before getting flow state
         return of(null).pipe(
@@ -486,5 +492,9 @@ export class FlowVisualProgrammingComponent
     public ngOnDestroy(): void {
         // this.destroy$.next();
         // this.destroy$.complete();
+    }
+
+    private flushActiveSidePanelState(): void {
+        this.flowGraphComponent?.flushOpenSidePanelState();
     }
 }

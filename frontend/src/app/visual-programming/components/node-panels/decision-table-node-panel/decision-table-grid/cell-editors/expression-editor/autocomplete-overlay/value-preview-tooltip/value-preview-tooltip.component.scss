@@ -1,0 +1,68 @@
+.value-preview {
+    background-color: #1e1e20;
+    border: 1px solid var(--color-divider-subtle, #333);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    padding: 8px;
+    width: 600px;
+    max-width: 800px;
+    max-height: 600px;
+    overflow: hidden; // Changed to hidden to let internal scrollbars work
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    z-index: 1100;
+    display: flex;
+    flex-direction: column;
+
+    .preview-header {
+        margin-bottom: 6px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        padding-bottom: 4px;
+        flex-shrink: 0;
+
+        .type {
+            color: #888;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+    }
+
+    .preview-content {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+
+        .value {
+            color: #ce9178; // String color
+        }
+
+        .json-value {
+            margin: 0;
+            color: #d4d4d4;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        // Ensure json-editor takes full width
+        app-json-editor {
+            width: 100%;
+            display: block;
+        }
+    }
+
+    &::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+    &::-webkit-scrollbar-thumb {
+        background: #444;
+        border-radius: 3px;
+    }
+    &::-webkit-scrollbar-track {
+        background: transparent;
+    }
+}
+

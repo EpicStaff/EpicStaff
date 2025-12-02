@@ -1,10 +1,12 @@
 import { GetPythonCodeToolRequest } from '../../features/tools/models/python-code-tool.model';
 import { GetToolRequest } from '../../features/tools/models/tool.model';
 import { GetToolConfigRequest } from '../../features/tools/models/tool_config.model';
+import { GetMcpToolRequest } from '../../features/tools/models/mcp-tool.model';
 
 export type ToolUniqueName =
     | `configured-tool:${number}`
-    | `python-code-tool:${number}`;
+    | `python-code-tool:${number}`
+    | `mcp-tool:${number}`;
 
 export interface Agent {
     id: number;
@@ -36,7 +38,7 @@ export interface Agent {
     realtime_agent: RealtimeAgentConfig;
     tools: {
         unique_name: ToolUniqueName;
-        data: GetToolRequest | GetPythonCodeToolRequest;
+        data: GetToolRequest | GetPythonCodeToolRequest | GetMcpToolRequest;
     }[];
 }
 
@@ -60,6 +62,7 @@ export interface GetAgentRequest {
 
     configured_tools: number[];
     python_code_tools: number[];
+    mcp_tools: number[];
 
     llm_config: number | null;
     fcm_llm_config: number | null;
@@ -80,7 +83,7 @@ export interface GetAgentRequest {
     realtime_agent: RealtimeAgentConfig;
     tools: {
         unique_name: ToolUniqueName;
-        data: GetToolConfigRequest | GetPythonCodeToolRequest;
+        data: GetToolConfigRequest | GetPythonCodeToolRequest | GetMcpToolRequest;
     }[];
 
     search_limit: number | null;
@@ -95,6 +98,7 @@ export interface CreateAgentRequest {
 
     configured_tools?: number[];
     python_code_tools?: number[];
+    mcp_tools?: number[];
 
     llm_config?: number | null;
     fcm_llm_config?: number | null;
@@ -130,6 +134,7 @@ export interface UpdateAgentRequest {
 
     configured_tools: number[];
     python_code_tools: number[];
+    mcp_tools: number[];
 
     llm_config: number | null;
     fcm_llm_config: number | null;

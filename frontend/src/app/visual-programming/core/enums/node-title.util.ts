@@ -17,7 +17,7 @@ export function getNodeTitle(node: NodeModel): string {
         case NodeType.TASK:
             return (node as any).data.name || '';
         case NodeType.PYTHON:
-            return (node as PythonNodeModel).data?.name || '';
+            return (node as PythonNodeModel).node_name || '';
 
         case NodeType.TOOL:
             return (node as any).data.name || '';
@@ -31,6 +31,8 @@ export function getNodeTitle(node: NodeModel): string {
             return 'Note';
         case NodeType.FILE_EXTRACTOR:
             return 'File Extractor';
+        case NodeType.WEBHOOK_TRIGGER:
+            return (node as any).node_name || '';
         case NodeType.END:
             return 'End';
         case NodeType.SUBGRAPH:

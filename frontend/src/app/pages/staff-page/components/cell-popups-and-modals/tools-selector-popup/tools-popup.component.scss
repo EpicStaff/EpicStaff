@@ -42,7 +42,7 @@ $transition-default: all 0.2s ease;
   flex-direction: column;
   min-height: 500px;
   max-height: 500px;
-  width: 350px; // Match LLM popup width
+  width: 480px; // Wider to accommodate MCP tools
   overflow: hidden;
   border-radius: 8px;
   background-color: $bg-card; // Match LLM popup background
@@ -252,6 +252,18 @@ $transition-default: all 0.2s ease;
 
 .python-tools {
   animation: fadeIn 0.3s ease;
+}
+
+.add-tool-button-container {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0;
+  margin-top: 8px;
+  
+  .add-tool-btn {
+    width: 100%;
+    max-width: 200px;
+  }
 }
 
 .footer {

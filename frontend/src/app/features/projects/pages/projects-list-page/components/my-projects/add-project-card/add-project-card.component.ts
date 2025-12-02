@@ -17,7 +17,7 @@ import { AppIconComponent } from '../../../../../../../shared/components/app-ico
                 <div class="plus-icon">
                     <app-icon icon="ui/plus" size="2.5rem"></app-icon>
                 </div>
-                <div class="title">Create New Project</div>
+                <div class="title">Create New Template</div>
             </div>
         </div>
     `,

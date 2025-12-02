@@ -187,6 +187,9 @@ class RealtimeAgentImportService:
             )
 
             agent = agents.get(current_id)
+            if not agent:
+                continue
+
             serializer = self.serializer_class(
                 data=agent_data, context={"agent": agent}
             )

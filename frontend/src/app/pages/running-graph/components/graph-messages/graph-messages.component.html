@@ -53,6 +53,10 @@
       <app-python-message [message]="message"></app-python-message>
       } @case ('llm') {
       <app-llm-message [message]="message"></app-llm-message>
+      } @case ('extracted_chunks') {
+      <app-extracted-chunks-message
+        [message]="message"
+      ></app-extracted-chunks-message>
       } @case ('error') {
       <app-error-message [message]="message"></app-error-message>
       } @case ('task') {

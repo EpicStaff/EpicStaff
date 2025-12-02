@@ -1,0 +1,32 @@
+<div class="decision-table-grid-container">
+    <div class="grid-header">
+        <h3>
+            Conditions
+            <span
+                class="tooltip-icon"
+                title="Evaluate conditions top-to-bottom; first match routes the flow."
+            >
+                <i class="ti ti-help-circle"></i>
+            </span>
+        </h3>
+        <app-button
+            type="primary"
+            [leftIcon]="'ui/plus'"
+            (click)="addConditionGroup()"
+        >
+            Add Condition
+        </app-button>
+    </div>
+
+    <ag-grid-angular
+        class="decision-grid ag-theme-quartz-dark"
+        [class.empty-state]="isEmpty()"
+        style="width: 100%;"
+        [rowData]="rowData()"
+        [columnDefs]="columnDefs"
+        [defaultColDef]="defaultColDef"
+        [gridOptions]="gridOptions"
+        (gridReady)="onGridReady($event)"
+    >
+    </ag-grid-angular>
+</div>

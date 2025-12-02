@@ -238,11 +238,17 @@
                             [selectedPythonCodeTools]="
                                 agentForm.get('python_code_tools')?.value || []
                             "
+                            [selectedMcpTools]="
+                                agentForm.get('mcp_tools')?.value || []
+                            "
                             (configuredToolsChange)="
                                 onConfiguredToolsChange($event)
                             "
                             (pythonCodeToolsChange)="
                                 onPythonToolsChange($event)
+                            "
+                            (mcpToolsChange)="
+                                onMcpToolsChange($event)
                             "
                         ></app-tools-selector>
                     </div>

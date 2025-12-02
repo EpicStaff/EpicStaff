@@ -229,7 +229,7 @@ def main(variables: dict) -> bool:
             ):
                 # If all condition groups are processed, go to the default next node
                 decision_node_variables["result_node"] = (
-                    self.decision_table_node_data.default_next_node
+                    self.decision_table_node_data.default_next_node or END
                 )
                 decision_node_variables["next_node"] = END
                 self.custom_session_message_writer.add_finish_message(
@@ -302,7 +302,7 @@ def main(variables: dict) -> bool:
                     error = f"Error executing condition group '{condition_group.group_name}': {e}"
                     logger.error(error)
                     decision_node_variables["result_node"] = (
-                        self.decision_table_node_data.next_error_node
+                        self.decision_table_node_data.next_error_node or END
                     )
                     decision_node_variables["next_node"] = END
                     self.custom_session_message_writer.add_error_message(

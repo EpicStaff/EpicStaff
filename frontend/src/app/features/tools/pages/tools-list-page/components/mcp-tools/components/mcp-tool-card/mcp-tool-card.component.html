@@ -1,0 +1,45 @@
+<div class="tool-card">
+  <div class="tool-header">
+    <div class="tool-icon">
+      <mat-icon>hub</mat-icon>
+    </div>
+    <div class="tool-info">
+      <div class="tool-name">{{ tool.name }}</div>
+      <div class="tool-type">MCP • {{ tool.tool_name }}</div>
+    </div>
+  </div>
+  <div class="tool-description">
+    <div class="transport-info">
+      <span class="label">Transport:</span>
+      <span class="value">{{ tool.transport }}</span>
+    </div>
+    @if (tool.timeout) {
+    <div class="timeout-info">
+      <span class="label">Timeout:</span>
+      <span class="value">{{ tool.timeout }}s</span>
+    </div>
+    }
+  </div>
+  <div class="tool-footer">
+    <app-button type="ghost" (click)="onConfigure()">Configure</app-button>
+    <div class="footer-actions">
+      <app-toggle-switch
+        [checked]="enabled"
+        (checkedChange)="onToggle($event)"
+      ></app-toggle-switch>
+      <button
+        class="star-btn"
+        aria-label="Favorite"
+        (click)="onStar()"
+        [class.active]="starred"
+      >
+        <app-icon [icon]="starIcon" size="1.2rem"></app-icon>
+      </button>
+      <button class="delete-btn" aria-label="Delete tool" (click)="onDelete()">
+        <app-icon icon="ui/x" size="1.2rem"></app-icon>
+      </button>
+    </div>
+  </div>
+</div>
+
+

@@ -3,12 +3,18 @@ import os
 import time
 from typing import Type
 import redis
-from collections import deque
+from collections import defaultdict, deque
 from django.db import transaction, IntegrityError, models
+from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.models import GraphSessionMessage
 from tables.models import PythonCodeResult
 from tables.models import GraphOrganization, GraphOrganizationUser
 from tables.request_models import CodeResultData, GraphSessionMessageData
+from tables.request_models import (
+    CodeResultData,
+    GraphSessionMessageData,
+    WebhookEventData,
+)
 from tables.services.session_manager_service import SessionManagerService
 from tables.models import Session
 from loguru import logger
@@ -22,6 +28,7 @@ GRAPH_MESSAGES_CHANNEL = os.environ.get("GRAPH_MESSAGES_CHANNEL", "graph:message
 GRAPH_MESSAGE_UPDATE_CHANNEL = os.environ.get(
     "GRAPH_MESSAGE_UPDATE_CHANNEL", "graph:message:update"
 )
+WEBHOOK_MESSAGE_CHANNEL = os.environ.get("WEBHOOK_MESSAGE_CHANNEL", "webhooks")
 
 
 class RedisPubSub:
@@ -68,10 +75,6 @@ class RedisPubSub:
                     session.status = data["status"]
                     session.status_data = data.get("status_data", {})
                     session.save()
-
-                    if session.status == Session.SessionStatus.END:
-                        self._save_organization_variables(session, data)
-
         except Exception as e:
             logger.error(f"Error handling session_status message: {e}")
 
@@ -81,6 +84,14 @@ class RedisPubSub:
             data = json.loads(message["data"])
             CodeResultData.model_validate(data)
             PythonCodeResult.objects.create(**data)
+        except Exception as e:
+            logger.error(f"Error handling code_results message: {e}")
+
+    def webhook_events_handler(self, message: dict):
+        try:
+            logger.debug(f"Received webhook event: {message}")
+            data = WebhookEventData.model_validate_json(message["data"])
+            WebhookTriggerService().handle_webhook_trigger(path=data.path, payload=data.payload)
         except Exception as e:
             logger.error(f"Error handling code_results message: {e}")
 
@@ -111,16 +122,15 @@ class RedisPubSub:
         except Exception as e:
             logger.error(f"Error handling organization variables message: {e}")
 
-    def _buffer_save(self, buffer: deque[dict], model: Type[models.Model]):
+    def _buffer_save(self, data, model: Type[models.Model]):
         try:
             with transaction.atomic():
-                objects = [model(**data) for data in list(buffer)]
+                
                 created_objects = model.objects.bulk_create(
-                    objects, ignore_conflicts=True
+                    data, ignore_conflicts=True
                 )
-                buffer.clear()
                 logger.debug(
-                    f"{model.__name__} updated with {len(created_objects)}/{len(objects)} entities"
+                    f"{model.__name__} updated with {len(created_objects)}/{len(data)} entities"
                 )
         except IntegrityError as e:
             logger.error(f"Failed to save {model.__name__}: {e}")
@@ -132,6 +142,9 @@ class RedisPubSub:
             graph_session_message_data = GraphSessionMessageData.model_validate(data)
             message_uuid = graph_session_message_data.uuid
             session_id = graph_session_message_data.session_id
+            if not Session.objects.filter(pk=session_id).exists():
+                logger.warning(f"Session {session_id} was deleted")
+                return
 
             buffer = self.buffers.setdefault(GRAPH_MESSAGES_CHANNEL, deque(maxlen=1000))
 
@@ -189,6 +202,7 @@ class RedisPubSub:
         logger.info(f"Start worker {os.getpid()} listening for Redis messages...")
         self.set_handler(SESSION_STATUS_CHANNEL, self.session_status_handler)
         self.set_handler(CODE_RESULT_CHANNEL, self.code_results_handler)
+        self.set_handler(WEBHOOK_MESSAGE_CHANNEL, self.webhook_events_handler)
         self.subscribe_to_channels()
 
         while True:
@@ -209,8 +223,29 @@ class RedisPubSub:
                 # 2. Bulk save the buffer, clear state
                 buffer = self.buffers.get(GRAPH_MESSAGES_CHANNEL)
                 if buffer and time.time() - start_time >= 3:
-                    self._buffer_save(buffer=buffer, model=GraphSessionMessage)
+
+                    try:
+                        graph_session_message_list = [GraphSessionMessage(**data) for data in list(buffer)]
+                    except Exception as e:
+                        logger.critical("Error creating GraphSessionMessage cache_for_redis_messages_worker")
+
+                    buffer.clear()
+                    sessions_data = defaultdict(deque)
+                    
+                    for graph_session_message in graph_session_message_list:
+                        session_id = graph_session_message.session.pk 
+                        if session_id is not None:
+                            sessions_data[session_id].append(graph_session_message)
+                        else:
+                            logger.warning(f"Skipping entity for {GraphSessionMessage.__name__} with missing session_id: {data}")
+
+                    for session_id, sessions_data_values in sessions_data.items():
+                        self._buffer_save(data=sessions_data_values, model=GraphSessionMessage)
+
                     start_time = time.time()
 
+            except Exception as e:
+                # Catch general exceptions in the listener loop (e.g., Redis errors)
+                logger.error(f"Error in main listener loop: {e}")
             except Exception as e:
                 logger.error(f"Error while saving graph session messages: {e}")

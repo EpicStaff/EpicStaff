@@ -99,6 +99,20 @@ If build was already completed, project can be started by running following comm
 ```powershell
 docker-compose up
 ```
+---
+
+
+
+### Alternative Setup Options
+
+EpicStaff can be configured and launched using alternative setup methods:
+
+- **[Partly Local Setup](https://github.com/EpicStaff/EpicStaff/blob/main/partly-local-setup.md)** — run specific services locally while other services remain in Docker. Useful for controlled local development and testing.  
+- **[Podman Support](https://github.com/EpicStaff/EpicStaff/blob/main/podman-setup.md)** — provides instructions for deploying EpicStaff using **Podman** instead of Docker.
+
+> These methods are optional and intended for users requiring advanced control over their environment.
+
+
 
 **For more [details](docs/docs.pdf)**
 ---

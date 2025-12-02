@@ -21,10 +21,16 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     constructor() {
         effect(() => {
             const node = this.node();
-            if (node) {
-                this.form = this.initializeForm();
-                this.lastInitializedNodeId = node.id;
+            if (!node) {
+                return;
             }
+
+            if (!this.shouldReinitializeForm(node)) {
+                return;
+            }
+
+            this.form = this.initializeForm();
+            this.lastInitializedNodeId = node.id;
         });
     }
 
@@ -73,6 +79,10 @@ export abstract class BaseSidePanel<T extends NodeModel> {
             );
         }
         return '';
+    }
+
+    protected shouldReinitializeForm(node: T): boolean {
+        return this.lastInitializedNodeId !== node.id;
     }
 
     protected abstract initializeForm(): FormGroup;

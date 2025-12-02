@@ -1,7 +1,7 @@
 import {
     ChangeDetectionStrategy,
     Component,
-    OnDestroy,
+    DestroyRef,
     OnInit,
     inject,
     signal,
@@ -20,7 +20,7 @@ import { LLM_Providers_Service } from '../../../services/LLM_providers.service';
 import { RealtimeModelsService } from '../../../services/realtime-llms/real-time-models.service';
 import { RealtimeModelConfigsService } from '../../../services/realtime-llms/real-time-model-config.service';
 import { finalize } from 'rxjs/operators';
-import { Subject, takeUntil } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CustomInputComponent } from '../../../../../shared/components/form-input/form-input.component';
 import { CreateRealtimeModelConfigRequest } from '../../../models/realtime-voice/realtime-llm-config.model';
 import { RealtimeModel } from '../../../models/realtime-voice/realtime-model.model';
@@ -38,13 +38,13 @@ import { RealtimeModel } from '../../../models/realtime-voice/realtime-model.mod
     styleUrls: ['./add-voice-config-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AddVoiceConfigDialogComponent implements OnInit, OnDestroy {
+export class AddVoiceConfigDialogComponent implements OnInit {
     private dialogRef = inject(DialogRef);
     private formBuilder = inject(FormBuilder);
     private providersService = inject(LLM_Providers_Service);
     private modelsService = inject(RealtimeModelsService);
     private configService = inject(RealtimeModelConfigsService);
-    private destroy$ = new Subject<void>();
+    private destroyRef = inject(DestroyRef);
 
     public form!: FormGroup;
     public providers = signal<LLM_Provider[]>([]);
@@ -52,14 +52,19 @@ export class AddVoiceConfigDialogComponent implements OnInit, OnDestroy {
     public isLoading = signal<boolean>(false);
     public isSubmitting = signal<boolean>(false);
     public errorMessage = signal<string | null>(null);
+    private lastAutoCustomName: string | null = null;
 
     ngOnInit(): void {
         this.initForm();
         this.loadProviders();
+        this.setupProviderIdSubscription();
+        this.setupModelIdSubscription();
+    }
 
+    private setupProviderIdSubscription(): void {
         this.form
             .get('providerId')
-            ?.valueChanges.pipe(takeUntil(this.destroy$))
+            ?.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((providerId) => {
                 if (providerId) {
                     this.loadModels(providerId);
@@ -67,12 +72,16 @@ export class AddVoiceConfigDialogComponent implements OnInit, OnDestroy {
                     this.models.set([]);
                     this.form.get('modelId')?.setValue(null);
                 }
+
+                this.updateCustomNameIfNeeded();
             });
     }
 
-    ngOnDestroy(): void {
-        this.destroy$.next();
-        this.destroy$.complete();
+    private setupModelIdSubscription(): void {
+        this.form
+            .get('modelId')
+            ?.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.updateCustomNameIfNeeded());
     }
 
     private initForm(): void {
@@ -94,6 +103,7 @@ export class AddVoiceConfigDialogComponent implements OnInit, OnDestroy {
                     this.providers.set(providers);
                     if (providers.length > 0) {
                         this.form.get('providerId')?.setValue(providers[0].id);
+                        this.updateCustomNameIfNeeded();
                     }
                 },
                 error: (error) => {
@@ -119,6 +129,7 @@ export class AddVoiceConfigDialogComponent implements OnInit, OnDestroy {
                         this.form
                             .get('modelId')
                             ?.setValue(filteredModels[0].id);
+                        this.updateCustomNameIfNeeded();
                     } else {
                         this.form.get('modelId')?.setValue(null);
                     }
@@ -159,5 +170,31 @@ export class AddVoiceConfigDialogComponent implements OnInit, OnDestroy {
 
     public onCancel(): void {
         this.dialogRef.close(false);
+    }
+
+    private updateCustomNameIfNeeded(): void {
+        const providerId = this.form.get('providerId')?.value;
+        const modelId = this.form.get('modelId')?.value;
+
+        if (!providerId || !modelId) {
+            return;
+        }
+
+        const provider = this.providers().find((p) => p.id === providerId);
+        const model = this.models().find((m) => m.id === modelId);
+
+        if (!provider || !model) {
+            return;
+        }
+
+        const autoName = `${provider.name}/${model.name}`;
+        const customNameControl = this.form.get('customName');
+
+        if (!customNameControl) {
+            return;
+        }
+
+        this.lastAutoCustomName = autoName;
+        customNameControl.setValue(autoName, { emitEvent: false });
     }
 }

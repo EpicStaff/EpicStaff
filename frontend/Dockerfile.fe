@@ -2,14 +2,20 @@ FROM node:20.17.0 AS build-stage
 
 WORKDIR /home/user/root/app
 
-COPY package*.json ./
-RUN npm install 
+# Copy package files first for better layer caching
 
+COPY package*.json ./
+
+# Install dependencies (this layer will be cached if package files don't change)
+RUN npm install --force && npm cache clean --force
+
+# Copy the rest of the application code
 COPY . .
 
-RUN npm run build
+# Build the application
+RUN npm run build -- --configuration production
 
-FROM nginx:alpine AS production-stage
+FROM docker.io/library/nginx:alpine AS production-stage
 
 COPY --from=build-stage /home/user/root/app/dist/frontend-crewai/browser/ /usr/share/nginx/html/
 

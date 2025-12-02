@@ -1,0 +1,7 @@
+tool-data:
+  name: "picture-tool"
+  description: "Write your OpenAI API key in the domain variables in the format: {\"OPENAI_API_KEY\": \"YOUR_SECRET_KEY\"}. A tool that generates images using OpenAI's DALL-E model based on a text prompt"
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

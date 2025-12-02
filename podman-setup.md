@@ -4,7 +4,7 @@
 
 ```bash
 git clone https://github.com/EpicStaff/EpicStaff.git
-cd ~/EpicStaff/src
+cd EpicStaff/src
 ```
 
 ---
@@ -63,7 +63,7 @@ podman volume create crew_config
 
 ```bash
 podman build -t crewdb -f ./crewdb/Dockerfile.crewdb ./crewdb
-podman build -t django_app -f ./django_app/Dockerfile.dj ./django_app
+podman build -t django_app -f django_app/Dockerfile.dj .
 podman build -t manager -f ./manager/Dockerfile.man .
 podman build -t knowledge -f ./knowledge/Dockerfile.knowledge ./knowledge
 podman build -t realtime -f ./realtime/Dockerfile.realtime ./realtime
@@ -79,7 +79,7 @@ podman build -t frontend -f ../frontend/Dockerfile.fe ../frontend
 ### Redis
 
 ```bash
-podman run -d   --name redis   --network backend-network   -p ${REDIS_PORT}:${REDIS_PORT}   --health-cmd="redis-cli ping"   --health-interval=5s   --health-timeout=2s   --health-retries=5   --health-start-period=5s   redis
+podman run -d   --name redis   --network backend-network   -p ${REDIS_PORT}:${REDIS_PORT}   --health-cmd="redis-cli ping"   --health-interval=5s   --health-timeout=2s   --health-retries=5   --health-start-period=5s   docker.io/library/redis:latest
 ```
 
 ---
@@ -127,7 +127,7 @@ podman run -d   --name realtime   --network backend-network   -p 8050:8050   --e
 ### Crew
 
 ```bash
-podman run -d   --name crew   --network backend-network   --network mcp-network   -p 8002:8000   -v crew_config:/home/user/root/app/env_config/   --add-host host.docker.internal:host-gateway   --env-file .env   -t   -i   -v $PODMAN_SOCKET:/var/run/docker.sock   crew
+podman run -d   --name crew   --network backend-network   --network mcp-network   -p 8002:8000   -v crew_config:/home/user/root/app/env_config/   --add-host host.docker.internal:host-gateway   --env-file .env   -t   -i   -v /run/user/1000/podman/podman.sock:/var/run/docker.sock   crew
 ```
 
 ---

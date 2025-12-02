@@ -462,19 +462,9 @@ class DeepCopyMixin:
     @action(detail=True, methods=["post"], url_path="copy")
     def copy(self, request, pk: int):
         instance = self.get_object()
-        new_instance = None
-        serializer_class = self.get_copy_serializer_class()
-
-        data = serializer_class(instance).data
-        data = dict(data)
-
-        deserializer_class = self.get_copy_deserializer_class()
-        deserializer = deserializer_class(data=data)
-        deserializer.is_valid(raise_exception=True)
 
         try:
-            with transaction.atomic():
-                new_instance = deserializer.save()
+            new_instance = self.perform_copy(instance)
         except IntegrityError as e:
             return Response(
                 {"message": f"Database error: {str(e)}"},
@@ -489,13 +479,29 @@ class DeepCopyMixin:
             )
 
         new_name = request.data.get("name") if isinstance(request.data, dict) else None
-        current_name = getattr(new_instance, "name", None)
-
-        if new_name and current_name:
+        if new_name and hasattr(new_instance, "name"):
             new_instance.name = new_name
             new_instance.save()
 
         response_serializer_class = self.get_copy_serializer_response_class()
         serializer = response_serializer_class(new_instance)
-
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def perform_copy(self, instance):
+        """
+        Handles deep copy logic — serialize, validate, and save a new instance.
+
+        You can reuse this elsewhere, or modify data before saving.
+        """
+        serializer_class = self.get_copy_serializer_class()
+        deserializer_class = self.get_copy_deserializer_class()
+
+        data = dict(serializer_class(instance).data)
+
+        deserializer = deserializer_class(data=data)
+        deserializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            new_instance = deserializer.save()
+
+        return new_instance

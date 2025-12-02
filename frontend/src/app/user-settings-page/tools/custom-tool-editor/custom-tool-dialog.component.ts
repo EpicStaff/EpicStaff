@@ -23,7 +23,7 @@ import { CommonModule } from '@angular/common';
 // Child components and services
 import { ToolLibrariesComponent } from './tool-libraries/tool-libraries.component';
 import { CodeEditorComponent } from './code-editor/code-editor.component';
-import { CustomToolsStorageService } from '../../../features/tools/services/custom-tools/custom-tools-storage.service';
+import { CustomToolsService } from '../../../features/tools/services/custom-tools/custom-tools.service';
 import { ToastService } from '../../../services/notifications/toast.service';
 import { AppIconComponent } from '../../../shared/components/app-icon/app-icon.component';
 import { ButtonComponent } from '../../../shared/components/buttons/button/button.component';
@@ -89,7 +89,7 @@ export class CustomToolDialogComponent implements OnInit, AfterViewInit {
     constructor(
         private dialogRef: DialogRef<any>,
         private cdr: ChangeDetectorRef,
-        private customToolsStorageService: CustomToolsStorageService,
+        private customToolsService: CustomToolsService,
         private toastService: ToastService,
         @Inject(DIALOG_DATA) public data: DialogData
     ) {
@@ -237,8 +237,8 @@ export class CustomToolDialogComponent implements OnInit, AfterViewInit {
                 description: toolDescription,
                 args_schema: argsSchemaObj,
             };
-            this.customToolsStorageService
-                .updateTool(String(this.selectedTool.id), updateTool)
+            this.customToolsService
+                .updatePythonCodeTool(String(this.selectedTool.id), updateTool)
                 .subscribe({
                     next: (result: GetPythonCodeToolRequest) => {
                         console.log('Tool updated successfully:', result);
@@ -256,7 +256,7 @@ export class CustomToolDialogComponent implements OnInit, AfterViewInit {
                 });
         } else {
             // Create scenario
-            this.customToolsStorageService.createTool(toolData).subscribe({
+            this.customToolsService.createPythonCodeTool(toolData).subscribe({
                 next: (result: GetPythonCodeToolRequest) => {
                     console.log('Tool created successfully in dialog:', result);
                     this.toastService.success(

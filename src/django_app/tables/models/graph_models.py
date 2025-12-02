@@ -108,7 +108,7 @@ class EndNode(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["graph"], name="unique_graph_end_node")
         ]
-
+    
     def clean(self):
         super().clean()
         if not self.output_map:
@@ -195,10 +195,11 @@ class StartNode(models.Model):
         ]
 
 
-class DecisionTableNode(BaseNode):
+class DecisionTableNode(models.Model):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="decision_table_node_list"
     )
+    node_name = models.CharField(max_length=255, blank=True)
     default_next_node = models.CharField(max_length=255, null=True, default=None)
     next_error_node = models.CharField(max_length=255, null=True, default=None)
 
@@ -312,5 +313,24 @@ class GraphOrganizationUser(BasePersistentEntity):
             models.UniqueConstraint(
                 fields=["graph", "user"],
                 name="unique_user_per_flow",
+            )
+        ]
+
+
+class WebhookTriggerNode(models.Model):
+    node_name = models.CharField(max_length=255, blank=False)
+    graph = models.ForeignKey("Graph", on_delete=models.CASCADE, related_name="webhook_trigger_node_list")
+    webhook_trigger = models.ForeignKey(
+        "WebhookTrigger",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="webhook_trigger_nodes",
+    )
+    python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["graph", "node_name"],
+                name="unique_graph_node_name_for_webhook_nodes",
             )
         ]

@@ -1,0 +1,7 @@
+tool-data:
+  name: "nl2sql-tool"
+  description: "Write your OpenAI API key and DB URI in the domain variables in the format {\"OPENAI_API_KEY\" = \"YOUR_SECRET_KEY\", \"DB_URI\" = \"YOUR_DB_URI\"}\n\nA tool that converts natural language into SQL queries and executes them on the provided database. "
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

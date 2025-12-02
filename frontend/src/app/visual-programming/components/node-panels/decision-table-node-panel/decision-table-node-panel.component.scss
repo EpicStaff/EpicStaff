@@ -1,0 +1,112 @@
+@use '../../../styles/node-panel-mixins.scss' as mixins;
+
+:host {
+    display: block;
+    height: 100%;
+}
+
+.panel-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+}
+
+.panel-content {
+    @include mixins.panel-content;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    padding: 0;
+}
+
+.form-container {
+    @include mixins.form-container;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    height: 100%;
+    overflow: hidden;
+}
+
+.form-header {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1.5rem;
+    flex-shrink: 0;
+    padding: 1.5rem 1.5rem 0 1.5rem;
+}
+
+.select-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+
+    label {
+        color: #ffffffb3;
+        font-size: 0.9rem;
+        font-weight: 400;
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+
+        .tooltip-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            color: rgba(255, 255, 255, 0.6);
+            background: rgba(255, 255, 255, 0.08);
+            font-size: 0.75rem;
+            cursor: help;
+            transition: background 0.2s ease, color 0.2s ease;
+
+            &:hover {
+                color: #fff;
+                background: rgba(104, 95, 255, 0.35);
+            }
+        }
+    }
+}
+
+.node-select {
+    background: #27272b;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    color: #ffffff;
+    padding: 0.6rem 1rem;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+    cursor: pointer;
+
+    &:hover {
+        border-color: rgba(255, 255, 255, 0.25);
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    &:focus {
+        outline: none;
+        border-color: #685fff;
+        box-shadow: 0 0 0 3px rgba(104, 95, 255, 0.2);
+        background: rgba(255, 255, 255, 0.12);
+    }
+
+    option {
+        background: #1a1a1a;
+        color: #ffffff;
+        padding: 0.5rem;
+    }
+}
+
+.grid-section {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+    padding: 0 1.5rem 1.5rem 1.5rem;
+}
+

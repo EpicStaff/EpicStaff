@@ -3,9 +3,9 @@
         <header class="header">
             <div class="header-titles">
                 <h1 class="title">
-                    Projects
+                    Templates
                     <span class="subtitle-inline"
-                        >A project is a workspace to organize your AI agents and
+                        >A template is a workspace to organize your AI agents and
                         tasks.</span
                     >
                 </h1>
@@ -17,7 +17,7 @@
                     [leftIcon]="'ui/plus'"
                     (click)="openCreateProjectDialog()"
                 >
-                    Create project
+                    Create template
                 </app-button>
             </div>
         </header>
@@ -47,7 +47,7 @@
                     <input
                         type="text"
                         class="search-input"
-                        placeholder="Search projects..."
+                        placeholder="Search templates..."
                         [(ngModel)]="searchTerm"
                         (ngModelChange)="onSearchTermChange($event)"
                     />

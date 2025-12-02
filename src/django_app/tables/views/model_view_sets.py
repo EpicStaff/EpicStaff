@@ -1,3 +1,4 @@
+from tables.models.webhook_models import WebhookTrigger
 from tables.models.knowledge_models import Chunk
 from django_filters import rest_framework as filters
 from tables.models.crew_models import (
@@ -25,8 +26,6 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from django.db import transaction
 from django.db.models import Prefetch
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
 from tables.models.graph_models import (
     Condition,
     ConditionGroup,
@@ -37,6 +36,7 @@ from tables.models.graph_models import (
     OrganizationUser,
     GraphOrganization,
     GraphOrganizationUser,
+    WebhookTriggerNode,
 )
 from tables.models.realtime_models import (
     RealtimeSessionItem,
@@ -48,7 +48,7 @@ from tables.models.tag_models import AgentTag, CrewTag, GraphTag
 from tables.models.vector_models import MemoryDatabase
 from tables.models.mcp_models import McpTool
 from utils.logger import logger
-from django.db.models import IntegerField
+from django.db.models import IntegerField, NOT_PROVIDED
 from django.db.models.functions import Cast
 from tables.serializers.model_serializers import (
     AgentReadSerializer,
@@ -73,6 +73,8 @@ from tables.serializers.model_serializers import (
     TaskConfiguredTools,
     TaskPythonCodeTools,
     McpToolSerializer,
+    WebhookTriggerNodeSerializer,
+    WebhookTriggerSerializer,
 )
 from tables.serializers.export_serializers import (
     AgentExportSerializer,
@@ -174,8 +176,10 @@ from tables.serializers.knowledge_serializers import (
     DocumentMetadataSerializer,
 )
 from tables.services.redis_service import RedisService
+from tables.services.copy_services import CrewCopyService, AgentCopyService
 from tables.utils.mixins import ImportExportMixin, DeepCopyMixin
 from tables.exceptions import BuiltInToolModificationError
+
 
 redis_service = RedisService()
 
@@ -280,7 +284,7 @@ class EmbeddingConfigReadWriteViewSet(ModelViewSet):
     filterset_class = EmbeddingConfigFilter
 
 
-class AgentViewSet(ModelViewSet, ImportExportMixin, DeepCopyMixin):
+class AgentViewSet(ModelViewSet, ImportExportMixin):
     queryset = Agent.objects.select_related("realtime_agent").prefetch_related(
         Prefetch(
             "python_code_tools",
@@ -320,10 +324,7 @@ class AgentViewSet(ModelViewSet, ImportExportMixin, DeepCopyMixin):
     export_prefix = "agent"
     filename_attr = "role"
     serializer_response_class = AgentReadSerializer
-
-    copy_serializer_class = AgentCopySerializer
-    copy_deserializer_class = AgentCopyDeserializer
-    copy_serializer_response_class = AgentReadSerializer
+    anget_copy_service = AgentCopyService()
 
     def get_serializer_class(self):
         if self.action in ["list", "retrieve"]:
@@ -376,8 +377,24 @@ class AgentViewSet(ModelViewSet, ImportExportMixin, DeepCopyMixin):
         )
         return Response(read_serializer.data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=["post"], url_path="copy")
+    def copy(self, request, pk: int):
+        """Create a copy of an agent."""
+        agent = self.get_object()
 
-class CrewReadWriteViewSet(ModelViewSet, ImportExportMixin, DeepCopyMixin):
+        try:
+            with transaction.atomic():
+                created_agent = self.agent_copy_service.copy(agent)
+                serializer = self.get_serializer(created_agent)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response(
+                {"error": "Failed to copy agent", "detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class CrewReadWriteViewSet(ModelViewSet, ImportExportMixin):
     queryset = Crew.objects.prefetch_related("task_set", "agents", "tags")
     serializer_class = CrewSerializer
     filter_backends = [DjangoFilterBackend]
@@ -392,6 +409,7 @@ class CrewReadWriteViewSet(ModelViewSet, ImportExportMixin, DeepCopyMixin):
         "full_output",
         "planning",
         "planning_llm_config",
+        "is_template",
     ]
 
     entity_type = EntityType.CREW.value
@@ -399,9 +417,7 @@ class CrewReadWriteViewSet(ModelViewSet, ImportExportMixin, DeepCopyMixin):
     filename_attr = "name"
     serializer_response_class = CrewSerializer
 
-    copy_serializer_class = CrewCopySerializer
-    copy_deserializer_class = CrewCopyDeserializer
-    copy_serializer_response_class = CrewSerializer
+    crew_copy_service = CrewCopyService()
 
     def get_serializer_class(self):
         if self.action == "export":
@@ -409,6 +425,40 @@ class CrewReadWriteViewSet(ModelViewSet, ImportExportMixin, DeepCopyMixin):
         if self.action == "import_entity":
             return CrewImportSerializer
         return super().get_serializer_class()
+
+    @action(detail=True, methods=["post"], url_path="copy")
+    def copy(self, request, pk=None):
+        """Create a copy of a crew along with its tasks and contexts."""
+        crew = self.get_object()
+
+        try:
+            with transaction.atomic():
+                created_crew = self.crew_copy_service.copy(crew)
+                serializer = self.get_serializer(created_crew)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response(
+                {"error": "Failed to copy crew", "detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=True, methods=["post"], url_path="save_as_project")
+    def save_as_project(self, request, pk=None):
+        """
+        Custom action to save a template as a project.
+        """
+        crew = self.get_object()
+        if not crew.is_template:
+            return Response(
+                "Project is not a template", status=status.HTTP_400_BAD_REQUEST
+            )
+
+        created_project = self.crew_copy_service.copy(crew)
+        created_project.is_template = False
+        created_project.save()
+
+        serializer = self.get_serializer(created_project)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class TaskReadWriteViewSet(ModelViewSet):
@@ -583,6 +633,10 @@ class GraphViewSet(viewsets.ModelViewSet, ImportExportMixin, DeepCopyMixin):
                     queryset=LLMNode.objects.select_related("llm_config"),
                 ),
                 Prefetch(
+                    "webhook_trigger_node_list",
+                    queryset=WebhookTriggerNode.objects.all(),
+                ),
+                Prefetch(
                     "decision_table_node_list", queryset=DecisionTableNode.objects.all()
                 ),
                 Prefetch("subgraph_node_list", queryset=SubGraphNode.objects.all()),
@@ -676,7 +730,7 @@ class SourceCollectionViewSet(viewsets.ModelViewSet):
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             collection = serializer.save()
-
+        redis_service.publish_source_collection(collection_id=collection.pk)
         return Response(
             SourceCollectionReadSerializer(collection).data,
             status=status.HTTP_201_CREATED,
@@ -911,61 +965,90 @@ class DecisionTableNodeModelViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        # Extract nested data
-        condition_groups_data = request.data.pop("condition_groups", [])
-
-        # Create the DecisionTableNode
-        node_serializer = self.get_serializer(data=request.data)
-        node_serializer.is_valid(raise_exception=True)
-        node = node_serializer.save()
-
-        # Create each ConditionGroup
-        for group_data in condition_groups_data:
-            conditions_data = group_data.pop("conditions", [])
-            group_data["decision_table_node"] = node.id
-            group_serializer = ConditionGroupSerializer(data=group_data)
-            group_serializer.is_valid(raise_exception=True)
-            group = group_serializer.save()
-
-            # Create each Condition
-            for condition_data in conditions_data:
-                condition_data["condition_group"] = group.id
-                condition_serializer = ConditionSerializer(data=condition_data)
-                condition_serializer.is_valid(raise_exception=True)
-                condition_serializer.save()
-
+        """
+        Create a DecisionTableNode along with nested ConditionGroups and Conditions.
+        """
+        node, _ = self._create_or_update_node(data=request.data)
         return Response(self.get_serializer(node).data, status=status.HTTP_201_CREATED)
 
     @transaction.atomic
     def update(self, request, *args, **kwargs):
+        """
+        Update a DecisionTableNode along with nested ConditionGroups and Conditions.
+        Supports partial updates (PATCH).
+        """
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
-        condition_groups_data = request.data.pop("condition_groups", [])
+        node, _ = self._create_or_update_node(
+            data=request.data, instance=instance, partial=partial
+        )
+        return Response(self.get_serializer(node).data, status=status.HTTP_200_OK)
 
-        # Update the DecisionTableNode instance
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        node = serializer.save()
+    def _create_or_update_node(self, data, instance=None, partial=False):
+        """
+        Create or update a DecisionTableNode with nested groups.
+        """
+        data = data.copy()
+        condition_groups_data = data.pop("condition_groups", None)
 
-        # Delete existing condition groups and conditions
+        # Serialize and save the main DecisionTableNode
+        node_serializer = self.get_serializer(instance, data=data, partial=partial)
+        node_serializer.is_valid(raise_exception=True)
+        node = node_serializer.save()
+
+        # If PATCH and no condition_groups provided, skip nested updates
+        if partial and condition_groups_data is None:
+            return node, None
+
+        # Delete existing groups and conditions (for update)
+        if instance:
+            self._delete_existing_groups(node)
+
+        # Create new groups and conditions
+        if condition_groups_data:
+            self._create_condition_groups(node, condition_groups_data)
+
+        return node, condition_groups_data
+
+    def _delete_existing_groups(self, node: DecisionTableNode):
+        """
+        Delete all ConditionGroups and related Conditions for a given DecisionTableNode.
+        """
         Condition.objects.filter(condition_group__decision_table_node=node).delete()
         ConditionGroup.objects.filter(decision_table_node=node).delete()
 
-        # Recreate condition groups and conditions
-        for group_data in condition_groups_data:
-            conditions_data = group_data.pop("conditions", [])
-            group_data["decision_table_node"] = node.id
-            group_serializer = ConditionGroupSerializer(data=group_data)
-            group_serializer.is_valid(raise_exception=True)
-            group = group_serializer.save()
+    def _create_condition_groups(
+        self, node: DecisionTableNode, groups_data: list[dict]
+    ):
+        """
+        Create ConditionGroups and nested Conditions for a DecisionTableNode.
+        Uses bulk_create for efficiency.
+        """
+        groups_to_create = []
+        conditions_to_create = []
 
-            for condition_data in conditions_data:
-                condition_data["condition_group"] = group.id
-                condition_serializer = ConditionSerializer(data=condition_data)
-                condition_serializer.is_valid(raise_exception=True)
-                condition_serializer.save()
+        # Prepare group objects
+        for group_data in groups_data:
+            copy_grop_data = group_data.copy()
+            copy_grop_data.pop("conditions")
+            groups_to_create.append(
+                ConditionGroup(decision_table_node=node, **copy_grop_data)
+            )
+            # Conditions will be mapped after saving groups
 
-        return Response(self.get_serializer(node).data)
+        # Save groups in bulk
+        created_groups = ConditionGroup.objects.bulk_create(groups_to_create)
+
+        # Map and prepare condition objects
+        for group, group_data in zip(created_groups, groups_data):
+            for cond_data in group_data.get("conditions", []):
+                conditions_to_create.append(
+                    Condition(condition_group=group, **cond_data)
+                )
+
+        # Save conditions in bulk
+        if conditions_to_create:
+            Condition.objects.bulk_create(conditions_to_create)
 
 
 class McpToolViewSet(viewsets.ModelViewSet):
@@ -973,6 +1056,18 @@ class McpToolViewSet(viewsets.ModelViewSet):
     serializer_class = McpToolSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["name", "tool_name"]
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        data = request.data.copy()
+        for field in self.serializer_class.Meta.model._meta.get_fields():
+            if field.concrete and field.name not in data:
+                default = getattr(field, "default", None)
+                data[field.name] = default if default != NOT_PROVIDED else None
+        serializer = self.get_serializer(instance, data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
 
 
 class ChunkViewSet(ReadOnlyModelViewSet):
@@ -1004,3 +1099,16 @@ class GraphOrganizationUserViewSet(viewsets.ReadOnlyModelViewSet):
 
     queryset = GraphOrganizationUser.objects.all()
     serializer_class = GraphOrganizationUserSerializer
+
+
+class WebhookTriggerNodeViewSet(viewsets.ModelViewSet):
+    queryset = WebhookTriggerNode.objects.all()
+    serializer_class = WebhookTriggerNodeSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["graph", "node_name", "webhook_trigger__path"]
+
+
+class WebhookTriggerViewSet(viewsets.ModelViewSet):
+    queryset = WebhookTrigger.objects.all()
+    serializer_class = WebhookTriggerSerializer
+    filter_backends = [DjangoFilterBackend]

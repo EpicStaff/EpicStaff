@@ -1,0 +1,5 @@
+langchain_openai
+langchain_community
+langchain
+psycopg2-binary
+pymysql

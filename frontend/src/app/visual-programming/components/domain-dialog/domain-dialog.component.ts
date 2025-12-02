@@ -1,4 +1,4 @@
-import { Component, Inject } from '@angular/core';
+import { Component, Inject, ViewEncapsulation } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { JsonEditorComponent } from '../../../shared/components/json-editor/json-editor.component';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
@@ -11,6 +11,7 @@ export interface DomainDialogData {
     standalone: true,
     selector: 'app-domain-dialog',
     imports: [CommonModule, JsonEditorComponent],
+    encapsulation: ViewEncapsulation.None,
     template: `
         <div class="dialog-container">
             <div class="dialog-header">
@@ -61,6 +62,10 @@ export interface DomainDialogData {
                 background: var(--color-surface-card, #232323);
                 border-radius: 8px;
                 overflow: hidden;
+            }
+
+            .domain-dialog-panel {
+                z-index: 9600 !important;
             }
 
             .dialog-header {

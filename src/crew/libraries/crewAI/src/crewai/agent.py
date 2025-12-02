@@ -10,6 +10,7 @@ from crewai.agents.crew_agent_executor import (
     CrewAgentExecutor,
     KNOWLEDGE_KEYWORD,
     END_OF_KNOWLEDGE_KEYWORD,
+    EMPTY_KNOWLEDGE_KEYWORD,
 )
 from crewai.llm import LLM
 from crewai.memory.contextual.contextual_memory import ContextualMemory
@@ -289,6 +290,9 @@ class Agent(BaseAgent):
         if agent_knowledge_snippet or crew_knowledge_snippet:
             task_prompt += f"\n{END_OF_KNOWLEDGE_KEYWORD}"
 
+        if not agent_knowledge_snippet and not crew_knowledge_snippet:
+            task_prompt += f"\n{EMPTY_KNOWLEDGE_KEYWORD}\n"
+
         tools = tools or self.tools or []
         self.create_agent_executor(tools=tools, task=task)
 
@@ -474,9 +478,9 @@ class Agent(BaseAgent):
             )
             previous_context_guidelines = dedent(
                 """
-                - Compare **previous task context** with the current task:
-                    * If it extends, refines, or adds relevant details — integrate those enhancements.
-                    * If it is unrelated or redundant — ignore it completely.
+                - **Previous task context (if provided)** → Use this only as a **secondary enhancer**:  
+                    * Integrate details that logically extend, refine, or clarify the current task.  
+                    * Ignore any unrelated or redundant parts completely.
             """
             )
         else:

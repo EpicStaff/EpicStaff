@@ -20,6 +20,8 @@ import {
 import { PythonCodeToolService } from '../../../user-settings-page/tools/custom-tool-editor/services/pythonCodeToolService.service';
 import { GetPythonCodeToolRequest } from '../../../features/tools/models/python-code-tool.model';
 import { GetToolConfigRequest } from '../../../features/tools/models/tool_config.model';
+import { McpToolsService } from '../../../features/tools/services/mcp-tools/mcp-tools.service';
+import { GetMcpToolRequest } from '../../../features/tools/models/mcp-tool.model';
 import { IconButtonComponent } from '../buttons/icon-button/icon-button.component';
 import { AppIconComponent } from '../app-icon/app-icon.component';
 
@@ -92,16 +94,22 @@ import { AppIconComponent } from '../app-icon/app-icon.component';
                     </div>
                     <div class="tools-tabs">
                         <button
-                            [class.active]="!showPythonTools"
-                            (click)="toggleToolType(false)"
+                            [class.active]="currentToolType === 'builtin'"
+                            (click)="toggleToolType('builtin')"
                         >
                             Built-in Tools
                         </button>
                         <button
-                            [class.active]="showPythonTools"
-                            (click)="toggleToolType(true)"
+                            [class.active]="currentToolType === 'python'"
+                            (click)="toggleToolType('python')"
                         >
                             Custom Tools
+                        </button>
+                        <button
+                            [class.active]="currentToolType === 'mcp'"
+                            (click)="toggleToolType('mcp')"
+                        >
+                            MCP Tools
                         </button>
                     </div>
                 </div>
@@ -120,7 +128,7 @@ import { AppIconComponent } from '../app-icon/app-icon.component';
 
                     <!-- Built-in Tools List -->
                     <div
-                        *ngIf="!isLoadingTools && !showPythonTools"
+                        *ngIf="!isLoadingTools && currentToolType === 'builtin'"
                         class="tools-list"
                     >
                         <!-- Empty State -->
@@ -238,7 +246,7 @@ import { AppIconComponent } from '../app-icon/app-icon.component';
 
                     <!-- Python Tools List -->
                     <div
-                        *ngIf="!isLoadingTools && showPythonTools"
+                        *ngIf="!isLoadingTools && currentToolType === 'python'"
                         class="tools-list"
                     >
                         <!-- Empty State -->
@@ -276,6 +284,49 @@ import { AppIconComponent } from '../app-icon/app-icon.component';
                                     (click)="
                                         $event.stopPropagation();
                                         togglePythonTool(tool)
+                                    "
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MCP Tools List -->
+                    <div
+                        *ngIf="!isLoadingTools && currentToolType === 'mcp'"
+                        class="tools-list"
+                    >
+                        <!-- Empty State -->
+                        <div
+                            *ngIf="filteredMcpTools.length === 0"
+                            class="empty-state"
+                        >
+                            No MCP tools found
+                        </div>
+
+                        <!-- Tools List -->
+                        <div
+                            *ngFor="let tool of filteredMcpTools"
+                            class="tool-item"
+                            [class.selected]="
+                                selectedMcpToolIds.has(tool.id)
+                            "
+                            (click)="toggleMcpTool(tool)"
+                        >
+                            <div class="tool-info">
+                                <div class="tool-name">{{ tool.name }}</div>
+                                <div class="tool-description">
+                                    {{ tool.tool_name }} - {{ tool.transport }}
+                                </div>
+                            </div>
+                            <div class="tool-checkbox">
+                                <input
+                                    type="checkbox"
+                                    [checked]="
+                                        selectedMcpToolIds.has(tool.id)
+                                    "
+                                    (click)="
+                                        $event.stopPropagation();
+                                        toggleMcpTool(tool)
                                     "
                                 />
                             </div>
@@ -701,20 +752,24 @@ import { AppIconComponent } from '../app-icon/app-icon.component';
 export class ToolsSelectorComponent implements OnInit, OnDestroy {
     @Input() selectedConfiguredTools: number[] = [];
     @Input() selectedPythonCodeTools: number[] = [];
+    @Input() selectedMcpTools: number[] = [];
 
     @Output() configuredToolsChange = new EventEmitter<number[]>();
     @Output() pythonCodeToolsChange = new EventEmitter<number[]>();
+    @Output() mcpToolsChange = new EventEmitter<number[]>();
 
     public builtinTools: FullToolConfig[] = [];
     public pythonTools: GetPythonCodeToolRequest[] = [];
+    public mcpTools: GetMcpToolRequest[] = [];
     public isLoadingTools = false;
     public showToolsDialog = false;
     public toolsSearchTerm = '';
-    public showPythonTools = false;
+    public currentToolType: 'builtin' | 'python' | 'mcp' = 'builtin';
 
     // Selection tracking
     public selectedToolConfigIds = new Set<number>();
     public selectedPythonToolIds = new Set<number>();
+    public selectedMcpToolIds = new Set<number>();
     public expandedTools = new Set<number>();
 
     private readonly destroy$ = new Subject<void>();
@@ -722,6 +777,7 @@ export class ToolsSelectorComponent implements OnInit, OnDestroy {
     constructor(
         private fullToolConfigService: FullToolConfigService,
         private pythonCodeToolService: PythonCodeToolService,
+        private mcpToolsService: McpToolsService,
         private cdr: ChangeDetectorRef
     ) {}
 
@@ -746,6 +802,15 @@ export class ToolsSelectorComponent implements OnInit, OnDestroy {
                 this.selectedPythonCodeTools
             );
         }
+
+        if (
+            this.selectedMcpTools &&
+            this.selectedMcpTools.length > 0
+        ) {
+            this.selectedMcpToolIds = new Set<number>(
+                this.selectedMcpTools
+            );
+        }
     }
 
     private loadTools(): void {
@@ -754,12 +819,14 @@ export class ToolsSelectorComponent implements OnInit, OnDestroy {
         forkJoin({
             builtinTools: this.fullToolConfigService.getFullToolConfigs(),
             pythonTools: this.pythonCodeToolService.getPythonCodeTools(),
+            mcpTools: this.mcpToolsService.getMcpTools(),
         })
             .pipe(takeUntil(this.destroy$))
             .subscribe({
-                next: ({ builtinTools, pythonTools }) => {
+                next: ({ builtinTools, pythonTools, mcpTools }) => {
                     this.builtinTools = builtinTools;
                     this.pythonTools = pythonTools;
+                    this.mcpTools = mcpTools;
                     this.isLoadingTools = false;
                     this.cdr.markForCheck();
 
@@ -800,8 +867,8 @@ export class ToolsSelectorComponent implements OnInit, OnDestroy {
         this.cdr.markForCheck();
     }
 
-    public toggleToolType(isPython: boolean): void {
-        this.showPythonTools = isPython;
+    public toggleToolType(toolType: 'builtin' | 'python' | 'mcp'): void {
+        this.currentToolType = toolType;
         this.cdr.markForCheck();
     }
 
@@ -850,9 +917,19 @@ export class ToolsSelectorComponent implements OnInit, OnDestroy {
         this.cdr.markForCheck();
     }
 
+    public toggleMcpTool(tool: GetMcpToolRequest): void {
+        if (this.selectedMcpToolIds.has(tool.id)) {
+            this.selectedMcpToolIds.delete(tool.id);
+        } else {
+            this.selectedMcpToolIds.add(tool.id);
+        }
+        this.cdr.markForCheck();
+    }
+
     public saveToolSelection(): void {
         this.configuredToolsChange.emit(Array.from(this.selectedToolConfigIds));
         this.pythonCodeToolsChange.emit(Array.from(this.selectedPythonToolIds));
+        this.mcpToolsChange.emit(Array.from(this.selectedMcpToolIds));
         this.closeToolsDialog();
     }
 
@@ -881,9 +958,23 @@ export class ToolsSelectorComponent implements OnInit, OnDestroy {
         );
     }
 
+    public get filteredMcpTools(): GetMcpToolRequest[] {
+        if (!this.toolsSearchTerm) return this.mcpTools;
+
+        const search = this.toolsSearchTerm.toLowerCase();
+        return this.mcpTools.filter(
+            (tool) =>
+                tool.name.toLowerCase().includes(search) ||
+                tool.tool_name.toLowerCase().includes(search) ||
+                tool.transport.toLowerCase().includes(search)
+        );
+    }
+
     public get totalSelectedTools(): number {
         return (
-            this.selectedToolConfigIds.size + this.selectedPythonToolIds.size
+            this.selectedToolConfigIds.size + 
+            this.selectedPythonToolIds.size + 
+            this.selectedMcpToolIds.size
         );
     }
 

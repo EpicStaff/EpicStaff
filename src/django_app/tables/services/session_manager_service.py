@@ -8,6 +8,7 @@ from tables.models.graph_models import (
     LLMNode,
     StartNode,
     SubGraphNode,
+    WebhookTriggerNode,
 )
 
 from utils.singleton_meta import SingletonMeta
@@ -71,6 +72,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         graph_id: int,
         variables: dict | None = None,
         username: str | None = None,
+        entrypoint: str | None = None,
     ) -> Session:
 
         start_node = StartNode.objects.filter(graph_id=graph_id).first()
@@ -91,6 +93,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             variables=variables,
             time_to_live=time_to_live,
             graph_user=graph_user,
+            entrypoint=entrypoint,
         )
         return session
 
@@ -115,14 +118,16 @@ class SessionManagerService(metaclass=SingletonMeta):
         graph_id: int,
         variables: dict | None = None,
         username: str | None = None,
+        entrypoint: str | None = None,
     ) -> int:
+
         logger.info(f"'run_session' got variables: {variables}")
 
         # Choose to use variables from previous flow or left 'variables' param None
         variables = self.choose_variables(graph_id, variables)
 
         session: Session = self.create_session(
-            graph_id=graph_id, variables=variables, username=username
+            graph_id=graph_id, variables=variables, username=username, entrypoint=entrypoint,
         )
         session_data: SessionData = self.create_session_data(session=session)
 

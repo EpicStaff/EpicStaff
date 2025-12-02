@@ -52,6 +52,21 @@ import { take, fromEvent, filter } from 'rxjs';
                 justify-content: center;
                 outline: none;
                 position: relative;
+                color: rgba(255, 255, 255, 0.8);
+                transition: color 0.2s ease;
+                width: 20px;
+                height: 20px;
+                border-radius: 50%;
+                background: rgba(255, 255, 255, 0.1);
+
+                &:hover {
+                    color: rgba(255, 255, 255, 1);
+                    background: rgba(255, 255, 255, 0.2);
+                }
+            }
+
+            :host ::ng-deep .tooltip-overlay-panel {
+                z-index: 9999 !important;
             }
         `,
     ],
@@ -73,6 +88,10 @@ export class HelpTooltipComponent implements OnDestroy {
             return;
         }
 
+        if (!this.text) {
+            return;
+        }
+
         // Create overlay for the tooltip
         this.overlayRef = this.overlay.create({
             hasBackdrop: false,
@@ -81,6 +100,7 @@ export class HelpTooltipComponent implements OnDestroy {
                 .position()
                 .flexibleConnectedTo(this.tooltipTrigger)
                 .withPositions([this.getPositionStrategy()]),
+            panelClass: 'tooltip-overlay-panel',
         });
 
         // Create portal from tooltip content component
