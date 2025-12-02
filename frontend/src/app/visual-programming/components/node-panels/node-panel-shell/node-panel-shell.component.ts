@@ -94,6 +94,8 @@ export class NodePanelShellComponent {
     public readonly panelComponent = computed(() => {
         const node = this.node();
         if (!node) return null;
+        console.log("PANEL_COMPONENT_MAP[node.type]", PANEL_COMPONENT_MAP[node.type]);
+
         return PANEL_COMPONENT_MAP[node.type] || null;
     });
 

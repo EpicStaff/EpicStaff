@@ -188,6 +188,10 @@ CACHES = {
     }
 }
 
+MEDIA_ROOT = os.environ.get("DJANGO_MEDIA_ROOT", os.path.join(BASE_DIR, "media"))
+MEDIA_URL = "/media/"
+
+MAX_TOTAL_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 KNOWLEDGE_DOCUMENT_CHUNK_CHANNEL = os.getenv(
     "KNOWLEDGE_DOCUMENT_CHUNK_CHANNEL", "knowledge:chunk"

@@ -2,10 +2,11 @@ import asyncio
 import json
 import os
 from pathlib import Path
-from loguru import logger
 from models import CodeTaskData
 from services.redis_service import RedisService
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain
+from utils.logger import logger
+
 
 redis_host = os.environ.get("REDIS_HOST", "127.0.0.1")
 redis_port = int(os.environ.get("REDIS_PORT", "6379"))

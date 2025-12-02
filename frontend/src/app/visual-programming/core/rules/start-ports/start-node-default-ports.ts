@@ -15,6 +15,7 @@ export const DEFAULT_START_NODE_PORTS: BasePort[] = [
             'file-extractor-in',
             'end-in',
             'subgraph-in',
+            'audio-to-text-in',
         ],
         position: 'right',
         color: '#d3d3d3',

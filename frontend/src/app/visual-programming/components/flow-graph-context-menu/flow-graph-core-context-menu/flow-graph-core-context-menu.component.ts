@@ -110,6 +110,12 @@ export class FlowGraphCoreContextMenuComponent {
             color: NODE_COLORS[NodeType.FILE_EXTRACTOR],
         },
         {
+            label: 'Audio to text',
+            type: NodeType.AUDIO_TO_TEXT,
+            icon: NODE_ICONS[NodeType.AUDIO_TO_TEXT],
+            color: NODE_COLORS[NodeType.AUDIO_TO_TEXT],
+        },
+        {
             label: 'End',
             type: NodeType.END,
             icon: NODE_ICONS[NodeType.END],
@@ -210,8 +216,9 @@ export class FlowGraphCoreContextMenuComponent {
             };
         } else if (type === NodeType.FILE_EXTRACTOR) {
             data = null; // File extractor data is unknown as specified
-        }
-        else if (type === NodeType.WEBHOOK_TRIGGER) {
+        } else if (type === NodeType.AUDIO_TO_TEXT) {
+            data = null; // audio to text data is unknown as specified
+        } else if (type === NodeType.WEBHOOK_TRIGGER) {
             data = {
                 webhook_trigger: 0,
                 python_code: {

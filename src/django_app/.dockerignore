@@ -5,3 +5,4 @@ ENV
 */.django_venv
 staticfiles/
 *_stand/
+media/

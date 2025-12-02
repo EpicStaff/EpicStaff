@@ -1,9 +1,9 @@
 import { BasePort } from '../../models/port.model';
 
-export const DEFAULT_FILE_EXTRACTOR_NODE_PORTS: BasePort[] = [
+export const DEFAULT_AUDIO_TO_TEXT_NODE_PORTS: BasePort[] = [
     {
         port_type: 'input',
-        role: 'file-extractor-in',
+        role: 'audio-to-text-in',
         multiple: true,
         label: 'In',
         allowedConnections: [
@@ -14,17 +14,15 @@ export const DEFAULT_FILE_EXTRACTOR_NODE_PORTS: BasePort[] = [
             'table-out',
             'llm-out-right',
             'file-extractor-out',
-            'subgraph-out',
             'audio-to-text-out',
-            'webhook-trigger-out',
         ],
         position: 'left',
-        color: '#2196F3',
+        color: '#ff7be9ff',
     },
 
     {
         port_type: 'output',
-        role: 'file-extractor-out',
+        role: 'audio-to-text-out',
         multiple: false,
         label: 'Out',
         allowedConnections: [
@@ -34,12 +32,10 @@ export const DEFAULT_FILE_EXTRACTOR_NODE_PORTS: BasePort[] = [
             'table-in',
             'llm-out-left',
             'file-extractor-in',
-            'webhook-trigger-in',
             'end-in',
-            'subgraph-in',
             'audio-to-text-in',
         ],
         position: 'right',
-        color: '#2196F3',
+        color: '#ff7be9ff',
     },
 ];

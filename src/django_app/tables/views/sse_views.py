@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import copy
 
 from loguru import logger
 from rest_framework.views import APIView
@@ -167,6 +168,9 @@ class RunSessionSSEView(SSEMixin):
         session_id = self.kwargs["session_id"]
         async for message in self._generate_initial_graph_session_messages(session_id):
             self.__log(event="messages", state="initial", data=message["uuid"])
+            message["message_data"] = self._trim_base64_file_data(
+                message["message_data"]
+            )
             yield {"event": "messages", "data": message}
 
         # Session Statuses
@@ -241,3 +245,26 @@ class RunSessionSSEView(SSEMixin):
         """
         logger.info("Started run session SSE")
         return await super().get(request, *args, **kwargs)
+
+    def _trim_base64_file_data(self, message_data: dict) -> dict:
+        """Trim base64 file data in message content to reduce payload size."""
+        trimmed_data = copy.deepcopy(message_data)
+
+        def trim_data_fields(obj):
+            """Recursively traverse and trim 'base64_data' fields."""
+            if isinstance(obj, dict):
+                for key, value in obj.items():
+                    if (
+                        key == "base64_data"
+                        and isinstance(value, str)
+                        and len(value) > 50
+                    ):
+                        obj[key] = value[:50]
+                    else:
+                        trim_data_fields(value)
+            elif isinstance(obj, list):
+                for item in obj:
+                    trim_data_fields(item)
+
+        trim_data_fields(trimmed_data)
+        return trimmed_data

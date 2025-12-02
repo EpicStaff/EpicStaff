@@ -24,6 +24,7 @@ from django_filters.rest_framework import (
 from rest_framework import viewsets, mixins, status, filters as drf_filters
 from rest_framework.response import Response
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser, FormParser
 from django.db import transaction
 from django.db.models import Prefetch
 from tables.models.graph_models import (
@@ -73,6 +74,7 @@ from tables.serializers.model_serializers import (
     TaskConfiguredTools,
     TaskPythonCodeTools,
     McpToolSerializer,
+    GraphFileReadSerializer,
     WebhookTriggerNodeSerializer,
     WebhookTriggerSerializer,
 )
@@ -94,6 +96,10 @@ from tables.serializers.copy_serializers import (
     CrewCopyDeserializer,
     GraphCopySerializer,
     GraphCopyDeserializer,
+)
+from tables.serializers.serializers import (
+    UploadGraphFileSerializer,
+    GraphFileUpdateSerializer,
 )
 
 
@@ -120,10 +126,12 @@ from tables.models import (
     PythonNode,
     FileExtractorNode,
     SubGraphNode,
+    AudioTranscriptionNode,
     RealtimeModel,
     StartNode,
     ToolConfigField,
     TaskContext,
+    GraphFile,
 )
 
 from tables.models import (
@@ -148,6 +156,7 @@ from tables.serializers.model_serializers import (
     PythonCodeToolSerializer,
     PythonNodeSerializer,
     FileExtractorNodeSerializer,
+    AudioTranscriptionNodeSerializer,
     TaskSessionMessageSerializer,
     TemplateAgentSerializer,
     LLMConfigSerializer,
@@ -623,6 +632,10 @@ class GraphViewSet(viewsets.ModelViewSet, ImportExportMixin, DeepCopyMixin):
                 Prefetch(
                     "file_extractor_node_list", queryset=FileExtractorNode.objects.all()
                 ),
+                Prefetch(
+                    "audio_transcription_node_list",
+                    queryset=AudioTranscriptionNode.objects.all(),
+                ),
                 Prefetch("edge_list", queryset=Edge.objects.all()),
                 Prefetch(
                     "conditional_edge_list",
@@ -652,6 +665,15 @@ class GraphViewSet(viewsets.ModelViewSet, ImportExportMixin, DeepCopyMixin):
             return GraphImportSerializer
         return super().get_serializer_class()
 
+    @action(detail=True, methods=["get"], url_path="files")
+    def get_files(self, request, pk=None):
+        graph = self.get_object()
+        files = graph.uploaded_files.all()
+        serializer = GraphFileReadSerializer(
+            instance=files, many=True, context={"request": request}
+        )
+        return Response(serializer.data)
+
 
 class GraphLightViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = GraphLightSerializer
@@ -676,6 +698,11 @@ class PythonNodeViewSet(viewsets.ModelViewSet):
 class FileExtractorNodeViewSet(viewsets.ModelViewSet):
     queryset = FileExtractorNode.objects.all()
     serializer_class = FileExtractorNodeSerializer
+
+
+class AudioTranscriptionNodeViewSet(viewsets.ModelViewSet):
+    queryset = AudioTranscriptionNode.objects.all()
+    serializer_class = AudioTranscriptionNodeSerializer
 
 
 class LLMNodeViewSet(viewsets.ModelViewSet):
@@ -1068,6 +1095,68 @@ class McpToolViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(serializer.data)
+
+
+class GraphFileViewSet(ModelViewSet):
+    queryset = GraphFile.objects.all()
+    parser_classes = [MultiPartParser, FormParser]
+    http_method_names = ["get", "post", "put", "delete", "head", "options"]
+
+    def get_serializer_class(self):
+        if self.action in ["list", "retrieve"]:
+            return GraphFileReadSerializer
+        if self.action in ["update"]:
+            return GraphFileUpdateSerializer
+        return UploadGraphFileSerializer
+
+    def create(self, request, *args, **kwargs):
+        graph = request.data.get("graph")
+        if not graph:
+            return Response(
+                {"message": "Graph is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        files = {k: v for k, v in request.FILES.items()}
+        if not files:
+            return Response(
+                {"files": "This field is required."}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if isinstance(graph, list):
+            graph = graph[0]
+
+        data = {"graph": graph, "files": files}
+        serializer_class = self.get_serializer_class()
+        serializer = serializer_class(data=data)
+        serializer.is_valid(raise_exception=True)
+        instances = serializer.save()
+
+        serializer = GraphFileReadSerializer(
+            instance=instances, many=True, context={"request": request}
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        data = {}
+        for key, file in request.FILES.items():
+            data["domain_key"] = key
+            data["file"] = file
+
+        if not data:
+            return Response(
+                {"file": "This field is required."}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        instance = self.get_object()
+
+        serializer_class = self.get_serializer_class()
+        serializer = serializer_class(
+            instance=instance, data=data, context={"graph": instance.graph}
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response({"detail": "File updated successfully."})
 
 
 class ChunkViewSet(ReadOnlyModelViewSet):

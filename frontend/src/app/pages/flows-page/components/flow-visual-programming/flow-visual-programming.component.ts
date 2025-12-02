@@ -167,7 +167,7 @@ export class FlowVisualProgrammingComponent
             switchMap(() => {
                 const flowState: FlowModel = this.flowService.getFlowState();
                 console.log(
-                    'floew state that i got from service on saveflow',
+                    'flow state that i got from service on saveflow',
                     flowState
                 );
 

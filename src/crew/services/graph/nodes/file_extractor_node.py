@@ -131,7 +131,7 @@ def extract_content(file_name: str, file_data_base64: str) -> str:
 def get_files_content(**files):
     content = dict()
     for key, file_ in files.items():
-        content[key] = extract_content(file_.name, file_.data)
+        content[key] = extract_content(file_.name, file_.base64_data)
     return content
 
 

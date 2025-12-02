@@ -94,6 +94,11 @@ export interface FileExtractorNodeModel extends BaseNodeModel {
     data: unknown;
 }
 
+export interface AudioToTextNodeModel extends BaseNodeModel {
+    type: NodeType.AUDIO_TO_TEXT;
+    data: unknown;
+}
+
 export interface WebhookTriggerNodeModel extends BaseNodeModel {
     type: NodeType.WEBHOOK_TRIGGER;
     data: {
@@ -130,6 +135,7 @@ export type NodeModel =
     | DecisionTableNodeModel
     | NoteNodeModel
     | FileExtractorNodeModel
+    | AudioToTextNodeModel
     | WebhookTriggerNodeModel
     | EndNodeModel
     | SubGraphNodeModel;

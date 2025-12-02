@@ -8,9 +8,9 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from loguru import logger
 from models import CodeResultData
 from services.redis_service import RedisService
+from utils.logger import logger
 
 
 class Handler(ABC):

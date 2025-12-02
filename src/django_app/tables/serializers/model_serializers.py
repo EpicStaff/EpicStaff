@@ -31,6 +31,8 @@ from tables.models import (
     PythonNode,
     FileExtractorNode,
     SubGraphNode,
+    AudioTranscriptionNode,
+    GraphFile,
 )
 from rest_framework import serializers
 from tables.exceptions import BuiltInToolModificationError, ToolConfigSerializerError
@@ -974,6 +976,12 @@ class FileExtractorNodeSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
+class AudioTranscriptionNodeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AudioTranscriptionNode
+        fields = "__all__"
+
+
 class LLMNodeSerializer(serializers.ModelSerializer):
     class Meta:
         model = LLMNode
@@ -1268,6 +1276,9 @@ class GraphSerializer(serializers.ModelSerializer):
     crew_node_list = CrewNodeSerializer(many=True, read_only=True)
     python_node_list = PythonNodeSerializer(many=True, read_only=True)
     file_extractor_node_list = FileExtractorNodeSerializer(many=True, read_only=True)
+    audio_transcription_node_list = AudioTranscriptionNodeSerializer(
+        many=True, read_only=True
+    )
     edge_list = EdgeSerializer(many=True, read_only=True)
     conditional_edge_list = ConditionalEdgeSerializer(many=True, read_only=True)
     llm_node_list = LLMNodeSerializer(many=True, read_only=True)
@@ -1287,6 +1298,7 @@ class GraphSerializer(serializers.ModelSerializer):
             "crew_node_list",
             "python_node_list",
             "file_extractor_node_list",
+            "audio_transcription_node_list",
             "edge_list",
             "conditional_edge_list",
             "llm_node_list",
@@ -1298,6 +1310,26 @@ class GraphSerializer(serializers.ModelSerializer):
             "time_to_live",
             "persistent_variables",
         ]
+
+
+class GraphFileReadSerializer(serializers.ModelSerializer):
+
+    file = serializers.FileField(use_url=True)
+
+    class Meta:
+        model = GraphFile
+        fields = [
+            "id",
+            "graph",
+            "domain_key",
+            "name",
+            "content_type",
+            "size",
+            "file",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
 
 
 class OrganizationSerializer(serializers.ModelSerializer):

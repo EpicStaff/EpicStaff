@@ -15,7 +15,7 @@ from utils.singleton_meta import SingletonMeta
 from utils.logger import logger
 from tables.services.converter_service import ConverterService
 from tables.services.redis_service import RedisService
-from tables.validators.file_extractor_node_validator import FileExtractorNodeValidator
+from tables.validators.file_node_validator import FileNodeValidator
 
 from tables.request_models import (
     ConditionalEdgeData,
@@ -27,6 +27,7 @@ from tables.request_models import (
     LLMNodeData,
     PythonNodeData,
     FileExtractorNodeData,
+    AudioTranscriptionNodeData,
     SessionData,
     SubGraphNodeData,
     SubGraphData,
@@ -40,6 +41,9 @@ from tables.models import (
     PythonNode,
     EndNode,
     FileExtractorNode,
+    AudioTranscriptionNode,
+    Organization,
+    OrganizationUser,
     GraphOrganizationUser,
 )
 
@@ -53,7 +57,7 @@ class SessionManagerService(metaclass=SingletonMeta):
     ) -> None:
         self.redis_service = redis_service
         self.converter_service = converter_service
-        self.file_extractor_node_validator = FileExtractorNodeValidator()
+        self.file_node_validator: FileNodeValidator = FileNodeValidator()
         self.end_node_validator: EndNodeValidator = EndNodeValidator()
         self.subgraph_validator = SubGraphValidator()
 

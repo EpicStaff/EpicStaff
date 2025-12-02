@@ -21,6 +21,7 @@ import { StartNode } from '../../../pages/flows-page/components/flow-visual-prog
 import { GetFileExtractorNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/file-extractor.model';
 import { EndNode } from '../../../pages/flows-page/components/flow-visual-programming/models/end-node.model';
 import { SubGraphNode } from '../../../pages/flows-page/components/flow-visual-programming/models/subgraph-node.model';
+import { GetAudioToTextNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/audio-to-text.model';
 import { GetDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/decision-table-node.model';
 import { GetWebhookTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/webhook-trigger';
 
@@ -41,6 +42,7 @@ export interface GraphDto {
     description: string;
     metadata: FlowModel;
     tags?: [];
+    audio_transcription_node_list: GetAudioToTextNodeRequest[];
 }
 
 export interface GetGraphLightRequest {

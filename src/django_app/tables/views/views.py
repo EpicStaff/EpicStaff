@@ -5,6 +5,7 @@ import base64
 
 from tables.models import Tool
 from tables.models import Crew
+from tables.models import GraphFile
 from tables.models.crew_models import DefaultAgentConfig, DefaultCrewConfig
 from tables.models.embedding_models import DefaultEmbeddingConfig
 from tables.models.llm_models import DefaultLLMConfig
@@ -15,6 +16,7 @@ from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from django.db import transaction
 from django.db.models import Count, Q, Prefetch
+from django.conf import settings
 
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
@@ -222,29 +224,25 @@ class RunSession(APIView):
         logger.info("Received POST request to start a new session.")
 
         total_size = sum(f.size for f in request.FILES.values())
-        if total_size > MAX_TOTAL_FILE_SIZE:
+        max_mb = round(settings.MAX_TOTAL_FILE_SIZE / 1024 / 1024, 2)
+        got_mb = round(total_size / 1024 / 1024, 2)
+
+        if got_mb > max_mb:
             return Response(
                 {
                     "files": [
-                        f"Total files size exceeds 15 MB (got {total_size/1024/1024:.2f} MB)"
+                        f"Total files size exceeds {max_mb:.2f} MB (got {got_mb:.2f} MB)"
                     ]
                 },
                 status=400,
             )
 
-        files_dict = {}
-        for key, file in request.FILES.items():
-            file_bytes = file.read()
-            files_dict[key] = {
-                "name": file.name,
-                "data": base64.b64encode(file_bytes).decode("utf-8"),
-                "content_type": file.content_type,
-            }
-
         serializer = RunSessionSerializer(data=request.data)
         if not serializer.is_valid():
             logger.warning(f"Invalid data received in request: {serializer.errors}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        files_dict = {}
         graph_id = serializer.validated_data["graph_id"]
         username = serializer.validated_data.get("username")
         graph_organization_user = None
@@ -285,6 +283,15 @@ class RunSession(APIView):
             )
 
         variables = serializer.validated_data.get("variables", {})
+        graph_files = GraphFile.objects.filter(graph__id=graph_id)
+
+        for graph_file in graph_files:
+            files_dict[graph_file.domain_key] = self._get_file_data(
+                graph_file.file, graph_file.content_type
+            )
+
+        for key, file in request.FILES.items():
+            files_dict[key] = self._get_file_data(file, file.content_type)
 
         if files_dict is not None:
             variables["files"] = files_dict
@@ -315,6 +322,15 @@ class RunSession(APIView):
             return Response(
                 data={"session_id": session_id}, status=status.HTTP_201_CREATED
             )
+
+    def _get_file_data(self, file, content_type):
+        file_bytes = file.read()
+
+        return {
+            "name": file.name,
+            "base64_data": base64.b64encode(file_bytes).decode("utf-8"),
+            "content_type": content_type,
+        }
 
 
 class GetUpdates(APIView):
