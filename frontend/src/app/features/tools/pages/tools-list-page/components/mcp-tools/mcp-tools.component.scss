@@ -1,0 +1,52 @@
+/* Styles for MCP Tools */
+
+.mcp-tools {
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* Prevent flex item from growing beyond container */
+}
+
+.mcp-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(335px, 1fr));
+  gap: 1.5rem;
+  width: 100%;
+  contain: layout; /* Improve performance and prevent layout shifts */
+}
+
+.mcp-tool-card {
+  border: 1px solid var(--color-divider-subtle, #e0e0e0);
+  border-radius: 8px;
+  padding: 1rem;
+  background: #23243a;
+}
+
+.tool-name {
+  font-weight: 600;
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+}
+
+.tool-description {
+  color: var(--color-text-secondary, #aaa);
+  font-size: 0.98rem;
+}
+
+.empty-message {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 2rem;
+  color: var(--color-text-secondary);
+  font-size: 1.1rem;
+  background: var(--color-sidenav-background);
+  border-radius: 8px;
+  margin-top: 1rem;
+}
+
+.error {
+  color: #d32f2f;
+  font-size: 1.1rem;
+  margin-top: 2rem;
+}
+
+

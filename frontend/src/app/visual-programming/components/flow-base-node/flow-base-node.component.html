@@ -1,12 +1,19 @@
 <!-- Node name wrapper -->
-<div class="node-name-wrapper" *ngIf="!startNode && !noteNode && !endNode">
+<div
+    class="node-name-wrapper"
+    *ngIf="!startNode && !noteNode && !endNode && node.type !== NodeType.TABLE"
+>
     <div class="node-name-label">
         {{ node.node_name || "Unnamed Node" }}
     </div>
 </div>
 
 <!-- Control buttons positioned above the node -->
-<div class="actions" (mousedown)="$event.stopPropagation()">
+<div
+    class="actions"
+    *ngIf="node.type !== NodeType.TABLE"
+    (mousedown)="$event.stopPropagation()"
+>
     <!-- Edit Button for Note -->
     <div
         *ngIf="node.type === NodeType.NOTE"
@@ -35,12 +42,14 @@
     </div>
 </div>
 
-<!-- Ports -->
+<!-- Ports (skip all ports for table nodes as they render internally) -->
 @for (port of this.node.ports; track port.id) {
+@if (node.type !== NodeType.TABLE) {
 <div
     class="port-wrapper port-index-{{ $index }} port-position-{{
         port.position
     }}"
+    [style.--port-index]="$index"
 >
     <div
         class="port-circle"
@@ -70,85 +79,38 @@
     </div>
     <span class="port-label">{{ port.label }}</span>
 </div>
-} @if (!edgeNode && !noteNode) {
-
+}} <ng-template #interactiveNode>
 <div class="interactive-node-body" clickOrDrag (actualClick)="onEditClick()">
     <!-- Header Section -->
-    <div class="header">
+    <div class="header" *ngIf="node.type !== NodeType.TABLE">
         <div class="icon-wrapper">
             <i [class]="node.icon" [style.color]="node.color"></i>
         </div>
-        <div class="title">
+        <div class="title" [title]="getNodeTitle()">
             {{ getNodeTitle() }}
         </div>
     </div>
-
-    <agent-node
-        *ngIf="agentNode"
-        [node]="agentNode"
-        [parentExpanded]="isExpanded"
-    ></agent-node>
-
-    <task-node
-        *ngIf="taskNode"
-        [node]="taskNode"
-        [parentExpanded]="isExpanded"
-    ></task-node>
 </div>
-} @else if (edgeNode) {
+</ng-template>
+@switch (node.type) {
+@case (NodeType.EDGE) {
 <app-conditional-edge-node
     clickOrDrag
     (actualClick)="onEditClick()"
 ></app-conditional-edge-node>
-} @else if (noteNode) {
-<app-note-node [node]="noteNode"></app-note-node>
-} @if (node.type === NodeType.TABLE) {
-<app-decision-table-node [node]="tableNode"></app-decision-table-node>
-} @if (showVariables && isBaseNode(node) && node.input_map &&
-objectKeys(node.input_map).length > 0) {
-<div
-    class="inputs-overlay"
-    [ngStyle]="{ '--node-overlay-color': node.color || '#23272e' }"
->
-    <div
-        style="
-            font-size: 11px;
-            font-weight: 600;
-            margin-bottom: 4px;
-            letter-spacing: 0.5px;
-            color: #aaa;
-        "
-    >
-        Inputs
-    </div>
-    <div class="inputs-list">
-        @for (key of objectKeys(node.input_map); track key) {
-        <div class="input-item">
-            <span class="input-key" [title]="key">{{ key }}</span>
-            <span class="equals-sign">=</span>
-            <span class="input-value" [title]="node.input_map[key]">{{
-                node.input_map[key]
-            }}</span>
-        </div>
-        }
-    </div>
-</div>
-} @if (showVariables && isBaseNode(node) && node.output_variable_path) {
-<div
-    class="output-overlay"
-    [ngStyle]="{ '--node-overlay-color': node.color || '#23272e' }"
->
-    <div
-        style="
-            font-size: 11px;
-            font-weight: 600;
-            margin-bottom: 4px;
-            letter-spacing: 0.5px;
-            color: #aaa;
-        "
-    >
-        Output
-    </div>
-    <span class="output-label">{{ node.output_variable_path }}</span>
-</div>
+} @case (NodeType.NOTE) {
+<app-note-node [node]="noteNode!"></app-note-node>
+} @case (NodeType.TABLE) {
+<app-decision-table-node
+    [node]="tableNode!"
+    (actualClick)="onEditClick($event)"
+></app-decision-table-node>
+} @default {
+<ng-container *ngTemplateOutlet="interactiveNode"></ng-container>
+}
+} @if (showVariables) {
+<app-flow-node-variables-overlay
+    [node]="node"
+    [showVariables]="showVariables"
+></app-flow-node-variables-overlay>
 }

@@ -1,0 +1,186 @@
+<div class="mcp-tool-dialog">
+  <div class="mcp-tool-dialog__header">
+    <h2 class="mcp-tool-dialog__title">
+      {{ isEditMode ? 'Edit MCP Tool' : 'Add MCP Tool' }}
+    </h2>
+    <button
+      mat-icon-button
+      class="mcp-tool-dialog__close-button"
+      (click)="onCancel()"
+    >
+      <mat-icon>close</mat-icon>
+    </button>
+  </div>
+
+  <form [formGroup]="form" class="mcp-tool-dialog__form">
+    <div class="mcp-tool-dialog__body">
+      @if (backendErrorMessage) {
+      <div class="mcp-tool-dialog__error-banner">
+        <mat-icon>error</mat-icon>
+        <span>{{ backendErrorMessage }}</span>
+      </div>
+      }
+      <mat-form-field
+        appearance="outline"
+        class="mcp-tool-dialog__field mcp-tool-dialog__field--full-width"
+      >
+        <mat-label>
+          Name
+          <mat-icon
+            class="mcp-tool-dialog__help-icon"
+            matTooltip="Unique identifier for this MCP tool configuration"
+            matTooltipPosition="above"
+          >
+            help_outline
+          </mat-icon>
+        </mat-label>
+        <input
+          matInput
+          formControlName="name"
+          placeholder="Enter unique name for MCP configuration"
+          required
+        />
+        @if (form.get('name')?.pending) {
+        <mat-hint>Checking name availability...</mat-hint>
+        }
+        @if (getFieldError('name')) {
+        <mat-error>{{ getFieldError('name') }}</mat-error>
+        }
+      </mat-form-field>
+
+      <mat-form-field
+        appearance="outline"
+        class="mcp-tool-dialog__field mcp-tool-dialog__field--full-width"
+      >
+        <mat-label>
+          Transport
+          <mat-icon
+            class="mcp-tool-dialog__help-icon"
+            matTooltip="URL of the remote MCP server using Server-Sent Events (SSE) protocol"
+            matTooltipPosition="above"
+          >
+            help_outline
+          </mat-icon>
+        </mat-label>
+        <input
+          matInput
+          formControlName="transport"
+          placeholder="https://mcp-server.example.com/sse"
+          required
+        />
+        @if (getFieldError('transport')) {
+        <mat-error>{{ getFieldError('transport') }}</mat-error>
+        }
+      </mat-form-field>
+
+      <mat-form-field
+        appearance="outline"
+        class="mcp-tool-dialog__field mcp-tool-dialog__field--full-width"
+      >
+        <mat-label>
+          Tool Name
+          <mat-icon
+            class="mcp-tool-dialog__help-icon"
+            matTooltip="The specific tool name as registered on the MCP server"
+            matTooltipPosition="above"
+          >
+            help_outline
+          </mat-icon>
+        </mat-label>
+        <input
+          matInput
+          formControlName="tool_name"
+          placeholder="Name of the MCP tool"
+          required
+        />
+        @if (getFieldError('tool_name')) {
+        <mat-error>{{ getFieldError('tool_name') }}</mat-error>
+        }
+      </mat-form-field>
+
+      <mat-form-field
+        appearance="outline"
+        class="mcp-tool-dialog__field mcp-tool-dialog__field--full-width"
+      >
+        <mat-label>
+          Timeout (seconds)
+          <mat-icon
+            class="mcp-tool-dialog__help-icon"
+            matTooltip="Maximum time in seconds to wait for a request response. Leave empty for default timeout."
+            matTooltipPosition="above"
+          >
+            help_outline
+          </mat-icon>
+        </mat-label>
+        <input
+          matInput
+          type="number"
+          formControlName="timeout"
+          placeholder="30"
+        />
+      </mat-form-field>
+
+      <mat-form-field
+        appearance="outline"
+        class="mcp-tool-dialog__field mcp-tool-dialog__field--full-width"
+      >
+        <mat-label>
+          Auth
+          <mat-icon
+            class="mcp-tool-dialog__help-icon"
+            matTooltip="Authorization token, API key, or OAuth string for authenticating with the MCP server"
+            matTooltipPosition="above"
+          >
+            help_outline
+          </mat-icon>
+        </mat-label>
+        <input
+          matInput
+          formControlName="auth"
+          placeholder="Bearer token or OAuth string (optional)"
+        />
+      </mat-form-field>
+
+      <mat-form-field
+        appearance="outline"
+        class="mcp-tool-dialog__field mcp-tool-dialog__field--full-width"
+      >
+        <mat-label>
+          Init Timeout (seconds)
+          <mat-icon
+            class="mcp-tool-dialog__help-icon"
+            matTooltip="Maximum time in seconds to wait for session initialization. Default is 10 seconds."
+            matTooltipPosition="above"
+          >
+            help_outline
+          </mat-icon>
+        </mat-label>
+        <input
+          matInput
+          type="number"
+          formControlName="init_timeout"
+          placeholder="10"
+        />
+      </mat-form-field>
+    </div>
+  </form>
+
+  <div class="mcp-tool-dialog__footer">
+    <button
+      mat-button
+      type="button"
+      class="mcp-tool-dialog__button mcp-tool-dialog__button--cancel"
+      (click)="onCancel()"
+    >
+      Cancel
+    </button>
+    <button
+      mat-flat-button
+      class="mcp-tool-dialog__button mcp-tool-dialog__button--submit"
+      [disabled]="form.invalid || form.pending"
+      (click)="onSave()"
+    >
+      {{ isEditMode ? 'Update' : 'Create' }}
+    </button>
+  </div>
+</div>

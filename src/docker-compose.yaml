@@ -30,6 +30,8 @@ services:
       - DB_NAME=${POSTGRES_DB}
       - DJANGO_MEDIA_ROOT=${MEDIA_ROOT}  
       
+      - WEBHOOK_USE_TUNNEL=${USE_TUNNEL}
+      - WEBHOOK_TUNNEL=${WEBHOOK_TUNNEL}
 
       - GUNICORN_WORKERS=${GUNICORN_WORKERS}
       - GUNICORN_THREADS=${GUNICORN_THREADS}
@@ -100,7 +102,6 @@ services:
       - "8001:8000"
     environment:
       - PULL_TOOL=${PULL_TOOL}
-      - DOCKERHUB_PROFILE_NAME=${DOCKERHUB_PROFILE_NAME}
       - MANAGER_PORT=${MANAGER_PORT}
       
       - REDIS_HOST=${REDIS_HOST}
@@ -233,7 +234,6 @@ services:
       - crew_config:/home/user/root/app/env_config/
     networks:
       - backend-network
-      - mcp-network
     tty: true
     stdin_open: true
     depends_on:
@@ -308,7 +308,26 @@ services:
      - frontend-network
     volumes:
      - ../frontend-config/frontend-config.json:/usr/share/nginx/html/config.json:ro
-
+  
+  webhook:
+    image: webhook
+    container_name: webhook
+    build:
+      context: .
+      dockerfile: ./webhook/Dockerfile
+    ports:
+      - "8009:8000"
+    environment:
+      - USE_TUNNEL=${USE_TUNNEL}
+      - WEBHOOK_TUNNEL=${WEBHOOK_TUNNEL}
+      - WEBHOOK_AUTH=${WEBHOOK_AUTH}
+      - WEBHOOK_PORT=${WEBHOOK_PORT}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}  
+    depends_on:
+      - redis
+    networks:
+      - backend-network
 volumes:
   sandbox_venvs:
     external: true
@@ -335,4 +354,3 @@ networks:
   mcp-network:
     driver: bridge
     external: true
-  

@@ -1,5 +1,6 @@
 import re
 from typing import Any
+from loguru import logger
 from dotdict import DotDict
 from models.state import State
 
@@ -24,8 +25,9 @@ def set_output_variables(
 
     if len(keys) == 0:
         if not isinstance(output, dict):
-            raise ValueError(f"Output `{output}` should be a dict to update the whole variables")
-        
+            logger.warning(f"Output `{output}` should be a dict to update the whole variables")
+            return
+                
         value.update(output)
         return
     
@@ -42,7 +44,6 @@ def set_output_variables(
         index = int(last_key_name[1:-1])
         value[index] = output
     elif hasattr(value, last_key_name) and isinstance(getattr(value, last_key_name), DotDict):
-        # import pdb; pdb.set_trace()
         if isinstance(output, dict):
             getattr(value, last_key_name).update(output)
         else:

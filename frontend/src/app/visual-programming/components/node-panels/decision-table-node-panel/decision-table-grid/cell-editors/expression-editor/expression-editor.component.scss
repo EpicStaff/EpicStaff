@@ -1,0 +1,112 @@
+.expression-editor-container {
+    background-color: #1e1e20;
+    border: 1px solid #685fff;
+    border-radius: 4px;
+    box-shadow: 0 0 0 2px rgba(104, 95, 255, 0.2), 0 4px 16px rgba(0, 0, 0, 0.4);
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    position: relative;
+
+    .editor-toolbar {
+        display: none; // Hide original toolbar styles
+    }
+
+    .editor-wrapper {
+        position: relative;
+        flex: 1;
+        min-height: 150px;
+    }
+
+    .editor-backdrop {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 0;
+        background-color: #1e1e20;
+        color: #d9d9de;
+        padding: 0.5rem;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 14px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word; 
+        pointer-events: none;
+        overflow: hidden; 
+
+        ::ng-deep .variable {
+            background-color: rgba(104, 95, 255, 0.2);
+            color: #a5a5ff;
+            border-radius: 3px;
+            padding: 0 2px;
+            margin: 0 -2px;
+            display: inline; // Ensure it behaves like text
+        }
+
+        ::ng-deep .keyword {
+            color: #c586c0; 
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+    }
+
+    .expression-input {
+        position: relative;
+        z-index: 1;
+        width: 100%;
+        height: 100%; // Fill wrapper
+        background-color: transparent;
+        color: transparent;
+        caret-color: #d9d9de; 
+        border: none;
+        padding: 0.5rem;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 14px;
+        resize: none;
+        outline: none;
+        line-height: 1.5;
+        min-width: 300px;
+        white-space: pre-wrap;
+        word-break: break-word;
+
+        &::selection {
+            background-color: rgba(104, 95, 255, 0.3); 
+            color: transparent; 
+        }
+
+        &:focus {
+            outline: none;
+        }
+    }
+
+    .autocomplete-wrapper {
+        position: absolute;
+        top: 100%; 
+        left: 0;
+        margin-top: 4px;
+        z-index: 1000;
+    }
+    
+    .python-badge {
+        position: absolute;
+        bottom: 8px;
+        right: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        background: rgba(55, 118, 171, 0.15);
+        border-radius: 4px;
+        pointer-events: none;
+        z-index: 2;
+        
+        i {
+            font-size: 18px;
+            color: #ffd43b;
+        }
+    }
+}

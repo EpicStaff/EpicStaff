@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "webhook"
+version = "0.1.0"
+description = "EpicStaff webhook service"
+authors = ["MaksymYevstratievHYS <maksym.yevstratiev@hys-enterprise.com>"]
+readme = "README.md"
+packages = [{include = "app"}]
+
+[tool.poetry.dependencies]
+python = ">=3.12,<3.13"
+fastapi = "0.120.1"
+uvicorn = {version = "0.38.0", extras = ["standard"]}
+pyngrok = "7.4.1"
+pydantic-settings = "2.11.0"
+redis = "5.2.1"
+loguru = "0.7.3"
+
+
+[tool.poetry.group.tests.dependencies]
+httpx = "^0.28.1"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

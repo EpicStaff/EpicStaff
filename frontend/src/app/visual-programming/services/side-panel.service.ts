@@ -1,135 +1,71 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, Signal, computed, signal } from '@angular/core';
 import { NodeModel } from '../core/models/node.model';
-import { Dialog } from '@angular/cdk/dialog';
-import { ConfirmationDialogComponent } from '../../shared/components/cofirm-dialog/confirmation-dialog.component';
-import { BehaviorSubject, Observable } from 'rxjs';
-
-export interface SidePanelState {
-  selectedNode: NodeModel | null;
-  hasUnsavedChanges: boolean;
-}
+import { FlowService } from './flow.service';
 
 @Injectable({
-  providedIn: 'root',
+    providedIn: 'root',
 })
 export class SidePanelService {
-  private state = new BehaviorSubject<SidePanelState>({
-    selectedNode: null,
-    hasUnsavedChanges: false,
-  });
+    private readonly selectedNodeIdSignal = signal<string | null>(null);
+    private readonly autosaveTriggerSignal = signal<boolean>(false);
 
-  constructor(private readonly dialog: Dialog) {}
+    public readonly selectedNodeId: Signal<string | null> =
+        this.selectedNodeIdSignal.asReadonly();
 
-  public getState(): Observable<SidePanelState> {
-    return this.state.asObservable();
-  }
-
-  public getCurrentState(): SidePanelState {
-    return this.state.getValue();
-  }
-
-  public setHasUnsavedChanges(hasChanges: boolean): void {
-    this.state.next({
-      ...this.state.getValue(),
-      hasUnsavedChanges: hasChanges,
-    });
-  }
-
-  public trySelectNode(node: NodeModel): Promise<boolean> {
-    const currentState = this.state.getValue();
-
-    if (currentState.selectedNode?.id === node.id) {
-      return Promise.resolve(true);
-    }
-
-    if (currentState.selectedNode && currentState.hasUnsavedChanges) {
-      return this.showUnsavedChangesDialog('switch').then((canSwitch) => {
-        if (canSwitch) {
-          this.selectNode(node);
-          return true;
+    public readonly selectedNode: Signal<NodeModel | null> = computed(() => {
+        const selectedId = this.selectedNodeId();
+        if (!selectedId) {
+            return null;
         }
-        return false;
-      });
+        return (
+            this.flowService
+                .nodes()
+                .find((node) => node.id === selectedId) || null
+        );
+    });
+
+    public readonly autosaveTrigger: Signal<boolean> =
+        this.autosaveTriggerSignal.asReadonly();
+
+    constructor(private readonly flowService: FlowService) {}
+
+    public trySelectNode(node: NodeModel): Promise<boolean> {
+        const currentId = this.selectedNodeIdSignal();
+
+        if (currentId === node.id) {
+            return Promise.resolve(true);
+        }
+
+        this.triggerAutosave();
+        this.setSelectedNodeId(node.id);
+        return Promise.resolve(true);
     }
 
-    this.selectNode(node);
-    return Promise.resolve(true);
-  }
+    public tryClosePanel(): Promise<boolean> {
+        const currentId = this.selectedNodeIdSignal();
 
-  public tryClosePanel(): Promise<boolean> {
-    console.log('try close panel triggered', this.state.getValue());
+        if (!currentId) {
+            return Promise.resolve(true);
+        }
 
-    const currentState = this.state.getValue();
-
-    if (!currentState.hasUnsavedChanges) {
-      this.closePanel();
-      return Promise.resolve(true);
+        this.triggerAutosave();
+        this.clearSelection();
+        return Promise.resolve(true);
     }
 
-    return this.showUnsavedChangesDialog('close').then((canClose) => {
-      if (canClose) {
-        this.closePanel();
-        return true;
-      }
-      return false;
-    });
-  }
-
-  private selectNode(node: NodeModel): void {
-    console.log('select node triggered', this.state.getValue());
-
-    this.state.next({
-      selectedNode: node,
-      hasUnsavedChanges: false,
-    });
-  }
-
-  private closePanel(): void {
-    console.log(
-      'close panel triggered in side panel service',
-      this.state.getValue()
-    );
-
-    this.state.next({
-      selectedNode: null,
-      hasUnsavedChanges: false,
-    });
-  }
-
-  private showUnsavedChangesDialog(
-    action: 'close' | 'switch'
-  ): Promise<boolean> {
-    let message: string;
-    let confirmText: string;
-    let title: string;
-    let cancelText: string;
-
-    if (action === 'switch') {
-      message =
-        'You are trying to open a different side panel but have unsaved changes in the current one. Are you sure you want to proceed without saving?';
-      confirmText = 'Yes, Switch Panel';
-      title = 'Unsaved Changes';
-      cancelText = 'Cancel';
-    } else {
-      message =
-        'You have unsaved changes. Are you sure you want to close without saving?';
-      confirmText = 'Yes, I am sure';
-      title = 'Unsaved Changes';
-      cancelText = 'Cancel';
+    public clearSelection(): void {
+        this.selectedNodeIdSignal.set(null);
     }
 
-    const dialogRef = this.dialog.open<boolean>(ConfirmationDialogComponent, {
-      data: {
-        title,
-        message,
-        confirmText,
-        cancelText,
-        type: 'warning',
-      },
-    });
+    public setSelectedNodeId(nodeId: string | null): void {
+        this.selectedNodeIdSignal.set(nodeId);
+    }
 
-    return new Promise<boolean>((resolve) => {
-      dialogRef.closed.subscribe((value) => resolve(!!value));
-    });
-  }
+    public triggerAutosave(): void {
+        this.autosaveTriggerSignal.set(!this.autosaveTriggerSignal());
+    }
+
+    public clearAutosaveTrigger(): void {
+        this.autosaveTriggerSignal.set(false);
+    }
 }

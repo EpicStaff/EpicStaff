@@ -1,4 +1,5 @@
 import { GetPythonCodeToolRequest } from '../../features/tools/models/python-code-tool.model';
+import { GetMcpToolRequest } from '../../features/tools/models/mcp-tool.model';
 import { FullTask } from './full-task.model';
 import { GetToolRequest } from '../../features/tools/models/tool.model';
 import { ToolUniqueName } from './agent.model';
@@ -25,7 +26,7 @@ export interface GetTaskRequest {
 
     tools: {
         unique_name: ToolUniqueName;
-        data: GetToolConfigRequest | GetPythonCodeToolRequest;
+        data: GetToolConfigRequest | GetPythonCodeToolRequest | GetMcpToolRequest;
     }[];
 }
 
@@ -46,6 +47,7 @@ export interface CreateTaskRequest {
     task_context_list?: number[];
     configured_tools?: number[];
     python_code_tools?: number[];
+    mcp_tools?: number[];
     tool_ids?: ToolUniqueName[];
 }
 export interface UpdateTaskRequest {
@@ -67,6 +69,7 @@ export interface UpdateTaskRequest {
     task_context_list?: number[];
     configured_tools?: number[];
     python_code_tools?: number[];
+    mcp_tools?: number[];
     tool_ids?: ToolUniqueName[];
 }
 export interface TableFullTask extends Omit<FullTask, 'id'> {

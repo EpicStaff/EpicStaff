@@ -20,30 +20,26 @@ import {
     NgSwitchDefault,
     NgIf,
     NgStyle,
+    NgTemplateOutlet,
 } from '@angular/common';
 
-import { AgentNodeComponent } from '../nodes-components/agent-node/agent-node.component';
-import { TaskNodeComponent } from '../nodes-components/task-node/task-node.component';
-import { ClickOrDragDirective } from './directives/click-or-drag.directive';
+import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
 import {
     NodeModel,
     ProjectNodeModel,
     PythonNodeModel,
-    BaseNodeModel,
     NoteNodeModel,
 } from '../../core/models/node.model';
 import { NodeType } from '../../core/enums/node-type';
 import { FlowService } from '../../services/flow.service';
 import { CustomPortId } from '../../core/models/port.model';
-import { ToolNodeComponent } from '../nodes-components/tool-node/tool-node.component';
-import { LlmNodeComponent } from '../nodes-components/llm-node/llm-node.component';
-import { ProjectNodeComponent } from '../nodes-components/project-node/project-node.component';
-import { PythonNodeComponent } from '../nodes-components/python-node/python-node.component';
+
 import { ConditionalEdgeNodeComponent } from '../nodes-components/conditional-edge/conditional-edge.component';
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
 import { NoteNodeComponent } from '../nodes-components/note-node/note-node.component';
 import { getNodeTitle } from '../../core/enums/node-title.util';
 import { ResizeHandleComponent } from '../resize-handle/resize-handle.component';
+import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay.component';
 
 @Component({
     selector: 'app-flow-base-node',
@@ -54,13 +50,12 @@ import { ResizeHandleComponent } from '../resize-handle/resize-handle.component'
         FFlowModule,
         NgIf,
         NgStyle,
+        NgTemplateOutlet,
         ClickOrDragDirective,
         ConditionalEdgeNodeComponent,
-        AgentNodeComponent,
-        TaskNodeComponent,
-
         DecisionTableNodeComponent,
         NoteNodeComponent,
+        FlowNodeVariablesOverlayComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
@@ -202,13 +197,5 @@ export class FlowBaseNodeComponent {
 
     onNodeSizeChanged(size: { width: number; height: number }): void {
         this.fNodeSizeChange.emit(size);
-    }
-
-    public isBaseNode(node: NodeModel): node is BaseNodeModel & NodeModel {
-        return 'input_map' in node && 'output_variable_path' in node;
-    }
-
-    public objectKeys(obj: any): string[] {
-        return Object.keys(obj || {});
     }
 }

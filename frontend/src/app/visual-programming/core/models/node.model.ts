@@ -75,7 +75,7 @@ export interface EdgeNodeModel extends BaseNodeModel {
 export interface DecisionTableNodeModel extends BaseNodeModel {
     type: NodeType.TABLE;
     data: {
-        name: string;
+        name: string; // this was used somehere  for saving dec table
         table: DecisionTableNode;
     };
 }
@@ -96,6 +96,14 @@ export interface FileExtractorNodeModel extends BaseNodeModel {
 export interface AudioToTextNodeModel extends BaseNodeModel {
     type: NodeType.AUDIO_TO_TEXT;
     data: unknown;
+}
+
+export interface WebhookTriggerNodeModel extends BaseNodeModel {
+    type: NodeType.WEBHOOK_TRIGGER;
+    data: {
+        webhook_trigger_path: string;
+        python_code: CustomPythonCode;
+    }
 }
 
 export interface EndNodeData {
@@ -121,4 +129,5 @@ export type NodeModel =
     | NoteNodeModel
     | FileExtractorNodeModel
     | AudioToTextNodeModel
+    | WebhookTriggerNodeModel
     | EndNodeModel;

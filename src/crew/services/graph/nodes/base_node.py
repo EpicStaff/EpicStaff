@@ -21,7 +21,7 @@ class BaseNode(ABC):
         session_id: int,
         node_name: str,
         stop_event: StopEvent,
-        input_map: dict | None = None,
+        input_map: dict | Literal["__all__"] | None = None,
         output_variable_path: str | None = None,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
     ):
@@ -205,7 +205,8 @@ class BaseNode(ABC):
         Maps input variables from state["variables"] based on self.input_map
         and returns the mapped input.
         """
-
+        if self.input_map == "__all__":
+            return state["variables"]
         return map_variables_to_input(state["variables"], self.input_map)
 
     def update_state_history(

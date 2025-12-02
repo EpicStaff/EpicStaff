@@ -1,0 +1,11 @@
+{
+  "title": "PictureToolArgs",
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "Text prompt describing the image to generate."
+    }
+  },
+  "required": ["prompt"]
+}

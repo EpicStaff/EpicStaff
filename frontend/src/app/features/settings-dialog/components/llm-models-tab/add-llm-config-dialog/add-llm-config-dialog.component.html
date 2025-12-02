@@ -11,51 +11,48 @@
       </div> -->
 
             <!-- Error message -->
-            <div *ngIf="errorMessage()" class="error-message">
-                <p>{{ errorMessage() }}</p>
-            </div>
+            @if (errorMessage()) {
+                <div class="error-message">
+                    <p>{{ errorMessage() }}</p>
+                </div>
+            }
 
             <!-- Form fields -->
             <div class="form-field">
                 <label for="providerId">Provider</label>
                 <select id="providerId" formControlName="providerId">
-                    <option
-                        *ngFor="let provider of providers()"
-                        [value]="provider.id"
-                    >
-                        {{ provider.name }}
-                    </option>
+                    @for (provider of providers(); track provider.id) {
+                        <option [ngValue]="provider.id">
+                            {{ provider.name }}
+                        </option>
+                    }
                 </select>
-                <div
-                    *ngIf="
-                        form.get('providerId')?.invalid &&
-                        form.get('providerId')?.touched
-                    "
-                    class="error-hint"
-                >
-                    Please select a provider
-                </div>
+                @if (form.get('providerId')?.invalid && form.get('providerId')?.touched) {
+                    <div class="error-hint">
+                        Please select a provider
+                    </div>
+                }
             </div>
 
             <div class="form-field">
                 <label for="modelId">Model</label>
                 <select id="modelId" formControlName="modelId">
-                    <option *ngIf="models().length === 0" [value]="null">
-                        Select a model
-                    </option>
-                    <option *ngFor="let model of models()" [value]="model.id">
-                        {{ model.name }}
-                    </option>
+                    @if (models().length === 0) {
+                        <option [ngValue]="null">
+                            Select a model
+                        </option>
+                    }
+                    @for (model of models(); track model.id) {
+                        <option [ngValue]="model.id">
+                            {{ model.name }}
+                        </option>
+                    }
                 </select>
-                <div
-                    *ngIf="
-                        form.get('modelId')?.invalid &&
-                        form.get('modelId')?.touched
-                    "
-                    class="error-hint"
-                >
-                    Please select a model
-                </div>
+                @if (form.get('modelId')?.invalid && form.get('modelId')?.touched) {
+                    <div class="error-hint">
+                        Please select a model
+                    </div>
+                }
             </div>
 
             <div class="form-field">
@@ -68,15 +65,11 @@
                     placeholder="Enter a custom name"
                     formControlName="customName"
                 ></app-custom-input>
-                <div
-                    *ngIf="
-                        form.get('customName')?.invalid &&
-                        form.get('customName')?.touched
-                    "
-                    class="error-hint"
-                >
-                    Custom name is required
-                </div>
+                @if (form.get('customName')?.invalid && form.get('customName')?.touched) {
+                    <div class="error-hint">
+                        Custom name is required
+                    </div>
+                }
             </div>
 
             <div class="form-field">
@@ -89,15 +82,11 @@
                     placeholder="Enter your API key"
                     formControlName="apiKey"
                 ></app-custom-input>
-                <div
-                    *ngIf="
-                        form.get('apiKey')?.invalid &&
-                        form.get('apiKey')?.touched
-                    "
-                    class="error-hint"
-                >
-                    API key is required
-                </div>
+                @if (form.get('apiKey')?.invalid && form.get('apiKey')?.touched) {
+                    <div class="error-hint">
+                        API key is required
+                    </div>
+                }
             </div>
 
             <div class="form-field">

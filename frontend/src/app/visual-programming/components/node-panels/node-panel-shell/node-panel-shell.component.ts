@@ -14,7 +14,7 @@ import { NodePanel } from '../../../core/models/node-panel.interface';
 import { NodeModel } from '../../../core/models/node.model';
 import { PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
 import { ShortcutListenerDirective } from '../../../core/directives/shortcut-listener.directive';
-import { SidepanelAutosaveService } from '../../../services/sidepanel-autosave.service';
+import { SidePanelService } from '../../../services/side-panel.service';
 
 @Component({
     standalone: true,
@@ -31,7 +31,11 @@ import { SidepanelAutosaveService } from '../../../services/sidepanel-autosave.s
     },
     template: `
         @if (node() && panelComponent()) {
-        <aside class="node-panel" [class.shake-attention]="isShaking()">
+        <aside
+            class="node-panel"
+            [class.shake-attention]="isShaking()"
+            [class.expanded]="isExpanded()"
+        >
             <header class="dialog-header">
                 <div class="icon-and-title">
                     <i
@@ -41,6 +45,21 @@ import { SidepanelAutosaveService } from '../../../services/sidepanel-autosave.s
                     <span class="title">{{ nodeNameToDisplay() }}</span>
                 </div>
                 <div class="header-actions">
+                    @if (shouldShowExpandButton()) {
+                    <button
+                        class="expand-btn"
+                        aria-label="Toggle panel size"
+                        (click)="toggleExpanded()"
+                    >
+                        <i
+                            [class]="
+                                isExpanded()
+                                    ? 'ti ti-arrows-minimize'
+                                    : 'ti ti-arrows-maximize'
+                            "
+                        ></i>
+                    </button>
+                    }
                     <div class="close-action">
                         <span class="esc-label">ESC</span>
                         <button
@@ -88,26 +107,33 @@ export class NodePanelShellComponent {
         return n.node_name;
     });
 
+    public readonly shouldShowExpandButton = computed(() => {
+        const node = this.node();
+        return node && node.type !== 'table';
+    });
+
     protected readonly outlet = viewChild(NgComponentOutlet);
     protected readonly componentInputs = computed(() => ({
         node: this.node(),
+        isExpanded: this.isExpanded(),
     }));
 
     protected readonly isShaking = signal(false);
+    protected readonly isExpanded = signal(false);
     private panelInstance: any = null;
     private previousNodeId: string | null = null;
     private isUpdatingNode = false;
     private isAutosaving = false;
 
-    constructor(private autosaveService: SidepanelAutosaveService) {
+    constructor(private sidePanelService: SidePanelService) {
         effect(() => {
-            const trigger = this.autosaveService.autosaveTrigger();
+            const trigger = this.sidePanelService.autosaveTrigger();
             if (trigger && this.panelInstance && !this.isAutosaving) {
                 console.log('External autosave triggered:', trigger);
                 this.isAutosaving = true;
                 this.performAutosave();
                 setTimeout(() => {
-                    this.autosaveService.clearTrigger();
+                    this.sidePanelService.clearAutosaveTrigger();
                     this.isAutosaving = false;
                 }, 100);
             }
@@ -116,6 +142,11 @@ export class NodePanelShellComponent {
         effect(() => {
             const node = this.node();
             if (node) {
+                // Auto-expand for decision table nodes
+                if (node.type === 'table') {
+                    this.isExpanded.set(true);
+                }
+
                 if (
                     this.previousNodeId &&
                     this.previousNodeId !== node.id &&
@@ -153,6 +184,10 @@ export class NodePanelShellComponent {
         this.saveSidePanel();
     }
 
+    protected toggleExpanded(): void {
+        this.isExpanded.update((expanded) => !expanded);
+    }
+
     private saveSidePanel(): void {
         console.log('Saving side panel');
         if (
@@ -178,5 +213,20 @@ export class NodePanelShellComponent {
                 this.autosave.emit(updatedNode);
             }
         }
+    }
+
+    public captureCurrentNodeState(): NodeModel | null {
+        if (
+            this.panelInstance &&
+            typeof this.panelInstance.onSaveSilently === 'function'
+        ) {
+            try {
+                return this.panelInstance.onSaveSilently();
+            } catch (error) {
+                console.error('Failed to capture node panel state silently', error);
+                return null;
+            }
+        }
+        return null;
     }
 }

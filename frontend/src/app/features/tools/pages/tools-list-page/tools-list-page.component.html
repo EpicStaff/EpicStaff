@@ -14,10 +14,10 @@
         <app-button
           type="primary"
           class="btn-primary create-btn"
-          [leftIcon]="'ui/plus'"
-          (click)="openCustomToolDialog()"
+          [leftIcon]="createButtonIcon"
+          (click)="onCreateToolClick()"
         >
-          Create custom tool
+          {{ createButtonLabel }}
         </app-button>
       </div>
     </header>

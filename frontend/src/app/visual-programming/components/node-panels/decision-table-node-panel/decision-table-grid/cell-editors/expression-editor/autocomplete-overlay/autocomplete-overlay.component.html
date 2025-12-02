@@ -1,0 +1,42 @@
+<div class="breadcrumbs" (click)="$event.stopPropagation()" (mousedown)="$event.preventDefault()">
+    @if (currentPath().length > 0) {
+        <span class="back-btn" (click)="onBackClick($event)" (mousedown)="$event.preventDefault()">
+            <i class="ti ti-arrow-left"></i>
+        </span>
+    }
+    <span class="crumb" (click)="onCrumbClick($event, -1)" (mousedown)="$event.preventDefault()">state</span>
+    @for (part of currentPath(); track $index) {
+        <span class="separator">/</span>
+        <span class="crumb" (click)="onCrumbClick($event, $index)" (mousedown)="$event.preventDefault()">{{ part }}</span>
+    }
+</div>
+<ul class="autocomplete-list" (mouseleave)="onMouseLeave()" (click)="$event.stopPropagation()" (mousedown)="$event.preventDefault()">
+    @for (item of filteredItems(); track $index) {
+        <li 
+            [class.active]="item === activeItem()"
+            (mousedown)="selectItem(item); $event.preventDefault(); $event.stopPropagation()"
+            (mouseenter)="onMouseEnter(item)"
+        >
+            <div class="item-content">
+                <span class="item-key">{{ item.key }}</span>
+            </div>
+            
+            <span class="item-type">{{ typeof(item.value) }}</span>
+
+            @if (item.type === 'group') {
+                <span class="drill-arrow" (mousedown)="onArrowClick($event, item); $event.preventDefault(); $event.stopPropagation()">
+                    <i class="ti ti-chevron-right"></i>
+                </span>
+            }
+        </li>
+    }
+    @if (filteredItems().length === 0) {
+        <li class="no-results">No matching variables</li>
+    }
+</ul>
+
+@if (hoveredItem(); as item) {
+    <div class="tooltip-wrapper" [class.position-left]="tooltipPosition() === 'left'" [class.position-right]="tooltipPosition() === 'right'">
+        <app-value-preview-tooltip [value]="item.value"></app-value-preview-tooltip>
+    </div>
+}

@@ -1,4 +1,3 @@
-from rest_framework import serializers
 from tables.models import Agent, PythonCodeTool, ToolConfig, McpTool
 
 

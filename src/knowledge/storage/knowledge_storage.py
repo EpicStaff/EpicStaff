@@ -14,6 +14,7 @@ from models.orm.document_models import (
     Chunk,
 )
 from models.enums import *
+from models.dto.models_dto import KnowledgeChunkDTO
 from sqlalchemy.orm import Session
 
 
@@ -38,12 +39,13 @@ class ORMKnowledgeStorage(BaseORMStorage):
         except Exception as e:
             logger.error(f"Failed to save embedding: {e}")
             raise
-    
+
     def delete_document_embeddings(self, document_id: int) -> None:
-        stmt = delete(DocumentEmbedding).where(DocumentEmbedding.document_id == document_id)
+        stmt = delete(DocumentEmbedding).where(
+            DocumentEmbedding.document_id == document_id
+        )
         self.session.execute(stmt)
 
-        
     def update_collection_status(self, status: Status, collection_id: int) -> bool:
         """Update the status of a collection."""
         if status not in Status:
@@ -101,23 +103,28 @@ class ORMKnowledgeStorage(BaseORMStorage):
         collection_id: int,
         limit: int = 3,
         similarity_threshold: float = 0.2,
-    ) -> list[str]:
+    ) -> list[KnowledgeChunkDTO]:
         """
         Search documents in the knowledge base using vector similarity.
         similarity_threshold: min similarity (0 = no similarity, 1 = identical)
         """
         try:
             # Compute distance = 1 - similarity
-            similarity_expr = (1 - DocumentEmbedding.vector.cosine_distance(embedded_query)).label("similarity")
+            similarity_expr = (
+                1 - DocumentEmbedding.vector.cosine_distance(embedded_query)
+            ).label("similarity")
 
             stmt = (
-                select(Chunk.text, similarity_expr)
+                select(Chunk.text, similarity_expr, DocumentMetadata.file_name)
                 .join(Chunk, Chunk.id == DocumentEmbedding.chunk_id)
+                .join(
+                    DocumentMetadata,
+                    DocumentMetadata.document_id == DocumentEmbedding.document_id,
+                )
                 .where(DocumentEmbedding.collection_id == collection_id)
                 .order_by(similarity_expr.desc())  # safer
                 .limit(limit)
             )
-
             results = self.session.execute(stmt).all()
 
             final_result = []
@@ -125,12 +132,19 @@ class ORMKnowledgeStorage(BaseORMStorage):
                 similarity = r.similarity
                 if similarity is not None and similarity >= similarity_threshold:
                     logger.info(f"Chunk #{i} (similarity: {similarity:.4f}): {r.text}")
-                    final_result.append(r.text)
+                    chunk_data = KnowledgeChunkDTO(
+                        chunk_order=i,
+                        chunk_similarity=round(similarity, 4),
+                        chunk_text=r.text,
+                        chunk_source=r.file_name,
+                    )
+                    final_result.append(chunk_data)
 
-            logger.info(f"Returning {len(final_result)} chunks (threshold={similarity_threshold})")
+            logger.info(
+                f"Returning {len(final_result)} chunks (threshold={similarity_threshold})"
+            )
             return final_result
 
         except Exception as e:
             logger.error(f"Search failed for collection {collection_id}: {e}")
             return []
-

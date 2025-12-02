@@ -1,0 +1,11 @@
+{
+  "title": "NL2SQLArgs",
+  "type": "object",
+  "properties": {
+    "query_text": {
+      "type": "string",
+      "description": "Natural language question or instruction to be converted into an SQL query and executed."
+    }
+  },
+  "required": ["query_text"]
+}

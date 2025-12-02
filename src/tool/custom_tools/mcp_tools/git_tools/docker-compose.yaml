@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  git-tools:
+    build: .
+    container_name: git-tools
+
+    ports:
+      - "8082:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - FASTMCP_LOG_LEVEL=debug
+

@@ -6,3 +6,4 @@ ENV
 know_venv/
 query_test.py
 demo_stands/
+graph_data/

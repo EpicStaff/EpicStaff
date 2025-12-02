@@ -14,6 +14,7 @@ export const DEFAULT_END_NODE_PORTS: BasePort[] = [
             'table-out',
             'llm-out-right',
             'audio-to-text-out',
+            'webhook-trigger-out',
         ],
         position: 'left',
         color: '#d3d3d3',

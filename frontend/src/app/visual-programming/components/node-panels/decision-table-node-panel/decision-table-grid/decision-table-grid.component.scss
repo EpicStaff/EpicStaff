@@ -1,0 +1,125 @@
+:host {
+    display: block;
+    height: 100%;
+}
+
+.decision-table-grid-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.grid-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 0.5rem;
+    flex-shrink: 0;
+
+    h3 {
+        margin: 0;
+        color: #ffffffb3;
+        font-size: 1rem;
+        font-weight: 400;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+
+        .tooltip-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            color: rgba(255, 255, 255, 0.6);
+            background: rgba(255, 255, 255, 0.08);
+            font-size: 0.75rem;
+            cursor: help;
+            transition: background 0.2s ease, color 0.2s ease;
+
+            &:hover {
+                color: #fff;
+                background: rgba(104, 95, 255, 0.35);
+            }
+        }
+    }
+}
+
+
+:host ::ng-deep {
+
+    .decision-grid {
+        flex: 1;
+        min-height: 0;
+        .ag-header {
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+        }
+
+        .ti-trash:hover {
+            color: #ff5449 !important;
+            transform: scale(1.1);
+        }
+
+        .cell-warning {
+            background-color: rgba(255, 59, 48, 0.15) !important;
+            border: 1px solid #ff3b30 !important;
+        }
+
+        // Fix for "No Rows To Show" message being cut off - only when empty
+        &.empty-state {
+            .ag-center-cols-container,
+            .ag-center-cols-viewport {
+                min-height: 150px !important;
+            }
+
+            .ag-overlay {
+                overflow: visible !important;
+            }
+
+            .ag-overlay-no-rows-wrapper {
+                padding: 3rem 1rem !important;
+                min-height: 150px !important;
+                height: auto !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                overflow: visible !important;
+                position: relative !important;
+                box-sizing: border-box !important;
+                
+                .ag-overlay-no-rows-center {
+                    overflow: visible !important;
+                    text-overflow: unset !important;
+                    white-space: normal !important;
+                    word-wrap: break-word !important;
+                    line-height: 1.6 !important;
+                    padding: 1rem 0 !important;
+                    margin: 0 !important;
+                    height: auto !important;
+                }
+            }
+        }
+    }
+
+    // Handle autoHeight layout - let AG Grid handle overflow naturally
+    .ag-layout-auto-height {
+        .ag-center-cols-container,
+        .ag-center-cols-viewport {
+            min-height: 0px !important;
+        }
+    }
+
+    // When empty: min-height 150px
+    .decision-grid.empty-state {
+        .ag-layout-auto-height {
+            .ag-center-cols-container,
+            .ag-center-cols-viewport {
+                min-height: 150px !important;
+            }
+        }
+    }
+}

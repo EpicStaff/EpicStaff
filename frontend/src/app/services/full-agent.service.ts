@@ -9,11 +9,13 @@ import { PythonCodeToolService } from '../user-settings-page/tools/custom-tool-e
 import { LLM_Models_Service } from '../features/settings-dialog/services/llms/LLM_models.service';
 import { ProjectsStorageService } from '../features/projects/services/projects-storage.service';
 import { LLM_Providers_Service } from '../features/settings-dialog/services/LLM_providers.service';
-import { ToolsService } from '../features/tools/services/tools.service';
+import { BuiltinToolsService } from '../features/tools/services/builtin-tools/builtin-tools.service';
+import { McpToolsService } from '../features/tools/services/mcp-tools/mcp-tools.service';
 
 import { GetAgentRequest, PartialUpdateAgentRequest } from '../shared/models/agent.model';
 import { GetToolConfigRequest } from '../features/tools/models/tool_config.model';
 import { GetPythonCodeToolRequest } from '../features/tools/models/python-code-tool.model';
+import { GetMcpToolRequest } from '../features/tools/models/mcp-tool.model';
 import { RealtimeModelConfigsService } from '../features/settings-dialog/services/realtime-llms/real-time-model-config.service';
 import { RealtimeModelsService } from '../features/settings-dialog/services/realtime-llms/real-time-models.service';
 import { LLM_Provider } from '../features/settings-dialog/models/LLM_provider.model';
@@ -25,7 +27,7 @@ export interface MergedConfig {
   id: number;
   custom_name: string;
   model_name: string;
-  type: 'llm' | 'realtime'; // Using literal string union type for better type safety
+  type: 'llm' | 'realtime'; 
   provider_id?: number;
   provider_name?: string;
 }
@@ -36,6 +38,7 @@ export interface PartialAgent extends Partial<PartialUpdateAgentRequest> {
   fullRealtimeConfig?: FullRealtimeConfig | null;
   fullConfiguredTools?: GetToolConfigRequest[];
   fullPythonTools?: GetPythonCodeToolRequest[];
+  fullMcpTools?: GetMcpToolRequest[];
   mergedTools?: {
     id: number;
     configName: string;
@@ -53,6 +56,7 @@ export interface FullAgent extends GetAgentRequest {
   fullRealtimeConfig?: FullRealtimeConfig | null;
   fullConfiguredTools: GetToolConfigRequest[];
   fullPythonTools: GetPythonCodeToolRequest[];
+  fullMcpTools: GetMcpToolRequest[];
   mergedTools: {
     id: number;
     configName: string;
@@ -81,7 +85,8 @@ export class FullAgentService {
     private realtimeModelConfigsService: RealtimeModelConfigsService,
     private realtimeModelsService: RealtimeModelsService,
     private llmProvidersService: LLM_Providers_Service,
-    private toolService: ToolsService
+    private toolService: BuiltinToolsService,
+    private mcpToolsService: McpToolsService
   ) {}
 
   getFullAgents(): Observable<FullAgent[]> {
@@ -90,6 +95,7 @@ export class FullAgentService {
       llmConfigs: this.llmConfigService.getAllConfigsLLM(),
       toolConfigs: this.toolConfigService.getToolConfigs(),
       pythonTools: this.pythonCodeToolService.getPythonCodeTools(),
+      mcpTools: this.mcpToolsService.getMcpTools(),
       llmModels: this.llmModelsService.getLLMModels(),
       realtimeConfigs: this.realtimeModelConfigsService.getAllConfigs(),
       realtimeModels: this.realtimeModelsService.getAllModels(),
@@ -102,6 +108,7 @@ export class FullAgentService {
           llmConfigs,
           toolConfigs,
           pythonTools,
+          mcpTools,
           llmModels,
           realtimeConfigs,
           realtimeModels,
@@ -177,6 +184,7 @@ export class FullAgentService {
             // Parse tools from the unified tools array
             const configuredToolIds: number[] = [];
             const pythonToolIds: number[] = [];
+            const mcpToolIds: number[] = [];
 
             if (agent.tools && Array.isArray(agent.tools)) {
               agent.tools.forEach((tool) => {
@@ -184,6 +192,8 @@ export class FullAgentService {
                   configuredToolIds.push(tool.data.id);
                 } else if (tool.unique_name.startsWith('python-code-tool:')) {
                   pythonToolIds.push(tool.data.id);
+                } else if (tool.unique_name.startsWith('mcp-tool:')) {
+                  mcpToolIds.push(tool.data.id);
                 }
               });
             }
@@ -195,13 +205,16 @@ export class FullAgentService {
             const fullPythonTools = pythonTools.filter((pt) =>
               pythonToolIds.includes(pt.id)
             );
+            const fullMcpTools = mcpTools.filter((mcp: GetMcpToolRequest) =>
+              mcpToolIds.includes(mcp.id)
+            );
 
             const toolsMap = new Map<number, string>();
             tools.forEach((tool: Tool) => {
               toolsMap.set(tool.id, tool.name);
             });
 
-            // Merge both sets of tools
+            // Merge all sets of tools
             const mergedTools = [
               ...fullConfiguredTools.map((tc) => ({
                 id: tc.id,
@@ -214,6 +227,12 @@ export class FullAgentService {
                 configName: pt.name, // For python tools, the name is both config and tool name
                 toolName: pt.name, // Python tools have the same name for both
                 type: 'python-tool',
+              })),
+              ...fullMcpTools.map((mcp: GetMcpToolRequest) => ({
+                id: mcp.id,
+                configName: mcp.name, // MCP tool configuration name
+                toolName: mcp.tool_name, // MCP tool name
+                type: 'mcp-tool',
               })),
             ];
 
@@ -250,11 +269,13 @@ export class FullAgentService {
               ...agent,
               configured_tools: configuredToolIds, // For backward compatibility
               python_code_tools: pythonToolIds, // For backward compatibility
+              mcp_tools: mcpToolIds, // MCP tools IDs
               fullLlmConfig,
               fullFcmLlmConfig,
               fullRealtimeConfig,
               fullConfiguredTools,
               fullPythonTools,
+              fullMcpTools,
               mergedTools,
               mergedConfigs,
               tags: [], // Empty array instead of random tags
@@ -273,6 +294,7 @@ export class FullAgentService {
       llmConfigs: this.llmConfigService.getAllConfigsLLM(),
       toolConfigs: this.toolConfigService.getToolConfigs(),
       pythonTools: this.pythonCodeToolService.getPythonCodeTools(),
+      mcpTools: this.mcpToolsService.getMcpTools(),
       llmModels: this.llmModelsService.getLLMModels(),
       realtimeConfigs: this.realtimeModelConfigsService.getAllConfigs(),
       realtimeModels: this.realtimeModelsService.getAllModels(),
@@ -286,6 +308,7 @@ export class FullAgentService {
           llmConfigs,
           toolConfigs,
           pythonTools,
+          mcpTools,
           llmModels,
           realtimeConfigs,
           realtimeModels,
@@ -368,6 +391,7 @@ export class FullAgentService {
             // Parse tools from the unified tools array
             const configuredToolIds: number[] = [];
             const pythonToolIds: number[] = [];
+            const mcpToolIds: number[] = [];
 
             if (agent.tools && Array.isArray(agent.tools)) {
               agent.tools.forEach((tool) => {
@@ -375,6 +399,8 @@ export class FullAgentService {
                   configuredToolIds.push(tool.data.id);
                 } else if (tool.unique_name.startsWith('python-code-tool:')) {
                   pythonToolIds.push(tool.data.id);
+                } else if (tool.unique_name.startsWith('mcp-tool:')) {
+                  mcpToolIds.push(tool.data.id);
                 }
               });
             }
@@ -386,6 +412,9 @@ export class FullAgentService {
             const fullPythonTools = pythonTools.filter((pt) =>
               pythonToolIds.includes(pt.id)
             );
+            const fullMcpTools = mcpTools.filter((mcp: GetMcpToolRequest) =>
+              mcpToolIds.includes(mcp.id)
+            );
 
             // Create a map of tool IDs to tool names
             const toolsMap = new Map<number, string>();
@@ -393,7 +422,7 @@ export class FullAgentService {
               toolsMap.set(tool.id, tool.name);
             });
 
-            // Merge both sets of tools
+            // Merge all sets of tools
             const mergedTools = [
               ...fullConfiguredTools.map((tc) => ({
                 id: tc.id,
@@ -406,6 +435,12 @@ export class FullAgentService {
                 configName: pt.name, // For python tools, the name is both config and tool name
                 toolName: pt.name, // Python tools have the same name for both
                 type: 'python-tool',
+              })),
+              ...fullMcpTools.map((mcp: GetMcpToolRequest) => ({
+                id: mcp.id,
+                configName: mcp.name, // MCP tool configuration name
+                toolName: mcp.tool_name, // MCP tool name
+                type: 'mcp-tool',
               })),
             ];
 
@@ -442,11 +477,13 @@ export class FullAgentService {
               ...agent,
               configured_tools: configuredToolIds, // For backward compatibility
               python_code_tools: pythonToolIds, // For backward compatibility
+              mcp_tools: mcpToolIds, // MCP tools IDs
               fullLlmConfig,
               fullFcmLlmConfig,
               fullRealtimeConfig,
               fullConfiguredTools,
               fullPythonTools,
+              fullMcpTools,
               mergedTools,
               mergedConfigs,
               tags: [], // Empty array instead of random tags
@@ -463,6 +500,7 @@ export class FullAgentService {
       llmConfigs: this.llmConfigService.getAllConfigsLLM(),
       toolConfigs: this.toolConfigService.getToolConfigs(),
       pythonTools: this.pythonCodeToolService.getPythonCodeTools(),
+      mcpTools: this.mcpToolsService.getMcpTools(),
       llmModels: this.llmModelsService.getLLMModels(),
       realtimeConfigs: this.realtimeModelConfigsService.getAllConfigs(),
       realtimeModels: this.realtimeModelsService.getAllModels(),
@@ -475,6 +513,7 @@ export class FullAgentService {
           llmConfigs,
           toolConfigs,
           pythonTools,
+          mcpTools,
           llmModels,
           realtimeConfigs,
           realtimeModels,
@@ -555,6 +594,7 @@ export class FullAgentService {
           // Parse tools from the unified tools array
           const configuredToolIds: number[] = [];
           const pythonToolIds: number[] = [];
+          const mcpToolIds: number[] = [];
 
           if (agent.tools && Array.isArray(agent.tools)) {
             agent.tools.forEach((tool) => {
@@ -562,6 +602,8 @@ export class FullAgentService {
                 configuredToolIds.push(tool.data.id);
               } else if (tool.unique_name.startsWith('python-code-tool:')) {
                 pythonToolIds.push(tool.data.id);
+              } else if (tool.unique_name.startsWith('mcp-tool:')) {
+                mcpToolIds.push(tool.data.id);
               }
             });
           }   
@@ -573,6 +615,9 @@ export class FullAgentService {
           const fullPythonTools = pythonTools.filter((pt) =>
             pythonToolIds.includes(pt.id)
           );
+          const fullMcpTools = mcpTools.filter((mcp: GetMcpToolRequest) =>
+            mcpToolIds.includes(mcp.id)
+          );
 
           // Create a map of tool IDs to tool names
           const toolsMap = new Map<number, string>();
@@ -580,7 +625,7 @@ export class FullAgentService {
             toolsMap.set(tool.id, tool.name);
           });
 
-          // Merge both sets of tools
+          // Merge all sets of tools
           const mergedTools = [
             ...fullConfiguredTools.map((tc) => ({
               id: tc.id,
@@ -593,6 +638,12 @@ export class FullAgentService {
               configName: pt.name, // For python tools, the name is both config and tool name
               toolName: pt.name, // Python tools have the same name for both
               type: 'python-tool',
+            })),
+            ...fullMcpTools.map((mcp: GetMcpToolRequest) => ({
+              id: mcp.id,
+              configName: mcp.name, // MCP tool configuration name
+              toolName: mcp.tool_name, // MCP tool name
+              type: 'mcp-tool',
             })),
           ];
 
@@ -628,11 +679,13 @@ export class FullAgentService {
             ...agent,
             configured_tools: configuredToolIds, // For backward compatibility
             python_code_tools: pythonToolIds, // For backward compatibility
+            mcp_tools: mcpToolIds, // MCP tools IDs
             fullLlmConfig,
             fullFcmLlmConfig,
             fullRealtimeConfig,
             fullConfiguredTools,
             fullPythonTools,
+            fullMcpTools,
             mergedTools,
             mergedConfigs,
             tags: [], // Empty array instead of random tags

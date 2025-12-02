@@ -1,0 +1,72 @@
+<div class="panel-container">
+    <div class="panel-content">
+        @if (form) {
+        <form [formGroup]="form" class="form-container">
+            <div class="form-header">
+                <app-custom-input
+                    label="Node Name"
+                    tooltipText="The unique identifier used to reference this decision table node."
+                    icon="ti ti-help-circle"
+                    formControlName="node_name"
+                    placeholder="Enter node name"
+                    [activeColor]="activeColor"
+                    [errorMessage]="getNodeNameErrorMessage()"
+                ></app-custom-input>
+
+                <div class="select-wrapper">
+                    <label>
+                        Default Next Node
+                        <span
+                            class="tooltip-icon"
+                            title="Optional fallback branch when no condition matches"
+                        >
+                            <i class="ti ti-help-circle"></i>
+                        </span>
+                    </label>
+                    <select
+                        formControlName="default_next_node"
+                        class="node-select"
+                    >
+                        <option value="">-- Select Node --</option>
+                        @for (node of availableNodes(); track node.value) {
+                        <option [value]="node.value">{{ node.label }}</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="select-wrapper">
+                    <label>
+                        Error Next Node
+                        <span
+                            class="tooltip-icon"
+                            title="Optional error branch if decision evaluation fails"
+                        >
+                            <i class="ti ti-help-circle"></i>
+                        </span>
+                    </label>
+                    <select
+                        formControlName="next_error_node"
+                        class="node-select"
+                    >
+                        <option value="">-- Select Node --</option>
+                        @for (node of availableNodes(); track node.value) {
+                        <option [value]="node.value">{{ node.label }}</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid-section">
+                <app-decision-table-grid
+                    [conditionGroups]="conditionGroups()"
+                    [activeColor]="activeColor"
+                    [currentNodeId]="node().id"
+                    title="Condition groups define branching paths evaluated in order"
+                    (conditionGroupsChange)="onConditionGroupsChange($event)"
+                />
+            </div>
+        </form>
+        }
+    </div>
+</div>
+

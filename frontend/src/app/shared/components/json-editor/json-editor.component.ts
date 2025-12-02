@@ -37,7 +37,7 @@ export class JsonEditorComponent {
   private monacoEditor: any;
   public jsonIsValid = true;
 
-  public editorOptions = {
+  @Input() public editorOptions: any = {
     theme: 'vs-dark',
     language: 'json',
     automaticLayout: true,

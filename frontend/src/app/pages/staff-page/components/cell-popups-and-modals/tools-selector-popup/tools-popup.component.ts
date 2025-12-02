@@ -20,7 +20,8 @@ import { animate, style, transition, trigger } from '@angular/animations';
 import { FormsModule } from '@angular/forms';
 
 import { GetPythonCodeToolRequest } from '../../../../../features/tools/models/python-code-tool.model';
-import { ToolsService } from '../../../../../features/tools/services/tools.service';
+import { GetMcpToolRequest } from '../../../../../features/tools/models/mcp-tool.model';
+import { BuiltinToolsService } from '../../../../../features/tools/services/builtin-tools/builtin-tools.service';
 import { ToolConfigService } from '../../../../../services/tool_config.service';
 import {
   FullToolConfig,
@@ -31,10 +32,13 @@ import { GetToolConfigRequest } from '../../../../../features/tools/models/tool_
 import { ToastService } from '../../../../../services/notifications/toast.service';
 import { ToolItemComponent } from './tool-item/tool-item.component';
 import { PythonToolItemComponent } from './python-tool-item/python-tool-item.component';
+import { McpToolItemComponent } from './mcp-tool-item/mcp-tool-item.component';
 import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
 import { CustomToolDialogComponent } from '../../../../../user-settings-page/tools/custom-tool-editor/custom-tool-dialog.component';
+import { McpToolDialogComponent } from '../../../../../features/tools/components/mcp-tool-dialog/mcp-tool-dialog.component';
 import { Dialog } from '@angular/cdk/dialog';
-import { CustomToolsStorageService } from '../../../../../features/tools/services/custom-tools/custom-tools-storage.service';
+import { CustomToolsService } from '../../../../../features/tools/services/custom-tools/custom-tools.service';
+import { McpToolsService } from '../../../../../features/tools/services/mcp-tools/mcp-tools.service';
 import { Router } from '@angular/router';
 
 @Component({
@@ -47,6 +51,7 @@ import { Router } from '@angular/router';
     FormsModule,
     ToolItemComponent,
     PythonToolItemComponent,
+    McpToolItemComponent,
 
     ButtonComponent,
   ],
@@ -84,19 +89,22 @@ export class ToolsPopupComponent
 
   @Output() public cancel = new EventEmitter<void>();
 
-  public menuItems = [
-    { type: false, label: 'Built-in Tools' },
-    { type: true, label: 'Custom Tools' },
+  public menuItems: { type: 'builtin' | 'custom' | 'mcp'; label: string }[] = [
+    { type: 'builtin', label: 'Built-in Tools' },
+    { type: 'custom', label: 'Custom Tools' },
+    { type: 'mcp', label: 'MCP Tools' },
   ];
-  public selectedMenu = false;
+  public selectedMenu: 'builtin' | 'custom' | 'mcp' = 'builtin';
   public searchTerm = '';
   public loading = true;
 
   public tools: FullToolConfig[] = [];
   public pythonTools: GetPythonCodeToolRequest[] = [];
+  public mcpTools: GetMcpToolRequest[] = [];
 
   public selectedToolConfigs = new Set<number>();
   public selectedPythonTools = new Set<number>();
+  public selectedMcpTools = new Set<number>();
 
   public showPythonTools = false;
   public expandedToolConfigs = new Set<number>();
@@ -104,14 +112,15 @@ export class ToolsPopupComponent
   private readonly _destroyed$ = new Subject<void>();
 
   constructor(
-    private readonly _toolsService: ToolsService,
+    private readonly _toolsService: BuiltinToolsService,
     private readonly _toolConfigService: ToolConfigService,
     private readonly _pythonCodeToolService: PythonCodeToolService,
     private readonly _fullToolConfigService: FullToolConfigService,
     private readonly _cdr: ChangeDetectorRef,
     private readonly toastService: ToastService,
     private readonly cdkDialog: Dialog,
-    private readonly customToolsStorageService: CustomToolsStorageService,
+    private readonly customToolsService: CustomToolsService,
+    private readonly mcpToolsService: McpToolsService,
     private readonly router: Router,
     private readonly cdr: ChangeDetectorRef,
 
@@ -149,15 +158,18 @@ export class ToolsPopupComponent
     forkJoin({
       fullTools: this._fullToolConfigService.getFullToolConfigs(),
       pythonTools: this._pythonCodeToolService.getPythonCodeTools(),
+      mcpTools: this.mcpToolsService.getMcpTools(),
     })
       .pipe(takeUntil(this._destroyed$))
       .subscribe({
-        next: ({ fullTools, pythonTools }) => {
+        next: ({ fullTools, pythonTools, mcpTools }) => {
           console.log('Full tools data received:', fullTools);
           console.log('Python tools data received:', pythonTools);
+          console.log('MCP tools data received:', mcpTools);
 
           this.tools = this._sortToolsBySelection(fullTools);
           this.pythonTools = this._sortPythonToolsBySelection(pythonTools);
+          this.mcpTools = this._sortMcpToolsBySelection(mcpTools);
 
           this._preselectMergedTools();
           this.loading = false;
@@ -202,6 +214,21 @@ export class ToolsPopupComponent
     return this._sortPythonToolsBySelection(toolsToFilter);
   }
 
+  // Computed getter for filtering MCP tools based on searchTerm
+  public get filteredMcpTools(): GetMcpToolRequest[] {
+    let toolsToFilter = this.mcpTools;
+
+    if (this.searchTerm) {
+      const query = this.searchTerm.toLowerCase();
+      toolsToFilter = toolsToFilter.filter((mcpTool) =>
+        mcpTool.name.toLowerCase().includes(query) ||
+        mcpTool.tool_name.toLowerCase().includes(query)
+      );
+    }
+
+    return this._sortMcpToolsBySelection(toolsToFilter);
+  }
+
   // Helper method to sort tools with selected items at the top
   private _sortToolsBySelection(tools: FullToolConfig[]): FullToolConfig[] {
     return tools.sort((a, b) => {
@@ -228,6 +255,20 @@ export class ToolsPopupComponent
     });
   }
 
+  // Helper method to sort MCP tools with selected items at the top
+  private _sortMcpToolsBySelection(
+    tools: GetMcpToolRequest[]
+  ): GetMcpToolRequest[] {
+    return tools.sort((a, b) => {
+      const aSelected = this.selectedMcpTools.has(a.id);
+      const bSelected = this.selectedMcpTools.has(b.id);
+
+      if (aSelected && !bSelected) return -1;
+      if (!aSelected && bSelected) return 1;
+      return 0;
+    });
+  }
+
   private _preselectMergedTools(): void {
     if (this.mergedTools && this.mergedTools.length) {
       const preselectedToolConfigIds = this.mergedTools
@@ -238,22 +279,27 @@ export class ToolsPopupComponent
         .filter((item) => item.type === 'python-tool')
         .map((item) => item.id);
       this.selectedPythonTools = new Set(preselectedPythonToolIds);
+      const preselectedMcpToolIds = this.mergedTools
+        .filter((item) => item.type === 'mcp-tool')
+        .map((item) => item.id);
+      this.selectedMcpTools = new Set(preselectedMcpToolIds);
 
       // Re-sort tools after preselection
       this.tools = this._sortToolsBySelection(this.tools);
       this.pythonTools = this._sortPythonToolsBySelection(this.pythonTools);
+      this.mcpTools = this._sortMcpToolsBySelection(this.mcpTools);
     }
   }
 
-  public toggleToolType(isPython: boolean): void {
-    this.showPythonTools = isPython;
-    this.selectedMenu = isPython;
+  public toggleToolType(type: 'builtin' | 'custom' | 'mcp'): void {
+    this.selectedMenu = type;
+    this.showPythonTools = type === 'custom';
     this._cdr.markForCheck();
   }
 
-  public onSelectMenu(type: boolean): void {
+  public onSelectMenu(type: 'builtin' | 'custom' | 'mcp'): void {
     this.selectedMenu = type;
-    this.showPythonTools = type;
+    this.showPythonTools = type === 'custom';
     this._cdr.markForCheck();
   }
 
@@ -282,7 +328,16 @@ export class ToolsPopupComponent
         type: 'python-tool',
       }));
 
-    const updatedMergedTools = [...mergedToolConfigs, ...mergedPythonTools];
+    const mergedMcpTools = this.mcpTools
+      .filter((mcpTool) => this.selectedMcpTools.has(mcpTool.id))
+      .map((mcpTool) => ({
+        id: mcpTool.id,
+        configName: mcpTool.name, // MCP tool configuration name
+        toolName: mcpTool.tool_name, // MCP tool name
+        type: 'mcp-tool',
+      }));
+
+    const updatedMergedTools = [...mergedToolConfigs, ...mergedPythonTools, ...mergedMcpTools];
     this.mergedToolsUpdated.emit(updatedMergedTools);
   }
 
@@ -328,6 +383,15 @@ export class ToolsPopupComponent
     this._cdr.markForCheck();
   }
 
+  public onMcpToolToggle(mcpTool: GetMcpToolRequest): void {
+    if (this.selectedMcpTools.has(mcpTool.id)) {
+      this.selectedMcpTools.delete(mcpTool.id);
+    } else {
+      this.selectedMcpTools.add(mcpTool.id);
+    }
+    this._cdr.markForCheck();
+  }
+
   public isToolSelected(tool: FullToolConfig): boolean {
     return tool.toolConfigs.some((config) =>
       this.selectedToolConfigs.has(config.id)
@@ -353,14 +417,30 @@ export class ToolsPopupComponent
   }
 
   public openCustomToolDialog(): void {
-    const dialogRef = this.cdkDialog.open(CustomToolDialogComponent, {
-      data: { pythonTools: this.customToolsStorageService.allTools() }, // Pass cached tools
+    // Load tools fresh for the dialog
+    this.customToolsService.getPythonCodeTools().subscribe(tools => {
+      const dialogRef = this.cdkDialog.open(CustomToolDialogComponent, {
+        data: { pythonTools: tools },
+      });
+      dialogRef.closed.subscribe((result) => {
+        if (result) {
+          console.log('New tool created:', result);
+        }
+        this.cdr.markForCheck();
+      });
     });
+  }
+
+  public openMcpToolDialog(): void {
+    const dialogRef = this.cdkDialog.open(McpToolDialogComponent, {
+      data: {},
+    });
+    
     dialogRef.closed.subscribe((result) => {
       if (result) {
-        console.log('New tool created:', result);
-        // The tool is automatically added to cache via the storage service
-        this.cdr.markForCheck();
+        console.log('New MCP tool created:', result);
+        // Reload the MCP tools list to include the newly created tool
+        this.loadToolsData();
       }
     });
   }

@@ -1,19 +1,131 @@
-<div class="decision-table-container">
-  <div
-    class="group-names-row"
-    *ngIf="conditionGroups.length > 0; else noGroups"
-  >
-    <span
-      *ngFor="let group of conditionGroups; trackBy: trackByGroupName"
-      class="group-name"
-    >
-      {{ group.group_name }}
-    </span>
-  </div>
-  <ng-template #noGroups>
-    <button class="add-condition-button" (click)="onAddCondition()">
-      <i class="ti ti-plus"></i>
-      Add Condition
-    </button>
-  </ng-template>
+<div class="decision-table" clickOrDrag (actualClick)="onEditClick()">
+    @if (inputPort; as port) {
+    <div class="input-port-wrapper">
+        <div
+            class="port-circle"
+            fNodeInput
+            [fInputMultiple]="port.multiple"
+            [fInputId]="port.id"
+            [fInputConnectableSide]="port.position"
+            [ngStyle]="{
+                'border-color': 'hsl(0, 0%, 15%)',
+                'background-color': port.color
+            }"
+        >
+            <i
+                class="fa-solid fa-plus plus-icon"
+                [ngStyle]="{ color: 'hsl(0, 0%, 15%)' }"
+            ></i>
+        </div>
+    </div>
+    }
+    
+    <div class="decision-table__header">
+        <div class="icon-wrapper">
+            <i [class]="node.icon" [style.color]="node.color"></i>
+        </div>
+        <div class="title">{{ node.node_name || 'Decision Table' }}</div>
+    </div>
+
+    <div class="decision-table__groups">
+        @if (conditionGroups.length > 0) {
+            @for (
+                group of conditionGroups;
+                track trackConditionGroup($index, group)
+            ) {
+            <div class="decision-table__group">
+                <span class="group-name">{{ group.group_name || 'Group ' + ($index + 1) }}</span>
+                
+                @if (getPortForGroup(group); as port) {
+                <div class="port-wrapper">
+                    <div
+                        class="port-circle"
+                        fNodeOutput
+                        [fOutputMultiple]="port.multiple"
+                        [fOutputId]="port.id"
+                        [fOutputConnectableSide]="port.position"
+                        [ngStyle]="{
+                            'border-color': port.color,
+                            'background-color': 'hsl(0, 0%, 15%)'
+                        }"
+                    >
+                        <i
+                            class="fa-solid fa-plus plus-icon"
+                            [ngStyle]="{ color: port.color }"
+                        ></i>
+                    </div>
+                </div>
+                }
+            </div>
+            }
+        } @else {
+            <div class="decision-table__group decision-table__empty">
+                <span class="group-name">No condition groups</span>
+            </div>
+        }
+
+        <div class="decision-table__group">
+            <span class="group-name">
+                Default
+                @if (!defaultNextNodeName) {
+                <span class="group-status">(not set)</span>
+                } @else {
+                <span class="group-status">({{ defaultNextNodeName }})</span>
+                }
+            </span>
+
+            @if (defaultPort; as port) {
+            <div class="port-wrapper">
+                <div
+                    class="port-circle"
+                    fNodeOutput
+                    [fOutputMultiple]="port.multiple"
+                    [fOutputId]="port.id"
+                    [fOutputConnectableSide]="port.position"
+                    [ngStyle]="{
+                        'border-color': port.color,
+                        'background-color': 'hsl(0, 0%, 15%)'
+                    }"
+                >
+                    <i
+                        class="fa-solid fa-plus plus-icon"
+                        [ngStyle]="{ color: port.color }"
+                    ></i>
+                </div>
+            </div>
+            }
+        </div>
+
+        <div class="decision-table__group">
+            <span class="group-name">
+                Error
+                @if (!nextErrorNodeName) {
+                <span class="group-status">(not set)</span>
+                } @else {
+                <span class="group-status">({{ nextErrorNodeName }})</span>
+                }
+            </span>
+
+            @if (errorPort; as port) {
+            <div class="port-wrapper">
+                <div
+                    class="port-circle"
+                    fNodeOutput
+                    [fOutputMultiple]="port.multiple"
+                    [fOutputId]="port.id"
+                    [fOutputConnectableSide]="port.position"
+                    [ngStyle]="{
+                        'border-color': port.color,
+                        'background-color': 'hsl(0, 0%, 15%)'
+                    }"
+                >
+                    <i
+                        class="fa-solid fa-plus plus-icon"
+                        [ngStyle]="{ color: port.color }"
+                    ></i>
+                </div>
+            </div>
+            }
+        </div>
+    </div>
 </div>

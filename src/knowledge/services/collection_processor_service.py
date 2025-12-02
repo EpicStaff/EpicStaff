@@ -5,7 +5,12 @@ import cachetools
 from psycopg2.errors import ForeignKeyViolation
 
 from services.chunk_document_service import ChunkDocumentService
-from models.dto.models_dto import ChunkDTO, DocumentContentDTO
+from models.dto.models_dto import (
+    ChunkDTO,
+    DocumentContentDTO,
+    KnowledgeChunkDTO,
+    KnowledgeQueryResultDTO,
+)
 from models.orm.document_models import DocumentContent
 from storage.knowledge_storage import ORMKnowledgeStorage
 from storage.document_chunk_storage import ORMDocumentChunkStorage
@@ -55,12 +60,18 @@ class CollectionProcessorService(metaclass=SingletonMeta):
         uow = UnitOfWork()
         with uow.start() as uow_ctx:
             # Search in storage
-            knowledge_snippets = uow_ctx.knowledge_storage.search(
+            knowledge_chunk_list = uow_ctx.knowledge_storage.search(
                 embedded_query=embedded_query,
                 collection_id=collection_id,
                 limit=search_limit,
                 similarity_threshold=similarity_threshold,
             )
+
+            # this code supports backwards capability.
+            # TODO: refactor in places where this method used (human_input, realtime, crew)
+            knowledge_snippets = []
+            for chunk_data in knowledge_chunk_list:
+                knowledge_snippets.append(chunk_data.chunk_text)
 
             # Logging results
             if knowledge_snippets:
@@ -73,11 +84,18 @@ class CollectionProcessorService(metaclass=SingletonMeta):
             else:
                 logger.warning(f"NO KNOWLEDGE CHUNKS WERE EXTRACTED!")
 
-        return {
-            "uuid": uuid,
-            "collection_id": collection_id,
-            "results": knowledge_snippets,
-        }
+        knowledge_query_results = KnowledgeQueryResultDTO(
+            uuid=uuid,
+            collection_id=collection_id,
+            retrieved_chunks=len(knowledge_chunk_list),
+            results=knowledge_snippets,
+            knowledge_query=query,
+            search_limit=search_limit,
+            similarity_threshold=similarity_threshold,
+            chunks=knowledge_chunk_list,
+        )
+
+        return knowledge_query_results.model_dump()
 
     def process_collection(self, collection_id):
         embedder = self._get_cached_embedder(collection_id=collection_id)

@@ -31,8 +31,8 @@ from tables.models.graph_models import (
     CrewNode,
     DecisionTableNode,
     EndNode,
-    Graph,
     PythonNode,
+    WebhookTriggerNode,
 )
 from tables.request_models import *
 from tables.request_models import CrewData, EndNodeData
@@ -465,3 +465,12 @@ class ConverterService(metaclass=SingletonMeta):
 
     def convert_end_node_to_pydantic(self, end_node: EndNode):
         return EndNodeData(output_map=end_node.output_map)
+
+    def convert_webhook_trigger_node_to_pydantic(self, webhook_trigger_node: WebhookTriggerNode):
+        python_code: PythonCode = webhook_trigger_node.python_code
+        python_code_data = self.convert_python_code_to_pydantic(python_code=python_code)
+
+        return WebhookTriggerNodeData(
+            node_name=webhook_trigger_node.node_name,
+            python_code=python_code_data,
+        )

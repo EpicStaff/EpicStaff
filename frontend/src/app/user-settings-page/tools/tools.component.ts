@@ -17,7 +17,7 @@ import {
 } from '@angular/cdk/scrolling';
 import { FormsModule } from '@angular/forms';
 
-import { ToolsService } from '../../features/tools/services/tools.service';
+import { BuiltinToolsService } from '../../features/tools/services/builtin-tools/builtin-tools.service';
 import { PythonCodeToolService } from './custom-tool-editor/services/pythonCodeToolService.service';
 import { ToolConfigurationDialogComponent } from './tool-configuration-dialog/tool-configuration-dialog.component';
 import { Dialog } from '@angular/cdk/dialog';
@@ -55,7 +55,7 @@ export class ToolsComponent implements OnInit, AfterViewInit, OnDestroy {
   private subscriptions: Subscription = new Subscription();
 
   constructor(
-    private readonly toolsService: ToolsService,
+    private readonly toolsService: BuiltinToolsService,
     private readonly pythonCodeToolService: PythonCodeToolService, // Inject Python service
     private readonly cdr: ChangeDetectorRef,
     private readonly scrollDispatcher: ScrollDispatcher,

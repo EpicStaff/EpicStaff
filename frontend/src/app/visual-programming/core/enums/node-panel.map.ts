@@ -6,6 +6,8 @@ import { ConditionalEdgeNodePanelComponent } from '../../components/node-panels/
 import { EndNodePanelComponent } from '../../components/node-panels/end-node-panel/end-node-panel.component';
 import { FileExtractorNodePanelComponent } from '../../components/node-panels/file-extractor-node-panel/file-extractor-node-panel.component';
 import { AudioToTextNodePanelComponent } from '../../components/node-panels/audio-to-text-node-panel/audio-to-text-node-panel.component';
+import { DecisionTableNodePanelComponent } from '../../components/node-panels/decision-table-node-panel/decision-table-node-panel.component';
+import { WebhookTriggerNodePanelComponent } from '../../components/node-panels/webhook-trigger-node-panel/webhook-trigger-node-panel';
 import { NodeType } from './node-type';
 
 export const PANEL_COMPONENT_MAP: Record<string, Type<NodePanel<any>>> = {
@@ -13,7 +15,9 @@ export const PANEL_COMPONENT_MAP: Record<string, Type<NodePanel<any>>> = {
     [NodeType.PROJECT]: ProjectNodePanelComponent,
     [NodeType.EDGE]: ConditionalEdgeNodePanelComponent,
     [NodeType.FILE_EXTRACTOR]: FileExtractorNodePanelComponent,
-    [NodeType.END]: EndNodePanelComponent,
     [NodeType.AUDIO_TO_TEXT]: AudioToTextNodePanelComponent,
+    [NodeType.WEBHOOK_TRIGGER]: WebhookTriggerNodePanelComponent,
+    [NodeType.END]: EndNodePanelComponent,
+    [NodeType.TABLE]: DecisionTableNodePanelComponent,
     // start: StartNodePanelComponent,
 };

@@ -32,6 +32,7 @@ class Session(models.Model):
     graph_user = models.ForeignKey(
         GraphOrganizationUser, on_delete=models.SET_NULL, default=None, null=True
     )
+    entrypoint = models.CharField(null=True, default=None)
 
     def save(self, *args, **kwargs):
         now = timezone.now()
@@ -58,11 +59,9 @@ class Session(models.Model):
 
         super().save(*args, **kwargs)
 
-    def delete(self, using=None, keep_parents=False, callback: Any = None):
-        if callback is not None:
-            callback()
-        result = super().delete(using, False)
+    def delete(self, using=None, keep_parents=False):
 
+        result = super().delete(using, False)
         return result
     class Meta:
         get_latest_by = ["id"]

@@ -1,0 +1,7 @@
+tool-data:
+  name: "postgresql-search-tool"
+  description: "Write your DB URI in the domain variables in the format {\"DB_URI\" = \"YOUR_DB_URI\"}\n\nA tool that executes SQL queries on the provided Postgresql database. "
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

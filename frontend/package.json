@@ -21,7 +21,7 @@
         "@angular/platform-browser": "^19.1.6",
         "@angular/platform-browser-dynamic": "^19.1.6",
         "@angular/router": "^19.1.6",
-        "@foblex/flow": "^17.7.1",
+        "@foblex/flow": "17.7.1",
         "@openai/realtime-api-beta": "github:openai/openai-realtime-api-beta",
         "@tabler/icons": "^3.34.0",
         "ag-grid-angular": "^33.1.1",

@@ -11,6 +11,15 @@
     flex-direction: column;
     color: #fff;
     overflow: hidden;
+    transition: width 0.3s ease;
+    z-index: 10;
+
+    &.expanded {
+        left: 1rem;
+        right: 1rem;
+        width: auto;
+        max-width: none;
+    }
 }
 
 header {
@@ -43,6 +52,28 @@ header {
         display: flex;
         align-items: center;
         gap: 1rem;
+
+        .expand-btn {
+            background: none;
+            border: none;
+            color: #ccc;
+            cursor: pointer;
+            padding: 0.25rem;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            &:hover {
+                color: #fff;
+                background-color: rgba(255, 255, 255, 0.1);
+            }
+
+            i {
+                font-size: 1.25rem;
+            }
+        }
 
         .close-action {
             display: flex;

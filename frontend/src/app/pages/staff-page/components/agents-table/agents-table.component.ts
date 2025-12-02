@@ -200,6 +200,7 @@ export class AgentsTableComponent {
             backstory: '',
             configured_tools: [],
             python_code_tools: [],
+            mcp_tools: [],
             llm_config: null,
             fcm_llm_config: null,
             allow_delegation: false,
@@ -235,6 +236,7 @@ export class AgentsTableComponent {
             fullRealtimeConfig: undefined,
             fullConfiguredTools: [],
             fullPythonTools: [],
+            fullMcpTools: [],
             mergedTools: [],
             mergedConfigs: [],
         };
@@ -423,11 +425,13 @@ export class AgentsTableComponent {
                 }
 
                 const toolsHtml = tools
-                    .map((tool: { configName: any; toolName: any }) => {
+                    .map((tool: { configName: any; toolName: any; type: string }) => {
+                        // For MCP tools, display the configName (mcp.name) instead of toolName (mcp.tool_name)
+                        const displayName = tool.type === 'mcp-tool' ? tool.configName : tool.toolName;
                         return `
               <div class="tool-item">
                 <i class="tool-icon">🔧</i>
-                <span class="tool-name-text" title="${tool.toolName}">${tool.toolName}</span>
+                <span class="tool-name-text" title="${displayName}">${displayName}</span>
               </div>
             `;
                     })
@@ -602,7 +606,7 @@ export class AgentsTableComponent {
                 agentData.realtime_agent?.realtime_transcription_config,
         };
 
-        return {
+        const parsed = {
             ...agentData,
             llm_config: llmConfigId,
             fcm_llm_config: agentData.fcm_llm_config || llmConfigId, // Maintain existing logic
@@ -613,7 +617,15 @@ export class AgentsTableComponent {
             python_code_tools: mergedTools
                 .filter((tool: any) => tool.type === 'python-tool')
                 .map((tool: any) => tool.id),
+            mcp_tools: mergedTools
+                .filter((tool: any) => tool.type === 'mcp-tool')
+                .map((tool: any) => tool.id),
         };
+
+        // Delete tools field to ensure it's never included in create/update requests
+        delete (parsed as any).tools;
+
+        return parsed;
     };
 
     private onCellValueChanged(event: any): void {
@@ -657,32 +669,15 @@ export class AgentsTableComponent {
             // Build tool_ids array
             const configuredToolIds = parsedData.configured_tools || [];
             const pythonToolIds = parsedData.python_code_tools || [];
-            const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds);
+            const mcpToolIds = parsedData.mcp_tools || [];
+            const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds);
 
             // Create the new agent by sending the full row data
             const createAgentData: CreateAgentRequest = {
-                role: parsedData.role,
-                goal: parsedData.goal,
-                backstory: parsedData.backstory,
+                ...parsedData,
                 configured_tools: configuredToolIds,
                 python_code_tools: pythonToolIds,
-                llm_config: parsedData.llm_config,
-                fcm_llm_config: parsedData.fcm_llm_config,
-                realtime_agent: parsedData.realtime_agent, // Use the nested structure
-                allow_delegation: parsedData.allow_delegation ?? false,
-                memory: parsedData.memory ?? false,
-                max_iter: parsedData.max_iter ?? undefined,
-                max_rpm: parsedData.max_rpm ?? undefined,
-                max_execution_time: parsedData.max_execution_time ?? undefined,
-                cache: parsedData.cache ?? null,
-                allow_code_execution: parsedData.allow_code_execution ?? null,
-                max_retry_limit: parsedData.max_retry_limit ?? null,
-                respect_context_window:
-                    parsedData.respect_context_window ?? null,
-                default_temperature: null,
-                knowledge_collection: parsedData.knowledge_collection ?? null,
-                search_limit: parsedData.search_limit ?? null,
-                similarity_threshold: parsedData.similarity_threshold ?? null,
+                mcp_tools: mcpToolIds,
                 tool_ids: toolIds,
             };
 
@@ -774,38 +769,19 @@ export class AgentsTableComponent {
         // Build tool_ids array for update
         const updateConfiguredToolIds = parsedUpdateData.configured_tools || [];
         const updatePythonToolIds = parsedUpdateData.python_code_tools || [];
+        const updateMcpToolIds = parsedUpdateData.mcp_tools || [];
         const updateToolIds = buildToolIdsArray(
             updateConfiguredToolIds,
-            updatePythonToolIds
+            updatePythonToolIds,
+            updateMcpToolIds
         );
 
         // Update the agent using the id if all fields are valid
         const updateAgentData: UpdateAgentRequest = {
-            id: parsedUpdateData.id,
-            role: parsedUpdateData.role,
-            goal: parsedUpdateData.goal,
-            backstory: parsedUpdateData.backstory,
+            ...parsedUpdateData,
             configured_tools: updateConfiguredToolIds,
             python_code_tools: updatePythonToolIds,
-            llm_config: parsedUpdateData.llm_config,
-            fcm_llm_config: parsedUpdateData.fcm_llm_config,
-            realtime_agent: parsedUpdateData.realtime_agent, // Use the nested structure instead of realtime_config
-            allow_delegation: parsedUpdateData.allow_delegation ?? false,
-            memory: parsedUpdateData.memory ?? false,
-            max_iter: parsedUpdateData.max_iter ?? undefined,
-            max_rpm: parsedUpdateData.max_rpm ?? undefined,
-            max_execution_time:
-                parsedUpdateData.max_execution_time ?? undefined,
-            cache: parsedUpdateData.cache ?? undefined,
-            allow_code_execution:
-                parsedUpdateData.allow_code_execution ?? false,
-            max_retry_limit: parsedUpdateData.max_retry_limit ?? undefined,
-            respect_context_window:
-                parsedUpdateData.respect_context_window ?? false,
-            default_temperature: null,
-            knowledge_collection: parsedUpdateData.knowledge_collection ?? null,
-            search_limit: parsedUpdateData.search_limit ?? null,
-            similarity_threshold: parsedUpdateData.similarity_threshold ?? null,
+            mcp_tools: updateMcpToolIds,
             tool_ids: updateToolIds,
         };
 
@@ -942,6 +918,9 @@ export class AgentsTableComponent {
             python_code_tools: this.rowData[index].mergedTools
                 .filter((tool: any) => tool.type === 'python-tool')
                 .map((tool: any) => tool.id),
+            mcp_tools: this.rowData[index].mergedTools
+                .filter((tool: any) => tool.type === 'mcp-tool')
+                .map((tool: any) => tool.id),
         };
 
         // Build tool_ids array for settings update
@@ -949,37 +928,25 @@ export class AgentsTableComponent {
             allToolsPreBuilding.configured_tools || [];
         const settingsPythonToolIds =
             allToolsPreBuilding.python_code_tools || [];
+        const settingsMcpToolIds =
+            allToolsPreBuilding.mcp_tools || [];
+
         const settingsToolIds = buildToolIdsArray(
             settingsConfiguredToolIds,
-            settingsPythonToolIds
+            settingsPythonToolIds,
+            settingsMcpToolIds
         );
 
         const parsedUpdateData = this.parseAgentData(this.rowData[index]);
 
         // Prepare the payload for the backend update request
         const updateAgentData: UpdateAgentRequest = {
+            ...parsedUpdateData,
             id: +updatedAgent.id,
-            role: updatedAgent.role,
-            goal: updatedAgent.goal,
-            backstory: updatedAgent.backstory,
+            realtime_agent: realtime_agent,
             configured_tools: settingsConfiguredToolIds,
             python_code_tools: settingsPythonToolIds,
-            llm_config: parsedUpdateData.llm_config ?? null,
-            fcm_llm_config: parsedUpdateData.fcm_llm_config,
-            realtime_agent: realtime_agent, // Use the nested structure instead of realtime_config
-            allow_delegation: updatedAgent.allow_delegation ?? false,
-            memory: updatedAgent.memory ?? false,
-            max_iter: updatedAgent.max_iter ?? 20,
-            max_rpm: updatedAgent.max_rpm ?? null,
-            max_execution_time: updatedAgent.max_execution_time ?? null,
-            cache: updatedAgent.cache ?? null,
-            allow_code_execution: updatedAgent.allow_code_execution ?? null,
-            max_retry_limit: updatedAgent.max_retry_limit ?? null,
-            respect_context_window: updatedAgent.respect_context_window ?? null,
-            default_temperature: null,
-            knowledge_collection: updatedAgent.knowledge_collection ?? null,
-            search_limit: updatedAgent.search_limit ?? null,
-            similarity_threshold: updatedAgent.similarity_threshold ?? null,
+            mcp_tools: settingsMcpToolIds,
             tool_ids: settingsToolIds,
         };
 
@@ -1226,32 +1193,20 @@ export class AgentsTableComponent {
             realtime_config: realtimeConfigId,
         };
 
-        const configuredToolIds = newAgentData.configured_tools || [];
-        const pythonToolIds = newAgentData.python_code_tools || [];
-        const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds);
+        // Parse the agent data to extract proper tools
+        const parsedAgentData = this.parseAgentData(newAgentData);
+        
+        const configuredToolIds = parsedAgentData.configured_tools || [];
+        const pythonToolIds = parsedAgentData.python_code_tools || [];
+        const mcpToolIds = parsedAgentData.mcp_tools || [];
+        const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds);
 
         const createAgentData: CreateAgentRequest = {
-            role: newAgentData.role,
-            goal: newAgentData.goal,
-            backstory: newAgentData.backstory,
+            ...parsedAgentData,
+            realtime_agent: realtime_agent,
             configured_tools: configuredToolIds,
             python_code_tools: pythonToolIds,
-            llm_config: newAgentData.llm_config ?? null,
-            fcm_llm_config: newAgentData.fcm_llm_config ?? null,
-            realtime_agent: realtime_agent, // Use the nested structure instead of realtime_config
-            allow_delegation: newAgentData.allow_delegation ?? false,
-            memory: newAgentData.memory ?? false,
-            max_iter: newAgentData.max_iter ?? 20,
-            max_rpm: newAgentData.max_rpm ?? null,
-            max_execution_time: newAgentData.max_execution_time ?? null,
-            cache: newAgentData.cache ?? null,
-            allow_code_execution: newAgentData.allow_code_execution ?? null,
-            max_retry_limit: newAgentData.max_retry_limit ?? null,
-            respect_context_window: newAgentData.respect_context_window ?? null,
-            default_temperature: null,
-            knowledge_collection: newAgentData.knowledge_collection ?? null,
-            search_limit: newAgentData.search_limit ?? null,
-            similarity_threshold: newAgentData.similarity_threshold ?? null,
+            mcp_tools: mcpToolIds,
             tool_ids: toolIds as ToolUniqueName[],
         };
 

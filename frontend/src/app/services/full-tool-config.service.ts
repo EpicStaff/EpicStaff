@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable, forkJoin, of, map, switchMap } from 'rxjs';
 import { Tool } from '../features/tools/models/tool.model';
-import { ToolsService } from '../features/tools/services/tools.service';
+import { BuiltinToolsService } from '../features/tools/services/builtin-tools/builtin-tools.service';
 import { ToolConfigService } from './tool_config.service';
 import {
   CreateToolConfigRequest,
@@ -19,7 +19,7 @@ export interface FullToolConfig extends Tool {
 export class FullToolConfigService {
   constructor(
     private http: HttpClient,
-    private toolService: ToolsService,
+    private toolService: BuiltinToolsService,
     private toolConfigService: ToolConfigService
   ) {}
 

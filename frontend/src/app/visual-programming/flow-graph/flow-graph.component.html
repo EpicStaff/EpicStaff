@@ -101,8 +101,8 @@
                 [fBehavior]="connection.behavior || 'fixed'"
                 [fType]="connection.type || 'segment'"
                 [fOffset]="30"
-                [fStartColor]="connection.startColor || '#ddd'"
-                [fEndColor]="connection.endColor || '#ddd'"
+                [fStartColor]="'#555'"
+                [fEndColor]="'#555'"
                 [fOutputId]="connection.sourcePortId"
                 [fInputId]="connection.targetPortId"
                 [fConnectionId]="connection.id"
@@ -122,7 +122,7 @@
                         cy="5"
                         r="2"
                         stroke="none"
-                        [attr.fill]="connection.startColor || '#ddd'"
+                        [attr.fill]="connection.startColor || '#555'"
                     ></circle>
                 </svg>
                 <svg
@@ -137,7 +137,7 @@
                     <path
                         d="M0,0 L6,3 0,6Z"
                         stroke="none"
-                        [attr.fill]="connection.endColor || '#ddd'"
+                        [attr.fill]="connection.endColor || '#555'"
                     ></path>
                 </svg>
                 <svg
@@ -248,7 +248,7 @@
     </app-flow-graph-context-menu>
     }
     <app-node-panel-shell
-        [node]="selectedNode()"
+        [node]="sidePanelService.selectedNode()"
         (save)="onNodePanelSaved($event)"
         (autosave)="onNodePanelAutosaved($event)"
         #nodePanelShell

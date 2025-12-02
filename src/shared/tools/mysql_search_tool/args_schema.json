@@ -1,0 +1,11 @@
+{
+  "title": "MySQLSearchArgs",
+  "type": "object",
+  "properties": {
+    "sql_query": {
+      "type": "string",
+      "description": "SQL query that should be executed on the provided database."
+    }
+  },
+  "required": ["sql_query"]
+}

@@ -120,7 +120,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 stop_event.check_stop()
 
             await asyncio.sleep(0.01)
-
+            
             graph_end_data = GraphMessage(
                 session_id=session_id,
                 name="",

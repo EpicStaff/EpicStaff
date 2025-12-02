@@ -2,6 +2,8 @@ from typing import Any, Literal
 from decimal import Decimal
 from itertools import chain
 
+from tables.models.webhook_models import WebhookTrigger
+from tables.models.graph_models import WebhookTriggerNode
 from tables.models.mcp_models import McpTool
 from tables.models.knowledge_models import Chunk, DocumentMetadata
 from tables.serializers.serializers import BaseToolSerializer
@@ -38,8 +40,6 @@ from tables.models.crew_models import (
     AgentConfiguredTools,
     AgentMcpTools,
     AgentPythonCodeTools,
-    DefaultAgentConfig,
-    DefaultCrewConfig,
     TaskMcpTools,
     TaskPythonCodeTools,
 )
@@ -1166,6 +1166,8 @@ class RealtimeAgentChatSerializer(serializers.ModelSerializer):
 
 
 class ConditionSerializer(serializers.ModelSerializer):
+    condition_group = serializers.PrimaryKeyRelatedField(read_only=True)
+
     class Meta:
         model = Condition
         fields = "__all__"
@@ -1173,18 +1175,11 @@ class ConditionSerializer(serializers.ModelSerializer):
 
 class ConditionGroupSerializer(serializers.ModelSerializer):
     conditions = ConditionSerializer(many=True, required=False)
+    decision_table_node = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = ConditionGroup
-        fields = [
-            "decision_table_node",
-            "group_name",
-            "group_type",
-            "expression",
-            "conditions",
-            "manipulation",
-            "next_node",
-        ]
+        fields = "__all__"
 
 
 class DecisionTableNodeSerializer(serializers.ModelSerializer):
@@ -1192,7 +1187,72 @@ class DecisionTableNodeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DecisionTableNode
-        fields = ["graph", "condition_groups", "node_name", "default_next_node"]
+        fields = "__all__"
+
+
+class WebhookTriggerNodeSerializer(serializers.ModelSerializer):
+    python_code = PythonCodeSerializer()
+    webhook_trigger_path = serializers.CharField(required=False, allow_blank=True)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["webhook_trigger_path"] = (
+            instance.webhook_trigger.path if instance.webhook_trigger else None
+        )
+        return data
+
+    class Meta:
+        model = WebhookTriggerNode
+        exclude = ["webhook_trigger"]
+
+    def create(self, validated_data):
+        python_code_data = validated_data.pop("python_code")
+        python_code = PythonCode.objects.create(**python_code_data)
+
+        webhook_trigger_path = validated_data.pop("webhook_trigger_path", "").strip()
+        if not webhook_trigger_path:
+            webhook_trigger_path = "default"
+
+        webhook_trigger, _ = WebhookTrigger.objects.get_or_create(
+            path=webhook_trigger_path
+        )
+
+        webhook_trigger_node = WebhookTriggerNode.objects.create(
+            python_code=python_code,
+            webhook_trigger=webhook_trigger,
+            **validated_data,
+        )
+        return webhook_trigger_node
+
+    def update(self, instance, validated_data):
+        python_code_data = validated_data.pop("python_code", None)
+        if python_code_data:
+            python_code = instance.python_code
+            for attr, value in python_code_data.items():
+                setattr(python_code, attr, value)
+            python_code.save()
+
+        webhook_trigger_path = validated_data.pop("webhook_trigger_path", None)
+        if webhook_trigger_path is not None:
+            webhook_trigger_path = webhook_trigger_path.strip() or "default"
+            webhook_trigger, _ = WebhookTrigger.objects.get_or_create(
+                path=webhook_trigger_path
+            )
+            instance.webhook_trigger = webhook_trigger
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
+
+    def partial_update(self, instance, validated_data):
+        return self.update(instance, validated_data)
+
+
+class WebhookTriggerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WebhookTrigger
+        fields = "__all__"
 
 
 class GraphSerializer(serializers.ModelSerializer):
@@ -1206,6 +1266,7 @@ class GraphSerializer(serializers.ModelSerializer):
     edge_list = EdgeSerializer(many=True, read_only=True)
     conditional_edge_list = ConditionalEdgeSerializer(many=True, read_only=True)
     llm_node_list = LLMNodeSerializer(many=True, read_only=True)
+    webhook_trigger_node_list = WebhookTriggerNodeSerializer(many=True, read_only=True)
     start_node_list = StartNodeSerializer(many=True, read_only=True)
     decision_table_node_list = DecisionTableNodeSerializer(many=True, read_only=True)
     end_node_list = EndNodeSerializer(many=True, read_only=True, source="end_node")
@@ -1224,6 +1285,7 @@ class GraphSerializer(serializers.ModelSerializer):
             "edge_list",
             "conditional_edge_list",
             "llm_node_list",
+            "webhook_trigger_node_list",
             "decision_table_node_list",
             "start_node_list",
             "end_node_list",
