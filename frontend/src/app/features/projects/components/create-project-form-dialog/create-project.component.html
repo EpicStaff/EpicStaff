@@ -122,20 +122,18 @@
                                 {{ maxRpmField.value }} RPM
                             </div>
                         </div>
-                        <div class="create-project__rpm-container">
-                            <mat-slider
-                                min="1"
-                                max="50"
-                                step="1"
-                                discrete
-                                [displayWith]="formatRpmLabel"
-                            >
-                                <input
-                                    matSliderThumb
-                                    formControlName="max_rpm"
-                                />
-                            </mat-slider>
-                        </div>
+                        <mat-slider
+                            class="create-project__rpm-container"
+                            min="1"
+                            max="50"
+                            step="1"
+                            discrete
+                        >
+                            <input
+                                matSliderThumb
+                                formControlName="max_rpm"
+                            />
+                        </mat-slider>
                     </div>
 
                     <div class="create-project__setting">
@@ -155,20 +153,18 @@
                                 {{ searchLimitField.value }}
                             </div>
                         </div>
-                        <div class="create-project__rpm-container">
-                            <mat-slider
-                                min="1"
-                                max="100"
-                                step="1"
-                                discrete
-                                [displayWith]="formatSearchLimitLabel"
-                            >
-                                <input
-                                    matSliderThumb
-                                    formControlName="search_limit"
-                                />
-                            </mat-slider>
-                        </div>
+                        <mat-slider
+                            class="create-project__rpm-container"
+                            min="1"
+                            max="100"
+                            step="1"
+                            discrete
+                        >
+                            <input
+                                matSliderThumb
+                                formControlName="search_limit"
+                            />
+                        </mat-slider>
                     </div>
 
                     <div class="create-project__setting">
@@ -188,20 +184,18 @@
                                 {{ thresholdField.value }}
                             </div>
                         </div>
-                        <div class="create-project__rpm-container">
-                            <mat-slider
-                                min="0.0"
-                                max="1.0"
-                                step="0.01"
-                                discrete
-                                [displayWith]="formatThresholdLabel"
-                            >
-                                <input
-                                    matSliderThumb
-                                    formControlName="similarity_threshold"
-                                />
-                            </mat-slider>
-                        </div>
+                        <mat-slider
+                            class="create-project__rpm-container"
+                            min="0.0"
+                            max="1.0"
+                            step="0.01"
+                            discrete
+                        >
+                            <input
+                                matSliderThumb
+                                formControlName="similarity_threshold"
+                            />
+                        </mat-slider>
                     </div>
                 </div>
             </div>

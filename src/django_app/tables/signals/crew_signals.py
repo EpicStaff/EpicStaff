@@ -1,6 +1,6 @@
-from django.db.models.signals import m2m_changed
+from django.db.models.signals import m2m_changed, post_delete
 from django.dispatch import receiver
-from tables.models import Crew, Task
+from tables.models import Crew, Task, CrewNode
 from loguru import logger
 
 
@@ -28,3 +28,12 @@ def handle_crew_agents_change(sender, instance, action, pk_set, **kwargs):
                     f"Updated {updated_count} tasks for crew '{instance.name}' "
                     f"after removing agents: {removed_agent_ids}"
                 )
+
+
+@receiver(post_delete, sender=CrewNode)
+def delete_related_crew(sender, instance, **kwargs):
+    """
+    When CrewNode is deleted, also delete the associated Crew.
+    """
+    if instance.crew:
+        instance.crew.delete()

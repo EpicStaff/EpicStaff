@@ -75,4 +75,10 @@ export class ProjectsApiService {
       headers: this.httpHeaders,
     });
   }
+
+  saveAsProject(id: number): Observable<GetProjectRequest> {
+    return this.http.post<GetProjectRequest>(`${this.apiUrl}${id}/save_as_project/`, id, {
+      headers: this.httpHeaders,
+    });
+  }
 }

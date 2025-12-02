@@ -11,24 +11,12 @@ import {
   Output,
   ViewChild,
 } from '@angular/core';
-import { NgFor, NgStyle, NgSwitch, NgSwitchCase } from '@angular/common';
+import { NgStyle } from '@angular/common';
 import { NodeType } from '../../core/enums/node-type';
-import { FlowGraphCoreMenuComponent } from './flow-graph-core-menu/flow-graph-core-menu.component';
-import { FlowProjectsContextMenuComponent } from './section-projects/section-projects.component';
+import { MenuType } from '../../core/enums/menu-type.enum';
+import { FlowGraphCoreContextMenuComponent } from './flow-graph-core-context-menu/flow-graph-core-context-menu.component';
+import { TemplatesContextMenuComponent } from './templates-context-menu/templates-context-menu.component';
 import { LlmMenuComponent } from './llm-menu/llm-menu.component';
-import { ToolsMenuComponent } from './tools-menu/tools-menu.component';
-import { StaffMenuComponent } from './staff-menu/staff-menu.component';
-import { ProjectGraphCoreMenuComponent } from './project-graph-core-menu/project-graph-core-menu';
-
-export type MenuType =
-  | 'flow-core'
-  | 'project-core'
-  | 'projects'
-  | 'llms'
-  | 'tools'
-  | 'staff';
-
-export type MenuContext = 'flow-graph' | 'project-graph';
 
 @Component({
   selector: 'app-flow-graph-context-menu',
@@ -37,16 +25,10 @@ export type MenuContext = 'flow-graph' | 'project-graph';
   styleUrls: ['./flow-graph-context-menu.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    NgSwitch,
-    NgSwitchCase,
-    NgFor,
     NgStyle,
-    FlowGraphCoreMenuComponent,
-    FlowProjectsContextMenuComponent,
+    FlowGraphCoreContextMenuComponent,
+    TemplatesContextMenuComponent,
     LlmMenuComponent,
-    ToolsMenuComponent,
-    StaffMenuComponent,
-    ProjectGraphCoreMenuComponent,
   ],
 })
 export class FlowGraphContextMenuComponent
@@ -74,59 +56,37 @@ export class FlowGraphContextMenuComponent
   public isMenuPositioned = false;
   private positionUpdateTimeoutId?: number;
 
-  private _menuContext: MenuContext = 'flow-graph';
-  @Input()
-  set menuContext(value: MenuContext) {
-    this._menuContext = value;
-    this.selectedMenu = value === 'flow-graph' ? 'flow-core' : 'project-core';
-    this.schedulePositionUpdate();
-  }
-  get menuContext(): MenuContext {
-    return this._menuContext;
-  }
-  public get topPosition(): number {
-    return this.isMenuPositioned
-      ? this.topValue
-      : FlowGraphContextMenuComponent.OFFSCREEN_COORD;
-  }
-
-  public get leftPosition(): number {
-    return this.isMenuPositioned
-      ? this.leftValue
-      : FlowGraphContextMenuComponent.OFFSCREEN_COORD;
-  }
   @Output() public nodeSelected = new EventEmitter<{
     type: NodeType;
     data?: any;
   }>();
 
+  @Output() public createNewProject = new EventEmitter<void>();
+
+  public readonly MenuType = MenuType;
+
+  public get topPosition(): number {
+    return this.position.y - 80;
+  }
+
+  public get leftPosition(): number {
+    return this.position.x - 70;
+  }
+
   public searchTerm: string = '';
 
-  public selectedMenu: MenuType =
-    this.menuContext === 'flow-graph' ? 'flow-core' : 'project-core';
+  public selectedMenu: MenuType = MenuType.FlowCore;
 
   public get menuItems(): { label: string; type: MenuType }[] {
-    if (this.menuContext === 'flow-graph') {
-      return [
-        { label: 'Core', type: 'flow-core' },
-        { label: 'Projects', type: 'projects' },
-        // { label: 'Models', type: 'llms' },
-      ];
-    } else {
-      return [
-        { label: 'Core', type: 'project-core' },
-        { label: 'Staff', type: 'staff' },
-        { label: 'Tools', type: 'tools' },
-        { label: 'Models', type: 'llms' },
-      ];
-    }
+    return [
+      { label: 'Core', type: MenuType.FlowCore },
+      { label: 'Templates', type: MenuType.Templates },
+      // { label: 'Models', type: MenuType.Llms },
+    ];
   }
 
   public get menuWidth(): string {
-    if (
-      this.selectedMenu === 'flow-core' ||
-      this.selectedMenu === 'project-core'
-    ) {
+    if (this.selectedMenu === MenuType.FlowCore) {
       return 'auto';
     }
     return '380px';
@@ -162,6 +122,10 @@ export class FlowGraphContextMenuComponent
     this.nodeSelected.emit(event);
   }
 
+  public onCreateNewProject(): void {
+    this.createNewProject.emit();
+  }
+
   private schedulePositionUpdate(): void {
     this.clearPendingPositionUpdate();
     this.isMenuPositioned = false;
@@ -183,10 +147,7 @@ export class FlowGraphContextMenuComponent
   }
 
   private updatePositionWithinViewport(): void {
-    const desiredTop =
-      this.menuContext === 'flow-graph'
-        ? this.position.y - 80
-        : this.position.y - 130;
+    const desiredTop = this.position.y - 80;
     const desiredLeft = this.position.x - 70;
 
     const viewportWidth =

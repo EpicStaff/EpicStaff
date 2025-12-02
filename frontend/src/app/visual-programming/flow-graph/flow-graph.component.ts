@@ -92,6 +92,8 @@ import { getMinimapClassForNode } from '../core/helpers/get-minimap-class.util';
 import { ToastService } from '../../services/notifications/toast.service';
 import { DomainDialogComponent } from '../components/domain-dialog/domain-dialog.component';
 import { NodePanelShellComponent } from '../components/node-panels/node-panel-shell/node-panel-shell.component';
+import { CreateProjectComponent } from '../../features/projects/components/create-project-form-dialog/create-project.component';
+import { GetProjectRequest } from '../../features/projects/models/project.model';
 
 @Component({
     selector: 'app-flow-graph',
@@ -594,6 +596,30 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
         console.log('closing');
 
         this.showContextMenu.set(false);
+    }
+    public onCreateNewProject(): void {
+        this.showContextMenu.set(false);
+
+        const dialogRef = this.dialog.open<
+            GetProjectRequest,
+            { isTemplate: boolean },
+            CreateProjectComponent
+        >(CreateProjectComponent, {
+            width: '500px',
+            disableClose: false,
+            data: { isTemplate: false },
+        });
+
+        dialogRef.closed.subscribe((newProject) => {
+            if (!newProject) {
+                return;
+            }
+
+            this.onAddNodeFromContextMenu({
+                type: NodeType.PROJECT,
+                data: newProject,
+            });
+        });
     }
     public onAddNodeFromContextMenu(event: {
         type: NodeType;
