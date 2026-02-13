@@ -1,0 +1,310 @@
+.shortcuts__overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1999;
+    background: transparent;
+}
+
+.shortcuts__modal {
+    position: fixed;
+    z-index: 2000;
+    box-sizing: border-box;
+    background: #212325;
+    border: 1px solid #2C2C2E;
+    border-radius: 8px;
+    width: min(1028px, calc(100vw - 32px));
+    max-width: 1028px;
+    max-height: min(666px, calc(100vh - 32px));
+    overflow: clip;
+
+    transition:
+        width 200ms ease,
+        height 200ms ease,
+        max-height 200ms ease,
+        transform 200ms ease,
+        opacity 200ms ease;
+    will-change: width, height, max-height, transform;
+}
+
+@mixin shortcutsOneColumnLayout() {
+    .shortcuts__grid {
+        grid-template-columns: 1fr;
+        row-gap: 16px;
+        column-gap: 0;
+    }
+}
+
+@mixin shortcutsCustomScroll() {
+    .shortcuts__content {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        margin-right: -24px;
+        padding-right: 24px;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+        scrollbar-color: #2B2D30 transparent;
+    }
+
+    .shortcuts__content::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .shortcuts__content::-webkit-scrollbar-button {
+        display: none !important;
+        width: 0;
+        height: 0;
+    }
+
+    .shortcuts__content::-webkit-scrollbar-button:single-button {
+        display: none;
+    }
+
+    .shortcuts__content::-webkit-scrollbar-button:start:decrement,
+    .shortcuts__content::-webkit-scrollbar-button:end:increment {
+        display: none;
+    }
+
+    .shortcuts__content::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .shortcuts__content::-webkit-scrollbar-thumb {
+        background: #2B2D30;
+        border-radius: 999px;
+    }
+
+    .shortcuts__content::-webkit-scrollbar-corner {
+        background: transparent;
+    }
+
+    .shortcuts__content::-webkit-resizer {
+        display: none;
+    }
+}
+
+.shortcuts__modal--compact {
+    width: 332px;
+    height: 640px;
+    transform: scale(0.99);
+    opacity: 1;
+
+    @include shortcutsOneColumnLayout();
+    @include shortcutsCustomScroll();
+}
+
+.shortcuts__modal--wide .shortcuts__grid {  
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    transform: scale(1);
+    opacity: 1;
+}
+
+.shortcuts__frame {
+    width: 100%;
+    height: 100%;
+    padding: 24px;
+    box-sizing: border-box;
+    overflow: clip;
+
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+
+    transition: padding 200ms ease, gap 200ms ease;
+}
+
+.shortcuts__content {
+    overflow: clip;
+    min-height: 0;
+}
+
+.shortcuts__header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 16px;
+}
+
+.shortcuts__header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.shortcuts__header-icon {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+}
+
+.shortcuts__header-title {
+    font-family: Inter, sans-serif;
+    font-weight: 500;
+    font-size: 18px;
+    line-height: 1;
+    color: #d9d9de;
+
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.shortcuts__header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    justify-self: end;
+}
+
+.shortcuts__size-btn {
+    all: unset;
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #D9D9DE;
+    border-radius: 6px;
+    opacity: 0.8;
+    transition: background 0.2s ease, opacity 0.2s ease;
+}
+
+.shortcuts__size-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    opacity: 1;
+}
+
+.shortcuts__size-btn:disabled {
+    cursor: default;
+    opacity: 1;
+    color: #2B2D30;
+    background: transparent;
+}
+
+.shortcuts__size-btn i {
+    font-size: 20px;
+    line-height: 1;
+    display: block;
+}
+
+.shortcuts__close-btn {
+    all: unset;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #D9D9DE;
+    border-radius: 6px;
+    opacity: 0.85;
+    transition: background 0.2s ease, opacity 0.2s ease;
+}
+
+.shortcuts__close-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    opacity: 1;
+}
+
+.shortcuts__close-btn:focus,
+.shortcuts__close-btn:focus-visible {
+    outline: none;
+}
+
+.shortcuts__close-icon {
+    width: 20px;
+    height: 20px;
+}
+
+.shortcuts__grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 40px;
+    row-gap: 30px;
+    transition: column-gap 200ms ease, row-gap 200ms ease;
+}
+
+.shortcuts__card {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+.shortcuts__card-title {
+    font-family: Inter, sans-serif;
+    font-weight: 500;
+    font-size: 14px;
+    line-height: 1.3;
+    color: #D9D9DE;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.shortcuts__card-body {
+    width: 100%;
+    border-radius: 8px;
+    min-height: auto;
+    overflow: hidden;
+}
+
+.shortcuts__row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    min-height: 32px;
+    padding: 4px;
+    box-sizing: border-box;
+}
+
+.shortcuts__row--alt {
+    background: rgba(21, 21, 21, 0.28);
+}
+
+.shortcuts__label {
+    font-family: Inter, sans-serif;
+    font-weight: 400;
+    font-size: 12px;
+    line-height: 1.3;
+    color: rgba(217, 217, 222, 0.8);
+    white-space: nowrap;
+}
+
+.shortcuts__keys {
+    display: flex;
+    gap: 10px;
+}
+
+.shortcuts__key {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 24px;
+    padding: 4px 8px;
+    border-radius: 2px;
+    border: 1px solid #2C2C2E;
+    font-family: Inter, sans-serif;
+    font-weight: 400;
+    font-size: 12px;
+    line-height: 1.3;
+    color: #D9D9DE;
+}
+
+@media (max-width: 1200px) {
+    @include shortcutsOneColumnLayout();
+    @include shortcutsCustomScroll();
+  
+    .shortcuts__modal {
+        width: 332px;
+        height: 640px;
+        overflow: hidden;
+        color-scheme: dark;
+    }
+}

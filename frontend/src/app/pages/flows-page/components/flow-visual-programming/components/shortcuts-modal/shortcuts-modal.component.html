@@ -1,0 +1,96 @@
+@if (open() && pos()) {
+    <div class="shortcuts__overlay" (mousedown)="closed.emit()">
+        <div
+            class="shortcuts__modal"
+            [style.top.px]="pos()!.top"
+            [style.left.px]="pos()!.left"
+            (mousedown)="$event.stopPropagation()"
+            [class.shortcuts__modal--compact]="size() === 'compact'"
+            [class.shortcuts__modal--wide]="size() === 'wide'"
+        >
+            <div class="shortcuts__frame">
+                <div class="shortcuts__header">
+                    <div class="shortcuts__header-left">
+                        @if (iconSrc()) {
+                            <img
+                                class="shortcuts__header-icon"
+                                [src]="iconSrc()!"
+                                alt=""
+                                aria-hidden="true"
+                            />
+                        }
+                    <div class="shortcuts__header-title">{{ title() }}</div>
+                </div>
+
+                <div class="shortcuts__header-right">
+                    <button
+                        type="button"
+                        class="shortcuts__size-btn"
+                        (click)="toggleSize()"
+                        [disabled]="isMediaLocked()"
+                        [attr.aria-label]="size() === 'wide' ? 'Minimize' : 'Expand'"
+                        [attr.title]="size() === 'wide' ? 'Minimize' : 'Expand'"
+                    >
+                        <i
+                            class="ti"
+                            [ngClass]="size() === 'wide' ? 'ti-arrows-minimize' : 'ti-arrows-maximize'"
+                        ></i>
+                    </button>
+
+                        @if (showClose()) {
+                            <button
+                                type="button"
+                                class="shortcuts__close-btn"
+                                (click)="closed.emit()"
+                                aria-label="Close"
+                            >
+                                <svg
+                                    class="shortcuts__close-icon"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <div class="shortcuts__content">
+                    <div class="shortcuts__grid">
+                        @for (section of sections(); track section.id) {
+                            <section class="shortcuts__card">
+                                <div class="shortcuts__card-title">{{ section.title }}</div>
+
+                                <div class="shortcuts__card-body">
+                                    @for (row of section.rows; track row.id; let i = $index) {
+                                        @if (!row.hidden) {
+                                            <div class="shortcuts__row" [class.shortcuts__row--alt]="i % 2 === 1">
+                                                <div class="shortcuts__label">
+                                                    {{ row.label }}
+                                                </div>
+
+                                                <div class="shortcuts__keys">
+                                                    @for (key of row.keys; track key) {
+                                                        <span class="shortcuts__key">
+                                                            {{ key }}
+                                                        </span>
+                                                    }
+                                                </div>
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                            </section>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}

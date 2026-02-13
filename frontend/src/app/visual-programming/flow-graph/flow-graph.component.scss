@@ -279,6 +279,16 @@
     max-height: calc(100vh - 3rem);
 }
 
+.top-left-actions__column {
+    display: flex;
+    flex-direction: column;
+}
+
+.shortcuts-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
 .domain-button {
     display: flex;
     align-items: center;

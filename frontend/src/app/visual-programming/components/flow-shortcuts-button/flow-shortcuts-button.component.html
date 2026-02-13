@@ -1,0 +1,7 @@
+<button type="button" class="flow-shortcuts-btn" (click)="clicked.emit()">
+    <span class="flow-shortcuts-btn__icon">
+        <app-icon [icon]="icon()" [size]="iconSize()"></app-icon>
+    </span>
+    
+    <span class="flow-shortcuts-btn__text">{{ label() }}</span>
+</button>

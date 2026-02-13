@@ -214,7 +214,16 @@
         <f-minimap [fMinSize]="1000"></f-minimap>
     </f-flow>
     <div class="top-left-actions">
-        <button class="domain-button" (click)="onDomainClick()">Domain</button>
+        <div class="top-left-actions__column">
+            <button class="domain-button" (click)="onDomainClick()">Domain</button>
+
+            <div #shortcutsAnchor>
+                <app-flow-shortcuts-button
+                    (clicked)="onOpenShortcuts(shortcutsAnchor)">
+                </app-flow-shortcuts-button>
+            </div>
+        </div>
+
         <app-nodes-search
             [nodes]="flowService.nodes()"
             (nodeSelected)="onZoomInNode($event)"

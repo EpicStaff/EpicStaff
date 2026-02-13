@@ -1,0 +1,48 @@
+.flow-shortcuts-btn {
+  width: 40px;
+  height: 40px;
+
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+
+  background-color: #212325;
+  border: 1px solid #2C2C2E;
+  border-radius: 4px;
+
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 0.2s ease;
+
+  transition: 
+    background-color 0.2s ease;
+}
+
+.flow-shortcuts-btn:hover {
+  background-color: #383838;
+}
+
+.flow-shortcuts-btn__icon {
+  grid-column: 2;
+  grid-row: 2;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flow-shortcuts-btn__text {
+  grid-column: 1 / span 3;
+  grid-row: 3;
+
+  font-family: Inter;
+  font-size: 7px;
+  font-weight: 400;
+  line-height: 100%;
+  letter-spacing: 0;
+  color: #9A9A9A;
+
+  text-align: center;
+  align-self: end;
+  padding-bottom: 3px;
+}
