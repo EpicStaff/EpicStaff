@@ -1,0 +1,71 @@
+name: Deploy on self-hosted
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to deploy (manual run only). Leave empty to use main."
+        required: false
+        default: "main"
+
+concurrency:
+  group: epicstaff-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, test2]
+
+    steps:
+      - name: Deploy (stash + checkout + pull + docker compose)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_DIR="/home/developer/EpicStaff"
+
+          # If push -> deploy main, if manual -> deploy input branch (default main)
+          if [ "${{ github.event_name }}" = "push" ]; then
+            BRANCH="main"
+          else
+            BRANCH="${{ github.event.inputs.branch }}"
+            [ -z "$BRANCH" ] && BRANCH="main"
+          fi
+
+          echo ">> event: ${{ github.event_name }}"
+          echo ">> deploy branch: $BRANCH"
+
+          cd "$APP_DIR"
+
+          echo ">> git status"
+          git status --porcelain || true
+
+
+          echo ">> git fetch"
+          git fetch --prune
+
+          echo ">> git checkout $BRANCH"
+          git checkout "$BRANCH"
+
+          echo ">> git pull --ff-only origin $BRANCH"
+          git pull --ff-only origin "$BRANCH"
+
+          echo ">> cd src"
+          cd src
+
+          echo ">> docker compose down"
+          docker compose down --remove-orphans
+          echo ">> docker volume rm crew_pgdata"
+          docker volume rm crew_pgdata
+          echo ">> volume create crew_pgdata"
+          docker volume create crew_pgdata
+          echo ">> docker compose --env-file .env --env-file deploy.env up --build -d "
+          docker compose --env-file .env --env-file deploy.env -f docker-compose.deploy.yaml up --build -d --remove-orphans
+
+          echo ">> docker image prune"
+          docker image prune -f
+
+          echo ">> docker compose ps"
+          docker compose ps
