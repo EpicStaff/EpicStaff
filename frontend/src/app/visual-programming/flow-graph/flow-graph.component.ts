@@ -11,6 +11,8 @@ import {
     signal,
     ViewChild,
     OnDestroy,
+    ElementRef, 
+    HostListener,
     Type,
 } from '@angular/core';
 import {
@@ -2290,6 +2292,21 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
     }
 
     openShortcuts = output<DOMRect>();
+
+    @ViewChild('shortcutsAnchor', { read: ElementRef })
+    private shortcutsAnchor!: ElementRef<HTMLElement>;
+
+    @HostListener('document:keydown', ['$event'])
+    handleKeyboardEvent(event: KeyboardEvent) {
+        if (event.ctrlKey && (event.code === 'Slash' || event.keyCode === 191)) {
+            event.preventDefault();
+
+            const rect = this.shortcutsAnchor?.nativeElement.getBoundingClientRect();
+            if (rect) {
+                this.onOpenShortcuts(this.shortcutsAnchor.nativeElement);
+            }
+        }
+    }
 
     public onOpenShortcuts(anchorEl: HTMLElement): void {
         this.openShortcuts.emit(anchorEl.getBoundingClientRect());
