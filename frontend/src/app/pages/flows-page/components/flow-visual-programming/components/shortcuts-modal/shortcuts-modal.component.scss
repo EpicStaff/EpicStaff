@@ -1,13 +1,13 @@
 .shortcuts__overlay {
     position: fixed;
     inset: 0;
-    z-index: 1999;
+    z-index: 1;
     background: transparent;
 }
 
 .shortcuts__modal {
     position: fixed;
-    z-index: 2000;
+    z-index: 2;
     box-sizing: border-box;
     background: #212325;
     border: 1px solid #2C2C2E;

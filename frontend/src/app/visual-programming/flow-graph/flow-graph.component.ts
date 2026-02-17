@@ -2298,7 +2298,9 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
 
     @HostListener('document:keydown', ['$event'])
     handleKeyboardEvent(event: KeyboardEvent) {
-        if (event.ctrlKey && (event.code === 'Slash' || event.keyCode === 191)) {
+        const isModifier = event.ctrlKey || event.metaKey;
+
+        if (isModifier && (event.code === 'Slash' || event.keyCode === 191)) {
             event.preventDefault();
 
             const rect = this.shortcutsAnchor?.nativeElement.getBoundingClientRect();

@@ -534,7 +534,8 @@ export class FlowVisualProgrammingComponent
         title: 'Navigating',
         rows: [
             { id: 'next-item', label: 'Go to the next item', keys: ['Tab'] },
-            { id: 'prev-item', label: 'Go to the previous item', keys: ['Shift', 'Tab'] }, // PS: i think, we should not override the default navigation behavior ?
+            { id: 'prev-item', label: 'Go to the previous item', keys: ['Shift', 'Tab'] },
+            { id: 'node-search', label: 'Node search', keys: ['Ctrl', 'F'] },
             // { id: 'first-item', label: 'First item', keys: ['Home'] },
             // { id: 'last-item', label: 'Last item', keys: ['End'] },
             // { id: 'add-element', label: 'Add element', keys: ['N'] },
@@ -558,6 +559,7 @@ export class FlowVisualProgrammingComponent
             // { id: 'select-item', label: 'Select an item', keys: ['Space'] },
             // { id: 'select-several', label: 'Select several items', keys: ['Shift', '←', '→', '↑', '↓'] },
             { id: 'add-remove-selection', label: 'Add/remove selection', keys: ['Ctrl', 'click'] },
+            { id: 'zone-selection', label: 'Zone selection', keys: ['Ctrl', 'Shift', 'click'] },
             // { id: 'remove-selection', label: 'Remove all selection', keys: ['Esc'] },
         ],
     },
@@ -577,6 +579,7 @@ export class FlowVisualProgrammingComponent
         rows: [
             // { id: 'open-item', label: 'Open/activate item', keys: ['Enter'] },
             // { id: 'start-edit', label: 'Start editing the text', keys: ['Enter'] },
+            { id: 'open-node-menu', label: 'Open node create menu', keys: ['Left click'] },
             { id: 'exit-edit', label: 'Exit edit mode', keys: ['Esc'] },
         ],
     },
@@ -584,8 +587,8 @@ export class FlowVisualProgrammingComponent
         id: 'zoom',
         title: 'Zoom',
         rows: [
-            { id: 'zoom-in', label: 'Zoom in', keys: ['Ctrl', '+'] },
-            { id: 'zoom-out', label: 'Zoom out', keys: ['Ctrl', '-'] },
+            { id: 'zoom-in', label: 'Zoom in', keys: ['Ctrl', 'Mouse wheel up'] },
+            { id: 'zoom-out', label: 'Zoom out', keys: ['Ctrl', 'Mouse wheel down'] },
             // { id: 'fit', label: 'Fit', keys: ['Ctrl', '0'] },
         ],
     },
@@ -596,6 +599,7 @@ export class FlowVisualProgrammingComponent
             { id: 'delete-item', label: 'Delete', keys: ['Delete'] },
             { id: 'undo', label: 'Undo', keys: ['Ctrl', 'Z'] },
             { id: 'redo', label: 'Redo', keys: ['Ctrl', 'Shift', 'Z'] },
+            { id: 'redo-alt', label: 'Redo', keys: ['Ctrl', 'Y'] },
         ],
     },
     {
