@@ -60,6 +60,7 @@ import {
     generatePortsForDecisionTableNode,
 } from '../core/helpers/helpers';
 
+import { take } from 'rxjs/operators';
 import { NgClass, NgIf } from '@angular/common';
 import { NodeType } from '../core/enums/node-type';
 import { v4 as uuidv4 } from 'uuid';
@@ -776,6 +777,7 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
 
             const dialogRef = this.dialog.open(NoteEditDialogComponent, {
                 data: { node: noteNode },
+                disableClose: true,
             });
 
             dialogRef.closed.subscribe((result: any) => {
@@ -804,12 +806,13 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
                 maxHeight: '90vh',
                 panelClass: 'domain-dialog-panel',
                 backdropClass: 'domain-dialog-backdrop',
+                disableClose: true,
                 data: {
                     initialData: startNodeInitialState,
                 },
             });
 
-            dialogRef.closed.subscribe((result: unknown) => {
+            dialogRef.closed.pipe(take(1)).subscribe((result: unknown) => {
                 if (
                     result !== null &&
                     typeof result === 'object' &&
@@ -2260,7 +2263,6 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
             };
 
             this.flowService.updateNode(updatedStartNode);
-            this.toastService.success('Domain variables updated successfully');
         } else {
             this.toastService.error('Start node not found');
         }

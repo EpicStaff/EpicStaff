@@ -16,7 +16,7 @@ export interface DomainDialogData {
         <div class="dialog-container">
             <div class="dialog-header">
                 <h2 class="dialog-title">Domain Variables</h2>
-                <button class="close-button" (click)="onClose()">
+                <button class="close-button" (click)="close()">
                     <i class="ti ti-x"></i>
                 </button>
             </div>
@@ -38,17 +38,6 @@ export interface DomainDialogData {
                         [fullHeight]="true"
                     ></app-json-editor>
                 </div>
-            </div>
-
-            <div class="dialog-actions">
-                <button class="btn-secondary" (click)="onClose()">Close</button>
-                <button
-                    class="btn-primary"
-                    [disabled]="!isJsonValid"
-                    (click)="onSave()"
-                >
-                    Save
-                </button>
             </div>
         </div>
     `,
@@ -144,44 +133,6 @@ export interface DomainDialogData {
                 padding: 1rem 1.5rem;
                 border-top: 1px solid var(--color-divider-subtle, #444);
             }
-
-            .btn-primary {
-                background-color: var(--accent-color, #6562f5);
-                color: white;
-                border: 1px solid var(--accent-color, #6562f5);
-                padding: 0.5rem 1rem;
-                border-radius: 6px;
-                font-size: 0.875rem;
-                font-weight: 400;
-                cursor: pointer;
-                transition: all 0.2s ease;
-
-                &:hover:not(:disabled) {
-                    background-color: #5a5ae0;
-                    border-color: #5a5ae0;
-                }
-
-                &:disabled {
-                    opacity: 0.5;
-                    cursor: not-allowed;
-                }
-            }
-
-            .btn-secondary {
-                background-color: transparent;
-                color: var(--color-text-primary, #fff);
-                border: 1px solid var(--color-divider-subtle, #444);
-                padding: 0.5rem 1rem;
-                border-radius: 6px;
-                font-size: 0.875rem;
-                font-weight: 400;
-                cursor: pointer;
-                transition: all 0.2s ease;
-
-                &:hover {
-                    background-color: var(--color-surface-hover, #333);
-                }
-            }
         `,
     ],
 })
@@ -231,28 +182,29 @@ export class DomainDialogComponent {
         this.isJsonValid = isValid;
     }
 
-    public onSave(): void {
-        if (!this.isJsonValid) {
-            return;
-        }
+    private buildResult(): Record<string, unknown> {
+        if (!this.isJsonValid) throw new Error('Invalid JSON');
 
         try {
-            let parsedData: unknown = JSON.parse(this.initialStateJson);
+            let parsed: unknown = JSON.parse(this.initialStateJson);
+
             if (
-                parsedData &&
-                typeof parsedData === 'object' &&
-                !Array.isArray(parsedData) &&
-                Object.keys(parsedData as Record<string, unknown>).length === 0
+                parsed &&
+                typeof parsed === 'object' &&
+                !Array.isArray(parsed) &&
+                Object.keys(parsed as Record<string, unknown>).length === 0
             ) {
-                parsedData = { context: null } as Record<string, unknown>;
+                parsed = { context: null };
             }
-            this.dialogRef.close(parsedData as Record<string, unknown>);
-        } catch (e) {
-            this.dialogRef.close({ context: null } as Record<string, unknown>);
+
+            return parsed as Record<string, unknown>;
+        } catch {
+            return { context: null };
         }
     }
 
-    public onClose(): void {
-        this.dialogRef.close(null);
+    public close(): void {
+        if (!this.isJsonValid) return;
+        this.dialogRef.close(this.buildResult());
     }
 }
