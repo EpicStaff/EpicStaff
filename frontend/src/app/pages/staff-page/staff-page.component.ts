@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ViewChild  } from '@angular/core';
 import { Dialog, DialogRef } from '@angular/cdk/dialog'; // Import from CDK instead of Material
 import { PageHeaderComponent } from '../../shared/components/header/page-header.component';
 import { FullAgent, FullAgentService } from '../../services/full-agent.service';
@@ -11,6 +11,7 @@ import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner
 import { NgIf } from '@angular/common';
 import { GetAgentRequest } from '../../shared/models/agent.model';
 import { SaveWithIndicatorComponent } from '../../shared/components/save-with-indicator/save-with-indicator.component';
+import { UnsavedIndicatorComponent } from '../../shared/components/unsaved-indicator/unsaved-indicator.component';
 
 @Component({
     selector: 'app-staff-page',
@@ -21,6 +22,7 @@ import { SaveWithIndicatorComponent } from '../../shared/components/save-with-in
         LoadingSpinnerComponent,
         NgIf,
         SaveWithIndicatorComponent,
+        UnsavedIndicatorComponent
     ],
     templateUrl: './staff-page.component.html',
     styleUrls: ['./staff-page.component.scss'],
@@ -33,6 +35,8 @@ export class StaffPageComponent {
         private dialog: Dialog,
         private fullAgentService: FullAgentService
     ) {}
+
+    @ViewChild(AgentsTableComponent) private agentsTable?: AgentsTableComponent;
 
     openCreateAgentDialog(): void {
         const dialogRef = this.dialog.open<GetAgentRequest>(
@@ -81,6 +85,6 @@ export class StaffPageComponent {
     public hasUnsavedChanges = false;
 
     public onSave(): void {
-        console.log('Save clicked');
+        this.agentsTable?.flushPending();
     }
 }

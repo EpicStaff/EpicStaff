@@ -10,7 +10,7 @@
     justify-content: center;
     gap: 0.5rem;
     padding: 0 0.75rem;
-    height: 36px;
+    height: 40px;
     border-radius: 6px;
     font-size: 14px;
     font-weight: 400;
@@ -28,25 +28,5 @@
     &:disabled {
         cursor: not-allowed;
         opacity: 0.7;
-    }
-}
-
-.unsaved-indicator {
-    display: inline-flex;
-    align-items: center;
-    color: #685fff;
-    font-size: 14px;
-    white-space: nowrap;
-
-    i {
-        font-size: 10px;
-        margin-right: 6px;
-        color: #685fff;
-    }
-
-    .unsaved-text {
-        font-size: 12px;
-        font-weight: 500;
-        color: #685fff;
     }
 }

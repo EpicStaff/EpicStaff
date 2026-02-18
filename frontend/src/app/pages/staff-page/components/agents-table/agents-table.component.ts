@@ -8,6 +8,8 @@ import {
     signal,
     SimpleChanges,
     ViewChild,
+    EventEmitter,
+    Output,
 } from '@angular/core';
 import { AgGridAngular, AgGridModule } from 'ag-grid-angular';
 import {
@@ -79,6 +81,14 @@ interface CellInfo {
 }
 type PopupEvent = CellClickedEvent<any, any> | CellKeyDownEvent<any, any>;
 
+type PendingKind = 'create' | 'update';
+
+interface PendingChange {
+    kind: PendingKind;
+    rowId: string;
+    payload: CreateAgentRequest | UpdateAgentRequest;
+}
+
 @Component({
     selector: 'app-agents-table',
     standalone: true,
@@ -115,6 +125,9 @@ export class AgentsTableComponent {
     private currentCellElement: HTMLElement | null = null;
     private globalClickUnlistener: (() => void) | null = null;
     private globalKeydownUnlistener: (() => void) | null = null;
+
+    @Output() dirtyChange = new EventEmitter<boolean>();
+    private pending = new Map<string, PendingChange>();
 
     constructor(
         private overlay: Overlay,
@@ -682,56 +695,15 @@ export class AgentsTableComponent {
             };
 
             // Use the new syntax with next, error, and complete
-            this.agentsService.createAgent(createAgentData).subscribe({
-                next: (newAgent) => {
-                    console.log('New agent created:', newAgent);
-                    this.toastService.success(`Agent created successfully`);
+            const rowId = String(event.data.id);
 
-                    // First find the row's position
-                    const rowIndex = this.rowData.findIndex(
-                        (row) => row === event.data
-                    );
-                    if (rowIndex !== -1) {
-                        // Get the original temp ID before changing it
-                        const tempId = this.rowData[rowIndex].id;
-
-                        // Create a new full agent object with the new ID
-                        const updatedRow = {
-                            ...this.rowData[rowIndex],
-                            id: newAgent.id,
-                        };
-
-                        // Replace the row in our data array
-                        this.rowData[rowIndex] = updatedRow;
-
-                        // Instead of trying to update an existing node, remove and add the row
-                        this.gridApi.applyTransaction({
-                            remove: [{ id: tempId }],
-                            add: [updatedRow],
-                            addIndex: rowIndex,
-                        });
-
-                        // Create an empty agent
-                        const emptyAgent = this.createEmptyFullAgent();
-
-                        // Add it to the end using transaction API
-                        this.rowData.push(emptyAgent);
-                        this.gridApi.applyTransaction({ add: [emptyAgent] });
-                    }
-
-                    this.cdr.markForCheck();
-                },
-                error: (error) => {
-                    console.error('Error creating agent:', error);
-                    this.toastService.error(
-                        'Error creating agent: ' +
-                            (error.message || 'Unknown error')
-                    );
-                },
-                complete: () => {
-                    console.log('Agent creation process completed.');
-                },
+            this.setPending(rowId, {
+                kind: 'create',
+                rowId,
+                payload: createAgentData,
             });
+
+            this.cdr.markForCheck();
             return;
         }
         // For rows with a valid id, validate all fields that require validation
@@ -785,18 +757,15 @@ export class AgentsTableComponent {
             tool_ids: updateToolIds,
         };
 
-        this.agentsService.updateAgent(updateAgentData).subscribe({
-            next: (updatedAgent) => {
-                this.toastService.success(`Agent updated successfully`);
-                console.log('Agent updated:', updatedAgent);
-            },
-            error: (error) => {
-                console.error('Error updating agent:', error);
-            },
-            complete: () => {
-                console.log('Agent update process completed.');
-            },
+        const rowId = String(event.data.id);
+
+        this.setPending(rowId, {
+            kind: 'update',
+            rowId,
+            payload: updateAgentData,
         });
+
+        this.cdr.markForCheck();
     }
 
     ngOnDestroy(): void {
@@ -1560,6 +1529,10 @@ export class AgentsTableComponent {
 
                         if (rowNode) {
                             const rowData = rowNode.data;
+                            const isTempRow =
+                                !rowData?.id ||
+                                (typeof rowData.id === 'string' && rowData.id.startsWith('temp_'));
+
 
                             // Update the mergedConfigs in the row data
                             rowNode.setDataValue(
@@ -1610,9 +1583,41 @@ export class AgentsTableComponent {
                                     );
                                 }
                             }
+
+                            const parsedData = this.parseAgentData(rowData);
+
+                            const configuredToolIds = parsedData.configured_tools || [];
+                            const pythonToolIds = parsedData.python_code_tools || [];
+                            const mcpToolIds = parsedData.mcp_tools || [];
+                            const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds);
+
+                            const rowId = String(rowData.id);
+
+                            if (isTempRow) {
+                                const createAgentData: CreateAgentRequest = {
+                                    ...parsedData,
+                                    configured_tools: configuredToolIds,
+                                    python_code_tools: pythonToolIds,
+                                    mcp_tools: mcpToolIds,
+                                    tool_ids: toolIds,
+                                };
+
+                                this.setPending(rowId, { kind: 'create', rowId, payload: createAgentData });
+                            } else {
+                                const updateAgentData: UpdateAgentRequest = {
+                                    ...parsedData,
+                                    configured_tools: configuredToolIds,
+                                    python_code_tools: pythonToolIds,
+                                    mcp_tools: mcpToolIds,
+                                    tool_ids: toolIds,
+                                };
+
+                                this.setPending(rowId, { kind: 'update', rowId, payload: updateAgentData });
+                            }
+
+                            this.cdr.markForCheck();
                         }
                     }
-
                     // Close the popup after selection
                     this.closePopup();
                 }
@@ -1649,7 +1654,6 @@ export class AgentsTableComponent {
                             );
                         }
                     }
-
                     // Close the popup after saving
                     this.closePopup();
                 }
@@ -1738,5 +1742,63 @@ export class AgentsTableComponent {
             this.globalKeydownUnlistener();
             this.globalKeydownUnlistener = null;
         }
+    }
+
+    private setPending(rowId: string, change: PendingChange): void {
+        this.pending.set(rowId, change);
+        this.dirtyChange.emit(this.pending.size > 0);
+    }
+
+    public flushPending(): void {
+        if (this.pending.size === 0) return;
+
+        const changes = Array.from(this.pending.values());
+
+        changes.forEach((change) => {
+            if (change.kind === 'create') {
+                this.agentsService.createAgent(change.payload as CreateAgentRequest).subscribe({
+                    next: (newAgent) => {
+                        const tempRowId = change.rowId;
+
+                        const rowIndex = this.rowData.findIndex((r) => String(r.id) === tempRowId);
+                        if (rowIndex !== -1) {
+                            const updatedRow = { ...this.rowData[rowIndex], id: newAgent.id };
+                            this.rowData[rowIndex] = updatedRow;
+
+                            this.gridApi.applyTransaction({
+                                remove: [{ id: tempRowId }],
+                                add: [updatedRow],
+                                addIndex: rowIndex,
+                            });
+
+                            const emptyAgent = this.createEmptyFullAgent();
+                            this.rowData.push(emptyAgent);
+                            this.gridApi.applyTransaction({ add: [emptyAgent] });
+                        }
+
+                        this.pending.delete(tempRowId);
+                        this.dirtyChange.emit(this.pending.size > 0);
+                        this.toastService.success('Agent created successfully');
+                        this.cdr.markForCheck();
+                    },
+                    error: () => {
+                        this.toastService.error('Failed to create agent');
+                    },
+                });
+                return;
+            }
+
+            this.agentsService.updateAgent(change.payload as UpdateAgentRequest).subscribe({
+                next: () => {
+                    this.pending.delete(change.rowId);
+                    this.dirtyChange.emit(this.pending.size > 0);
+                    this.toastService.success('Agent updated successfully');
+                    this.cdr.markForCheck();
+                },
+                error: () => {
+                    this.toastService.error('Failed to update agent');
+                },
+            });
+        });
     }
 }
