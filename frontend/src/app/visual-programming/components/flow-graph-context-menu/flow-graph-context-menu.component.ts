@@ -19,11 +19,13 @@ import { LlmMenuComponent } from './llm-menu/llm-menu.component';
 import { ToolsMenuComponent } from './tools-menu/tools-menu.component';
 import { StaffMenuComponent } from './staff-menu/staff-menu.component';
 import { ProjectGraphCoreMenuComponent } from './project-graph-core-menu/project-graph-core-menu';
+import { FlowsMenuComponent } from './flows-menu/flows-menu.component';
 
 export type MenuType =
   | 'flow-core'
   | 'project-core'
   | 'projects'
+  | 'flows'
   | 'llms'
   | 'tools'
   | 'staff';
@@ -43,6 +45,7 @@ export type MenuContext = 'flow-graph' | 'project-graph';
     NgStyle,
     FlowGraphCoreMenuComponent,
     FlowProjectsContextMenuComponent,
+    FlowsMenuComponent,
     LlmMenuComponent,
     ToolsMenuComponent,
     StaffMenuComponent,
@@ -73,6 +76,8 @@ export class FlowGraphContextMenuComponent
   private leftValue = 0;
   public isMenuPositioned = false;
   private positionUpdateTimeoutId?: number;
+
+  @Input() public currentFlowId: number | null = null;
 
   private _menuContext: MenuContext = 'flow-graph';
   @Input()
@@ -110,7 +115,7 @@ export class FlowGraphContextMenuComponent
       return [
         { label: 'Core', type: 'flow-core' },
         { label: 'Projects', type: 'projects' },
-        // { label: 'Models', type: 'llms' },
+        { label: 'Flows', type: 'flows' },
       ];
     } else {
       return [

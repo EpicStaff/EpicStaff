@@ -62,10 +62,26 @@ jobs:
           echo ">> volume create crew_pgdata"
           docker volume create crew_pgdata
           echo ">> docker compose --env-file .env --env-file deploy.env up --build -d "
-          docker compose --env-file .env --env-file deploy.env -f docker-compose.deploy.yaml up --build -d --remove-orphans
-
-          echo ">> docker image prune"
-          docker image prune -f
-
-          echo ">> docker compose ps"
-          docker compose ps
+          docker compose \
+            --env-file .env \
+            --env-file deploy.env \
+            -f docker-compose.deploy.yaml \
+            up --build -d --remove-orphans || FAILED=1
+          
+          echo ">> last logs"
+          docker compose \
+            --env-file .env \
+            --env-file deploy.env \
+            -f docker-compose.deploy.yaml \
+            logs --tail=50 --no-color || true
+          
+          if [ "${FAILED:-0}" = "1" ]; then
+            echo "Deploy failed"
+            echo ">> docker image prune"
+            docker image prune -f
+  
+            echo ">> docker compose ps"
+            docker compose ps
+            exit 1
+          fi
+          

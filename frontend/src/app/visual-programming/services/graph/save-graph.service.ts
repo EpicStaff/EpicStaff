@@ -1,14 +1,20 @@
 import {Injectable} from '@angular/core';
 import {EMPTY, forkJoin, Observable, of, throwError} from 'rxjs';
 import {catchError, map, switchMap} from 'rxjs/operators';
-
-import {FlowsApiService} from '../../../features/flows/services/flows-api.service';
-import {GetProjectRequest} from '../../../features/projects/models/project.model';
-import {NodeType} from '../../core/enums/node-type';
-import {ConnectionModel} from '../../core/models/connection.model';
-import {FlowModel} from '../../core/models/flow.model';
-import {EdgeNodeModel, LLMNodeModel, ProjectNodeModel, PythonNodeModel,} from '../../core/models/node.model';
-
+import { FlowsApiService } from '../../../features/flows/services/flows-api.service';
+import { GetProjectRequest } from '../../../features/projects/models/project.model';
+import { NodeType } from '../../core/enums/node-type';
+import { ConnectionModel } from '../../core/models/connection.model';
+import { FlowModel } from '../../core/models/flow.model';
+import {
+    ProjectNodeModel,
+    PythonNodeModel,
+    EdgeNodeModel,
+    StartNodeModel,
+    LLMNodeModel,
+    NodeModel,
+    SubGraphNodeModel,
+} from '../../core/models/node.model';
 import {ToastService} from '../../../services/notifications/toast.service';
 import {
     ConditionalEdge,
@@ -53,17 +59,19 @@ import {
     CreateEndNodeRequest,
     EndNode,
 } from '../../../pages/flows-page/components/flow-visual-programming/models/end-node.model';
-import {EndNodeService} from '../../../pages/flows-page/components/flow-visual-programming/services/end-node.service';
+import {
+    SubGraphNode,
+    CreateSubGraphNodeRequest,
+} from '../../../pages/flows-page/components/flow-visual-programming/models/subgraph-node.model';
+import { SubGraphNodeService } from '../../../pages/flows-page/components/flow-visual-programming/services/subgraph-node.service';
+import { CreateWebhookTriggerNodeRequest, GetWebhookTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/webhook-trigger';
+import { EndNodeService } from '../../../pages/flows-page/components/flow-visual-programming/services/end-node.service';
 import {
     AudioToTextService
 } from '../../../pages/flows-page/components/flow-visual-programming/services/audio-to-text-node';
 import {
     WebhookTriggerNodeService
 } from '../../../pages/flows-page/components/flow-visual-programming/services/webhook-trigger.service';
-import {
-    CreateWebhookTriggerNodeRequest,
-    GetWebhookTriggerNodeRequest
-} from '../../../pages/flows-page/components/flow-visual-programming/models/webhook-trigger';
 import {
     CreateConditionGroupRequest,
     CreateDecisionTableNodeRequest,
@@ -96,6 +104,7 @@ export class GraphUpdateService {
         private webhookTriggerService: WebhookTriggerNodeService,
         private telegramTriggerService: TelegramTriggerNodeService,
         private endNodeService: EndNodeService,
+        private subGraphNodeService: SubGraphNodeService,
         private decisionTableNodeService: DecisionTableNodeService,
         private toastService: ToastService
     ) { }
@@ -134,6 +143,7 @@ export class GraphUpdateService {
             edges: Edge[];
 
             endNodes: EndNode[];
+            subGraphNodes: SubGraphNode[];
             decisionTableNodes: GetDecisionTableNodeRequest[];
         };
     }> {
@@ -150,7 +160,7 @@ export class GraphUpdateService {
                 (crewNode: CrewNode) =>
                     this.crewNodeService
                         .deleteCrewNode(crewNode.id.toString())
-                        .pipe(catchError((err) => throwError(err)))
+                        .pipe(catchError((err: any) => throwError(err)))
             );
             deleteCrewNodes$ = forkJoin(deleteCrewRequests);
         }
@@ -172,7 +182,7 @@ export class GraphUpdateService {
                         };
                         return this.crewNodeService
                             .createCrewNode(payload)
-                            .pipe(catchError((err) => throwError(err)));
+                            .pipe(catchError((err: any) => throwError(err)));
                     }
                 );
                 return crewNodeRequests.length
@@ -188,7 +198,7 @@ export class GraphUpdateService {
                 (pythonNode: PythonNode) =>
                     this.pythonNodeService
                         .deletePythonNode(pythonNode.id.toString())
-                        .pipe(catchError((err) => throwError(err)))
+                        .pipe(catchError((err: any) => throwError(err)))
             );
             deletePythonNodes$ = forkJoin(deletePythonRequests);
         }
@@ -210,7 +220,7 @@ export class GraphUpdateService {
                         };
                         return this.pythonNodeService
                             .createPythonNode(payload)
-                            .pipe(catchError((err) => throwError(err)));
+                            .pipe(catchError((err: any) => throwError(err)));
                     }
                 );
                 return pythonNodeRequests.length
@@ -229,7 +239,7 @@ export class GraphUpdateService {
                 (feNode: GetFileExtractorNodeRequest) =>
                     this.fileExtractorService
                         .deleteFileExtractorNode(feNode.id.toString())
-                        .pipe(catchError((err) => throwError(err)))
+                        .pipe(catchError((err: any) => throwError(err)))
             );
             deleteFileExtractorNodes$ = forkJoin(deleteFERqs);
         }
@@ -249,7 +259,7 @@ export class GraphUpdateService {
                     };
                     return this.fileExtractorService
                         .createFileExtractorNode(payload)
-                        .pipe(catchError((err) => throwError(err)));
+                        .pipe(catchError((err: any) => throwError(err)));
                 });
                 return requests.length ? forkJoin(requests) : of([]);
             })
@@ -299,7 +309,7 @@ export class GraphUpdateService {
                 (llmNode: GetLLMNodeRequest) =>
                     this.llmNodeService
                         .deleteLLMNode(llmNode.id.toString())
-                        .pipe(catchError((err) => throwError(err)))
+                        .pipe(catchError((err: any) => throwError(err)))
             );
             deleteLLMNodes$ = forkJoin(deleteLLMRequests);
         }
@@ -319,7 +329,7 @@ export class GraphUpdateService {
                     };
                     return this.llmNodeService
                         .createLLMNode(payload)
-                        .pipe(catchError((err) => throwError(err)));
+                        .pipe(catchError((err: any) => throwError(err)));
                 });
                 return llmNodeRequests.length
                     ? forkJoin(llmNodeRequests)
@@ -333,7 +343,7 @@ export class GraphUpdateService {
             const deleteEndReqs = graph.end_node_list.map((endNode: EndNode) =>
                 this.endNodeService
                     .deleteEndNode(endNode.id)
-                    .pipe(catchError((err) => throwError(err)))
+                    .pipe(catchError((err: any) => throwError(err)))
             );
             deleteEndNodes$ = forkJoin(deleteEndReqs);
         }
@@ -353,7 +363,41 @@ export class GraphUpdateService {
                     };
                     return this.endNodeService
                         .createEndNode(payload)
-                        .pipe(catchError((err) => throwError(err)));
+                        .pipe(catchError((err: any) => throwError(err)));
+                });
+                return requests.length ? forkJoin(requests) : of([]);
+            })
+        );
+
+        // ---- Handle SubGraph Nodes ----
+        let deleteSubGraphNodes$: Observable<any> = of(null);
+        if (graph.subgraph_node_list && graph.subgraph_node_list.length > 0) {
+            const deleteSubGraphReqs = graph.subgraph_node_list.map(
+                (subGraphNode: SubGraphNode) =>
+                    this.subGraphNodeService
+                        .deleteSubGraphNode(subGraphNode.id)
+                        .pipe(catchError((err: any) => throwError(err)))
+            );
+            deleteSubGraphNodes$ = forkJoin(deleteSubGraphReqs);
+        }
+
+        const subGraphNodes$ = deleteSubGraphNodes$.pipe(
+            switchMap(() => {
+                const subGraphNodes = flowState.nodes.filter(
+                    (node) => node.type === NodeType.SUBGRAPH
+                ) as SubGraphNodeModel[];
+
+                const requests = subGraphNodes.map((node) => {
+                    const payload: CreateSubGraphNodeRequest = {
+                        node_name: node.node_name,
+                        graph: graph.id,
+                        subgraph: node.data.id,
+                        input_map: node.input_map || {},
+                        output_variable_path: node.output_variable_path || null,
+                    };
+                    return this.subGraphNodeService
+                        .createSubGraphNode(payload)
+                        .pipe(catchError((err: any) => throwError(err)));
                 });
                 return requests.length ? forkJoin(requests) : of([]);
             })
@@ -366,7 +410,7 @@ export class GraphUpdateService {
                 (webhookTriggerNode: GetWebhookTriggerNodeRequest) =>
                     this.webhookTriggerService
                         .deleteWebhookTriggerNode(webhookTriggerNode.id.toString())
-                        .pipe(catchError((err) => throwError(err)))
+                        .pipe(catchError((err: any) => throwError(err)))
             );
             deleteWebhookTriggerNodes$ = forkJoin(deleteWebhookTriggerReqs);
         }
@@ -432,7 +476,7 @@ export class GraphUpdateService {
                 (dtNode: GetDecisionTableNodeRequest) =>
                     this.decisionTableNodeService
                         .deleteDecisionTableNode(dtNode.id.toString())
-                        .pipe(catchError((err) => throwError(err)))
+                        .pipe(catchError((err: any) => throwError(err)))
             );
             deleteDecisionTableNodes$ = forkJoin(deleteDecisionTableReqs);
         }
@@ -447,7 +491,7 @@ export class GraphUpdateService {
                 (condEdge: GetConditionalEdgeRequest) =>
                     this.conditionalEdgeService
                         .deleteConditionalEdge(condEdge.id)
-                        .pipe(catchError((err) => throwError(err)))
+                        .pipe(catchError((err: any) => throwError(err)))
             );
             deleteConditionalEdges$ = forkJoin(deleteConditionalRequests);
         } else {
@@ -488,7 +532,7 @@ export class GraphUpdateService {
                         };
                         return this.conditionalEdgeService
                             .createConditionalEdge(payload)
-                            .pipe(catchError((err) => throwError(err)));
+                            .pipe(catchError((err: any) => throwError(err)));
                     }
                 );
                 return conditionalEdgeRequests.length
@@ -505,7 +549,7 @@ export class GraphUpdateService {
             const deleteEdgeRequests = graph.edge_list.map((edge: Edge) =>
                 this.edgeService
                     .deleteEdge(edge.id)
-                    .pipe(catchError((err) => throwError(err)))
+                    .pipe(catchError((err: any) => throwError(err)))
             );
             deleteEdges$ = forkJoin(deleteEdgeRequests);
         }
@@ -552,7 +596,7 @@ export class GraphUpdateService {
                         };
                         return this.edgeService
                             .createEdge(payload)
-                            .pipe(catchError((err) => throwError(err)));
+                            .pipe(catchError((err: any) => throwError(err)));
                     });
                 return edgeRequests.length ? forkJoin(edgeRequests) : of([]);
             })
@@ -620,7 +664,7 @@ export class GraphUpdateService {
 
                     return this.decisionTableNodeService
                         .createDecisionTableNode(payload)
-                        .pipe(catchError((err) => throwError(err)));
+                        .pipe(catchError((err: any) => throwError(err)));
                 });
 
                 return requests.length ? forkJoin(requests) : of([]);
@@ -638,6 +682,7 @@ export class GraphUpdateService {
             telegramTriggerNodes: telegramTriggerNodes$,
             conditionalEdges: conditionalEdges$,
             endNodes: endNodes$,
+            subGraphNodes: subGraphNodes$,
             edges: createEdges$,
             decisionTableNodes: decisionTableNodes$,
         }).pipe(
@@ -653,6 +698,7 @@ export class GraphUpdateService {
                     conditionalEdges: ConditionalEdge[];
                     edges: Edge[];
                     endNodes: EndNode[];
+                    subGraphNodes: SubGraphNode[];
                     decisionTableNodes: GetDecisionTableNodeRequest[];
                 }) => {
                     const updateGraphRequest: UpdateGraphDtoRequest = {
@@ -691,6 +737,7 @@ export class GraphUpdateService {
                                         telegramTriggerNodes: results.telegramTriggerNodes,
                                         edges: results.edges,
                                         endNodes: results.endNodes,
+                                        subGraphNodes: results.subGraphNodes,
                                         decisionTableNodes:
                                             results.decisionTableNodes,
                                     },

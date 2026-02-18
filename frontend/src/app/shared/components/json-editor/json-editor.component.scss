@@ -1,5 +1,21 @@
 :host ::ng-deep .monaco-editor {
   --vscode-focusBorder: transparent !important;
+
+  // Fix line number gutter padding
+  .margin-view-overlays {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .line-numbers {
+    padding-left: 4px !important;
+    padding-right: 8px !important;
+  }
+
+  .margin {
+    width: auto !important;
+    min-width: 32px !important;
+  }
 }
 
 :host {

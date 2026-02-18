@@ -1,6 +1,7 @@
 from typing import Literal
 from itertools import chain
 
+from tables.serializers.base_serializer import BaseGraphEntityMixin
 from tables.serializers.telegram_trigger_serializers import (
     TelegramTriggerNodeSerializer,
 )
@@ -35,6 +36,7 @@ from tables.models import (
     GraphSessionMessage,
     PythonNode,
     FileExtractorNode,
+    SubGraphNode,
     AudioTranscriptionNode,
     GraphFile,
 )
@@ -79,7 +81,13 @@ from tables.models.realtime_models import (
     RealtimeAgent,
     RealtimeAgentChat,
 )
-from tables.models.tag_models import AgentTag, CrewTag, GraphTag
+from tables.models.tag_models import (
+    AgentTag,
+    CrewTag,
+    EmbeddingModelTag,
+    GraphTag,
+    LLMModelTag,
+)
 from tables.models.vector_models import MemoryDatabase
 from tables.validators.tool_config_validator import ToolConfigValidator, eval_any
 from tables.models import (
@@ -122,16 +130,139 @@ class ProviderSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class LLMModelSerializer(serializers.ModelSerializer):
+class LLMModelTagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LLMModelTag
+        fields = ("id", "name", "predefined")
+        read_only_fields = ("predefined",)
+
+
+class EmbeddingTagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmbeddingModelTag
+        fields = ("id", "name", "predefined")
+        read_only_fields = ("predefined",)
+
+
+class TagHandlingMixin:
+    """
+    Mixin for handling model tags.
+    Rules:
+    1. Predefined tags MAY be present in the request.
+    2. Users CANNOT remove an existing predefined tag (validation error).
+    3. Users CANNOT manually add/assign a predefined tag that was not previously present (validation error).
+    """
+
+    tag_model = None
+
+    def _resolve_tags(self, tags_data):
+        resolved = []
+        for tag in tags_data:
+            if "id" in tag:
+                try:
+                    obj = self.tag_model.objects.get(id=tag["id"])
+                except self.tag_model.DoesNotExist:
+                    raise serializers.ValidationError(
+                        f"Tag with id {tag['id']} not found."
+                    )
+            elif "name" in tag:
+                obj, _ = self.tag_model.objects.get_or_create(
+                    name=tag["name"],
+                    defaults={"predefined": False},
+                )
+            else:
+                continue
+
+            resolved.append(obj)
+        return resolved
+
+    def _validate_predefined_tags_on_update(self, instance, resolved_tags):
+        resolved_set = set(resolved_tags)
+        existing_predefined = set(instance.tags.filter(predefined=True))
+
+        missing_tags = existing_predefined - resolved_set
+        if missing_tags:
+            names = ", ".join([t.name for t in missing_tags])
+            raise serializers.ValidationError(
+                f"You cannot remove the following predefined tags: {names}. They must be present in the request."
+            )
+
+        incoming_predefined = {t for t in resolved_set if t.predefined}
+        new_predefined = incoming_predefined - existing_predefined
+        if new_predefined:
+            names = ", ".join([t.name for t in new_predefined])
+            raise serializers.ValidationError(
+                f"You cannot manually assign predefined tags: {names}."
+            )
+
+    def _validate_predefined_tags_on_create(self, resolved_tags):
+        for tag in resolved_tags:
+            if tag.predefined:
+                raise serializers.ValidationError(
+                    f"You cannot manually assign predefined tag '{tag.name}' during creation."
+                )
+
+
+class LLMModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
+    tags = LLMModelTagSerializer(many=True, required=False)
+    tag_model = LLMModelTag
+
     class Meta:
         model = LLMModel
         fields = "__all__"
 
+    def create(self, validated_data):
+        tags_data = validated_data.pop("tags", [])
+        instance = super().create(validated_data)
 
-class EmbeddingModelSerializer(serializers.ModelSerializer):
+        if tags_data:
+            resolved_tags = self._resolve_tags(tags_data)
+            self._validate_predefined_tags_on_create(resolved_tags)
+            instance.tags.set(resolved_tags)
+
+        return instance
+
+    def update(self, instance, validated_data):
+        tags_data = validated_data.pop("tags", None)
+
+        if tags_data is not None:
+            resolved_tags = self._resolve_tags(tags_data)
+
+            self._validate_predefined_tags_on_update(instance, resolved_tags)
+
+            instance.tags.set(resolved_tags)
+
+        return super().update(instance, validated_data)
+
+
+class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
+    tags = EmbeddingTagSerializer(many=True, required=False)
+    tag_model = EmbeddingModelTag
+
     class Meta:
         model = EmbeddingModel
         fields = "__all__"
+
+    def create(self, validated_data):
+        tags_data = validated_data.pop("tags", [])
+        instance = super().create(validated_data)
+
+        if tags_data:
+            resolved_tags = self._resolve_tags(tags_data)
+            self._validate_predefined_tags_on_create(resolved_tags)
+            instance.tags.set(resolved_tags)
+
+        return instance
+
+    def update(self, instance, validated_data):
+        tags_data = validated_data.pop("tags", None)
+
+        if tags_data is not None:
+            resolved_tags = self._resolve_tags(tags_data)
+            self._validate_predefined_tags_on_update(instance, resolved_tags)
+            instance.tags.set(resolved_tags)
+
+        return super().update(instance, validated_data)
 
 
 class EmbeddingConfigSerializer(serializers.ModelSerializer):
@@ -1149,15 +1280,30 @@ class LLMNodeSerializer(serializers.ModelSerializer):
 
 
 class EdgeSerializer(serializers.ModelSerializer):
-    class Meta:
+    class Meta(BaseGraphEntityMixin.Meta):
         model = Edge
         fields = "__all__"
+
+
+class SubGraphNodeSerializer(serializers.ModelSerializer):
+    class Meta(BaseGraphEntityMixin.Meta):
+        model = SubGraphNode
+        fields = "__all__"
+
+    def validate(self, attrs):
+        graph = attrs.get("graph") or getattr(self.instance, "graph", None)
+        subgraph = attrs.get("subgraph") or getattr(self.instance, "subgraph", None)
+
+        if graph and subgraph and graph == subgraph:
+            raise serializers.ValidationError("Graph and subgraph cannot be the same.")
+
+        return attrs
 
 
 class ConditionalEdgeSerializer(serializers.ModelSerializer):
     python_code = PythonCodeSerializer()
 
-    class Meta:
+    class Meta(BaseGraphEntityMixin.Meta):
         model = ConditionalEdge
         fields = "__all__"
 
@@ -1194,9 +1340,14 @@ class ConditionalEdgeSerializer(serializers.ModelSerializer):
 class StartNodeSerializer(serializers.ModelSerializer):
     node_name = serializers.SerializerMethodField(read_only=True)
 
-    class Meta:
+    class Meta(BaseGraphEntityMixin.Meta):
         model = StartNode
-        fields = ["id", "graph", "variables", "node_name"]
+        fields = [
+            "id",
+            "graph",
+            "variables",
+            "node_name",
+        ] + BaseGraphEntityMixin.Meta.common_fields
         read_only_fields = ["node_name"]
 
     def get_node_name(self, obj):
@@ -1206,9 +1357,14 @@ class StartNodeSerializer(serializers.ModelSerializer):
 class EndNodeSerializer(serializers.ModelSerializer):
     node_name = serializers.SerializerMethodField(read_only=True)
 
-    class Meta:
+    class Meta(BaseGraphEntityMixin.Meta):
         model = EndNode
-        fields = ["id", "graph", "output_map", "node_name"]
+        fields = [
+            "id",
+            "graph",
+            "output_map",
+            "node_name",
+        ] + BaseGraphEntityMixin.Meta.common_fields
         read_only_fields = ["node_name"]
 
     def get_node_name(self, obj):
@@ -1427,6 +1583,7 @@ class GraphSerializer(serializers.ModelSerializer):
     webhook_trigger_node_list = WebhookTriggerNodeSerializer(many=True, read_only=True)
     start_node_list = StartNodeSerializer(many=True, read_only=True)
     decision_table_node_list = DecisionTableNodeSerializer(many=True, read_only=True)
+    subgraph_node_list = SubGraphNodeSerializer(many=True, read_only=True)
     end_node_list = EndNodeSerializer(many=True, read_only=True, source="end_node")
     telegram_trigger_node_list = TelegramTriggerNodeSerializer(
         many=True, read_only=True
@@ -1448,6 +1605,7 @@ class GraphSerializer(serializers.ModelSerializer):
             "llm_node_list",
             "webhook_trigger_node_list",
             "decision_table_node_list",
+            "subgraph_node_list",
             "start_node_list",
             "end_node_list",
             "time_to_live",

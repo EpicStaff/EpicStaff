@@ -1,0 +1,16 @@
+name: PR build
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    uses: ./.github/workflows/compose-build.yml
+    with:
+      compose-file: src/docker-compose.yaml
+      max-parallel: 2

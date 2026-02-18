@@ -14,5 +14,6 @@ export enum NodeType {
     WEBHOOK_TRIGGER = 'webhook-trigger',
     TELEGRAM_TRIGGER = 'telegram-trigger',
     END = 'end',
+    SUBGRAPH = 'subgraph',
     AUDIO_TO_TEXT = 'audio-to-text-node'
 }

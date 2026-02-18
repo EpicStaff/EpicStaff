@@ -11,24 +11,24 @@ from src.crew.services.graph.nodes import (
     PythonNode,
     CrewNode,
     BaseNode,
+    EndNode,
 )
 
+from src.crew.services.graph.nodes.llm_node import LLMNode
 from src.crew.services.graph.nodes.webhook_trigger_node import WebhookTriggerNode
 from src.crew.services.graph.nodes.telegram_trigger_node import TelegramTriggerNode
 from src.crew.services.graph.events import StopEvent
 from src.crew.services.graph.subgraphs.decision_table_node import (
     DecisionTableNodeSubgraph,
 )
-from src.crew.services.graph.nodes.llm_node import LLMNode
-from src.crew.services.graph.nodes.end_node import EndNode
-
-
+from src.crew.services.graph.subgraphs.subgraph_node import SubGraphNode
 from src.crew.services.crew.crew_parser_service import CrewParserService
 from src.crew.services.redis_service import RedisService
 from src.crew.models.request_models import (
     DecisionTableNodeData,
     PythonCodeData,
     SessionData,
+    SubGraphData,
 )
 from src.crew.services.run_python_code_service import RunPythonCodeService
 from src.crew.services.knowledge_search_service import KnowledgeSearchService
@@ -174,6 +174,29 @@ class SessionGraphBuilder:
             decision_table_node_data.node_name, condition
         )
 
+    def add_subgraph_node(
+        self,
+        subgraph_node_data: SubGraphNode,
+        unique_subgraph_list: list[SubGraphData],
+        stop_event,
+    ) -> str:
+        """
+        Adds a subgraph node to the graph builder.
+        """
+        builder = SubGraphNode(
+            session_id=self.session_id,
+            subgraph_node_data=subgraph_node_data,
+            unique_subgraph_list=unique_subgraph_list,
+            graph_builder=StateGraph(State),
+            session_graph_builder=self,
+            stop_event=stop_event,
+        )
+
+        async def inner(state: State, writer: StreamWriter):
+            return await builder.run(state, writer)
+
+        self._graph_builder.add_node(subgraph_node_data.node_name, inner)
+
     @property
     def end_node_result(self):
         """Getter for end_node_result"""
@@ -285,6 +308,14 @@ class SessionGraphBuilder:
             self.add_decision_table_node(
                 decision_table_node_data=decision_table_node_data
             )
+
+        for subgraph_node_data in schema.subgraph_node_list:
+            self.add_subgraph_node(
+                subgraph_node_data=subgraph_node_data,
+                unique_subgraph_list=session_data.unique_subgraph_list,
+                stop_event=self.stop_event,
+            )
+
         for webhook_trigger_node_data in schema.webhook_trigger_node_data_list:
             self.add_node(
                 node=WebhookTriggerNode(

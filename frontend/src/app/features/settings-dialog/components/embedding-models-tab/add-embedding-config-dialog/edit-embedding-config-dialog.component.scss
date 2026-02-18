@@ -32,9 +32,13 @@
     flex-direction: column;
     gap: 0.5rem;
 
+    &__label {
+        margin: 0;
+    }
+
     label {
         font-size: 0.875rem;
-        color: var(--color-text-secondary);
+        color: rgba(217, 217, 222, 0.7);
         .required {
             color: var(--color-error, #ff4d4f);
             margin-left: 2px;
@@ -47,41 +51,93 @@
     }
 }
 
-.api-key-container {
+.model-selector {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    height: 2.5rem;
+    padding: 0 0.5rem;
+    background: var(--color-ks-line, #2b2d30);
+    border: 1px solid rgba(217, 217, 222, 0.16);
+    border-radius: 0.25rem;
+    color: var(--color-text-primary);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+
+    &:hover {
+        border-color: var(--accent-color, #685fff);
+    }
+}
+
+.model-selector__text {
+    flex: 1;
+    font-size: 0.875rem;
+}
+
+.model-selector__text--placeholder {
+    color: rgba(217, 217, 222, 0.6);
+}
+
+.model-selector__provider {
+    text-transform: uppercase;
+    color: #acacac;
+}
+
+.model-selector__separator {
+    color: #9a9a9a;
+}
+
+.model-selector__model {
+    color: var(--color-text-primary);
+}
+
+.form-input {
+    width: 100%;
+    height: 2.5rem;
+    padding: 0.75rem 0.5rem;
+    background-color: var(--color-ks-line, #2b2d30);
+    border: 1px solid rgba(217, 217, 222, 0.16);
+    border-radius: 0.25rem;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    outline: none;
+
+    &::placeholder {
+        color: rgba(217, 217, 222, 0.6);
+    }
+
+    &:focus {
+        border-color: var(--accent-color, #685fff);
+    }
+}
+
+.form-input-wrapper {
     position: relative;
     display: flex;
     align-items: center;
+}
 
-    .api-key-input {
-        flex: 1;
-        padding-right: 2.5rem;
-    }
+.form-input--with-action {
+    padding-right: 2.25rem;
+}
 
-    .toggle-visibility-btn {
-        position: absolute;
-        right: 0.75rem;
-        top: 50%;
-        transform: translateY(-50%);
-        background: none;
-        border: none;
-        color: var(--color-text-secondary);
-        cursor: pointer;
-        padding: 0.25rem;
-        border-radius: 4px;
-        transition: color 0.2s ease;
+.form-input-action {
+    position: absolute;
+    right: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: rgba(217, 217, 222, 0.6);
+    cursor: pointer;
+    transition: color 0.2s ease;
 
-        &:hover {
-            color: var(--color-text-primary);
-        }
-
-        &:focus {
-            outline: 2px solid var(--color-primary);
-            outline-offset: 2px;
-        }
-
-        i {
-            font-size: 1rem;
-        }
+    &:hover {
+        color: var(--color-text-primary, #d9d9de);
     }
 }
 

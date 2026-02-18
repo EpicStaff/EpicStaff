@@ -1,0 +1,56 @@
+<div class="slider-stepper">
+    <div class="slider-stepper__header">
+        @if (label()) {
+            <app-form-field-label
+                [label]="label()"
+                [tooltipText]="tooltipText()"
+            />
+        }
+
+        <div class="slider-stepper__controls">
+            <button
+                type="button"
+                class="slider-stepper__btn slider-stepper__btn--minus"
+                (click)="onStepDown()"
+                [disabled]="isDisabled() || (value() ?? min()) <= min()"
+            >
+                <svg width="10" height="2" viewBox="0 0 10 2" fill="none">
+                    <path d="M0 1H10" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+            </button>
+
+            <span class="slider-stepper__value">{{ displayValue() }}</span>
+
+            <button
+                type="button"
+                class="slider-stepper__btn slider-stepper__btn--plus"
+                (click)="onStepUp()"
+                [disabled]="isDisabled() || (value() ?? min()) >= max()"
+            >
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                    <path d="M5 0V10M0 5H10" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <div class="slider-stepper__track-wrapper">
+        <input
+            type="range"
+            class="slider-stepper__slider"
+            [min]="min()"
+            [max]="max()"
+            [step]="step()"
+            [ngModel]="value() ?? min()"
+            (input)="onSliderChange($event)"
+            (blur)="onTouched()"
+            [disabled]="isDisabled()"
+            [style.--slider-percentage]="sliderPercentage() + '%'"
+        />
+        <div
+            class="slider-stepper__thumb"
+            [style.left]="sliderPercentage() + '%'"
+        ></div>
+    </div>
+</div>
+

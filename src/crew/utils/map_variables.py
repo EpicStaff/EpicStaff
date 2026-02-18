@@ -74,6 +74,7 @@ def map_variables_to_input(
                             f"Cannot find variable `{key}` for `{input_key}`. Setted {key} = 'not found'"
                         )
                         value = "not found"
+                    else:
                         raise
                 except Exception as e:
                     raise Exception(e)

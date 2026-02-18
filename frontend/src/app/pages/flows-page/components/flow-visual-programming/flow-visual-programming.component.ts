@@ -136,6 +136,20 @@ export class FlowVisualProgrammingComponent
         this.flowApiService
             .getGraphById(graphId)
             .pipe(
+                switchMap((graph: GraphDto) =>
+                    this.flowApiService.getGraphsLight().pipe(
+                        map((flows) =>
+                            this.applySubgraphNodeValidation(graph, flows)
+                        ),
+                        catchError((err) => {
+                            console.error(
+                                'Error fetching flows for subgraph validation:',
+                                err
+                            );
+                            return of(graph);
+                        })
+                    )
+                ),
                 takeUntil(this.destroy$),
                 finalize(() => this.cdr.markForCheck())
             )
@@ -147,12 +161,59 @@ export class FlowVisualProgrammingComponent
 
                     this.isLoaded = true;
                     this.initialState = graph.metadata;
+
+                    const blockedCount =
+                        graph.metadata?.nodes?.filter(
+                            (node) =>
+                                node.type === NodeType.SUBGRAPH &&
+                                node.isBlocked
+                        ).length || 0;
+
+                    if (blockedCount > 0) {
+                        this.toastService.warning(
+                            `${blockedCount} subgraph node(s) reference missing flows and were blocked.`,
+                            6000,
+                            'bottom-right'
+                        );
+                    }
                 },
                 error: (err) => {
                     console.error('Error fetching graph:', err);
                     this.toastService.error('Failed to load graph');
                 },
             });
+    }
+
+    private applySubgraphNodeValidation(
+        graph: GraphDto,
+        availableFlows: GraphDto[]
+    ): GraphDto {
+        if (!graph.metadata || !Array.isArray(graph.metadata.nodes)) {
+            return graph;
+        }
+
+        const availableIds = new Set(availableFlows.map((flow) => flow.id));
+        const updatedNodes = graph.metadata.nodes.map((node) => {
+            if (node.type !== NodeType.SUBGRAPH) {
+                return node;
+            }
+
+            const subgraphId = Number((node as any)?.data?.id);
+            const isMissing = !subgraphId || !availableIds.has(subgraphId);
+
+            return {
+                ...node,
+                isBlocked: isMissing,
+            };
+        });
+
+        return {
+            ...graph,
+            metadata: {
+                ...graph.metadata,
+                nodes: updatedNodes,
+            },
+        };
     }
 
     public handleSaveFlow(showNotif: boolean): Observable<boolean> {

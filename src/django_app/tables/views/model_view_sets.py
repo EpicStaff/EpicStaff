@@ -50,7 +50,7 @@ from tables.models.realtime_models import (
     RealtimeAgent,
     RealtimeAgentChat,
 )
-from tables.filters import ProviderFilter
+from tables.filters import EmbeddingModelFilter, LLMModelFilter, ProviderFilter
 from tables.models.tag_models import AgentTag, CrewTag, GraphTag
 from tables.models.vector_models import MemoryDatabase
 from tables.models.mcp_models import McpTool
@@ -64,6 +64,7 @@ from tables.serializers.model_serializers import (
     AgentTagSerializer,
     DecisionTableNodeSerializer,
     EndNodeSerializer,
+    SubGraphNodeSerializer,
     GraphLightSerializer,
     GraphTagSerializer,
     PythonCodeToolConfigFieldSerializer,
@@ -133,6 +134,7 @@ from tables.models import (
     PythonCodeTool,
     PythonNode,
     FileExtractorNode,
+    SubGraphNode,
     AudioTranscriptionNode,
     RealtimeModel,
     StartNode,
@@ -183,12 +185,16 @@ redis_service = RedisService()
 class BasePredefinedRestrictedViewSet(ModelViewSet):
     """
     Base ViewSet class for predefined models.
+    Allows updating non-critical fields of predefined objects.
+    Prevents deletion of predefined objects.
     """
 
     def get_queryset(self):
-        if self.action in ["list", "retrieve"]:
-            return self.queryset
-        return self.queryset.filter(predefined=False)
+
+        if self.action == "destroy":
+            return self.queryset.filter(predefined=False)
+        
+        return self.queryset
 
     def perform_create(self, serializer):
         if serializer.validated_data.get("predefined", False):
@@ -199,16 +205,36 @@ class BasePredefinedRestrictedViewSet(ModelViewSet):
 
     def perform_update(self, serializer):
         instance = self.get_object()
+        validated_data = serializer.validated_data
+
         if instance.predefined:
-            e = f"Attempt to update predefined {self.queryset.model.__name__.lower()}"
-            logger.error(e)
-            raise PermissionDenied(e)
-        if serializer.validated_data.get("predefined", False):
-            e = f"Attempt to update predefined field in {self.queryset.model.__name__.lower()}"
-            logger.error(e)
-            raise PermissionDenied(e)
+            
+            # Should not be able to change name
+            if 'name' in validated_data and validated_data['name'] != instance.name:
+                e = f"Cannot change the name of a predefined {self.queryset.model.__name__.lower()}"
+                logger.warning(e)
+                raise ValidationError({"name": e})
+
+            # Should not be able to remove predefined
+            if 'predefined' in validated_data and validated_data['predefined'] is False:
+                e = "Cannot unset predefined status for this object"
+                logger.warning(e)
+                raise ValidationError({"predefined": e})
+
+        else:
+            if validated_data.get("predefined", False):
+                e = f"Attempt to set predefined=True for custom {self.queryset.model.__name__.lower()}"
+                logger.error(e)
+                raise PermissionDenied(e)
+
         serializer.save()
 
+    def perform_destroy(self, instance):
+        if instance.predefined:
+            e = f"Attempt to delete predefined {self.queryset.model.__name__.lower()}"
+            logger.error(e)
+            raise PermissionDenied(e)
+        instance.delete()
 
 class TemplateAgentReadWriteViewSet(ModelViewSet):
     queryset = TemplateAgent.objects.all()
@@ -248,16 +274,14 @@ class LLMModelReadWriteViewSet(BasePredefinedRestrictedViewSet):
     queryset = LLMModel.objects.all()
     serializer_class = LLMModelSerializer
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = serializer_class.Meta.fields
+    filterset_class = LLMModelFilter
 
 
 class EmbeddingModelReadWriteViewSet(BasePredefinedRestrictedViewSet):
     queryset = EmbeddingModel.objects.all()
     serializer_class = EmbeddingModelSerializer
     filter_backends = [DjangoFilterBackend]
-
-    filterset_fields = serializer_class.Meta.fields
-
+    filterset_class = EmbeddingModelFilter
 
 class EmbeddingConfigReadWriteViewSet(ModelViewSet):
     class EmbeddingConfigFilter(filters.FilterSet):
@@ -647,6 +671,7 @@ class GraphViewSet(viewsets.ModelViewSet, ImportExportMixin, DeepCopyMixin):
                 Prefetch(
                     "decision_table_node_list", queryset=DecisionTableNode.objects.all()
                 ),
+                Prefetch("subgraph_node_list", queryset=SubGraphNode.objects.all()),
                 Prefetch("end_node", queryset=EndNode.objects.all()),
                 Prefetch(
                     "telegram_trigger_node_list",
@@ -859,6 +884,11 @@ class StartNodeModelViewSet(viewsets.ModelViewSet):
 class EndNodeModelViewSet(viewsets.ModelViewSet):
     queryset = EndNode.objects.all()
     serializer_class = EndNodeSerializer
+
+
+class SubGraphNodeModelViewSet(viewsets.ModelViewSet):
+    queryset = SubGraphNode.objects.all()
+    serializer_class = SubGraphNodeSerializer
 
 
 class ConditionGroupModelViewSet(viewsets.ModelViewSet):

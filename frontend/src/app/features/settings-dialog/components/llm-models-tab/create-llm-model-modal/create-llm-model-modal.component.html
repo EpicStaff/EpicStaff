@@ -1,0 +1,69 @@
+<div class="create-model">
+    <div class="create-model__header">
+        <h3 class="create-model__title">Add LLM Model</h3>
+        <button type="button" class="create-model__close-btn" (click)="onClose()">
+            <app-icon icon="ui/x" size="0.875rem" />
+        </button>
+    </div>
+
+    <div class="create-model__content" [formGroup]="form">
+        <div class="create-model__field">
+            <label class="create-model__label">
+                Provider <span class="create-model__label-required">*</span>
+            </label>
+            <div class="create-model__provider">
+                <app-icon [icon]="getProviderIcon(provider.name)" size="1rem" />
+                <span>{{ provider.name | uppercase }}</span>
+            </div>
+        </div>
+
+        <div class="create-model__field">
+            <label class="create-model__label">
+                Model Name <span class="create-model__label-required">*</span>
+            </label>
+            <app-custom-input
+                placeholder="Enter model name"
+                formControlName="name"
+            />
+        </div>
+
+        <div class="create-model__field">
+            <app-custom-input
+                label="Base URL"
+                placeholder="e.g. https://api.openai.com/v1"
+                formControlName="baseUrl"
+            />
+        </div>
+
+        <div class="create-model__field">
+            <app-custom-input
+                label="Deployment"
+                placeholder="Enter deployment name"
+                formControlName="deploymentId"
+            />
+        </div>
+
+        <div class="create-model__field">
+            <app-custom-input
+                label="API Version"
+                placeholder="e.g. 2024-10-21"
+                formControlName="apiVersion"
+            />
+        </div>
+
+        <div class="create-model__field create-model__field--inline">
+            <label class="create-model__label">Visible</label>
+            <app-toggle-switch formControlName="isVisible" />
+        </div>
+    </div>
+
+    <div class="create-model__footer">
+        <app-button type="ghost" (click)="onClose()" [disabled]="isSubmitting()">
+            Cancel
+        </app-button>
+        <app-button type="primary" (click)="onSubmit()" [disabled]="form.invalid || isSubmitting()">
+            {{ isSubmitting() ? 'Adding...' : 'Add Model' }}
+        </app-button>
+    </div>
+</div>
+

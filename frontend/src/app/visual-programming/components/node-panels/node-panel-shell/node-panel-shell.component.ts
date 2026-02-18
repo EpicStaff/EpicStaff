@@ -88,6 +88,7 @@ import { SidePanelService } from '../../../services/side-panel.service';
 })
 export class NodePanelShellComponent {
     public readonly node = input<NodeModel | null>(null);
+    public readonly currentFlowId = input<number | null>(null);
     public readonly save = output<NodeModel>();
     public readonly autosave = output<NodeModel>();
 
@@ -116,6 +117,7 @@ export class NodePanelShellComponent {
     protected readonly componentInputs = computed(() => ({
         node: this.node(),
         isExpanded: this.isExpanded(),
+        currentFlowId: this.currentFlowId(),
     }));
 
     protected readonly isShaking = signal(false);

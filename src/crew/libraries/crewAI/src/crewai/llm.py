@@ -255,6 +255,7 @@ class LLM:
         api_key: Optional[str] = None,
         callbacks: List[Any] = [],
         stop_event: Any = None,
+        **kwargs,
     ):
         self.model = model
         self.timeout = timeout
@@ -277,6 +278,7 @@ class LLM:
         self.callbacks = callbacks
         self.context_window_size = 0
         self.stop_event = stop_event
+        self.extra_params = kwargs
 
         litellm.drop_params = True
 
@@ -360,6 +362,7 @@ class LLM:
                     "stream": True,
                     "tools": tools,
                 }
+                params.update(self.extra_params)
 
                 # Remove None values from params
                 params = {k: v for k, v in params.items() if v is not None}

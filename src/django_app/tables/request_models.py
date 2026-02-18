@@ -8,20 +8,20 @@ class LLMConfigData(BaseModel):
     timeout: float | int | None = None
     temperature: float | None = None
     top_p: float | None = None
-    n: int | None = None
     stop: str | list[str] | None = None
-    max_completion_tokens: int | None = None
     max_tokens: int | None = None
     presence_penalty: float | None = None
     frequency_penalty: float | None = None
     logit_bias: dict[int, float] | None = None
     response_format: dict[str, Any] | None = None
     seed: int | None = None
-    logprobs: bool | None = None
-    top_logprobs: int | None = None
     base_url: str | None = None
     api_version: str | None = None
     api_key: str | None = None
+    deployment_id: str | None = None
+    headers: dict[str, str] | None = None
+    extra_headers: dict[str, str] | None = None
+    
 
 
 class EmbedderConfigData(BaseModel):
@@ -237,6 +237,7 @@ class TaskData(BaseModel):
 class SessionData(BaseModel):
     id: int
     graph: "GraphData"
+    unique_subgraph_list: list["SubGraphData"] = []
     initial_state: dict[str, Any] = {}
 
 
@@ -363,6 +364,7 @@ class GraphData(BaseModel):
     webhook_trigger_node_data_list: list[WebhookTriggerNodeData] = []
     python_node_list: list[PythonNodeData] = []
     file_extractor_node_list: list[FileExtractorNodeData] = []
+    subgraph_node_list: list["SubGraphNodeData"] = []
     audio_transcription_node_list: list[AudioTranscriptionNodeData] = []
     llm_node_list: list[LLMNodeData] = []
     edge_list: list[EdgeData] = []
@@ -371,6 +373,19 @@ class GraphData(BaseModel):
     entrypoint: str
     end_node: EndNodeData | None
     telegram_trigger_node_data_list: list[TelegramTriggerNodeData] = []
+
+
+class SubGraphNodeData(BaseModel):
+    node_name: str
+    subgraph_id: int
+    input_map: dict[str, Any]
+    output_variable_path: str | None = None
+
+
+class SubGraphData(BaseModel):
+    id: int
+    data: GraphData
+    initial_state: dict[str, Any] = {}
 
 
 class GraphSessionMessageData(BaseModel):

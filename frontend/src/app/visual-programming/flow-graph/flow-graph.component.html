@@ -255,6 +255,7 @@
     <app-flow-graph-context-menu
         [position]="contextMenuPostion"
         [menuContext]="nodesMode"
+        [currentFlowId]="currentFlowId"
         clickOutside
         (clickOutside)="onCloseContextMenu()"
         (nodeSelected)="onAddNodeFromContextMenu($event)"
@@ -263,6 +264,7 @@
     }
     <app-node-panel-shell
         [node]="sidePanelService.selectedNode()"
+        [currentFlowId]="currentFlowId"
         (save)="onNodePanelSaved($event)"
         (autosave)="onNodePanelAutosaved($event)"
         #nodePanelShell

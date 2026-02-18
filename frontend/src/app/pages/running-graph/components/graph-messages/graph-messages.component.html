@@ -1,86 +1,291 @@
 <!-- graph-messages.component.html -->
 <div class="messages-container">
-  <!-- Connection status indicator -->
-  <div
-    class="connection-status"
-    *ngIf="
-      connectionStatus === 'reconnecting' || connectionStatus === 'disconnected'
-    "
-  >
-    <div class="status-indicator" [class]="connectionStatus">
-      <span class="status-icon">
-        <i
-          class="ti"
-          [class.ti-loader]="connectionStatus === 'reconnecting'"
-          [class.ti-alert-triangle]="connectionStatus === 'disconnected'"
-          [class.ti-spin]="connectionStatus === 'reconnecting'"
-        >
-        </i>
-      </span>
-      <span class="status-text">
-        <ng-container [ngSwitch]="connectionStatus">
-          <span *ngSwitchCase="'reconnecting'">Reconnecting...</span>
-          <span *ngSwitchCase="'disconnected'">Connection lost</span>
-        </ng-container>
-      </span>
+    <!-- Connection status indicator -->
+    <div
+        class="connection-status"
+        *ngIf="
+            connectionStatus === 'reconnecting' ||
+            connectionStatus === 'disconnected'
+        "
+    >
+        <div class="status-indicator" [class]="connectionStatus">
+            <span class="status-icon">
+                <i
+                    class="ti"
+                    [class.ti-loader]="connectionStatus === 'reconnecting'"
+                    [class.ti-alert-triangle]="
+                        connectionStatus === 'disconnected'
+                    "
+                    [class.ti-spin]="connectionStatus === 'reconnecting'"
+                >
+                </i>
+            </span>
+            <span class="status-text">
+                <ng-container [ngSwitch]="connectionStatus">
+                    <span *ngSwitchCase="'reconnecting'">Reconnecting...</span>
+                    <span *ngSwitchCase="'disconnected'">Connection lost</span>
+                </ng-container>
+            </span>
+        </div>
     </div>
-  </div>
-  <!-- Messages list -->
-  <div class="messages-list" *ngIf="this.sseService.messages().length > 0">
-    <!-- Warnings -->
-    <app-warning-messages [messages]="warningMessages"/>
-    @for (message of this.sseService.messages(); track message.uuid; let i =
-    $index) {
-    <div class="message">
-      <app-project-transition
-        *ngIf="shouldShowTransition(message, i)"
-      ></app-project-transition>
 
-      @switch (message.message_data.message_type) { @case ('start') {
-      <app-start-message [message]="message"></app-start-message>
-      } @case ('user') {
-      <app-user-message [message]="message"></app-user-message>
-      } @case ('agent') {
-      <app-agent-message
-        [message]="message"
-        [agent]="getAgentFromMessage(message)"
-      ></app-agent-message>
-      } @case ('agent_finish') {
-      <app-agent-finish-message
-        [message]="message"
-        [agent]="getAgentFromMessage(message)"
-      ></app-agent-finish-message>
-      } @case ('python') {
-      <app-python-message [message]="message"></app-python-message>
-      } @case ('llm') {
-      <app-llm-message [message]="message"></app-llm-message>
-      } @case ('extracted_chunks') {
-      <app-extracted-chunks-message
-        [message]="message"
-      ></app-extracted-chunks-message>
-      } @case ('error') {
-      <app-error-message [message]="message"></app-error-message>
-      } @case ('task') {
-      <app-task-message [message]="message"></app-task-message>
-      } @case ('finish') {
-      <app-finish-message
-        [message]="message"
-        [project]="getProjectFromMessage(message)"
-      ></app-finish-message>
-      } }
+    <!-- Messages list -->
+    <div class="messages-list" *ngIf="messages.length > 0">
+        <!-- Warnings -->
+        <app-warning-messages [messages]="warningMessages"/>
+        @for (entry of visibleMessageEntries; track entry.key; let i = $index) {
+        <div class="message">
+            <app-project-transition
+                *ngIf="entry.shouldShowTransition"
+            ></app-project-transition>
+
+            @switch (entry.message.message_data.message_type) { @case ('start') {
+            <app-start-message [message]="entry.message"></app-start-message>
+            } @case ('user') {
+            <app-user-message [message]="entry.message"></app-user-message>
+            } @case ('agent') {
+            <app-agent-message
+                [message]="entry.message"
+                [agent]="entry.agent"
+            ></app-agent-message>
+            } @case ('agent_finish') {
+            <app-agent-finish-message
+                [message]="entry.message"
+                [agent]="entry.agent"
+            ></app-agent-finish-message>
+            } @case ('python') {
+            <app-python-message [message]="entry.message"></app-python-message>
+            } @case ('llm') {
+            <app-llm-message [message]="entry.message"></app-llm-message>
+            } @case ('extracted_chunks') {
+            <app-extracted-chunks-message
+                [message]="entry.message"
+            ></app-extracted-chunks-message>
+            } @case ('error') {
+            <app-error-message [message]="entry.message"></app-error-message>
+            } @case ('task') {
+            <app-task-message [message]="entry.message"></app-task-message>
+            } @case ('finish') {
+            <app-finish-message
+                [message]="entry.message"
+                [project]="entry.project"
+            ></app-finish-message>
+            } @case ('subgraph_start') {
+            <ng-container *ngIf="entry.rootView as rootView; else rootSubgraphMessage">
+                <div class="subgraph-drilldown" [class.is-closing]="rootView.isClosing">
+                    <div class="subgraph-drilldown__breadcrumbs">
+                        <div class="breadcrumbs-control breadcrumbs-control--left">
+                            <button
+                                type="button"
+                                class="breadcrumbs-arrow"
+                                aria-label="Scroll breadcrumbs left"
+                                (click)="scrollBreadcrumbs(breadcrumbsScroller, 'left')"
+                                *ngIf="rootView.hasBreadcrumbOverflow"
+                            >
+                                <i class="ti ti-chevron-left"></i>
+                            </button>
+                            <div
+                                class="breadcrumbs-search"
+                                [class.is-expanded]="rootView.breadcrumbSearchExpanded"
+                            >
+                                <button
+                                    type="button"
+                                    class="breadcrumbs-search-button"
+                                    aria-label="Search subflow"
+                                    (click)="toggleBreadcrumbSearch(rootView.rootKey)"
+                                >
+                                    <i class="ti ti-search search-icon"></i>
+                                </button>
+                                <input
+                                    type="text"
+                                    class="breadcrumbs-search-input"
+                                    placeholder="Search subflow"
+                                    [value]="rootView.breadcrumbSearchTerm"
+                                    (input)="
+                                        onBreadcrumbSearch(
+                                            rootView.rootKey,
+                                            $any($event.target).value
+                                        )
+                                    "
+                                    (blur)="onBreadcrumbSearchBlur(rootView.rootKey)"
+                                />
+                            </div>
+                        </div>
+                        <div
+                            class="breadcrumbs-scroll"
+                            #breadcrumbsScroller
+                            [attr.data-root-key]="rootView.rootKey"
+                            (scroll)="
+                                onBreadcrumbsScroll(
+                                    rootView.rootKey,
+                                    breadcrumbsScroller
+                                )
+                            "
+                        >
+                            <span
+                                class="breadcrumb-item"
+                                *ngFor="
+                                    let crumb of rootView.filteredBreadcrumbs;
+                                    let isLast = last
+                                "
+                            >
+                                <button
+                                    type="button"
+                                    class="breadcrumb-button"
+                                    (click)="
+                                        onBreadcrumbClick(
+                                            rootView.rootKey,
+                                            crumb.index
+                                        )
+                                    "
+                                >
+                                    {{ crumb.label }}
+                                </button>
+
+                                <span
+                                    class="breadcrumb-separator icon-container"
+                                    *ngIf="!isLast"
+                                >
+                                    <i class="ti ti-chevron-right"></i>
+                                </span>
+                            </span>
+                            <div class="icon-container">
+                                <i class="ti ti-corner-right-down"></i>
+                            </div>
+                        </div>
+                        <div
+                            class="breadcrumbs-control breadcrumbs-control--right"
+                            *ngIf="rootView.hasBreadcrumbOverflow"
+                        >
+                            <button
+                                type="button"
+                                class="breadcrumbs-arrow"
+                                aria-label="Scroll breadcrumbs right"
+                                (click)="scrollBreadcrumbs(breadcrumbsScroller, 'right')"
+                            >
+                                <i class="ti ti-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <ng-container *ngIf="rootView.currentDrillEntry as drillEntry">
+                        <div class="subgraph-drilldown__header">
+                            <app-subgraph-start-message
+                                [message]="drillEntry.message"
+                                [subgraphName]="drillEntry.subgraphName"
+                                [showViewNestedMessages]="
+                                    drillEntry.hasNestedMessages
+                                "
+                                [isNestedMessagesOpen]="
+                                    drillEntry.isNestedMessagesOpen
+                                "
+                                (viewNestedMessages)="
+                                    onViewNestedMessages(drillEntry.message)
+                                "
+                            ></app-subgraph-start-message>
+                        </div>
+                    </ng-container>
+
+                    <div class="subgraph-drilldown__messages">
+                        @for (nestedEntry of rootView.drilldownEntries;
+                        track nestedEntry.key; let nestedIndex = $index) {
+                        <div class="message">
+                            @switch (nestedEntry.message.message_data.message_type) {
+                            @case ('start') {
+                            <app-start-message
+                                [message]="nestedEntry.message"
+                            ></app-start-message>
+                            } @case ('user') {
+                            <app-user-message
+                                [message]="nestedEntry.message"
+                            ></app-user-message>
+                            } @case ('agent') {
+                            <app-agent-message
+                                [message]="nestedEntry.message"
+                                [agent]="nestedEntry.agent"
+                            ></app-agent-message>
+                            } @case ('agent_finish') {
+                            <app-agent-finish-message
+                                [message]="nestedEntry.message"
+                                [agent]="nestedEntry.agent"
+                            ></app-agent-finish-message>
+                            } @case ('python') {
+                            <app-python-message
+                                [message]="nestedEntry.message"
+                            ></app-python-message>
+                            } @case ('llm') {
+                            <app-llm-message
+                                [message]="nestedEntry.message"
+                            ></app-llm-message>
+                            } @case ('extracted_chunks') {
+                            <app-extracted-chunks-message
+                                [message]="nestedEntry.message"
+                            ></app-extracted-chunks-message>
+                            } @case ('error') {
+                            <app-error-message
+                                [message]="nestedEntry.message"
+                            ></app-error-message>
+                            } @case ('task') {
+                            <app-task-message
+                                [message]="nestedEntry.message"
+                            ></app-task-message>
+                            } @case ('finish') {
+                            <app-finish-message
+                                [message]="nestedEntry.message"
+                                [project]="nestedEntry.project"
+                            ></app-finish-message>
+                            } @case ('subgraph_start') {
+                            <app-subgraph-start-message
+                                [message]="nestedEntry.message"
+                                [subgraphName]="nestedEntry.subgraphName"
+                                [showViewNestedMessages]="
+                                    nestedEntry.hasNestedMessages
+                                "
+                                [isNestedMessagesOpen]="
+                                    nestedEntry.isNestedMessagesOpen
+                                "
+                                (viewNestedMessages)="
+                                    onViewNestedMessages(nestedEntry.message)
+                                "
+                            ></app-subgraph-start-message>
+                            } @case ('subgraph_finish') {
+                            <app-subgraph-finish-message
+                                [message]="nestedEntry.message"
+                            ></app-subgraph-finish-message>
+                            } }
+                        </div>
+                        }
+                    </div>
+                </div>
+            </ng-container>
+
+            <ng-template #rootSubgraphMessage>
+                <app-subgraph-start-message
+                    [message]="entry.message"
+                    [subgraphName]="entry.subgraphName"
+                    [showViewNestedMessages]="entry.hasNestedMessages"
+                    [isNestedMessagesOpen]="entry.isNestedMessagesOpen"
+                    (viewNestedMessages)="onViewNestedMessages(entry.message)"
+                ></app-subgraph-start-message>
+            </ng-template>
+            } @case ('subgraph_finish') {
+            <app-subgraph-finish-message
+                [message]="entry.message"
+            ></app-subgraph-finish-message>
+            } }
+        </div>
+        }
     </div>
-    }
-  </div>
 
-  <!-- Loading dots for running session -->
-  <app-loading-dots
-    *ngIf="isProcessing"
-    class="loading-indicator"
-  ></app-loading-dots>
+    <!-- Loading dots for running session -->
+    <app-loading-dots
+        *ngIf="isProcessing"
+        class="loading-indicator"
+    ></app-loading-dots>
 
-  <!-- Waiting for user input component -->
-  <app-wait-for-user-input
-    *ngIf="statusWaitForUser"
-    (messageSubmitted)="onUserMessageSubmitted($event)"
-  ></app-wait-for-user-input>
+    <!-- Waiting for user input component -->
+    <app-wait-for-user-input
+        *ngIf="statusWaitForUser"
+        (messageSubmitted)="onUserMessageSubmitted($event)"
+    ></app-wait-for-user-input>
 </div>

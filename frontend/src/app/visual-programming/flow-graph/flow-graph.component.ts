@@ -125,6 +125,7 @@ import { FlowShortcutsButtonComponent } from '../components/flow-shortcuts-butto
 export class FlowGraphComponent implements OnInit, OnDestroy {
     @Input() flowState!: FlowModel;
     @Input() nodesMode!: 'project-graph' | 'flow-graph';
+    @Input() currentFlowId: number | null = null;
 
     @Output() save = new EventEmitter<void>();
 

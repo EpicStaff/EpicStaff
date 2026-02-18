@@ -1,123 +1,341 @@
-<div class="dialog-container">
-    <div class="dialog-header">
-        <h2>Add LLM Configuration</h2>
+<div class="llm-dialog">
+    <div class="llm-dialog__header">
+        <h2 class="llm-dialog__title">{{ dialogTitle() }}</h2>
+        <button
+            type="button"
+            class="llm-dialog__close-btn"
+            (click)="onCancel()"
+            [disabled]="isSubmitting()"
+        >
+            <app-icon icon="ui/x" size="1rem" />
+        </button>
     </div>
 
-    <div class="dialog-content">
-        <form [formGroup]="form" (ngSubmit)="onSubmit()">
-            <!-- Loading state -->
-            <!-- <div *ngIf="isLoading()" class="loading-state">
-        <p>Loading...</p>
-      </div> -->
-
-            <!-- Error message -->
+    <div class="llm-dialog__content">
             @if (errorMessage()) {
-                <div class="error-message">
+            <div class="llm-dialog__error">
                     <p>{{ errorMessage() }}</p>
                 </div>
             }
 
-            <!-- Form fields -->
-            <div class="form-field">
-                <label for="providerId">Provider</label>
-                <select id="providerId" formControlName="providerId">
-                    @for (provider of providers(); track provider.id) {
-                        <option [ngValue]="provider.id">
-                            {{ provider.name }}
-                        </option>
-                    }
-                </select>
-                @if (form.get('providerId')?.invalid && form.get('providerId')?.touched) {
-                    <div class="error-hint">
-                        Please select a provider
+        <form [formGroup]="form">
+            <section class="llm-dialog__section">
+                <h3 class="llm-dialog__section-title">Model Information</h3>
+
+                <div class="llm-dialog__field">
+                    <label class="llm-dialog__label">
+                        Provider & Model
+                        <span class="llm-dialog__label-required">*</span>
+                        <app-help-tooltip text="Select the LLM provider and model" />
+                    </label>
+                    <button
+                        type="button"
+                        class="llm-dialog__model-selector"
+                        (click)="openModelSelector()"
+                    >
+                        @if (selectedProvider()) {
+                            <app-icon
+                                [icon]="getProviderIcon(selectedProvider()!.name)"
+                                size="1.25rem"
+                            />
+                        }
+                        @if (selectedModel() && selectedProvider()) {
+                            <span class="llm-dialog__model-selector-text">
+                                <span class="llm-dialog__model-selector-provider">{{ selectedProvider()!.name }}</span>
+                                <span class="llm-dialog__model-selector-separator"> / </span>
+                                <span class="llm-dialog__model-selector-model">{{ selectedModel()!.name }}</span>
+                            </span>
+                        } @else {
+                            <span class="llm-dialog__model-selector-text llm-dialog__model-selector-text--placeholder">
+                                Select a model...
+                            </span>
+                        }
+                        <app-icon icon="ui/chevron-down" size="1rem" />
+                    </button>
+                </div>
+
+                <div class="llm-dialog__field">
+                    <label class="llm-dialog__label">
+                        API Key
+                        <span class="llm-dialog__label-required">*</span>
+                        <app-help-tooltip text="Your API key for the selected provider" />
+                    </label>
+                    <div class="llm-dialog__input-wrapper">
+                        <input
+                            [type]="showApiKey() ? 'text' : 'password'"
+                            class="llm-dialog__input"
+                            placeholder="Enter provider's API key"
+                            formControlName="apiKey"
+                        />
+                        <button
+                            type="button"
+                            class="llm-dialog__input-action"
+                            (click)="toggleApiKeyVisibility()"
+                        >
+                            <app-icon
+                                [icon]="showApiKey() ? 'ui/eye-off' : 'ui/eye'"
+                                size="1.25rem"
+                            />
+                        </button>
                     </div>
-                }
+                </div>
+
+                <div class="llm-dialog__field">
+                    <label class="llm-dialog__label">
+                        Configuration Name
+                        <span class="llm-dialog__label-required">*</span>
+                        <app-help-tooltip text="A unique name to identify this configuration" />
+                    </label>
+                    <input
+                        type="text"
+                        class="llm-dialog__input"
+                        placeholder="Enter a custom name"
+                        formControlName="customName"
+                    />
             </div>
 
-            <div class="form-field">
-                <label for="modelId">Model</label>
-                <select id="modelId" formControlName="modelId">
-                    @if (models().length === 0) {
-                        <option [ngValue]="null">
-                            Select a model
-                        </option>
-                    }
-                    @for (model of models(); track model.id) {
-                        <option [ngValue]="model.id">
-                            {{ model.name }}
-                        </option>
-                    }
-                </select>
-                @if (form.get('modelId')?.invalid && form.get('modelId')?.touched) {
-                    <div class="error-hint">
-                        Please select a model
+                <div class="llm-dialog__section-divider"></div>
+            </section>
+
+            <section class="llm-dialog__section">
+                <h3 class="llm-dialog__section-title">API Configuration</h3>
+
+                <div class="llm-dialog__field">
+                    <label class="llm-dialog__label">
+                        Header Configuration
+                        <app-help-tooltip text="Add custom HTTP headers for API requests" />
+                    </label>
+                    <div class="llm-dialog__headers-container" formArrayName="headers">
+                        @for (header of headersArray.controls; track header; let i = $index) {
+                            <div class="llm-dialog__header-row" [formGroupName]="i">
+                                <input
+                                    type="text"
+                                    class="llm-dialog__input llm-dialog__input--header"
+                                    placeholder="Header name"
+                                    formControlName="key"
+                                />
+                                <input
+                                    type="text"
+                                    class="llm-dialog__input llm-dialog__input--header"
+                                    placeholder="Header value"
+                                    formControlName="value"
+                                />
+                                <button
+                                    type="button"
+                                    class="llm-dialog__header-action llm-dialog__header-action--remove"
+                                    (click)="removeHeaderEntry(i)"
+                                    [title]="'Remove header'"
+                                >
+                                    <app-icon icon="ui/x" size="1rem" />
+                                </button>
+                                @if (i === headersArray.length - 1) {
+                                    <button
+                                        type="button"
+                                        class="llm-dialog__header-action llm-dialog__header-action--add"
+                                        (click)="addHeaderEntry()"
+                                        [title]="'Add header'"
+                                    >
+                                        <app-icon icon="ui/plus" size="1rem" />
+                                    </button>
+                                } @else {
+                                    <div class="llm-dialog__header-action llm-dialog__header-action--spacer"></div>
+                                }
+                            </div>
+                        }
+
+                        <div class="llm-dialog__json-preview">
+                            <app-json-editor
+                                [jsonData]="headersJson()"
+                                (jsonChange)="onHeadersChange($event)"
+                                [editorHeight]="120"
+                                [showHeader]="false"
+                            />
+                        </div>
                     </div>
-                }
             </div>
 
-            <div class="form-field">
-                <label for="customName"
-                    >Custom Name <span class="required">*</span></label
-                >
-                <app-custom-input
-                    id="customName"
-                    type="text"
-                    placeholder="Enter a custom name"
-                    formControlName="customName"
-                ></app-custom-input>
-                @if (form.get('customName')?.invalid && form.get('customName')?.touched) {
-                    <div class="error-hint">
-                        Custom name is required
-                    </div>
-                }
-            </div>
+                <div class="llm-dialog__section-divider"></div>
+            </section>
 
-            <div class="form-field">
-                <label for="apiKey"
-                    >API Key <span class="required">*</span></label
-                >
-                <app-custom-input
-                    id="apiKey"
-                    type="password"
-                    placeholder="Enter your API key"
-                    formControlName="apiKey"
-                ></app-custom-input>
-                @if (form.get('apiKey')?.invalid && form.get('apiKey')?.touched) {
-                    <div class="error-hint">
-                        API key is required
-                    </div>
-                }
-            </div>
+            <section class="llm-dialog__section">
+                <h3 class="llm-dialog__section-title">Generation Parameters</h3>
 
-            <div class="form-field">
-                <label for="temperature"
-                    >Temperature: {{ temperatureControl.value }}°</label
-                >
-                <mat-slider
-                    id="temperature"
+                <app-slider-with-stepper
+                    label="Temperature"
+                    tooltipText="Controls randomness. Lower values make output more focused and deterministic."
                     [min]="0"
-                    [max]="100"
-                    [step]="1"
-                    [discrete]="true"
-                    [showTickMarks]="true"
-                    (change)="onTemperatureChange($event)"
-                >
-                    <input matSliderThumb [value]="temperatureControl.value" />
-                </mat-slider>
+                    [max]="2"
+                    [step]="0.1"
+                    [decimals]="1"
+                    formControlName="temperature"
+                />
+
+                <app-slider-with-stepper
+                    label="Top P"
+                    tooltipText="Nucleus sampling. Consider tokens with top_p probability mass."
+                    [min]="0.1"
+                    [max]="1"
+                    [step]="0.1"
+                    [decimals]="1"
+                    formControlName="topP"
+                />
+
+                <app-slider-with-stepper
+                    label="Presence Penalty"
+                    tooltipText="Penalize new tokens based on whether they appear in the text so far."
+                    [min]="-2"
+                    [max]="2"
+                    [step]="0.1"
+                    [decimals]="1"
+                    formControlName="presencePenalty"
+                />
+
+                <app-slider-with-stepper
+                    label="Frequency Penalty"
+                    tooltipText="Penalize new tokens based on their frequency in the text so far."
+                    [min]="-2"
+                    [max]="2"
+                    [step]="0.1"
+                    [decimals]="1"
+                    formControlName="frequencyPenalty"
+                />
+                
+                <div class="llm-dialog__section-divider"></div>
+            </section>
+
+            <section class="llm-dialog__section">
+                <h3 class="llm-dialog__section-title">Token Limits & Completion</h3>
+
+                <div class="llm-dialog__field">
+                    <app-number-stepper
+                        label="Max Tokens"
+                        tooltipText="Maximum number of tokens in the response"
+                        [min]="1"
+                        [max]="128000"
+                        [step]="256"
+                        formControlName="maxTokens"
+                        [control]="$any(form.get('maxTokens'))"
+                        placeholder="4096"
+                        size="lg"
+                    />
+                </div>
+
+                <div class="llm-dialog__field">
+                    <app-number-stepper
+                        label="Timeout (seconds)"
+                        tooltipText="Request timeout in seconds"
+                        [min]="1"
+                        [max]="600"
+                        [step]="5"
+                        formControlName="timeout"
+                        [control]="$any(form.get('timeout'))"
+                        placeholder="30"
+                        size="lg"
+                    />
+                </div>
+
+                <div class="llm-dialog__section-divider"></div>
+            </section>
+
+            <section class="llm-dialog__section">
+                <h3 class="llm-dialog__section-title">Advanced Parameters</h3>
+
+                <div class="llm-dialog__field">
+                    <app-number-stepper
+                        label="Seed"
+                        tooltipText="Random seed for reproducible outputs"
+                        [min]="-2147483648"
+                        [max]="2147483647"
+                        [step]="1"
+                        formControlName="seed"
+                        [control]="$any(form.get('seed'))"
+                        placeholder="Random"
+                        size="lg"
+                    />
+                </div>
+
+                <div class="llm-dialog__field">
+                    <label class="llm-dialog__label">
+                        Stop Sequences
+                        <app-help-tooltip text="Sequences that will stop generation when encountered" />
+                    </label>
+                    <div class="llm-dialog__headers-container" formArrayName="stopSequences">
+                        @for (seq of stopSequencesArray.controls; track seq; let i = $index) {
+                            <div class="llm-dialog__header-row">
+                                <input
+                                    type="text"
+                                    class="llm-dialog__input llm-dialog__input--header"
+                                    [formControlName]="i"
+                                    style="flex: 1;"
+                                />
+                                <button
+                                    type="button"
+                                    class="llm-dialog__header-action llm-dialog__header-action--remove"
+                                    (click)="removeStopSequence(i)"
+                                    [title]="'Remove'"
+                                >
+                                    <app-icon icon="ui/x" size="1rem" />
+                                </button>
+                                @if (i === stopSequencesArray.length - 1) {
+                                    <button
+                                        type="button"
+                                        class="llm-dialog__header-action llm-dialog__header-action--add"
+                                        (click)="addStopSequence()"
+                                        [title]="'Add'"
+                                    >
+                                        <app-icon icon="ui/plus" size="1rem" />
+                                    </button>
+                                } @else {
+                                    <div class="llm-dialog__header-action llm-dialog__header-action--spacer"></div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="llm-dialog__field">
+                    <label class="llm-dialog__label">
+                        Logit Bias (JSON)
+                        <app-help-tooltip text="Modify likelihood of specific tokens appearing" />
+                    </label>
+                    <app-json-editor
+                        [jsonData]="logitBiasJson()"
+                        (jsonChange)="onLogitBiasChange($event)"
+                        [editorHeight]="120"
+                        [showHeader]="false"
+                    />
+                </div>
+
+                <div class="llm-dialog__field">
+                    <label class="llm-dialog__label">
+                        Response Format (JSON)
+                        <app-help-tooltip text="Specify the format of the response (e.g., JSON mode)" />
+                    </label>
+                    <app-json-editor
+                        [jsonData]="responseFormatJson()"
+                        (jsonChange)="onResponseFormatChange($event)"
+                        [editorHeight]="120"
+                        [showHeader]="false"
+                    />
+                </div>
+            </section>
+        </form>
             </div>
 
-            <div class="dialog-actions">
-                <app-button type="ghost" (click)="onCancel()"
-                    >Cancel</app-button
-                >
+    <div class="llm-dialog__footer">
+        <app-button
+            type="outline-primary"
+            (click)="onCancel()"
+            [disabled]="isSubmitting()"
+        >
+            Cancel
+        </app-button>
                 <app-button
                     type="primary"
                     (click)="onSubmit()"
-                    [disabled]="form.invalid || isSubmitting()"
+            [disabled]="!isFormValid() || isSubmitting()"
                 >
-                    {{ isSubmitting() ? "Adding..." : "Add" }}
+            {{ submitButtonText() }}
                 </app-button>
-            </div>
-        </form>
     </div>
 </div>

@@ -8,21 +8,20 @@ class LLMConfigData(BaseModel):
     timeout: float | int | None = None
     temperature: float | None = None
     top_p: float | None = None
-    n: int | None = None
     stop: str | list[str] | None = None
-    max_completion_tokens: int | None = None
     max_tokens: int | None = None
     presence_penalty: float | None = None
     frequency_penalty: float | None = None
     logit_bias: dict[int, float] | None = None
     response_format: dict[str, Any] | None = None
     seed: int | None = None
-    logprobs: bool | None = None
-    top_logprobs: int | None = None
     base_url: str | None = None
     api_version: str | None = None
     api_key: str | None = None
-
+    deployment_id: str | None = None
+    headers: dict[str, str] | None = None
+    extra_headers: dict[str, str] | None = None
+    
 
 class EmbedderConfigData(BaseModel):
     model: str

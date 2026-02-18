@@ -4,6 +4,7 @@
         class="selector__btn"
         [ngClass]="'selector__btn--mod-' + mod()"
         [class.selector__btn--invalid]="invalid()"
+        [class.selector__btn--placeholder]="!selectedItem()"
         (click)="toggle()"
     >
         {{ selectedItem() ? selectedItem()!.name : placeholder() }}

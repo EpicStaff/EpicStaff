@@ -4,22 +4,37 @@ import {
     input,
     output,
     model,
-    signal, computed,
+    signal, computed, forwardRef,
 } from '@angular/core';
-import {FormsModule} from "@angular/forms";
+import {ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR} from "@angular/forms";
 import {NgClass} from "@angular/common";
+import {TooltipComponent} from "../tooltip/tooltip.component";
 
 @Component({
     selector: 'app-input-number',
+    standalone: true,
     templateUrl: './input-number.component.html',
     styleUrls: ['./input-number.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
         FormsModule,
-        NgClass
+        NgClass,
+        TooltipComponent
+    ],
+    providers: [
+        {
+            provide: NG_VALUE_ACCESSOR,
+            useExisting: forwardRef(() => InputNumberComponent),
+            multi: true,
+        },
     ],
 })
-export class InputNumberComponent {
+export class InputNumberComponent implements ControlValueAccessor {
+    icon = input<string>('help_outline');
+    label = input<string>('');
+    required = input<boolean>(false);
+    tooltipText = input<string>('');
+
     mod = input<'default' | 'small'>('default');
     placeholder = input<string>('Type here');
     invalid = input<boolean>(false);
@@ -47,27 +62,27 @@ export class InputNumberComponent {
         return this.invalid() || this.isOutOfRange();
     });
 
+    onChange: (value: number | null) => void = () => {};
+    onTouched: () => void = () => {};
+    isDisabled = signal(false);
+
     onInputChange(value: number) {
         if (value === null || value === undefined) {
-            this.value.set(null);
-            this.changed.emit(null);
+            this.updateValue(null);
             return;
         }
 
         let num = Number(value);
         if (Number.isNaN(num)) return;
 
-        this.value.set(num);
-        this.changed.emit(num);
-
+        this.updateValue(num);
     }
 
     onStep(direction: 1 | -1 = 1) {
         const current = Number(this.value()) || 0;
         let next = current + this.stepSize() * direction;
 
-        this.value.set(next);
-        this.changed.emit(next);
+        this.updateValue(next);
     }
 
     canStepUp(): boolean {
@@ -101,5 +116,27 @@ export class InputNumberComponent {
         if (!/^\d$/.test(event.key)) {
             event.preventDefault();
         }
+    }
+
+    private updateValue(value: number | null) {
+        this.value.set(value);
+        this.changed.emit(value);
+        this.onChange(value);
+    }
+
+    writeValue(value: number | null): void {
+        this.value.set(value);
+    }
+
+    registerOnChange(fn: (value: number | null) => void): void {
+        this.onChange = fn;
+    }
+
+    registerOnTouched(fn: () => void): void {
+        this.onTouched = fn;
+    }
+
+    setDisabledState(isDisabled: boolean): void {
+        this.isDisabled.set(isDisabled);
     }
 }

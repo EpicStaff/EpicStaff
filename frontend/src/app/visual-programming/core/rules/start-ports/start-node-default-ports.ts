@@ -14,6 +14,7 @@ export const DEFAULT_START_NODE_PORTS: BasePort[] = [
             'llm-out-left',
             'file-extractor-in',
             'end-in',
+            'subgraph-in',
             'audio-to-text-in',
         ],
         position: 'right',

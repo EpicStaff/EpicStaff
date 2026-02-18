@@ -104,6 +104,9 @@ export class FlowBaseNodeComponent {
             event.preventDefault();
             event.stopPropagation();
         }
+        if (this.isBlockedSubgraph) {
+            return;
+        }
         this.editClicked.emit(this.node);
     }
 
@@ -112,6 +115,7 @@ export class FlowBaseNodeComponent {
     }
 
     public getNodeClass(): string {
+        const blockedClass = this.isBlockedSubgraph ? ' is-blocked' : '';
         switch (this.node.type) {
             case NodeType.AGENT:
                 return 'type-agent';
@@ -134,7 +138,7 @@ export class FlowBaseNodeComponent {
             case NodeType.NOTE:
                 return 'type-note';
             default:
-                return 'type-default';
+                return `type-default${blockedClass}`;
         }
     }
 
@@ -177,6 +181,9 @@ export class FlowBaseNodeComponent {
         return this.node.type === NodeType.NOTE
             ? (this.node as NoteNodeModel)
             : null;
+    }
+    public get isBlockedSubgraph(): boolean {
+        return this.node?.type === NodeType.SUBGRAPH && !!this.node.isBlocked;
     }
     public onExpandProjectClick(): void {
         this.projectExpandToggled.emit(this.node as ProjectNodeModel);

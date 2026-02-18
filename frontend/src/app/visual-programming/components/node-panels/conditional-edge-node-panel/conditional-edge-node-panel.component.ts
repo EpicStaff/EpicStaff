@@ -1,4 +1,9 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    input,
+    signal,
+} from '@angular/core';
 import {
     ReactiveFormsModule,
     FormGroup,
@@ -31,49 +36,95 @@ interface InputMapPair {
     template: `
         <div class="panel-container">
             <div class="panel-content">
-                <form [formGroup]="form" class="form-container">
-                    <!-- Node Name Field -->
-                    <app-custom-input
-                        label="Node Name"
-                        tooltipText="The unique identifier used to reference this conditional edge. This name must be unique within the flow."
-                        formControlName="node_name"
-                        placeholder="Enter node name"
-                        [activeColor]="activeColor"
-                        [errorMessage]="getNodeNameErrorMessage()"
-                    ></app-custom-input>
-
-                    <!-- Input Map Key-Value Pairs -->
-                    <div class="input-map">
-                        <app-input-map
+                <form [formGroup]="form" class="form-container">                   
+                    @if (!isExpanded() || isFormFieldsVisible()) {
+                        <!-- Node Name Field -->
+                        <app-custom-input
+                            label="Node Name"
+                            tooltipText="The unique identifier used to reference this conditional edge. This name must be unique within the flow."
+                            formControlName="node_name"
+                            placeholder="Enter node name"
                             [activeColor]="activeColor"
-                        ></app-input-map>
-                    </div>
+                            [errorMessage]="getNodeNameErrorMessage()"
+                        ></app-custom-input>
 
-                    <!-- Output Variable Path -->
-                    <!-- <app-custom-input
-                        label="Output Variable Path"
-                        tooltipText="The path where the output of this conditional edge will be stored in your flow variables. Leave empty if you don't need to store the condition result."
-                        formControlName="output_variable_path"
-                        placeholder="Enter output variable path (leave empty for null)"
-                    ></app-custom-input> -->
+                        <!-- Input Map Key-Value Pairs -->
+                        <div class="input-map">
+                            <app-input-map
+                                [activeColor]="activeColor"
+                            ></app-input-map>
+                        </div>
 
-                    <!-- Code Editor Component -->
-                    <div class="code-editor-section">
-                        <app-code-editor
-                            [pythonCode]="pythonCode"
-                            (pythonCodeChange)="onPythonCodeChange($event)"
-                            (errorChange)="onCodeErrorChange($event)"
-                        ></app-code-editor>
-                    </div>
+                        <!-- Libraries Input -->
+                        <app-custom-input
+                            label="Libraries"
+                            tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
+                            formControlName="libraries"
+                            placeholder="Enter libraries (e.g., requests, pandas, numpy)"
+                            [activeColor]="activeColor"
+                        ></app-custom-input>
+                    }
 
-                    <!-- Libraries Input -->
-                    <app-custom-input
-                        label="Libraries"
-                        tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
-                        formControlName="libraries"
-                        placeholder="Enter libraries (e.g., requests, pandas, numpy)"
-                        [activeColor]="activeColor"
-                    ></app-custom-input>
+                    <!-- Code Editor Section with Toggle Button -->
+                    @if (isExpanded()) {
+                        <div class="code-editor-container">
+                            <button
+                                type="button"
+                                class="toggle-fields-button"
+                                [class.toggle-fields-button--inside]="
+                                    !isFormFieldsVisible()
+                                "
+                                (click)="toggleFormFieldsVisibility()"
+                                [attr.aria-label]="
+                                    isFormFieldsVisible()
+                                        ? 'Hide form fields'
+                                        : 'Show form fields'
+                                "
+                            >
+                                <svg
+                                    width="20"
+                                    height="12"
+                                    viewBox="0 0 20 12"
+                                    fill="none"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    [style.transform]="
+                                        isFormFieldsVisible()
+                                            ? 'scaleY(1)'
+                                            : 'scaleY(-1)'
+                                    "
+                                >
+                                    <path
+                                        d="M1 11L10 1L19 11"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    />
+                                </svg>
+                            </button>
+                            <div
+                                class="code-editor-section"
+                                [class.fields-hidden]="!isFormFieldsVisible()"
+                            >
+                                <app-code-editor
+                                    [pythonCode]="pythonCode"
+                                    (pythonCodeChange)="
+                                        onPythonCodeChange($event)
+                                    "
+                                    (errorChange)="onCodeErrorChange($event)"
+                                ></app-code-editor>
+                            </div>
+                        </div>
+                    } @else {
+                        <!-- Code Editor Section without Toggle Button (collapsed mode) -->
+                        <div class="code-editor-section">
+                            <app-code-editor
+                                [pythonCode]="pythonCode"
+                                (pythonCodeChange)="onPythonCodeChange($event)"
+                                (errorChange)="onCodeErrorChange($event)"
+                            ></app-code-editor>
+                        </div>
+                    }
                 </form>
             </div>
         </div>
@@ -91,6 +142,10 @@ interface InputMapPair {
 
             .panel-content {
                 @include mixins.panel-content;
+                height: 100%;
+                min-height: 0;
+                display: flex;
+                flex-direction: column;
             }
 
             .section-header {
@@ -99,6 +154,11 @@ interface InputMapPair {
 
             .form-container {
                 @include mixins.form-container;
+                height: 100%;
+                min-height: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 1rem;
             }
 
             .btn-primary {
@@ -109,17 +169,84 @@ interface InputMapPair {
                 @include mixins.secondary-button;
             }
 
+            .code-editor-container {
+                position: relative;
+                display: flex;
+                flex-direction: column;
+                flex: 1;
+                height: 100%;
+                min-height: 0;
+            }
+
+            .toggle-fields-button {
+                width: 66px;
+                height: 28px;
+                display: flex;
+                align-items: center;
+                justify-content: center;               
+                background: transparent;
+                cursor: pointer;               
+                transition: all 0.2s ease;
+                padding: 0;
+                color: #d9d9d999;
+                z-index: 10;
+
+                svg {
+                    transition: transform 0.3s ease;
+                }
+
+                &:hover:not(:disabled) {
+                    color: #d9d9d9;
+                    background: #2c2c2e;
+                }
+
+                &:active:not(:disabled) {
+                    color: #d9d9d9;                   
+                }
+
+                &:disabled {
+                    cursor: not-allowed;
+                    opacity: 0.5;
+                }
+                
+                &:not(.toggle-fields-button--inside) {
+                    align-self: center;
+                    border-width: 1px 1px 0px 1px;
+                    border-radius: 8px 8px 0 0;
+                    border-style: solid;
+                    border-color: #2c2c2e;
+                }
+                
+                &.toggle-fields-button--inside {
+                    position: absolute;
+                    top: 0;
+                    left: 50%;
+                    transform: translateX(-50%);                   
+                    border-width: 0 1px 1px 1px;
+                    border-radius: 0 0 8px 8px;
+                    border-style: solid;
+                    border-color: #2c2c2e;
+                }
+            }
+
             .code-editor-section {
                 height: 300px;
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 8px;
                 overflow: hidden;
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                position: relative;               
             }
         `,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ConditionalEdgeNodePanelComponent extends BaseSidePanel<EdgeNodeModel> {
+    public readonly isExpanded = input<boolean>(false);
+    public readonly isFormFieldsVisible = signal<boolean>(true);
+
     public pythonCode: string = '';
     public initialPythonCode: string = '';
     public codeEditorHasError: boolean = false;
@@ -142,6 +269,10 @@ export class ConditionalEdgeNodePanelComponent extends BaseSidePanel<EdgeNodeMod
 
     public onCodeErrorChange(hasError: boolean): void {
         this.codeEditorHasError = hasError;
+    }
+
+    public toggleFormFieldsVisibility(): void {
+        this.isFormFieldsVisible.update((value) => !value);
     }
 
     /**
@@ -219,7 +350,7 @@ export class ConditionalEdgeNodePanelComponent extends BaseSidePanel<EdgeNodeMod
                     this.fb.group({
                         key: [key, Validators.required],
                         value: [value, Validators.required],
-                    })
+                    }),
                 );
             });
         } else {
@@ -227,7 +358,7 @@ export class ConditionalEdgeNodePanelComponent extends BaseSidePanel<EdgeNodeMod
                 this.fb.group({
                     key: [''],
                     value: ['variables.'],
-                })
+                }),
             );
         }
     }

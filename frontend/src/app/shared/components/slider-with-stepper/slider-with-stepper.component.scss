@@ -1,0 +1,113 @@
+.slider-stepper {
+    width: 100%;
+    padding-bottom: 1rem;
+
+    &__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1rem;
+    }
+
+    &__controls {
+        display: flex;
+        align-items: center;
+        height: 1.75rem;
+        background: var(--color-background-body, #212325);
+        border: 1px solid var(--color-background-body, #212325);
+        border-radius: 0.5rem;
+        overflow: hidden;
+    }
+
+    &__btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.75rem;
+        height: 100%;
+        background: var(--color-ks-line, #2b2d30);
+        border: 1px solid var(--color-ks-line, #2b2d30);
+        color: var(--color-text-primary, #d9d9de);
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+
+        &:hover:not(:disabled) {
+            background: var(--accent-color, #685fff);
+        }
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        svg {
+            width: 0.625rem;
+            height: 0.625rem;
+        }
+    }
+
+    &__value {
+        min-width: 2.5rem;
+        text-align: center;
+        font-family: 'Inter', sans-serif;
+        font-weight: 400;
+        font-size: 0.625rem;
+        color: #ffffff;
+    }
+
+    &__track-wrapper {
+        position: relative;
+        width: 100%;
+        height: 1.25rem;
+        display: flex;
+        align-items: center;
+    }
+
+    &__slider {
+        width: 100%;
+        height: 0.25rem;
+        -webkit-appearance: none;
+        appearance: none;
+        background: linear-gradient(
+            to right,
+            #00dddd 0%,
+            #00dddd var(--slider-percentage, 0%),
+            rgba(217, 217, 222, 0.2) var(--slider-percentage, 0%),
+            rgba(217, 217, 222, 0.2) 100%
+        );
+        border-radius: 0.125rem;
+        outline: none;
+        cursor: pointer;
+
+        &::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 1.25rem;
+            height: 1.25rem;
+            border-radius: 50%;
+            background: #00dddd;
+            border: 2px solid var(--color-background-body, #212325);
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        &::-moz-range-thumb {
+            width: 1.25rem;
+            height: 1.25rem;
+            border-radius: 50%;
+            background: #00dddd;
+            border: 2px solid var(--color-background-body, #212325);
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    }
+
+    &__thumb {
+        display: none; // Using native thumb styling instead
+    }
+}
+

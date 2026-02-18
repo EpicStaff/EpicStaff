@@ -4,61 +4,86 @@
   </div>
   <div class="dialog-content">
     <form [formGroup]="form" (ngSubmit)="onSubmit()">
-      <div *ngIf="errorMessage()" class="error-message">
-        <p>{{ errorMessage() }}</p>
+      @if (errorMessage()) {
+        <div class="error-message">
+          <p>{{ errorMessage() }}</p>
+        </div>
+      }
+      <div class="form-field">
+        <label class="form-field__label">
+          Provider & Model <span class="required">*</span>
+        </label>
+        <button type="button" class="model-selector" (click)="openModelSelector()">
+          @if (selectedProvider()) {
+            <app-icon [icon]="getProviderIcon(selectedProvider()!.name)" size="1.25rem" />
+          }
+          @if (selectedModel() && selectedProvider()) {
+            <span class="model-selector__text">
+              <span class="model-selector__provider">{{ selectedProvider()!.name }}</span>
+              <span class="model-selector__separator"> / </span>
+              <span class="model-selector__model">{{ selectedModel()!.name }}</span>
+            </span>
+          } @else {
+            <span class="model-selector__text model-selector__text--placeholder">
+              Select a model...
+            </span>
+          }
+          <app-icon icon="ui/chevron-down" size="1rem" />
+        </button>
+        @if (form.get('modelId')?.invalid && !selectedModelId()) {
+          <div class="error-hint">
+            Please select provider and model
+          </div>
+        }
       </div>
       <div class="form-field">
         <label for="customName"
-          >Custom Name <span class="required">*</span></label
+          >Configuration Name <span class="required">*</span></label
         >
-        <app-custom-input
+        <input
           id="customName"
           type="text"
+          class="form-input"
           placeholder="Enter a custom name"
           formControlName="customName"
-          [autofocus]="true"
-        ></app-custom-input>
-        <div
-          *ngIf="
-            form.get('customName')?.invalid && form.get('customName')?.touched
-          "
-          class="error-hint"
-        >
-          Custom name is required
-        </div>
+        />
+        @if (form.get('customName')?.invalid && form.get('customName')?.touched) {
+          <div class="error-hint">
+            Configuration name is required
+          </div>
+        }
       </div>
       <div class="form-field">
         <label for="apiKey">API Key <span class="required">*</span></label>
-        <div class="api-key-container">
-          <app-custom-input
+        <div class="form-input-wrapper">
+          <input
             id="apiKey"
             [type]="showApiKey() ? 'text' : 'password'"
-            placeholder="Enter your API key"
+            class="form-input form-input--with-action"
+            placeholder="Enter provider's API key"
             formControlName="apiKey"
-            class="api-key-input"
-          ></app-custom-input>
+          />
           <button
             type="button"
-            class="toggle-visibility-btn"
+            class="form-input-action"
             (click)="toggleApiKeyVisibility()"
             [attr.aria-label]="showApiKey() ? 'Hide API key' : 'Show API key'"
           >
-            <i [class]="showApiKey() ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
+            <app-icon [icon]="showApiKey() ? 'ui/eye-off' : 'ui/eye'" size="1.25rem" />
           </button>
         </div>
-        <div
-          *ngIf="form.get('apiKey')?.invalid && form.get('apiKey')?.touched"
-          class="error-hint"
-        >
-          API key is required
-        </div>
+        @if (form.get('apiKey')?.invalid && form.get('apiKey')?.touched) {
+          <div class="error-hint">
+            API key is required
+          </div>
+        }
       </div>
       <div class="dialog-actions">
         <app-button type="ghost" (click)="onCancel()">Cancel</app-button>
         <app-button
           type="primary"
           (click)="onSubmit()"
-          [disabled]="form.invalid || isSubmitting()"
+          [disabled]="!isFormValid() || isSubmitting()"
         >
           {{ isSubmitting() ? "Updating..." : "Update" }}
         </app-button>

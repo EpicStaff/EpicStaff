@@ -1,17 +1,23 @@
-import {ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, inject, input} from '@angular/core';
-import {FormGroup, ReactiveFormsModule, Validators} from '@angular/forms';
-import {WebhookTriggerNodeModel} from '../../../core/models/node.model';
-import {BaseSidePanel} from '../../../core/models/node-panel.abstract';
-import {CustomInputComponent} from '../../../../shared/components/form-input/form-input.component';
 import {
-    CodeEditorComponent
-} from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
-import {CommonModule} from '@angular/common';
-import {WebhookService} from "../../../../pages/flows-page/components/flow-visual-programming/services/webhook.service";
-import {Clipboard, ClipboardModule} from '@angular/cdk/clipboard';
-import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
-import {startWith} from 'rxjs';
-import {WebhookStatus} from "../../../../pages/flows-page/components/flow-visual-programming/models/webhook.model";
+    ChangeDetectionStrategy,
+    ChangeDetectorRef,
+    Component,
+    DestroyRef,
+    inject,
+    input,
+    signal,
+} from '@angular/core';
+import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
+import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
+import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
+import { CommonModule } from '@angular/common';
+import { WebhookService } from '../../../../pages/flows-page/components/flow-visual-programming/services/webhook.service';
+import { Clipboard, ClipboardModule } from '@angular/cdk/clipboard';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { startWith } from 'rxjs';
+import { WebhookStatus } from '../../../../pages/flows-page/components/flow-visual-programming/models/webhook.model';
 
 const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
 
@@ -29,7 +35,12 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
         <div class="panel-container">
             <div class="panel-content">
                 <form [formGroup]="form" class="form-container">
-                    <div class="form-layout" [class.expanded]="isExpanded()" [class.collapsed]="!isExpanded()">
+                    <div
+                        class="form-layout"
+                        [class.expanded]="isExpanded()"
+                        [class.collapsed]="!isExpanded()"
+                        [class.code-editor-fullwidth]="isCodeEditorFullWidth()"
+                    >
                         <div class="form-fields">
                             <app-custom-input
                                 label="Node Name"
@@ -50,7 +61,10 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
                             ></app-custom-input>
                             <div class="webhook-url-display">
                                 @if (webhookUrlDisplay; as url) {
-                                    <span class="webhook-url-text" [style.color]="activeColor">
+                                    <span
+                                        class="webhook-url-text"
+                                        [style.color]="activeColor"
+                                    >
                                         {{ url }}
                                     </span>
                                     <button
@@ -60,7 +74,10 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
                                         [disabled]="!url"
                                         aria-label="Copy webhook URL"
                                     >
-                                        <span class="copy-icon" aria-hidden="true"></span>
+                                        <span
+                                            class="copy-icon"
+                                            aria-hidden="true"
+                                        ></span>
                                         <span>Copy</span>
                                     </button>
                                 } @else {
@@ -69,7 +86,9 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
                                             {{ tunnelErrorMessage }}
                                         </div>
                                     } @else {
-                                        <div class="webhook-url-placeholder">Fetching tunnel URL...</div>
+                                        <div class="webhook-url-placeholder">
+                                            Fetching tunnel URL...
+                                        </div>
                                     }
                                 }
                             </div>
@@ -81,13 +100,61 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
                                 [activeColor]="activeColor"
                             ></app-custom-input>
                         </div>
-                        <div class="code-editor-section">
-                            <app-code-editor
-                                [pythonCode]="pythonCode"
-                                (pythonCodeChange)="onPythonCodeChange($event)"
-                                (errorChange)="onCodeErrorChange($event)"
-                            ></app-code-editor>
-                        </div>
+                        @if (isExpanded()) {
+                            <div class="code-editor-wrapper">
+                                <button
+                                    type="button"
+                                    class="toggle-icon-button"
+                                    (click)="toggleCodeEditorFullWidth()"
+                                    [attr.aria-label]="
+                                        isCodeEditorFullWidth()
+                                            ? 'Collapse code editor'
+                                            : 'Expand code editor'
+                                    "
+                                >
+                                    <svg
+                                        width="9"
+                                        height="22"
+                                        viewBox="0 0 9 22"
+                                        fill="none"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        [style.transform]="
+                                            isCodeEditorFullWidth()
+                                                ? 'scaleX(1)'
+                                                : 'scaleX(-1)'
+                                        "
+                                    >
+                                        <path
+                                            d="M7.16602 21.0001L1.16602 11.0001L7.16602 1.00012"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                        />
+                                    </svg>
+                                </button>
+                                <div class="code-editor-section">
+                                    <app-code-editor
+                                        [pythonCode]="pythonCode"
+                                        (pythonCodeChange)="
+                                            onPythonCodeChange($event)
+                                        "
+                                        (errorChange)="
+                                            onCodeErrorChange($event)
+                                        "
+                                    ></app-code-editor>
+                                </div>
+                            </div>
+                        } @else {
+                            <div class="code-editor-section">
+                                <app-code-editor
+                                    [pythonCode]="pythonCode"
+                                    (pythonCodeChange)="
+                                        onPythonCodeChange($event)
+                                    "
+                                    (errorChange)="onCodeErrorChange($event)"
+                                ></app-code-editor>
+                            </div>
+                        }
                     </div>
                 </form>
             </div>
@@ -127,28 +194,105 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
             .form-layout {
                 height: 100%;
                 min-height: 0;
+                width: 100%;
+                overflow: hidden;
 
                 &.expanded {
                     display: flex;
                     gap: 1rem;
                     height: 100%;
+                    width: 100%;
+
+                    &.code-editor-fullwidth {
+                        .form-fields {
+                            display: none;
+                        }
+
+                        .code-editor-wrapper {
+                            width: 100%;
+                        }
+
+                        .toggle-icon-button {
+                            position: absolute;
+                            left: 0;
+                            top: 50%;
+                            transform: translateY(-50%);
+                            z-index: 10;
+                            border-width: 1px 1px 1px 0px;
+                            border-radius: 0 8px 8px 0;
+                        }
+                    }
                 }
 
                 &.collapsed {
                     display: flex;
                     flex-direction: column;
+                    gap: 1rem;
                 }
             }
 
             .form-fields {
                 display: flex;
                 flex-direction: column;
+                gap: 1rem;
 
                 .expanded & {
                     flex: 0 0 400px;
                     max-width: 400px;
                     height: 100%;
                     overflow-y: auto;
+                }
+            }
+
+            .code-editor-wrapper {
+                display: flex;
+                align-items: center;
+                gap: 0;
+                height: 100%;
+                position: relative;
+                flex: 1;
+                min-height: 0;
+                min-width: 0;
+                transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+                .toggle-icon-button {
+                    flex-shrink: 0;
+                    width: 28px;
+                    height: 66px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border-width: 1px 0px 1px 1px;
+                    border-style: solid;
+                    border-color: #2c2c2e;
+                    background: #1e1e1e;
+                    cursor: pointer;
+                    border-radius: 8px 0 0 8px;
+                    transition: all 0.2s ease;
+                    padding: 0;
+                    color: #d9d9d999;
+
+                    svg {
+                        transition: transform 0.3s ease;
+                    }
+
+                    &:hover:not(:disabled) {
+                        color: #d9d9d9;
+                        background: #2c2c2e;
+                    }
+
+                    &:active:not(:disabled) {
+                        color: #d9d9d9;
+                    }
+
+                    &:disabled {
+                        cursor: not-allowed;
+                        opacity: 0.5;
+                    }
+                }
+
+                app-code-editor {
+                    min-width: 0;
                 }
             }
 
@@ -161,8 +305,8 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
             }
 
             .code-editor-section {
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 8px;
+                border: 1px solid
+                    var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
                 overflow: hidden;
                 display: flex;
                 flex-direction: column;
@@ -171,10 +315,25 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
                     flex: 1;
                     height: 100%;
                     min-height: 0;
+                    border-radius: 0 8px 8px 0;
+                    transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+                    transform: scaleX(0.3) translateX(-50px);
+                    opacity: 0;
                 }
 
                 .collapsed & {
                     height: 300px;
+                    border-radius: 8px;
+                }
+
+                .form-layout.expanded:not(.code-editor-fullwidth) & {
+                    transform: scaleX(1) translateX(0);
+                    opacity: 1;
+                }
+
+                .form-layout.expanded.code-editor-fullwidth & {
+                    transform: scaleX(1) translateX(0);
+                    opacity: 1;
                 }
             }
 
@@ -209,7 +368,9 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
                 border-radius: 4px;
                 font-size: 12px;
                 cursor: pointer;
-                transition: border-color 0.2s ease, color 0.2s ease;
+                transition:
+                    border-color 0.2s ease,
+                    color 0.2s ease;
                 display: flex;
                 align-items: center;
             }
@@ -259,6 +420,7 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
 })
 export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTriggerNodeModel> {
     public readonly isExpanded = input<boolean>(false);
+    public readonly isCodeEditorFullWidth = signal<boolean>(true);
 
     pythonCode: string = '';
     initialPythonCode: string = '';
@@ -273,27 +435,40 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     constructor(
         private webhookService: WebhookService,
         private cdr: ChangeDetectorRef,
-        private clipboard: Clipboard
+        private clipboard: Clipboard,
     ) {
         super();
         this.webhookService.getTunnel().subscribe({
             next: (response) => {
-                if (response?.status === WebhookStatus.SUCCESS && response.tunnel_url) {
+                if (
+                    response?.status === WebhookStatus.SUCCESS &&
+                    response.tunnel_url
+                ) {
                     this.tunnelUrl = response.tunnel_url;
-                    this.webhookUrlBase = this.normalizeWebhookBase(response.tunnel_url);
+                    this.webhookUrlBase = this.normalizeWebhookBase(
+                        response.tunnel_url,
+                    );
                     this.tunnelErrorMessage = '';
-                    this.updateWebhookUrlDisplay(this.form?.get('webhookName')?.value);
+                    this.updateWebhookUrlDisplay(
+                        this.form?.get('webhookName')?.value,
+                    );
                 } else {
-                    this.tunnelErrorMessage = 'set your tunnel in .env configurations';
+                    this.tunnelErrorMessage =
+                        'set your tunnel in .env configurations';
                     this.webhookUrlBase = '';
-                    this.updateWebhookUrlDisplay(this.form?.get('webhookName')?.value);
+                    this.updateWebhookUrlDisplay(
+                        this.form?.get('webhookName')?.value,
+                    );
                 }
                 this.cdr.markForCheck();
             },
             error: () => {
-                this.tunnelErrorMessage = 'set your tunnel in .env configurations';
+                this.tunnelErrorMessage =
+                    'set your tunnel in .env configurations';
                 this.webhookUrlBase = '';
-                this.updateWebhookUrlDisplay(this.form?.get('webhookName')?.value);
+                this.updateWebhookUrlDisplay(
+                    this.form?.get('webhookName')?.value,
+                );
                 this.cdr.markForCheck();
             },
         });
@@ -314,17 +489,20 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     initializeForm(): FormGroup {
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
-            libraries: [this.node().data.python_code.libraries?.join(', ') || ''],
+            libraries: [
+                this.node().data.python_code.libraries?.join(', ') || '',
+            ],
             webhookName: [
-                this.extractWebhookName(this.node().data.webhook_trigger_path || ''),
+                this.extractWebhookName(
+                    this.node().data.webhook_trigger_path || '',
+                ),
                 [Validators.pattern(WEBHOOK_NAME_PATTERN)],
             ],
         });
-        form
-            .get('webhookName')
+        form.get('webhookName')
             ?.valueChanges.pipe(
                 startWith(form.get('webhookName')?.value ?? ''),
-                takeUntilDestroyed(this.destroyRef)
+                takeUntilDestroyed(this.destroyRef),
             )
             .subscribe((value: string | null) => {
                 this.updateWebhookUrlDisplay(value ?? '');
@@ -338,9 +516,9 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     createUpdatedNode(): WebhookTriggerNodeModel {
         const librariesArray = this.form.value.libraries
             ? this.form.value.libraries
-                .split(',')
-                .map((lib: string) => lib.trim())
-                .filter((lib: string) => lib.length > 0)
+                  .split(',')
+                  .map((lib: string) => lib.trim())
+                  .filter((lib: string) => lib.length > 0)
             : [];
 
         return {
@@ -350,13 +528,15 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
             output_variable_path: null,
             data: {
                 ...this.node().data,
-                webhook_trigger_path: (this.form.value.webhookName || '').trim(),
+                webhook_trigger_path: (
+                    this.form.value.webhookName || ''
+                ).trim(),
                 python_code: {
                     name: this.node().data.python_code.name || 'Python Code',
                     code: this.pythonCode,
                     entrypoint: 'main',
                     libraries: librariesArray,
-                }
+                },
             },
         };
     }
@@ -365,7 +545,9 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         if (!tunnelUrl) {
             return '';
         }
-        const sanitized = tunnelUrl.endsWith('/') ? tunnelUrl.slice(0, -1) : tunnelUrl;
+        const sanitized = tunnelUrl.endsWith('/')
+            ? tunnelUrl.slice(0, -1)
+            : tunnelUrl;
         return `${sanitized}/webhooks/`;
     }
 
@@ -415,5 +597,9 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
             return;
         }
         this.clipboard.copy(this.webhookUrlDisplay);
+    }
+
+    toggleCodeEditorFullWidth(): void {
+        this.isCodeEditorFullWidth.update((value) => !value);
     }
 }

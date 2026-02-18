@@ -89,6 +89,13 @@
         <div class="title" [title]="getNodeTitle()">
             {{ getNodeTitle() }}
         </div>
+        <div
+            class="blocked-badge"
+            *ngIf="isBlockedSubgraph"
+            title="Referenced subgraph was deleted"
+        >
+            Missing flow
+        </div>
     </div>
 </div>
 </ng-template>
