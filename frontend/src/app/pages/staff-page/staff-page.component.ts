@@ -10,6 +10,7 @@ import { FiltersListComponent } from '../../shared/components/filters-list/filte
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { NgIf } from '@angular/common';
 import { GetAgentRequest } from '../../shared/models/agent.model';
+import { SaveWithIndicatorComponent } from '../../shared/components/save-with-indicator/save-with-indicator.component';
 
 @Component({
     selector: 'app-staff-page',
@@ -19,6 +20,7 @@ import { GetAgentRequest } from '../../shared/models/agent.model';
         ButtonComponent,
         LoadingSpinnerComponent,
         NgIf,
+        SaveWithIndicatorComponent,
     ],
     templateUrl: './staff-page.component.html',
     styleUrls: ['./staff-page.component.scss'],
@@ -73,5 +75,12 @@ export class StaffPageComponent {
                 });
             }
         });
+    }
+
+    public isSaving = false;
+    public hasUnsavedChanges = false;
+
+    public onSave(): void {
+        console.log('Save clicked');
     }
 }
