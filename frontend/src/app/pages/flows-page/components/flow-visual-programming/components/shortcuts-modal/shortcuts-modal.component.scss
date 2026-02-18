@@ -1,7 +1,9 @@
+@use 'src/styles/_breakpoints.scss' as bp;
+
 .shortcuts__overlay {
     position: fixed;
     inset: 0;
-    z-index: 1;
+    z-index: 1; // low z-index to avoid covering node editing overlay when opened via Ctrl+/
     background: transparent;
 }
 
@@ -140,7 +142,6 @@
 }
 
 .shortcuts__header-title {
-    font-family: Inter, sans-serif;
     font-weight: 500;
     font-size: 18px;
     line-height: 1;
@@ -237,7 +238,6 @@
 }
 
 .shortcuts__card-title {
-    font-family: Inter, sans-serif;
     font-weight: 500;
     font-size: 14px;
     line-height: 1.3;
@@ -268,7 +268,6 @@
 }
 
 .shortcuts__label {
-    font-family: Inter, sans-serif;
     font-weight: 400;
     font-size: 12px;
     line-height: 1.3;
@@ -290,14 +289,13 @@
     padding: 4px 8px;
     border-radius: 2px;
     border: 1px solid #2C2C2E;
-    font-family: Inter, sans-serif;
     font-weight: 400;
     font-size: 12px;
     line-height: 1.3;
     color: #D9D9DE;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: bp.$breakpoint-shortcuts) {
     @include shortcutsOneColumnLayout();
     @include shortcutsCustomScroll();
   
