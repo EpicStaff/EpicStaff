@@ -2,6 +2,7 @@ import { Component, input, output, signal, inject, DestroyRef } from '@angular/c
 import { CommonModule } from '@angular/common';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { BREAKPOINTS } from 'src/app/core/constants/breakpoints';
 
 export interface ShortcutRow {
   id: string;
@@ -43,7 +44,7 @@ export class ShortcutsModalComponent {
 
   constructor() {
     this.breakpointObserver
-      .observe('(max-width: 1200px)')
+      .observe(BREAKPOINTS.shortcuts)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(({ matches }) => {
         this.isMediaLocked.set(matches);

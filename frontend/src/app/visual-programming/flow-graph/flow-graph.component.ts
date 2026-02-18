@@ -2293,23 +2293,6 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
 
     openShortcuts = output<DOMRect>();
 
-    @ViewChild('shortcutsAnchor', { read: ElementRef })
-    private shortcutsAnchor!: ElementRef<HTMLElement>;
-
-    @HostListener('document:keydown', ['$event'])
-    handleKeyboardEvent(event: KeyboardEvent) {
-        const isModifier = event.ctrlKey || event.metaKey;
-
-        if (isModifier && (event.code === 'Slash' || event.keyCode === 191)) {
-            event.preventDefault();
-
-            const rect = this.shortcutsAnchor?.nativeElement.getBoundingClientRect();
-            if (rect) {
-                this.onOpenShortcuts(this.shortcutsAnchor.nativeElement);
-            }
-        }
-    }
-
     public onOpenShortcuts(anchorEl: HTMLElement): void {
         this.openShortcuts.emit(anchorEl.getBoundingClientRect());
     }

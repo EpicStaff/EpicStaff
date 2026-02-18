@@ -217,7 +217,12 @@
         <div class="top-left-actions__column">
             <button class="domain-button" (click)="onDomainClick()">Domain</button>
 
-            <div #shortcutsAnchor #shortcutsButton>
+            <div 
+                #shortcutsAnchor 
+                #shortcutsButton
+                appShortcutListener
+                (openShortcuts)="onOpenShortcuts(shortcutsAnchor)"
+            >
                 <app-flow-shortcuts-button
                     (clicked)="onOpenShortcuts(shortcutsAnchor)">
                 </app-flow-shortcuts-button>
