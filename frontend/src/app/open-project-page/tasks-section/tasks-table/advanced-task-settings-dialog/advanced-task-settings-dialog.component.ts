@@ -5,7 +5,10 @@ import {
     ChangeDetectionStrategy,
     signal,
     computed,
+    DestroyRef,
+    inject,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { NgIf, NgFor, NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -45,6 +48,7 @@ export class AdvancedTaskSettingsDialogComponent implements OnInit {
     public selectedTaskIds = signal<number[]>([]);
     public readonly availableTasks: any[];
     public useOutputModel = signal<boolean>(false);
+    private readonly destroyRef = inject(DestroyRef);
 
     constructor(
         public dialogRef: DialogRef<AdvancedTaskSettingsData>,
@@ -85,6 +89,25 @@ export class AdvancedTaskSettingsDialogComponent implements OnInit {
             this.taskData.output_model !== null &&
                 this.taskData.output_model !== undefined
         );
+
+        this.dialogRef
+            .backdropClick
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => {
+                console.log('[Dialog] backdrop click');
+                this.requestClose()
+            });
+
+        this.dialogRef
+            .keydownEvents
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((event: KeyboardEvent) => {
+                console.log('[Dialog] keydown', event.key);
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    this.requestClose();
+                }
+            });
     }
 
     public ngOnInit(): void {
@@ -243,11 +266,13 @@ export class AdvancedTaskSettingsDialogComponent implements OnInit {
                 task_context_list: this.selectedTaskIds(),
             };
 
-            console.log('Saving data:', result);
             this.dialogRef.close(result);
         } catch (e) {
-            console.error('Invalid JSON format:', e);
             this.isJsonValid.set(false);
         }
+    }
+
+    public requestClose(): void {
+        this.save();
     }
 }

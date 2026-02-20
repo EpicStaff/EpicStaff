@@ -5,6 +5,8 @@ import {
   Input,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
+  Output,
+  EventEmitter,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FullTask } from '../../shared/models/full-task.model';
@@ -18,7 +20,8 @@ import {
   UpdateTaskRequest,
   GetTaskRequest,
 } from '../../shared/models/task.model';
-import { TasksService } from '../../services/tasks.service'; // Import the TasksService
+import { TasksService } from '../../services/tasks.service';
+import { TaskPendingEvent } from './tasks-table/tasks-table.component';
 
 @Component({
   selector: 'app-tasks-section',
@@ -30,6 +33,9 @@ import { TasksService } from '../../services/tasks.service'; // Import the Tasks
 })
 export class TasksSectionComponent implements OnInit, OnDestroy {
   @Input() project!: GetProjectRequest;
+  @Output() taskPending = new EventEmitter<TaskPendingEvent>();
+  @Output() dirtyChange = new EventEmitter<boolean>();
+
   public tasks: FullTask[] = [];
   public agents: FullAgent[] = [];
 
@@ -65,5 +71,9 @@ export class TasksSectionComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.subscription.unsubscribe();
+  }
+
+  onTaskPending(ev: TaskPendingEvent): void {
+    this.taskPending.emit(ev);
   }
 }

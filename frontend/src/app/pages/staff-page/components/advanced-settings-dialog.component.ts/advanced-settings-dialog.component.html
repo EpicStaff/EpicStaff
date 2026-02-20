@@ -11,7 +11,7 @@
             icon="ui/x"
             ariaLabel="Close dialog"
             size="2rem"
-            (onClick)="dialogRef.close()"
+            (onClick)="closeAndApply()"
         >
         </app-icon-button>
     </div>
@@ -387,12 +387,4 @@
             </div>
         </div>
     </div>
-
-    <!-- Action Buttons -->
-    <div class="actions">
-        <button class="btn-cancel" (click)="dialogRef.close()">Cancel</button>
-        <button class="btn-save" [disabled]="!!agentData.knowledge_collection && !this.agentData.rag" (click)="save()">Save Changes</button>
-    </div>
-
 </div>
-

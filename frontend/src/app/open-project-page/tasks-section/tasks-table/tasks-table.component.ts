@@ -93,6 +93,14 @@ interface CellInfo {
 }
 type PopupEvent = CellClickedEvent<any, any> | CellKeyDownEvent<any, any>;
 
+export type TaskPendingKind = 'create' | 'update' | 'delete' | 'reorder';
+
+export interface TaskPendingEvent {
+  rowKey: string;
+  kind: TaskPendingKind;
+  payload: any;
+}
+
 @Component({
     selector: 'app-tasks-table',
     standalone: true,
@@ -134,6 +142,9 @@ export class TasksTableComponent implements OnChanges {
     @Input() agents: FullAgent[] = [];
     @Input() project!: GetProjectRequest;
 
+    @Output() taskPending = new EventEmitter<TaskPendingEvent>();
+    @Output() dirtyChange = new EventEmitter<boolean>();
+
     public rowData: TableFullTask[] = [];
 
     private gridApi!: GridApi;
@@ -160,6 +171,9 @@ export class TasksTableComponent implements OnChanges {
     private isDragOutsideRows = false;
     private draggedTaskData: TableFullTask | null = null;
     private dragMouseUpListener: (() => void) | null = null;
+
+    private baselineTasksById = new Map<number, any>();
+    private localPendingKeys = new Set<string>();
 
     constructor(
         private overlay: Overlay,
@@ -189,30 +203,55 @@ export class TasksTableComponent implements OnChanges {
     }
 
     private updateRowData(): void {
-        // Create a map of existing rowData by task ID to preserve mergedTools
-        const existingRowDataMap = new Map<string | number, TableFullTask>();
-        this.rowData.forEach((row) => {
-            if (row.id && !(typeof row.id === 'string' && row.id.startsWith('temp_'))) {
-                const key = typeof row.id === 'string' ? +row.id : row.id;
-                existingRowDataMap.set(key, row);
+        const existingByKey = new Map<string, TableFullTask>();
+        for (const row of this.rowData) {
+            if (!row?.id) continue;
+            existingByKey.set(String(row.id), row);
+        }
+        const mergedRealTasks = this.tasks.map((t) => {
+            const key = String(t.id);
+            const existing = existingByKey.get(key);
+            if (!existing) {
+                return { ...t, mergedTools: (t as any).mergedTools || t.mergedTools || [] } as any;
             }
+
+            return {
+                ...t,
+                name: existing.name,
+                instructions: existing.instructions,
+                expected_output: existing.expected_output,
+                knowledge_query: existing.knowledge_query,
+                human_input: existing.human_input,
+                async_execution: existing.async_execution,
+                config: existing.config,
+                output_model: existing.output_model,
+                task_context_list: existing.task_context_list,
+                agentData: existing.agentData,
+                agent: existing.agent,
+                mergedTools: existing.mergedTools || (t as any).mergedTools || t.mergedTools || [],
+                order: existing.order ?? t.order,
+            } as any;
         });
 
-        // Merge tasks from state with existing rowData to preserve mergedTools
-        const mergedTasks = this.tasks.map((task) => {
-            const existingRow = existingRowDataMap.get(task.id);
-            // Preserve mergedTools from existing rowData if available, otherwise use task's mergedTools
-            return {
-                ...task,
-                mergedTools: existingRow?.mergedTools || task.mergedTools || [],
-            };
-        });
+        const tempDrafts = Array.from(existingByKey.values()).filter((r) =>
+            typeof r.id === 'string' && r.id.startsWith('temp_')
+        );
 
         this.rowData = [
-            ...mergedTasks,
+            ...mergedRealTasks,
+            ...tempDrafts,
             this.createEmptyFullTask(),
             this.createEmptyFullTask(),
         ];
+
+        if (this.localPendingKeys.size === 0) {
+            this.baselineTasksById.clear();
+            for (const t of this.tasks) {
+                if (typeof t.id === 'number') {
+                    this.baselineTasksById.set(t.id, this.normalizeTaskForCompare(t));
+                }
+            }
+        }
     }
 
     onGridReady(event: any): void {
@@ -767,6 +806,9 @@ export class TasksTableComponent implements OnChanges {
     }
 
     private onCellValueChanged(event: CellValueChangedEvent): void {
+        if (this.isSameCellValue(event.oldValue, event.newValue)) {
+            return;
+        }
         const colId = event.column.getColId();
         const fieldsToValidate = ['name', 'instructions', 'expected_output'];
 
@@ -821,44 +863,25 @@ export class TasksTableComponent implements OnChanges {
                 tool_ids: toolIds,
             };
 
-            this.tasksService.createTask(createTaskData).subscribe({
-                next: (newTask: GetTaskRequest) => {
-                    console.log('Task created successfully:', newTask);
-
-                    event.data.id = newTask.id;
-
-                    this.gridApi.refreshCells({
-                        rowNodes: [event.node],
-                        force: true,
-                    });
-
-                    const agentData = this.agents.find(
-                        (agent) => agent.id === newTask.agent
-                    );
-
-                    // Preserve mergedTools from event.data if they exist (from tools popup)
-                    const fullTask: FullTask = {
-                        ...newTask,
-                        agentData: agentData || null,
-                        mergedTools: (event.data as any).mergedTools || [],
-                    };
-
-                    this.projectStateService.addTask(fullTask);
-
-                    const emptyTask = this.createEmptyFullTask();
-
-                    this.rowData.push(emptyTask);
-                    this.gridApi.applyTransaction({ add: [emptyTask] });
-
-                    this.toastService.success('Task added successfully');
-
-                    this.cdr.markForCheck();
-
-                    this.updateTaskOrders();
-                },
-                error: (err) => console.error('Error creating task:', err),
+            this.setPending(String(event.data.id),{
+                rowKey: String(event.data.id),
+                kind: 'create',
+                payload: createTaskData,
             });
+            const agentData = this.agents.find((a) => a.id === createTaskData.agent) || null;
 
+            // const draftTask: FullTask = {
+            //     ...(event.data as any),
+            //     ...createTaskData,
+            //     id: event.data.id,
+            //     agentData,
+            //     mergedTools: (event.data as any).mergedTools || [],
+            //     order: createTaskData.order,
+            // } as any;
+
+            console.log('Task added (pending). Save to apply.');
+            this.cdr.markForCheck();
+            this.emitReorderPending();
             return;
         }
 
@@ -909,34 +932,47 @@ export class TasksTableComponent implements OnChanges {
             tool_ids: updateToolIds,
         };
 
-        this.tasksService.updateTask(updateTaskRequest).subscribe({
-            next: (updatedResponse) => {
-                console.log('Task updated successfully:', updatedResponse);
-                this.toastService.success('Task updated successfully');
-                
-                // Preserve mergedTools from the original task in state or from event.data
-                // First try to get it from the current tasks array (from state service)
-                const originalTask = this.tasks.find(
-                    (t) => t.id === parsedUpdateData.id
-                );
-                const preservedMergedTools = 
-                    originalTask?.mergedTools || 
-                    (event.data as any).mergedTools || 
-                    [];
-                
-                const taskForState: FullTask = {
-                    ...parsedUpdateData,
-                    mergedTools: preservedMergedTools,
-                };
-                this.projectStateService.updateTask(taskForState);
-            },
-            error: (error) => {
-                console.error('Error updating task:', error);
-            },
-            complete: () => {
-                console.log('Task update process completed.');
-            },
-        });
+        const taskId = Number(updateTaskRequest.id);
+        const baseline = this.baselineTasksById.get(taskId);
+        const currentNorm = this.normalizeTaskForCompare(event.data as FullTask);
+        if (baseline && this.jsonEqual(currentNorm, baseline)) {
+            this.setPending(String(taskId), null);
+        } else {
+            this.setPending(String(taskId), {
+                rowKey: String(taskId),
+                kind: 'update',
+                payload: updateTaskRequest,
+            });
+        }
+
+        const originalTask = this.tasks.find((t) => t.id === updateTaskRequest.id);
+        const preservedMergedTools = originalTask?.mergedTools || (event.data as any).mergedTools || [];
+        
+        const isSame = baseline && this.jsonEqual(currentNorm, baseline);
+
+        if (isSame) {
+            this.setPending(String(taskId), null);
+        } else {
+            this.setPending(String(taskId), {
+                rowKey: String(taskId),
+                kind: 'update',
+                payload: updateTaskRequest,
+            });
+
+            const originalTask = this.tasks.find((t) => t.id === updateTaskRequest.id);
+            const preservedMergedTools =
+                originalTask?.mergedTools ||
+                (event.data as any).mergedTools ||
+                [];
+
+            this.projectStateService.updateTask({
+                ...(event.data as any),
+                id: updateTaskRequest.id,
+                mergedTools: preservedMergedTools,
+            } as any);
+        }
+        console.log('Task updated (pending). Save to apply.');
+        return;
     }
 
     ngOnDestroy(): void {
@@ -982,6 +1018,7 @@ export class TasksTableComponent implements OnChanges {
                     taskId: taskData.id,
                     availableTasks: normalTasks, // Pass filtered tasks to dialog
                 },
+                disableClose: true,
                 width: '100%', // Set minimum width
                 maxWidth: '650px', // Allow it to be responsive but not too wide
                 height: 'fit-content', // Set height to 90% of viewport height
@@ -990,13 +1027,41 @@ export class TasksTableComponent implements OnChanges {
             }
         );
 
-        dialogRef.closed.subscribe((updatedData: unknown) => {
-            const data: AdvancedTaskSettingsData | undefined = updatedData as
-                | AdvancedTaskSettingsData
-                | undefined;
-            if (data) {
-                this.updateTaskDataInRow(data, taskData);
-            }
+        dialogRef.closed.subscribe((updatedData) => {
+            const data = updatedData as AdvancedTaskSettingsData | undefined;
+            if (!data) return;
+
+            const beforeOutput = taskData.output_model ?? null;
+            const beforeCtx = Array.isArray(taskData.task_context_list)
+                ? taskData.task_context_list
+                : [];
+
+            const afterOutput = data.output_model ?? null;
+            const afterCtx = Array.isArray(data.task_context_list)
+                ? data.task_context_list
+                : [];
+
+            const norm = (arr: any[]) =>
+                arr
+                    .map((x) => (typeof x === 'string' ? Number(x) : x))
+                    .filter((x) => Number.isFinite(x))
+                    .map((x) => Number(x))
+                    .sort((a, b) => a - b);
+
+            const sameOutput =
+                JSON.stringify(beforeOutput) === JSON.stringify(afterOutput);
+            const sameCtx =
+                JSON.stringify(norm(beforeCtx)) === JSON.stringify(norm(afterCtx));
+
+            if (sameOutput && sameCtx) return;
+
+            this.updateTaskDataInRow(
+                {
+                    output_model: afterOutput,
+                    task_context_list: afterCtx,
+                },
+                taskData
+            );
         });
     }
 
@@ -1032,10 +1097,26 @@ export class TasksTableComponent implements OnChanges {
                 updatedTask.id.startsWith('temp_'));
 
         if (isTempTask) {
-            console.warn(
-                'Task has a temporary ID, not updating backend:',
-                updatedTask
-            );
+            const parsedTaskData = this.parseTaskData(updatedTask as any);
+            const cfg = parsedTaskData.configured_tools || [];
+            const py = parsedTaskData.python_code_tools || [];
+            const mcp = parsedTaskData.mcp_tools || [];
+            const tool_ids = buildToolIdsArray(cfg, py, mcp);
+
+            this.setPending(String(updatedTask.id), {
+                rowKey: String(updatedTask.id),
+                kind: 'create',
+                payload: {
+                    ...parsedTaskData,
+                    knowledge_query: updatedTask.knowledge_query ?? null,
+                    configured_tools: cfg,
+                    python_code_tools: py,
+                    mcp_tools: mcp,
+                    tool_ids,
+                },
+            });
+
+            console.log('Temp task updated (pending). Save to apply.');
             return;
         }
 
@@ -1074,39 +1155,24 @@ export class TasksTableComponent implements OnChanges {
             tool_ids: settingsToolIds,
         };
 
-        this.tasksService.updateTask(updateTaskData).subscribe({
-            next: (updatedResponse) => {
-                console.log('Task updated successfully:', updatedResponse);
-
-             
-                const originalTask = this.tasks.find(
-                    (t) => t.id === +updatedTask.id
-                );
-                const preservedMergedTools = 
-                    originalTask?.mergedTools || 
-                    (updatedTask as any).mergedTools || 
-                    [];
-
-               
-                const taskForState: FullTask = {
-                    ...updatedTask,
-                    id: +updatedTask.id,
-                    mergedTools: preservedMergedTools,
-                };
-
-             
-                this.projectStateService.updateTask(taskForState);
-
-                this.toastService.success('Task updated successfully');
-            },
-            error: (error) => {
-                console.error('Error updating task:', error);
-                this.toastService.error('Failed to update task');
-            },
-            complete: () => {
-                console.log('Task update process completed.');
-            },
+        this.setPending(String(updatedTask.id),{
+            rowKey: String(updatedTask.id),
+            kind: 'update',
+            payload: updateTaskData,
         });
+        const preservedMergedTools =
+            this.tasks.find((t) => t.id === +updatedTask.id)?.mergedTools ||
+            (updatedTask as any).mergedTools ||
+            [];
+
+        this.projectStateService.updateTask({
+            ...(updatedTask as any),
+            id: typeof updatedTask.id === 'string' ? +updatedTask.id : updatedTask.id,
+            mergedTools: preservedMergedTools,
+        } as any);
+
+        console.log('Task updated (pending). Save to apply.');
+        return;
     }
     public handleCopy(): void {
         if (!this.selectedRowData) return;
@@ -1167,6 +1233,13 @@ export class TasksTableComponent implements OnChanges {
                 console.warn('Row not found for local deletion.');
             }
 
+            this.setPending(String(this.selectedRowData.id),{
+                rowKey: String(this.selectedRowData.id),
+                kind: 'delete',
+                payload: { tempId: String(this.selectedRowData.id) },
+            });
+            this.emitReorderPending();
+
             this.closeContextMenu();
             return;
         }
@@ -1201,46 +1274,24 @@ export class TasksTableComponent implements OnChanges {
                 ? +rowToDelete.id
                 : rowToDelete.id;
 
-        this.tasksService.deleteTask(idToDelete).subscribe({
-            next: () => {
-                // Convert ID to number for project state service
-                const idForState =
-                    typeof rowToDelete.id === 'string'
-                        ? +rowToDelete.id
-                        : rowToDelete.id;
-                this.projectStateService.deleteTask(idForState);
-
-                this.updateTaskOrders();
-                this.toastService.success('Task deleted successfully');
-            },
-            error: (error) => {
-                console.error('Error deleting task:', error);
-
-                // Revert the deletion if the API call fails
-                if (removedRow && index !== -1) {
-                    this.rowData.splice(index, 0, removedRow);
-
-                    // Refresh the grid with the restored data
-                    this.gridApi.setGridOption('rowData', [...this.rowData]);
-
-                    // Refresh index column after restoring
-                    this.gridApi.refreshCells({
-                        force: true,
-                        columns: ['index'],
-                    });
-
-                    this.cdr.markForCheck();
-                    this.toastService.error('Failed to delete task');
-                }
-            },
-            complete: () => {
-                this.closeContextMenu();
-            },
+        this.setPending(String(idToDelete),{
+            rowKey: String(idToDelete),
+            kind: 'delete',
+            payload: { id: idToDelete },
         });
+
+        this.projectStateService.deleteTask(idToDelete);
+        console.log('Task deleted (pending). Save to apply.');
+
+        this.emitReorderPending();
+        this.closeContextMenu();
+        return;
     }
+
     public closeContextMenu(): void {
         this.contextMenuVisible.set(false);
     }
+
     private pasteNewTaskAt(insertIndex: number): void {
         // Create a temporary ID for the new task
         const tempId = `temp_${Date.now()}_${Math.random()
@@ -1297,47 +1348,18 @@ export class TasksTableComponent implements OnChanges {
             tool_ids: pasteToolIds,
         };
 
-        this.tasksService.createTask(createTaskData).subscribe({
-            next: (newTask: GetTaskRequest) => {
-                console.log('Task created successfully:', newTask);
-
-                // Update the ID in our task data
-                newTaskData.id = newTask.id;
-
-                // Update the grid without re-rendering entirely
-                this.gridApi.applyTransaction({ update: [newTaskData] });
-
-                // Map agent data from the agents array based on agent id
-                const agentData = this.agents.find(
-                    (agent) => agent.id === newTask.agent
-                );
-
-                // Create a FullTask by merging GetTaskRequest and agent data
-                // Preserve mergedTools from newTaskData (which was copied from the original)
-                const fullTask: FullTask = {
-                    ...newTask,
-                    agentData: agentData || null,
-                    mergedTools: (newTaskData as any).mergedTools || [],
-                };
-
-                this.projectStateService.addTask(fullTask);
-                this.toastService.success('Task created successfully');
-                this.updateTaskOrders();
-            },
-            error: (err) => {
-                console.error('Error creating task:', err);
-
-                // Remove the row if there was an error
-                this.gridApi.applyTransaction({ remove: [newTaskData] });
-                this.toastService.error('Failed to create task');
-            },
-            complete: () => {
-                console.log('Task creation completed');
-            },
+        this.setPending(String(newTaskData.id),{
+            rowKey: String(newTaskData.id),
+            kind: 'create',
+            payload: createTaskData,
         });
-
+        this.gridApi.applyTransaction({ update: [newTaskData] });
+        console.log('Task created (pending). Save to apply.');
+        this.emitReorderPending();
         this.closeContextMenu();
+        return; 
     }
+    
     public handleAddEmptyTaskAbove(): void {
         if (!this.selectedRowData) return;
         const index = this.rowData.findIndex(
@@ -1387,95 +1409,96 @@ export class TasksTableComponent implements OnChanges {
     }
 
     updateTaskOrders(): void {
-        // Build the ordered list of tasks based on the grid's displayed order so
-        // PATCH requests match what the user sees in the UI.
-        let displayedRows: TableFullTask[] = [];
-        if (this.gridApi) {
-            const count = this.gridApi.getDisplayedRowCount();
-            for (let i = 0; i < count; i++) {
-                const node = this.gridApi.getDisplayedRowAtIndex(i);
-                if (node && node.data) {
-                    displayedRows.push(node.data as TableFullTask);
-                }
-            }
-        } else {
-            // Fallback to local rowData
-            displayedRows = [...this.rowData];
-        }
+        this.emitReorderPending();
+        // // Build the ordered list of tasks based on the grid's displayed order so
+        // // PATCH requests match what the user sees in the UI.
+        // let displayedRows: TableFullTask[] = [];
+        // if (this.gridApi) {
+        //     const count = this.gridApi.getDisplayedRowCount();
+        //     for (let i = 0; i < count; i++) {
+        //         const node = this.gridApi.getDisplayedRowAtIndex(i);
+        //         if (node && node.data) {
+        //             displayedRows.push(node.data as TableFullTask);
+        //         }
+        //     }
+        // } else {
+        //     // Fallback to local rowData
+        //     displayedRows = [...this.rowData];
+        // }
 
-        // Filter displayed rows to only real tasks (exclude null and temp IDs)
-        const tasksWithIds = displayedRows.filter((task: TableFullTask) => {
-            if (task.id === null || task.id === undefined) return false;
-            if (typeof task.id === 'string' && task.id.startsWith('temp_')) return false;
-            return true;
-        });
+        // // Filter displayed rows to only real tasks (exclude null and temp IDs)
+        // const tasksWithIds = displayedRows.filter((task: TableFullTask) => {
+        //     if (task.id === null || task.id === undefined) return false;
+        //     if (typeof task.id === 'string' && task.id.startsWith('temp_')) return false;
+        //     return true;
+        // });
 
-        // Create an array of update requests with new order values (1-based)
-        const updateRequests: Observable<GetTaskRequest>[] = tasksWithIds.map((task, index) => {
-            console.log('updating task order', task);
-            const taskId = typeof task.id === 'string' ? +task.id : task.id;
-            return this.tasksService.patchTaskOrder(taskId, index + 1);
-        });
+        // // Create an array of update requests with new order values (1-based)
+        // const updateRequests: Observable<GetTaskRequest>[] = tasksWithIds.map((task, index) => {
+        //     console.log('updating task order', task);
+        //     const taskId = typeof task.id === 'string' ? +task.id : task.id;
+        //     return this.tasksService.patchTaskOrder(taskId, index + 1);
+        // });
 
-        // Execute all update requests in parallel using forkJoin
-        if (updateRequests.length > 0) {
-            forkJoin(updateRequests).subscribe({
-                next: (results) => {
-                    console.log(
-                        'All task orders updated successfully:',
-                        results
-                    );
+        // // Execute all update requests in parallel using forkJoin
+        // if (updateRequests.length > 0) {
+        //     forkJoin(updateRequests).subscribe({
+        //         next: (results) => {
+        //             console.log(
+        //                 'All task orders updated successfully:',
+        //                 results
+        //             );
 
-                    // Update local state to reflect the new orders
-                    results.forEach((updatedTask) => {
-                        const index = this.rowData.findIndex((row) => {
-                            // Handle case where row.id might be a string
-                            if (typeof row.id === 'string') {
-                                return +row.id === updatedTask.id;
-                            }
-                            return row.id === updatedTask.id;
-                        });
+        //             // Update local state to reflect the new orders
+        //             results.forEach((updatedTask) => {
+        //                 const index = this.rowData.findIndex((row) => {
+        //                     // Handle case where row.id might be a string
+        //                     if (typeof row.id === 'string') {
+        //                         return +row.id === updatedTask.id;
+        //                     }
+        //                     return row.id === updatedTask.id;
+        //                 });
 
-                        if (index !== -1) {
-                            this.rowData[index].order = updatedTask.order;
-                        }
-                    });
+        //                 if (index !== -1) {
+        //                     this.rowData[index].order = updatedTask.order;
+        //                 }
+        //             });
 
-                    // Refresh order cells to reflect updates
-                    this.gridApi.refreshCells({
-                        force: true,
-                        columns: ['order'],
-                    });
+        //             // Refresh order cells to reflect updates
+        //             this.gridApi.refreshCells({
+        //                 force: true,
+        //                 columns: ['order'],
+        //             });
 
-                    // Notify the state service with proper FullTask objects
-                    results.forEach((updatedTask) => {
-                        // Find the corresponding row to get the agentData and mergedTools
-                        const rowWithAgentData = this.rowData.find((row) => {
-                            if (typeof row.id === 'string') {
-                                return +row.id === updatedTask.id;
-                            }
-                            return row.id === updatedTask.id;
-                        });
+        //             // Notify the state service with proper FullTask objects
+        //             results.forEach((updatedTask) => {
+        //                 // Find the corresponding row to get the agentData and mergedTools
+        //                 const rowWithAgentData = this.rowData.find((row) => {
+        //                     if (typeof row.id === 'string') {
+        //                         return +row.id === updatedTask.id;
+        //                     }
+        //                     return row.id === updatedTask.id;
+        //                 });
 
-                        if (rowWithAgentData) {
-                            // Create a FullTask object preserving agentData and mergedTools from our original row
-                            const fullTask: FullTask = {
-                                ...updatedTask,
-                                agentData: rowWithAgentData.agentData,
-                                mergedTools: (rowWithAgentData as any).mergedTools || [],
-                            };
-                            this.projectStateService.updateTask(fullTask);
-                        }
-                    });
+        //                 if (rowWithAgentData) {
+        //                     // Create a FullTask object preserving agentData and mergedTools from our original row
+        //                     const fullTask: FullTask = {
+        //                         ...updatedTask,
+        //                         agentData: rowWithAgentData.agentData,
+        //                         mergedTools: (rowWithAgentData as any).mergedTools || [],
+        //                     };
+        //                     this.projectStateService.updateTask(fullTask);
+        //                 }
+        //             });
 
-                    this.cdr.markForCheck();
-                },
-                error: (error) => {
-                    console.error('Error updating task orders:', error);
-                    this.toastService.error('Failed to update task orders');
-                },
-            });
-        }
+        //             this.cdr.markForCheck();
+        //         },
+        //         error: (error) => {
+        //             console.error('Error updating task orders:', error);
+        //             this.toastService.error('Failed to update task orders');
+        //         },
+        //     });
+        // }
     }
     private onCellClicked(event: CellClickedEvent<any, any>): void {
         if (event.colDef.field === 'actions') {
@@ -1865,4 +1888,93 @@ export class TasksTableComponent implements OnChanges {
     //     return allDependenciesAbove;
     // }
 
+    private hasLocalDirty = false;
+    private markDirty(): void {
+        if (this.hasLocalDirty) return;
+        this.hasLocalDirty = true;
+        this.dirtyChange.emit(true);
+    }
+
+    private emitReorderPending(): void {
+        const displayedRows: TableFullTask[] = [];
+
+        if (this.gridApi) {
+            const count = this.gridApi.getDisplayedRowCount();
+            for (let i = 0; i < count; i++) {
+                const node = this.gridApi.getDisplayedRowAtIndex(i);
+                if (node?.data) displayedRows.push(node.data as TableFullTask);
+            }
+        } else {
+            displayedRows.push(...this.rowData);
+        }
+
+        const reorderPayload = displayedRows
+            .filter((t) => t?.id)
+            .filter((t) => !(typeof t.id === 'string' && t.id.startsWith('temp_')))
+            .map((t, idx) => ({
+                id: typeof t.id === 'string' ? Number(t.id) : t.id,
+                order: idx + 1,
+            }));
+
+        this.setPending('__ALL__', {
+            rowKey: '__ALL__',
+            kind: 'reorder',
+            payload: reorderPayload,
+        });
+
+    }
+
+    private isSameCellValue(a: any, b: any): boolean {
+        return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+    }
+
+    private setPending(rowKey: string, ev: TaskPendingEvent | null): void {
+        if (!ev) {
+            this.localPendingKeys.delete(rowKey);
+            this.taskPending.emit({ rowKey, payload: null } as any);
+        } else {
+            this.localPendingKeys.add(rowKey);
+            this.taskPending.emit(ev);
+        }
+
+        this.hasLocalDirty = this.localPendingKeys.size > 0;
+        this.dirtyChange.emit(this.hasLocalDirty);
+    }
+
+    private normalizeIdList(ids: unknown): number[] {
+        const arr = Array.isArray(ids) ? ids : [];
+
+        const nums = arr
+            .map((x) => Number(x))
+            .filter((x): x is number => Number.isFinite(x));
+
+        return Array.from(new Set(nums)).sort((a, b) => a - b);
+    }
+
+    private normalizeTaskForCompare(task: FullTask): any {
+        const parsed: any = this.parseTaskData(task);
+
+        return {
+            id: parsed.id != null ? Number(parsed.id) : null,
+            name: String(parsed.name ?? '').trim(),
+            instructions: String(parsed.instructions ?? '').trim(),
+            expected_output: String(parsed.expected_output ?? '').trim(),
+            knowledge_query: parsed.knowledge_query ?? null,
+            order: parsed.order ?? null,
+            human_input: !!parsed.human_input,
+            async_execution: !!parsed.async_execution,
+            config: parsed.config ?? null,
+            output_model: parsed.output_model ?? null,
+            crew: parsed.crew ?? null,
+            agent: parsed.agent ?? null,
+            task_context_list: this.normalizeIdList(parsed.task_context_list),
+            configured_tools: this.normalizeIdList(parsed.configured_tools),
+            python_code_tools: this.normalizeIdList(parsed.python_code_tools),
+            mcp_tools: this.normalizeIdList(parsed.mcp_tools),
+        };
+    }
+
+    private jsonEqual(a: unknown, b: unknown): boolean {
+        return JSON.stringify(a) === JSON.stringify(b);
+    }
 }

@@ -69,7 +69,7 @@ import { ToastService } from '../../../../services/notifications/toast.service';
 import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.component';
 import { buildToolIdsArray } from '../../../../shared/utils/tool-ids-builder.util';
 import { ConfigCellRendererComponent } from '../cell-renderers/llm-cell-renderer/realtime-config-cell-renderer.component';
-import { map, switchMap } from 'rxjs';
+import { map, switchMap, Observable, of, from, EMPTY, concatMap, catchError, finalize, tap } from 'rxjs';
 import { CreateRealtimeAgentRequest } from '../../../../shared/models/realtime-agent.model';
 import { RealtimeAgentService } from '../../../../services/realtime-agent.service';
 
@@ -622,7 +622,9 @@ export class AgentsTableComponent {
         const parsed = {
             ...agentData,
             llm_config: llmConfigId,
-            fcm_llm_config: agentData.fcm_llm_config || llmConfigId, // Maintain existing logic
+            fcm_llm_config: agentData.fullFcmLlmConfig?.id ??
+                agentData.fcm_llm_config ??
+                llmConfigId,
             realtime_agent: realtime_agent, // Use the properly structured realtime_agent object
             configured_tools: mergedTools
                 .filter((tool: any) => tool.type === 'tool-config')
@@ -637,6 +639,8 @@ export class AgentsTableComponent {
 
         // Delete tools field to ensure it's never included in create/update requests
         delete (parsed as any).tools;
+        delete (parsed as any).fullFcmLlmConfig;
+        delete (parsed as any).selected_knowledge_source;
 
         return parsed;
     };
@@ -773,6 +777,7 @@ export class AgentsTableComponent {
     }
 
     openSettingsDialog(agentData: TableFullAgent) {
+        const before = this.normalizeAdvancedSettings(agentData);
         const dialogRef = this.dialog.open(AdvancedSettingsDialogComponent, {
             data: {
                 id: agentData.id,
@@ -801,9 +806,10 @@ export class AgentsTableComponent {
 
         dialogRef.closed.subscribe((updatedData: unknown) => {
             const data = updatedData as AdvancedSettingsData | undefined;
-            if (data) {
-                this.updateAgentDataInRow(data, agentData);
-            }
+            if (!data) return;
+            const after = this.normalizeAdvancedSettings(data);
+            if (this.jsonEqual(before, after)) return;
+            this.updateAgentDataInRow(data, agentData);
         });
     }
     updateAgentDataInRow(
@@ -838,14 +844,6 @@ export class AgentsTableComponent {
             !updatedAgent.id ||
             (typeof updatedAgent.id === 'string' &&
                 updatedAgent.id.startsWith('temp_'));
-
-        if (isTempRow) {
-            console.warn(
-                'Cannot update agent in the backend because it has a temporary ID:',
-                updatedAgent
-            );
-            return;
-        }
 
         // Get realtime config ID - check mergedConfigs FIRST as it's the source of truth
         let realtimeConfigId = null;
@@ -915,29 +913,35 @@ export class AgentsTableComponent {
         const parsedUpdateData = this.parseAgentData(this.rowData[index]);
 
         // Prepare the payload for the backend update request
-        const updateAgentData: UpdateAgentRequest = {
-            ...parsedUpdateData,
-            id: +updatedAgent.id,
-            realtime_agent: realtime_agent,
-            configured_tools: settingsConfiguredToolIds,
-            python_code_tools: settingsPythonToolIds,
-            mcp_tools: settingsMcpToolIds,
-            tool_ids: settingsToolIds,
-        };
+        const rowId = String(updatedAgent.id ?? '');
+        const isTemp = rowId.startsWith('temp_');
 
-        // Make the API call directly instead of trying to reuse onCellValueChanged
-        this.agentsService.updateAgent(updateAgentData).subscribe({
-            next: (updatedResponse) => {
-                console.log('Agent updated successfully:', updatedResponse);
-                this.toastService.success(`Agent updated successfully`);
-            },
-            error: (error) => {
-                console.error('Error updating agent:', error);
-            },
-            complete: () => {
-                console.log('Agent update process completed.');
-            },
-        });
+        if (isTemp) {
+            const createAgentData: CreateAgentRequest = {
+                ...parsedUpdateData,
+                realtime_agent,
+                configured_tools: settingsConfiguredToolIds,
+                python_code_tools: settingsPythonToolIds,
+                mcp_tools: settingsMcpToolIds,
+                tool_ids: settingsToolIds as ToolUniqueName[],
+            };
+
+            this.setPending(rowId, { kind: 'create', rowId, payload: createAgentData });    
+        } 
+        else {
+            const updateAgentData: UpdateAgentRequest = {
+                ...parsedUpdateData,
+                id: +updatedAgent.id,
+                realtime_agent,
+                configured_tools: settingsConfiguredToolIds,
+                python_code_tools: settingsPythonToolIds,
+                mcp_tools: settingsMcpToolIds,
+                tool_ids: settingsToolIds,
+            };
+            this.setPending(rowId, { kind: 'update', rowId, payload: updateAgentData });
+        }
+
+        this.cdr.markForCheck();
     }
 
     public onCellContextMenu(event: CellContextMenuEvent) {
@@ -1074,7 +1078,6 @@ export class AgentsTableComponent {
     }
     public handleCopy(): void {
         if (!this.selectedRowData) return;
-        // Deep clone the selected row (to avoid mutating references)
         this.copiedRowData = JSON.parse(JSON.stringify(this.selectedRowData));
         console.log('Copied row:', this.copiedRowData);
         this.closeContextMenu();
@@ -1101,59 +1104,41 @@ export class AgentsTableComponent {
     public closeContextMenu(): void {
         this.contextMenuVisible.set(false);
     }
-    private pasteNewAgentAt(insertIndex: number): void {
-        const tempId = `temp_${Date.now()}_${Math.random()
-            .toString(36)
-            .substr(2, 9)}`;
 
-        // Create a deep copy of the copied row data
+    private pasteNewAgentAt(insertIndex: number): void {
+        if (!this.copiedRowData) return;
+
+        const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+        // 1) local clone + new temp id
         const newAgentData: TableFullAgent = {
             ...JSON.parse(JSON.stringify(this.copiedRowData)),
-            id: tempId, // Use temporary ID
+            id: tempId,
         };
 
-        // Add the new agent to our local data array at the correct position
+        // 2) insert locally
         this.rowData.splice(insertIndex, 0, newAgentData);
 
-        // Apply the transaction to add the row to the grid
         this.gridApi.applyTransaction({
             add: [newAgentData],
             addIndex: insertIndex,
         });
 
-        // Refresh the index column
-        this.gridApi.refreshCells({
-            force: true,
-            columns: ['index'],
-        });
-
+        this.gridApi.refreshCells({ force: true, columns: ['index'] });
         this.cdr.markForCheck();
 
-        // Get realtime config ID - check mergedConfigs FIRST as it's the source of truth
+        // 3) build CreateAgentRequest (same mapping as you already had)
         let realtimeConfigId = null;
 
-        // First check mergedConfigs if available (most up-to-date)
-        if (
-            newAgentData.mergedConfigs &&
-            Array.isArray(newAgentData.mergedConfigs)
-        ) {
-            const realtimeConfig = newAgentData.mergedConfigs.find(
-                (config) => config.type === 'realtime'
-            );
-            if (realtimeConfig) {
-                realtimeConfigId = realtimeConfig.id;
-            }
-        }
-        // Fallback to fullRealtimeConfig if mergedConfigs doesn't exist
-        else if (newAgentData.fullRealtimeConfig?.id) {
+        if (newAgentData.mergedConfigs && Array.isArray(newAgentData.mergedConfigs)) {
+            const realtimeConfig = newAgentData.mergedConfigs.find((c) => c.type === 'realtime');
+            if (realtimeConfig) realtimeConfigId = realtimeConfig.id;
+        } else if (newAgentData.fullRealtimeConfig?.id) {
             realtimeConfigId = newAgentData.fullRealtimeConfig.id;
-        }
-        // Finally check the realtime_agent.realtime_config field directly
-        else if (newAgentData.realtime_agent?.realtime_config) {
+        } else if (newAgentData.realtime_agent?.realtime_config) {
             realtimeConfigId = newAgentData.realtime_agent.realtime_config;
         }
 
-        // Create or update the realtime_agent object
         const realtime_agent = {
             ...(newAgentData.realtime_agent || {
                 wake_word: '',
@@ -1166,7 +1151,6 @@ export class AgentsTableComponent {
             realtime_config: realtimeConfigId,
         };
 
-        // Parse the agent data to extract proper tools
         const parsedAgentData = this.parseAgentData(newAgentData);
 
         const configuredToolIds = parsedAgentData.configured_tools || [];
@@ -1176,65 +1160,23 @@ export class AgentsTableComponent {
 
         const createAgentData: CreateAgentRequest = {
             ...parsedAgentData,
-            realtime_agent: realtime_agent,
+            realtime_agent,
             configured_tools: configuredToolIds,
             python_code_tools: pythonToolIds,
             mcp_tools: mcpToolIds,
             tool_ids: toolIds as ToolUniqueName[],
         };
 
-        this.agentsService.createAgent(createAgentData).subscribe({
-            next: (createdAgent) => {
-                console.log('New agent created from pasted row:', createdAgent);
-
-                // Find the row in our local data array
-                const rowIndex = this.rowData.findIndex(
-                    (row) => row.id === tempId
-                );
-
-                if (rowIndex !== -1) {
-                    // Get the original temp ID before changing it
-                    const tempRowId = this.rowData[rowIndex].id;
-
-                    // Update the ID in our local data array
-                    this.rowData[rowIndex].id = createdAgent.id;
-
-                    // Get the row node using the original temp ID
-                    const rowNode = this.gridApi.getRowNode(
-                        tempRowId.toString()
-                    );
-
-                    if (rowNode) {
-                        // Update the node's data directly
-                        rowNode.setData({ ...this.rowData[rowIndex] });
-                    }
-
-                    // Refresh the grid to show the changes
-                    this.gridApi.refreshCells({ force: true });
-                }
-
-                this.toastService.success(`Agent created successfully`);
-            },
-            error: (error) => {
-                console.error('Error creating agent from pasted row:', error);
-
-                // Find and remove the row with temp ID from our data array
-                const rowIndex = this.rowData.findIndex(
-                    (row) => row.id === tempId
-                );
-                if (rowIndex !== -1) {
-                    this.rowData.splice(rowIndex, 1);
-                }
-
-                // Remove from the grid
-                this.gridApi.setGridOption('rowData', [...this.rowData]);
-
-                this.toastService.error('Failed to create agent');
-            },
+        // 4) mark as pending create (so global Save will persist it)
+        this.setPending(tempId, {
+            kind: 'create',
+            rowId: tempId,
+            payload: createAgentData,
         });
 
         this.closeContextMenu();
     }
+
     public handleAddEmptyAgentAbove(): void {
         if (!this.selectedRowData) return;
         const index = this.rowData.findIndex(
@@ -1284,40 +1226,11 @@ export class AgentsTableComponent {
         const columnId = event.column.getColId();
 
         if (event.colDef.field === 'copy') {
-            const agentData = event.data;
-            this.closePopup();
-            this.agentsService.copyAgent(agentData, agentData.id).subscribe({
-                next: (newAgent) => {
-                    // Show a success toast notification to the user
-                    this.toastService.success(`Agent copied successfully`);
-
-                    // Find the index of the original agent row in the rowData array
-                    const rowIndex = this.rowData.findIndex(
-                        (row) => row === event.data
-                    );
-
-                    if (rowIndex !== -1) {
-                        // Create a new object for the copied agent with the new ID from the server
-                        const copiedAgent = {
-                            ...this.rowData[rowIndex],
-                            id: newAgent.id,
-                        };
-
-                        // Insert the copied agent into the rowData array immediately after the original
-                        this.rowData.splice(rowIndex + 1, 0, copiedAgent);
-
-                        // Update the ag-Grid table by adding the new row at the same index
-                        this.gridApi.applyTransaction({
-                            add: [copiedAgent],
-                            addIndex: rowIndex + 1,
-                        });
-                    }
-                },
-                error: (error) => {
-                    // Show an error toast if the copy operation fails
-                    this.toastService.error('Failed to copy agent');
-                },
-            });
+            this.selectedRowData = event.data;
+            this.copiedRowData = JSON.parse(JSON.stringify(event.data));
+            const rowIndex = this.rowData.findIndex((row) => row === event.data);
+            if (rowIndex !== -1) this.pasteNewAgentAt(rowIndex + 1);
+            return;
         }
         // Process only specific columns.
         if (
@@ -1749,56 +1662,107 @@ export class AgentsTableComponent {
         this.dirtyChange.emit(this.pending.size > 0);
     }
 
-    public flushPending(): void {
-        if (this.pending.size === 0) return;
+    public flushPending(): Observable<void> {
+        if (this.pending.size === 0) {
+            return of(void 0);
+        }
 
         const changes = Array.from(this.pending.values());
 
-        changes.forEach((change) => {
-            if (change.kind === 'create') {
-                this.agentsService.createAgent(change.payload as CreateAgentRequest).subscribe({
-                    next: (newAgent) => {
-                        const tempRowId = change.rowId;
+        return from(changes).pipe(
+            concatMap((change) => {
+                if (change.kind === 'create') {
+                    return this.agentsService.createAgent(change.payload as CreateAgentRequest).pipe(
+                        tap((newAgent) => {
+                            const tempRowId = change.rowId;
 
-                        const rowIndex = this.rowData.findIndex((r) => String(r.id) === tempRowId);
-                        if (rowIndex !== -1) {
-                            const updatedRow = { ...this.rowData[rowIndex], id: newAgent.id };
-                            this.rowData[rowIndex] = updatedRow;
+                            const rowIndex = this.rowData.findIndex((r) => String(r.id) === tempRowId);
+                            if (rowIndex !== -1) {
+                                const updatedRow = { ...this.rowData[rowIndex], id: newAgent.id };
+                                this.rowData[rowIndex] = updatedRow;
 
-                            this.gridApi.applyTransaction({
-                                remove: [{ id: tempRowId }],
-                                add: [updatedRow],
-                                addIndex: rowIndex,
-                            });
+                                this.gridApi.applyTransaction({
+                                    remove: [{ id: tempRowId }],
+                                    add: [updatedRow],
+                                    addIndex: rowIndex,
+                                });
 
-                            const emptyAgent = this.createEmptyFullAgent();
-                            this.rowData.push(emptyAgent);
-                            this.gridApi.applyTransaction({ add: [emptyAgent] });
-                        }
+                                const emptyAgent = this.createEmptyFullAgent();
+                                this.rowData.push(emptyAgent);
+                                this.gridApi.applyTransaction({ add: [emptyAgent] });
+                            }
 
-                        this.pending.delete(tempRowId);
+                            this.pending.delete(tempRowId);
+                            this.dirtyChange.emit(this.pending.size > 0);
+                            this.cdr.markForCheck();
+                        }),
+                        catchError(() => {
+                            this.toastService.error('Failed to create agent');
+                            return EMPTY;
+                        }),
+                        map(() => void 0),
+                    );
+                }
+
+                return this.agentsService.updateAgent(change.payload as UpdateAgentRequest).pipe(
+                    tap(() => {
+                        this.pending.delete(change.rowId);
                         this.dirtyChange.emit(this.pending.size > 0);
-                        this.toastService.success('Agent created successfully');
                         this.cdr.markForCheck();
-                    },
-                    error: () => {
-                        this.toastService.error('Failed to create agent');
-                    },
-                });
-                return;
-            }
+                    }),
+                    catchError(() => {
+                        this.toastService.error('Failed to update agent');
+                        return EMPTY;
+                    }),
+                    map(() => void 0),
+                );
+            }),
+            finalize(() => {
+                this.cdr.markForCheck();
+            }),
+            map(() => void 0),
+        );
+    }
 
-            this.agentsService.updateAgent(change.payload as UpdateAgentRequest).subscribe({
-                next: () => {
-                    this.pending.delete(change.rowId);
-                    this.dirtyChange.emit(this.pending.size > 0);
-                    this.toastService.success('Agent updated successfully');
-                    this.cdr.markForCheck();
-                },
-                error: () => {
-                    this.toastService.error('Failed to update agent');
-                },
-            });
-        });
+    public get hasPendingChanges(): boolean {
+        return this.pending.size > 0;
+    }
+
+    public discardPending(): void {
+        this.pending.clear();
+        this.dirtyChange.emit(false);
+        this.cdr.markForCheck();
+    }
+
+    private normalizeAdvancedSettings(input: any): Record<string, unknown> {
+        return {
+            fcm_llm_config_id:
+                input?.fullFcmLlmConfig?.id ??
+                input?.fcm_llm_config ??
+                null,
+            knowledge_collection:
+                input?.knowledge_collection ??
+                input?.selected_knowledge_source ??
+                null,
+            rag_id:
+                input?.rag?.rag_id ??
+                input?.rag_id ??
+                null,
+            max_iter: input?.max_iter ?? null,
+            max_rpm: input?.max_rpm ?? null,
+            max_execution_time: input?.max_execution_time ?? null,
+            max_retry_limit: input?.max_retry_limit ?? null,
+
+            memory: !!input?.memory,
+            cache: !!input?.cache,
+            respect_context_window: !!input?.respect_context_window,
+
+            search_limit: input?.search_configs?.naive?.search_limit ?? null,
+            similarity_threshold: input?.search_configs?.naive?.similarity_threshold ?? null,
+        };
+    }
+
+    private jsonEqual(a: unknown, b: unknown): boolean {
+        return JSON.stringify(a) === JSON.stringify(b);
     }
 }

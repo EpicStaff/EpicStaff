@@ -282,6 +282,16 @@ export class AdvancedSettingsDialogComponent implements OnInit, OnDestroy {
                     this.cdr.markForCheck();
                 },
             });
+        
+            this.dialogRef.backdropClick
+                .pipe(takeUntil(this._destroyed$))
+                .subscribe(() => this.closeAndApply());
+
+            this.dialogRef.keydownEvents
+                .pipe(takeUntil(this._destroyed$))
+                .subscribe((e) => {
+                    if (e.key === 'Escape') this.closeAndApply();
+                });
     }
 
     public onLlmChange(llmId: number | null): void {
@@ -418,5 +428,9 @@ export class AdvancedSettingsDialogComponent implements OnInit, OnDestroy {
     public ngOnDestroy(): void {
         this._destroyed$.next();
         this._destroyed$.complete();
+    }
+
+    public closeAndApply(): void {
+        this.save();
     }
 }

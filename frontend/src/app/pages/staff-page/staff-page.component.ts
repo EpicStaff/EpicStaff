@@ -1,4 +1,4 @@
-import { Component, OnInit, ViewChild  } from '@angular/core';
+import { Component, OnInit, ViewChild, HostListener  } from '@angular/core';
 import { Dialog, DialogRef } from '@angular/cdk/dialog'; // Import from CDK instead of Material
 import { PageHeaderComponent } from '../../shared/components/header/page-header.component';
 import { FullAgent, FullAgentService } from '../../services/full-agent.service';
@@ -12,6 +12,11 @@ import { NgIf } from '@angular/common';
 import { GetAgentRequest } from '../../shared/models/agent.model';
 import { SaveWithIndicatorComponent } from '../../shared/components/save-with-indicator/save-with-indicator.component';
 import { UnsavedIndicatorComponent } from '../../shared/components/unsaved-indicator/unsaved-indicator.component';
+import { Observable, of } from 'rxjs';
+import { finalize, catchError, map, tap } from 'rxjs/operators';
+import { UnsavedChangesDialogService } from '../../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
+import { CanComponentDeactivate } from '../../core/guards/unsaved-changes.guard';
+import { ToastService } from '../../services/notifications/toast.service';
 
 @Component({
     selector: 'app-staff-page',
@@ -27,13 +32,15 @@ import { UnsavedIndicatorComponent } from '../../shared/components/unsaved-indic
     templateUrl: './staff-page.component.html',
     styleUrls: ['./staff-page.component.scss'],
 })
-export class StaffPageComponent {
+export class StaffPageComponent implements CanComponentDeactivate {
     public newlyCreatedAgent: FullAgent | null = null;
     public isLoadingAgent = false;
 
     constructor(
         private dialog: Dialog,
-        private fullAgentService: FullAgentService
+        private fullAgentService: FullAgentService,
+        private unsavedChangesDialog: UnsavedChangesDialogService,
+        private toastService: ToastService,
     ) {}
 
     @ViewChild(AgentsTableComponent) private agentsTable?: AgentsTableComponent;
@@ -85,6 +92,69 @@ export class StaffPageComponent {
     public hasUnsavedChanges = false;
 
     public onSave(): void {
-        this.agentsTable?.flushPending();
+        if (this.isSaving || !this.agentsTable || !this.hasUnsavedChanges) return;
+
+        this.isSaving = true;
+
+        this.agentsTable
+            .flushPending()
+            .pipe(finalize(() => (this.isSaving = false)))
+            .subscribe(() => {
+                if (!this.agentsTable?.hasPendingChanges) {
+                    this.toastService.success('Agents saved successfully');
+                }
+            });
+    }
+
+    private savePendingForLeave(): Observable<boolean> {
+        if (!this.agentsTable) return of(true);
+        if (!this.hasUnsavedChanges) return of(true);
+
+        this.isSaving = true;
+
+        return this.agentsTable.flushPending().pipe(
+            map(() => {
+                const success = !this.agentsTable!.hasPendingChanges;
+                if (success) {
+                    this.toastService.success('Agents saved successfully');
+                }   
+                return success;
+            }),
+            catchError(() => of(false)),
+            finalize(() => (this.isSaving = false)),
+        );
+    }
+
+    public canDeactivate(): boolean | Observable<boolean> {
+        if (!this.hasUnsavedChanges) return true;
+
+        return this.unsavedChangesDialog
+            .confirm({
+                title: 'Unsaved Changes',
+                message: 'You have unsaved changes on this page. What would you like to do?',
+                saveText: 'Save & Leave',
+                dontSaveText: "Don't Save & Leave",
+                cancelText: 'Cancel',
+                type: 'warning',
+                onSave: () => this.savePendingForLeave(),
+            })
+            .pipe(
+                tap((result) => {
+                    if (result === 'dont-save') {
+                        this.agentsTable?.discardPending();
+                        this.hasUnsavedChanges = false;
+                    }
+                }),
+                map((result) => result === 'save' || result === 'dont-save'),
+            );
+    }
+
+
+    @HostListener('window:beforeunload', ['$event'])
+    public onBeforeUnload(event: BeforeUnloadEvent): void {
+        if (!this.hasUnsavedChanges) return;
+
+        event.preventDefault();
+        event.returnValue = '';
     }
 }

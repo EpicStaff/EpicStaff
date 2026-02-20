@@ -4,7 +4,7 @@
         <h2 class="dialog-title">
             Advanced Settings for {{ taskData.taskName || "New Task" }}
         </h2>
-        <button class="close-button" (click)="dialogRef.close()">
+        <button class="close-button" (click)="requestClose()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                 <line
                     x1="18"
@@ -129,16 +129,5 @@ Note: If properties is empty, the output model will be set to null."
                 </div>
             </div>
         </div>
-    </div>
-
-    <!-- Action Buttons -->
-    <div class="actions">
-        <button (click)="dialogRef.close()">Cancel</button>
-        <button
-            (click)="save()"
-            [disabled]="useOutputModel() && !isJsonValid()"
-        >
-            Save Changes
-        </button>
     </div>
 </div>

@@ -19,7 +19,7 @@
         ></app-filters-list> -->
                 <app-save-with-indicator
                     [isSaving]="isSaving"
-                    [disabled]="isSaving"
+                    [disabled]="isSaving || !hasUnsavedChanges"
                     [hasUnsavedChanges]="hasUnsavedChanges"
                     (save)="onSave()"
                 ></app-save-with-indicator>

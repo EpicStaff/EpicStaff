@@ -11,6 +11,7 @@
         <span class="project-name__text">
           {{ project.name }}
         </span>
+
         <app-icon
           icon="ui/edit"
           size="1rem"
@@ -19,9 +20,17 @@
         />
       </div>
     </div>
+    <app-unsaved-indicator [show]="hasUnsavedChanges"></app-unsaved-indicator>
   </div>
 
   <div class="action-buttons">
+    <app-save-with-indicator
+      [label]="'Save'"
+      [hasUnsavedChanges]="hasUnsavedChanges"
+      [isSaving]="isSaving"
+      [disabled]="!project || isSaving || !hasUnsavedChanges"
+      (save)="onSaveClick()"
+    ></app-save-with-indicator>
     <app-button
       type="secondary"
       [leftIcon]="'ui/plus'"

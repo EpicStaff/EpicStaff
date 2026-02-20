@@ -30,6 +30,8 @@ export class DetailsContentComponent implements OnInit, OnChanges {
     @Output() public tagsUpdated: EventEmitter<string[]> = new EventEmitter<
         string[]
     >();
+    @Output() public dirtyChange = new EventEmitter<boolean>();
+    @Output() public detailsChange = new EventEmitter<{ description: string; tags: string[] }>();
 
     public internalDescription: string = '';
     public internalTags: string[] = [];
@@ -45,31 +47,40 @@ export class DetailsContentComponent implements OnInit, OnChanges {
         private readonly toastService: ToastService
     ) {}
 
+    private initialDescription = '';
+    private initialTags: string[] = [];
+
     public ngOnInit(): void {
-        this.internalDescription = this.description || '';
+        this.internalDescription = this.description ?? '';
+        this.initialDescription = this.internalDescription;
         this.internalTags = [...this.tags];
+        this.initialTags = [...this.internalTags];
 
         this.descriptionSubject
             .pipe(debounceTime(500))
             .subscribe((updatedDescription: string) => {
-                if (updatedDescription !== this.description) {
-                    this.updateProjectDescription(updatedDescription);
-                }
+                this.emitDetailsChange(updatedDescription, this.internalTags);
             });
 
         this.tagsSubject
             .pipe(debounceTime(300))
             .subscribe((updatedTags: string[]) => {
                 this.tagsUpdated.emit(updatedTags);
+                this.emitDetailsChange(this.internalDescription, updatedTags);
             });
+        this.emitDirty();
     }
 
     public ngOnChanges(changes: SimpleChanges): void {
-        if (changes['tags']) {
+        if (changes['tags'] && !changes['tags'].firstChange) {
             this.internalTags = [...this.tags];
+            this.initialTags = [...this.internalTags];
+            this.emitDirty();
         }
-        if (changes['description']) {
-            this.internalDescription = this.description || '';
+        if (changes['description'] && !changes['description'].firstChange) {
+            this.internalDescription = this.description ?? '';
+            this.initialDescription = this.internalDescription;
+            this.emitDirty();
         }
     }
 
@@ -98,6 +109,8 @@ export class DetailsContentComponent implements OnInit, OnChanges {
                 this.internalTags = [...this.internalTags, formattedTag];
                 this.newTag = '';
                 this.tagsSubject.next(this.internalTags);
+                this.emitDirty();
+                this.detailsChange.emit({ description: this.internalDescription ?? '', tags: [...this.internalTags] });
             }
         }
     }
@@ -105,6 +118,8 @@ export class DetailsContentComponent implements OnInit, OnChanges {
     public onRemoveTag(tag: string): void {
         this.internalTags = this.internalTags.filter((t) => t !== tag);
         this.tagsSubject.next(this.internalTags);
+        this.emitDirty();
+        this.detailsChange.emit({ description: this.internalDescription ?? '', tags: [...this.internalTags] });
     }
 
     public onFocusDescription(): void {
@@ -116,7 +131,12 @@ export class DetailsContentComponent implements OnInit, OnChanges {
     }
 
     public onDescriptionInput(): void {
-        this.descriptionSubject.next(this.internalDescription);
+        const desc = this.internalDescription ?? '';
+        this.descriptionSubject.next(desc);
+        const descDirty = desc !== (this.initialDescription ?? '');
+        const tagsDirty = JSON.stringify(this.internalTags ?? []) !== JSON.stringify(this.initialTags ?? []);
+        this.dirtyChange.emit(descDirty || tagsDirty);
+        this.detailsChange.emit({ description: desc, tags: [...this.internalTags] });
     }
 
     public getTextareaRows(text: string): number {
@@ -168,5 +188,18 @@ export class DetailsContentComponent implements OnInit, OnChanges {
                     );
                 },
             });
+    }
+
+    private emitDetailsChange(description: string, tags: string[]): void {
+        this.detailsChange.emit({
+            description: description ?? '',
+            tags: [...(tags ?? [])],
+        });
+    }
+
+    private emitDirty(): void {
+        const descDirty = (this.internalDescription ?? '') !== (this.initialDescription ?? '');
+        const tagsDirty = JSON.stringify(this.internalTags ?? []) !== JSON.stringify(this.initialTags ?? []);
+        this.dirtyChange.emit(descDirty || tagsDirty);
     }
 }
