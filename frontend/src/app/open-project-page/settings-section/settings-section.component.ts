@@ -252,12 +252,6 @@ export class SettingsSectionComponent implements OnInit, OnChanges {
             [setting]: value,
         };
 
-        console.log(`🔧 Settings component emitting change:`, {
-            setting,
-            value,
-            updateData,
-        });
-
         // Emit the change to the parent component instead of calling API directly
         this.settingsChange.emit(updateData);
     }

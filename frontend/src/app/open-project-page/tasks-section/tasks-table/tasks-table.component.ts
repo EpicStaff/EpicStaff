@@ -806,56 +806,43 @@ export class TasksTableComponent implements OnChanges {
     }
 
     private onCellValueChanged(event: CellValueChangedEvent): void {
-        if (this.isSameCellValue(event.oldValue, event.newValue)) {
+        if (this.isSameCellValue(event.oldValue, event.newValue)) 
             return;
-        }
+
         const colId = event.column.getColId();
         const fieldsToValidate = ['name', 'instructions', 'expected_output'];
 
-        // Check if this is a temporary task
         const isTempTask =
             !event.data.id ||
-            (typeof event.data.id === 'string' &&
-                event.data.id.startsWith('temp_'));
+            (typeof event.data.id === 'string' && event.data.id.startsWith('temp_'));
 
         if (isTempTask) {
-            // Validate the required fields
             const isValid = fieldsToValidate.every((field) => {
-                const fieldValue = event.data[field]
-                    ? event.data[field].trim()
-                    : '';
-                event.data[`${field}Warning`] = !fieldValue;
-                return fieldValue !== '';
+                const v = event.data[field] ? String(event.data[field]).trim() : '';
+                event.data[`${field}Warning`] = !v;
+                return v !== '';
             });
 
-            if (!isValid) {
-                console.warn('Warning: One or more required fields are empty.');
-                return;
-            }
+            this.gridApi.refreshCells({
+                rowNodes: [event.node],
+                columns: [colId],
+            });
 
-            // Parse the task data
+            if (!isValid) return;
+
             const parsedData = this.parseTaskData(event.data);
-
-            // Build tool_ids array for task creation
             const configuredToolIds = parsedData.configured_tools || [];
             const pythonToolIds = parsedData.python_code_tools || [];
             const mcpToolIds = parsedData.mcp_tools || [];
             const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds);
-
-            // Create the new task
             const createTaskData: CreateTaskRequest = {
                 ...parsedData,
-                name: parsedData.name,
-                instructions: parsedData.instructions,
-                expected_output: parsedData.expected_output,
                 knowledge_query: parsedData.knowledge_query ?? null,
                 order: parsedData.order ?? null,
                 human_input: parsedData.human_input ?? false,
                 async_execution: parsedData.async_execution ?? false,
                 config: parsedData.config ?? null,
                 output_model: parsedData.output_model ?? null,
-                crew: parsedData.crew,
-                agent: parsedData.agent,
                 task_context_list: parsedData.task_context_list ?? [],
                 configured_tools: configuredToolIds,
                 python_code_tools: pythonToolIds,
@@ -863,116 +850,32 @@ export class TasksTableComponent implements OnChanges {
                 tool_ids: toolIds,
             };
 
-            this.setPending(String(event.data.id),{
+            this.setPending(String(event.data.id), {
                 rowKey: String(event.data.id),
                 kind: 'create',
                 payload: createTaskData,
             });
-            const agentData = this.agents.find((a) => a.id === createTaskData.agent) || null;
 
-            // const draftTask: FullTask = {
-            //     ...(event.data as any),
-            //     ...createTaskData,
-            //     id: event.data.id,
-            //     agentData,
-            //     mergedTools: (event.data as any).mergedTools || [],
-            //     order: createTaskData.order,
-            // } as any;
-
-            console.log('Task added (pending). Save to apply.');
             this.cdr.markForCheck();
             this.emitReorderPending();
             return;
         }
 
         let allValid = true;
-        fieldsToValidate.forEach((field) => {
-            const fieldValue = event.data[field]
-                ? event.data[field].trim()
-                : '';
-            event.data[`${field}Warning`] = !fieldValue;
-            if (!fieldValue) {
-                allValid = false;
-            }
-        });
+        for (const field of fieldsToValidate) {
+            const v = event.data[field] ? String(event.data[field]).trim() : '';
+            event.data[`${field}Warning`] = !v;
+            if (!v) allValid = false;
+        }
 
         this.gridApi.refreshCells({
             rowNodes: [event.node],
             columns: [colId],
         });
 
-        if (!allValid) {
-            console.warn('Warning: One or more required fields are empty.');
-            return;
-        }
-
-        const parsedUpdateData = this.parseTaskData(event.data);
-
-        // Build tool_ids array for task update
-        const updateConfiguredToolIds = parsedUpdateData.configured_tools || [];
-        const updatePythonToolIds = parsedUpdateData.python_code_tools || [];
-        const updateMcpToolIds = parsedUpdateData.mcp_tools || [];
-        const updateToolIds = buildToolIdsArray(
-            updateConfiguredToolIds,
-            updatePythonToolIds,
-            updateMcpToolIds
-        );
-
-        if (typeof parsedUpdateData.id === 'string') {
-            parsedUpdateData.id = +parsedUpdateData.id;
-        }
-
-        // Create update request with all tool arrays, explicitly excluding tools field
-        const updateTaskRequest: UpdateTaskRequest = {
-            ...parsedUpdateData,
-            knowledge_query: parsedUpdateData.knowledge_query ?? null,
-            configured_tools: updateConfiguredToolIds,
-            python_code_tools: updatePythonToolIds,
-            mcp_tools: updateMcpToolIds,
-            tool_ids: updateToolIds,
-        };
-
-        const taskId = Number(updateTaskRequest.id);
-        const baseline = this.baselineTasksById.get(taskId);
-        const currentNorm = this.normalizeTaskForCompare(event.data as FullTask);
-        if (baseline && this.jsonEqual(currentNorm, baseline)) {
-            this.setPending(String(taskId), null);
-        } else {
-            this.setPending(String(taskId), {
-                rowKey: String(taskId),
-                kind: 'update',
-                payload: updateTaskRequest,
-            });
-        }
-
-        const originalTask = this.tasks.find((t) => t.id === updateTaskRequest.id);
-        const preservedMergedTools = originalTask?.mergedTools || (event.data as any).mergedTools || [];
-        
-        const isSame = baseline && this.jsonEqual(currentNorm, baseline);
-
-        if (isSame) {
-            this.setPending(String(taskId), null);
-        } else {
-            this.setPending(String(taskId), {
-                rowKey: String(taskId),
-                kind: 'update',
-                payload: updateTaskRequest,
-            });
-
-            const originalTask = this.tasks.find((t) => t.id === updateTaskRequest.id);
-            const preservedMergedTools =
-                originalTask?.mergedTools ||
-                (event.data as any).mergedTools ||
-                [];
-
-            this.projectStateService.updateTask({
-                ...(event.data as any),
-                id: updateTaskRequest.id,
-                mergedTools: preservedMergedTools,
-            } as any);
-        }
-        console.log('Task updated (pending). Save to apply.');
-        return;
+        if (!allValid) return;
+        this.upsertPendingForExistingTask(event.data as TableFullTask);
+        this.cdr.markForCheck();
     }
 
     ngOnDestroy(): void {
@@ -1116,7 +1019,6 @@ export class TasksTableComponent implements OnChanges {
                 },
             });
 
-            console.log('Temp task updated (pending). Save to apply.');
             return;
         }
 
@@ -1171,7 +1073,6 @@ export class TasksTableComponent implements OnChanges {
             mergedTools: preservedMergedTools,
         } as any);
 
-        console.log('Task updated (pending). Save to apply.');
         return;
     }
     public handleCopy(): void {
@@ -1281,7 +1182,6 @@ export class TasksTableComponent implements OnChanges {
         });
 
         this.projectStateService.deleteTask(idToDelete);
-        console.log('Task deleted (pending). Save to apply.');
 
         this.emitReorderPending();
         this.closeContextMenu();
@@ -1354,7 +1254,6 @@ export class TasksTableComponent implements OnChanges {
             payload: createTaskData,
         });
         this.gridApi.applyTransaction({ update: [newTaskData] });
-        console.log('Task created (pending). Save to apply.');
         this.emitReorderPending();
         this.closeContextMenu();
         return; 
@@ -1542,7 +1441,6 @@ export class TasksTableComponent implements OnChanges {
             const columnId = column.getColId();
             if (event.colDef.field === 'actions') {
                 const taskData = event.data;
-                console.log(event.data);
                 this.closePopup();
 
                 this.openSettingsDialog(taskData);
@@ -1714,7 +1612,6 @@ export class TasksTableComponent implements OnChanges {
             // Subscribe to the agentSelected event from the popup
             popupRef.instance.agentSelected.subscribe(
                 (selectedAgent: FullAgent) => {
-                    console.log('Selected agent:', selectedAgent);
 
                     if (this.currentPopupCell) {
                         const rowIndex = this.currentPopupCell.rowIndex;
@@ -1731,62 +1628,32 @@ export class TasksTableComponent implements OnChanges {
             );
         }
 
-        if (cell.columnId === 'mergedTools') {
+                if (cell.columnId === 'mergedTools') {
             const portal = new ComponentPortal(ToolsPopupComponent);
             const popupRef = this.popupOverlayRef.attach(portal);
+            const rowNode = event.node; 
+            const taskData = rowNode.data as TableFullTask;
+
             popupRef.instance.mergedTools = event.data?.mergedTools || [];
 
-            popupRef.instance.mergedToolsUpdated.subscribe(
-                (
-                    updatedMergedTools: {
-                        id: number;
-                        configName: string;
-                        toolName: string;
-                        type: string;
-                    }[]
-                ) => {
-                    if (this.currentPopupCell) {
-                        const rowIndex = this.currentPopupCell.rowIndex;
-                        const rowNode =
-                            this.gridApi.getDisplayedRowAtIndex(rowIndex);
-                        if (rowNode) {
-                            const taskData = rowNode.data as TableFullTask;
-                            // Update the grid row data
-                            rowNode.setDataValue(
-                                'mergedTools',
-                                updatedMergedTools
-                            );
-                            
-                            // Also update the rowData array to keep it in sync
-                            const rowDataIndex = this.rowData.findIndex(
-                                (row) => row === taskData
-                            );
-                            if (rowDataIndex !== -1) {
-                                this.rowData[rowDataIndex] = {
-                                    ...this.rowData[rowDataIndex],
-                                    mergedTools: updatedMergedTools,
-                                };
-                            }
-                            
-                            // Update the state service if this is a real task (not temp)
-                            if (taskData.id && !(typeof taskData.id === 'string' && taskData.id.startsWith('temp_'))) {
-                                const taskId = typeof taskData.id === 'string' ? +taskData.id : taskData.id;
-                                const originalTask = this.tasks.find((t) => t.id === taskId);
-                                if (originalTask) {
-                                    const updatedTask: FullTask = {
-                                        ...originalTask,
-                                        mergedTools: updatedMergedTools,
-                                    };
-                                    this.projectStateService.updateTask(updatedTask);
-                                }
-                            }
-                        }
-                    }
-                    this.closePopup();
+            popupRef.instance.mergedToolsUpdated.subscribe((updatedMergedTools) => {
+                const mergedToolsClone = (updatedMergedTools ?? []).map((t) => ({ ...t }));
+                rowNode.setDataValue('mergedTools', mergedToolsClone);
+                (taskData as any).mergedTools = mergedToolsClone;
+                const rowId = String(taskData.id);
+                const rowDataIndex = this.rowData.findIndex((r) => String(r.id) === rowId);
+                if (rowDataIndex !== -1) {
+                    this.rowData[rowDataIndex] = {
+                        ...this.rowData[rowDataIndex],
+                        mergedTools: mergedToolsClone,
+                    };
                 }
-            );
 
-            // Handle cancel event
+                this.upsertPendingForExistingTask(taskData);
+                this.closePopup();
+                this.cdr.markForCheck();
+            });
+
             popupRef.instance.cancel.subscribe(() => {
                 this.closePopup();
             });
@@ -1976,5 +1843,52 @@ export class TasksTableComponent implements OnChanges {
 
     private jsonEqual(a: unknown, b: unknown): boolean {
         return JSON.stringify(a) === JSON.stringify(b);
+    }
+
+    private upsertPendingForExistingTask(taskData: TableFullTask): void {
+        const isTemp =
+            !taskData.id ||
+            (typeof taskData.id === 'string' && taskData.id.startsWith('temp_'));
+
+        if (isTemp) return;
+
+        const parsedUpdateData = this.parseTaskData(taskData as any);
+        const configured = parsedUpdateData.configured_tools || [];
+        const python = parsedUpdateData.python_code_tools || [];
+        const mcp = parsedUpdateData.mcp_tools || [];
+        const toolIds = buildToolIdsArray(configured, python, mcp);
+
+        const idNum = Number(parsedUpdateData.id);
+        if (!Number.isFinite(idNum)) return;
+
+        const updateTaskRequest: UpdateTaskRequest = {
+            ...parsedUpdateData,
+            id: idNum,
+            knowledge_query: parsedUpdateData.knowledge_query ?? null,
+            configured_tools: configured,
+            python_code_tools: python,
+            mcp_tools: mcp,
+            tool_ids: toolIds,
+        };
+
+        const baseline = this.baselineTasksById.get(idNum);
+        const currentNorm = this.normalizeTaskForCompare(taskData as any);
+
+        if (baseline && this.jsonEqual(currentNorm, baseline)) {
+            this.setPending(String(idNum), null);
+            return;
+        }
+
+        this.setPending(String(idNum), {
+            rowKey: String(idNum),
+            kind: 'update',
+            payload: updateTaskRequest,
+        });
+
+        this.projectStateService.updateTask({
+            ...(taskData as any),
+            id: idNum,
+            mergedTools: (taskData as any).mergedTools || [],
+        } as any);
     }
 }

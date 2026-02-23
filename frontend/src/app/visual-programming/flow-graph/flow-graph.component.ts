@@ -777,6 +777,7 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
 
             const dialogRef = this.dialog.open(NoteEditDialogComponent, {
                 data: { node: noteNode },
+                disableClose: true,
             });
 
             dialogRef.closed.subscribe((result: any) => {
@@ -2261,7 +2262,6 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
             };
 
             this.flowService.updateNode(updatedStartNode);
-            this.toastService.success('Domain variables updated successfully');
         } else {
             this.toastService.error('Start node not found');
         }

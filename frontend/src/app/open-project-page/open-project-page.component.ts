@@ -431,7 +431,6 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
     }
 
     private updateProjectSettings(updateData: Partial<GetProjectRequest>) {
-        console.log('Sending batch update with data:', updateData);
 
         this.projectsService
             .patchUpdateProject(this.project.id, updateData)
@@ -446,10 +445,6 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                     this.cdr.markForCheck();
                     this.toastService.success(
                         'Project settings updated successfully'
-                    );
-                    console.log(
-                        'Project updated successfully:',
-                        updatedProject
                     );
                 },
                 error: (error) => {
@@ -583,7 +578,6 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                 switchMap(() => {
                     if (!appliedUpdate) return of(null);
 
-                    console.log('SAVE payload', appliedUpdate);
                     return this.projectsService.patchUpdateProject(this.project!.id, appliedUpdate);
                 }),
                 finalize(() => {
@@ -686,7 +680,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
     }
 
     public onTaskPending(ev: TaskPendingEvent): void {
-        if (ev.payload == null) {
+        if (ev.payload == null) { 
             this.pendingTaskUpdates.delete(ev.rowKey);
             this.recomputeUnsaved();
             this.cdr.markForCheck();
