@@ -1,0 +1,99 @@
+<div class="model-selector">
+    <!-- Header -->
+    <div class="model-selector__header">
+        <h3 class="model-selector__title">Select Model</h3>
+        <button
+            type="button"
+            class="model-selector__close-btn"
+            (click)="onClose()"
+        >
+            <app-icon icon="ui/x" size="0.875rem" />
+        </button>
+    </div>
+
+    <!-- Search -->
+    <div class="model-selector__search">
+        <input
+            type="text"
+            class="model-selector__search-input"
+            placeholder="Search provider or model..."
+            [value]="searchQuery()"
+            (input)="onSearchChange($event)"
+        />
+    </div>
+
+    <!-- Content -->
+    <div class="model-selector__content">
+        @if (isLoading()) {
+            <div class="model-selector__loading">
+                <div class="model-selector__spinner"></div>
+                <p>Loading providers and models...</p>
+            </div>
+        } @else if (filteredProviders().length === 0) {
+            <div class="model-selector__empty">
+                <app-icon icon="ui/search" size="2rem" />
+                <p class="model-selector__empty-title">Model not found</p>
+                <p class="model-selector__empty-text">Please find a provider to add the LLM</p>
+            </div>
+        } @else {
+            @for (providerData of filteredProviders(); track providerData.provider.id) {
+                <div class="model-selector__provider">
+                    <!-- Provider Header -->
+                    <div class="model-selector__provider-header">
+                        <div class="model-selector__provider-info">
+                            <app-icon
+                                [icon]="getProviderIcon(providerData.provider.name)"
+                                size="1.125rem"
+                            />
+                            <span class="model-selector__provider-name">
+                                {{ providerData.provider.name | uppercase }}
+                            </span>
+                        </div>
+                        <button
+                            type="button"
+                            class="model-selector__add-btn"
+                            (click)="openAllModelsModal(providerData.provider, providerData)"
+                        >
+                            <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+                                <path d="M5 0V10M0 5H10" stroke="currentColor" stroke-width="1.5"/>
+                            </svg>
+                            <span>Edit models</span>
+                        </button>
+                    </div>
+
+                    <!-- Visible Models -->
+                    @if (providerData.visibleModels.length > 0) {
+                        <div class="model-selector__models">
+                            @for (model of providerData.visibleModels; track model.id) {
+                                <button
+                                    type="button"
+                                    class="model-selector__model"
+                                    [class.model-selector__model--selected]="isModelSelected(model.id)"
+                                    (click)="toggleModelSelection(providerData.provider, model)"
+                                >
+                                    <span class="model-selector__model-name">{{ model.name }}</span>
+                                </button>
+                            }
+                        </div>
+                    } @else {
+                        <div class="model-selector__no-favorites">
+                            <p>No visible models. Click "Edit models" to manage visibility.</p>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+
+    <div class="model-selector__footer">
+        @if (selectedModel()) {
+            <span class="model-selector__footer-text">
+                Selected: {{ selectedProvider()?.name | uppercase }} / {{ selectedModel()?.name }}
+            </span>
+        } @else {
+            <span class="model-selector__footer-text model-selector__footer-text--placeholder">
+                Click on a model to select it
+            </span>
+        }
+    </div>
+</div>

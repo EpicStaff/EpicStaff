@@ -30,3 +30,7 @@ export * from './list';
 export * from './multi-select/multi-select.component';
 export * from './select/select.component';
 export * from './app-validation-errors/validation-errors.component';
+export * from './form-field-label/form-field-label.component';
+export * from './slider-with-stepper/slider-with-stepper.component';
+export * from './number-stepper/number-stepper.component';
+export * from './tooltip/tooltip.component';

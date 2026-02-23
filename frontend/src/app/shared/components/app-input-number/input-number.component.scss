@@ -1,5 +1,4 @@
 :host {
-    display: flex;
     width: 100%;
 }
 
@@ -34,7 +33,8 @@ input[type="number"] {
     &__step {
         position: absolute;
         top: 0;
-        width: 1.75rem;
+        height: 100%;
+        aspect-ratio: 1;
         border: none;
         background: var(--color-ks-line);
         color: var(--color-ks-text);

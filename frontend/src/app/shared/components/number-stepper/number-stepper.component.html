@@ -1,0 +1,61 @@
+<div class="number-stepper" [class]="'number-stepper--' + size()">
+    @if (label()) {
+        <app-form-field-label
+            [label]="label()"
+            [tooltipText]="tooltipText()"
+        />
+    }
+
+    <div
+        class="number-stepper__control"
+        [class]="'number-stepper__control--' + size()"
+        [class.number-stepper__control--error]="hasError()"
+        (mouseenter)="hovered.set(true)"
+        (mouseleave)="hovered.set(false)"
+    >
+        @if (hovered() || size() === 'lg') {
+            <button
+                type="button"
+                class="number-stepper__btn number-stepper__btn--minus"
+                [class]="'number-stepper__btn--' + size()"
+                (mousedown)="onStepDown(); $event.preventDefault()"
+                [disabled]="isDisabled() || !canStepDown()"
+            >
+                <svg viewBox="0 0 10 2" fill="none">
+                    <path d="M0 1H10" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+            </button>
+        }
+
+        <input
+            type="number"
+            class="number-stepper__input"
+            [class]="'number-stepper__input--' + size()"
+            [placeholder]="placeholder()"
+            [value]="displayValue()"
+            (input)="onInputChange($event)"
+            (keydown)="onKeyDown($event)"
+            (blur)="onTouched()"
+            [disabled]="isDisabled()"
+        />
+
+        @if (hovered() || size() === 'lg') {
+            <button
+                type="button"
+                class="number-stepper__btn number-stepper__btn--plus"
+                [class]="'number-stepper__btn--' + size()"
+                (mousedown)="onStepUp(); $event.preventDefault()"
+                [disabled]="isDisabled() || !canStepUp()"
+            >
+                <svg viewBox="0 0 10 10" fill="none">
+                    <path d="M5 0V10M0 5H10" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+            </button>
+        }
+    </div>
+
+    @if (hasError() && errorMessage()) {
+        <div class="number-stepper__error">{{ errorMessage() }}</div>
+    }
+</div>
+

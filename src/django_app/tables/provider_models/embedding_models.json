@@ -1,95 +1,95 @@
 {
   "openai": [
-    "text-embedding-3-small"
+    { "name": "text-embedding-3-small", "recommended": true }
   ],
   "azure": [
-    "text-embedding-ada-002"
+    { "name": "text-embedding-ada-002", "recommended": false }
   ],
   "vertex_ai": [
-    "vertex_ai/text-embedding-004",
-    "vertex_ai/text-multilingual-embedding-002",
-    "vertex_ai/textembedding-gecko",
-    "vertex_ai/textembedding-gecko-multilingual",
-    "vertex_ai/textembedding-gecko-multilingual@001",
-    "vertex_ai/textembedding-gecko@001",
-    "vertex_ai/textembedding-gecko@003",
-    "vertex_ai/text-embedding-preview-0409",
-    "vertex_ai/text-multilingual-embedding-preview-0409",
-    "vertex_ai/multimodalembedding@001"
+    { "name": "vertex_ai/text-embedding-004", "recommended": false },
+    { "name": "vertex_ai/text-multilingual-embedding-002", "recommended": false },
+    { "name": "vertex_ai/textembedding-gecko", "recommended": false },
+    { "name": "vertex_ai/textembedding-gecko-multilingual", "recommended": false },
+    { "name": "vertex_ai/textembedding-gecko-multilingual@001", "recommended": false },
+    { "name": "vertex_ai/textembedding-gecko@001", "recommended": false },
+    { "name": "vertex_ai/textembedding-gecko@003", "recommended": false },
+    { "name": "vertex_ai/text-embedding-preview-0409", "recommended": false },
+    { "name": "vertex_ai/text-multilingual-embedding-preview-0409", "recommended": false },
+    { "name": "vertex_ai/multimodalembedding@001", "recommended": false }
   ],
   "bedrock": [
-    "bedrock/amazon.titan-embed-text-v1",
-    "bedrock/amazon.titan-embed-text-v2:0",
-    "bedrock/cohere.embed-english-v3",
-    "bedrock/cohere.embed-multilingual-v3"
+    { "name": "bedrock/amazon.titan-embed-text-v1", "recommended": false },
+    { "name": "bedrock/amazon.titan-embed-text-v2:0", "recommended": false },
+    { "name": "bedrock/cohere.embed-english-v3", "recommended": false },
+    { "name": "bedrock/cohere.embed-multilingual-v3", "recommended": false }
   ],
   "mistral": [
-    "mistral/mistral-embed"
+    { "name": "mistral/mistral-embed", "recommended": false }
   ],
   "cohere": [
-    "embed-english-v3.0",
-    "embed-english-light-v3.0",
-    "embed-multilingual-v3.0",
-    "embed-multilingual-light-v3.0",
-    "embed-english-v2.0",
-    "embed-english-light-v2.0",
-    "embed-multilingual-v2.0"
+    { "name": "embed-english-v3.0", "recommended": false },
+    { "name": "embed-english-light-v3.0", "recommended": false },
+    { "name": "embed-multilingual-v3.0", "recommended": false },
+    { "name": "embed-multilingual-light-v3.0", "recommended": false },
+    { "name": "embed-english-v2.0", "recommended": false },
+    { "name": "embed-english-light-v2.0", "recommended": false },
+    { "name": "embed-multilingual-v2.0", "recommended": false }
   ],
   "huggingface": [
-    "huggingface/microsoft/codebert-base"
+    { "name": "huggingface/microsoft/codebert-base", "recommended": false }
   ],
   "databricks": [
-    "databricks/databricks-bge-large-en",
-    "databricks/databricks-gte-large-en"
+    { "name": "databricks/databricks-bge-large-en", "recommended": false },
+    { "name": "databricks/databricks-gte-large-en", "recommended": false }
   ],
   "watsonx": [
-    "watsonx/ibm/slate-30m-english-rtrvr",
-    "watsonx/ibm/slate-125m-english-rtrvr"
+    { "name": "watsonx/ibm/slate-30m-english-rtrvr", "recommended": false },
+    { "name": "watsonx/ibm/slate-125m-english-rtrvr", "recommended": false }
   ],
   "xinference": [
-    "xinference/bge-base-en",
-    "xinference/bge-base-en-v1.5",
-    "xinference/bge-base-zh",
-    "xinference/bge-base-zh-v1.5",
-    "xinference/bge-large-en",
-    "xinference/bge-large-en-v1.5",
-    "xinference/bge-large-zh",
-    "xinference/bge-large-zh-noinstruct",
-    "xinference/bge-large-zh-v1.5",
-    "xinference/bge-small-en-v1.5",
-    "xinference/bge-small-zh",
-    "xinference/bge-small-zh-v1.5",
-    "xinference/e5-large-v2",
-    "xinference/gte-base",
-    "xinference/gte-large",
-    "xinference/jina-embeddings-v2-base-en",
-    "xinference/jina-embeddings-v2-small-en",
-    "xinference/multilingual-e5-large"
+    { "name": "xinference/bge-base-en", "recommended": false },
+    { "name": "xinference/bge-base-en-v1.5", "recommended": false },
+    { "name": "xinference/bge-base-zh", "recommended": false },
+    { "name": "xinference/bge-base-zh-v1.5", "recommended": false },
+    { "name": "xinference/bge-large-en", "recommended": false },
+    { "name": "xinference/bge-large-en-v1.5", "recommended": false },
+    { "name": "xinference/bge-large-zh", "recommended": false },
+    { "name": "xinference/bge-large-zh-noinstruct", "recommended": false },
+    { "name": "xinference/bge-large-zh-v1.5", "recommended": false },
+    { "name": "xinference/bge-small-en-v1.5", "recommended": false },
+    { "name": "xinference/bge-small-zh", "recommended": false },
+    { "name": "xinference/bge-small-zh-v1.5", "recommended": false },
+    { "name": "xinference/e5-large-v2", "recommended": false },
+    { "name": "xinference/gte-base", "recommended": false },
+    { "name": "xinference/gte-large", "recommended": false },
+    { "name": "xinference/jina-embeddings-v2-base-en", "recommended": false },
+    { "name": "xinference/jina-embeddings-v2-small-en", "recommended": false },
+    { "name": "xinference/multilingual-e5-large", "recommended": false }
   ],
   "fireworks_ai": [
-    "fireworks_ai/nomic-ai/nomic-embed-text-v1.5",
-    "fireworks_ai/nomic-ai/nomic-embed-text-v1",
-    "fireworks_ai/WhereIsAI/UAE-Large-V1",
-    "fireworks_ai/thenlper/gte-large",
-    "fireworks_ai/thenlper/gte-base"
+    { "name": "fireworks_ai/nomic-ai/nomic-embed-text-v1.5", "recommended": false },
+    { "name": "fireworks_ai/nomic-ai/nomic-embed-text-v1", "recommended": false },
+    { "name": "fireworks_ai/WhereIsAI/UAE-Large-V1", "recommended": false },
+    { "name": "fireworks_ai/thenlper/gte-large", "recommended": false },
+    { "name": "fireworks_ai/thenlper/gte-base", "recommended": false }
   ],
   "voyage": [
-    "voyage/voyage-3.5",
-    "voyage/voyage-3.5-lite",
-    "voyage/voyage-3-large",
-    "voyage/voyage-3",
-    "voyage/voyage-3-lite",
-    "voyage/voyage-code-3",
-    "voyage/voyage-finance-2",
-    "voyage/voyage-law-2",
-    "voyage/voyage-code-2",
-    "voyage/voyage-multilingual-2",
-    "voyage/voyage-large-2-instruct",
-    "voyage/voyage-large-2",
-    "voyage/voyage-2",
-    "voyage/voyage-lite-02-instruct",
-    "voyage/voyage-01",
-    "voyage/voyage-lite-01",
-    "voyage/voyage-lite-01-instruct"
+    { "name": "voyage/voyage-3.5", "recommended": false },
+    { "name": "voyage/voyage-3.5-lite", "recommended": false },
+    { "name": "voyage/voyage-3-large", "recommended": false },
+    { "name": "voyage/voyage-3", "recommended": false },
+    { "name": "voyage/voyage-3-lite", "recommended": false },
+    { "name": "voyage/voyage-code-3", "recommended": false },
+    { "name": "voyage/voyage-finance-2", "recommended": false },
+    { "name": "voyage/voyage-law-2", "recommended": false },
+    { "name": "voyage/voyage-code-2", "recommended": false },
+    { "name": "voyage/voyage-multilingual-2", "recommended": false },
+    { "name": "voyage/voyage-large-2-instruct", "recommended": false },
+    { "name": "voyage/voyage-large-2", "recommended": false },
+    { "name": "voyage/voyage-2", "recommended": false },
+    { "name": "voyage/voyage-lite-02-instruct", "recommended": false },
+    { "name": "voyage/voyage-01", "recommended": false },
+    { "name": "voyage/voyage-lite-01", "recommended": false },
+    { "name": "voyage/voyage-lite-01-instruct", "recommended": false }
   ]
 }

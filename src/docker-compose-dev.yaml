@@ -1,4 +1,27 @@
-# docker compose -f docker-compose-dev.yaml up -d
+#setup development env for autoreload
+# ____________________________________________
+# rewrite dev.env.example ro dev.env with your specific environment
+#
+# run docker compose with this env
+# docker compose -f ./docker-compose-dev.yaml --env-file ./.env --env-file ../dev/dev.env up --build -d
+
+
+# Shared environment for backend services
+
+x-common-env: &common_env
+  CODE_RESULT_CHANNEL: code_results
+  CODE_EXEC_TASK_CHANNEL: code_exec_tasks
+  SESSION_EVENT_UPDATE_CHANNEL: session:event:update
+  SESSION_EVENT_CHANNEL: session:event
+  SESSION_STATUS_CHANNEL: sessions:session_status
+  MEMORY_UPDATE_CHANNEL: memory:update
+  REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
+  REDIS_PORT: ${REDIS_PORT:-6379}
+  REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+  DB_HOST_NAME: ${DB_HOST_NAME:-crewdb}
+  DB_PORT: ${DB_PORT:-5432}
+  DB_NAME: ${POSTGRES_DB:-crew}
+
 services:
   django_app:
     image: django_app
@@ -18,38 +41,23 @@ services:
     ports:
       - "${DJANGO_PORT:-8000}:${DJANGO_PORT:-8000}"
     environment:
-      - CODE_RESULT_CHANNEL=code_results
-      - CODE_EXEC_TASK_CHANNEL=code_exec_tasks
-      - SESSION_EVENT_UPDATE_CHANNEL=session:event:update
-      - SESSION_EVENT_CHANNEL=session:event
-      - SESSION_STATUS_CHANNEL=sessions:session_status
-      - MEMORY_UPDATE_CHANNEL=memory:update
-  
-      - DEBUG=${DEBUG:-True}
-      - SECRET_KEY=${SECRET_KEY:-unsafe-dev-key}
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
-    
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-
-      - DB_HOST_NAME=${DB_HOST_NAME:-crewdb}
-      - DB_PORT=${DB_PORT:-5432}
-      - DB_USER=${DB_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - DB_NAME=${POSTGRES_DB:-crew}
-      - DJANGO_MEDIA_ROOT=${MEDIA_ROOT}
-      - WEBHOOK_USE_TUNNEL=${USE_TUNNEL}
-      - WEBHOOK_TUNNEL=${WEBHOOK_TUNNEL}
-      - WEBHOOK_PORT=${WEBHOOK_PORT}
-      - WEBHOOK_HOST_NAME=${WEBHOOK_HOST_NAME}
-      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-1}
-      - GUNICORN_THREADS=${GUNICORN_THREADS:-4}
-      - DJANGO_HOST=${DJANGO_HOST:-localhost}
-      - DJANGO_PORT=${DJANGO_PORT:-8000}
-
-      - GUNICORN_RELOAD=1
-      - WATCHFILES_FORCE_POLLING=true
+      <<: *common_env
+      DEBUG: ${DEBUG:-True}
+      SECRET_KEY: ${SECRET_KEY:-unsafe-dev-key}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DB_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DJANGO_MEDIA_ROOT: ${MEDIA_ROOT}
+      WEBHOOK_USE_TUNNEL: ${USE_TUNNEL}
+      WEBHOOK_TUNNEL: ${WEBHOOK_TUNNEL}
+      WEBHOOK_PORT: ${WEBHOOK_PORT}
+      WEBHOOK_HOST_NAME: ${WEBHOOK_HOST_NAME}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-1}
+      GUNICORN_THREADS: ${GUNICORN_THREADS:-4}
+      DJANGO_HOST: ${DJANGO_HOST:-localhost}
+      DJANGO_PORT: ${DJANGO_PORT:-8000}
+      GUNICORN_RELOAD: 1
+      WATCHFILES_FORCE_POLLING: "true"
     volumes:
       - ./django_app:/home/user/root/app/django_app:cached
       - ./shared:/home/user/root/app/shared:cached
@@ -70,7 +78,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 12
-      
+
+
   realtime:
     image: realtime
     container_name: realtime
@@ -80,20 +89,15 @@ services:
     ports:
       - "${REALTIME_PORT:-8050}:${REALTIME_PORT:-8050}"
     environment:
-      - KNOWLEDGE_SEARCH_GET_CHANNEL=knowledge:search:get
-      - KNOWLEDGE_SEARCH_RESPONSE_CHANNEL=knowledge:search:response
-      - REALTIME_AGENTS_SCHEMA_CHANNEL=realtime_agents:schema
-      - REALTIME_PORT=${REALTIME_PORT:-8050}
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - MANAGER_HOST=${MANAGER_HOST}
-      - MANAGER_PORT=${MANAGER_PORT}
-      - DB_NAME=${POSTGRES_DB}
-      - DB_HOST_NAME=${DB_HOST_NAME}
-      - DB_PORT=${DB_PORT}
-      - DB_REALTIME_USER=${DB_REALTIME_USER}
-      - DB_REALTIME_PASSWORD=${DB_REALTIME_PASSWORD}
+      <<: *common_env
+      KNOWLEDGE_SEARCH_GET_CHANNEL: knowledge:search:get
+      KNOWLEDGE_SEARCH_RESPONSE_CHANNEL: knowledge:search:response
+      REALTIME_AGENTS_SCHEMA_CHANNEL: realtime_agents:schema
+      REALTIME_PORT: ${REALTIME_PORT:-8050}
+      MANAGER_HOST: ${MANAGER_HOST:-host.docker.internal}
+      MANAGER_PORT: ${MANAGER_PORT}
+      DB_REALTIME_USER: ${DB_REALTIME_USER}
+      DB_REALTIME_PASSWORD: ${DB_REALTIME_PASSWORD}
 
     networks:
       - backend-network
@@ -121,17 +125,13 @@ services:
     ports:
       - "${MANAGER_PORT:-8001}:${MANAGER_PORT:-8001}"
     environment:
-      - PULL_TOOL=${PULL_TOOL}
-      - MANAGER_PORT=${MANAGER_PORT:-8001}
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-      - DB_HOST_NAME=${DB_HOST_NAME:-crewdb}
-      - DB_PORT=${DB_PORT:-5432}
-      - DB_NAME=${POSTGRES_DB:-crew}
-      - DB_MANAGER_USER=${DB_MANAGER_USER}
-      - DB_MANAGER_PASSWORD=${DB_MANAGER_PASSWORD}
-      - CREW_SAVEFILES_PATH=${CREW_SAVEFILES_PATH}
+      <<: *common_env
+      PULL_TOOL: ${PULL_TOOL}
+      MANAGER_PORT: ${MANAGER_PORT:-8001}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      DB_MANAGER_USER: ${DB_MANAGER_USER}
+      DB_MANAGER_PASSWORD: ${DB_MANAGER_PASSWORD}
+      CREW_SAVEFILES_PATH: ${CREW_SAVEFILES_PATH}
     volumes:
       - ${DOCKER_SOCK_PATH}:${DOCKER_SOCK_PATH}
       - ${DOCKER_BIN_PATH}:${DOCKER_BIN_PATH}
@@ -155,24 +155,20 @@ services:
     ports:
       - "${DB_PORT:-5432}:${DB_PORT:-5432}"
     environment:
-      - POSTGRES_DB=${POSTGRES_DB:-crew}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - PGDATA=${PGDATA:-/var/lib/postgresql/data/pgdata}
-
-      - DB_MANAGER_USER=${DB_MANAGER_USER}
-      - DB_MANAGER_PASSWORD=${DB_MANAGER_PASSWORD}
-
-      - DB_KNOWLEDGE_USER=${DB_KNOWLEDGE_USER}
-      - DB_KNOWLEDGE_PASSWORD=${DB_KNOWLEDGE_PASSWORD}
-
-      - DB_REALTIME_USER=${DB_REALTIME_USER}
-      - DB_REALTIME_PASSWORD=${DB_REALTIME_PASSWORD}
-
-      - DB_CREW_USER=${DB_CREW_USER}
-      - DB_CREW_PASSWORD=${DB_CREW_PASSWORD}
-      - DB_PORT=${DB_PORT:-5432}
-      - DJANGO_HOST=${DJANGO_HOST}
-      - DJANGO_PORT=${DJANGO_PORT:-8000}
+      POSTGRES_DB: ${POSTGRES_DB:-crew}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      PGDATA: ${PGDATA:-/var/lib/postgresql/data/pgdata}
+      DB_MANAGER_USER: ${DB_MANAGER_USER}
+      DB_MANAGER_PASSWORD: ${DB_MANAGER_PASSWORD}
+      DB_KNOWLEDGE_USER: ${DB_KNOWLEDGE_USER}
+      DB_KNOWLEDGE_PASSWORD: ${DB_KNOWLEDGE_PASSWORD}
+      DB_REALTIME_USER: ${DB_REALTIME_USER}
+      DB_REALTIME_PASSWORD: ${DB_REALTIME_PASSWORD}
+      DB_CREW_USER: ${DB_CREW_USER}
+      DB_CREW_PASSWORD: ${DB_CREW_PASSWORD}
+      DB_PORT: ${DB_PORT:-5432}
+      DJANGO_HOST: ${DJANGO_HOST}
+      DJANGO_PORT: ${DJANGO_PORT:-8000}
     volumes:
       - crew_pgdata:${PGDATA}
     networks:
@@ -190,7 +186,8 @@ services:
       timeout: 10s
       retries: 10
       start_period: 15s
-      
+
+
   redis:
     image: redis
     container_name: redis
@@ -218,11 +215,10 @@ services:
       dockerfile: redis-monitor/Dockerfile.redis-monitor
     container_name: redis-monitor
     environment:
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - CHECK_INTERVAL=${REDIS_CHECK_INTERVAL:-5}
-      - MAX_FAILURES=${REDIS_MAX_FAILURES:-1}
+      <<: *common_env
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      CHECK_INTERVAL: ${REDIS_CHECK_INTERVAL:-5}
+      MAX_FAILURES: ${REDIS_MAX_FAILURES:-1}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./.env:/mount/.env
@@ -246,23 +242,17 @@ services:
       dockerfile: ./crew/Dockerfile.crew
     container_name: crew
     environment:
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT:-6378}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - MANAGER_HOST=${MANAGER_HOST}
-      - MANAGER_PORT=${MANAGER_PORT:-8001}
-      - HAYSTACK_TELEMETRY_ENABLED=${HAYSTACK_TELEMETRY_ENABLED}
-      - ANONYMIZED_TELEMETRY=${ANONYMIZED_TELEMETRY}
-      - EC_TELEMETRY=${EC_TELEMETRY}
-      - MONITORING_MODE=${MONITORING_MODE}
-      - DB_NAME=${POSTGRES_DB}
-      - DB_HOST_NAME=${DB_HOST_NAME}
-      - DB_PORT=${DB_PORT:-5432}
-      - DB_CREW_USER=${DB_CREW_USER}
-      - DB_CREW_PASSWORD=${DB_CREW_PASSWORD}
-      - SESSION_STATUS_CHANNEL=sessions:session_status
-      - CODE_RESULT_CHANNEL=code_results
-      - MAX_CONCURRENT_SESSIONS=${MAX_CONCURRENT_SESSIONS}
+      <<: *common_env
+      REDIS_PORT: ${REDIS_PORT:-6378}
+      MANAGER_HOST: ${MANAGER_HOST}
+      MANAGER_PORT: ${MANAGER_PORT:-8001}
+      HAYSTACK_TELEMETRY_ENABLED: ${HAYSTACK_TELEMETRY_ENABLED}
+      ANONYMIZED_TELEMETRY: ${ANONYMIZED_TELEMETRY}
+      EC_TELEMETRY: ${EC_TELEMETRY}
+      MONITORING_MODE: ${MONITORING_MODE}
+      DB_CREW_USER: ${DB_CREW_USER}
+      DB_CREW_PASSWORD: ${DB_CREW_PASSWORD}
+      MAX_CONCURRENT_SESSIONS: ${MAX_CONCURRENT_SESSIONS}
     volumes:
       - ${DOCKER_SOCK_PATH}:${DOCKER_SOCK_PATH}
       - ${DOCKER_BIN_PATH}:${DOCKER_BIN_PATH}
@@ -293,13 +283,9 @@ services:
       dockerfile: ./sandbox/Dockerfile.sandbox
     container_name: sandbox
     environment:
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - CODE_RESULT_CHANNEL=code_results
-      - CODE_EXEC_TASK_CHANNEL=code_exec_tasks
-      - BASE_VENV_PATH=${BASE_VENV_PATH}
-      - OUTPUT_PATH=${OUTPUT_PATH}
+      <<: *common_env
+      BASE_VENV_PATH: ${BASE_VENV_PATH}
+      OUTPUT_PATH: ${OUTPUT_PATH}
     volumes:
       - sandbox_venvs:${BASE_VENV_PATH}
       - sandbox_executions:${OUTPUT_PATH}
@@ -314,6 +300,7 @@ services:
     stdin_open: true
     depends_on:
       - redis
+
   knowledge:
     image: knowledge
     build:
@@ -321,19 +308,12 @@ services:
       dockerfile: Dockerfile.knowledge
     container_name: knowledge
     environment:
-      - KNOWLEDGE_SOURCES_CHANNEL=knowledge_sources
-      - KNOWLEDGE_SEARCH_GET_CHANNEL=knowledge:search:get
-      - KNOWLEDGE_SEARCH_RESPONSE_CHANNEL=knowledge:search:response
-
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-
-      - DB_NAME=${POSTGRES_DB}
-      - DB_HOST_NAME=${DB_HOST_NAME}
-      - DB_PORT=${DB_PORT}
-      - DB_KNOWLEDGE_USER=${DB_KNOWLEDGE_USER}
-      - DB_KNOWLEDGE_PASSWORD=${DB_KNOWLEDGE_PASSWORD}
+      <<: *common_env
+      KNOWLEDGE_SOURCES_CHANNEL: knowledge_sources
+      KNOWLEDGE_SEARCH_GET_CHANNEL: knowledge:search:get
+      KNOWLEDGE_SEARCH_RESPONSE_CHANNEL: knowledge:search:response
+      DB_KNOWLEDGE_USER: ${DB_KNOWLEDGE_USER}
+      DB_KNOWLEDGE_PASSWORD: ${DB_KNOWLEDGE_PASSWORD}
     networks:
       - backend-network
     tty: true
@@ -352,10 +332,11 @@ services:
     container_name: epicstaff-frontend
     ports:
       - "${FRONTEND_PORT:-4200}:80"
+    env_file:
+      - ./.env
+      - ../dev/dev.env
     networks:
      - frontend-network
-    volumes:
-     - ../frontend-config/frontend-config.json:/usr/share/nginx/html/config.json:ro
   
   webhook:
     image: webhook
@@ -365,16 +346,17 @@ services:
       dockerfile: ./webhook/Dockerfile
     ports:
       - "${WEBHOOK_PORT:-8051}:${WEBHOOK_PORT:-8051}"
+    env_file:
+      - ./.env
+      - ../dev/dev.env
     environment:
-      - USE_TUNNEL=${USE_TUNNEL}
-      - WEBHOOK_TUNNEL=${WEBHOOK_TUNNEL}
-      - WEBHOOK_AUTH=${WEBHOOK_AUTH}
-      - NGROK_DOMAIN=${NGROK_DOMAIN}
-      - WEBHOOK_EMPTY_JSON_PATHS=${WEBHOOK_EMPTY_JSON_PATHS}
-      - WEBHOOK_PORT=${WEBHOOK_PORT:-8051}
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT:-6379}  
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      <<: *common_env
+      USE_TUNNEL: ${USE_TUNNEL}
+      WEBHOOK_TUNNEL: ${WEBHOOK_TUNNEL}
+      WEBHOOK_AUTH: ${WEBHOOK_AUTH}
+      NGROK_DOMAIN: ${NGROK_DOMAIN}
+      WEBHOOK_EMPTY_JSON_PATHS: ${WEBHOOK_EMPTY_JSON_PATHS}
+      WEBHOOK_PORT: ${WEBHOOK_PORT:-8051}
 
     depends_on:
       - redis

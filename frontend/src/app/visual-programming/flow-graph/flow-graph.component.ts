@@ -60,7 +60,6 @@ import {
     generatePortsForDecisionTableNode,
 } from '../core/helpers/helpers';
 
-import { take } from 'rxjs/operators';
 import { NgClass, NgIf } from '@angular/common';
 import { NodeType } from '../core/enums/node-type';
 import { v4 as uuidv4 } from 'uuid';
@@ -126,6 +125,7 @@ import { FlowShortcutsButtonComponent } from '../components/flow-shortcuts-butto
 export class FlowGraphComponent implements OnInit, OnDestroy {
     @Input() flowState!: FlowModel;
     @Input() nodesMode!: 'project-graph' | 'flow-graph';
+    @Input() currentFlowId: number | null = null;
 
     @Output() save = new EventEmitter<void>();
 
@@ -777,7 +777,6 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
 
             const dialogRef = this.dialog.open(NoteEditDialogComponent, {
                 data: { node: noteNode },
-                disableClose: true,
             });
 
             dialogRef.closed.subscribe((result: any) => {
@@ -806,13 +805,12 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
                 maxHeight: '90vh',
                 panelClass: 'domain-dialog-panel',
                 backdropClass: 'domain-dialog-backdrop',
-                disableClose: true,
                 data: {
                     initialData: startNodeInitialState,
                 },
             });
 
-            dialogRef.closed.pipe(take(1)).subscribe((result: unknown) => {
+            dialogRef.closed.subscribe((result: unknown) => {
                 if (
                     result !== null &&
                     typeof result === 'object' &&
@@ -2263,6 +2261,7 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
             };
 
             this.flowService.updateNode(updatedStartNode);
+            this.toastService.success('Domain variables updated successfully');
         } else {
             this.toastService.error('Start node not found');
         }
@@ -2294,21 +2293,6 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
     }
 
     openShortcuts = output<DOMRect>();
-
-    @ViewChild('shortcutsAnchor', { read: ElementRef })
-    private shortcutsAnchor!: ElementRef<HTMLElement>;
-
-    @HostListener('document:keydown', ['$event'])
-    handleKeyboardEvent(event: KeyboardEvent) {
-        if (event.ctrlKey && (event.code === 'Slash' || event.keyCode === 191)) {
-            event.preventDefault();
-
-            const rect = this.shortcutsAnchor?.nativeElement.getBoundingClientRect();
-            if (rect) {
-                this.onOpenShortcuts(this.shortcutsAnchor.nativeElement);
-            }
-        }
-    }
 
     public onOpenShortcuts(anchorEl: HTMLElement): void {
         this.openShortcuts.emit(anchorEl.getBoundingClientRect());

@@ -19,6 +19,7 @@ export class ShortcutListenerDirective implements OnInit, OnDestroy {
     @Output() refresh = new EventEmitter<void>();
     @Output() save = new EventEmitter<void>();
     @Output() escape = new EventEmitter<void>();
+    @Output() openShortcuts = new EventEmitter<void>();
 
     private sub!: Subscription;
     private readonly allowedKeys = new Set([
@@ -37,6 +38,7 @@ export class ShortcutListenerDirective implements OnInit, OnDestroy {
         'delete',
         'backspace',
         'escape',
+        '/',
     ]);
 
     constructor(private ngZone: NgZone) {}
@@ -48,6 +50,15 @@ export class ShortcutListenerDirective implements OnInit, OnDestroy {
                     filter((evt: KeyboardEvent) => {
                         const key: string = evt.key.toLowerCase();
                         const mod: boolean = evt.ctrlKey || evt.metaKey;
+
+                        // Support Ctrl/Cmd + / via event.code to ensure consistent behavior across keyboard layouts
+                        if (mod && evt.code === 'Slash') {
+                            const el = evt.target as HTMLElement;
+                            if (el.matches('input,textarea,select,[contenteditable="true"]')) {
+                                return false;
+                            }
+                            return true;
+                        }
 
                         // 1) only keep delete/backspace/escape OR keys with ctrl/meta
                         if (
@@ -94,6 +105,15 @@ export class ShortcutListenerDirective implements OnInit, OnDestroy {
             event.preventDefault();
             event.stopPropagation();
             this.escape.emit();
+            return;
+        }
+        if (
+            (event.code === 'Slash' || key === '/') && 
+            (event.ctrlKey || event.metaKey)
+        ) {
+            event.preventDefault();
+            event.stopPropagation();
+            this.openShortcuts.emit();
             return;
         }
         const mod = event.ctrlKey || event.metaKey;

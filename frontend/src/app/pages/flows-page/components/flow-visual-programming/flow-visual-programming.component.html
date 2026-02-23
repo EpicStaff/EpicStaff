@@ -15,6 +15,7 @@
     <app-flow-graph
         [flowState]="graph.metadata"
         [nodesMode]="'flow-graph'"
+        [currentFlowId]="graph.id"
         (save)="handleSaveFlow(true).subscribe()"
         (openShortcuts)="openShortcutsModal($event)"
     ></app-flow-graph>

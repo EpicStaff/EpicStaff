@@ -1,4 +1,9 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    input,
+    signal,
+} from '@angular/core';
 import {
     ReactiveFormsModule,
     FormGroup,
@@ -16,6 +21,7 @@ import { SidePanelService } from '../../../services/side-panel.service';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { expandCollapseAnimation } from '../../../../shared/animations/animations-expand-collapse';
 
 interface InputMapPair {
     key: string;
@@ -32,15 +38,107 @@ interface InputMapPair {
         CodeEditorComponent,
         CommonModule,
     ],
+    animations: [expandCollapseAnimation],
     template: `
         <div class="panel-container">
             <div class="panel-content">
                 <form [formGroup]="form" class="form-container">
                     @if (isExpanded()) {
-                    <!-- Expanded Mode: Two Column Layout -->
-                    <div class="form-layout expanded">
-                        <!-- Left Column - Form Fields -->
-                        <div class="form-fields">
+                        <!-- Expanded Mode: Two Column Layout or Full Width -->
+                        <div
+                            class="form-layout expanded"
+                            [class.code-editor-fullwidth]="
+                                isCodeEditorFullWidth()
+                            "
+                        >
+                            <!-- Left Column - Form Fields -->
+                            @if (!isCodeEditorFullWidth()) {
+                                <div class="form-fields">
+                                    <!-- Node Name Field -->
+                                    <app-custom-input
+                                        label="Node Name"
+                                        tooltipText="The unique identifier used to reference this Python node. This name must be unique within the flow."
+                                        formControlName="node_name"
+                                        placeholder="Enter node name"
+                                        [activeColor]="activeColor"
+                                        [errorMessage]="
+                                            getNodeNameErrorMessage()
+                                        "
+                                    ></app-custom-input>
+
+                                    <!-- Input Map Key-Value Pairs -->
+                                    <div class="input-map">
+                                        <app-input-map
+                                            [activeColor]="activeColor"
+                                        ></app-input-map>
+                                    </div>
+
+                                    <!-- Output Variable Path -->
+                                    <app-custom-input
+                                        label="Output Variable Path"
+                                        tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
+                                        formControlName="output_variable_path"
+                                        placeholder="Enter output variable path (leave empty for null)"
+                                        [activeColor]="activeColor"
+                                    ></app-custom-input>
+
+                                    <!-- Libraries Input -->
+                                    <app-custom-input
+                                        label="Libraries"
+                                        tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
+                                        formControlName="libraries"
+                                        placeholder="Enter libraries (e.g., requests, pandas, numpy)"
+                                        [activeColor]="activeColor"
+                                    ></app-custom-input>
+                                </div>
+                            }
+
+                            <!-- Code Editor Section with Toggle Arrow -->
+                            <div class="code-editor-wrapper">
+                                <button
+                                    type="button"
+                                    class="toggle-icon-button"
+                                    (click)="toggleCodeEditorFullWidth()"
+                                    [attr.aria-label]="
+                                        isCodeEditorFullWidth()
+                                            ? 'Collapse code editor'
+                                            : 'Expand code editor'
+                                    "
+                                >
+                                    <svg
+                                        width="9"
+                                        height="22"
+                                        viewBox="0 0 9 22"
+                                        fill="none"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        [style.transform]="
+                                            isCodeEditorFullWidth()
+                                                ? 'scaleX(1)'
+                                                : 'scaleX(-1)'
+                                        "
+                                    >
+                                        <path
+                                            d="M7.16602 21.0001L1.16602 11.0001L7.16602 1.00012"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                        />
+                                    </svg>
+                                </button>
+
+                                <app-code-editor
+                                    class="code-editor-section"
+                                    [pythonCode]="pythonCode"
+                                    (pythonCodeChange)="
+                                        onPythonCodeChange($event)
+                                    "
+                                    (errorChange)="onCodeErrorChange($event)"
+                                ></app-code-editor>
+                            </div>
+                        </div>
+                    } @else {
+                        <!-- Collapsed Mode: Single Column Layout -->
+                        <div class="form-layout collapsed">
                             <!-- Node Name Field -->
                             <app-custom-input
                                 label="Node Name"
@@ -75,64 +173,18 @@ interface InputMapPair {
                                 placeholder="Enter libraries (e.g., requests, pandas, numpy)"
                                 [activeColor]="activeColor"
                             ></app-custom-input>
+
+                            <!-- Code Editor Section -->
+                            <div class="code-editor-section">
+                                <app-code-editor
+                                    [pythonCode]="pythonCode"
+                                    (pythonCodeChange)="
+                                        onPythonCodeChange($event)
+                                    "
+                                    (errorChange)="onCodeErrorChange($event)"
+                                ></app-code-editor>
+                            </div>
                         </div>
-
-                        <!-- Right Column - Code Editor -->
-                        <div class="code-editor-section">
-                            <app-code-editor
-                                [pythonCode]="pythonCode"
-                                (pythonCodeChange)="onPythonCodeChange($event)"
-                                (errorChange)="onCodeErrorChange($event)"
-                            ></app-code-editor>
-                        </div>
-                    </div>
-                    } @else {
-                    <!-- Collapsed Mode: Single Column Layout -->
-                    <div class="form-layout collapsed">
-                        <!-- Node Name Field -->
-                        <app-custom-input
-                            label="Node Name"
-                            tooltipText="The unique identifier used to reference this Python node. This name must be unique within the flow."
-                            formControlName="node_name"
-                            placeholder="Enter node name"
-                            [activeColor]="activeColor"
-                            [errorMessage]="getNodeNameErrorMessage()"
-                        ></app-custom-input>
-
-                        <!-- Input Map Key-Value Pairs -->
-                        <div class="input-map">
-                            <app-input-map
-                                [activeColor]="activeColor"
-                            ></app-input-map>
-                        </div>
-
-                        <!-- Output Variable Path -->
-                        <app-custom-input
-                            label="Output Variable Path"
-                            tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
-                            formControlName="output_variable_path"
-                            placeholder="Enter output variable path (leave empty for null)"
-                            [activeColor]="activeColor"
-                        ></app-custom-input>
-
-                        <!-- Libraries Input -->
-                        <app-custom-input
-                            label="Libraries"
-                            tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
-                            formControlName="libraries"
-                            placeholder="Enter libraries (e.g., requests, pandas, numpy)"
-                            [activeColor]="activeColor"
-                        ></app-custom-input>
-
-                        <!-- Code Editor Section -->
-                        <div class="code-editor-section">
-                            <app-code-editor
-                                [pythonCode]="pythonCode"
-                                (pythonCodeChange)="onPythonCodeChange($event)"
-                                (errorChange)="onCodeErrorChange($event)"
-                            ></app-code-editor>
-                        </div>
-                    </div>
                     }
                 </form>
             </div>
@@ -172,11 +224,34 @@ interface InputMapPair {
             .form-layout {
                 height: 100%;
                 min-height: 0;
+                width: 100%;
+                overflow: hidden;
 
                 &.expanded {
                     display: flex;
                     gap: 1rem;
                     height: 100%;
+                    width: 100%;
+
+                    &.code-editor-fullwidth {
+                        .form-fields {
+                            display: none;
+                        }
+
+                        .code-editor-wrapper {
+                            width: 100%;
+                        }
+
+                        .toggle-icon-button {
+                            position: absolute;
+                            left: 0;
+                            top: 50%;
+                            transform: translateY(-50%);
+                            z-index: 10;
+                            border-width: 1px 1px 1px 0px;
+                            border-radius: 0 8px 8px 0;
+                        }
+                    }
                 }
 
                 &.collapsed {
@@ -190,30 +265,93 @@ interface InputMapPair {
                 display: flex;
                 flex-direction: column;
                 gap: 1rem;
+                flex: 0 0 400px;
+                max-width: 400px;
+                height: 100%;
+                overflow-y: auto;
+            }
 
-                .expanded & {
-                    flex: 0 0 400px;
-                    max-width: 400px;
-                    height: 100%;
-                    overflow-y: auto;
+            .code-editor-wrapper {
+                display: flex;
+                align-items: center;
+                gap: 0;
+                height: 100%;
+                position: relative;
+                flex: 1;
+                min-height: 0;
+                min-width: 0;
+                transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+                .toggle-icon-button {
+                    flex-shrink: 0;
+                    width: 28px;
+                    height: 66px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border-width: 1px 0px 1px 1px;
+                    border-style: solid;
+                    border-color: #2c2c2e;
+                    background: transparent;
+                    cursor: pointer;
+                    border-radius: 8px 0 0 8px;
+                    transition: all 0.2s ease;
+                    padding: 0;
+                    color: #d9d9d999;
+
+                    svg {
+                        transition: transform 0.3s ease;
+                    }
+
+                    &:hover:not(:disabled) {
+                        color: #d9d9d9;
+                        background: #2c2c2e;
+                    }
+
+                    &:active:not(:disabled) {
+                        color: #d9d9d9;
+                    }
+
+                    &:disabled {
+                        cursor: not-allowed;
+                        opacity: 0.5;
+                    }
+                }
+
+                app-code-editor {
+                    min-width: 0;
                 }
             }
 
             .code-editor-section {
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 8px;
+                border: 1px solid
+                    var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
+                border-radius: 0 8px 8px 0;
                 overflow: hidden;
                 display: flex;
-                flex-direction: column;
+                flex-direction: column;               
 
                 .expanded & {
                     flex: 1;
                     height: 100%;
                     min-height: 0;
+                    transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+                    transform: scaleX(0.3) translateX(-50px);
+                    opacity: 0;
                 }
 
                 .collapsed & {
                     height: 300px;
+                }
+
+                .form-layout.expanded:not(.code-editor-fullwidth) & {
+                    transform: scaleX(1) translateX(0);
+                    opacity: 1;
+                }
+
+                .form-layout.expanded.code-editor-fullwidth & {
+                    transform: scaleX(1) translateX(0);
+                    opacity: 1;
                 }
             }
 
@@ -230,6 +368,7 @@ interface InputMapPair {
 })
 export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     public readonly isExpanded = input<boolean>(false);
+    public readonly isCodeEditorFullWidth = signal<boolean>(true);
 
     pythonCode: string = '';
     initialPythonCode: string = '';
@@ -316,7 +455,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                     this.fb.group({
                         key: [key, Validators.required],
                         value: [value, Validators.required],
-                    })
+                    }),
                 );
             });
         } else {
@@ -324,7 +463,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 this.fb.group({
                     key: [''],
                     value: ['variables.'],
-                })
+                }),
             );
         }
     }
@@ -344,5 +483,9 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             }
             return acc;
         }, {});
+    }
+
+    toggleCodeEditorFullWidth(): void {
+        this.isCodeEditorFullWidth.update((value) => !value);
     }
 }

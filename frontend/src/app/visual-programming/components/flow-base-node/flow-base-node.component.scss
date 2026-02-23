@@ -149,6 +149,17 @@
                 text-overflow: ellipsis;
                 white-space: nowrap;
             }
+
+            .blocked-badge {
+                margin-left: auto;
+                font-size: 11px;
+                padding: 2px 6px;
+                border-radius: 10px;
+                background: rgba(255, 107, 107, 0.15);
+                color: #ffb3b3;
+                border: 1px solid rgba(255, 107, 107, 0.6);
+                white-space: nowrap;
+            }
         }
 
         .node-details {
@@ -175,6 +186,18 @@
 
         .actions {
             opacity: 1;
+        }
+    }
+
+    &.is-blocked {
+        .interactive-node-body {
+            border-color: rgba(255, 107, 107, 0.8);
+            background-color: rgba(255, 107, 107, 0.05);
+            cursor: not-allowed;
+        }
+
+        .header .title {
+            color: #ffb3b3;
         }
     }
 

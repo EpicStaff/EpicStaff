@@ -1,5 +1,9 @@
 from enum import Enum
+import hashlib
+import json
 from django.db import models
+from django.db.models import Func, Value
+
 from abc import abstractmethod
 
 
@@ -110,6 +114,78 @@ class BaseSessionMessage(models.Model):
 
 class CrewSessionMessage(BaseSessionMessage):
     crew = models.ForeignKey("Crew", on_delete=models.SET_NULL, null=True, default=None)
+
+    class Meta:
+        abstract = True
+
+
+class TimestampMixin(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+
+
+class MetadataMixin(models.Model):
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        abstract = True
+
+
+class ContentHashMixin(models.Model):
+    content_hash = models.CharField(max_length=64, editable=False, null=True)
+
+    class Meta:
+        abstract = True
+
+    def generate_hash(self):
+        """
+        Generates a SHA-256 hash.
+        """
+
+        excluded_fields = ["id", "created_at", "updated_at", "content_hash", "metadata"]
+
+        data = {
+            f.name: str(getattr(self, f.name))
+            for f in self._meta.fields
+            if f.name not in excluded_fields
+        }
+
+        data_string = json.dumps(data, sort_keys=True, default=str).encode("utf-8")
+        return hashlib.sha256(data_string).hexdigest()
+
+    def save(self, *args, **kwargs):
+        self.content_hash = self.generate_hash()
+        super().save(*args, **kwargs)
+
+
+class BaseGraphEntity(TimestampMixin, MetadataMixin, ContentHashMixin):
+    class Meta:
+        abstract = True
+
+
+class NextVal(Func):
+    """
+    Helper to tell Django to use the SQL function 'nextval'.
+    Required for Django 5.0+ to automate the migration generation.
+    """
+
+    function = "nextval"
+    template = "%(function)s(%(expressions)s)"
+
+
+class BaseGlobalNode(models.Model):
+    """
+    Abstract base class for all nodes that must share the same Global ID sequence.
+    """
+
+    id = models.BigIntegerField(
+        primary_key=True,
+        db_default=NextVal(Value("tables_global_node_seq")),
+        editable=False,
+    )
 
     class Meta:
         abstract = True

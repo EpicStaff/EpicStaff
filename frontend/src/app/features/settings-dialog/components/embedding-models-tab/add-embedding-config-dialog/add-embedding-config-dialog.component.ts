@@ -3,6 +3,7 @@ import {
   Component,
   DestroyRef,
   OnInit,
+  computed,
   inject,
   signal,
 } from '@angular/core';
@@ -13,17 +14,20 @@ import {
   ReactiveFormsModule,
   Validators,
 } from '@angular/forms';
-import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
-import { LLM_Provider, ModelTypes } from '../../../models/LLM_provider.model';
-import { LLM_Providers_Service } from '../../../services/LLM_providers.service';
-import { EmbeddingModelsService } from '../../../services/embeddings/embeddings.service';
+import { LLM_Provider } from '../../../models/LLM_provider.model';
 import { EmbeddingConfigsService } from '../../../services/embeddings/embedding_configs.service';
 import { CreateEmbeddingConfigRequest } from '../../../models/embeddings/embedding-config.model';
 import { finalize } from 'rxjs/operators';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { CustomInputComponent } from '../../../../../shared/components/form-input/form-input.component';
 import { EmbeddingModel } from '../../../models/embeddings/embedding.model';
+import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
+import {
+  ModelSelectorModalComponent,
+  ModelSelectorResult,
+} from '../model-selector-modal/model-selector-modal.component';
+import { getProviderIconPath } from '../../../utils/get-provider-icon';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
   selector: 'app-add-embedding-config-dialog',
@@ -32,126 +36,74 @@ import { EmbeddingModel } from '../../../models/embeddings/embedding.model';
     CommonModule,
     ReactiveFormsModule,
     ButtonComponent,
-    CustomInputComponent,
+    AppIconComponent,
   ],
   templateUrl: './add-embedding-config-dialog.component.html',
   styleUrls: ['./add-embedding-config-dialog.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AddEmbeddingConfigDialogComponent implements OnInit {
-  private dialogRef = inject(DialogRef);
-  private formBuilder = inject(FormBuilder);
-  private providersService = inject(LLM_Providers_Service);
-  private embeddingModelsService = inject(EmbeddingModelsService);
-  private configService = inject(EmbeddingConfigsService);
-  private destroyRef = inject(DestroyRef);
+  private readonly dialogRef = inject(DialogRef);
+  private readonly dialog = inject(Dialog);
+  private readonly formBuilder = inject(FormBuilder);
+  private readonly configService = inject(EmbeddingConfigsService);
+  private readonly destroyRef = inject(DestroyRef);
 
   public form!: FormGroup;
-  public providers = signal<LLM_Provider[]>([]);
-  public models = signal<EmbeddingModel[]>([]);
-  public isLoading = signal<boolean>(false);
+  public readonly selectedProvider = signal<LLM_Provider | null>(null);
+  public readonly selectedModel = signal<EmbeddingModel | null>(null);
+  public readonly selectedModelId = signal<number | null>(null);
+  public readonly formValid = signal(false);
+  public readonly showApiKey = signal(false);
+  public readonly submitAttempted = signal(false);
   public isSubmitting = signal<boolean>(false);
   public errorMessage = signal<string | null>(null);
-  private lastAutoCustomName: string | null = null;
+  public readonly isFormValid = computed(
+    () =>
+      this.formValid() &&
+      this.selectedProvider() !== null &&
+      this.selectedModel() !== null &&
+      this.selectedModelId() !== null
+  );
 
-  ngOnInit(): void {
+  public readonly getProviderIcon = getProviderIconPath;
+
+  public ngOnInit(): void {
     this.initForm();
-    this.loadProviders();
-    this.setupProviderIdSubscription();
-    this.setupModelIdSubscription();
-  }
-
-  private setupProviderIdSubscription(): void {
-    this.form
-      .get('providerId')
-      ?.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((providerId) => {
-        if (providerId) {
-          this.loadModels(providerId);
-        } else {
-          this.models.set([]);
-          this.form.get('modelId')?.setValue(null);
-        }
-
-        this.updateCustomNameIfNeeded();
-      });
-  }
-
-  private setupModelIdSubscription(): void {
-    this.form
-      .get('modelId')
-      ?.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.updateCustomNameIfNeeded());
+    this.formValid.set(this.form.valid);
+    this.form.statusChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      this.formValid.set(this.form.valid);
+    });
   }
 
   private initForm(): void {
     this.form = this.formBuilder.group({
-      providerId: [null, Validators.required],
       modelId: [null, Validators.required],
       customName: ['', Validators.required],
       apiKey: ['', Validators.required],
     });
   }
 
-  private loadProviders(): void {
-    this.isLoading.set(true);
-    this.providersService
-      .getProvidersByQuery(ModelTypes.EMBEDDING)
-      .pipe(finalize(() => this.isLoading.set(false)))
-      .subscribe({
-        next: (providers) => {
-          this.providers.set(providers);
-          // Automatically select the first provider if available
-          if (providers.length > 0) {
-            this.form.get('providerId')?.setValue(providers[0].id);
-            this.updateCustomNameIfNeeded();
-          }
-        },
-        error: (error) => {
-          console.error('Error loading providers:', error);
-          this.errorMessage.set('Failed to load providers. Please try again.');
-        },
-      });
-  }
-
-  private loadModels(providerId: number): void {
-    this.isLoading.set(true);
-    this.embeddingModelsService
-      .getEmbeddingModels(providerId)
-      .pipe(finalize(() => this.isLoading.set(false)))
-      .subscribe({
-        next: (models) => {
-          this.models.set(models);
-
-          if (models.length > 0) {
-            this.form.get('modelId')?.setValue(models[0].id);
-            this.updateCustomNameIfNeeded();
-          } else {
-            this.form.get('modelId')?.setValue(null);
-          }
-        },
-        error: (error) => {
-          console.error('Error loading models:', error);
-          this.errorMessage.set(
-            'Failed to load embedding models for the selected provider. Please try again.'
-          );
-        },
-      });
-  }
-
   public onSubmit(): void {
-    if (this.form.invalid) {
+    this.submitAttempted.set(true);
+    if (!this.isFormValid()) {
       return;
     }
 
     this.isSubmitting.set(true);
-    const formValue = this.form.value;
+    const formValue = this.form.getRawValue();
+    const modelId = this.selectedModelId();
+
+    if (!modelId) {
+      this.isSubmitting.set(false);
+      return;
+    }
 
     const configData: CreateEmbeddingConfigRequest = {
-      model: formValue.modelId,
+      model: modelId,
       custom_name: formValue.customName,
       api_key: formValue.apiKey,
-      task_type: 'retrieval_document', // Default value
+      task_type: 'retrieval_document',
       is_visible: true,
     };
 
@@ -160,10 +112,9 @@ export class AddEmbeddingConfigDialogComponent implements OnInit {
       .pipe(finalize(() => this.isSubmitting.set(false)))
       .subscribe({
         next: () => {
-          this.dialogRef.close(true); // Close with success result
+          this.dialogRef.close(true);
         },
-        error: (error) => {
-          console.error('Error creating embedding config:', error);
+        error: () => {
           this.errorMessage.set(
             'Failed to create configuration. Please try again.'
           );
@@ -175,29 +126,52 @@ export class AddEmbeddingConfigDialogComponent implements OnInit {
     this.dialogRef.close(false);
   }
 
+  public toggleApiKeyVisibility(): void {
+    this.showApiKey.set(!this.showApiKey());
+  }
+
+  public openModelSelector(): void {
+    const ref = this.dialog.open(ModelSelectorModalComponent, {
+      data: {
+        selectedModelId: this.selectedModelId(),
+      },
+      disableClose: true,
+    });
+
+    ref.closed.subscribe((result) => {
+      if (result === null) {
+        this.selectedProvider.set(null);
+        this.selectedModel.set(null);
+        this.selectedModelId.set(null);
+        this.form.patchValue({ modelId: null });
+        return;
+      }
+
+      if (!result) {
+        return;
+      }
+
+      const selected = result as ModelSelectorResult;
+      this.selectedProvider.set(selected.provider);
+      this.selectedModel.set(selected.model);
+      this.selectedModelId.set(selected.model.id);
+      this.form.patchValue({ modelId: selected.model.id });
+      this.updateCustomNameIfNeeded();
+    });
+  }
+
   private updateCustomNameIfNeeded(): void {
-    const providerId = this.form.get('providerId')?.value;
-    const modelId = this.form.get('modelId')?.value;
-
-    if (!providerId || !modelId) {
-      return;
-    }
-
-    const provider = this.providers().find((p) => p.id === providerId);
-    const model = this.models().find((m) => m.id === modelId);
-
+    const provider = this.selectedProvider();
+    const model = this.selectedModel();
     if (!provider || !model) {
       return;
     }
 
-    const autoName = `${provider.name}/${model.name}`;
     const customNameControl = this.form.get('customName');
-
     if (!customNameControl) {
       return;
     }
 
-    this.lastAutoCustomName = autoName;
-    customNameControl.setValue(autoName, { emitEvent: false });
+    customNameControl.setValue(`${provider.name}/${model.name}`, { emitEvent: false });
   }
 }

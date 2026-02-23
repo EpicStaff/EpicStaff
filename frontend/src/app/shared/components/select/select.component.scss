@@ -17,15 +17,19 @@
         align-items: center;
         justify-content: space-between;
         position: relative;
-        border-radius: 0.5rem;
-        border: 1px solid var(--color-input-border);
-        background-color: var(--color-input-background);
+        border-radius: 0.25rem;
+        border: 1px solid rgba(217, 217, 222, 0.16);
+        background-color: var(--color-ks-line, #2b2d30);
         color: var(--color-text-primary);
         transition: border-color 0.2s ease;
 
+        &:hover {
+            border-color: var(--accent-color, #685fff);
+        }
+
         &--mod-default {
             height: 40px;
-            padding: 0.5rem 2rem 0.5rem 1rem;
+            padding: 0.75rem 2.5rem 0.75rem 0.5rem;
             font-size: 0.875rem;
             line-height: 130%;
         }
@@ -40,13 +44,17 @@
         &--invalid {
             border-color: var(--color-ks-status-failed);
         }
+
+        &--placeholder {
+            color: rgba(217, 217, 222, 0.6);
+        }
     }
 
     &__chevron {
         transition: transform 0.2s ease;
         display: inline-block;
         position: absolute;
-        color: var(--color-input-text-placeholder);
+        color: rgba(217, 217, 222, 0.6);
 
         &--mod-default {
             right: 10px;
@@ -65,11 +73,11 @@
 
     &__dropdown {
         width: 100%;
-        border-radius: 10px;
-        border: 1px solid var(--color-input-border);
-        background-color: var(--color-input-background);
+        border-radius: 0.5rem;
+        border: 1px solid rgba(217, 217, 222, 0.16);
+        background-color: var(--color-ks-line, #2b2d30);
         color: var(--color-text-primary);
-        box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
         z-index: 1005;
         max-height: 240px;
         overflow-y: auto;

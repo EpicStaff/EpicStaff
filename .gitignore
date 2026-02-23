@@ -202,9 +202,6 @@ make_scripts/backups
 # Savefiles
 **/savefiles
 
-# FRONTEND GIT ignore
-
-
 
 # Compiled output
 frontend/dist
@@ -217,12 +214,6 @@ frontend/node_modules
 frontend/npm-debug.log
 frontend/yarn-error.log
 node_modules/
-frontend/package-lock.json
-
-
-# Node modules and package files in libraries
-**/node_modules/
-**/package-lock.json
 
 # IDEs and editors
 frontend/.idea/
@@ -258,6 +249,8 @@ executions
 openai-realtime-console
 src/django_app/staticfiles/*
 
+# Cursor AI rules
+.cursorrules
 
 #knowledge data
 knowledge/graph_data/
@@ -265,4 +258,6 @@ knowledge/graph_data/
 # Knowledge migration backup
 **/knowledge_migration_backup/
 *.pem
-*.crt
+*.crt!
+dev/dev.config.json
+dev/dev.env

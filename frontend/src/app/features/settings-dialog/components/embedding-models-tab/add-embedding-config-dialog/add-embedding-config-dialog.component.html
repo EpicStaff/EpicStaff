@@ -10,67 +10,66 @@
         </div>
       }
       <div class="form-field">
-        <label for="providerId">Provider</label>
-        <select id="providerId" formControlName="providerId">
-          @for (provider of providers(); track provider.id) {
-            <option [ngValue]="provider.id">
-              {{ provider.name }}
-            </option>
+        <label class="form-field__label">
+          Provider & Model <span class="required">*</span>
+        </label>
+        <button type="button" class="model-selector" (click)="openModelSelector()">
+          @if (selectedProvider()) {
+            <app-icon [icon]="getProviderIcon(selectedProvider()!.name)" size="1.25rem" />
           }
-        </select>
-        @if (form.get('providerId')?.invalid && form.get('providerId')?.touched) {
-          <div class="error-hint">
-            Please select a provider
-          </div>
-        }
-      </div>
-      <div class="form-field">
-        <label for="modelId">Model</label>
-        <select id="modelId" formControlName="modelId">
-          @if (models().length === 0) {
-            <option [ngValue]="null">
-              Select a model
-            </option>
+          @if (selectedModel() && selectedProvider()) {
+            <span class="model-selector__text">
+              <span class="model-selector__provider">{{ selectedProvider()!.name }}</span>
+              <span class="model-selector__separator"> / </span>
+              <span class="model-selector__model">{{ selectedModel()!.name }}</span>
+            </span>
+          } @else {
+            <span class="model-selector__text model-selector__text--placeholder">
+              Select a model...
+            </span>
           }
-          @for (model of models(); track model.id) {
-            <option [ngValue]="model.id">
-              {{ model.name }}
-            </option>
-          }
-        </select>
-        @if (form.get('modelId')?.invalid && form.get('modelId')?.touched) {
+          <app-icon icon="ui/chevron-down" size="1rem" />
+        </button>
+        @if (form.get('modelId')?.invalid && (form.get('modelId')?.dirty || submitAttempted()) && !selectedModel()) {
           <div class="error-hint">
-            Please select a model
-          </div>
-        }
-      </div>
-      <div class="form-field">
-        <label for="customName"
-          >Custom Name <span class="required">*</span></label
-        >
-        <app-custom-input
-          id="customName"
-          type="text"
-          placeholder="Enter a custom name"
-          formControlName="customName"
-        ></app-custom-input>
-        @if (form.get('customName')?.invalid && form.get('customName')?.touched) {
-          <div class="error-hint">
-            Custom name is required
+            Please select provider and model
           </div>
         }
       </div>
       <div class="form-field">
         <label for="apiKey">API Key <span class="required">*</span></label>
-        <app-custom-input
-          id="apiKey"
-          type="password"
-          placeholder="Enter your API key"
-          formControlName="apiKey"
-        ></app-custom-input>
-        @if (form.get('apiKey')?.invalid && form.get('apiKey')?.touched) {
+        <div class="form-input-wrapper">
+          <input
+            id="apiKey"
+            [type]="showApiKey() ? 'text' : 'password'"
+            class="form-input form-input--with-action"
+            placeholder="Enter provider's API key"
+            formControlName="apiKey"
+          />
+          <button type="button" class="form-input-action" (click)="toggleApiKeyVisibility()">
+            <app-icon [icon]="showApiKey() ? 'ui/eye-off' : 'ui/eye'" size="1.25rem" />
+          </button>
+        </div>
+        @if (form.get('apiKey')?.invalid && (form.get('apiKey')?.dirty || submitAttempted())) {
           <div class="error-hint">
             API key is required
+          </div>
+        }
+      </div>
+      <div class="form-field">
+        <label for="customName"
+          >Configuration Name <span class="required">*</span></label
+        >
+        <input
+          id="customName"
+          type="text"
+          class="form-input"
+          placeholder="Enter a custom name"
+          formControlName="customName"
+        />
+        @if (form.get('customName')?.invalid && (form.get('customName')?.dirty || submitAttempted())) {
+          <div class="error-hint">
+            Configuration name is required
           </div>
         }
       </div>
@@ -79,7 +78,7 @@
         <app-button
           type="primary"
           (click)="onSubmit()"
-          [disabled]="form.invalid || isSubmitting()"
+          [disabled]="!isFormValid() || isSubmitting()"
         >
           {{ isSubmitting() ? "Adding..." : "Add" }}
         </app-button>

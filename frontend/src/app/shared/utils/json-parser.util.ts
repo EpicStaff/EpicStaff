@@ -6,7 +6,8 @@ export function safeJsonParse(jsonString: string): any {
     try {       
         return JSON.parse(jsonString);
     } catch (e) {       
-        try {           
+        try {  
+                     
             const parsed = JSON.parse(jsonString);
             if (typeof parsed === 'string') {             
                 return safeJsonParse(parsed);

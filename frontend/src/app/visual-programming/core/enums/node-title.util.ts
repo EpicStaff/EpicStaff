@@ -4,6 +4,7 @@ import {
     ProjectNodeModel,
     PythonNodeModel,
     NoteNodeModel,
+    SubGraphNodeModel,
 } from '../models/node.model';
 
 export function getNodeTitle(node: NodeModel): string {
@@ -32,6 +33,12 @@ export function getNodeTitle(node: NodeModel): string {
             return (node as any).node_name || '';
         case NodeType.END:
             return 'End';
+        case NodeType.SUBGRAPH:
+            const subgraphNode = node as SubGraphNodeModel;
+            if (subgraphNode.isBlocked || !subgraphNode.data?.name) {
+                return 'Deleted Flow';
+            }
+            return subgraphNode.data.name;
         default:
             return '';
     }

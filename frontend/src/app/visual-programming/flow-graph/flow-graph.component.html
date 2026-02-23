@@ -217,7 +217,12 @@
         <div class="top-left-actions__column">
             <button class="domain-button" (click)="onDomainClick()">Domain</button>
 
-            <div #shortcutsAnchor #shortcutsButton>
+            <div 
+                #shortcutsAnchor 
+                #shortcutsButton
+                appShortcutListener
+                (openShortcuts)="onOpenShortcuts(shortcutsAnchor)"
+            >
                 <app-flow-shortcuts-button
                     (clicked)="onOpenShortcuts(shortcutsAnchor)">
                 </app-flow-shortcuts-button>
@@ -250,6 +255,7 @@
     <app-flow-graph-context-menu
         [position]="contextMenuPostion"
         [menuContext]="nodesMode"
+        [currentFlowId]="currentFlowId"
         clickOutside
         (clickOutside)="onCloseContextMenu()"
         (nodeSelected)="onAddNodeFromContextMenu($event)"
@@ -258,6 +264,7 @@
     }
     <app-node-panel-shell
         [node]="sidePanelService.selectedNode()"
+        [currentFlowId]="currentFlowId"
         (save)="onNodePanelSaved($event)"
         (autosave)="onNodePanelAutosaved($event)"
         #nodePanelShell

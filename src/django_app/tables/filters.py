@@ -1,4 +1,6 @@
 from django_filters import rest_framework as filters
+from tables.models.embedding_models import EmbeddingModel
+from tables.models.llm_models import LLMModel
 from tables.models.session_models import Session
 from tables.models import Provider  # SourceCollection,
 
@@ -43,3 +45,38 @@ class ProviderFilter(filters.FilterSet):
             return queryset.filter(**{f"{relation}__isnull": False}).distinct()
 
         return queryset
+
+
+class BaseTagFilter(filters.FilterSet):
+    tags = filters.CharFilter(method="filter_by_tags")
+
+    def filter_by_tags(self, queryset, name, value):
+        tag_names = [tag.strip() for tag in value.split(",") if tag.strip()]
+
+        if not tag_names:
+            return queryset
+
+        return queryset.filter(tags__name__in=tag_names).distinct()
+
+
+class LLMModelFilter(BaseTagFilter):
+    class Meta:
+        model = LLMModel
+
+        fields = {
+            "name": ["exact", "icontains"],
+            "llm_provider": ["exact"],
+            "predefined": ["exact"],
+            "is_visible": ["exact"],
+        }
+
+
+class EmbeddingModelFilter(BaseTagFilter):
+    class Meta:
+        model = EmbeddingModel
+        fields = {
+            "name": ["exact", "icontains"],
+            "embedding_provider": ["exact"],
+            "predefined": ["exact"],
+            "is_visible": ["exact"],
+        }

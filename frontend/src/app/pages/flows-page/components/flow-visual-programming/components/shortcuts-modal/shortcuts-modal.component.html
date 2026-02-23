@@ -1,10 +1,10 @@
 @if (open() && pos()) {
-    <div class="shortcuts__overlay" (mousedown)="closed.emit()">
+    <div class="shortcuts__overlay" (click)="closed.emit()">
         <div
             class="shortcuts__modal"
             [style.top.px]="pos()!.top"
             [style.left.px]="pos()!.left"
-            (mousedown)="$event.stopPropagation()"
+            (click)="$event.stopPropagation()"
             [class.shortcuts__modal--compact]="size() === 'compact'"
             [class.shortcuts__modal--wide]="size() === 'wide'"
         >
@@ -78,7 +78,7 @@
                                                 <div class="shortcuts__keys">
                                                     @for (key of row.keys; track key) {
                                                         <span class="shortcuts__key">
-                                                            {{ key }}
+                                                            {{ displayKey(key) }}
                                                         </span>
                                                     }
                                                 </div>

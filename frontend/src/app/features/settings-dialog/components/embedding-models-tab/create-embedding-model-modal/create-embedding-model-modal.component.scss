@@ -1,0 +1,90 @@
+.create-model {
+    display: flex;
+    flex-direction: column;
+    width: 30rem;
+    max-width: 92vw;
+    max-height: 85vh;
+    background: var(--color-background-body, #212325);
+    border: 1px solid var(--color-ks-line, #2b2d30);
+    border-radius: 0.625rem;
+    box-shadow:
+        0px 6px 10px 0px rgba(0, 0, 0, 0.15),
+        0px 2px 3px 0px rgba(0, 0, 0, 0.3);
+
+    &__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid var(--color-ks-line, #2b2d30);
+    }
+
+    &__title {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 500;
+        color: var(--color-text-primary, #d9d9de);
+    }
+
+    &__close-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.5rem;
+        height: 1.5rem;
+        border: none;
+        background: transparent;
+        color: rgba(217, 217, 222, 0.6);
+        cursor: pointer;
+    }
+
+    &__content {
+        padding: 1rem 1.25rem;
+        overflow: auto;
+    }
+
+    &__field {
+        margin-bottom: 0.875rem;
+    }
+
+    &__field--inline {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 0.75rem;
+        margin-bottom: 0;
+    }
+
+    &__label {
+        font-size: 0.875rem;
+        color: #acacac;
+    }
+
+    &__label-required {
+        color: #f45b69;
+    }
+
+    &__provider {
+        margin-top: 0.375rem;
+        height: 2.25rem;
+        border: 1px solid rgba(217, 217, 222, 0.16);
+        border-radius: 0.25rem;
+        background: var(--color-ks-line, #2b2d30);
+        color: var(--color-text-primary, #d9d9de);
+        padding: 0 0.75rem;
+        font-size: 0.875rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    &__footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        padding: 0.875rem 1.25rem;
+        border-top: 1px solid var(--color-ks-line, #2b2d30);
+    }
+}
+

@@ -11,7 +11,7 @@ import {
 
 import {TemplatePortal} from '@angular/cdk/portal';
 import {NgClass} from "@angular/common";
-import {Overlay, OverlayPositionBuilder, OverlayRef} from "@angular/cdk/overlay";
+import {Overlay, OverlayPositionBuilder, OverlayRef, OverlayModule} from "@angular/cdk/overlay";
 
 export interface SelectItem {
     name: string;
@@ -22,7 +22,8 @@ export interface SelectItem {
 
 @Component({
     selector: 'app-select',
-    imports: [NgClass],
+    standalone: true,
+    imports: [NgClass, OverlayModule],
     templateUrl: './select.component.html',
     styleUrls: ['./select.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush

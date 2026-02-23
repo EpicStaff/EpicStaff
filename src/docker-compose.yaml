@@ -196,8 +196,8 @@ services:
           /usr/local/bin/custom-docker-entrypoint.sh healthcheck-users
         '
       interval: 15s
-      timeout: 10s
-      retries: 10
+      timeout: 5s
+      retries: 90
       start_period: 15s
       
   redis:

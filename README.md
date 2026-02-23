@@ -16,7 +16,7 @@
 
 EpicStaff is an open-source **production-grade platform** for building **multi-agent AI systems** with maximum flexibility and minimum friction. We bridge the gap between no-code simplicity and developer centric power, offering a unified **custom AI agent workflow platform**.
 
-Create intelligent agents that operate with high performance, retain memory across complex tasks and reason based on injected knowledge. Our **asynchronous, low-latency AI orchestration engine** built on **FastAPI** ensures your AI workflows are both fast and scalable.
+Create intelligent agents that operate with high performance, retain memory across complex tasks and reason based on injected knowledge. Our **asynchronous, low-latency AI orchestration engine** built on **Django** ensures your AI workflows are both fast and scalable.
 
 <div align="center">
    
@@ -130,9 +130,9 @@ We built EpicStaff to serve everyone involved in building AI-powered solutions, 
 
 Create powerful, multitasking AI agents through our intuitive **visual AI workflow builder**. Use a node-based **graphic interface** to connect pre-built blocks for text analysis, response generation, file management, CRM integration and more. Go from idea to a functional AI agent **without writing a single line of code**.
 
-### 🔹 For Developers: A High-Performance FastAPI Multi-Agent Backend
+### 🔹 For Developers: A High-Performance Django Multi-Agent Backend
 
-Get full control with a modular transparent **open-source FastAPI backend**. Dive deep into our **event-driven architecture** to customize orchestration logic define **fine-grained task control** and integrate custom Python tools seamlessly. No black boxes, no magic just a clean extensible **RESTful agent orchestration** framework that respects your need for control.
+Get full control with a modular transparent **open-source Django backend**. Dive deep into our **event-driven architecture** to customize orchestration logic define **fine-grained task control** and integrate custom Python tools seamlessly. No black boxes, no magic just a clean extensible **RESTful agent orchestration** framework that respects your need for control.
 
 **Whether you're experimenting, prototyping or deploying to production EpicStaff adapts to you:**
 * Use the **drag-and-drop visual interface** when speed is key.
@@ -145,7 +145,7 @@ Get full control with a modular transparent **open-source FastAPI backend**. Div
 
 ## Who is EpicStaff For?
 
-* **AI Developers** seeking a flexible **FastAPI agent framework** without rigid templates.
+* **AI Developers** seeking a flexible **Django agent framework** without rigid templates.
 * **Business Teams** who need to quickly **build custom AI workflows** for automation.
 * **No-code/Low-code users** who prefer a **visual interface** over YAML or complex scripts.
 * **R&D Teams & Startups** prototyping and deploying **scalable agentic systems**.
@@ -173,7 +173,7 @@ Here’s a quick look at how EpicStaff compares to other popular tools in the AI
 |  **Knowledge Injection (RAG)** | **Inject knowledge from files** and structured data to ground LLM responses, enhance accuracy and reduce hallucinations.                                                                                    |
 |  **Custom Python Tools** | Easily extend agent capabilities by connecting your own **Python tools**. Integrate any custom logic or API without needing to redeploy the entire system.                                                     |
 |  **Full Developer Control via API** | Gain complete **control over the orchestration layer** via a flexible **RESTful API**. Manage task execution with **fine-grained task control** for maximum precision.                                     |
-|  **High-Performance Core** | Powered by a **high-performance asynchronous core** built with **FastAPI**. Our **event-driven architecture** is optimized for **low-latency** agent responses making it suitable for real-time applications. |
+|  **High-Performance Core** | Powered by a **high-performance asynchronous core** built with **Django**. Our **event-driven architecture** is optimized for **low-latency** agent responses making it suitable for real-time applications. |
 |  **Modular & Extensible Backend** | We provide a **modular open-source backend** that is easy to extend and modify. Adapt the platform to the unique needs of your project.                                                               |
 |  **Multi-Agent Orchestration** | Design complex **multi-agent systems** where agents can collaborate to solve sophisticated problems. The platform is LLM-agnostic and supports any language model.                                          |
 

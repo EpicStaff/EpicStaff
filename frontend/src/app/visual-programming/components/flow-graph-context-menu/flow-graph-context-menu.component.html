@@ -47,6 +47,12 @@
         [searchTerm]="searchTerm"
         (nodeSelected)="onNodeSelected($event)"
       ></app-flow-projects-context-menu>
+      <app-flows-menu
+        *ngSwitchCase="'flows'"
+        [searchTerm]="searchTerm"
+        [currentFlowId]="currentFlowId"
+        (nodeSelected)="onNodeSelected($event)"
+      ></app-flows-menu>
       <app-llm-menu
         *ngSwitchCase="'llms'"
         [searchTerm]="searchTerm"

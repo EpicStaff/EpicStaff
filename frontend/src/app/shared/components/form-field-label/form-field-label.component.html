@@ -1,0 +1,13 @@
+<div class="form-field-label">
+    <span class="form-field-label__text">{{ label() }}</span>
+    @if (required()) {
+        <span class="form-field-label__required">*</span>
+    }
+    @if (tooltipText()) {
+        <app-help-tooltip
+            [text]="tooltipText()"
+            position="right"
+        />
+    }
+</div>
+

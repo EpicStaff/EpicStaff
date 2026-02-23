@@ -1,0 +1,72 @@
+<div class="all-models">
+    <!-- Header -->
+    <div class="all-models__header">
+        <div class="all-models__header-info">
+            <app-icon
+                [icon]="getProviderIcon(provider().name)"
+                size="1.25rem"
+            />
+            <h3 class="all-models__title">{{ provider().name | uppercase }} Models</h3>
+        </div>
+        <button
+            type="button"
+            class="all-models__close-btn"
+            (click)="onClose()"
+        >
+            <app-icon icon="ui/x" size="0.875rem" />
+        </button>
+    </div>
+
+    <!-- Search -->
+    <div class="all-models__search">
+        <input
+            type="text"
+            class="all-models__search-input"
+            placeholder="Search models..."
+            [value]="searchQuery()"
+            (input)="onSearchChange($event)"
+        />
+        <button type="button" class="all-models__create-btn" (click)="openCreateModelModal()">
+            + Add custom model
+        </button>
+    </div>
+
+    <!-- Models List -->
+    <div class="all-models__content">
+        @if (filteredModels().length === 0) {
+            <div class="all-models__empty">
+                <app-icon icon="ui/search" size="2rem" />
+                <p>No models found</p>
+            </div>
+        } @else {
+            @for (model of filteredModels(); track model.id) {
+                <div
+                    class="all-models__model"
+                    [class.all-models__model--visible]="isModelVisible(model)"
+                    (click)="toggleVisibility(model)"
+                >
+                    <span class="all-models__model-name">{{ model.name }}</span>
+                    <button
+                        type="button"
+                        class="all-models__eye-btn"
+                        [class.all-models__eye-btn--active]="isModelVisible(model)"
+                        (click)="toggleVisibility(model); $event.stopPropagation()"
+                        [title]="isModelVisible(model) ? 'Hide model' : 'Show model'"
+                    >
+                        @if (isModelVisible(model)) {
+                            <app-icon icon="ui/eye" size="1rem" />
+                        } @else {
+                            <app-icon icon="ui/eye-off" size="1rem" />
+                        }
+                    </button>
+                </div>
+            }
+        }
+    </div>
+
+    <!-- Footer -->
+    <div class="all-models__footer">
+        <p class="all-models__count">{{ visibleCount() }} model(s) visible</p>
+    </div>
+</div>
+

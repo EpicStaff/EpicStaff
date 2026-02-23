@@ -3,11 +3,12 @@ name: Deploy on self-hosted
 on:
   push:
     branches: ["main"]
+
   workflow_dispatch:
     inputs:
       branch:
-        description: "Branch to deploy (manual run only). Leave empty to use main."
-        required: false
+        description: "Branch to deploy to test3"
+        required: true
         default: "main"
 
 concurrency:
@@ -15,57 +16,35 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  deploy_test_2:
+    name: Deploy to test2 (auto from main)
+    if: ${{ github.event_name == 'push' }}
     runs-on: [self-hosted, test2]
 
     steps:
-      - name: Deploy (stash + checkout + pull + docker compose)
+      - name: Deploy main to test2
         shell: bash
         run: |
           set -euo pipefail
-
-          APP_DIR="/home/developer/EpicStaff"
-
-          # If push -> deploy main, if manual -> deploy input branch (default main)
-          if [ "${{ github.event_name }}" = "push" ]; then
-            BRANCH="main"
-          else
-            BRANCH="${{ github.event.inputs.branch }}"
-            [ -z "$BRANCH" ] && BRANCH="main"
-          fi
-
-          echo ">> event: ${{ github.event_name }}"
-          echo ">> deploy branch: $BRANCH"
-
-          cd "$APP_DIR"
-
-          echo ">> git status"
-          git status --porcelain || true
-
-
-          echo ">> git fetch"
+          cd /home/developer/EpicStaff
           git fetch --prune
+          git checkout main
+          git pull --ff-only origin main
+          bash .github/scripts/deploy.sh main
 
-          echo ">> git checkout $BRANCH"
+  deploy_test_3:
+    name: Deploy to test3 (manual branch)
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: [self-hosted, test3]
+
+    steps:
+      - name: Deploy selected branch to test3
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH="${{ github.event.inputs.branch }}"
+          cd /home/developer/EpicStaff
+          git fetch --prune
           git checkout "$BRANCH"
-
-          echo ">> git pull --ff-only origin $BRANCH"
           git pull --ff-only origin "$BRANCH"
-
-          echo ">> cd src"
-          cd src
-
-          echo ">> docker compose down"
-          docker compose down --remove-orphans
-          echo ">> docker volume rm crew_pgdata"
-          docker volume rm crew_pgdata
-          echo ">> volume create crew_pgdata"
-          docker volume create crew_pgdata
-          echo ">> docker compose --env-file .env --env-file deploy.env up --build -d "
-          docker compose --env-file .env --env-file deploy.env -f docker-compose.deploy.yaml up --build -d --remove-orphans
-
-          echo ">> docker image prune"
-          docker image prune -f
-
-          echo ">> docker compose ps"
-          docker compose ps
+          bash .github/scripts/deploy.sh "$BRANCH"

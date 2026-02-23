@@ -2,4 +2,8 @@ ENV
 */.venv
 **/venv
 **/*venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
 executions

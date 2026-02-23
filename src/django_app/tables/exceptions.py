@@ -71,6 +71,13 @@ class InvalidTaskOrderError(CustomAPIExeption):
     default_code = "invalid_context_task_order"
 
 
+class SubGraphValidationError(CustomAPIExeption):
+    status_code = 400
+    default_detail = (
+        "ValidationError occured in SubGraphValidator during subgraph validation"
+    )
+
+
 class BuiltInToolModificationError(CustomAPIExeption):
     """
     Exception raised when someone tries to modify a built-in PythonCodeTool.

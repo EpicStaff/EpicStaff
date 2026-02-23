@@ -9,6 +9,7 @@ import { DEFAULT_START_NODE_PORTS } from './start-ports/start-node-default-ports
 import { DEFAULT_TABLE_NODE_PORTS } from './table-ports/table-ports';
 import { DEFAULT_FILE_EXTRACTOR_NODE_PORTS } from './file-extractor-ports/file-extractor-default-ports';
 import { DEFAULT_END_NODE_PORTS } from './end-ports/end-ports-default-ports';
+import { DEFAULT_SUBGRAPH_NODE_PORTS } from './subgraph-ports/subgraph-node-default-ports';
 import { DEFAULT_AUDIO_TO_TEXT_NODE_PORTS } from './audio-to-text-node-ports/audio-to-text-node-ports';
 import { DEFAULT_WEBHOOK_TRIGGER_NODE_PORTS } from './webhook-trigger-ports/webhook-trigger-default-ports';
 import {DEFAULT_TELEGRAM_TRIGGER_NODE_PORTS} from "./telegram-trigger-ports/telegram-trigger-default-ports";
@@ -29,6 +30,7 @@ export const PORTS_DICTIONARY: { [role: string]: BasePort } =
             ...DEFAULT_WEBHOOK_TRIGGER_NODE_PORTS,
             ...DEFAULT_TELEGRAM_TRIGGER_NODE_PORTS,
             ...DEFAULT_END_NODE_PORTS,
+            ...DEFAULT_SUBGRAPH_NODE_PORTS,
             ...DEFAULT_AUDIO_TO_TEXT_NODE_PORTS,
         ].map((port) => [port.role, port])
     );

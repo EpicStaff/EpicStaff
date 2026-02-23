@@ -1,4 +1,5 @@
 from django.db import models
+from tables.models.tag_models import EmbeddingModelTag
 from tables.models import DefaultBaseModel
 from tables.models import EmbedderTask
 
@@ -13,6 +14,18 @@ class EmbeddingModel(models.Model):
     base_url = models.URLField(null=True, blank=True, default=None)
     is_visible = models.BooleanField(default=True)
     is_custom = models.BooleanField(default=False)
+    tags = models.ManyToManyField(
+        EmbeddingModelTag,
+        blank=True,
+        related_name="embedding_models"
+    )
+
+    class Meta:
+        unique_together = (
+            "name",
+            "embedding_provider",
+        )
+
 
 
 class EmbeddingConfig(models.Model):

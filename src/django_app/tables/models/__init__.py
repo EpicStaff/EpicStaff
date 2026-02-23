@@ -10,7 +10,6 @@ from .python_models import *
 from .crew_models import *
 from .graph_models import *
 from .session_models import *
-from .vector_models import MemoryDatabase
 from .knowledge_models.collection_models import *
 from .tag_models import *
 from .realtime_models import *

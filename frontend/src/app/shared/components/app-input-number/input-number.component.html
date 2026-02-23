@@ -1,3 +1,12 @@
+@if (label()) {
+    <app-tooltip
+        [required]="required()"
+        [tooltipText]="tooltipText()"
+        [label]="label()"
+        [icon]="icon()"
+    />
+}
+
 <div
     class="input__wrapper"
     [class.input__wrapper--invalid]="isInvalid()"
@@ -22,7 +31,9 @@
         [placeholder]="placeholder()"
         [ngModel]="value()"
         (ngModelChange)="onInputChange($event)"
+        (blur)="onTouched()"
         (keydown)="onKeyDown($event)"
+        [disabled]="isDisabled()"
     />
 
     @if (hovered()) {

@@ -1,0 +1,140 @@
+.number-stepper {
+    width: 100%;
+
+    &__control {
+        display: flex;
+        align-items: center;
+        background: var(--color-input-background, #27272b);
+        border: 1px solid rgba(217, 217, 222, 0.16);
+        border-radius: 0.375rem;
+        overflow: hidden;
+        transition: border-color 0.2s ease;
+
+        &:focus-within {
+            border-color: var(--accent-color, #685fff);
+        }
+
+        &--error {
+            border-color: #ef4444 !important;
+        }
+
+        // Size variants
+        &--sm {
+            height: 2rem;
+        }
+
+        &--md {
+            height: 2.5rem;
+        }
+
+        &--lg {
+            height: 2.75rem;
+        }
+    }
+
+    &__btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        background: var(--color-ks-line, #2b2d30);
+        border: none;
+        color: var(--color-text-primary, #d9d9de);
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+
+        &:hover:not(:disabled) {
+            background: var(--accent-color, #685fff);
+        }
+
+        &:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        // Size variants for buttons
+        &--sm {
+            width: 1.75rem;
+            height: 100%;
+
+            svg {
+                width: 0.5rem;
+                height: 0.5rem;
+            }
+        }
+
+        &--md {
+            width: 2rem;
+            height: 100%;
+
+            svg {
+                width: 0.5rem;
+                height: 0.5rem;
+            }
+        }
+
+        &--lg {
+            width: 2.5rem;
+            height: 100%;
+
+            svg {
+                width: 0.625rem;
+                height: 0.625rem;
+            }
+        }
+    }
+
+    &__input {
+        flex: 1;
+        min-width: 0;
+        background: transparent;
+        border: none;
+        color: var(--color-text-primary, #d9d9de);
+        text-align: center;
+        font-family: 'Inter', sans-serif;
+        outline: none;
+
+        // Hide native number input spinners
+        &::-webkit-inner-spin-button,
+        &::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        -moz-appearance: textfield;
+
+        &::placeholder {
+            color: rgba(217, 217, 222, 0.4);
+        }
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        // Size variants for input
+        &--sm {
+            font-size: 0.75rem;
+            padding: 0 0.5rem;
+        }
+
+        &--md {
+            font-size: 0.875rem;
+            padding: 0 0.75rem;
+        }
+
+        &--lg {
+            font-size: 0.875rem;
+            font-weight: 400;
+            padding: 0 0.75rem;
+        }
+    }
+
+    &__error {
+        margin-top: 0.25rem;
+        font-size: 0.75rem;
+        color: #ef4444;
+        font-family: 'Inter', sans-serif;
+    }
+}
+

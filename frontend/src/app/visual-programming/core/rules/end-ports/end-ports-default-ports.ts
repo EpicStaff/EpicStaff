@@ -13,6 +13,7 @@ export const DEFAULT_END_NODE_PORTS: BasePort[] = [
             'edge-out',
             'table-out',
             'llm-out-right',
+            'subgraph-out',
             'audio-to-text-out',
             'webhook-trigger-out',
             'telegram-trigger-out',

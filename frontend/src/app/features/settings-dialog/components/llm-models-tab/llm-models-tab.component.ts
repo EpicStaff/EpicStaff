@@ -12,8 +12,7 @@ import { AppIconComponent } from '../../../../shared/components/app-icon/app-ico
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { LlmConfigItemComponent } from './llm-config-item/llm-config-item.component';
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
-import { AddLlmConfigDialogComponent } from './add-llm-config-dialog/add-llm-config-dialog.component';
-import { EditLlmConfigDialogComponent } from './add-llm-config-dialog/edit-llm-config-dialog.component';
+import { AddLlmConfigDialogComponent, AddLlmConfigDialogData } from './add-llm-config-dialog/add-llm-config-dialog.component';
 import {
     FullLLMConfigService,
     FullLLMConfig,
@@ -57,7 +56,6 @@ export class LlmModelsTabComponent implements OnInit {
 
         dialogRef.closed.subscribe((result) => {
             if (result === true) {
-                // Refresh the list if a new config was added
                 this.refreshData();
             }
         });
@@ -70,7 +68,6 @@ export class LlmModelsTabComponent implements OnInit {
             next: (configs) => {
                 const sortedConfigs = configs.sort((a, b) => b.id - a.id);
                 this.llmConfigs.set(sortedConfigs);
-                console.log('configs', sortedConfigs);
                 this.status.set(LoadingState.LOADED);
             },
             error: (err) => {
@@ -84,11 +81,10 @@ export class LlmModelsTabComponent implements OnInit {
     }
 
     public onFavoriteToggled(event: { id: string | number; value: boolean }) {
-        console.log('Favorite toggled:', event);
+        // Placeholder for favorite toggle logic
     }
 
     public onEnabledToggled(event: { id: string | number; value: boolean }) {
-        console.log('Enabled toggled:', event);
         const config: FullLLMConfig | undefined = this.llmConfigs().find(
             (c) => c.id === event.id
         );
@@ -96,7 +92,6 @@ export class LlmModelsTabComponent implements OnInit {
         const updateReq: UpdateLLMConfigRequest = {
             id: config.id,
             temperature: config.temperature,
-            num_ctx: config.num_ctx,
             api_key: config.api_key,
             is_visible: event.value,
             model: config.model,
@@ -120,13 +115,34 @@ export class LlmModelsTabComponent implements OnInit {
     }
 
     public onConfigureClicked(id: string | number) {
-        console.log('Configure clicked:', id);
         const config = this.llmConfigs().find((c) => c.id === id);
         if (!config) return;
-        const dialogRef = this.dialog.open(EditLlmConfigDialogComponent, {
+
+        const dialogData: AddLlmConfigDialogData = {
+            editConfig: {
+                id: config.id,
+                custom_name: config.custom_name,
+                model: config.model,
+                api_key: config.api_key,
+                temperature: config.temperature,
+                top_p: config.top_p ?? null,
+                stop: config.stop ?? null,
+                max_tokens: config.max_tokens ?? null,
+                presence_penalty: config.presence_penalty ?? null,
+                frequency_penalty: config.frequency_penalty ?? null,
+                logit_bias: config.logit_bias ?? null,
+                response_format: config.response_format ?? null,
+                seed: config.seed ?? null,
+                timeout: config.timeout ?? null,
+                headers: config.headers ?? undefined,
+                is_visible: config.is_visible,
+            },
+        };
+
+        const dialogRef = this.dialog.open(AddLlmConfigDialogComponent, {
             width: '500px',
             disableClose: true,
-            data: { ...config },
+            data: dialogData,
         });
         dialogRef.closed.subscribe((result) => {
             if (result === true) {
@@ -136,7 +152,6 @@ export class LlmModelsTabComponent implements OnInit {
     }
 
     public onDeleteClicked(id: string | number) {
-        console.log('Delete clicked:', id);
         this.llmConfigService.deleteConfig(Number(id)).subscribe({
             next: () => {
                 this.llmConfigs.set(
