@@ -4,6 +4,6 @@
     [tasks]="tasks"
     [agents]="agents"
     (taskPending)="onTaskPending($event)"
-    (dirtyChange)="dirtyChange.emit($event)"
+    (dirtyChange)="onDirtyChange($event)"
   ></app-tasks-table>
 </div>

@@ -9,6 +9,7 @@ import {
     Type,
     Input,
     HostListener, 
+    ViewChild,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -117,6 +118,7 @@ interface FlowModel {
 export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponentDeactivate  {
     @Input() showHeader: boolean = true;
     @Input() inputProjectId?: string | number;
+    @ViewChild(TasksSectionComponent) private tasksSection?: TasksSectionComponent;
 
     public projectId!: string;
     public project!: GetProjectRequest;
@@ -132,6 +134,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
     private pendingAgentUpdates = new Map<number, FullAgent>();
     private baselineAgentsById = new Map<number, FullAgent>();
     public pendingTaskUpdates = new Map<string, TaskPendingEvent>();
+    private suppressNextSettingsEmit = false;
 
     public mockFlowData: FlowModel = {
         nodes: [],
@@ -524,6 +527,12 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
 
     public onSaveAll(): void {
         if (!this.project) return;
+
+        if (this.tasksSection && !this.tasksSection.validateBeforeSave()) {
+            this.toastService.warning('Please fill in all required fields.');
+            return;
+        }   
+
         const appliedUpdate = this.pendingProjectUpdate;
         const agentUpdates = Array.from(this.pendingAgentUpdates.values());
         const taskUpdates = Array.from(this.pendingTaskUpdates.values());
@@ -556,7 +565,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                     }
                 })
             )
-            : of([]);        
+            : of([]);  
 
         flushAgents$
             .pipe(
@@ -573,6 +582,8 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                 switchMap(() => flushTasks$),
                 tap(() => {
                     this.pendingTaskUpdates.clear();
+                    this.tasksSection?.clearLocalDirtyAfterSave();
+                    this.tasksLocalDirty = false; 
                     this.recomputeUnsaved();
                 }),
                 switchMap(() => {
@@ -592,11 +603,14 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                         this.project = { ...this.project!, ...appliedUpdate, ...serverPatch };
                         this.projectStateService.setProject(this.project);
                         this.projectsService.updateProjectInCache(this.project);
+
+                        this.suppressNextSettingsEmit = true;
                         this.setupSections();
+                        queueMicrotask(() => (this.suppressNextSettingsEmit = false));
                     }
 
                     this.pendingProjectUpdate = null;
-                    this.hasUnsavedChanges = false;
+                    this.recomputeUnsaved();
                     this.toastService.success('Project updated successfully');
                 },
                 error: (error: unknown) => {
@@ -693,25 +707,18 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
     }
 
     public onTasksDirtyChange(isDirty: boolean): void {
-        if (isDirty) {
-            this.hasUnsavedChanges = true;
-            this.cdr.markForCheck();
-            return;
-        }
+        this.tasksLocalDirty = isDirty;
         this.recomputeUnsaved();
-
-        const hasAnyPending =
-            this.pendingAgentUpdates.size > 0 ||
-            this.pendingTaskUpdates.size > 0 ||
-            !!this.pendingProjectUpdate;
-
-        this.hasUnsavedChanges = hasAnyPending;
-        this.cdr.markForCheck();
     }
 
     private savePendingForLeave(): Observable<boolean> {
         if (!this.hasUnsavedChanges) return of(true);
         if (!this.project) return of(true);
+
+        if (this.tasksSection && !this.tasksSection.validateBeforeSave()) {
+            this.toastService.warning('Please fill in all required fields.');
+        return of(false);
+    }
 
         const appliedUpdate = this.pendingProjectUpdate;
         const agentUpdates = Array.from(this.pendingAgentUpdates.values());
@@ -759,7 +766,12 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         return flushAgents$.pipe(
             tap(() => this.pendingAgentUpdates.clear()),
             switchMap(() => flushTasks$),
-            tap(() => this.pendingTaskUpdates.clear()),
+            tap(() => {
+                this.pendingTaskUpdates.clear();
+                this.tasksSection?.clearLocalDirtyAfterSave();
+                this.recomputeUnsaved();
+                this.cdr.markForCheck();
+        }),
             switchMap(() => {
                 if (!appliedUpdate) return of(null);
                 return this.projectsService.patchUpdateProject(this.project!.id, appliedUpdate);
@@ -828,11 +840,16 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         event.returnValue = '';
     }
 
+    private tasksLocalDirty = false;
+    private agentsLocalDirty = false;
+
     private recomputeUnsaved(): void {
         this.hasUnsavedChanges =
             this.pendingAgentUpdates.size > 0 ||
             this.pendingTaskUpdates.size > 0 ||
-            !!this.pendingProjectUpdate;
+            !!this.pendingProjectUpdate ||
+            this.agentsLocalDirty ||
+            this.tasksLocalDirty;
 
         this.cdr.markForCheck();
     }

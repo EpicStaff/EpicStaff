@@ -11,6 +11,8 @@ import {
     signal,
     SimpleChanges,
     ViewChild,
+    HostListener,
+    ElementRef,
 } from '@angular/core';
 import { AgGridAngular, AgGridModule } from 'ag-grid-angular';
 import {
@@ -174,6 +176,7 @@ export class TasksTableComponent implements OnChanges {
 
     private baselineTasksById = new Map<number, any>();
     private localPendingKeys = new Set<string>();
+    private localDraftTempKeys = new Set<string>();
 
     constructor(
         private overlay: Overlay,
@@ -313,8 +316,11 @@ export class TasksTableComponent implements OnChanges {
         {
             headerName: 'Task Name',
             field: 'name',
+            headerClass: 'required-header',
             cellClass: 'agent-role-cell',
             cellEditor: 'agLargeTextCellEditor',
+            suppressKeyboardEvent: (params) => this.handleEnterJumpWithinTempRow(params),
+            cellEditorPopup: true,
             cellEditorParams: {
                 maxLength: 1000000,
                 cellEditorValidator: (value: string) => {
@@ -334,6 +340,12 @@ export class TasksTableComponent implements OnChanges {
             },
             cellClassRules: {
                 'cell-warning': (params) => !!params.data.roleWarning,
+                'cell-required-invalid': (params) => {
+                    const id = String(params.data?.id ?? '');
+                    if (!this.isTempRowId(id)) return false;
+                    if (!this.requiredErrorsRows.has(id)) return false;
+                    return this.isRequiredEmpty(params.value);
+                },
             },
             cellStyle: {
                 'white-space': 'normal',
@@ -349,7 +361,10 @@ export class TasksTableComponent implements OnChanges {
         {
             headerName: 'Instructions',
             field: 'instructions',
+            headerClass: 'required-header',
             cellEditor: 'agLargeTextCellEditor',
+            suppressKeyboardEvent: (params) => this.handleEnterJumpWithinTempRow(params),
+            cellEditorPopup: true,
             cellEditorParams: {
                 maxLength: 1000000,
                 cellEditorValidator: (value: string) => {
@@ -368,6 +383,12 @@ export class TasksTableComponent implements OnChanges {
             },
             cellClassRules: {
                 'cell-warning': (params) => !!params.data.goalWarning,
+                'cell-required-invalid': (params) => {
+                    const id = String(params.data?.id ?? '');
+                    if (!this.isTempRowId(id)) return false;
+                    if (!this.requiredErrorsRows.has(id)) return false;
+                    return this.isRequiredEmpty(params.value);
+                },
             },
             cellStyle: {
                 'white-space': 'normal',
@@ -380,8 +401,11 @@ export class TasksTableComponent implements OnChanges {
         },
         {
             headerName: 'Expected Output',
+            headerClass: 'required-header',
             field: 'expected_output',
             cellEditor: 'agLargeTextCellEditor',
+            suppressKeyboardEvent: (params) => this.handleEnterJumpWithinTempRow(params),
+            cellEditorPopup: true,
             cellEditorParams: {
                 maxLength: 1000000,
                 cellEditorValidator: (value: string) => {
@@ -400,6 +424,12 @@ export class TasksTableComponent implements OnChanges {
             },
             cellClassRules: {
                 'cell-warning': (params) => !!params.data.backstoryWarning,
+                'cell-required-invalid': (params) => {
+                    const id = String(params.data?.id ?? '');
+                    if (!this.isTempRowId(id)) return false;
+                    if (!this.requiredErrorsRows.has(id)) return false;
+                    return this.isRequiredEmpty(params.value);
+                },
             },
             cellStyle: {
                 'white-space': 'normal',
@@ -556,6 +586,12 @@ export class TasksTableComponent implements OnChanges {
             this.onCellClicked(event),
         onCellKeyDown: (event: CellKeyDownEvent) => this.onCellKeyDown(event),
         onCellValueChanged: (event) => this.onCellValueChanged(event),
+        onCellFocused: (e) => {
+            if (e.rowIndex == null) return;
+            const node = this.gridApi?.getDisplayedRowAtIndex(e.rowIndex);
+            if (!node?.data?.id) return;
+            this.activeRowId = String(node.data.id);
+        },
         onRowDragEnd: (event) => this.onRowDragEnd(event),
         onRowDragEnter: (event) => {
             // Clear the outside flag when re-entering the row area
@@ -817,24 +853,41 @@ export class TasksTableComponent implements OnChanges {
             (typeof event.data.id === 'string' && event.data.id.startsWith('temp_'));
 
         if (isTempTask) {
-            const isValid = fieldsToValidate.every((field) => {
-                const v = event.data[field] ? String(event.data[field]).trim() : '';
-                event.data[`${field}Warning`] = !v;
-                return v !== '';
-            });
+            const rowKey = String(event.data.id);
+            const touched = this.isTempRowTouched(event.data);
+            const valid = this.isTempRowValid(event.data);
 
-            this.gridApi.refreshCells({
-                rowNodes: [event.node],
-                columns: [colId],
-            });
+            if (!touched) {
+                this.localDraftTempKeys.delete(rowKey);
+                this.setPending(rowKey, null);
+                this.requiredErrorsRows.delete(rowKey);
+                this.gridApi.refreshCells({
+                    rowNodes: [event.node],
+                    columns: [...this.requiredTaskFields],
+                    force: true,
+                });
+                this.cdr.markForCheck();
+                return;
+            }
 
-            if (!isValid) return;
+            this.localDraftTempKeys.add(rowKey);
+            this.updateRequiredErrorsForTempRow(rowKey, event.data);
+
+            if (!valid) {   
+                this.setPending(rowKey, null);
+                this.cdr.markForCheck();
+                return;
+            }
+
+            this.localDraftTempKeys.delete(rowKey);
+            this.requiredErrorsRows.delete(rowKey);
 
             const parsedData = this.parseTaskData(event.data);
             const configuredToolIds = parsedData.configured_tools || [];
             const pythonToolIds = parsedData.python_code_tools || [];
             const mcpToolIds = parsedData.mcp_tools || [];
             const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds);
+
             const createTaskData: CreateTaskRequest = {
                 ...parsedData,
                 knowledge_query: parsedData.knowledge_query ?? null,
@@ -850,8 +903,8 @@ export class TasksTableComponent implements OnChanges {
                 tool_ids: toolIds,
             };
 
-            this.setPending(String(event.data.id), {
-                rowKey: String(event.data.id),
+            this.setPending(rowKey, {
+                rowKey,
                 kind: 'create',
                 payload: createTaskData,
             });
@@ -1000,14 +1053,40 @@ export class TasksTableComponent implements OnChanges {
                 updatedTask.id.startsWith('temp_'));
 
         if (isTempTask) {
+            const rowKey = String(updatedTask.id);
+            const touched = this.isTempRowTouched(updatedTask);
+            const valid = this.isTempRowValid(updatedTask);
+
+            if (!touched) {
+                this.localDraftTempKeys.delete(rowKey);
+                this.requiredErrorsRows.delete(rowKey);
+                this.setPending(rowKey, null);
+                this.gridApi.refreshCells({
+                    rowNodes: [this.gridApi.getRowNode(rowKey)!].filter(Boolean) as any,
+                    force: true,
+                });
+                return;
+            }
+
+            this.localDraftTempKeys.add(rowKey);
+            this.updateRequiredErrorsForTempRow(rowKey, updatedTask);
+
+            if (!valid) {
+                this.setPending(rowKey, null);
+                return;
+            }
+
+            this.localDraftTempKeys.delete(rowKey);
+            this.requiredErrorsRows.delete(rowKey);
+
             const parsedTaskData = this.parseTaskData(updatedTask as any);
             const cfg = parsedTaskData.configured_tools || [];
             const py = parsedTaskData.python_code_tools || [];
             const mcp = parsedTaskData.mcp_tools || [];
             const tool_ids = buildToolIdsArray(cfg, py, mcp);
 
-            this.setPending(String(updatedTask.id), {
-                rowKey: String(updatedTask.id),
+            this.setPending(rowKey, {
+                rowKey,
                 kind: 'create',
                 payload: {
                     ...parsedTaskData,
@@ -1613,22 +1692,18 @@ export class TasksTableComponent implements OnChanges {
             popupRef.instance.agentSelected.subscribe(
                 (selectedAgent: FullAgent) => {
 
-                    if (this.currentPopupCell) {
-                        const rowIndex = this.currentPopupCell.rowIndex;
-                        const rowNode =
-                            this.gridApi.getDisplayedRowAtIndex(rowIndex);
-                        if (rowNode) {
-                            // Update the agentData cell value with the selected agent
-                            rowNode.setDataValue('agentData', selectedAgent); // Set the selected agent in the cell
-                        }
-                    }
-                    // Close the popup after selecting an agent
+                    if (!this.currentPopupCell) return;
+                    const rowIndex = this.currentPopupCell.rowIndex;
+                    const rowNode = this.gridApi.getDisplayedRowAtIndex(rowIndex);
+                    if (!rowNode) return;
+                    const taskData = rowNode.data as TableFullTask;
+                    this.updateTaskDataInRow({ agentData: selectedAgent }, taskData);
                     this.closePopup();
                 }
             );
         }
 
-                if (cell.columnId === 'mergedTools') {
+        if (cell.columnId === 'mergedTools') {
             const portal = new ComponentPortal(ToolsPopupComponent);
             const popupRef = this.popupOverlayRef.attach(portal);
             const rowNode = event.node; 
@@ -1638,20 +1713,9 @@ export class TasksTableComponent implements OnChanges {
 
             popupRef.instance.mergedToolsUpdated.subscribe((updatedMergedTools) => {
                 const mergedToolsClone = (updatedMergedTools ?? []).map((t) => ({ ...t }));
-                rowNode.setDataValue('mergedTools', mergedToolsClone);
-                (taskData as any).mergedTools = mergedToolsClone;
-                const rowId = String(taskData.id);
-                const rowDataIndex = this.rowData.findIndex((r) => String(r.id) === rowId);
-                if (rowDataIndex !== -1) {
-                    this.rowData[rowDataIndex] = {
-                        ...this.rowData[rowDataIndex],
-                        mergedTools: mergedToolsClone,
-                    };
-                }
-
-                this.upsertPendingForExistingTask(taskData);
+                const taskData = rowNode.data as TableFullTask;
+                this.updateTaskDataInRow({ mergedTools: mergedToolsClone }, taskData);
                 this.closePopup();
-                this.cdr.markForCheck();
             });
 
             popupRef.instance.cancel.subscribe(() => {
@@ -1804,8 +1868,11 @@ export class TasksTableComponent implements OnChanges {
             this.taskPending.emit(ev);
         }
 
-        this.hasLocalDirty = this.localPendingKeys.size > 0;
-        this.dirtyChange.emit(this.hasLocalDirty);
+        const isDirty =
+            this.localPendingKeys.size > 0 || this.localDraftTempKeys.size > 0;
+
+        this.hasLocalDirty = isDirty;
+        this.dirtyChange.emit(isDirty);
     }
 
     private normalizeIdList(ids: unknown): number[] {
@@ -1890,5 +1957,194 @@ export class TasksTableComponent implements OnChanges {
             id: idNum,
             mergedTools: (taskData as any).mergedTools || [],
         } as any);
+    }
+
+    public requiredErrorsRows = new Set<string>();
+    private activeRowId: string | null = null;
+
+    private readonly requiredTaskFields = ['name','instructions','expected_output'] as const;
+
+    private isTempRowId(id: any): boolean {
+        return typeof id === 'string' && id.startsWith('temp_');
+    }
+
+    private isRequiredEmpty(v: any): boolean {
+        return (v == null) || String(v).trim() === '';
+    }
+
+    private isTempRowTouched(task: TableFullTask): boolean {
+        if (!task) return false;
+        const cur = this.normalizeTempTaskForTouch(task);
+        const base = this.normalizeTempTaskForTouch(this.createEmptyTempTouchBaseline());
+        return JSON.stringify(cur) !== JSON.stringify(base);
+    }
+
+    private normalizeTempTaskForTouch(task: any): any {
+        const t = structuredClone(task ?? {});
+        const text = (v: any) => (v == null ? '' : String(v)).trim();
+        const nullableText = (v: any) => {
+            const s = text(v);
+            return s === '' ? null : s;
+        };
+
+        const agentId = t.agentData?.id ?? null;
+
+        const toolsKey: string[] = Array.isArray(t.mergedTools)
+            ? t.mergedTools
+                .map((x: any) => `${x?.type ?? ''}:${x?.id ?? ''}`)
+                .filter((s: string) => s !== ':')
+                .sort()
+            : [];
+
+        const ctxKey: string[] = Array.isArray(t.task_context_list)
+            ? t.task_context_list
+                .map((x: any) => String(x?.id ?? x ?? ''))
+                .filter((s: string) => s !== '')
+                .sort()
+            : [];
+
+        return {
+            name: text(t.name),
+            instructions: text(t.instructions),
+            expected_output: text(t.expected_output),
+            knowledge_query: nullableText(t.knowledge_query),
+            human_input: Boolean(t.human_input),
+            async_execution: Boolean(t.async_execution),
+            output_model: t.output_model ?? null,
+            config: t.config ?? null,
+            agentId,
+            toolsKey,
+            ctxKey,
+        };
+    }
+
+    private createEmptyTempTouchBaseline(): Partial<TableFullTask> {
+        return {
+            name: '',
+            instructions: '',
+            expected_output: '',
+            knowledge_query: null,
+            human_input: false,
+            async_execution: false,
+            output_model: null,
+            config: null,
+            agentData: null,
+            mergedTools: [],
+            task_context_list: [],
+        } as any;
+    }
+
+    private isTempRowValid(data: any): boolean {
+        return this.requiredTaskFields.every(f => !this.isRequiredEmpty(data?.[f]));
+    }
+
+    private updateRequiredErrorsForTempRow(rowId: string, data: any): void {
+        const shouldShow = this.isTempRowTouched(data) && !this.isTempRowValid(data);
+
+        if (shouldShow) this.requiredErrorsRows.add(rowId);
+        else this.requiredErrorsRows.delete(rowId);
+
+        const node = this.gridApi?.getRowNode(rowId);
+        if (node) {
+            this.gridApi.refreshCells({
+                rowNodes: [node],
+                columns: [...this.requiredTaskFields],
+                force: true,
+            });
+        }
+    }
+
+    private handleEnterJumpWithinTempRow(params: any): boolean {
+        const e = params.event as KeyboardEvent | undefined;
+        if (!e) return false;
+        if (e.key !== 'Enter') return false;
+        if (e.shiftKey) return false;
+
+        const data = params.node?.data;
+        const rowId = String(data?.id ?? '');
+        if (!this.isTempRowId(rowId)) return false;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (e.type === 'keyup') return true;
+        const colId = params.column?.getColId?.() ?? params.colDef?.field;
+        const order = ['name', 'instructions', 'expected_output', 'knowledge_query'];
+        const idx = order.indexOf(colId);
+
+        this.gridApi.stopEditing();
+        if (idx === -1) return true;
+        const nextCol = order[idx + 1];
+
+        setTimeout(() => {
+            if (!nextCol) {
+                this.updateRequiredErrorsForTempRow(rowId, data);
+                return;
+            }
+            this.gridApi.startEditingCell({
+                rowIndex: params.node.rowIndex,
+                colKey: nextCol,
+            });
+        }, 0);
+
+        return true;
+    }
+
+    @ViewChild('agGridWrap', { static: true }) agGridWrap!: ElementRef<HTMLElement>;
+
+    @HostListener('document:mousedown', ['$event'])
+    onDocumentMouseDown(ev: MouseEvent): void {
+        if (!this.activeRowId) return;
+        const wrap = this.agGridWrap?.nativeElement;
+        if (!wrap) return;
+
+        const target = ev.target as Node | null;
+        if (!target || !wrap.contains(target)) {
+            const node = this.gridApi?.getRowNode(this.activeRowId);
+            if (node?.data) this.updateRequiredErrorsForTempRow(this.activeRowId, node.data);
+            return;
+        }
+
+        const cell = (target as HTMLElement).closest('.ag-cell');
+        const rowEl = (target as HTMLElement).closest('.ag-row');
+        const clickedId = rowEl?.getAttribute('row-id') ?? null;
+
+        if (clickedId && clickedId !== this.activeRowId) {
+            const node = this.gridApi?.getRowNode(this.activeRowId);
+            if (node?.data) this.updateRequiredErrorsForTempRow(this.activeRowId, node.data);
+        }
+    }
+
+    public validateBeforeSave(): boolean {
+        let ok = true;
+
+        for (const row of this.rowData) {
+            const id = String(row?.id ?? '');
+            if (!this.isTempRowId(id)) continue;
+
+            if (this.isTempRowTouched(row) && !this.isTempRowValid(row)) {
+                this.requiredErrorsRows.add(id);
+                ok = false;
+                const node = this.gridApi?.getRowNode(id);
+                if (node) {
+                    this.gridApi.refreshCells({ rowNodes: [node], columns: [...this.requiredTaskFields], force: true });
+                }
+            }
+        }
+        return ok;
+    }
+
+    public clearLocalDirtyAfterSave(): void {
+        this.localPendingKeys.clear();
+        this.localDraftTempKeys.clear();
+        this.requiredErrorsRows.clear();
+        this.hasLocalDirty = false;
+        this.dirtyChange.emit(false);
+        this.gridApi?.refreshCells({ force: true });
+        this.cdr.markForCheck();
+    }
+
+    public hasLocalDrafts(): boolean {
+        return this.localDraftTempKeys.size > 0;
     }
 }

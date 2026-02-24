@@ -94,6 +94,11 @@ export class StaffPageComponent implements CanComponentDeactivate {
     public onSave(): void {
         if (this.isSaving || !this.agentsTable || !this.hasUnsavedChanges) return;
 
+        if (!this.agentsTable.validateBeforeSave()) {
+            this.toastService.warning('Please fill in all required fields.');
+            return;
+        }
+        
         this.isSaving = true;
 
         this.agentsTable
@@ -110,6 +115,7 @@ export class StaffPageComponent implements CanComponentDeactivate {
         if (!this.agentsTable) return of(true);
         if (!this.hasUnsavedChanges) return of(true);
 
+        if (!this.agentsTable.validateBeforeSave()) return of(false);
         this.isSaving = true;
 
         return this.agentsTable.flushPending().pipe(

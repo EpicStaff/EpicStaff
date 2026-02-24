@@ -7,6 +7,7 @@ import {
   ChangeDetectorRef,
   Output,
   EventEmitter,
+  ViewChild,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FullTask } from '../../shared/models/full-task.model';
@@ -35,6 +36,7 @@ export class TasksSectionComponent implements OnInit, OnDestroy {
   @Input() project!: GetProjectRequest;
   @Output() taskPending = new EventEmitter<TaskPendingEvent>();
   @Output() dirtyChange = new EventEmitter<boolean>();
+  @ViewChild(TasksTableComponent) private table?: TasksTableComponent;
 
   public tasks: FullTask[] = [];
   public agents: FullAgent[] = [];
@@ -61,7 +63,6 @@ export class TasksSectionComponent implements OnInit, OnDestroy {
       this.projectStateService.agents$.subscribe({
         next: (agents) => {
           this.agents = agents;
-          console.log('Updated agents:', this.agents);
           this.cdr.markForCheck();
         },
         error: (err) => console.error('Error fetching agents:', err),
@@ -75,5 +76,17 @@ export class TasksSectionComponent implements OnInit, OnDestroy {
 
   onTaskPending(ev: TaskPendingEvent): void {
     this.taskPending.emit(ev);
+  }
+
+  onDirtyChange(isDirty: boolean): void {
+    this.dirtyChange.emit(isDirty);
+  }
+
+  public validateBeforeSave(): boolean {
+    return this.table?.validateBeforeSave() ?? true;
+  }
+
+  public clearLocalDirtyAfterSave(): void {
+    this.table?.clearLocalDirtyAfterSave();
   }
 }

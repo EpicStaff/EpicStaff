@@ -10,6 +10,8 @@ import {
     ViewChild,
     EventEmitter,
     Output,
+    HostListener,
+    ElementRef,
 } from '@angular/core';
 import { AgGridAngular, AgGridModule } from 'ag-grid-angular';
 import {
@@ -128,6 +130,10 @@ export class AgentsTableComponent {
 
     @Output() dirtyChange = new EventEmitter<boolean>();
     private pending = new Map<string, PendingChange>();
+    private savedSnapshot = new Map<string, unknown>();
+
+    @ViewChild('agGridWrap', { static: true }) agGridWrap!: ElementRef<HTMLElement>;
+    private activeRowId: string | null = null;
 
     constructor(
         private overlay: Overlay,
@@ -147,6 +153,14 @@ export class AgentsTableComponent {
             next: (data: FullAgent[]) => {
                 // Sort and set data
                 this.rowData = data.sort((a, b) => b.id - a.id);
+
+                for (const a of this.rowData) {
+                    const rowId = String(a.id);
+                    if (!rowId.startsWith('temp_')) {
+                        this.savedSnapshot.set(rowId, this.buildComparablePayload(a));
+                    }
+                }
+
                 this.rowData.push(this.createEmptyFullAgent());
                 console.log(this.rowData);
 
@@ -291,8 +305,11 @@ export class AgentsTableComponent {
         {
             headerName: 'Agent Role',
             field: 'role',
+            headerClass: 'required-header',
             cellClass: 'agent-role-cell',
             cellEditor: 'agLargeTextCellEditor',
+            cellEditorPopup: true,
+            suppressKeyboardEvent: (params) => this.handleEnterJumpWithinTempRow(params),
             cellEditorParams: {
                 maxLength: 1000000,
                 cellEditorValidator: (value: string) => {
@@ -311,7 +328,14 @@ export class AgentsTableComponent {
                 return true;
             },
             cellClassRules: {
-                'cell-warning': (params) => !!params.data.roleWarning,
+                //'cell-warning': (params) => !!params.data.roleWarning,
+                'cell-warning': (p) => !this.isTempRowId(String(p.data?.id ?? '')) && !!p.data.roleWarning,
+                'cell-required-invalid': (p) => {
+                    const id = String(p.data?.id ?? '');
+                    if (!id.startsWith('temp_')) return false;
+                    if (!this.requiredErrorsRows.has(id)) return false;
+                    return String(p.value ?? '').trim().length === 0;
+                },
             },
             cellStyle: {
                 'white-space': 'normal',
@@ -327,7 +351,10 @@ export class AgentsTableComponent {
         {
             headerName: 'Goal',
             field: 'goal',
+            headerClass: 'required-header',
             cellEditor: 'agLargeTextCellEditor',
+            cellEditorPopup: true,
+            suppressKeyboardEvent: (params) => this.handleEnterJumpWithinTempRow(params),
             cellEditorParams: {
                 maxLength: 1000000,
                 cellEditorValidator: (value: string) => {
@@ -345,7 +372,14 @@ export class AgentsTableComponent {
                 return true;
             },
             cellClassRules: {
-                'cell-warning': (params) => !!params.data.goalWarning,
+                //'cell-warning': (params) => !!params.data.goalWarning,
+                'cell-warning': (p) => !this.isTempRowId(String(p.data?.id ?? '')) && !!p.data.goalWarning,
+                'cell-required-invalid': (p) => {
+                    const id = String(p.data?.id ?? '');
+                    if (!id.startsWith('temp_')) return false;
+                    if (!this.requiredErrorsRows.has(id)) return false;
+                    return String(p.value ?? '').trim().length === 0;
+                },
             },
             cellStyle: {
                 'white-space': 'normal',
@@ -360,7 +394,10 @@ export class AgentsTableComponent {
         {
             headerName: 'Backstory',
             field: 'backstory',
+            headerClass: 'required-header',
             cellEditor: 'agLargeTextCellEditor',
+            cellEditorPopup: true,
+            suppressKeyboardEvent: (params) => this.handleEnterJumpWithinTempRow(params),
             cellEditorParams: {
                 maxLength: 1000000,
                 cellEditorValidator: (value: string) => {
@@ -378,7 +415,14 @@ export class AgentsTableComponent {
                 return true;
             },
             cellClassRules: {
-                'cell-warning': (params) => !!params.data.backstoryWarning,
+                //'cell-warning': (params) => !!params.data.backstoryWarning,
+                'cell-warning': (p) => !this.isTempRowId(String(p.data?.id ?? '')) && !!p.data.backstoryWarning,
+                'cell-required-invalid': (p) => {
+                    const id = String(p.data?.id ?? '');
+                    if (!id.startsWith('temp_')) return false;
+                    if (!this.requiredErrorsRows.has(id)) return false;
+                    return String(p.value ?? '').trim().length === 0;
+                },
             },
             cellStyle: {
                 'white-space': 'normal',
@@ -519,9 +563,16 @@ export class AgentsTableComponent {
         undoRedoCellEditingLimit: 20,
         theme: this.myTheme,
         animateRows: false,
+        onCellFocused: (e) => this.onCellFocused(e),
 
         suppressColumnVirtualisation: false, // Enable column virtualization for performance
         stopEditingWhenCellsLoseFocus: true,
+
+        rowClassRules: {
+            'row-invalid': (p) => this.invalidTempRows.has(String(p.data?.id)),
+        },
+
+        onCellEditingStopped: (e) => this.onCellEditingStopped(e),
 
         onFirstDataRendered: (params) => {
             this.isLoading.set(false);
@@ -657,39 +708,61 @@ export class AgentsTableComponent {
 
         if (isTempRow) {
             if (fieldsToValidate.includes(colId)) {
-                const newValue = event.data[colId]
-                    ? event.data[colId].trim()
-                    : '';
-                event.data[`${colId}Warning`] = !newValue; // Dynamically set warning for the field
+                const newValue = event.data[colId] ? event.data[colId].trim() : '';
+                event.data[`${colId}Warning`] = !newValue;
             }
 
-            // Validate the required fields (role, goal, backstory)
+            const rowId = String(event.data.id);
+
+            const touched = this.isTempRowTouched(event.data);
+
+            if (!touched) {
+                this.draftTempRows.delete(rowId);
+                this.pending.delete(rowId);
+                this.markRowInvalid(rowId, false);
+                this.emitDirty();
+                this.cdr.markForCheck();
+                this.requiredErrorsRows.delete(rowId);
+                this.gridApi.refreshCells({ rowNodes: [event.node], columns: ['role','goal','backstory'], force: true });
+                return;
+            }
+
+            if (touched) {
+                this.draftTempRows.add(rowId);
+            } else {
+                this.draftTempRows.delete(rowId);
+                if (this.pending.has(rowId)) this.pending.delete(rowId);
+            }
+
+            this.emitDirty();
+
             const isValid = fieldsToValidate.every((field) => {
-                const fieldValue = event.data[field]
-                    ? event.data[field].trim()
-                    : '';
-                return fieldValue !== ''; // Check if all fields are non-empty
+                const fieldValue = event.data[field] ? event.data[field].trim() : '';
+                return fieldValue !== '';
             });
 
-            // If any field is invalid, log a warning and prevent agent creation
             if (!isValid) {
                 console.warn(
                     'Warning: One or more required fields (role, goal, backstory) are empty.'
                 );
-                return; // Prevent creating the agent
+
+                if (this.pending.has(rowId)) this.pending.delete(rowId);
+
+                this.emitDirty();
+                this.cdr.markForCheck();
+                return;
             }
 
-            // Parse the agent data
             const parsedData = this.parseAgentData(event.data);
-            console.log(parsedData);
-
-            // Build tool_ids array
             const configuredToolIds = parsedData.configured_tools || [];
             const pythonToolIds = parsedData.python_code_tools || [];
             const mcpToolIds = parsedData.mcp_tools || [];
-            const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds);
+            const toolIds = buildToolIdsArray(
+                configuredToolIds,
+                pythonToolIds,
+                mcpToolIds
+            );
 
-            // Create the new agent by sending the full row data
             const createAgentData: CreateAgentRequest = {
                 ...parsedData,
                 configured_tools: configuredToolIds,
@@ -698,18 +771,18 @@ export class AgentsTableComponent {
                 tool_ids: toolIds,
             };
 
-            // Use the new syntax with next, error, and complete
-            const rowId = String(event.data.id);
-
             this.setPending(rowId, {
                 kind: 'create',
                 rowId,
                 payload: createAgentData,
             });
 
+            this.draftTempRows.delete(rowId);
+            this.emitDirty();
             this.cdr.markForCheck();
             return;
         }
+
         // For rows with a valid id, validate all fields that require validation
         let allValid = true; // Flag to check if all fields are valid
         fieldsToValidate.forEach((field) => {
@@ -763,12 +836,7 @@ export class AgentsTableComponent {
 
         const rowId = String(event.data.id);
 
-        this.setPending(rowId, {
-            kind: 'update',
-            rowId,
-            payload: updateAgentData,
-        });
-
+        this.reconcilePendingUpdate(rowId, updateAgentData);
         this.cdr.markForCheck();
     }
 
@@ -810,8 +878,17 @@ export class AgentsTableComponent {
             const after = this.normalizeAdvancedSettings(data);
             if (this.jsonEqual(before, after)) return;
             this.updateAgentDataInRow(data, agentData);
+
+            const rowId = String(agentData.id ?? '');
+            const rowNode = this.gridApi?.getRowNode(rowId);
+            const fresh = rowNode?.data;
+
+            if (fresh) {
+                this.updateRequiredErrorsForTempRow(rowId, fresh);
+            }
         });
     }
+
     updateAgentDataInRow(
         updatedData: Partial<TableFullAgent>,
         agentData: TableFullAgent
@@ -938,7 +1015,7 @@ export class AgentsTableComponent {
                 mcp_tools: settingsMcpToolIds,
                 tool_ids: settingsToolIds,
             };
-            this.setPending(rowId, { kind: 'update', rowId, payload: updateAgentData });
+            this.reconcilePendingUpdate(rowId, updateAgentData);
         }
 
         this.cdr.markForCheck();
@@ -1265,6 +1342,39 @@ export class AgentsTableComponent {
         if (keyboardEvent?.key === 'Enter') {
             const { rowIndex, column } = event;
             const columnId = column.getColId();
+            if (event.colDef.field !== 'actions'
+                && columnId !== 'mergedConfigs'
+                && columnId !== 'mergedTools'
+                && columnId !== 'tags'
+                && rowIndex != null
+            ) {
+                const rowNode = this.gridApi.getDisplayedRowAtIndex(rowIndex);
+                const data = rowNode?.data;
+                const rowId = String(data?.id ?? '');
+
+            if (this.isTempRowId(rowId)) {
+                const firstEmpty = (['role','goal','backstory'] as const).find((f) => this.isRequiredEmpty(data, f));
+
+                if (firstEmpty) {
+                    keyboardEvent.preventDefault();
+                    this.gridApi.stopEditing();
+                    this.gridApi.setFocusedCell(rowIndex, firstEmpty);
+                    this.gridApi.startEditingCell({ rowIndex, colKey: firstEmpty });
+                    return;
+                }
+
+                const order: Array<'role'|'goal'|'backstory'> = ['role','goal','backstory'];
+                const idx = order.indexOf(columnId as any);
+                if (idx >= 0 && idx < order.length - 1) {
+                    const next = order[idx + 1];
+                    keyboardEvent.preventDefault();
+                    this.gridApi.stopEditing();
+                    this.gridApi.setFocusedCell(rowIndex, next);
+                    this.gridApi.startEditingCell({ rowIndex, colKey: next });
+                    return;
+                }
+            }
+        }
             if (event.colDef.field === 'actions') {
                 const agentData = event.data;
                 this.closePopup();
@@ -1497,14 +1607,41 @@ export class AgentsTableComponent {
                                 }
                             }
 
-                            const parsedData = this.parseAgentData(rowData);
+                            const freshRowData = rowNode.data;
+                            const tempRowId = String(freshRowData?.id ?? '');
+
+                            if (this.isTempRowId(tempRowId)) {
+                                if (this.isTempRowTouched(freshRowData)) {
+                                    this.draftTempRows.add(tempRowId);
+                                } else {
+                                    this.draftTempRows.delete(tempRowId);
+                                }
+                                this.emitDirty();
+                                this.updateRequiredErrorsForTempRow(tempRowId, freshRowData);
+                                const touched = this.isTempRowTouched(freshRowData);
+
+                                if (!touched) {
+                                    this.draftTempRows.delete(tempRowId);
+                                    this.pending.delete(tempRowId);
+                                    this.markRowInvalid(tempRowId, false);
+                                    this.emitDirty();
+                                    this.cdr.markForCheck();
+                                    this.closePopup();
+                                    return
+                                }
+
+                                const valid = this.isTempRowValid(freshRowData);
+                                this.markRowInvalid(tempRowId, touched && !valid);
+                            }
+
+                            const parsedData = this.parseAgentData(freshRowData);
 
                             const configuredToolIds = parsedData.configured_tools || [];
                             const pythonToolIds = parsedData.python_code_tools || [];
                             const mcpToolIds = parsedData.mcp_tools || [];
                             const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds);
 
-                            const rowId = String(rowData.id);
+                            const rowId = String(freshRowData.id);
 
                             if (isTempRow) {
                                 const createAgentData: CreateAgentRequest = {
@@ -1525,7 +1662,7 @@ export class AgentsTableComponent {
                                     tool_ids: toolIds,
                                 };
 
-                                this.setPending(rowId, { kind: 'update', rowId, payload: updateAgentData });
+                                this.reconcilePendingUpdate(rowId, updateAgentData);
                             }
 
                             this.cdr.markForCheck();
@@ -1565,6 +1702,21 @@ export class AgentsTableComponent {
                                 'mergedTools',
                                 updatedMergedTools
                             );
+
+                            const rowData = rowNode.data;
+                            const rowId = String(rowData?.id ?? '');
+
+                            if (this.isTempRowId(rowId)) {
+                                if (this.isTempRowTouched(rowData)) {
+                                    this.draftTempRows.add(rowId);
+                                } else {
+                                    this.draftTempRows.delete(rowId);
+                                }
+                                this.emitDirty();
+                                this.updateRequiredErrorsForTempRow(rowId, rowData);
+
+                                this.cdr.markForCheck();
+                            }
                         }
                     }
                     // Close the popup after saving
@@ -1593,6 +1745,18 @@ export class AgentsTableComponent {
                     if (rowNode) {
                         // Use setDataValue to update the tags cell
                         rowNode.setDataValue('tags', updatedTags);
+
+                        const rowData = rowNode.data;
+                        const rowId = String(rowData?.id ?? '');
+
+                        if (this.isTempRowId(rowId)) {
+                            const touched = this.isTempRowTouched(rowData);
+                            if (touched) this.draftTempRows.add(rowId);
+                            else this.draftTempRows.delete(rowId);
+                            this.emitDirty();
+                            this.updateRequiredErrorsForTempRow(rowId, rowData);
+                            this.cdr.markForCheck();
+                        }
                     }
                 }
 
@@ -1659,7 +1823,7 @@ export class AgentsTableComponent {
 
     private setPending(rowId: string, change: PendingChange): void {
         this.pending.set(rowId, change);
-        this.dirtyChange.emit(this.pending.size > 0);
+        this.emitDirty();
     }
 
     public flushPending(): Observable<void> {
@@ -1680,6 +1844,9 @@ export class AgentsTableComponent {
                             if (rowIndex !== -1) {
                                 const updatedRow = { ...this.rowData[rowIndex], id: newAgent.id };
                                 this.rowData[rowIndex] = updatedRow;
+
+                                this.savedSnapshot.delete(tempRowId);
+                                this.savedSnapshot.set(String(newAgent.id), this.buildComparablePayload(updatedRow));
 
                                 this.gridApi.applyTransaction({
                                     remove: [{ id: tempRowId }],
@@ -1706,7 +1873,12 @@ export class AgentsTableComponent {
 
                 return this.agentsService.updateAgent(change.payload as UpdateAgentRequest).pipe(
                     tap(() => {
-                        this.pending.delete(change.rowId);
+                        const rowId = change.rowId;
+                        const current = this.rowData.find((r) => String(r.id) === rowId);
+                        if (current) {
+                            this.savedSnapshot.set(rowId, this.buildComparablePayload(current));
+                        }
+                        this.pending.delete(rowId);
                         this.dirtyChange.emit(this.pending.size > 0);
                         this.cdr.markForCheck();
                     }),
@@ -1764,5 +1936,431 @@ export class AgentsTableComponent {
 
     private jsonEqual(a: unknown, b: unknown): boolean {
         return JSON.stringify(a) === JSON.stringify(b);
+    }
+
+    private draftTempRows = new Set<string>();
+    private invalidTempRows = new Set<string>();
+    
+    private emitDirty(): void {
+        this.dirtyChange.emit(this.pending.size > 0 || this.draftTempRows.size > 0);
+    }
+
+    private isNonEmpty(v: any): boolean {
+        return v !== null && v !== undefined && String(v).trim() !== '';
+    }
+
+    private isTempRowId(id: unknown): boolean {
+        return typeof id === 'string' && id.startsWith('temp_');
+    }
+
+    private getByPath(obj: any, path: string): any {
+        return path.split('.').reduce((acc, key) => (acc ? acc[key] : undefined), obj);
+    }
+
+    private isTempRowTouched(data: any): boolean {
+        if (!data) return false;
+        const defaults = {
+            role: '',
+            goal: '',
+            backstory: '',
+            configured_tools: [],
+            python_code_tools: [],
+            mcp_tools: [],
+            mergedTools: [],
+            mergedConfigs: [],
+            llm_config: null,
+            fcm_llm_config: null,
+            allow_delegation: false,
+            memory: false,
+            max_iter: 20,
+            max_rpm: 0,
+            max_execution_time: 0,
+            cache: false,
+            allow_code_execution: false,
+            max_retry_limit: 0,
+            respect_context_window: false,
+            default_temperature: null,
+            tags: [],
+            knowledge_collection: null,
+            rag: null,
+            search_configs: {
+                naive: {
+                    search_limit: 3,
+                    similarity_threshold: '0.2',
+                },
+            },
+            realtime_agent: {
+                wake_word: '',
+                stop_prompt: 'stop',
+                language: null,
+                voice_recognition_prompt: null,
+                voice: 'alloy',
+                realtime_config: null,
+                realtime_transcription_config: null,
+            },
+        };
+
+        const pathsToCheck = [
+            'role',
+            'goal',
+            'backstory',
+            'llm_config',
+            'fcm_llm_config',
+            'mergedTools',
+            'mergedConfigs',
+            'allow_delegation',
+            'memory',
+            'cache',
+            'allow_code_execution',
+            'respect_context_window',
+            'max_iter',
+            'max_rpm',
+            'max_execution_time',
+            'max_retry_limit',
+            'default_temperature',
+            'tags',
+            'knowledge_collection',
+            'rag',
+            'search_configs.naive.search_limit',
+            'search_configs.naive.similarity_threshold',
+            'realtime_agent.wake_word',
+            'realtime_agent.stop_prompt',
+            'realtime_agent.language',
+            'realtime_agent.voice_recognition_prompt',
+            'realtime_agent.voice',
+            'realtime_agent.realtime_config',
+            'realtime_agent.realtime_transcription_config',
+        ];
+
+        return pathsToCheck.some((path) => {
+            const curRaw = this.getByPath(data, path);
+            const defRaw = this.getByPath(defaults, path);
+            const cur = this.normalizeTouchedValue(path, curRaw);
+            const def = this.normalizeTouchedValue(path, defRaw);
+            const curIsObj = cur && typeof cur === 'object';
+            const defIsObj = def && typeof def === 'object';
+
+            if (Array.isArray(cur) || Array.isArray(def) || curIsObj || defIsObj) {
+                return !this.jsonEqual(cur ?? null, def ?? null);
+            }
+
+            return (cur ?? null) !== (def ?? null);
+        });
+    }
+
+    private isTempRowValid(data: any): boolean {
+        return (
+            this.isNonEmpty(data?.role) &&
+            this.isNonEmpty(data?.goal) &&
+            this.isNonEmpty(data?.backstory)
+        );
+    }
+
+    private markRowInvalid(rowId: string, isInvalid: boolean): void {
+        if (isInvalid) this.invalidTempRows.add(rowId);
+        else this.invalidTempRows.delete(rowId);
+        this.gridApi?.redrawRows();
+    }
+
+    private onCellEditingStopped(e: any): void {
+        const data = e?.data;
+        const rowId = String(data?.id ?? '');
+        if (!this.isTempRowId(rowId)) return;
+        if (!this.isTempRowTouched(data)) return;
+        const valid = this.isTempRowValid(data);
+        this.markRowInvalid(rowId, !valid);
+        this.updateRequiredErrorsForTempRow(rowId, data);
+
+        // if (!valid) {
+        //     this.toastService.warning('All required fields must be filled');
+        // }
+    }
+
+    public validateBeforeSave(): boolean {
+        for (const id of this.draftTempRows) {
+            const rowNode = this.gridApi?.getRowNode(id);
+            const data = rowNode?.data;
+            if (!data) continue;
+
+            if (!this.isTempRowValid(data)) {
+                this.requiredErrorsRows.add(id);
+                this.gridApi.refreshCells({
+                    rowNodes: [rowNode],
+                    columns: ['role', 'goal', 'backstory'],
+                    force: true,
+                });
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private requiredErrorsRows = new Set<string>();
+
+    private lastFocusedRowIndex: number | null = null;
+
+    private onCellFocused(e: any): void {
+        const rowIndex = typeof e?.rowIndex === 'number' ? e.rowIndex : null;
+        if (rowIndex != null && rowIndex >= 0) {
+            const node = this.gridApi?.getDisplayedRowAtIndex(rowIndex);
+            this.activeRowId = node?.data?.id != null ? String(node.data.id) : null;
+        }
+        const newRowIndex = typeof e?.rowIndex === 'number' ? e.rowIndex : null;
+
+        if (
+            this.lastFocusedRowIndex != null &&
+            this.lastFocusedRowIndex !== newRowIndex
+        ) {
+            const prevNode = this.gridApi?.getDisplayedRowAtIndex(this.lastFocusedRowIndex);
+            const prevRowId = prevNode?.data?.id != null ? String(prevNode.data.id) : null;
+            if (prevRowId) this.applyRequiredErrorsOnRowExit(prevRowId);
+        }
+
+        this.lastFocusedRowIndex = newRowIndex;
+    }
+
+    private applyRequiredErrorsOnRowExit(rowId: string): void {
+        if (!this.isTempRowId(rowId)) {
+            this.requiredErrorsRows.delete(rowId);
+            return;
+        }
+
+        const rowNode = this.gridApi.getRowNode(rowId);
+        const data = rowNode?.data;
+        if (!data) return;
+        const touched = this.isTempRowTouched(data);
+        const valid = this.isTempRowValid(data);
+
+        if (touched && !valid) {
+            this.requiredErrorsRows.add(rowId);
+        } else {
+            this.requiredErrorsRows.delete(rowId);
+        }
+
+        this.gridApi.refreshCells({
+            rowNodes: rowNode ? [rowNode] : undefined,
+            columns: ['role', 'goal', 'backstory'],
+            force: true,
+        });
+    }
+
+    private showRequiredErrorsForRow(rowId: string): void {
+        if (!this.isTempRowId(rowId)) return;
+
+        this.requiredErrorsRows.add(rowId);
+
+        const rowNode = this.gridApi?.getRowNode(rowId);
+        if (!rowNode) return;
+
+        this.gridApi.refreshCells({
+            rowNodes: [rowNode],
+            columns: ['role', 'goal', 'backstory'],
+            force: true,
+        });
+    }
+
+    private clearRequiredErrorsForRow(rowId: string): void {
+        this.requiredErrorsRows.delete(rowId);
+
+        const rowNode = this.gridApi?.getRowNode(rowId);
+        if (!rowNode) return;
+
+        this.gridApi.refreshCells({
+            rowNodes: [rowNode],
+            columns: ['role', 'goal', 'backstory'],
+            force: true,
+        });
+    }
+
+    private readonly requiredCols = ['role', 'goal', 'backstory'] as const;
+
+    private isRequiredEmpty(data: any, field: (typeof this.requiredCols)[number]): boolean {
+        const v = (data?.[field] ?? '').toString().trim();
+        return v.length === 0;
+    }      
+
+    private enterJumpInProgress = false;
+
+    private handleEnterJumpWithinTempRow(params: any): boolean {
+        const e = params.event as KeyboardEvent | undefined;
+        if (!e || e.key !== 'Enter') return false;
+
+        if (e.shiftKey) return false;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (e.type === 'keyup') return true;
+        if (e.type !== 'keydown') return true;
+        if (this.enterJumpInProgress) return true;
+        this.enterJumpInProgress = true;
+
+        const rowIndex = params.node?.rowIndex;
+        if (rowIndex == null || rowIndex < 0) {
+            this.enterJumpInProgress = false;
+            return true;
+        }
+
+        const data = params.node?.data;
+        const rowId = String(data?.id ?? '');
+        if (!rowId.startsWith('temp_')) {
+            this.enterJumpInProgress = false;
+            return false;
+        }
+
+        this.gridApi.stopEditing();
+
+        const requiredCols = ['role', 'goal', 'backstory'] as const;
+        const curCol = params.column?.getColId?.() ?? '';
+        const curIdx = requiredCols.indexOf(curCol as any);
+
+        if (curIdx === -1) {
+            this.enterJumpInProgress = false;
+            return false;
+        }
+
+        if (curIdx < requiredCols.length - 1) {
+            const next = requiredCols[curIdx + 1];
+            setTimeout(() => {
+                this.gridApi.setFocusedCell(rowIndex, next);
+                this.gridApi.startEditingCell({ rowIndex, colKey: next });
+                this.enterJumpInProgress = false;
+            }, 0);
+            return true;
+        }
+
+        setTimeout(() => {
+            const touched = this.isTempRowTouched(data);
+            const valid = this.isTempRowValid(data);
+
+            if (touched && !valid) {
+                this.showRequiredErrorsForRow(rowId);
+            } else {
+                this.clearRequiredErrorsForRow(rowId);
+            }
+
+            this.gridApi.setFocusedCell(rowIndex, 'backstory');
+            this.enterJumpInProgress = false;
+        }, 0);
+
+        return true;
+    }
+
+    private isClickInsideRow(target: HTMLElement, rowId: string): boolean {
+        const wrap = this.agGridWrap?.nativeElement;
+        const insideGrid = wrap?.contains(target) ?? false;
+        if (!insideGrid) return false;
+        const rowEl = target.closest('.ag-row') as HTMLElement | null;
+        if (!rowEl) return false;
+        const rowIndexAttr = rowEl.getAttribute('row-index');
+        const rowIndex = rowIndexAttr != null ? Number(rowIndexAttr) : NaN;
+        if (!Number.isFinite(rowIndex)) return false;
+        const node = this.gridApi?.getDisplayedRowAtIndex(rowIndex);
+        const clickedRowId = node?.data?.id != null ? String(node.data.id) : null;
+        return clickedRowId === rowId;
+    }
+
+    private updateRequiredErrorsForTempRow(rowId: string, data: any): void {
+        if (!this.isTempRowId(rowId) || !data) return;
+        const shouldShow = this.isTempRowTouched(data) && !this.isTempRowValid(data);
+
+        if (shouldShow) this.requiredErrorsRows.add(rowId);
+        else this.requiredErrorsRows.delete(rowId);
+
+        const rowNode = this.gridApi?.getRowNode(rowId);
+        if (!rowNode) return;
+
+        this.gridApi.refreshCells({
+            rowNodes: [rowNode],
+            columns: ['role', 'goal', 'backstory'],
+            force: true,
+        });
+    }
+
+    private normalizeTouchedValue(path: string, v: any): any {
+        if (path === 'role' || path === 'goal' || path === 'backstory') {
+            return (v ?? '').toString();
+        }
+
+        return v;
+    }
+
+    private buildComparablePayload(agent: TableFullAgent): any {
+        const parsed = this.parseAgentData(agent);
+
+        const configured = (agent.mergedTools ?? [])
+            .filter((t: any) => t.type === 'tool-config')
+            .map((t: any) => t.id);
+
+        const python = (agent.mergedTools ?? [])
+            .filter((t: any) => t.type === 'python-tool')
+            .map((t: any) => t.id);
+
+        const mcp = (agent.mergedTools ?? [])
+            .filter((t: any) => t.type === 'mcp-tool')
+            .map((t: any) => t.id);
+
+        const tool_ids = buildToolIdsArray(configured, python, mcp);
+
+        const updateLikePayload = {
+            ...parsed,
+            configured_tools: configured,
+            python_code_tools: python,
+            mcp_tools: mcp,
+            tool_ids,
+            tags: agent.tags ?? [],
+            max_iter: parsed.max_iter == null ? null : Number(parsed.max_iter),
+            max_rpm: parsed.max_rpm == null ? null : Number(parsed.max_rpm),
+        };
+
+        return this.normalizeForCompare(updateLikePayload);
+    }
+
+    private reconcilePendingUpdate(rowId: string, updatePayload: UpdateAgentRequest): void {
+        const baseline = this.savedSnapshot.get(rowId);
+        const comparable = this.normalizeForCompare(updatePayload);
+
+        if (this.jsonEqual(baseline, comparable)) {
+            this.pending.delete(rowId);
+            this.emitDirty();
+            return;
+        }
+
+        this.setPending(rowId, { kind: 'update', rowId, payload: updatePayload });
+    }
+
+    private normalizeForCompare(payload: any): any {
+        const p = structuredClone(payload);
+        delete p.id;
+        delete p.mergedTools;
+        delete p.mergedConfigs;
+        delete p.tools;
+        delete p.fullFcmLlmConfig;
+        delete p.fullLlmConfig;
+        delete p.selected_knowledge_source;
+        
+        for (const k of Object.keys(p)) {
+            if (k.endsWith('Warning')) delete p[k];
+        }
+
+        p.configured_tools = (p.configured_tools ?? []).slice().sort();
+        p.python_code_tools = (p.python_code_tools ?? []).slice().sort();
+        p.mcp_tools = (p.mcp_tools ?? []).slice().sort();
+        p.tool_ids = (p.tool_ids ?? []).slice().sort();
+        p.tags = (p.tags ?? []).slice().sort();
+        p.cache = p.cache ?? false;
+        p.allow_code_execution = p.allow_code_execution ?? false;
+        p.respect_context_window = p.respect_context_window ?? false;
+
+        return p;
+    }
+
+    @HostListener('document:mousedown', ['$event'])
+    onDocumentMouseDown(ev: MouseEvent): void {
+        if (!this.activeRowId) return;
+        const target = ev.target as HTMLElement | null;
+        if (!target) return;
+        if (this.isClickInsideRow(target, this.activeRowId)) return;
+        this.applyRequiredErrorsOnRowExit(this.activeRowId);
     }
 }
