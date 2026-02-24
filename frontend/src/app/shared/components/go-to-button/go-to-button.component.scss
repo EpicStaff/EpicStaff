@@ -1,0 +1,41 @@
+.go-to-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 1px solid var(--color-nodes-flow-link);
+  border-radius: 4px;
+  color: var(--color-nodes-flow-link);
+  text-decoration: none;
+  cursor: pointer;
+
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+
+  &__icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  &__text {
+    line-height: 130%;
+    font-size: 14px;
+  }
+
+  &:hover {
+    background-color: var(--color-nodes-flow-link-hover-bg);
+  }
+}
+
+// small
+.go-to-button.icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+// full
+.go-to-button.full {
+  height: 36px;
+  padding: 0 8px;
+  gap: 10px;
+}
