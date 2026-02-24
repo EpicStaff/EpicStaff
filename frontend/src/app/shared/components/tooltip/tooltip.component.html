@@ -1,0 +1,14 @@
+<div class="tooltip-label-container">
+    <label class="tooltip-label">
+        <span class="tooltip-label-text">{{ label() }}</span>
+        @if (required()) {
+            <span class="tooltip-label-required">*</span>
+        }
+    </label>
+    @if (tooltipText()) {
+        <app-help-tooltip
+            [text]="tooltipText()"
+            position="right"
+        ></app-help-tooltip>
+    }
+</div>

@@ -1,0 +1,111 @@
+<div class="chunks">
+    @if (selectedDocState(); as state) {
+        @switch (state.status) {
+            @case ('new') {
+                <ng-container
+                    *ngTemplateOutlet="chunksHeader;
+                    context: { disabled: false, statusText: null, statusClass: null, btnText: 'Run chunk' }"
+                ></ng-container>
+                <div class="chunks__empty">
+                    <app-icon
+                        [icon]="'ui/file-checked'"
+                        [size]="'3rem'"
+                    />
+                    <span>Chunking Ready Document</span>
+                </div>
+            }
+            @case ('chunking') {
+                <app-spinner
+                    class="chunks__loader"
+                    text="Running chunking process..."
+                    [isOverlay]="false"
+                />
+            }
+
+            @case ('fetching_chunks') {
+                <app-spinner
+                    class="chunks__loader"
+                    text="Fetching chunks..."
+                    [isOverlay]="false"
+                />
+            }
+            @case ('chunks_ready') {
+                <ng-container
+                    *ngTemplateOutlet="chunksHeader;
+                    context: {
+                        disabled: true,
+                        statusText: 'Synchronized',
+                        statusClass: 'synchronized',
+                        statusIcon: 'ui/check',
+                        btnText: 'Fresh chunks'
+                    }"
+                ></ng-container>
+                <app-chunk-preview
+                    [chunkingState]="state"
+                    [ragId]="naiveRagId()"
+                    [docId]="selectedDocumentId()!"
+                />
+            }
+            @case ('chunks_outdated') {
+                <ng-container
+                    *ngTemplateOutlet="chunksHeader;
+                    context: {
+                        disabled: false,
+                        statusText: 'Outdated',
+                        statusClass: 'outdated',
+                        statusIcon: 'ui/clock',
+                        btnText: 'Fresh chunks'
+                    }"
+                ></ng-container>
+                <app-chunk-preview
+                    [chunkingState]="state"
+                    [ragId]="naiveRagId()"
+                    [docId]="selectedDocumentId()!"
+                />
+            }
+        }
+    } @else {
+        <div class="chunks__header"></div>
+        <div class="chunks__empty">
+            <app-icon
+                [icon]="'ui/file'"
+                [size]="'3rem'"
+            />
+            <span>Select document for Chunk Preview</span>
+        </div>
+    }
+</div>
+
+<ng-template
+    #chunksHeader
+    let-disabled="disabled"
+    let-statusText="statusText"
+    let-statusClass="statusClass"
+    let-statusIcon="statusIcon"
+    let-btnText="btnText"
+>
+    <div class="chunks__header">
+        <span>Chunk Preview</span>
+        @if (statusText) {
+            <div class="chunks__status chunks__status--{{statusClass}}">
+                <app-icon
+                    [icon]="statusIcon"
+                    size="0.75rem"
+                />
+                {{ statusText }}
+            </div>
+        }
+
+        <ng-content>
+            <app-button
+                class="chunks__action-btn"
+                type="primary"
+                mod="small"
+                (click)="runChunking()"
+                [disabled]="disabled"
+            >
+                {{ btnText }}
+            </app-button>
+        </ng-content>
+    </div>
+</ng-template>

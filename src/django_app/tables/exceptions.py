@@ -224,7 +224,9 @@ class EmbedderNotFoundException(RagException):
 class InvalidChunkParametersException(RagException):
     """Raised when chunk parameters are invalid."""
 
-    pass
+    def __init__(self, detail=None, errors=None):
+        self.errors = errors or []
+        super().__init__(detail=detail)
 
 
 class DocumentsNotFoundException(RagException):

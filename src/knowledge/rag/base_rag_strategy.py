@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+from typing import Optional
+from services.cancellation_token import CancellationToken
 
 
 class BaseRAGStrategy(ABC):
@@ -41,6 +43,35 @@ class BaseRAGStrategy(ABC):
         Note: rag_id is RAG-specific (naive_rag_id for NaiveRag, graph_rag_id for GraphRag).
         """
         pass
+
+    def process_preview_chunking(
+        self,
+        document_config_id: int,
+        cancellation_token: Optional["CancellationToken"] = None,
+    ) -> int:
+        """
+        Perform preview chunking for a document config.
+
+        This is an optional method - not all RAG strategies support chunking.
+        Override in subclass to implement strategy-specific preview chunking.
+
+        Note: Cleanup of old preview chunks is handled internally by the
+        implementation (before new chunking or during indexing).
+
+        Args:
+            document_config_id: Generic ID of the document config
+                (e.g., naive_rag_document_config_id for NaiveRAG)
+            cancellation_token: Optional token to check if job was cancelled.
+
+        Returns:
+            Number of preview chunks created
+
+        Raises:
+            NotImplementedError: If strategy doesn't support preview chunking
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support preview chunking."
+        )
 
     # Optional shared behavior
     def get_embedder(self, rag_id: int):

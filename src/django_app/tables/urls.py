@@ -96,6 +96,7 @@ from tables.views.knowledge_views.naive_rag_views import (
     NaiveRagDocumentConfigViewSet,
     ProcessNaiveRagDocumentChunkingView,
     NaiveRagChunkViewSet,
+    NaiveRagChunkPreviewView,
 )
 
 
@@ -252,10 +253,16 @@ urlpatterns = [
         RunSessionSSEViewSwagger.as_view(),
         name="run-session-subscribe-swagger",
     ),
+    # Chunking preview endpoints
     path(
-        "process-document-chunking/",
+        "naive-rag/<int:naive_rag_id>/document-configs/<int:document_config_id>/process-chunking/",
         ProcessNaiveRagDocumentChunkingView.as_view(),
         name="process-document-chunking",
+    ),
+    path(
+        "naive-rag/<int:naive_rag_id>/document-configs/<int:document_config_id>/chunks/",
+        NaiveRagChunkPreviewView.as_view(),
+        name="naive-rag-chunks-preview",
     ),
     path(
         "process-rag-indexing/",

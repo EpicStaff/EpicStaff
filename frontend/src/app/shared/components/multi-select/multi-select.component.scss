@@ -10,6 +10,12 @@
         cursor: pointer;
     }
 
+    &__icon {
+        &--active {
+            color: var(--accent-color)
+        }
+    }
+
     &__dropdown {
         position: absolute;
         top: calc(100% + 4px);

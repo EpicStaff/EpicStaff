@@ -48,47 +48,6 @@ class NaiveRagService:
         return strategy in allowed
 
     @staticmethod
-    def validate_chunk_parameters(
-        chunk_size: int, chunk_overlap: int, chunk_strategy: str
-    ) -> None:
-        """
-        Validate chunk parameters.
-
-        Args:
-            chunk_size: Size of chunks
-            chunk_overlap: Overlap between chunks
-            chunk_strategy: Strategy for chunking
-
-        Raises:
-            InvalidChunkParametersException: If parameters are invalid
-        """
-        errors = []
-
-        if chunk_size < MIN_CHUNK_SIZE or chunk_size > MAX_CHUNK_SIZE:
-            errors.append(
-                f"chunk_size must be between {MIN_CHUNK_SIZE} and {MAX_CHUNK_SIZE}"
-            )
-
-        if chunk_overlap < MIN_CHUNK_OVERLAP or chunk_overlap > MAX_CHUNK_OVERLAP:
-            errors.append(
-                f"chunk_overlap must be between {MIN_CHUNK_OVERLAP} and {MAX_CHUNK_OVERLAP}"
-            )
-
-        if chunk_overlap >= chunk_size:
-            errors.append("chunk_overlap must be less than chunk_size")
-
-        valid_strategies = [
-            choice[0] for choice in NaiveRagDocumentConfig.ChunkStrategy.choices
-        ]
-        if chunk_strategy not in valid_strategies:
-            errors.append(
-                f"chunk_strategy must be one of: {', '.join(valid_strategies)}"
-            )
-
-        if errors:
-            raise InvalidChunkParametersException("; ".join(errors))
-
-    @staticmethod
     def validate_strategy_for_file_type(
         chunk_strategy: str, file_type: str, file_name: str
     ) -> None:
@@ -266,22 +225,41 @@ class NaiveRagService:
         if additional_params is not None:
             updates["additional_params"] = additional_params
 
-        # Validate if chunk params are being updated
+        # Validate each field individually (structured errors)
         final_chunk_size = updates.get("chunk_size", config.chunk_size)
         final_chunk_overlap = updates.get("chunk_overlap", config.chunk_overlap)
-        final_chunk_strategy = updates.get("chunk_strategy", config.chunk_strategy)
 
-        NaiveRagService.validate_chunk_parameters(
-            final_chunk_size, final_chunk_overlap, final_chunk_strategy
-        )
+        errors = []
 
-        # Validate strategy for file type if strategy is being changed
-        if chunk_strategy is not None:
-            NaiveRagService.validate_strategy_for_file_type(
-                chunk_strategy=final_chunk_strategy,
-                file_type=config.document.file_type,
-                file_name=config.document.file_name,
+        if chunk_size is not None:
+            errors.extend(
+                NaiveRagService.validate_field_value("chunk_size", chunk_size)
             )
+
+        if chunk_overlap is not None:
+            errors.extend(
+                NaiveRagService.validate_field_value("chunk_overlap", chunk_overlap)
+            )
+
+        if chunk_strategy is not None:
+            errors.extend(
+                NaiveRagService.validate_field_value(
+                    "chunk_strategy", chunk_strategy, config
+                )
+            )
+
+        # Cross-field validation: chunk_overlap must be less than chunk_size
+        if final_chunk_overlap >= final_chunk_size:
+            errors.append(
+                {
+                    "field": "chunk_overlap",
+                    "value": final_chunk_overlap,
+                    "reason": f"chunk_overlap ({final_chunk_overlap}) must be less than chunk_size ({final_chunk_size})",
+                }
+            )
+
+        if errors:
+            raise InvalidChunkParametersException(errors=errors)
 
         # Apply updates
         for field, value in updates.items():

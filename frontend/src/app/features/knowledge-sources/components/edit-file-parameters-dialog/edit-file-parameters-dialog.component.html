@@ -1,0 +1,60 @@
+<div class="dialog">
+    <div class="dialog__header">
+        <span class="dialog__header-title">
+            Editing File Parameters
+        </span>
+
+        <div class="dialog__actions">
+            <div class="dialog__actions-switcher">
+                <app-icon
+                    [icon]="'ui/arrow-left'"
+                    [size]="'1.5rem'"
+                    class="dialog__action"
+                    [class.dialog__action--disabled]="isPrevDisabled()"
+                    (click)="prevDocument()"
+                />
+                <span>
+                    {{ document().file_name }}
+                </span>
+                <app-icon
+                    [icon]="'ui/arrow-right'"
+                    class="dialog__action"
+                    [size]="'1.5rem'"
+                    [class.dialog__action--disabled]="isNextDisabled()"
+                    (click)="nextDocument()"
+                />
+            </div>
+            <app-icon
+                [icon]="'ui/close'"
+                class="dialog__action"
+                [size]="'1.5rem'"
+                (click)="onClose()"
+            />
+        </div>
+    </div>
+
+    <div class="dialog__content">
+        <div class="dialog__chunk-preview">
+            <app-document-chunks-section
+                #chunksSection
+                [naiveRagId]="data.ragId"
+                [selectedDocumentId]="selectedDocumentId()"
+            >
+                <app-button
+                    class="dialog__chunk-preview-button"
+                    type="outline-primary"
+                    (click)="onShowChunks()"
+                >
+                    Show
+                </app-button>
+            </app-document-chunks-section>
+        </div>
+
+        <app-document-config
+            #formSection
+            [ragId]="data.ragId"
+            [document]="document()"
+            class="dialog__document-config"
+        />
+    </div>
+</div>

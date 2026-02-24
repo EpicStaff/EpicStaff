@@ -10,7 +10,7 @@ import {
     effect,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, FormControl, Validators } from '@angular/forms';
+import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, Validators } from '@angular/forms';
 import { Dialog, DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize } from 'rxjs/operators';
@@ -84,7 +84,6 @@ export class AddLlmConfigDialogComponent implements OnInit {
         timeout: [LLM_FORM_DEFAULTS.timeout, [Validators.required, Validators.min(1)]],
         seed: [LLM_FORM_DEFAULTS.seed, [Validators.min(-2147483648), Validators.max(2147483647)]],
         headers: this.fb.array([this.createHeaderGroup()]),
-        stopSequences: this.fb.array([this.createStopSequenceControl()]),
     });
 
     isLoading = signal(false);
@@ -142,10 +141,6 @@ export class AddLlmConfigDialogComponent implements OnInit {
         return this.form.get('headers') as FormArray;
     }
 
-    get stopSequencesArray(): FormArray {
-        return this.form.get('stopSequences') as FormArray;
-    }
-
     constructor() {
         effect(() => {
             const provider = this.selectedProvider();
@@ -172,10 +167,6 @@ export class AddLlmConfigDialogComponent implements OnInit {
             key: [''],
             value: [''],
         });
-    }
-
-    private createStopSequenceControl(): FormControl {
-        return this.fb.control('');
     }
 
     ngOnInit(): void {
@@ -245,15 +236,6 @@ export class AddLlmConfigDialogComponent implements OnInit {
 
         this.logitBiasText.set(JSON.stringify(config.logit_bias ?? {}, null, 2));
         this.responseFormatText.set(JSON.stringify(config.response_format ?? {}, null, 2));
-        
-        // Populate stop sequences array
-        if (config.stop && config.stop.length > 0) {
-            this.stopSequencesArray.clear();
-            config.stop.forEach(seq => {
-                this.stopSequencesArray.push(this.fb.control(seq));
-            });
-            this.stopSequencesArray.push(this.createStopSequenceControl());
-        }
         
         // Rebuild headers form array
         const headersToSet = config.headers || {};
@@ -354,18 +336,6 @@ export class AddLlmConfigDialogComponent implements OnInit {
         }
     }
 
-    addStopSequence(): void {
-        this.stopSequencesArray.push(this.createStopSequenceControl());
-    }
-
-    removeStopSequence(index: number): void {
-        this.stopSequencesArray.removeAt(index);
-        
-        if (this.stopSequencesArray.length === 0) {
-            this.stopSequencesArray.push(this.createStopSequenceControl());
-        }
-    }
-
     private syncHeadersToJson(): void {
         const headersObj: Record<string, string> = {};
         this.headersArray.controls.forEach((control) => {
@@ -434,10 +404,6 @@ export class AddLlmConfigDialogComponent implements OnInit {
 
         const formValue = this.form.value;
 
-        const stopSeqValues = formValue.stopSequences
-            .map((val: string) => val?.trim())
-            .filter((val: string) => val);
-        const stopSequences = stopSeqValues.length > 0 ? stopSeqValues : null;
         const logitBias = this.parseJsonObject<Record<string, number>>(this.logitBiasText());
         const responseFormat = this.parseJsonObject<Record<string, unknown>>(this.responseFormatText());
         const headersObj = this.parseJsonObject<Record<string, string>>(this.headersText()) ?? this.headers();
@@ -460,7 +426,7 @@ export class AddLlmConfigDialogComponent implements OnInit {
             max_tokens: formValue.maxTokens,
             timeout: formValue.timeout,
             seed: seedValue,
-            stop: stopSequences,
+            stop: [],
             logit_bias: logitBias,
             response_format: responseFormat,
             is_visible: true,

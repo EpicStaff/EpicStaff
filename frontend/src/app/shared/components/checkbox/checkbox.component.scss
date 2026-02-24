@@ -53,3 +53,8 @@ input.multiselect {
     border: 1px solid var(--color-ks-transparent-text-20);
     background-color: var(--color-ks-transparent-text-20);
 }
+
+input:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}

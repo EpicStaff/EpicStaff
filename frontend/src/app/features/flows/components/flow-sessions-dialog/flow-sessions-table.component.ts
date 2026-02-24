@@ -7,10 +7,8 @@ import {
   ChangeDetectorRef,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { CheckboxComponent } from '../../../../shared/components/form-controls/checkbox/checkbox.component';
+import { CheckboxComponent, LoadingSpinnerComponent, IconButtonComponent } from "@shared/components";
 import { FlowSessionStatusBadgeComponent } from './flow-session-status-badge.component';
-import { LoadingSpinnerComponent } from '../../../../shared/components/loading-spinner/loading-spinner.component';
-import { IconButtonComponent } from '../../../../shared/components/buttons/icon-button/icon-button.component';
 import {
   GraphSession,
   GraphSessionLight,
@@ -49,9 +47,8 @@ import { GraphDto } from '../../models/graph.model';
               <app-checkbox
                 [checked]="areAllSelected()"
                 [disabled]="isLoading || sessions.length === 0"
-                (checkedChange)="toggleSelectAll($event)"
+                (changed)="toggleSelectAll($event)"
                 id="select-all-checkbox"
-                label=""
               ></app-checkbox>
             </th>
             <th>ID</th>
@@ -86,7 +83,7 @@ import { GraphDto } from '../../models/graph.model';
             <td>
               <app-checkbox
                 [checked]="isSelected(session.id)"
-                (checkedChange)="toggleSelection(session.id, $event)"
+                (changed)="toggleSelection(session.id, $event)"
                 [id]="'session-checkbox-' + session.id"
               ></app-checkbox>
             </td>

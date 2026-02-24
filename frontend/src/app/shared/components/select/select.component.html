@@ -1,7 +1,17 @@
+@if (label()) {
+    <app-tooltip
+        [required]="required()"
+        [tooltipText]="tooltipText()"
+        [label]="label()"
+        [icon]="icon()"
+    />
+}
+
 <div class="selector">
     <button
         #triggerBtn
         class="selector__btn"
+        [disabled]="isDisabled()"
         [ngClass]="'selector__btn--mod-' + mod()"
         [class.selector__btn--invalid]="invalid()"
         [class.selector__btn--placeholder]="!selectedItem()"

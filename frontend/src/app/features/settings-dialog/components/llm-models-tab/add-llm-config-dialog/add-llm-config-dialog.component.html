@@ -254,44 +254,7 @@
                     />
                 </div>
 
-                <div class="llm-dialog__field">
-                    <label class="llm-dialog__label">
-                        Stop Sequences
-                        <app-help-tooltip text="Sequences that will stop generation when encountered" />
-                    </label>
-                    <div class="llm-dialog__headers-container" formArrayName="stopSequences">
-                        @for (seq of stopSequencesArray.controls; track seq; let i = $index) {
-                            <div class="llm-dialog__header-row">
-                                <input
-                                    type="text"
-                                    class="llm-dialog__input llm-dialog__input--header"
-                                    [formControlName]="i"
-                                    style="flex: 1;"
-                                />
-                                <button
-                                    type="button"
-                                    class="llm-dialog__header-action llm-dialog__header-action--remove"
-                                    (click)="removeStopSequence(i)"
-                                    [title]="'Remove'"
-                                >
-                                    <app-icon icon="ui/x" size="1rem" />
-                                </button>
-                                @if (i === stopSequencesArray.length - 1) {
-                                    <button
-                                        type="button"
-                                        class="llm-dialog__header-action llm-dialog__header-action--add"
-                                        (click)="addStopSequence()"
-                                        [title]="'Add'"
-                                    >
-                                        <app-icon icon="ui/plus" size="1rem" />
-                                    </button>
-                                } @else {
-                                    <div class="llm-dialog__header-action llm-dialog__header-action--spacer"></div>
-                                }
-                            </div>
-                        }
-                    </div>
-                </div>
+                <!-- Stop sequences removed from UI. Keep payload empty until BE/FE requirements change. -->
 
                 <div class="llm-dialog__field">
                     <label class="llm-dialog__label">

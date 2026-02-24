@@ -2,18 +2,17 @@ import {
     ChangeDetectionStrategy,
     Component,
     ElementRef,
-    HostListener,
     ViewChild,
     ViewContainerRef,
     signal,
     input,
-    output, inject, computed, OnInit
+    output, inject, computed, OnInit, model
 } from '@angular/core';
 import {TemplatePortal} from '@angular/cdk/portal';
 
 import {AppIconComponent} from "../app-icon/app-icon.component";
 import {CheckboxComponent} from "../checkbox/checkbox.component";
-import {ButtonComponent} from "../buttons/button/button.component";
+import {ButtonComponent} from "../buttons";
 import {Overlay, OverlayPositionBuilder, OverlayRef} from "@angular/cdk/overlay";
 import {SelectItem} from "../select/select.component";
 
@@ -39,7 +38,7 @@ export class MultiSelectComponent implements OnInit {
     label = input<string>('Select items...');
     searchPlaceholder = input<string>('Search...');
     items = input<SelectItem[]>([]);
-    selectedValues = input<unknown[]>([]);
+    selectedValues = model<unknown[]>([]);
     selectionChange = output<unknown[]>();
 
     grouped = input<boolean>(false);
@@ -101,18 +100,6 @@ export class MultiSelectComponent implements OnInit {
         this.isOpen() ? this.close() : this.openDropdown();
     }
 
-    @HostListener('document:click', ['$event'])
-    onOutsideClick(event: MouseEvent) {
-        if (!this.isOpen()) return;
-
-        const target = event.target as HTMLElement;
-        if (!this.triggerBtn.nativeElement.contains(target) &&
-            !this.overlayRef?.overlayElement.contains(target)) {
-            this.tempSelected.set([...this.selectedValues()]);
-            this.close();
-        }
-    }
-
     openDropdown() {
         if (!this.overlayRef) {
             const positionStrategy = this.overlayPositionBuilder
@@ -167,6 +154,7 @@ export class MultiSelectComponent implements OnInit {
 
     save() {
         this.selectionChange.emit(this.tempSelected());
+        this.selectedValues.set(this.tempSelected());
         this.close();
     }
 }

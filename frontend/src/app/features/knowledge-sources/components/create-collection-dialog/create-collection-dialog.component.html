@@ -22,7 +22,7 @@
             </app-button>
             <app-button
                 type="primary"
-                [rightIcon]="'ui/arrow-right'"
+                [rightIcon]="currentStepIndex() < 2 ? 'ui/arrow-right' : ''"
                 [disabled]="nextStepDisabled()"
                 (click)="nextStep()"
             >

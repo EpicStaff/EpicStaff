@@ -3,24 +3,48 @@
   <div class="left-section">
     <span class="editor-title">
       <i class="ti ti-brackets json-icon"></i>
-      JSON Editor
+      {{ title }}
     </span>
     <span class="validation-message" *ngIf="!jsonIsValid">
       Invalid JSON format
     </span>
   </div>
+    <div class="right-section">
+      @if (collapsible) {
+        <app-icon
+          class="action-icon"
+          [icon]="collapsed ? 'ui/preview' : 'ui/preview-hidden'"
+          size="1rem"
+          (click)="onToggle()"
+        />
+      }
+      @if (allowCopy) {
+        <app-icon
+          class="action-icon"
+          [icon]="'ui/fold'"
+          size="1rem"
+          (click)="onCopy()"
+        />
+      }
+    </div>
 </div>
 
 <!-- Editor Container -->
-<div class="editor-container" #editorContainer>
-  <ngx-monaco-editor
-    [options]="editorOptions"
-    [(ngModel)]="jsonData"
-    (ngModelChange)="onJsonChange($event)"
-    (onInit)="onEditorInit($event)"
-    class="monaco-editor"
-    [style.height]="fullHeight ? '100%' : editorHeight + 'px'"
-  ></ngx-monaco-editor>
+<div
+  class="editor-container"
+  [class.collapsed]="collapsible && collapsed"
+  #editorContainer
+>
+  @if (!collapsible || !collapsed) {
+    <ngx-monaco-editor
+      [options]="editorOptions"
+      [(ngModel)]="jsonData"
+      (ngModelChange)="onJsonChange($event)"
+      (onInit)="onEditorInit($event)"
+      class="monaco-editor"
+      [style.height]="fullHeight ? '100%' : editorHeight + 'px'"
+    ></ngx-monaco-editor>
+  }
 
   <!-- Loading Overlay -->
   <div class="editor-loading-overlay" *ngIf="!editorLoaded">

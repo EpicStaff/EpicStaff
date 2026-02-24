@@ -2,5 +2,6 @@
        [indeterminate]="indeterminate()"
        [checked]="checked()"
        [class]="mod()"
-       (change)="changed.emit()"
+       [disabled]="disabled()"
+       (change)="toggleCheckbox($event)"
 />

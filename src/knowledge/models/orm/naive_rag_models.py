@@ -142,6 +142,11 @@ class NaiveRagDocumentConfig(Base):
         back_populates="naive_rag_document_config",
         cascade="all, delete-orphan",
     )
+    preview_chunks = relationship(
+        "NaiveRagPreviewChunk",
+        back_populates="naive_rag_document_config",
+        cascade="all, delete-orphan",
+    )
     embeddings = relationship(
         "NaiveRagEmbedding",
         back_populates="naive_rag_document_config",
@@ -189,6 +194,8 @@ class NaiveRagChunk(Base):
         Integer, nullable=False, comment="Order of this chunk in the document"
     )
     token_count = Column(Integer, nullable=True)
+    overlap_start_index = Column(Integer, nullable=True)
+    overlap_end_index = Column(Integer, nullable=True)
     chunk_metadata = Column(
         "metadata",
         JSON,
@@ -275,3 +282,51 @@ class NaiveRagEmbedding(Base):
 
     def __str__(self):
         return f"NaiveRagEmbedding {self.embedding_id}"
+
+
+class NaiveRagPreviewChunk(Base):
+    """
+    Temporary preview chunks for testing different chunking parameters.
+    """
+
+    __tablename__ = "tables_naiveragpreviewchunk"
+
+    preview_chunk_id = Column(Integer, primary_key=True, autoincrement=True)
+
+    naive_rag_document_config_id = Column(
+        Integer,
+        ForeignKey("tables_naiveragdocumentconfig.naive_rag_document_id"),
+        nullable=False,
+    )
+
+    text = Column(Text, nullable=False)
+    chunk_index = Column(
+        Integer, nullable=False, comment="Order of this chunk in the document"
+    )
+    token_count = Column(Integer, nullable=True)
+    overlap_start_index = Column(Integer, nullable=True)
+    overlap_end_index = Column(Integer, nullable=True)
+    chunk_metadata = Column(
+        "metadata",
+        JSON,
+        default=dict,
+        comment="Chunk-specific metadata (page numbers, sections, etc.)",
+    )
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    naive_rag_document_config = relationship(
+        "NaiveRagDocumentConfig", back_populates="preview_chunks"
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_naiveragpreviewchunk_config_index",
+            "naive_rag_document_config_id",
+            "chunk_index",
+        ),
+    )
+
+    def __str__(self):
+        return f"NaiveRagPreviewChunk {self.preview_chunk_id} (index: {self.chunk_index})"

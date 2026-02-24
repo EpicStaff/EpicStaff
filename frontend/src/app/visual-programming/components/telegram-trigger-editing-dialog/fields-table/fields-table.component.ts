@@ -4,7 +4,7 @@ import {
     computed, input,
     model,
 } from "@angular/core";
-import {CheckboxComponent} from "../../../../shared/components/checkbox/checkbox.component";
+import {CheckboxComponent} from "@shared/components";
 import {TableItem} from "../telegram-trigger-editing-dialog.component";
 import {VariablesInputComponent} from "./variables-input/variables-input.component";
 

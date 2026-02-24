@@ -1,15 +1,15 @@
-import {ChangeDetectionStrategy, Component, DestroyRef, inject, model, OnInit, signal} from "@angular/core";
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, model, OnInit, signal } from "@angular/core";
 
-import {RagTypeComponent} from "./rag-type/rag-type.component";
-import {RAG_TYPES} from "../../../../constants/constants";
-import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
-import {EmbeddingConfigsService} from "../../../../../settings-dialog/services/embeddings/embedding_configs.service";
-import {EmbeddingConfig} from "../../../../../settings-dialog/models/embeddings/embedding-config.model";
-import {SelectComponent, SelectItem} from "../../../../../../shared/components/select/select.component";
-import {map} from "rxjs/operators";
-import {RagType} from "../../../../models/rag.model";
-import {ToastService} from "../../../../../../services/notifications/toast.service";
-import {MATERIAL_FORMS} from "../../../../../../shared/material-forms";
+import { RagTypeComponent } from "./rag-type/rag-type.component";
+import { RAG_TYPES } from "../../../../constants/constants";
+import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
+import { EmbeddingConfigsService } from "../../../../../settings-dialog/services/embeddings/embedding_configs.service";
+import { EmbeddingConfig } from "../../../../../settings-dialog/models/embeddings/embedding-config.model";
+import { SelectComponent, SelectItem } from "@shared/components";
+import { map } from "rxjs/operators";
+import { RagType } from "../../../../models/naive-rag.model";
+import { ToastService } from "../../../../../../services/notifications";
+import { MATERIAL_FORMS } from "@shared/material-forms";
 
 @Component({
     selector: "app-step-select-rag",

@@ -9,9 +9,11 @@ import {
     model, output, computed, inject
 } from '@angular/core';
 
-import {TemplatePortal} from '@angular/cdk/portal';
-import {NgClass} from "@angular/common";
-import {Overlay, OverlayPositionBuilder, OverlayRef, OverlayModule} from "@angular/cdk/overlay";
+import { TemplatePortal } from '@angular/cdk/portal';
+import { NgClass } from "@angular/common";
+import { Overlay, OverlayPositionBuilder, OverlayRef, OverlayModule } from "@angular/cdk/overlay";
+import { ControlValueAccessor, NG_VALUE_ACCESSOR } from "@angular/forms";
+import { TooltipComponent } from "../tooltip/tooltip.component";
 
 export interface SelectItem {
     name: string;
@@ -22,17 +24,30 @@ export interface SelectItem {
 
 @Component({
     selector: 'app-select',
-    standalone: true,
-    imports: [NgClass, OverlayModule],
+    imports: [NgClass, TooltipComponent, OverlayModule],
     templateUrl: './select.component.html',
     styleUrls: ['./select.component.scss'],
+    providers: [
+        {
+            provide: NG_VALUE_ACCESSOR,
+            useExisting: SelectComponent,
+            multi: true
+        }
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class SelectComponent {
+export class SelectComponent implements ControlValueAccessor {
+    icon = input<string>('help_outline');
+    label = input<string>('');
+    required = input<boolean>(false);
+    tooltipText = input<string>('');
     mod = input<'default' | 'small'>('default');
     items = input<SelectItem[]>([]);
     placeholder = input<string>('Select option');
     invalid = input<boolean>(false);
+
+    open = signal(false);
+    isDisabled = signal(false);
 
     selectedValue = model<unknown | null>(null);
     selectedItem = computed(() => {
@@ -44,7 +59,8 @@ export class SelectComponent {
 
     changed = output<any>();
 
-    open = signal(false);
+    private onChange: (value: unknown) => void = () => {};
+    private onTouched: () => void = () => {};
 
     @ViewChild('triggerBtn') triggerBtn!: ElementRef<HTMLButtonElement>;
     @ViewChild('dropdownTemplate') dropdownTemplate!: any;
@@ -92,12 +108,33 @@ export class SelectComponent {
         if (this.overlayRef) {
             this.overlayRef.detach();
         }
+        this.onTouched();
         this.open.set(false);
     }
 
     select(item: SelectItem) {
+        if (this.isDisabled()) return;
+        this.onChange(item.value);
+        this.onTouched();
+
         this.selectedValue.set(item.value);
         this.changed.emit(item.value);
         this.close();
+    }
+
+    writeValue(value: unknown): void {
+        this.selectedValue.set(value);
+    }
+
+    registerOnChange(fn: (value: unknown) => void): void {
+        this.onChange = fn;
+    }
+
+    registerOnTouched(fn: () => void): void {
+        this.onTouched = fn;
+    }
+
+    setDisabledState(isDisabled: boolean): void {
+        this.isDisabled.set(isDisabled);
     }
 }

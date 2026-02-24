@@ -135,7 +135,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         session_data: SessionData = self.create_session_data(session=session)
         # TODO: add ping or waiting for crew to accept connections
 
-        session.graph_schema = session_data.graph.model_dump()
+        session.graph_schema = session_data.graph.model_dump(mode="json")
         received_n = self.redis_service.publish_session_data(
             session_data=session_data,
         )

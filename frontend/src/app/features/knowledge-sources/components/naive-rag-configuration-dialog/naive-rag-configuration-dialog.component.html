@@ -5,18 +5,19 @@
         </span>
 
         <div class="dialog__actions">
-            <app-icon
-                [icon]="'ui/close'"
-                class="dialog__action"
-                [size]="'1.5rem'"
-                (click)="onCancel()"
-            />
-            <app-icon
-                [icon]="'ui/check'"
-                class="dialog__action dialog__action--save"
-                [size]="'1.5rem'"
-                (click)="onSave()"
-            />
+            <app-button
+                type="outline-primary"
+                (click)="onClose()"
+            >
+                Close
+            </app-button>
+
+            <app-button
+                type="primary"
+                (click)="runIndexing()"
+            >
+                Run reindexing
+            </app-button>
         </div>
     </div>
 
@@ -24,6 +25,5 @@
         class="dialog__content"
         [naiveRagId]="data.ragId"
         [collection]="data.collection"
-        [allowBulkEdit]="true"
     />
 </div>

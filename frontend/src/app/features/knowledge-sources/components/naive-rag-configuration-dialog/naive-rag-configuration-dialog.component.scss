@@ -27,29 +27,6 @@
         column-gap: 1rem;
     }
 
-    &__action {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        border: 1px solid var(--accent-color);
-        background: transparent;
-        color: var(--accent-color);
-        cursor: pointer;
-
-        &--save {
-            background-color: var(--accent-color);
-            color: var(--color-text);
-        }
-
-        &:hover {
-            border-color: var(--accent-color-hover);
-            color: var(--accent-color-hover);
-        }
-    }
-
     &__content {
         flex-grow: 1;
         overflow: hidden;

@@ -37,7 +37,7 @@ export class ConfirmationDialogService {
   confirmDelete(itemName: string): Observable<ConfirmationResult> {
     return this.confirm({
       title: 'Confirm Deletion',
-      message: `Are you sure you want to delete <strong>${itemName}</strong>? This action cannot be undone.`,
+      message: `Are you sure you want to delete <strong>${itemName}</strong>? <br> This action cannot be undone.`,
       confirmText: 'Delete',
       cancelText: 'Cancel',
       type: 'danger',
@@ -55,7 +55,7 @@ export class ConfirmationDialogService {
 
     return this.confirm({
       title: 'Confirm Deletion',
-      message: `Are you sure you want to delete <strong>${truncatedName}</strong>? This action cannot be undone.`,
+      message: `Are you sure you want to delete <strong>${truncatedName}</strong>? <br> This action cannot be undone.`,
       confirmText: 'Delete',
       cancelText: 'Cancel',
       type: 'danger',

@@ -1,4 +1,4 @@
-from chunkers.base_chunker import BaseChunker
+from chunkers.base_chunker import BaseChunker, BaseChunkData
 import math
 
 
@@ -12,7 +12,7 @@ class CSVChunker(BaseChunker):
         self.headers_level: int = csv_params.get("headers_level", 1)
         self.rows_in_chunk: int = csv_params.get("rows_in_chunk", 150)
 
-    def chunk(self, text: str) -> list[str]:
+    def chunk(self, text: str) -> list[BaseChunkData]:
         lines = text.strip().splitlines()
 
         headers = lines[: self.headers_level]
@@ -31,6 +31,6 @@ class CSVChunker(BaseChunker):
             chunk_with_headers = "\n".join(list_chunk_with_headers)
             full_chunk_text = f"File name: {self.file_name} \n\n{chunk_with_headers}"
 
-            results.append(full_chunk_text)
+            results.append(BaseChunkData(text=full_chunk_text))
 
         return results

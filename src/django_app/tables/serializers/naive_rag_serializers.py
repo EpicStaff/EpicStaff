@@ -4,6 +4,8 @@ from tables.models.knowledge_models import (
     NaiveRag,
     NaiveRagDocumentConfig,
     NaiveRagChunk,
+    NaiveRagPreviewChunk,
+    DocumentMetadata,
 )
 
 from tables.models.knowledge_models.naive_rag_models import (
@@ -299,19 +301,71 @@ class DocumentConfigBulkDeleteSerializer(serializers.Serializer):
         return list(set(value))
 
 
-class ProcessNaiveRagDocumentChunkingSerializer(serializers.Serializer):
-    naive_rag_document_id = serializers.IntegerField(required=True)
-
-
 class NaiveRagChunkSerializer(serializers.ModelSerializer):
+    """Serializer for indexed chunks."""
+
     class Meta:
         model = NaiveRagChunk
-        fields = "__all__"
+        fields = [
+            "chunk_id",
+            "text",
+            "chunk_index",
+            "token_count",
+            "overlap_start_index",
+            "overlap_end_index",
+            "metadata",
+            "created_at",
+        ]
+        read_only_fields = fields
 
-    # def validate_naive_rag_document_id(self, value):
-    #     if not NaiveRagDocumentConfig.objects.filter(naive_rag_document_id=value).exists():
-    #         raise serializers.ValidationError("NaiveRag Document config with this id does not exist.")
-    #     return value
+
+class NaiveRagPreviewChunkSerializer(serializers.ModelSerializer):
+    """Serializer for preview chunks."""
+
+    class Meta:
+        model = NaiveRagPreviewChunk
+        fields = [
+            "preview_chunk_id",
+            "text",
+            "chunk_index",
+            "token_count",
+            "overlap_start_index",
+            "overlap_end_index",
+            "metadata",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class ChunkingResponseSerializer(serializers.Serializer):
+    """
+    Response serializer for process-chunking endpoint.
+    """
+
+    chunking_job_id = serializers.CharField()
+    naive_rag_id = serializers.IntegerField()
+    document_config_id = serializers.IntegerField()
+    status = serializers.CharField()  # "completed", "failed", "cancelled", "timeout"
+    chunk_count = serializers.IntegerField(allow_null=True)
+    message = serializers.CharField(allow_null=True, allow_blank=True)
+    elapsed_time = serializers.FloatField(
+        allow_null=True, help_text="Chunking duration in seconds"
+    )
+
+
+class ChunkPreviewResponseSerializer(serializers.Serializer):
+    """
+    Response serializer for GET chunks endpoint.
+    Supports pagination for endless scrolling.
+    """
+
+    naive_rag_id = serializers.IntegerField()
+    document_config_id = serializers.IntegerField()
+    status = serializers.CharField()
+    total_chunks = serializers.IntegerField()
+    limit = serializers.IntegerField()
+    offset = serializers.IntegerField()
+    chunks = serializers.ListField(child=serializers.DictField())
 
 
 class NaiveRagLightSerializer(serializers.ModelSerializer):

@@ -10,7 +10,6 @@ import { OpenProjectPageComponent } from './open-project-page/open-project-page.
 import { FlowVisualProgrammingComponent } from './pages/flows-page/components/flow-visual-programming/flow-visual-programming.component';
 import { StaffPageComponent } from './pages/staff-page/staff-page.component';
 import { RunningGraphComponent } from './pages/running-graph/running-graph-page.component';
-import { KnowledgeSourcesComponent } from './pages/knowledge-sources/knowledge-sources.component';
 import { ChatsPageComponent } from './pages/chats-page/chats-page.component';
 
 import { ProjectsListPageComponent } from './features/projects/pages/projects-list-page/projects-list-page.component';

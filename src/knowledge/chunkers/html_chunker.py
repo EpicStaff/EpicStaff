@@ -1,4 +1,5 @@
-from chunkers.base_chunker import BaseChunker
+import json
+from chunkers.base_chunker import BaseChunker, BaseChunkData
 
 from langchain_text_splitters import HTMLSemanticPreservingSplitter
 
@@ -48,7 +49,7 @@ class HTMLChunker(BaseChunker):
             stopword_removal=stopword_removal,
             stopword_lang=stopword_lang,
             normalize_text=normalize_text,
-            external_metadata=external_metadata,
+            external_metadata=self._convert_to_dict(external_metadata),
             allowlist_tags=allowlist_tags,
             denylist_tags=denylist_tags,
             preserve_parent_metadata=preserve_parent_metadata,
@@ -69,10 +70,25 @@ class HTMLChunker(BaseChunker):
         else:
             return []
 
-    def chunk(self, html_text: str) -> list[str]:
+    def _convert_to_dict(self, obj) -> dict | None:
+        if isinstance(obj, dict):
+            return obj
+        if isinstance(obj, str):
+            try:
+                result = json.loads(obj)
+                return result if isinstance(result, dict) else None
+            except (json.JSONDecodeError, ValueError):
+                return None
+        return None
+
+    def chunk(self, html_text: str) -> list[BaseChunkData]:
         documents = self.splitter.split_text(html_text)
         chunks = [
-            f"{doc.metadata}\n{doc.page_content}" if doc.metadata else doc.page_content
+            BaseChunkData(
+                text=f"{doc.metadata}\n{doc.page_content}"
+                if doc.metadata
+                else doc.page_content
+            )
             for doc in documents
         ]
 

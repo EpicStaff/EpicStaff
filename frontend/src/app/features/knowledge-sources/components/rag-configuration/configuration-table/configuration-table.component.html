@@ -2,13 +2,14 @@
     <!-- HEADER ROW -->
     <div
         class="table__row table__header"
-        [style]="{'margin-bottom': bulkEditing() ? '0.25rem' : '0.5rem'}"
+        [style]="{'margin-bottom': showBulkRow() ? '0.25rem' : '0.5rem'}"
     >
         <!-- 1. Checkbox -->
-        <div class="table__col" (click)="toggleAll()">
+        <div class="table__col">
             <app-checkbox
                 [checked]="allChecked()"
                 [indeterminate]="indeterminate()"
+                (changed)="toggleAll()"
             />
         </div>
 
@@ -34,43 +35,23 @@
             />
         </div>
 
-        <!-- 4. Chunk Size (sortable) -->
-        <div class="table__col table__col--clickable" (click)="sortBy('chunk_size')">
+        <!-- 4. Chunk Size -->
+        <div class="table__col table__col--center">
             CHUNK SIZE
-            <app-icon
-                class="table__sort-icon"
-                [class.table__sort-icon--active]="sort()?.column === 'chunk_size' && sort()?.dir === 'desc'"
-                size="1rem"
-                [icon]="'ui/arrow-up'"
-            />
         </div>
 
-        <!-- 5. Overlap (sortable) -->
-        <div class="table__col table__col--clickable" (click)="sortBy('chunk_overlap')">
+        <!-- 5. Overlap -->
+        <div class="table__col table__col--center">
             OVERLAP
-            <app-icon
-                class="table__sort-icon"
-                [class.table__sort-icon--active]="sort()?.column === 'chunk_overlap' && sort()?.dir === 'desc'"
-                size="1rem"
-                [icon]="'ui/arrow-up'"
-            />
         </div>
 
-        <!-- 6. Initialize files -->
+        <!-- 6. Empty space -->
         <div class="table__col">
-            <app-button
-                class="table__col-btn"
-                type="outline-primary"
-                mod="small"
-                (click)="initFiles()"
-            >
-                Init All
-            </app-button>
         </div>
     </div>
 
     <!-- BULK EDIT ROW  -->
-    @if (bulkEditing() && checkedDocumentIds().length) {
+    @if (showBulkRow()) {
         <div class="table__row table__bulk-row">
             <div class="table__col"></div>
             <div class="table__col">For selected:</div>
@@ -84,7 +65,7 @@
                 />
             </div>
 
-            @if (bulkChunkStrategy() === 'csv' || bulkChunkStrategy() === 'html') {
+            @if (bulkChunkStrategy() === 'csv') {
                 <!-- chunk size -->
                 <div class="table__col table__col--unavailable">
                     Unavailable
@@ -122,8 +103,8 @@
                     class="table__col-btn"
                     type="outline-primary"
                     mod="small"
-                    [disabled]="!bulkAction()"
-                    (click)="bulkApply()"
+                    [disabled]="!checkedDocumentIds().length"
+                    (click)="onApplyBulkEdit()"
                 >
                     Apply
                 </app-button>
@@ -134,11 +115,11 @@
     <!-- DATA ROWS -->
     <div class="table__files-wrapper">
         <ol class="table__rows">
-            @for (d of filteredAndSorted(); track d.naive_rag_document_id; let odd = $odd; let i = $index) {
+            @for (d of filteredDocuments(); track d.naive_rag_document_id; let odd = $odd; let i = $index) {
                 <div
                     class="table__row-wrapper"
                     [class.table__row-wrapper--dark]="odd"
-                    [class.table__row-wrapper--selected]="d.document_id === selectedDocumentId()"
+                    [class.table__row-wrapper--selected]="d.naive_rag_document_id === selectedRagDocId()"
                 >
                     <li
                         class="table__row"
@@ -154,7 +135,7 @@
                         <!-- filename -->
                         <div
                             class="table__col table__col-file"
-                            (click)="selectedDocumentId.set(d.document_id)"
+                            (click)="selectedRagDocId.set(d.naive_rag_document_id)"
                         >
                             <span>{{ i + 1 }}</span>
                             <app-icon
@@ -177,11 +158,11 @@
                                 [items]="chunkStrategySelectItems"
                                 [(selectedValue)]="d.chunk_strategy"
                                 [invalid]="!!d.errors?.chunk_strategy"
-                                (changed)="docFieldChange(d, 'chunk_strategy', $event)"
+                                (changed)="onDocFieldChange(d, 'chunk_strategy', $event)"
                             />
                         </div>
 
-                        @if (d.chunk_strategy === 'csv' || d.chunk_strategy === 'html') {
+                        @if (d.chunk_strategy === 'csv') {
                             <!-- chunk size -->
                             <div class="table__col table__col--unavailable">
                                 Unavailable
@@ -200,7 +181,7 @@
                                     [max]="8000"
                                     [(value)]="d.chunk_size"
                                     [invalid]="!!d.errors?.chunk_size"
-                                    (changed)="docFieldChange(d, 'chunk_size', $event)"
+                                    (changed)="onDocFieldChange(d, 'chunk_size', $event)"
                                 />
                             </div>
 
@@ -212,7 +193,7 @@
                                     [max]="1000"
                                     [(value)]="d.chunk_overlap"
                                     [invalid]="!!d.errors?.chunk_overlap"
-                                    (changed)="docFieldChange(d, 'chunk_overlap', $event)"
+                                    (changed)="onDocFieldChange(d, 'chunk_overlap', $event)"
                                 />
                             </div>
                         }

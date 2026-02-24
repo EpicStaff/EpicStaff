@@ -1,4 +1,4 @@
-from chunkers.base_chunker import BaseChunker
+from chunkers.base_chunker import BaseChunker, BaseChunkData
 from langchain_text_splitters import MarkdownHeaderTextSplitter
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -35,11 +35,11 @@ class MarkdownChunker(BaseChunker):
         else:
             return []
 
-    def chunk(self, text: str) -> list[str]:
+    def chunk(self, text: str) -> list[BaseChunkData]:
         md_splits = self.markdown_splitter.split_text(text)
         result_text_splits = []
         for doc in md_splits:
             text_splits = self.text_splitter.split_text(doc.page_content)
-            for text in text_splits:
-                result_text_splits.append(text)
+            for chunk_text in text_splits:
+                result_text_splits.append(BaseChunkData(text=chunk_text))
         return result_text_splits

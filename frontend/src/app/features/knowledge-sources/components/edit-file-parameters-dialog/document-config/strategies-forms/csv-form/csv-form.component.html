@@ -1,0 +1,42 @@
+<form [formGroup]="strategyForm">
+    <span class="config__divider"></span>
+
+    <div class="config__grid" formGroupName="additionalParams">
+        <span class="config__grid-item">Additional parameters</span>
+        <span class="config__grid-item"></span>
+
+        <div class="config__grid-item">
+            <label>Rows In Chunk</label>
+            <mat-icon
+                class="config__tooltip"
+                matTooltip="The number of CSV rows included in each chunk. Larger values preserve more tabular context, while smaller values create more granular chunks."
+                matTooltipPosition="above"
+                matTooltipClass="dialog__label-tooltip"
+            >
+                help_outline
+            </mat-icon>
+        </div>
+        <div class="config__grid-item config__grid-item--short">
+            <app-input-number
+                formControlName="rows_in_chunk"
+            />
+        </div>
+
+        <div class="config__grid-item">
+            <label>Headers level</label>
+            <mat-icon
+                class="config__tooltip"
+                matTooltip="The number of header rows to include with each chunk. Ensures column context is preserved when splitting large CSV files."
+                matTooltipPosition="above"
+                matTooltipClass="dialog__label-tooltip"
+            >
+                help_outline
+            </mat-icon>
+        </div>
+        <div class="config__grid-item config__grid-item--short">
+            <app-input-number
+                formControlName="headers_level"
+            />
+        </div>
+    </div>
+</form>

@@ -10,11 +10,13 @@ from threading import Lock
 
 from django_app.settings import (
     KNOWLEDGE_DOCUMENT_CHUNK_CHANNEL,
+    KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE,
     KNOWLEDGE_INDEXING_CHANNEL,
     STOP_SESSION_CHANNEL,
 )
 from tables.request_models import (
     ChunkDocumentMessage,
+    ChunkDocumentMessageResponse,
     ProcessRagIndexingMessage,
     RealtimeAgentChatData,
     SessionData,
@@ -189,11 +191,78 @@ class RedisService(metaclass=SingletonMeta):
                 await pubsub.unsubscribe(*channels)
                 await pubsub.close()
 
-    def publish_process_document_chunking(self, naive_rag_document_id):
-        message = ChunkDocumentMessage(naive_rag_document_id=naive_rag_document_id)
-        self.redis_client.publish(
-            KNOWLEDGE_DOCUMENT_CHUNK_CHANNEL, json.dumps(message.model_dump())
-        )
+    async def publish_and_wait_for_chunking(
+        self,
+        rag_type: str,
+        document_config_id: int,
+        chunking_job_id: str,
+        timeout: float = 50.0,
+    ) -> ChunkDocumentMessageResponse:
+        """
+        Publish chunking request and wait for response.
+
+        Uses async Redis to:
+        1. Subscribe to response channel
+        2. Publish chunking request
+        3. Wait for response with matching chunking_job_id
+        4. Return response or raise TimeoutError
+
+        Args:
+            rag_type: Type of RAG strategy ("naive", "graph", etc.)
+            document_config_id: Generic ID of the document config to chunk
+            chunking_job_id: UUID for tracking request/response
+            timeout: Max time to wait for response (default: 30s)
+
+        Returns:
+            ChunkDocumentMessageResponse from Knowledge service
+
+        Raises:
+            asyncio.TimeoutError: If no response within timeout
+        """
+        response_channel = KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE
+
+        # Create pubsub and subscribe BEFORE publishing
+        pubsub = self.async_redis_client.pubsub()
+        await pubsub.subscribe(response_channel)
+
+        try:
+            # Publish chunking request
+            message = ChunkDocumentMessage(
+                chunking_job_id=chunking_job_id,
+                rag_type=rag_type,
+                document_config_id=document_config_id,
+            )
+            await self.async_redis_client.publish(
+                KNOWLEDGE_DOCUMENT_CHUNK_CHANNEL,
+                message.model_dump_json(),
+            )
+            logger.info(
+                f"Published chunking request: job_id={chunking_job_id}, "
+                f"rag_type={rag_type}, config_id={document_config_id}"
+            )
+
+            # Wait for response with matching chunking_job_id
+            async with asyncio.timeout(timeout):
+                async for msg in pubsub.listen():
+                    if msg["type"] == "message":
+                        try:
+                            data = json.loads(msg["data"])
+                            if data.get("chunking_job_id") == chunking_job_id:
+                                logger.info(
+                                    f"Received chunking response for job_id={chunking_job_id}"
+                                )
+                                return ChunkDocumentMessageResponse.model_validate(data)
+                        except json.JSONDecodeError:
+                            logger.warning(
+                                f"Invalid JSON in chunking response: {msg['data']}"
+                            )
+                        except Exception as e:
+                            logger.warning(f"Error parsing chunking response: {e}")
+
+        finally:
+            with contextlib.suppress(Exception):
+                await pubsub.unsubscribe(response_channel)
+                await pubsub.close()
 
     def publish_stop_session(self, session_id) -> int:
         message = StopSessionMessage(session_id=session_id)

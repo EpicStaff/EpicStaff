@@ -1,20 +1,19 @@
-import {ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, signal} from "@angular/core";
-import {ButtonComponent} from "../../../../shared/components/buttons/button/button.component";
-import {DIALOG_DATA, DialogRef} from "@angular/cdk/dialog";
-import {AppIconComponent} from "../../../../shared/components/app-icon/app-icon.component";
-import {CreateCollectionStep} from "../../models/collection.model";
-import {StepUploadFilesComponent} from "./steps/step-upload-files/step-upload-files.component";
-import {StepSelectRagComponent} from "./steps/step-select-rag/step-select-rag.component";
-import {StepperComponent} from "./stepper/stepper.component";
-import {DisplayedListDocument} from "../../models/document.model";
-import {RagConfigurationComponent} from "../rag-configuration/rag-configuration.component";
-import {NaiveRagService} from "../../services/naive-rag.service";
-import {catchError, map, tap} from "rxjs/operators";
-import {Observable, of} from "rxjs";
-import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
-import {RagType} from "../../models/rag.model";
-import {ToastService} from "../../../../services/notifications/toast.service";
-import {CollectionsStorageService} from "../../services/collections-storage.service";
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from "@angular/core";
+import { ButtonComponent, AppIconComponent } from "@shared/components";
+import { DIALOG_DATA, DialogRef } from "@angular/cdk/dialog";
+import { CreateCollectionStep } from "../../models/collection.model";
+import { StepUploadFilesComponent } from "./steps/step-upload-files/step-upload-files.component";
+import { StepSelectRagComponent } from "./steps/step-select-rag/step-select-rag.component";
+import { StepperComponent } from "./stepper/stepper.component";
+import { DisplayedListDocument } from "../../models/document.model";
+import { RagConfigurationComponent } from "../rag-configuration/rag-configuration.component";
+import { NaiveRagService } from "../../services/naive-rag.service";
+import { catchError, map, tap } from "rxjs/operators";
+import { Observable, of } from "rxjs";
+import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
+import { RagType } from "../../models/naive-rag.model";
+import { ToastService } from "../../../../services/notifications";
+import { CollectionsStorageService } from "../../services/collections-storage.service";
 
 export interface StepConfig {
     id: CreateCollectionStep;
@@ -49,11 +48,11 @@ export class CreateCollectionDialogComponent {
 
     collection = computed(() => {
         return this.collectionsStorageService.fullCollections().find(
-            ({collection_id}) => collection_id === this.collectionId
+            ({ collection_id }) => collection_id === this.collectionId
         )!;
     })
 
-    private steps = signal<StepConfig[]>([
+    steps = signal<StepConfig[]>([
         {
             id: CreateCollectionStep.UPLOAD_FILES,
             label: 'Upload files',
@@ -73,7 +72,7 @@ export class CreateCollectionDialogComponent {
         {
             id: CreateCollectionStep.CONFIGURE,
             label: 'Configure',
-            proceedLabel: 'Finish',
+            proceedLabel: 'Finish Creation',
             onProceed: () => this.startIndexing(),
             canProceed: () => true,
         },

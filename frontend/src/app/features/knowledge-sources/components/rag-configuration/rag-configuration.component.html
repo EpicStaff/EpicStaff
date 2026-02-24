@@ -7,45 +7,44 @@
                 [(searchTerm)]="searchTerm"
             />
 
-            <div class="configure__bulk-select">
-                @if (allowBulkEdit() && checkedCount()) {
-                    <app-select
-                        placeholder="Manage"
-                        [items]="bulkActionItems"
-                        (changed)="bulkAction.set($event)"
-                    />
-                }
-            </div>
+            <app-button
+                type="outline-primary"
+                (click)="initDocuments()"
+            >
+                Re-include Files
+            </app-button>
+            @if (filteredAndCheckedDocIds().length) {
+                <app-button
+                    [type]="bulkBtnActive() ? 'primary' : 'outline-primary'"
+                    (click)="bulkBtnActive.set(!bulkBtnActive())"
+                >
+                    Bulk configuration
+                </app-button>
+                <app-icon
+                    class="configure__bulk-delete"
+                    [icon]="'ui/trash'"
+                    [size]="'1.5rem'"
+                    (click)="applyBulkDelete()"
+                />
+            }
         </div>
 
         <app-configuration-table
-            [bulkEditing]="allowBulkEdit()"
-            [bulkAction]="bulkAction()"
-            [ragId]="naiveRagId()"
-            [documents]="documents()"
             [searchTerm]="searchTerm()"
-            (checkedCountChange)="checkedCount.set($event)"
-            [(selectedDocumentId)]="selectedDocumentId"
+            [showBulkRow]="showBulkRow()"
+            [ragId]="naiveRagId()"
+            [(selectedRagDocId)]="selectedRagDocId"
+            (docsCheckChange)="filteredAndCheckedDocIds.set($event)"
+            (docFieldChange)="onDocFieldChange($event)"
+            (applyBulkUpdate)="applyBulkEdit($event)"
+            (onTuneChunk)="openTuneChunkModal($event)"
         />
     </div>
 
-    <div class="configure__chunk-section">
-        @if (selectedDocumentId()) {
-            <span class="configure__chunk-header">
-                Chunk Preview
-            </span>
-
-<!--            <app-chunk-preview-->
-<!--                [documentId]="selectedDocumentId()!"-->
-<!--            />-->
-        } @else {
-            <div class="configure__chunk-empty">
-                <app-icon
-                    [icon]="'ui/file'"
-                    [size]="'3rem'"
-                />
-                <span>Chunk Preview</span>
-            </div>
-        }
-    </div>
+    @if (!tuneChunkOpened()) {
+        <app-document-chunks-section
+            [naiveRagId]="naiveRagId()"
+            [selectedDocumentId]="selectedRagDocId()"
+        />
+    }
 </div>

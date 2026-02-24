@@ -1,0 +1,71 @@
+<div class="chunk__items" (scroll)="onScroll($event)">
+    <div class="chunk__id-container">
+        <!--space area for chunk IDs-->
+    </div>
+    <p
+        class="chunk__text-container"
+    >
+        @if (loading()) {
+            <span
+                [style.z-index]="chunks().length"
+                class="chunk__loader chunk__id-item chunk__id-item--odd"
+            >
+                <span class="dot"></span>
+                <span class="dot"></span>
+                <span class="dot"></span>
+            </span>
+            <span class="chunk__item chunk__item--blurred chunk__id-item--odd chunk__item--first"
+            >{{ blurredChunk }}</span>
+        }
+        @for (chunk of chunks(); track chunk.chunkIndex) {
+            <span
+                class="chunk__id-item"
+                [style.z-index]="$count - $index"
+                [ngClass]="$odd ? 'chunk__id-item--odd' : 'chunk__id-item--even'"
+            >
+                {{ chunk.chunkIndex }}
+            </span>
+            @if (chunk.overlap) {
+                <span
+                    [style.z-index]="$count - $index"
+                    class="chunk__item chunk__item--overlap"
+                    [class.chunk__item--last]="$last && !loading() && !chunk.text"
+                    [matTooltip]="'Overlap for chunks ' + (chunk.chunkIndex - 1) + ' and ' + chunk.chunkIndex"
+                >{{ chunk.overlap }}</span>
+            }
+            @if (chunk.text) {
+                <span
+                    class="chunk__item"
+                    [style.z-index]="$count - $index"
+                    [matTooltip]="'Chunk ' + chunk.chunkIndex"
+                    [attr.data-chunk-index]="chunk.chunkIndex"
+                    [ngClass]="{
+                        'chunk__item--odd': $odd,
+                        'chunk__item--even': !$odd,
+                        'chunk__item--first': $first && !loading(),
+                        'chunk__item--last': $last && !loading(),
+                        'chunk__item--single': $count === 1,
+                    }"
+                >{{ chunk.text }}</span>
+            }
+        }
+
+        @if (loading()) {
+            <span
+                [style.z-index]="chunks().length"
+                class="chunk__id-item chunk__loader"
+                [ngClass]="chunks().length % 2 !== 0 ? 'chunk__id-item--odd' : 'chunk__id-item--even'"
+            >
+                <span class="dot"></span>
+                <span class="dot"></span>
+                <span class="dot"></span>
+            </span>
+            <span
+                class="chunk__item chunk__item--blurred chunk__item--last"
+                [ngClass]="chunks().length % 2 !== 0 ? 'chunk__item--odd' : 'chunk__item--even'"
+
+            >{{ blurredChunk }}</span>
+        }
+    </p>
+</div>
+

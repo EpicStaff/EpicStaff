@@ -13,7 +13,7 @@
     (mouseenter)="hovered.set(true)"
     (mouseleave)="hovered.set(false)"
 >
-    @if (hovered()) {
+    @if (hovered() || alwaysShowSteps()) {
         <button
             type="button"
             class="input__step input__step--minus"
@@ -36,7 +36,7 @@
         [disabled]="isDisabled()"
     />
 
-    @if (hovered()) {
+    @if (hovered() || alwaysShowSteps()) {
         <button
             type="button"
             class="input__step input__step--plus"

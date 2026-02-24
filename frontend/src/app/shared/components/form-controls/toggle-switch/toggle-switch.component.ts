@@ -4,9 +4,10 @@ import {
   Output,
   EventEmitter,
   ChangeDetectionStrategy,
-  forwardRef,
+  forwardRef, input,
 } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { TooltipComponent } from "../../tooltip/tooltip.component";
 
 @Component({
   selector: 'app-toggle-switch',
@@ -21,8 +22,16 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
       multi: true,
     },
   ],
+  imports: [
+      TooltipComponent
+  ]
 })
 export class ToggleSwitchComponent implements ControlValueAccessor {
+  icon = input<string>('help_outline');
+  label = input<string>('');
+  required = input<boolean>(false);
+  tooltipText = input<string>('');
+
   @Input() checked = false;
   @Output() checkedChange = new EventEmitter<boolean>();
 

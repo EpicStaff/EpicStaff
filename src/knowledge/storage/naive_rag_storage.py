@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Union
 from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy import delete, select
 from loguru import logger
@@ -8,10 +8,12 @@ from models.orm import (
     NaiveRag,
     NaiveRagDocumentConfig,
     NaiveRagChunk,
+    NaiveRagPreviewChunk,
     NaiveRagEmbedding,
     DocumentMetadata,
 )
 from models.redis_models import KnowledgeChunkResponse
+from chunkers.base_chunker import BaseChunkData
 
 
 class ORMNaiveRagStorage(BaseORMStorage):
@@ -180,14 +182,14 @@ class ORMNaiveRagStorage(BaseORMStorage):
     # ==================== Chunk Operations ====================
 
     def save_document_chunks(
-        self, naive_rag_document_config_id: int, chunk_list: List[str]
+        self, naive_rag_document_config_id: int, chunk_list: List[BaseChunkData]
     ) -> List[NaiveRagChunk]:
         """
         Save multiple chunks for a document config.
 
         Args:
             naive_rag_document_config_id: ID of the document config
-            chunk_list: List of chunk texts
+            chunk_list: List of BaseChunkData instances
 
         Returns:
             List of created NaiveRagChunk instances
@@ -196,10 +198,13 @@ class ORMNaiveRagStorage(BaseORMStorage):
             chunks = [
                 NaiveRagChunk(
                     naive_rag_document_config_id=naive_rag_document_config_id,
-                    text=chunk_text,
+                    text=chunk_data.text,
                     chunk_index=idx,
+                    token_count=chunk_data.token_count,
+                    overlap_start_index=chunk_data.overlap_start_index,
+                    overlap_end_index=chunk_data.overlap_end_index,
                 )
-                for idx, chunk_text in enumerate(chunk_list)
+                for idx, chunk_data in enumerate(chunk_list, start=1)
             ]
             self.session.add_all(chunks)
             self.session.flush()
@@ -267,6 +272,77 @@ class ORMNaiveRagStorage(BaseORMStorage):
                 f"Failed to get chunks for document config {naive_rag_document_config_id}: {e}"
             )
             return []
+
+    # ==================== Preview Chunk Operations ====================
+
+    def delete_preview_chunks(self, naive_rag_document_config_id: int) -> int:
+        """
+        Delete all preview chunks for a document config.
+
+        Args:
+            naive_rag_document_config_id: ID of the document config
+
+        Returns:
+            Number of deleted preview chunks
+        """
+        try:
+            deleted = (
+                self.session.query(NaiveRagPreviewChunk)
+                .filter(
+                    NaiveRagPreviewChunk.naive_rag_document_config_id
+                    == naive_rag_document_config_id
+                )
+                .delete()
+            )
+            logger.debug(
+                f"Deleted {deleted} preview chunks for config {naive_rag_document_config_id}"
+            )
+            return deleted
+
+        except Exception as e:
+            logger.error(
+                f"Failed to delete preview chunks for config {naive_rag_document_config_id}: {e}"
+            )
+            raise
+
+    def save_preview_chunks(
+        self, naive_rag_document_config_id: int, chunk_list: List[BaseChunkData]
+    ) -> List[NaiveRagPreviewChunk]:
+        """
+        Bulk save preview chunks for a document config.
+
+        Args:
+            naive_rag_document_config_id: ID of the document config
+            chunk_list: List of BaseChunkData instances
+
+        Returns:
+            List of created NaiveRagPreviewChunk instances
+        """
+        try:
+            chunks = [
+                NaiveRagPreviewChunk(
+                    naive_rag_document_config_id=naive_rag_document_config_id,
+                    text=chunk_data.text,
+                    chunk_index=idx,
+                    token_count=chunk_data.token_count,
+                    overlap_start_index=chunk_data.overlap_start_index,
+                    overlap_end_index=chunk_data.overlap_end_index,
+                )
+                for idx, chunk_data in enumerate(chunk_list, start=1)
+            ]
+            self.session.add_all(chunks)
+            self.session.flush()
+
+            logger.debug(
+                f"Saved {len(chunks)} preview chunks for config {naive_rag_document_config_id}"
+            )
+            return chunks
+
+        except Exception as e:
+            logger.error(
+                f"Failed to save preview chunks for config {naive_rag_document_config_id}: {e}"
+            )
+            raise
 
     # ==================== Embedding Operations ====================
 

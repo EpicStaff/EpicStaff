@@ -3,13 +3,13 @@ import { AsyncPipe, NgFor } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ChatsSidebarItemComponent } from './chats-sidebar-item/chats-sidebar-item.component';
 import { ChatsService } from '../../services/chats.service';
-import { FullAgent } from '../../../../services/full-agent.service';
-import { Search2Component } from '../../../../shared/components/search2/search2.component';
+import { FullAgent } from '@services';
+import { SearchComponent } from "@shared/components";
 
 @Component({
   selector: 'app-chats-sidebar',
   standalone: true,
-  imports: [NgFor, ChatsSidebarItemComponent, FormsModule, Search2Component],
+  imports: [NgFor, ChatsSidebarItemComponent, FormsModule, SearchComponent],
   templateUrl: './chats-sidebar.component.html',
   styleUrls: ['./chats-sidebar.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,

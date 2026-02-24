@@ -1,5 +1,5 @@
-import {CollectionDocument} from "./document.model";
-import {CollectionNaiveRag} from "./rag.model";
+import { CollectionDocument } from "./document.model";
+import { CollectionNaiveRag } from "./naive-rag.model";
 
 export enum CreateCollectionStep {
     UPLOAD_FILES = 0,

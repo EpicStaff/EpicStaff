@@ -41,7 +41,7 @@ class BaseKnowledgeSearchMessage(BaseModel):
 
     collection_id: int
     rag_id: int  # ID of specific RAG implementation (naive_rag_id, graph_rag_id, etc.)
-    rag_type: str  # Type of RAG ("naive", "graph", etc.)
+    rag_type: Literal["naive", "graph"]
     uuid: str
     query: str
     rag_search_config: (
@@ -58,7 +58,7 @@ class KnowledgeChunkResponse(BaseModel):
 
 class BaseKnowledgeSearchMessageResponse(BaseModel):
     rag_id: int  # ID of specific RAG implementation (naive_rag_id, graph_rag_id, etc.)
-    rag_type: str
+    rag_type: Literal["naive", "graph"]
     collection_id: int
     uuid: str
     retrieved_chunks: int
@@ -71,22 +71,19 @@ class BaseKnowledgeSearchMessageResponse(BaseModel):
 
 
 class ChunkDocumentMessage(BaseModel):
-    """
-    Message for chunking a document based on RAG-specific configuration.
-
-    Updated: Uses naive_rag_document_config_id instead of document_id.
-    Each RAG implementation can chunk the same document differently.
-    """
-
-    naive_rag_document_config_id: int
+    chunking_job_id: str  # UUID
+    rag_type: Literal["naive", "graph"]
+    document_config_id: int
 
 
 class ChunkDocumentMessageResponse(BaseModel):
-    """Response message for document chunking."""
-
-    naive_rag_document_config_id: int
-    success: bool
+    chunking_job_id: str  # UUID
+    rag_type: Literal["naive", "graph"]
+    document_config_id: int
+    status: str  # "completed", "failed", "cancelled"
+    chunk_count: int | None = None
     message: str | None = None
+    elapsed_time: float | None = None
 
 
 class ProcessRagIndexingMessage(BaseModel):
@@ -100,5 +97,5 @@ class ProcessRagIndexingMessage(BaseModel):
     """
 
     rag_id: int
-    rag_type: str  # "naive" or "graph"
+    rag_type: Literal["naive", "graph"]
     collection_id: int

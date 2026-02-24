@@ -1,10 +1,16 @@
-import {RagName, RagTypeLevel, Rag} from "../models/rag.model";
+import { RagName, RagTypeLevel } from "../enums/rag";
+import { Rag } from "../models/naive-rag.model";
+import { SelectItem } from "@shared/components";
 
 export const FILE_TYPES = ['pdf', 'csv', 'md', 'docx', 'txt', 'json', 'html'];
 
 export const CHUNK_STRATEGIES = ['character', 'csv', 'markdown', 'HTML', 'token', 'JSON'];
+export const CHUNK_STRATEGIES_SELECT_ITEMS: SelectItem[] = CHUNK_STRATEGIES.map(t => ({
+    name: t,
+    value: t.toLowerCase()
+}));
 
-export const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024; // 10 MB
+export const MAX_DOCUMENT_SIZE = 12 * 1024 * 1024; // 12 MB
 
 export const RAG_TYPES: Rag[] = [
     {

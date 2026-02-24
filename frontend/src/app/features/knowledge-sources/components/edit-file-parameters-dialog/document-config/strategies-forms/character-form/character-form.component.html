@@ -1,0 +1,70 @@
+<form [formGroup]="strategyForm">
+    <div class="config__grid config__grid--pt-0" formGroupName="mainParams">
+        <div class="config__grid-item">
+            <label>Chunk Size</label>
+            <mat-icon
+                class="config__tooltip"
+                matTooltip="The maximum size of each document chunk. Smaller chunks are more precise but may lose context. Larger chunks preserve more context but may be less precise."
+                matTooltipPosition="above"
+                matTooltipClass="dialog__label-tooltip"
+            >
+                help_outline
+            </mat-icon>
+        </div>
+        <div class="config__grid-item config__grid-item--short">
+            <app-input-number
+                formControlName="chunk_size"
+                [alwaysShowSteps]="true"
+                [invalid]="!!getMainParamControl('chunk_size')?.invalid"
+            />
+            <app-validation-errors [control]="getMainParamControl('chunk_size')!"/>
+        </div>
+
+        <div class="config__grid-item">
+            <label>Chunk Overlap</label>
+            <mat-icon
+                class="config__tooltip"
+                matTooltip="The number of characters or tokens that overlap between chunks. Helps maintain context between chunks. Must be smaller than chunk size."
+                matTooltipPosition="above"
+                matTooltipClass="dialog__label-tooltip"
+            >
+                help_outline
+            </mat-icon>
+        </div>
+        <div class="config__grid-item config__grid-item--short">
+            <app-input-number
+                formControlName="chunk_overlap"
+                [alwaysShowSteps]="true"
+                [invalid]="!!getMainParamControl('chunk_overlap')?.invalid"
+            />
+            <app-validation-errors [control]="getMainParamControl('chunk_overlap')!"/>
+        </div>
+    </div>
+
+    <span class="config__divider"></span>
+
+    <div class="config__grid" formGroupName="additionalParams">
+        <span class="config__grid-item">Additional parameters</span>
+        <span class="config__grid-item"></span>
+
+        <div class="config__grid-item">
+            <label>Regex</label>
+            <mat-icon
+                class="config__tooltip"
+                matTooltip="A regular expression used to split the document into chunks. The text will be divided wherever the pattern matches. Useful for custom delimiters or structured content."
+                matTooltipPosition="above"
+                matTooltipClass="dialog__label-tooltip"
+            >
+                help_outline
+            </mat-icon>
+        </div>
+        <div class="config__grid-item">
+            <app-custom-input
+                class="config__input"
+                formControlName="regex"
+                type="text"
+                placeholder="Enter tag (e.g. ( ? : \r \n | \n ) { 2, } )"
+            />
+        </div>
+    </div>
+</form>

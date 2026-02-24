@@ -17,6 +17,7 @@
     }
 
     &__rows {
+        overflow: hidden;
         margin: 0.5rem 0 0.5rem 2.5rem;
         width: 645px;
         border-radius: 10px;
@@ -25,6 +26,11 @@
 
     &__row-wrapper {
         border-bottom: 1px solid var(--color-divider-subtle);
+
+        &:last-child {
+            border-bottom: none;
+        };
+
         &--dark {
             background-color: var(--color-drag-drop-active);
         }
@@ -79,8 +85,8 @@
         display: flex;
         align-items: center;
 
-        &--clickable {
-            cursor: pointer;
+        &--center {
+            justify-content: center;
         }
 
         &--unavailable {
@@ -98,14 +104,6 @@
         font-size: 0.625rem;
         color: var(--color-ks-transparent-text-80);
         cursor: pointer;
-    }
-
-    &__sort-icon {
-        transition: transform 0.2s ease;
-
-        &--active {
-            transform: rotate(180deg);
-        }
     }
 
     &__file-icon {

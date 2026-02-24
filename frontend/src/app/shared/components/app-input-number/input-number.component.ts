@@ -6,13 +6,12 @@ import {
     model,
     signal, computed, forwardRef,
 } from '@angular/core';
-import {ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR} from "@angular/forms";
-import {NgClass} from "@angular/common";
-import {TooltipComponent} from "../tooltip/tooltip.component";
+import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from "@angular/forms";
+import { NgClass } from "@angular/common";
+import { TooltipComponent } from "../tooltip/tooltip.component";
 
 @Component({
     selector: 'app-input-number',
-    standalone: true,
     templateUrl: './input-number.component.html',
     styleUrls: ['./input-number.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -34,6 +33,7 @@ export class InputNumberComponent implements ControlValueAccessor {
     label = input<string>('');
     required = input<boolean>(false);
     tooltipText = input<string>('');
+    alwaysShowSteps = input<true>();
 
     mod = input<'default' | 'small'>('default');
     placeholder = input<string>('Type here');

@@ -137,6 +137,9 @@ create_knowledge_user(){
 
       -- NaiveRagChunk table
       GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tables_naiveragchunk TO "${knowledge_user}";
+      
+      -- NaiveRagPreviewChunk table
+      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tables_naiveragpreviewchunk TO "${knowledge_user}";
 
       -- NaiveRagEmbedding table
       GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tables_naiveragembedding TO "${knowledge_user}";

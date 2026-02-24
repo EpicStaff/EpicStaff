@@ -1,3 +1,12 @@
+@if (label()) {
+  <app-tooltip
+    [required]="required()"
+    [tooltipText]="tooltipText()"
+    [label]="label()"
+    [icon]="icon()"
+  />
+}
+
 <label class="switch">
   <input type="checkbox" [checked]="checked" (change)="onToggle()" />
   <span class="slider"></span>

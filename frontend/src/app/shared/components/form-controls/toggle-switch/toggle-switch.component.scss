@@ -1,7 +1,7 @@
 .switch {
   position: relative;
   display: inline-block;
-  width: 38px;
+  width: 50px;
   height: 22px;
   input {
     opacity: 0;
@@ -16,7 +16,7 @@
     right: 0;
     bottom: 0;
     background-color: var(--gray-700);
-    border-radius: 22px;
+    border-radius: 6px;
     transition: background 0.2s;
   }
   input:checked + .slider {
@@ -30,10 +30,10 @@
     left: 3px;
     bottom: 3px;
     background-color: #fff;
-    border-radius: 50%;
+    border-radius: 4px;
     transition: transform 0.2s;
   }
   input:checked + .slider:before {
-    transform: translateX(16px);
+    transform: translateX(28px);
   }
 }

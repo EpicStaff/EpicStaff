@@ -104,10 +104,16 @@ class NaiveRagDocumentConfig(models.Model):
         CSV = "csv"
 
     class NaiveRagDocumentStatus(models.TextChoices):
+        """
+        Status flow: new → chunking → chunked → indexing → completed
+        Error states: failed, warning (can occur at any step)
+        """
+
         NEW = "new"
-        CHUNKED = "chunked"
-        PROCESSING = "processing"
-        COMPLETED = "completed"
+        CHUNKING = "chunking"
+        CHUNKED = "chunked"  # Preview chunks created
+        INDEXING = "indexing"
+        COMPLETED = "completed"  # Indexed chunks created
         WARNING = "warning"
         FAILED = "failed"
 
@@ -193,6 +199,8 @@ class NaiveRagChunk(models.Model):
     )
 
     token_count = models.PositiveIntegerField(null=True, blank=True)
+    overlap_start_index = models.PositiveIntegerField(null=True, blank=True)
+    overlap_end_index = models.PositiveIntegerField(null=True, blank=True)
     metadata = models.JSONField(
         default=dict, help_text="Chunk-specific metadata (page numbers, sections, etc.)"
     )
@@ -308,3 +316,51 @@ class NaiveRagSearchConfig(models.Model):
         blank=True,
         help_text="Float between 0.00 and 1.00 for knowledge",
     )
+
+
+class NaiveRagPreviewChunk(models.Model):
+    """
+    Temporary preview chunks for testing different chunking parameters.
+
+    Purpose:
+    - Allow users to preview chunks before committing to indexing
+    - Support iterative chunking parameter tuning
+
+    Lifecycle:
+    - Created when user triggers process-chunking endpoint
+    - Deleted when:
+      1. New chunking request arrives (replaced with new preview chunks)
+      2. Document is successfully indexed (no longer needed)
+    """
+
+    preview_chunk_id = models.AutoField(primary_key=True)
+
+    naive_rag_document_config = models.ForeignKey(
+        NaiveRagDocumentConfig,
+        on_delete=models.CASCADE,
+        related_name="preview_chunks",
+    )
+
+    text = models.TextField()
+    chunk_index = models.PositiveIntegerField(
+        help_text="Order of this chunk in the document"
+    )
+
+    token_count = models.PositiveIntegerField(null=True, blank=True)
+    overlap_start_index = models.PositiveIntegerField(null=True, blank=True)
+    overlap_end_index = models.PositiveIntegerField(null=True, blank=True)
+    metadata = models.JSONField(
+        default=dict,
+        help_text="Chunk-specific metadata (page numbers, sections, etc.)",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["chunk_index"]
+        indexes = [
+            models.Index(fields=["naive_rag_document_config", "chunk_index"]),
+        ]
+
+    def __str__(self):
+        return f"PreviewChunk {self.chunk_index} of {self.naive_rag_document_config.document.file_name}"

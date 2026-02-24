@@ -12,6 +12,7 @@ from .naive_rag_models import (
     NaiveRagEmbedding,
     AgentNaiveRag,
     NaiveRagSearchConfig,
+    NaiveRagPreviewChunk,
 )
 
 __all__ = [
@@ -25,4 +26,5 @@ __all__ = [
     "NaiveRagEmbedding",
     "AgentNaiveRag",
     "NaiveRagSearchConfig",
+    "NaiveRagPreviewChunk",
 ]

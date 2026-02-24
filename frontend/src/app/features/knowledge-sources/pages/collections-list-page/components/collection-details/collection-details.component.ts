@@ -7,7 +7,10 @@ import {
     OnInit,
     signal, SimpleChanges
 } from "@angular/core";
-import {AppIconComponent, SpinnerComponent, ValidationErrorsComponent, SelectComponent, DragDropAreaComponent} from "@shared/components";
+import {
+    AppIconComponent, SpinnerComponent, ValidationErrorsComponent, DragDropAreaComponent,
+    ConfirmationDialogService
+} from "@shared/components";
 import {FormControl, FormsModule, ReactiveFormsModule, Validators} from "@angular/forms";
 import {CreateCollectionDtoResponse} from "../../../../models/collection.model";
 import {CollectionsStorageService} from "../../../../services/collections-storage.service";
@@ -33,7 +36,6 @@ import {ToastService} from "../../../../../../services/notifications";
         ReactiveFormsModule,
         DragDropAreaComponent,
         CollectionFilesComponent,
-        SelectComponent,
         CollectionRagsComponent,
         CollectionInfoComponent,
         SpinnerComponent,
@@ -50,6 +52,7 @@ export class CollectionDetailsComponent implements OnInit, OnChanges {
     documents = signal<DisplayedListDocument[]>([]);
     collectionName: FormControl = new FormControl("", [Validators.required, Validators.maxLength(255)]);
 
+    private confirmationDialogService = inject(ConfirmationDialogService);
     private collectionsStorageService = inject(CollectionsStorageService);
     private documentsStorageService = inject(DocumentsStorageService);
     private fileListService = inject(FileListService);
@@ -131,16 +134,23 @@ export class CollectionDetailsComponent implements OnInit, OnChanges {
     }
 
     onCollectionDelete(): void {
-        const id = this.fullCollection()?.collection_id;
-        if (id) {
-            this.collectionsStorageService.deleteCollectionById(id)
+        const collection = this.fullCollection();
+        if (collection) {
+            this.confirmationDialogService
+                .confirmDelete(collection.collection_name)
                 .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe({
-                    next: () => {
-                        this.selectedCollectionId.set(null);
-                        this.fullCollection.set(null);
-                    },
-                    error: () => this.toastService.error('Collection Delete failed'),
+                .subscribe((result) => {
+                    if (result === true) {
+                        this.collectionsStorageService.deleteCollectionById(collection.collection_id)
+                            .pipe(takeUntilDestroyed(this.destroyRef))
+                            .subscribe({
+                                next: () => {
+                                    this.selectedCollectionId.set(null);
+                                    this.fullCollection.set(null);
+                                },
+                                error: () => this.toastService.error('Collection Delete failed'),
+                            });
+                    }
                 });
         }
     }

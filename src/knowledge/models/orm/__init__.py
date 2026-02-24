@@ -19,6 +19,7 @@ from .naive_rag_models import (
     NaiveRag,
     NaiveRagDocumentConfig,
     NaiveRagChunk,
+    NaiveRagPreviewChunk,
     NaiveRagEmbedding,
 )
 
@@ -39,5 +40,6 @@ __all__ = [
     "NaiveRag",
     "NaiveRagDocumentConfig",
     "NaiveRagChunk",
+    "NaiveRagPreviewChunk",
     "NaiveRagEmbedding",
 ]

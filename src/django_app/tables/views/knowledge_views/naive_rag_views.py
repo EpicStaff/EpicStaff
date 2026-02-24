@@ -1,3 +1,6 @@
+import asyncio
+import uuid
+
 from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -5,7 +8,8 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.http import Http404
 from rest_framework.exceptions import ValidationError
-
+from asgiref.sync import async_to_sync
+from loguru import logger
 
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.viewsets import ReadOnlyModelViewSet
@@ -15,6 +19,7 @@ from tables.models.knowledge_models import (
     NaiveRag,
     NaiveRagDocumentConfig,
     NaiveRagChunk,
+    NaiveRagPreviewChunk,
 )
 from tables.serializers.naive_rag_serializers import (
     NaiveRagSerializer,
@@ -26,10 +31,13 @@ from tables.serializers.naive_rag_serializers import (
     DocumentConfigBulkUpdateSerializer,
     DocumentConfigBulkDeleteSerializer,
     NaiveRagChunkSerializer,
-    ProcessNaiveRagDocumentChunkingSerializer,
+    NaiveRagPreviewChunkSerializer,
+    ChunkingResponseSerializer,
+    ChunkPreviewResponseSerializer,
 )
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.services.redis_service import RedisService
+
 from tables.exceptions import (
     RagException,
     NaiveRagNotFoundException,
@@ -39,6 +47,7 @@ from tables.exceptions import (
     CollectionNotFoundException,
     InvalidFieldType,
 )
+from tables.constants.knowledge_constants import CHUNKING_TIMEOUT
 
 
 redis_service = RedisService()
@@ -545,7 +554,7 @@ class NaiveRagDocumentConfigViewSet(
         except DocumentConfigNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except InvalidChunkParametersException as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"errors": e.errors}, status=status.HTTP_400_BAD_REQUEST)
         except RagException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
@@ -592,18 +601,216 @@ class NaiveRagChunkViewSet(ReadOnlyModelViewSet):
 
 
 class ProcessNaiveRagDocumentChunkingView(APIView):
-    @swagger_auto_schema(request_body=ProcessNaiveRagDocumentChunkingSerializer)
-    def post(self, request):
-        serializer = ProcessNaiveRagDocumentChunkingSerializer(data=request.data)
-        if serializer.is_valid():
-            naive_rag_document_id = serializer["naive_rag_document_id"].value
+    """
+    Trigger document chunking and wait for completion.
 
-            if not NaiveRagDocumentConfig.objects.filter(
-                naive_rag_document_id=naive_rag_document_id
-            ).exists():
-                return Response(status=status.HTTP_404_NOT_FOUND)
+    URL: POST /naive-rag/{naive_rag_id}/document-configs/{document_config_id}/process-chunking/
 
-            redis_service.publish_process_document_chunking(
-                naive_rag_document_id=naive_rag_document_id
+    Flow:
+    1. Validate document config exists and belongs to naive_rag
+    2. Generate chunking_job_id (UUID)
+    3. Update document config status to CHUNKING
+    4. Publish message to Redis and wait for response (50s timeout)
+    5. Return result (completed, failed, cancelled, or timeout)
+    """
+
+    @swagger_auto_schema(
+        operation_description="Trigger document chunking and wait for completion",
+        responses={
+            200: ChunkingResponseSerializer,
+            202: "Chunking is still in progress (timeout)",
+            404: "NaiveRag or DocumentConfig not found",
+            500: "Internal server error",
+        },
+    )
+    def post(self, request, naive_rag_id: int, document_config_id: int):
+        # Validate document config exists and belongs to naive_rag
+        try:
+            config = NaiveRagDocumentConfig.objects.select_related(
+                "naive_rag", "document"
+            ).get(
+                naive_rag_document_id=document_config_id,
+                naive_rag_id=naive_rag_id,
             )
-            return Response(status=status.HTTP_202_ACCEPTED)
+        except NaiveRagDocumentConfig.DoesNotExist:
+            return Response(
+                {
+                    "error": f"DocumentConfig {document_config_id} not found "
+                    f"for NaiveRag {naive_rag_id}"
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        chunking_job_id = str(uuid.uuid4())
+
+        config.status = NaiveRagDocumentConfig.NaiveRagDocumentStatus.CHUNKING
+        config.save(update_fields=["status"])
+
+        logger.info(
+            f"Starting chunking job {chunking_job_id} for config {document_config_id}"
+        )
+
+        try:
+            # Publish and wait for response
+            response = async_to_sync(redis_service.publish_and_wait_for_chunking)(
+                rag_type="naive",
+                document_config_id=document_config_id,
+                chunking_job_id=chunking_job_id,
+                timeout=CHUNKING_TIMEOUT,
+            )
+
+            config.refresh_from_db()
+
+            return Response(
+                {
+                    "chunking_job_id": chunking_job_id,
+                    "naive_rag_id": naive_rag_id,
+                    "document_config_id": document_config_id,
+                    "status": response.status,
+                    "chunk_count": response.chunk_count,
+                    "message": response.message,
+                    "elapsed_time": response.elapsed_time,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"Chunking timeout for job {chunking_job_id}, config {document_config_id}"
+            )
+            # Return partial success - chunking may still complete in background
+            return Response(
+                {
+                    "chunking_job_id": chunking_job_id,
+                    "naive_rag_id": naive_rag_id,
+                    "document_config_id": document_config_id,
+                    "status": "timeout",
+                    "chunk_count": None,
+                    "message": "Chunking is taking longer than expected. "
+                    "Check status later or retry.",
+                    "elapsed_time": None,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+
+        except Exception as e:
+            logger.error(f"Chunking error for job {chunking_job_id}: {e}")
+            # Reset status to previous state on error
+            config.status = NaiveRagDocumentConfig.NaiveRagDocumentStatus.FAILED
+            config.save(update_fields=["status"])
+
+            return Response(
+                {
+                    "chunking_job_id": chunking_job_id,
+                    "naive_rag_id": naive_rag_id,
+                    "document_config_id": document_config_id,
+                    "status": "failed",
+                    "chunk_count": None,
+                    "message": str(e),
+                    "elapsed_time": None,
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class NaiveRagChunkPreviewView(APIView):
+    """
+    Get chunks for a document config.
+
+    URL: GET /naive-rag/{naive_rag_id}/document-configs/{document_config_id}/chunks/
+
+    Returns:
+    - Preview chunks if status is CHUNKED (not yet indexed)
+    - Indexed chunks if status is COMPLETED
+
+    Supports pagination for endless scrolling:
+    - limit: Number of chunks to return (default: 50)
+    - offset: Number of chunks to skip (default: 0)
+    """
+
+    DEFAULT_LIMIT = 50
+    MAX_LIMIT = 500
+
+    @swagger_auto_schema(
+        operation_description="Get chunks for a document config (preview or indexed)",
+        manual_parameters=[
+            openapi.Parameter(
+                "limit",
+                openapi.IN_QUERY,
+                description="Number of chunks to return (max 500)",
+                type=openapi.TYPE_INTEGER,
+                default=50,
+            ),
+            openapi.Parameter(
+                "offset",
+                openapi.IN_QUERY,
+                description="Number of chunks to skip",
+                type=openapi.TYPE_INTEGER,
+                default=0,
+            ),
+        ],
+        responses={
+            200: ChunkPreviewResponseSerializer,
+            404: "NaiveRag or DocumentConfig not found",
+        },
+    )
+    def get(self, request, naive_rag_id: int, document_config_id: int):
+        # Validate document config exists and belongs to naive_rag
+        try:
+            config = NaiveRagDocumentConfig.objects.get(
+                naive_rag_document_id=document_config_id,
+                naive_rag_id=naive_rag_id,
+            )
+        except NaiveRagDocumentConfig.DoesNotExist:
+            return Response(
+                {
+                    "error": f"DocumentConfig {document_config_id} not found "
+                    f"for NaiveRag {naive_rag_id}"
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            limit = min(
+                int(request.query_params.get("limit", self.DEFAULT_LIMIT)),
+                self.MAX_LIMIT,
+            )
+            offset = int(request.query_params.get("offset", 0))
+        except ValueError:
+            return Response(
+                {"error": "limit and offset must be integers"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Decide which chunks to return based on status
+        doc_status = config.status
+
+        if doc_status == NaiveRagDocumentConfig.NaiveRagDocumentStatus.COMPLETED:
+            # Return indexed chunks
+            chunks_qs = NaiveRagChunk.objects.filter(
+                naive_rag_document_config_id=document_config_id
+            ).order_by("chunk_index")
+            total_count = chunks_qs.count()
+            chunks = chunks_qs[offset : offset + limit]
+            serializer = NaiveRagChunkSerializer(chunks, many=True)
+        else:
+            # Return preview chunks (for CHUNKED or other statuses)
+            chunks_qs = NaiveRagPreviewChunk.objects.filter(
+                naive_rag_document_config_id=document_config_id
+            ).order_by("chunk_index")
+            total_count = chunks_qs.count()
+            chunks = chunks_qs[offset : offset + limit]
+            serializer = NaiveRagPreviewChunkSerializer(chunks, many=True)
+
+        return Response(
+            {
+                "naive_rag_id": naive_rag_id,
+                "document_config_id": document_config_id,
+                "status": doc_status,
+                "total_chunks": total_count,
+                "limit": limit,
+                "offset": offset,
+                "chunks": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )

@@ -4,14 +4,12 @@ import {
   Inject,
   signal,
   ChangeDetectionStrategy,
-  AfterViewInit,
   ViewChild,
   ElementRef,
   effect,
 } from '@angular/core';
 import { GraphDto } from '../../models/graph.model';
 import {
-  GraphSession,
   GraphSessionLight,
   GraphSessionService,
   GraphSessionStatus,
@@ -19,12 +17,9 @@ import {
 import { CommonModule } from '@angular/common';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { Router } from '@angular/router';
-import { CheckboxComponent } from '../../../../shared/components/form-controls/checkbox/checkbox.component';
-import { LoadingSpinnerComponent } from '../../../../shared/components/loading-spinner/loading-spinner.component';
 import { FlowSessionsTableComponent } from './flow-sessions-table.component';
-import { PaginationControlsComponent } from '../../../../shared/components/pagination-controls/pagination-controls.component';
+import { PaginationControlsComponent, IconButtonComponent } from '@shared/components';
 import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-filter-dropdown.component';
-import { IconButtonComponent } from '../../../../shared/components/buttons/icon-button/icon-button.component';
 
 @Component({
   selector: 'app-flow-sessions-list',

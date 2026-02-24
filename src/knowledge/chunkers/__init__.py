@@ -1,4 +1,4 @@
-from .base_chunker import BaseChunker
+from .base_chunker import BaseChunker, BaseChunkData
 from .character_chunker import CharacterChunker
 from .csv_chunker import CSVChunker
 from .html_chunker import HTMLChunker
