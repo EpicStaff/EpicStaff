@@ -221,6 +221,29 @@
         }
     }
 
+    .interactive-node-body:hover .go-to-flow {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .go-to-flow {
+        margin-left: auto;
+        margin-right: 8px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s ease;
+    }
+
+    :host:hover .go-to-flow {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    :host.f-selected .go-to-flow {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
     // Port styles
     .port-wrapper {
         @include mixins.port-wrapper-default;
