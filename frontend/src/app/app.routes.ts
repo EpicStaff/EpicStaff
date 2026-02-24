@@ -39,7 +39,7 @@ export const routes: Routes = [
                 component: ProjectsListPageComponent,
                 children: [
                     { path: '', redirectTo: 'my', pathMatch: 'full' },
-                    { path: 'my', component: MyProjectsComponent, },
+                    { path: 'my', component: MyProjectsComponent },
                     { path: 'templates', component: ProjectTemplatesComponent },
                 ],
             },
