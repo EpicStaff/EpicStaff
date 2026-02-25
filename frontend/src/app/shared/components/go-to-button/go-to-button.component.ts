@@ -15,4 +15,5 @@ export class GoToButtonComponent {
   @Input() variant: 'icon' | 'full' = 'icon';
   @Input() label: string = 'Go to flow';
   @Input() route: string | any[] = '/';
+  @Input() disabled = false;
 }

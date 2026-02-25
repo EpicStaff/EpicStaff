@@ -67,7 +67,7 @@ interface InputMapPair {
                                 label="Go to flow"
                                 [href]="getSelectedFlowUrl()"
                                 target="_blank"
-                                [class.is-disabled]="!getSelectedFlowUrl()"
+                                [disabled]="!selectedFlowExists()"
                             ></app-go-to-button>
                         </div>
                     </div>
@@ -284,4 +284,11 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
         if (!id) return null;
         return `/flows/${Number(id)}`;
     }
+
+    readonly selectedFlowExists = computed(() => {
+        const id = Number(this.form?.get('selectedFlowId')?.value);
+        if (!id) return false;
+
+        return this.availableFlows().some(f => f.id === id);
+    });
 }
