@@ -52,8 +52,8 @@ import { UserMessageComponent } from './components/user-message/user-message.com
 import { SubgraphStartMessageComponent } from './components/subgraph-start-message/subgraph-start-message.component';
 import { SubgraphFinishMessageComponent } from './components/subgraph-finish-message/subgraph-finish-message.component';
 import { isMessageType } from './helper_functions/message-helper';
-import { RunGraphPageService } from '../../run-graph-page.service';
-import { RunSessionSSEService } from '../../../run-graph-page/run-graph-page-body/graph-session-sse.service';
+import { RunGraphPageService } from '../../services/run-graph-page.service';
+import { RunSessionSSEService } from '../../services/graph-session-sse.service';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { ExtractedChunksMessageComponent } from './components/extracted-chunks/extracted-chunks-message.component';
