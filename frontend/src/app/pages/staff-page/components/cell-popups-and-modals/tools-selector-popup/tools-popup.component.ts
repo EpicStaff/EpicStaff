@@ -22,7 +22,7 @@ import { FormsModule } from '@angular/forms';
 import { GetPythonCodeToolRequest } from '../../../../../features/tools/models/python-code-tool.model';
 import { GetMcpToolRequest } from '../../../../../features/tools/models/mcp-tool.model';
 import { BuiltinToolsService } from '../../../../../features/tools/services/builtin-tools/builtin-tools.service';
-import { ToolConfigService } from '../../../../../services/tool_config.service';
+import { ToolConfigService } from '../../../../../services/tool-config.service';
 import {
   FullToolConfig,
   FullToolConfigService,

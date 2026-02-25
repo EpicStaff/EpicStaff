@@ -47,7 +47,7 @@ import { ErrorMessageComponent } from './components/error-message/error-message.
 import { ProjectTransitionComponent } from './components/transition/project-transition.component';
 import { WaitForUserInputComponent } from './components/user-input-component/user-input-component.component';
 import { SessionStatusMessageData } from '../../models/update-session-status.model';
-import { AnswerToLLMService } from '../../../../services/answerToLLMService.service';
+import { AnswerToLLMService } from '../../../../services/answer-to-llm.service';
 import { UserMessageComponent } from './components/user-message/user-message.component';
 import { SubgraphStartMessageComponent } from './components/subgraph-start-message/subgraph-start-message.component';
 import { SubgraphFinishMessageComponent } from './components/subgraph-finish-message/subgraph-finish-message.component';

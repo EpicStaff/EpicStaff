@@ -4,7 +4,7 @@ import { map } from 'rxjs/operators';
 
 import { AgentsService } from './staff.service';
 import { LLM_Config_Service } from '../features/settings-dialog/services/llms/LLM_config.service';
-import { ToolConfigService } from './tool_config.service';
+import { ToolConfigService } from './tool-config.service';
 import { PythonCodeToolService } from '../user-settings-page/tools/custom-tool-editor/services/pythonCodeToolService.service';
 import { LLM_Models_Service } from '../features/settings-dialog/services/llms/LLM_models.service';
 import { ProjectsStorageService } from '../features/projects/services/projects-storage.service';

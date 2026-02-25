@@ -3,7 +3,7 @@ import { Injectable } from '@angular/core';
 import { Observable, forkJoin, of, map, switchMap } from 'rxjs';
 import { Tool } from '../features/tools/models/tool.model';
 import { BuiltinToolsService } from '../features/tools/services/builtin-tools/builtin-tools.service';
-import { ToolConfigService } from './tool_config.service';
+import { ToolConfigService } from './tool-config.service';
 import {
   CreateToolConfigRequest,
   GetToolConfigRequest,
