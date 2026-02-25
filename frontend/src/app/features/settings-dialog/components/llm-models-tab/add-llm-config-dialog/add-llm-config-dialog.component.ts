@@ -101,14 +101,11 @@ export class AddLlmConfigDialogComponent implements OnInit {
     selectedModelId = signal<number | null>(null);
 
     logitBiasText = signal('{}');
-    responseFormatText = signal('{}');
     headersText = signal('{}');
     headers = signal<Record<string, string>>({});
     private isUpdatingHeadersFromUI = false;
 
     logitBiasJson = computed(() => this.logitBiasText());
-
-    responseFormatJson = computed(() => this.responseFormatText());
 
     headersJson = computed(() => this.headersText());
 
@@ -235,7 +232,6 @@ export class AddLlmConfigDialogComponent implements OnInit {
         this.selectedModelId.set(config.model);
 
         this.logitBiasText.set(JSON.stringify(config.logit_bias ?? {}, null, 2));
-        this.responseFormatText.set(JSON.stringify(config.response_format ?? {}, null, 2));
         
         // Rebuild headers form array
         const headersToSet = config.headers || {};
@@ -355,10 +351,6 @@ export class AddLlmConfigDialogComponent implements OnInit {
         this.logitBiasText.set(json);
     }
 
-    onResponseFormatChange(json: string): void {
-        this.responseFormatText.set(json);
-    }
-
     private parseJsonObject<T>(json: string): T | null {
         try {
             const parsed = JSON.parse(json || '{}');
@@ -405,7 +397,6 @@ export class AddLlmConfigDialogComponent implements OnInit {
         const formValue = this.form.value;
 
         const logitBias = this.parseJsonObject<Record<string, number>>(this.logitBiasText());
-        const responseFormat = this.parseJsonObject<Record<string, unknown>>(this.responseFormatText());
         const headersObj = this.parseJsonObject<Record<string, string>>(this.headersText()) ?? this.headers();
         const headers = Object.keys(headersObj).length > 0 ? headersObj : undefined;
 
@@ -428,7 +419,6 @@ export class AddLlmConfigDialogComponent implements OnInit {
             seed: seedValue,
             stop: [],
             logit_bias: logitBias,
-            response_format: responseFormat,
             is_visible: true,
             headers,
         };

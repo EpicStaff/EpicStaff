@@ -10,7 +10,6 @@ export interface GetLlmConfigRequest {
     presence_penalty: number | null;
     frequency_penalty: number | null;
     logit_bias: Record<string, number> | null;
-    response_format: Record<string, unknown> | null;
     seed: number | null;
     timeout: number | null;
     is_visible: boolean;
@@ -29,7 +28,6 @@ export interface CreateLLMConfigRequest {
     presence_penalty?: number | null;
     frequency_penalty?: number | null;
     logit_bias?: Record<string, number> | null;
-    response_format?: Record<string, unknown> | null;
     seed?: number | null;
     timeout?: number | null;
     is_visible?: boolean;
@@ -49,7 +47,6 @@ export interface UpdateLLMConfigRequest {
     presence_penalty?: number | null;
     frequency_penalty?: number | null;
     logit_bias?: Record<string, number> | null;
-    response_format?: Record<string, unknown> | null;
     seed?: number | null;
     timeout?: number | null;
     is_visible?: boolean;
@@ -72,5 +69,4 @@ export interface LLMConfigFormValue {
     seed: number | null;
     stop: string[] | null;
     logitBias: Record<string, number> | null;
-    responseFormat: Record<string, unknown> | null;
 }
