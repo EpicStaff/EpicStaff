@@ -17,8 +17,8 @@ import { MATERIAL_FORMS } from '../../../../shared/material-forms';
 
 
 import {forkJoin, of, Subject, takeUntil} from 'rxjs';
-import { LLM_Config_Service } from '../../../../features/settings-dialog/services/llms/LLM_config.service';
-import { LLM_Models_Service } from '../../../../features/settings-dialog/services/llms/LLM_models.service';
+import { LLM_Config_Service } from '../../../../features/settings-dialog/services/llms/llm-config.service';
+import { LLM_Models_Service } from '../../../../features/settings-dialog/services/llms/llm-models.service';
 import { KnowledgeSelectorComponent } from '../../../../shared/components/knowledge-selector/knowledge-selector.component';
 import { IconButtonComponent } from '../../../../shared/components/buttons/icon-button/icon-button.component';
 import {

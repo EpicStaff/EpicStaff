@@ -16,7 +16,7 @@ import { Subscription, combineLatest } from 'rxjs';
 import {
   FullAgent,
   FullAgentService,
-} from '../../../../services/full-agent.service';
+} from '../../../../features/staff/services/full-agent.service';
 import { StaffAgentCardComponent } from './staff-agent-card/staff-agent-card.component';
 import { ProjectStateService } from '../../../services/project-state.service';
 

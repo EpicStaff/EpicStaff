@@ -14,7 +14,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
 import { GetProjectRequest } from '../../features/projects/models/project.model';
-import { LLM_Config_Service } from '../../features/settings-dialog/services/llms/LLM_config.service';
+import { LLM_Config_Service } from '../../features/settings-dialog/services/llms/llm-config.service';
 import { EmbeddingConfigsService } from '../../features/settings-dialog/services/embeddings/embedding_configs.service';
 import { GetLlmConfigRequest } from '../../features/settings-dialog/models/llms/LLM_config.model';
 import { GetEmbeddingConfigRequest } from '../../features/settings-dialog/models/embeddings/embedding-config.model';

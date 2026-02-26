@@ -17,7 +17,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
 import { CustomInputComponent } from '../../../../../shared/components/form-input/form-input.component';
 import { MatSliderModule } from '@angular/material/slider';
-import { LLM_Config_Service } from '../../../services/llms/LLM_config.service';
+import { LLM_Config_Service } from '../../../services/llms/llm-config.service';
 import { UpdateLLMConfigRequest } from '../../../models/llms/LLM_config.model';
 
 @Component({

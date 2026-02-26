@@ -7,7 +7,7 @@ import {
   CreateMcpToolRequest,
   UpdateMcpToolRequest,
 } from '../../models/mcp-tool.model';
-import { ApiGetRequest } from '../../../../shared/models/api-request.model';
+import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { ConfigService } from '../../../../services/config/config.service';
 
 @Injectable({

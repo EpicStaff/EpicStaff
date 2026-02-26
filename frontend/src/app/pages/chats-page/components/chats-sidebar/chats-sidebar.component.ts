@@ -3,7 +3,7 @@ import { AsyncPipe, NgFor } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ChatsSidebarItemComponent } from './chats-sidebar-item/chats-sidebar-item.component';
 import { ChatsService } from '../../services/chats.service';
-import { FullAgent } from '@services';
+import { FullAgent } from '../../../../features/staff/services/full-agent.service';
 import { SearchComponent } from "@shared/components";
 
 @Component({

@@ -9,7 +9,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Dialog } from '@angular/cdk/dialog';
-import { FullAgent } from '../../../../../../services/full-agent.service';
+import { FullAgent } from '../../../../../../features/staff/services/full-agent.service';
 import { ChatsService } from '../../../../services/chats.service';
 import { ConsoleService } from '../../../../services/console.service';
 

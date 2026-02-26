@@ -11,7 +11,7 @@ import { RouterModule } from '@angular/router';
 import { Spinner2Component } from '../../../../../../shared/components/spinner-type2/spinner.component';
 import { AppIconComponent } from '../../../../../../shared/components/app-icon/app-icon.component';
 import { Router } from '@angular/router';
-import { RunGraphService } from '../../../../../../services/run-graph-session.service';
+import { RunGraphService } from '../../../../../../features/flows/services/run-graph-session.service';
 import { Dialog as CdkDialog } from '@angular/cdk/dialog';
 import { ToastService } from '../../../../../../services/notifications/toast.service';
 import { FlowService } from '../../../../../../visual-programming/services/flow.service';

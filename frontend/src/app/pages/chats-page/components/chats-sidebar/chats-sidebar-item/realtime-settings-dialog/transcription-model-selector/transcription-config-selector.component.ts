@@ -1,6 +1,6 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { EnhancedTranscriptionConfig } from '../../../../../../../shared/models/transcription-config.model';
+import { EnhancedTranscriptionConfig } from '../../../../../../../features/transcription/models/transcription-config.model';
 import { ClickOutsideDirective } from '../../../../../../../shared/directives/click-outside.directive';
 import { AppIconComponent } from '../../../../../../../shared/components/app-icon/app-icon.component';
 

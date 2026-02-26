@@ -18,13 +18,13 @@ import { TasksSectionComponent } from './tasks-section/tasks-section.component';
 import { SettingsSectionComponent } from './settings-section/settings-section.component';
 import { FormsModule } from '@angular/forms';
 import { ProjectsStorageService } from '../features/projects/services/projects-storage.service';
-import { TasksService } from '../services/tasks.service';
+import { TasksService } from '../features/tasks/services/tasks.service';
 import { finalize, forkJoin, Subscription } from 'rxjs';
 import { GetProjectRequest } from '../features/projects/models/project.model';
 import { Dialog } from '@angular/cdk/dialog';
-import { FullTask } from '../shared/models/full-task.model';
-import { FullAgentService, FullAgent } from '../services/full-agent.service';
-import { FullTaskService } from '../services/full-task.service';
+import { FullTask } from '../features/tasks/models/full-task.model';
+import { FullAgentService, FullAgent } from '../features/staff/services/full-agent.service';
+import { FullTaskService } from './services/full-task.service';
 import { ProjectStateService } from './services/project-state.service';
 import {
     trigger,

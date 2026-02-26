@@ -1,4 +1,4 @@
-import { Session } from '../../../shared/models/sesson.model';
+import { Session } from './sesson.model';
 import { GetCrewTagRequest } from './crew-tag.model';
 export enum ProjectProcess {
     SEQUENTIAL = 'sequential',

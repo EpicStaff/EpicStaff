@@ -8,7 +8,7 @@ import {
   ChangeDetectionStrategy,
 } from '@angular/core';
 import { ChatsService } from './services/chats.service';
-import { FullAgent, FullAgentService } from '../../services/full-agent.service';
+import { FullAgent, FullAgentService } from '../../features/staff/services/full-agent.service';
 import { PageHeaderComponent } from '../../shared/components/header/page-header.component';
 import { ChatsSidebarComponent } from './components/chats-sidebar/chats-sidebar.component';
 import { ChatsContentComponent } from './components/chats-content/chats-content.component';
@@ -17,7 +17,7 @@ import { ChatsHeaderComponent } from './components/chats-page-header/chats-page-
 import { ConsoleService } from './services/console.service';
 import { SpinnerComponent } from '../../shared/components/spinner/spinner.component';
 import { finalize, Subject, takeUntil, forkJoin } from 'rxjs';
-import { RealtimeAgentService } from '../../services/realtime-agent.service';
+import { RealtimeAgentService } from '../../features/staff/services/realtime-agent.service';
 
 @Component({
   selector: 'app-chats-page',

@@ -7,8 +7,8 @@ import {
   ChangeDetectorRef,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FullTask } from '../../shared/models/full-task.model';
-import { FullAgent } from '../../services/full-agent.service';
+import { FullTask } from '../../features/tasks/models/full-task.model';
+import { FullAgent } from '../../features/staff/services/full-agent.service';
 import { ProjectStateService } from '../services/project-state.service';
 import { Subscription } from 'rxjs';
 import { TasksTableComponent } from './tasks-table/tasks-table.component';
@@ -17,8 +17,8 @@ import {
   CreateTaskRequest,
   UpdateTaskRequest,
   GetTaskRequest,
-} from '../../shared/models/task.model';
-import { TasksService } from '../../services/tasks.service'; // Import the TasksService
+} from '../../features/tasks/models/task.model';
+import { TasksService } from '../../features/tasks/services/tasks.service'; // Import the TasksService
 
 @Component({
   selector: 'app-tasks-section',

@@ -20,8 +20,8 @@ import {Subscription, switchMap, takeUntil, of} from 'rxjs';
 import { Subject } from 'rxjs';
 import { MATERIAL_FORMS } from '../../material-forms';
 
-import { RealtimeAgentService } from '../../../services/realtime-agent.service';
-import { AgentsService } from '../../../services/staff.service';
+import { RealtimeAgentService } from '../../../features/staff/services/realtime-agent.service';
+import { AgentsService } from '../../../features/staff/services/staff.service';
 import { ToastService } from '../../../services/notifications/toast.service';
 import { ToolsSelectorComponent } from '../../components/tools-selector/tools-selector.component';
 import {
@@ -32,7 +32,7 @@ import {
     CreateAgentRequest,
     GetAgentRequest,
     ToolUniqueName,
-} from '../../models/agent.model';
+} from '../../../features/staff/models/agent.model';
 import { buildToolIdsArray } from '../../utils/tool-ids-builder.util';
 import { CustomErrorStateMatcher } from '../../error-state-matcher/custom-error-state-matcher';
 import { ErrorStateMatcher } from '@angular/material/core';

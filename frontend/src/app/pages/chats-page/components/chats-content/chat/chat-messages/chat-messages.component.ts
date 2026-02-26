@@ -11,7 +11,7 @@ import { NgxJsonViewerModule } from 'ngx-json-viewer';
 import { ItemType } from '@openai/realtime-api-beta/dist/lib/client.js';
 import { ConsoleService } from '../../../../services/console.service';
 import { ChatsService } from '../../../../services/chats.service';
-import { FullAgent } from '../../../../../../services/full-agent.service';
+import { FullAgent } from '../../../../../../features/staff/services/full-agent.service';
 import { HasToolOutputPipe } from './has-tool-output.pipe';
 
 export interface GroupedMessage {

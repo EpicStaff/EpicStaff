@@ -25,7 +25,7 @@ import {
     ConfirmationResult,
 } from '../../../../../../shared/components/cofirm-dialog/confimation-dialog.service';
 import { FlowRenameDialogComponent } from '../../../../components/flow-rename-dialog/flow-rename-dialog.component';
-import { RunGraphService } from '../../../../../../services/run-graph-session.service';
+import { RunGraphService } from '../../../../services/run-graph-session.service';
 import { ToastService } from '../../../../../../services/notifications/toast.service';
 import { GraphUpdateService } from '../../../../../../visual-programming/services/graph/save-graph.service';
 import { ImportExportService } from '../../../../../../core/services/import-export.service';

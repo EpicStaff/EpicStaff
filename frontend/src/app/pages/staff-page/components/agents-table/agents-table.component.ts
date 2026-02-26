@@ -39,7 +39,7 @@ import {
     FullAgent,
     FullAgentService,
     TableFullAgent,
-} from '../../../../services/full-agent.service';
+} from '../../../../features/staff/services/full-agent.service';
 import { IndexCellRendererComponent } from '../cell-renderers/index-row-cell-renderer/custom-row-height.component';
 import { MemoryHeaderComponent } from '../header-renderers/memory-header.component';
 import { DelegationHeaderComponent } from '../header-renderers/delegation-header.component';
@@ -53,12 +53,12 @@ import {
     DialogModule,
     DialogRef,
 } from '@angular/cdk/dialog';
-import { AgentsService } from '../../../../services/staff.service';
+import { AgentsService } from '../../../../features/staff/services/staff.service';
 import {
     CreateAgentRequest,
     ToolUniqueName,
     UpdateAgentRequest,
-} from '../../../../shared/models/agent.model';
+} from '../../../../features/staff/models/agent.model';
 import { NgClass, NgIf, NgStyle } from '@angular/common';
 import { PreventContextMenuDirective } from '../directives/prevent-context-menu.directive';
 import { AgGridContextMenuComponent } from '../context-menu/ag-grid-context-menu.component';
@@ -68,8 +68,8 @@ import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.
 import { buildToolIdsArray } from '../../../../shared/utils/tool-ids-builder.util';
 import { ConfigCellRendererComponent } from '../cell-renderers/llm-cell-renderer/realtime-config-cell-renderer.component';
 import { map, switchMap } from 'rxjs';
-import { CreateRealtimeAgentRequest } from '../../../../shared/models/realtime-agent.model';
-import { RealtimeAgentService } from '../../../../services/realtime-agent.service';
+import { CreateRealtimeAgentRequest } from '../../../../features/staff/models/realtime-agent.model';
+import { RealtimeAgentService } from '../../../../features/staff/services/realtime-agent.service';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 

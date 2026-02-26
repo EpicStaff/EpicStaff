@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { Dialog, DialogRef } from '@angular/cdk/dialog'; // Import from CDK instead of Material
 import { PageHeaderComponent } from '../../shared/components/header/page-header.component';
-import { FullAgent, FullAgentService } from '../../services/full-agent.service';
+import { FullAgent, FullAgentService } from '../../features/staff/services/full-agent.service';
 import { CreateAgentFormComponent } from '../../shared/components/create-agent-form-dialog/create-agent-form-dialog.component';
 import { AgentsTableComponent } from './components/agents-table/agents-table.component';
 import { ButtonComponent } from '../../shared/components/buttons/button/button.component';
@@ -9,7 +9,7 @@ import { TabButtonComponent } from '../../shared/components/tab-button/tab-butto
 import { FiltersListComponent } from '../../shared/components/filters-list/filters-list.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { NgIf } from '@angular/common';
-import { GetAgentRequest } from '../../shared/models/agent.model';
+import { GetAgentRequest } from '../../features/staff/models/agent.model';
 
 @Component({
     selector: 'app-staff-page',

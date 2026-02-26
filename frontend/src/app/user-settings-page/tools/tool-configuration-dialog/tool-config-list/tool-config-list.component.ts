@@ -7,7 +7,7 @@ import {
   SimpleChanges,
   ChangeDetectionStrategy,
 } from '@angular/core';
-import { ToolConfig } from '../../../../features/tools/models/tool_config.model';
+import { ToolConfig } from '../../../../features/tools/models/tool-config.model';
 import { NgClass, NgFor, NgIf } from '@angular/common';
 
 @Component({

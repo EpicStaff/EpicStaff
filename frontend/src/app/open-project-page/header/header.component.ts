@@ -10,7 +10,7 @@ import { Router } from '@angular/router';
 import { RouterModule } from '@angular/router';
 import { Dialog, DialogModule } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { RunGraphService } from '../../services/run-graph-session.service';
+import { RunGraphService } from '../../features/flows/services/run-graph-session.service';
 import { map, takeUntil } from 'rxjs/operators';
 import { EditTitleDialogComponent } from './edit-name-dialog/edit-title-dialog.component';
 import { ProjectStateService } from '../services/project-state.service';

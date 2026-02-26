@@ -55,25 +55,25 @@ import {
     TableFullAgent,
     FullAgentService,
     FullAgent,
-} from '../../../services/full-agent.service';
-import { AgentsService } from '../../../services/staff.service';
+} from '../../../features/staff/services/full-agent.service';
+import { AgentsService } from '../../../features/staff/services/staff.service';
 import { ClickOutsideDirective } from '../../../shared/directives/click-outside.directive';
 import {
     CreateAgentRequest,
     UpdateAgentRequest,
-} from '../../../shared/models/agent.model';
-import { FullTask } from '../../../shared/models/full-task.model';
+} from '../../../features/staff/models/agent.model';
+import { FullTask } from '../../../features/tasks/models/full-task.model';
 import {
     CreateTaskRequest,
     GetTaskRequest,
     TableFullTask,
     UpdateTaskRequest,
-} from '../../../shared/models/task.model';
-import { FullTaskService } from '../../../services/full-task.service';
+} from '../../../features/tasks/models/task.model';
+import { FullTaskService } from '../../services/full-task.service';
 import { buildToolIdsArray } from '../../../shared/utils/tool-ids-builder.util';
 import { AgentSelectionPopupComponent } from './popups/agent-select-popup/agent-selection-popup.component';
 import { GetProjectRequest } from '../../../features/projects/models/project.model';
-import { TasksService } from '../../../services/tasks.service';
+import { TasksService } from '../../../features/tasks/services/tasks.service';
 import { ProjectStateService } from '../../services/project-state.service';
 import {
     AdvancedTaskSettingsData,

@@ -9,7 +9,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule, NG_VALUE_ACCESSOR, ControlValueAccessor } from '@angular/forms';
 import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 import { Subscription, Observable } from 'rxjs';
-import { ApiGetRequest } from '../../models/api-request.model';
+import { ApiGetRequest } from '../../../core/models/api-request.model';
 
 @Component({
     selector: 'app-custom-select',

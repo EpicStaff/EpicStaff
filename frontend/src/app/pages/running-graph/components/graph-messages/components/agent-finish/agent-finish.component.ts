@@ -8,7 +8,7 @@ import {
   MessageType,
 } from '../../../../models/graph-session-message.model';
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
-import { GetAgentRequest } from '../../../../../../shared/models/agent.model';
+import { GetAgentRequest } from '../../../../../../features/staff/models/agent.model';
 
 @Component({
   selector: 'app-agent-finish-message',

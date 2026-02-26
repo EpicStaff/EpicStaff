@@ -18,7 +18,7 @@ import {
   transition,
   animate,
 } from '@angular/animations';
-import { FullAgent } from '../../../../../services/full-agent.service';
+import { FullAgent } from '../../../../../features/staff/services/full-agent.service';
 import { AgentMenuComponent } from './header-sub-menu/header-sub-menu.component';
 import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
 import { getProviderIconPath } from '../../../../../features/settings-dialog/utils/get-provider-icon';
