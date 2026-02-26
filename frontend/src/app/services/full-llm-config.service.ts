@@ -3,7 +3,7 @@ import { forkJoin, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { GetLlmConfigRequest } from '../shared/models/llm-config.model';
-import { GetLlmModelRequest } from '../shared/models/llm.model';
+import { GetLlmModelRequest } from '../shared/models';
 import { LLM_Config_Service } from './llm-config.service';
 import { LLM_Models_Service } from './llm-models.service';
 
