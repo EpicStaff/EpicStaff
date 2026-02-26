@@ -17,7 +17,7 @@ python-multipart = "0.0.6"
 openai-realtime-client= "0.1.0"
 openai = "1.58.1"
 python-dotenv = "1.0.1"
-pydantic = {extras = ["email"], version = "2.10.4"}
+pydantic = {extras = ["email"], version = ">=2.10.5"}
 loguru = "0.7.3"
 redis = "5.2.1"
 requests = "2.32.3"

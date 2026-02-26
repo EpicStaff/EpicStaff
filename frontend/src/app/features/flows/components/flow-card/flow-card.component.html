@@ -1,5 +1,16 @@
-<div class="flow-card" (click)="onCardClick()">
+<div class="flow-card" [class.selected]="isSelected" (click)="selectMode ? onSelectionToggle($event) : onCardClick()">
+
   <div class="card-header">
+
+    @if(selectMode){
+      <div class="selection-checkbox">
+        <app-checkbox 
+        variant="mainColor"
+          [checked]="isSelected"
+        ></app-checkbox>
+      </div>
+    }
+
     <h3 class="flow-name">{{ flow.name }}</h3>
     <div class="header-actions">
       <app-button

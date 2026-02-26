@@ -11,7 +11,7 @@ export class ImportExportService {
     constructor(
         private http: HttpClient,
         private configService: ConfigService
-    ) {}
+    ) { }
 
     private get apiUrl(): string {
         return this.configService.apiUrl + 'graphs/';
@@ -29,4 +29,11 @@ export class ImportExportService {
             responseType: 'blob',
         });
     }
+
+    bulkExportFlow(ids: number[]): Observable<Blob> {
+        return this.http.post(`${this.apiUrl}bulk-export/`, { ids }, {
+            responseType: 'blob',
+        });
+    }
+
 }

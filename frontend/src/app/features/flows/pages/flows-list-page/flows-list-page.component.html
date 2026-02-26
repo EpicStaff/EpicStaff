@@ -11,21 +11,51 @@
                 </h1>
             </div>
             <div class="header-actions">
-                <app-button
+                @if (selectMode()) {
+                    <app-button
                     type="ghost"
-                    [leftIcon]="'ui/upload'"
-                    (click)="onImportClick()"
-                >
-                    Import
-                </app-button>
-                <app-button
+                    (click)="cancelExport()"
+                    >
+                        Cancel
+                    </app-button>
+                    <app-button
+                    type="ghost"
+                    (click)="selectAllFlows()"
+                    >
+                        {{ isAllSelected() ? 'Deselect all' : 'Select all' }}
+                    </app-button>
+                    <app-button
                     type="primary"
-                    class="btn-primary create-btn"
-                    [leftIcon]="'ui/plus'"
-                    (click)="openCreateFlowDialog()"
-                >
-                    Create flow
-                </app-button>
+                    [disabled]="selectedFlowIds().length === 0"
+                    (click)="confirmExport()"
+                    >
+                        Export {{selectedFlowIds().length}} flows
+                    </app-button>
+                } @else {
+                    <app-button
+                    type="ghost"
+                    [leftIcon]="'ui/download'"
+                    (click)="onImportClick()"
+                    >
+                        Import
+                    </app-button>
+                    <app-button
+                        type="ghost"
+                        [leftIcon]="'ui/upload'"
+                        (click)="onExportClick()"
+                    >
+                        
+                        Export
+                    </app-button>
+                    <app-button
+                        type="primary"
+                        class="btn-primary create-btn"
+                        [leftIcon]="'ui/plus'"
+                        (click)="openCreateFlowDialog()"
+                    >
+                        Create flow
+                    </app-button>
+                }
             </div>
         </header>
         <nav class="tabs">
