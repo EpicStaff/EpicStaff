@@ -211,6 +211,7 @@ export class FlowBaseNodeComponent {
 
     public getSelectedFlowUrl(): string | null {
         if (this.node?.type !== NodeType.SUBGRAPH) return null;
+        if (this.isBlockedSubgraph) return null;
         const flowId = Number((this.node as any)?.data?.id);
         if (!Number.isFinite(flowId) || flowId <= 0) return null;
         return flowUrl(flowId);
