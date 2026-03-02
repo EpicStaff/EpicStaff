@@ -1,11 +1,15 @@
-<div class="chunk__items" (scroll)="onScroll($event)">
+<div
+    #scrollContainer
+    class="chunk__items"
+    (scroll)="onScroll($event)"
+>
     <div class="chunk__id-container">
         <!--space area for chunk IDs-->
     </div>
     <p
         class="chunk__text-container"
     >
-        @if (loading()) {
+        @if (loading() === 'up') {
             <span
                 [style.z-index]="chunks().length"
                 class="chunk__loader chunk__id-item chunk__id-item--odd"
@@ -50,7 +54,7 @@
             }
         }
 
-        @if (loading()) {
+        @if (loading() === 'down') {
             <span
                 [style.z-index]="chunks().length"
                 class="chunk__id-item chunk__loader"

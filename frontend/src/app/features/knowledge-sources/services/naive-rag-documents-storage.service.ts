@@ -11,7 +11,7 @@ import { transformToTableDocuments } from "../helpers/transform-to-table-documen
 import {
     DocumentChunkingState,
     DocumentWithChunksStatus,
-    GetNaiveRagDocumentChunksResponse, NaiveRagChunkingResponse
+    GetNaiveRagDocumentChunksResponse, NaiveRagChunkingResponse, NaiveRagDocumentChunk
 } from "../models/naive-rag-chunk.model";
 import {
     BulkDeleteNaiveRagDocumentDtoResponse,
@@ -66,6 +66,7 @@ export class NaiveRagDocumentsStorageService {
                     status: 'chunks_ready',
                     chunkStrategy: docData.chunk_strategy,
                     chunkOverlap: docData.chunk_overlap,
+                    chunkSize: this.calcAvgChunkSize(chunks),
                     total: total_chunks,
                     chunks
                 }));
@@ -88,6 +89,7 @@ export class NaiveRagDocumentsStorageService {
                 this.updateDocState(documentId, s => ({
                     ...s,
                     removedCount,
+                    chunkSize: this.calcAvgChunkSize([...s.chunks, ...chunks]),
                     chunks: [...s.chunks, ...chunks]
                 }));
                 setTimeout(() => {
@@ -124,12 +126,21 @@ export class NaiveRagDocumentsStorageService {
                             removedCount = updatedChunks.length - bufferLimit;
                             updatedChunks.splice(updatedChunks.length - removedCount, removedCount);
                         }
-                        return { ...s, removedCount, chunks: updatedChunks };
+                        return {
+                            ...s,
+                            removedCount,
+                            chunkSize: this.calcAvgChunkSize(updatedChunks),
+                            chunks: updatedChunks
+                        };
                     });
                     return { removedCount, fetchedCount: chunks.length };
                 }),
                 catchError((err) => throwError(() => err))
             );
+    }
+
+    private calcAvgChunkSize(chunks: NaiveRagDocumentChunk[]): number {
+        return chunks.reduce((sum, item) => sum + item.text.length, 0) / chunks.length;
     }
 
     public initDocumentStatesMap(documents: TableDocument[]): void {

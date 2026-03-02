@@ -1,0 +1,14 @@
+<a
+    class="go-to-button"
+    [class.icon]="variant === 'icon'"
+    [class.full]="variant === 'full'"
+    [class.disabled]="disabled"
+    [attr.href]="href"
+    [attr.target]="target"
+    rel="noopener noreferrer"
+>
+    @if (variant === 'full') {
+        <span class="go-to-button__text">{{ label }}</span>
+    }
+    <img src="assets/icons/ui/go-to-arrow.svg" alt="Go to" class="go-to-button__icon" />
+</a>

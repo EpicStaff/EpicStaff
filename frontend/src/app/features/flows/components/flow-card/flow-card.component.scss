@@ -18,11 +18,20 @@
     background: var(--color-nodes--bg);
   }
 
+  &.selected {
+    border-color: var(--color-divider-regular);
+    box-shadow: 0 0 0 1px var(--color-primary-transparent, rgba(99, 102, 241, 0.2));
+  }
+
   .card-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 0.75rem;
+
+    .selection-checkbox{
+      margin-right: 15px;
+    }
 
     .flow-name {
       margin: 0;
