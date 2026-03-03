@@ -1213,13 +1213,11 @@ export class TasksTableComponent implements OnChanges {
                 console.warn('Row not found for local deletion.');
             }
 
-            this.setPending(String(this.selectedRowData.id),{
-                rowKey: String(this.selectedRowData.id),
-                kind: 'delete',
-                payload: { tempId: String(this.selectedRowData.id) },
-            });
+            const tempRowKey = String(this.selectedRowData.id);
+            this.setPending(tempRowKey, null);
+            this.localDraftTempKeys.delete(tempRowKey);
+            this.requiredErrorsRows.delete(tempRowKey);
             this.emitReorderPending();
-
             this.closeContextMenu();
             return;
         }

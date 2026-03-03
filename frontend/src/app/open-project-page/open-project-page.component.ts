@@ -760,7 +760,9 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                             case 'update':
                                 return this.tasksService.updateTask(ev.payload);
                             case 'delete':
-                                return this.tasksService.deleteTask(ev.payload.id);
+                                const id = Number(ev?.payload?.id);
+                                if (!Number.isFinite(id)) return of(null);
+                                return this.tasksService.deleteTask(id);
                             case 'reorder':
                                 const items =
                                     (ev.payload as Array<{ id: number; order: number }>) ?? [];
