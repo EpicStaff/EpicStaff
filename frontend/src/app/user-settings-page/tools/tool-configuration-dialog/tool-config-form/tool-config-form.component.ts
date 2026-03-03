@@ -22,7 +22,7 @@ import { Tool } from '../../../../features/tools/models/tool.model';
 import {
   CreateToolConfigRequest,
   ToolConfig,
-} from '../../../../features/tools/models/tool_config.model';
+} from '../../../../features/tools/models/tool-config.model';
 import { GetLlmConfigRequest } from '../../../../features/settings-dialog/models/llms/LLM_config.model';
 import { EmbeddingConfig } from '../../../../features/settings-dialog/models/embeddings/embedding-config.model';
 import {

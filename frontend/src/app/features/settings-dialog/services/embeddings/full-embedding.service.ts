@@ -5,8 +5,8 @@ import { EmbeddingConfigsService } from './embedding_configs.service';
 import { EmbeddingModelsService } from './embeddings.service';
 import { GetEmbeddingConfigRequest } from '../../models/embeddings/embedding-config.model';
 import { EmbeddingModel } from '../../models/embeddings/embedding.model';
-import { LLM_Providers_Service } from '../LLM_providers.service';
-import { LLM_Provider, ModelTypes } from '../../models/LLM_provider.model';
+import { LLM_Providers_Service } from '../llm-providers.service';
+import { LLM_Provider, ModelTypes } from '../../models/llm-provider.model';
 
 export interface FullEmbeddingConfig extends GetEmbeddingConfigRequest {
   modelDetails: EmbeddingModel | null;

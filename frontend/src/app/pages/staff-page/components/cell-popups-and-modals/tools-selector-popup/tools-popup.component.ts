@@ -28,7 +28,7 @@ import {
   FullToolConfigService,
 } from '../../../../../services/full-tool-config.service';
 import { PythonCodeToolService } from '../../../../../user-settings-page/tools/custom-tool-editor/services/pythonCodeToolService.service';
-import { GetToolConfigRequest } from '../../../../../features/tools/models/tool_config.model';
+import { GetToolConfigRequest } from '../../../../../features/tools/models/tool-config.model';
 import { ToastService } from '../../../../../services/notifications/toast.service';
 import { ToolItemComponent } from './tool-item/tool-item.component';
 import { PythonToolItemComponent } from './python-tool-item/python-tool-item.component';

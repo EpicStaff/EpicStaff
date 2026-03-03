@@ -1,4 +1,4 @@
-import { LLM_Provider } from '../../features/settings-dialog/models/LLM_provider.model';
+import { LLM_Provider } from '../../features/settings-dialog/models/llm-provider.model';
 
 export const PROVIDERS: LLM_Provider[] = [
   {

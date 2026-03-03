@@ -3,7 +3,7 @@ import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { ApiGetRequest } from '../../../shared/models/api-request.model';
-import { LLM_Provider, ModelTypes } from '../models/LLM_provider.model';
+import { LLM_Provider, ModelTypes } from '../models/llm-provider.model';
 import { ConfigService } from '../../../services/config/config.service';
 
 

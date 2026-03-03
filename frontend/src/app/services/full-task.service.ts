@@ -9,7 +9,7 @@ import { McpToolsService } from '../features/tools/services/mcp-tools/mcp-tools.
 import { FullTask } from '../shared/models/full-task.model';
 import { GetTaskRequest } from '../shared/models/task.model';
 import { GetAgentRequest } from '../shared/models/agent.model';
-import { GetToolConfigRequest } from '../features/tools/models/tool_config.model';
+import { GetToolConfigRequest } from '../features/tools/models/tool-config.model';
 import { GetPythonCodeToolRequest } from '../features/tools/models/python-code-tool.model';
 import { GetMcpToolRequest } from '../features/tools/models/mcp-tool.model';
 import { Tool } from '../features/tools/models/tool.model';

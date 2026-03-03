@@ -13,7 +13,7 @@ import {
   ToolConfig,
   CreateToolConfigRequest,
   GetToolConfigRequest,
-} from '../../../features/tools/models/tool_config.model';
+} from '../../../features/tools/models/tool-config.model';
 import { ToolConfigService } from '../../../services/tool-config.service';
 import { NgIf, NgFor, NgClass } from '@angular/common';
 import { ToolConfigFormComponent } from './tool-config-form/tool-config-form.component';

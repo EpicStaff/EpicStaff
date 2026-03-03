@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { ToolConfig } from '../../features/tools/models/tool_config.model';
+import { ToolConfig } from '../../features/tools/models/tool-config.model';
 
 @Injectable({
   providedIn: 'root',

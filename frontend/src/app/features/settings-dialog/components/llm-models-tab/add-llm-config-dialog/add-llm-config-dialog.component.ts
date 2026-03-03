@@ -22,10 +22,10 @@ import { JsonEditorComponent } from '../../../../../shared/components/json-edito
 import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
 import { HelpTooltipComponent } from '../../../../../shared/components/help-tooltip/help-tooltip.component';
 
-import { LLM_Provider, ModelTypes } from '../../../models/LLM_provider.model';
+import { LLM_Provider, ModelTypes } from '../../../models/llm-provider.model';
 import { LLM_Model } from '../../../models/llms/LLM.model';
 import { CreateLLMConfigRequest, GetLlmConfigRequest } from '../../../models/llms/LLM_config.model';
-import { LLM_Providers_Service } from '../../../services/LLM_providers.service';
+import { LLM_Providers_Service } from '../../../services/llm-providers.service';
 import { LLM_Models_Service } from '../../../services/llms/LLM_models.service';
 import { LLM_Config_Service } from '../../../services/llms/LLM_config.service';
 import { ModelSelectorModalComponent, ModelSelectorResult } from '../model-selector-modal/model-selector-modal.component';
