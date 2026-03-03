@@ -91,7 +91,7 @@
         </div>
         <div
             class="go-to-flow"
-            *ngIf="node.type === NodeType.SUBGRAPH && getSelectedFlowUrl()"
+            *ngIf="node.type === NodeType.SUBGRAPH && !isBlockedSubgraph && getSelectedFlowUrl()"
             (mousedown)="$event.stopPropagation()"
             (click)="$event.stopPropagation()"
         >

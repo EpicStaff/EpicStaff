@@ -59,6 +59,16 @@ export class MyFlowsComponent implements OnInit {
     public readonly error = signal<string | null>(null);
     public readonly filteredFlows = this.flowsService.filteredFlows;
     public readonly isFlowsLoaded = this.flowsService.isFlowsLoaded;
+    public readonly selectMode = this.flowsService.selectMode;
+    public readonly selectedFlowIds = this.flowsService.selectedFlowIds;
+
+    public onFlowSelect(flowId: number): void{
+        this.flowsService.toggleFlowSelection(flowId);
+    }
+
+    public isFlowSelected(flowId: number): boolean{
+        return this.selectedFlowIds().includes(flowId);
+    }
 
     public ngOnInit(): void {
         if (!this.flowsService.isFlowsLoaded()) {

@@ -190,3 +190,11 @@ class ProcessRagIndexingSerializer(serializers.Serializer):
 
     rag_id = serializers.IntegerField(required=True, min_value=1)
     rag_type = serializers.ChoiceField(required=True, choices=["naive", "graph"])
+
+
+class BulkExportSerializer(serializers.Serializer):
+    ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        help_text="List of entity IDs",
+    )
