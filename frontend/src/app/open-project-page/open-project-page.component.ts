@@ -547,25 +547,30 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
 
         const flushTasks$ =
             taskUpdates.length > 0
-            ? forkJoin(
-                taskUpdates.map((ev) => {
-                    switch (ev.kind) {
-                        case 'create':
-                            return this.tasksService.createTask(ev.payload);
-                        case 'update':
-                            return this.tasksService.updateTask(ev.payload);
-                        case 'delete':
-                            return this.tasksService.deleteTask(ev.payload.id);
-                        case 'reorder':
-                            const items = (ev.payload as Array<{ id: number; order: number }>) ?? [];
-                            if (items.length === 0) return of([]);
-                            return forkJoin(items.map((x) => this.tasksService.patchTaskOrder(x.id, x.order)));
-                        default:
-                            return of(null);
-                    }
+                ? forkJoin(
+                    taskUpdates.map((ev: TaskPendingEvent) => {
+                        const req$: Observable<unknown> = (() => {
+                            switch (ev.kind) {
+                                case 'create':
+                                    return this.tasksService.createTask(ev.payload);
+                                case 'update':
+                                    return this.tasksService.updateTask(ev.payload);
+                                case 'delete':
+                                    return this.tasksService.deleteTask(ev.payload.id);
+                                case 'reorder': {
+                                    const items = (ev.payload as Array<{ id: number; order: number }>) ?? [];
+                                    return items.length === 0
+                                        ? of([])
+                                        : forkJoin(items.map((x) => this.tasksService.patchTaskOrder(x.id, x.order)));
+                                    }
+                                default:
+                                    return of(null);
+                            }
+                        })();
+                    return req$.pipe(map((res) => ({ ev, res })));
                 })
             )
-            : of([]);  
+        : of([]); 
 
         flushAgents$
             .pipe(
@@ -580,10 +585,19 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                     this.recomputeUnsaved();
                 }),
                 switchMap(() => flushTasks$),
-                tap(() => {
+                tap((results: any[]) => {
+                    for (const item of results) {
+                        const ev = item?.ev;
+                        const res = item?.res;
+
+                        if (ev?.kind === 'create' && res?.id != null) {
+                            this.tasksSection?.applyCreatedTask(ev.rowKey, res);
+                        }
+                    }
+
                     this.pendingTaskUpdates.clear();
                     this.tasksSection?.clearLocalDirtyAfterSave();
-                    this.tasksLocalDirty = false; 
+                    this.tasksLocalDirty = false;
                     this.recomputeUnsaved();
                 }),
                 switchMap(() => {

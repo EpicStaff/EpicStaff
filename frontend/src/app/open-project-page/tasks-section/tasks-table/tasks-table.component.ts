@@ -2147,4 +2147,29 @@ export class TasksTableComponent implements OnChanges {
     public hasLocalDrafts(): boolean {
         return this.localDraftTempKeys.size > 0;
     }
+
+    public applyCreatedTask(tempRowKey: string, created: { id: number } & Partial<TableFullTask>): void {
+        const idx = this.rowData.findIndex((t) => String(t.id) === tempRowKey);
+        if (idx === -1) return;
+
+        const oldRow = this.rowData[idx];
+
+        const newRow: TableFullTask = {
+            ...oldRow,
+            ...created,
+            id: Number(created.id),
+        };
+
+        this.rowData.splice(idx, 1, newRow);
+        this.gridApi?.applyTransaction({
+            remove: [oldRow],
+            add: [newRow],
+            addIndex: idx,
+        });
+
+        this.localDraftTempKeys?.delete(tempRowKey);
+        this.requiredErrorsRows?.delete(tempRowKey);
+        this.baselineTasksById?.set(Number(created.id), this.normalizeTaskForCompare(newRow as any));
+        this.cdr.markForCheck();
+    }
 }

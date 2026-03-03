@@ -89,4 +89,8 @@ export class TasksSectionComponent implements OnInit, OnDestroy {
   public clearLocalDirtyAfterSave(): void {
     this.table?.clearLocalDirtyAfterSave();
   }
+
+  public applyCreatedTask(tempRowKey: string, created: any): void {
+    this.table?.applyCreatedTask(tempRowKey, created);
+  }
 }
