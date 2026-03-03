@@ -15,8 +15,8 @@ import {
 } from '@angular/forms';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
-import { LLM_Provider, ModelTypes } from '../../../models/LLM_provider.model';
-import { LLM_Providers_Service } from '../../../services/LLM_providers.service';
+import { LLM_Provider, ModelTypes } from '../../../models/llm-provider.model';
+import { LLM_Providers_Service } from '../../../services/llm-providers.service';
 import { RealtimeModelsService } from '../../../services/realtime-llms/real-time-models.service';
 import { RealtimeModelConfigsService } from '../../../services/realtime-llms/real-time-model-config.service';
 import { finalize } from 'rxjs/operators';

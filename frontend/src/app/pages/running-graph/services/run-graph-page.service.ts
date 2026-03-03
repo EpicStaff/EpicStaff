@@ -1,5 +1,5 @@
 import { Injectable, signal } from '@angular/core';
-import { Memory } from './components/memory-sidebar/models/memory.model';
+import { Memory } from '../components/memory-sidebar/models/memory.model';
 
 @Injectable({
   providedIn: 'root',

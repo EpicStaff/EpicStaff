@@ -16,7 +16,7 @@ import {
 } from '@angular/forms';
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
-import { LLM_Provider } from '../../../models/LLM_provider.model';
+import { LLM_Provider } from '../../../models/llm-provider.model';
 import { EmbeddingConfigsService } from '../../../services/embeddings/embedding_configs.service';
 import { CreateEmbeddingConfigRequest } from '../../../models/embeddings/embedding-config.model';
 import { finalize } from 'rxjs/operators';

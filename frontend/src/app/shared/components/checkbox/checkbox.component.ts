@@ -22,6 +22,8 @@ export class CheckboxComponent implements ControlValueAccessor {
 
     changed = output<boolean>();
 
+    variant = input<'default' | 'mainColor'>('default');
+
     private onChange = (_: boolean) => {};
     private onTouched = () => {};
 

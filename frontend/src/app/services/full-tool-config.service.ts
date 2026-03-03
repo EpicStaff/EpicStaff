@@ -3,11 +3,11 @@ import { Injectable } from '@angular/core';
 import { Observable, forkJoin, of, map, switchMap } from 'rxjs';
 import { Tool } from '../features/tools/models/tool.model';
 import { BuiltinToolsService } from '../features/tools/services/builtin-tools/builtin-tools.service';
-import { ToolConfigService } from './tool_config.service';
+import { ToolConfigService } from './tool-config.service';
 import {
   CreateToolConfigRequest,
   GetToolConfigRequest,
-} from '../features/tools/models/tool_config.model';
+} from '../features/tools/models/tool-config.model';
 
 export interface FullToolConfig extends Tool {
   toolConfigs: GetToolConfigRequest[]; // List of related tool configurations

@@ -3,7 +3,7 @@ import { Injectable } from '@angular/core';
 import { Observable, of } from 'rxjs';
 import { map, shareReplay, switchMap } from 'rxjs/operators';
 import { ApiGetRequest } from '../shared/models/api-request.model';
-import { GetLlmModelRequest, LLM_Model } from '../shared/models/LLM.model';
+import { GetLlmModelRequest, LLM_Model } from '../shared/models';
 import { ConfigService } from './config/config.service';
 
 @Injectable({

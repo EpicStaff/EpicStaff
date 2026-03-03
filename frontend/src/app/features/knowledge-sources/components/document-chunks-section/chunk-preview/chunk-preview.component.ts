@@ -1,9 +1,10 @@
 import { NgClass } from "@angular/common";
 import {
+    AfterViewInit,
     ChangeDetectionStrategy,
     Component,
-    computed, DestroyRef, inject,
-    input, NgZone, OnChanges, signal, SimpleChanges,
+    computed, DestroyRef, ElementRef, inject,
+    input, NgZone, OnChanges, signal, SimpleChanges, ViewChild,
 } from "@angular/core";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { FormsModule } from "@angular/forms";
@@ -33,7 +34,7 @@ interface DisplayedChunk {
     ],
     changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class ChunkPreviewComponent implements OnChanges {
+export class ChunkPreviewComponent implements OnChanges, AfterViewInit {
     ragId = input.required<number>();
     docId = input.required<number>();
     chunkingState = input.required<DocumentChunkingState>();
@@ -49,7 +50,7 @@ export class ChunkPreviewComponent implements OnChanges {
     private bufferLimit: number = 50;
     private nextOffset: number = 0;
     private prevOffset: number = 0;
-    loading = signal<boolean>(false);
+    loading = signal<'up' | 'down' | false>(false);
 
     chunks = computed<DisplayedChunk[]>(() => {
         const state = this.chunkingState();
@@ -69,6 +70,8 @@ export class ChunkPreviewComponent implements OnChanges {
         }
     });
 
+    @ViewChild('scrollContainer') private scrollContainer!: ElementRef<HTMLDivElement>;
+
     ngOnChanges(changes: SimpleChanges) {
         const state: DocumentChunkingState = this.chunkingState();
         const limit = calcLimit(state.chunkSize);
@@ -86,6 +89,10 @@ export class ChunkPreviewComponent implements OnChanges {
         this.nextOffset = lastChunkId;
     }
 
+    ngAfterViewInit() {
+        this.checkIfNeedsMoreChunks();
+    }
+
     onScroll(event: Event) {
         if (this.loading()) return;
         const el = event.target as HTMLElement;
@@ -97,7 +104,7 @@ export class ChunkPreviewComponent implements OnChanges {
         const thresholdPx = 500;
 
         if (scrollTop + clientHeight >= scrollHeight - thresholdPx) {
-            this.loadMoreDown(el);
+            this.loadMoreDown();
         }
 
         if (scrollTop <= thresholdPx) {
@@ -106,9 +113,9 @@ export class ChunkPreviewComponent implements OnChanges {
     }
 
     // Correct scroll position after adding new and removing old items handled in a service
-    private loadMoreDown(container: HTMLElement) {
+    private loadMoreDown() {
         if (this.loading() || this.nextOffset >= this.totalChunks) return;
-        this.loading.set(true);
+        this.loading.set('down');
 
         this.documentStorageService
             .loadNextChunks(this.ragId(), this.docId(), this.nextOffset, this.limit, this.bufferLimit)
@@ -116,6 +123,7 @@ export class ChunkPreviewComponent implements OnChanges {
             .subscribe(() => {
                 setTimeout(() => {
                     this.loading.set(false);
+                    this.checkIfNeedsMoreChunks();
                 }, 500)
             });
     }
@@ -124,7 +132,7 @@ export class ChunkPreviewComponent implements OnChanges {
         const firstChunkId = this.chunks()[0]?.chunkIndex;
         if (!firstChunkId || firstChunkId <= 1 || this.loading() || this.prevOffset < 0) return;
 
-        this.loading.set(true);
+        this.loading.set('up');
 
         const anchorEl = container.querySelector(`[data-chunk-index="${firstChunkId}"]`) as HTMLElement;
         const containerTop = container.getBoundingClientRect().top;
@@ -169,5 +177,16 @@ export class ChunkPreviewComponent implements OnChanges {
                 text,
             };
         });
+    }
+
+    private checkIfNeedsMoreChunks(): void {
+        const el = this.scrollContainer?.nativeElement;
+        if (!el || this.loading() || this.nextOffset >= this.totalChunks) return;
+
+        const hasScroll = el.scrollHeight > el.clientHeight;
+
+        if (!hasScroll) {
+            this.loadMoreDown();
+        }
     }
 }

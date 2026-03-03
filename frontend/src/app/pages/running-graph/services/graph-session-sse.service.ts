@@ -1,10 +1,12 @@
 import { Injectable, signal } from '@angular/core';
 import { GraphSessionStatus } from '../../../features/flows/services/flows-sessions.service';
-import { GraphMessage } from '../../running-graph/models/graph-session-message.model';
-import { Memory } from '../../running-graph/components/memory-sidebar/models/memory.model';
+import { GraphMessage } from '../models/graph-session-message.model';
+import { Memory } from '../components/memory-sidebar/models/memory.model';
 import { ConfigService } from '../../../services/config/config.service';
 
-@Injectable()
+@Injectable({
+  providedIn: 'root',
+})
 export class RunSessionSSEService {
   constructor(private configService: ConfigService) {}
 

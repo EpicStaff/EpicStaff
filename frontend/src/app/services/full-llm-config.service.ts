@@ -2,10 +2,10 @@ import { Injectable } from '@angular/core';
 import { forkJoin, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
-import { GetLlmConfigRequest } from '../shared/models/LLM_config.model';
-import { GetLlmModelRequest } from '../shared/models/LLM.model';
-import { LLM_Config_Service } from './LLM_config.service';
-import { LLM_Models_Service } from './LLM_models.service';
+import { GetLlmConfigRequest } from '../shared/models/llm-config.model';
+import { GetLlmModelRequest } from '../shared/models';
+import { LLM_Config_Service } from './llm-config.service';
+import { LLM_Models_Service } from './llm-models.service';
 
 export interface FullLLMConfig extends GetLlmConfigRequest {
   modelDetails: GetLlmModelRequest | null;

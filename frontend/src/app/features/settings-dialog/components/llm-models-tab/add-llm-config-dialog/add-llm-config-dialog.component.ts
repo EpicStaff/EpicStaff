@@ -22,10 +22,10 @@ import { JsonEditorComponent } from '../../../../../shared/components/json-edito
 import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
 import { HelpTooltipComponent } from '../../../../../shared/components/help-tooltip/help-tooltip.component';
 
-import { LLM_Provider, ModelTypes } from '../../../models/LLM_provider.model';
+import { LLM_Provider, ModelTypes } from '../../../models/llm-provider.model';
 import { LLM_Model } from '../../../models/llms/LLM.model';
 import { CreateLLMConfigRequest, GetLlmConfigRequest } from '../../../models/llms/LLM_config.model';
-import { LLM_Providers_Service } from '../../../services/LLM_providers.service';
+import { LLM_Providers_Service } from '../../../services/llm-providers.service';
 import { LLM_Models_Service } from '../../../services/llms/LLM_models.service';
 import { LLM_Config_Service } from '../../../services/llms/LLM_config.service';
 import { ModelSelectorModalComponent, ModelSelectorResult } from '../model-selector-modal/model-selector-modal.component';
@@ -101,14 +101,11 @@ export class AddLlmConfigDialogComponent implements OnInit {
     selectedModelId = signal<number | null>(null);
 
     logitBiasText = signal('{}');
-    responseFormatText = signal('{}');
     headersText = signal('{}');
     headers = signal<Record<string, string>>({});
     private isUpdatingHeadersFromUI = false;
 
     logitBiasJson = computed(() => this.logitBiasText());
-
-    responseFormatJson = computed(() => this.responseFormatText());
 
     headersJson = computed(() => this.headersText());
 
@@ -235,7 +232,6 @@ export class AddLlmConfigDialogComponent implements OnInit {
         this.selectedModelId.set(config.model);
 
         this.logitBiasText.set(JSON.stringify(config.logit_bias ?? {}, null, 2));
-        this.responseFormatText.set(JSON.stringify(config.response_format ?? {}, null, 2));
         
         // Rebuild headers form array
         const headersToSet = config.headers || {};
@@ -355,10 +351,6 @@ export class AddLlmConfigDialogComponent implements OnInit {
         this.logitBiasText.set(json);
     }
 
-    onResponseFormatChange(json: string): void {
-        this.responseFormatText.set(json);
-    }
-
     private parseJsonObject<T>(json: string): T | null {
         try {
             const parsed = JSON.parse(json || '{}');
@@ -405,7 +397,6 @@ export class AddLlmConfigDialogComponent implements OnInit {
         const formValue = this.form.value;
 
         const logitBias = this.parseJsonObject<Record<string, number>>(this.logitBiasText());
-        const responseFormat = this.parseJsonObject<Record<string, unknown>>(this.responseFormatText());
         const headersObj = this.parseJsonObject<Record<string, string>>(this.headersText()) ?? this.headers();
         const headers = Object.keys(headersObj).length > 0 ? headersObj : undefined;
 
@@ -428,7 +419,6 @@ export class AddLlmConfigDialogComponent implements OnInit {
             seed: seedValue,
             stop: [],
             logit_bias: logitBias,
-            response_format: responseFormat,
             is_visible: true,
             headers,
         };

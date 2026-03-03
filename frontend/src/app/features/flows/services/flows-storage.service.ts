@@ -36,6 +36,9 @@ export class FlowsStorageService {
     public readonly isFlowsLoaded = this.flowsLoaded.asReadonly();
     public readonly isTemplatesLoaded = this.templatesLoaded.asReadonly();
 
+    public selectMode = signal<boolean>(false);
+    public selectedFlowIds = signal<number[]>([]);
+
     public readonly filteredFlows = computed(() => {
         const flows = this.flowsSignal();
         const filter = this.filterSignal();
@@ -201,6 +204,13 @@ export class FlowsStorageService {
             tap(() => {
                 const currentFlows = this.flowsSignal();
                 this.flowsSignal.set(currentFlows.filter((f) => f.id !== id));
+                // Remove deleted flow from export selection
+                const currentSelected = this.selectedFlowIds();
+                if (currentSelected.includes(id)) {
+                    this.selectedFlowIds.set(
+                        currentSelected.filter((selectedId) => selectedId !== id)
+                    );
+                }
             })
         );
     }
@@ -241,6 +251,49 @@ export class FlowsStorageService {
         const currentFlows = this.flowsSignal();
         if (!currentFlows.some((f) => f.id === newFlow.id)) {
             this.flowsSignal.set([newFlow, ...currentFlows]);
+        }
+    }
+
+    public setSelectMode(mode: boolean): void {
+        this.selectMode.set(mode);
+        if (!mode) {
+            this.selectedFlowIds.set([]);
+        }
+    }
+
+    public toggleFlowSelection(id: number): void {
+        const current = this.selectedFlowIds();
+        if (current.includes(id)) {
+            this.selectedFlowIds.set(current.filter(item => item !== id));
+        } else {
+            this.selectedFlowIds.set([...current, id])
+        }
+    }
+
+    public clearSelection(): void {
+        this.selectedFlowIds.set([]);
+    }
+
+    public selectAllFlows(): void {
+        const allFlowIds = this.filteredFlows().map(flow => flow.id);
+        this.selectedFlowIds.set(allFlowIds);
+    }
+
+    public deselectAllFlows(): void {
+        this.selectedFlowIds.set([]);
+    }
+
+    public isAllFlowsSelected(): boolean {
+        const allFlowIds = this.filteredFlows().map(flow => flow.id);
+        const selectedIds = this.selectedFlowIds();
+        return allFlowIds.length > 0 && allFlowIds.every(id => selectedIds.includes(id));
+    }
+
+    public toggleSelectAllFlows(): void {
+        if (this.isAllFlowsSelected()) {
+            this.deselectAllFlows();
+        } else {
+            this.selectAllFlows();
         }
     }
 }

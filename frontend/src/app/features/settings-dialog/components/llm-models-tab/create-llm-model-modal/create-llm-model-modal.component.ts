@@ -8,7 +8,7 @@ import { AppIconComponent } from '../../../../../shared/components/app-icon/app-
 import { CustomInputComponent } from '../../../../../shared/components/form-input/form-input.component';
 import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
 import { ToggleSwitchComponent } from '../../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
-import { LLM_Provider } from '../../../models/LLM_provider.model';
+import { LLM_Provider } from '../../../models/llm-provider.model';
 import { LLM_Model } from '../../../models/llms/LLM.model';
 import { LLM_Models_Service } from '../../../services/llms/LLM_models.service';
 import { getProviderIconPath } from '../../../utils/get-provider-icon';

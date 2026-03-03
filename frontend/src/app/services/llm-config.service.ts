@@ -7,7 +7,7 @@ import {
   CreateLLMConfigRequest,
   UpdateLLMConfigRequest,
   GetLlmConfigRequest,
-} from '../shared/models/LLM_config.model';
+} from '../shared/models/llm-config.model';
 import { ConfigService } from './config/config.service';
 
 @Injectable({
