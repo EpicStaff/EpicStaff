@@ -43,7 +43,7 @@ export const FLOW_SHORTCUT_SECTIONS: ShortcutSection[] = [
             // { id: 'select-item', label: 'Select an item', keys: ['Space'] },
             // { id: 'select-several', label: 'Select several items', keys: ['Shift', '←', '→', '↑', '↓'] },
             { id: 'add-remove-selection', label: 'Add/remove selection', keys: ['Ctrl', 'click'] },
-            { id: 'zone-selection', label: 'Zone selection', keys: ['Ctrl', 'Shift', 'click'] },
+            { id: 'zone-selection', label: 'Zone selection', keys: ['Shift', 'click'] },
             // { id: 'remove-selection', label: 'Remove all selection', keys: ['Esc'] },
         ],
     },
