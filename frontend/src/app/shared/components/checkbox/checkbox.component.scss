@@ -58,3 +58,12 @@ input:disabled {
     opacity: 0.7;
     cursor: not-allowed;
 }
+
+input[type="checkbox"].variant-main-color:checked {
+    background: var(--color-ks-button-activated);
+    border-color: var(--color-ks-button-activated);
+}
+
+input[type="checkbox"].variant-main-color:checked::after {
+    border-color: var(--color-ks-text);
+}

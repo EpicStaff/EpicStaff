@@ -61,7 +61,6 @@ export class FlowsListPageComponent implements OnDestroy {
     ];
 
     public searchTerm: string = '';
-
     private searchTerms = new Subject<string>();
     private subscription: Subscription;
 
@@ -70,6 +69,9 @@ export class FlowsListPageComponent implements OnDestroy {
     private router = inject(Router);
     private cdr = inject(ChangeDetectorRef);
     private importExportService = inject(ImportExportService);
+
+    public selectMode = this.flowStorageService.selectMode;
+    public selectedFlowIds = this.flowStorageService.selectedFlowIds;
 
     constructor() {
         this.subscription = this.searchTerms
@@ -86,6 +88,7 @@ export class FlowsListPageComponent implements OnDestroy {
 
         this.searchTerm = '';
         this.flowStorageService.setFilter(null);
+        this.flowStorageService.setSelectMode(false);
     }
 
     public onSearchTermChange(term: string): void {
@@ -141,5 +144,44 @@ export class FlowsListPageComponent implements OnDestroy {
             }
         };
         input.click();
+    }
+
+    public onExportClick(): void {
+        this.flowStorageService.setSelectMode(true);
+    }
+
+    public cancelExport(): void {
+        this.flowStorageService.setSelectMode(false);
+    }
+
+    public confirmExport(): void {
+        const ids = this.selectedFlowIds();
+        if (ids.length === 0) {
+            return;
+        }
+
+        this.importExportService.bulkExportFlow( ids ).subscribe({
+            next: (blob) => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `flows_export_${Date.now()}.json`;
+                a.click();
+                window.URL.revokeObjectURL(url);
+
+                this.flowStorageService.setSelectMode(false);
+            },
+            error: (error) => {
+                console.error('Bulk export failed:', error);
+            }
+        });
+    }
+
+    public selectAllFlows(): void {
+        this.flowStorageService.toggleSelectAllFlows();
+    }
+
+    public isAllSelected(): boolean {
+        return this.flowStorageService.isAllFlowsSelected();
     }
 }
