@@ -236,9 +236,11 @@ export class TasksTableComponent implements OnChanges {
             } as any;
         });
 
-        const tempDrafts = Array.from(existingByKey.values()).filter((r) =>
-            typeof r.id === 'string' && r.id.startsWith('temp_')
-        );
+        const tempDrafts = Array.from(existingByKey.values()).filter((r) => {
+            const key = String(r?.id ?? '');
+            if (!key.startsWith('temp_')) return false;
+            return this.localDraftTempKeys.has(key) || this.requiredErrorsRows.has(key);
+        });
 
         this.rowData = [
             ...mergedRealTasks,
