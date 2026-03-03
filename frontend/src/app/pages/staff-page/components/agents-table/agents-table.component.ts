@@ -83,12 +83,12 @@ interface CellInfo {
 }
 type PopupEvent = CellClickedEvent<any, any> | CellKeyDownEvent<any, any>;
 
-type PendingKind = 'create' | 'update';
+type PendingKind = 'create' | 'update' | 'delete';
 
 interface PendingChange {
     kind: PendingKind;
     rowId: string;
-    payload: CreateAgentRequest | UpdateAgentRequest;
+    payload?: CreateAgentRequest | UpdateAgentRequest;
 }
 
 @Component({
@@ -131,6 +131,7 @@ export class AgentsTableComponent {
     @Output() dirtyChange = new EventEmitter<boolean>();
     private pending = new Map<string, PendingChange>();
     private savedSnapshot = new Map<string, unknown>();
+    private deletedRows = new Map<string, { row: TableFullAgent; index: number }>();
 
     @ViewChild('agGridWrap', { static: true }) agGridWrap!: ElementRef<HTMLElement>;
     private activeRowId: string | null = null;
@@ -1063,6 +1064,15 @@ export class AgentsTableComponent {
         const isTempRow =
             typeof rowId === 'string' && rowId.startsWith('temp_');
 
+        const clearLocalPendingState = (id: string) => {
+            this.pending.delete(id);
+            this.savedSnapshot.delete(id);
+            this.draftTempRows.delete(id);
+            this.invalidTempRows.delete(id);
+            this.requiredErrorsRows.delete(id);
+            this.emitDirty();
+        };
+
         if (isTempRow) {
             console.log('Deleting temporary row:', rowId);
 
@@ -1087,6 +1097,7 @@ export class AgentsTableComponent {
                 console.warn('Temporary row not found in data array');
             }
 
+            clearLocalPendingState(rowId);
             this.closeContextMenu();
             return;
         }
@@ -1102,57 +1113,33 @@ export class AgentsTableComponent {
             return;
         }
 
-        // Call the API to delete the agent
-        this.agentsService.deleteAgent(numericId).subscribe({
-            next: () => {
-                console.log(
-                    'Agent deleted successfully on backend:',
-                    numericId
-                );
-                this.toastService.success('Agent deleted successfully');
+        const idStr = String(numericId);
+        clearLocalPendingState(idStr);
 
-                // Find the row in our local data array
-                const index = this.rowData.findIndex((row) => {
-                    const rowIdNum =
-                        typeof row.id === 'number'
-                            ? row.id
-                            : parseInt(row.id as string, 10);
-                    return rowIdNum === numericId;
-                });
-
-                if (index !== -1) {
-                    // Remove from the data array
-                    this.rowData.splice(index, 1)[0];
-
-                    // Update the grid with the new data
-                    this.gridApi.setGridOption('rowData', [...this.rowData]);
-
-                    // Refresh index column
-                    this.gridApi.refreshCells({
-                        force: true,
-                        columns: ['index'],
-                    });
-
-                    console.log(
-                        'Row removed from grid, new row count:',
-                        this.rowData.length
-                    );
-                    this.cdr.markForCheck();
-                } else {
-                    console.warn(
-                        'Row not found in data array after successful delete'
-                    );
-                }
-            },
-            error: (error) => {
-                console.error('Error deleting agent:', error);
-                this.toastService.error('Failed to delete agent');
-            },
-            complete: () => {
-                this.closeContextMenu();
-            },
+        const index = this.rowData.findIndex((row) => {
+            const rowIdNum =
+                typeof row.id === 'number'
+                    ? row.id
+                    : parseInt(row.id as string, 10);
+            return rowIdNum === numericId;
         });
+
+        if (index === -1) {
+            console.warn('Row not found in data array for delete:', numericId);
+            this.closeContextMenu();
+            return;
+        }
+
+        this.deletedRows.set(idStr, { row: this.rowData[index], index });
+        this.rowData.splice(index, 1);
+        this.gridApi.setGridOption('rowData', [...this.rowData]);
+        this.gridApi.refreshCells({ force: true, columns: ['index'] });
+        this.cdr.markForCheck();
+        this.setPending(idStr, { kind: 'delete', rowId: idStr });
+        this.closeContextMenu();
+        return;
     }
+
     public handleCopy(): void {
         if (!this.selectedRowData) return;
         this.copiedRowData = JSON.parse(JSON.stringify(this.selectedRowData));
@@ -1833,8 +1820,49 @@ export class AgentsTableComponent {
 
         const changes = Array.from(this.pending.values());
 
+        const ordered = changes.sort((a, b) => {
+            const rank = (k: PendingKind) => (k === 'delete' ? 0 : k === 'create' ? 1 : 2);
+            return rank(a.kind) - rank(b.kind);
+        });
+
         return from(changes).pipe(
             concatMap((change) => {
+                if (change.kind === 'delete') {
+                    const idNum = Number(change.rowId);
+
+                    if (Number.isNaN(idNum)) {
+                        this.toastService.error('Failed to delete agent: invalid ID');
+                        this.pending.delete(change.rowId);
+                        this.emitDirty();
+                        return of(void 0);
+                    }
+
+                    return this.agentsService.deleteAgent(idNum).pipe(
+                        tap(() => {
+                            const rowId = change.rowId;
+                            this.pending.delete(rowId);
+                            this.deletedRows.delete(rowId);
+                            this.savedSnapshot.delete(rowId);
+                            this.dirtyChange.emit(this.pending.size > 0);
+                            this.cdr.markForCheck();
+                        }),
+                        catchError((err) => {
+                            if (err?.status === 404) {
+                                const rowId = change.rowId;
+                                this.pending.delete(rowId);
+                                this.deletedRows.delete(rowId);
+                                this.savedSnapshot.delete(rowId);
+                                this.emitDirty();
+                                this.cdr.markForCheck();
+                                return EMPTY;
+                            }
+
+                            this.toastService.error('Failed to delete agent');
+                            return EMPTY;
+                        }),
+                        map(() => void 0),
+                    );
+                }
                 if (change.kind === 'create') {
                     return this.agentsService.createAgent(change.payload as CreateAgentRequest).pipe(
                         tap((newAgent) => {
@@ -1901,6 +1929,19 @@ export class AgentsTableComponent {
     }
 
     public discardPending(): void {
+        if (this.deletedRows.size > 0) {
+            const restore = Array.from(this.deletedRows.values())
+                .sort((a, b) => a.index - b.index);
+
+            for (const item of restore) {
+                const idx = Math.min(Math.max(item.index, 0), this.rowData.length);
+                this.rowData.splice(idx, 0, item.row);
+            }
+
+            this.deletedRows.clear();
+            this.gridApi.setGridOption('rowData', [...this.rowData]);
+            this.gridApi.refreshCells({ force: true, columns: ['index'] });
+        }
         this.pending.clear();
         this.dirtyChange.emit(false);
         this.cdr.markForCheck();
