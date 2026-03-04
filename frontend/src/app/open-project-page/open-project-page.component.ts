@@ -725,7 +725,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         this.recomputeUnsaved();
     }
 
-    private savePendingForLeave(): Observable<boolean> {
+    public savePendingForLeave(): Observable<boolean> {
         if (!this.hasUnsavedChanges) return of(true);
         if (!this.project) return of(true);
 
@@ -847,6 +847,16 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                 }),
                 map((result) => result === 'save' || result === 'dont-save')
             );
+    }
+
+    public discardPendingChanges(): void {
+        this.pendingProjectUpdate = null;
+        this.pendingAgentUpdates.clear();
+        this.pendingTaskUpdates.clear();
+        this.hasUnsavedChanges = false;
+
+        this.recomputeUnsaved();
+        this.cdr.markForCheck();
     }
 
     @HostListener('window:beforeunload', ['$event'])

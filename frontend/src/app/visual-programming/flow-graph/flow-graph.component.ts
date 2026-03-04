@@ -2273,6 +2273,7 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
         const dialogRef = this.dialog.open(ProjectDialogComponent, {
             width: '90vw',
             height: '90vh',
+            disableClose: true,
 
             data: {
                 projectId: project.data.id,
