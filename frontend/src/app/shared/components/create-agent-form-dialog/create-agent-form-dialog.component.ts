@@ -22,7 +22,6 @@ import { MATERIAL_FORMS } from '../../material-forms';
 
 import { RealtimeAgentService } from '../../../services/realtime-agent.service';
 import { AgentsService } from '../../../services/staff.service';
-import { ToastService } from '../../../services/notifications/toast.service';
 import { ToolsSelectorComponent } from '../../components/tools-selector/tools-selector.component';
 import {
     FullLLMConfigService,
@@ -69,6 +68,10 @@ interface AgentFormData {
     cache: boolean;
     respect_context_window: boolean;
 }
+
+export type AgentDialogResult =
+    | { kind: 'create'; payload: CreateAgentRequest }
+    | { kind: 'update'; payload: GetAgentRequest };
 
 @Component({
     selector: 'app-create-agent-form',
@@ -147,12 +150,10 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
     constructor(
         private fb: FormBuilder,
         private cdr: ChangeDetectorRef,
-        private agentService: AgentsService,
         private realtimeAgentService: RealtimeAgentService,
-        private toastService: ToastService,
         private fullLLMConfigService: FullLLMConfigService,
         private collectionsService: CollectionsApiService,
-        public dialogRef: DialogRef<GetAgentRequest | undefined>
+        public dialogRef: DialogRef<AgentDialogResult | undefined>,
     ) {
         // Check edit mode
         const data = this.dialogRef.config?.data as
@@ -530,23 +531,8 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
 
             console.log('Update request:', updateRequest);
 
-            this.agentService.updateAgent(updateRequest).subscribe({
-                next: (updatedAgent) => {
-                    this.isSubmitting.set(false);
-
-                    const completeAgent: GetAgentRequest = {
-                        ...this.agentToEdit!,
-                        ...updatedAgent,
-                        tools: this.agentToEdit!.tools,
-                    };
-                    this.dialogRef.close(completeAgent);
-                },
-                error: (error) => {
-                    this.isSubmitting.set(false);
-                    console.error('Error updating agent:', error);
-                    this.toastService.error('Failed to update agent');
-                },
-            });
+            this.isSubmitting.set(false);
+            this.dialogRef.close({ kind: 'update', payload: updateRequest });
         } else {
             // Create mode - add new agent
             const agentRequest: CreateAgentRequest = {
@@ -585,20 +571,8 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
 
             console.log('Create request:', agentRequest);
 
-            this.agentService.createAgent(agentRequest).subscribe({
-                next: (createdAgent: GetAgentRequest) => {
-                    this.toastService.success(
-                        `Agent ${createdAgent.role} created`
-                    );
-                    this.isSubmitting.set(false);
-                    this.dialogRef.close(createdAgent);
-                },
-                error: (error) => {
-                    this.isSubmitting.set(false);
-                    console.error('Error creating agent:', error);
-                    this.toastService.error('Failed to create agent');
-                },
-            });
+            this.isSubmitting.set(false);
+            this.dialogRef.close({ kind: 'create', payload: agentRequest });
         }
     }
 

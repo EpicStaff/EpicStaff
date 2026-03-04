@@ -1864,41 +1864,35 @@ export class AgentsTableComponent {
                     );
                 }
                 if (change.kind === 'create') {
-                    return this.agentsService.createAgent(change.payload as CreateAgentRequest).pipe(
-                        tap((newAgent) => {
-                            const tempRowId = change.rowId;
-
-                            const rowIndex = this.rowData.findIndex((r) => String(r.id) === tempRowId);
-                            if (rowIndex !== -1) {
-                                const updatedRow = { ...this.rowData[rowIndex], id: newAgent.id };
-                                this.rowData[rowIndex] = updatedRow;
-
-                                this.savedSnapshot.delete(tempRowId);
-                                this.savedSnapshot.set(String(newAgent.id), this.buildComparablePayload(updatedRow));
-
-                                this.gridApi.applyTransaction({
-                                    remove: [{ id: tempRowId }],
-                                    add: [updatedRow],
-                                    addIndex: rowIndex,
-                                });
-
-                                const emptyAgent = this.createEmptyFullAgent();
-                                this.rowData.push(emptyAgent);
-                                this.gridApi.applyTransaction({ add: [emptyAgent] });
-                            }
-
-                            this.pending.delete(tempRowId);
-                            this.dirtyChange.emit(this.pending.size > 0);
-                            this.cdr.markForCheck();
-                        }),
-                        catchError(() => {
-                            this.toastService.error('Failed to create agent');
-                            return EMPTY;
-                        }),
-                        map(() => void 0),
-                    );
-                }
-
+                    return this.agentsService
+                        .createAgent(change.payload as CreateAgentRequest)
+                        .pipe(
+                            switchMap(() => this.fullAgentService.getFullAgents()),
+                            tap((fullAgents: FullAgent[]) => {
+                                this.rowData = fullAgents.sort((a, b) => b.id - a.id);
+                                this.savedSnapshot.clear();
+                                for (const a of this.rowData) {
+                                    const rowId = String(a.id);
+                                    if (!rowId.startsWith('temp_')) {
+                                        this.savedSnapshot.set(
+                                            rowId,
+                                            this.buildComparablePayload(a)
+                                        );
+                                    }
+                                }
+                                this.rowData.push(this.createEmptyFullAgent());
+                                this.gridApi.setGridOption('rowData', [...this.rowData]);
+                                this.pending.clear();
+                                this.dirtyChange.emit(false);
+                                this.cdr.markForCheck();
+                            }),
+                            catchError(() => {
+                                this.toastService.error('Failed to create agent');
+                                return EMPTY;
+                            }),
+                            map(() => void 0)
+                        );
+                    }
                 return this.agentsService.updateAgent(change.payload as UpdateAgentRequest).pipe(
                     tap(() => {
                         const rowId = change.rowId;
@@ -1944,6 +1938,101 @@ export class AgentsTableComponent {
         }
         this.pending.clear();
         this.dirtyChange.emit(false);
+        this.cdr.markForCheck();
+    }
+
+    public addPendingCreateFromDialog(payload: CreateAgentRequest): void {
+        if (!this.gridApi) {
+            const tempRow = this.createEmptyFullAgent();
+            const tempId = String(tempRow.id);
+
+            Object.assign(tempRow, {
+                role: payload.role ?? '',
+                goal: payload.goal ?? '',
+                backstory: payload.backstory ?? '',
+                allow_delegation: payload.allow_delegation ?? false,
+                memory: payload.memory ?? false,
+                max_iter: payload.max_iter ?? 20,
+                max_rpm: payload.max_rpm ?? 10,
+                max_execution_time: payload.max_execution_time ?? 60,
+                cache: payload.cache ?? false,
+                max_retry_limit: payload.max_retry_limit ?? 0,
+                respect_context_window: payload.respect_context_window ?? false,
+                default_temperature: payload.default_temperature ?? null,
+                knowledge_collection: payload.knowledge_collection ?? null,
+                rag: payload.rag ?? null,
+                llm_config: payload.llm_config ?? null,
+                fcm_llm_config: payload.fcm_llm_config ?? null,
+                configured_tools: payload.configured_tools ?? [],
+                python_code_tools: payload.python_code_tools ?? [],
+                mcp_tools: payload.mcp_tools ?? [],
+                search_configs: payload.search_configs ?? tempRow.search_configs,
+                realtime_agent: payload.realtime_agent ?? tempRow.realtime_agent,
+            });
+
+            this.rowData.unshift(tempRow);
+            this.setPending(tempId, { kind: 'create', rowId: tempId, payload });
+            this.requiredErrorsRows.delete(tempId);
+            this.invalidTempRows.delete(tempId);
+            this.draftTempRows.delete(tempId);
+            this.cdr.markForCheck();
+            return;
+        }
+
+        const tempRow = this.createEmptyFullAgent();
+        const tempId = String(tempRow.id);
+
+        Object.assign(tempRow, {
+            role: payload.role ?? '',
+            goal: payload.goal ?? '',
+            backstory: payload.backstory ?? '',
+            allow_delegation: payload.allow_delegation ?? false,
+            memory: payload.memory ?? false,
+            max_iter: payload.max_iter ?? 20,
+            max_rpm: payload.max_rpm ?? 10,
+            max_execution_time: payload.max_execution_time ?? 60,
+            cache: payload.cache ?? false,
+            max_retry_limit: payload.max_retry_limit ?? 0,
+            respect_context_window: payload.respect_context_window ?? false,
+            default_temperature: payload.default_temperature ?? null,
+            knowledge_collection: payload.knowledge_collection ?? null,
+            rag: payload.rag ?? null,
+            llm_config: payload.llm_config ?? null,
+            fcm_llm_config: payload.fcm_llm_config ?? null,
+            configured_tools: payload.configured_tools ?? [],
+            python_code_tools: payload.python_code_tools ?? [],
+            mcp_tools: payload.mcp_tools ?? [],
+            search_configs: payload.search_configs ?? tempRow.search_configs,
+            realtime_agent: payload.realtime_agent ?? tempRow.realtime_agent,
+            
+        });
+
+        this.rowData.unshift(tempRow);
+        this.gridApi.applyTransaction({ add: [tempRow], addIndex: 0 });
+        this.setPending(tempId, { kind: 'create', rowId: tempId, payload });
+        this.requiredErrorsRows.delete(tempId);
+        this.invalidTempRows.delete(tempId);
+        this.draftTempRows.delete(tempId);
+        this.gridApi.refreshCells({ force: true, columns: ['index'] });
+        this.cdr.markForCheck();
+    }
+
+    public addPendingUpdateFromDialog(payload: UpdateAgentRequest): void {
+        const rowId = String(payload.id);
+
+        if (rowId.startsWith('temp_')) {
+            this.setPending(rowId, { kind: 'create', rowId, payload: payload as any });
+            this.cdr.markForCheck();
+            return;
+        }
+
+        const index = this.rowData.findIndex((r) => String(r.id) === rowId);
+        if (index !== -1) {
+            this.rowData[index] = { ...this.rowData[index], ...payload } as any;
+            this.gridApi?.setGridOption('rowData', [...this.rowData]);
+        }
+
+        this.reconcilePendingUpdate(rowId, payload);
         this.cdr.markForCheck();
     }
 

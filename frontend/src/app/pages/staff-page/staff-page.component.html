@@ -36,16 +36,7 @@
         </header>
     </div>
     <section class="body">
-        <!-- Loading Spinner -->
-        <div *ngIf="isLoadingAgent" class="loading-overlay">
-            <app-loading-spinner
-                [message]="'Adding agent...'"
-                [size]="'md'"
-            ></app-loading-spinner>
-        </div>
-
         <app-agents-table 
-            [newAgent]="newlyCreatedAgent"
             (dirtyChange)="hasUnsavedChanges = $event">
         </app-agents-table>
     </section>

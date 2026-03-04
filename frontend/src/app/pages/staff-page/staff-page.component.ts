@@ -9,7 +9,7 @@ import { TabButtonComponent } from '../../shared/components/tab-button/tab-butto
 import { FiltersListComponent } from '../../shared/components/filters-list/filters-list.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { NgIf } from '@angular/common';
-import { GetAgentRequest } from '../../shared/models/agent.model';
+import { CreateAgentRequest, GetAgentRequest } from '../../shared/models/agent.model';
 import { SaveWithIndicatorComponent } from '../../shared/components/save-with-indicator/save-with-indicator.component';
 import { UnsavedIndicatorComponent } from '../../shared/components/unsaved-indicator/unsaved-indicator.component';
 import { Observable, of } from 'rxjs';
@@ -17,6 +17,7 @@ import { finalize, catchError, map, tap } from 'rxjs/operators';
 import { UnsavedChangesDialogService } from '../../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
 import { CanComponentDeactivate } from '../../core/guards/unsaved-changes.guard';
 import { ToastService } from '../../services/notifications/toast.service';
+import { AgentDialogResult } from '../../shared/components/create-agent-form-dialog/create-agent-form-dialog.component';
 
 @Component({
     selector: 'app-staff-page',
@@ -46,13 +47,12 @@ export class StaffPageComponent implements CanComponentDeactivate {
     @ViewChild(AgentsTableComponent) private agentsTable?: AgentsTableComponent;
 
     openCreateAgentDialog(): void {
-        const dialogRef = this.dialog.open<GetAgentRequest>(
+        const dialogRef = this.dialog.open<AgentDialogResult>(
             CreateAgentFormComponent,
             {
                 maxWidth: '95vw',
                 maxHeight: '90vh',
                 autoFocus: true,
-
                 data: {
                     toolConfigs: [],
                     toolsData: [],
@@ -60,31 +60,17 @@ export class StaffPageComponent implements CanComponentDeactivate {
             }
         );
 
-        dialogRef.closed.subscribe((result: GetAgentRequest | undefined) => {
-            if (result) {
-                this.isLoadingAgent = true;
+        dialogRef.closed.subscribe((result: AgentDialogResult | undefined) => {
+            if (!result || !this.agentsTable) return;
 
-                this.fullAgentService.getFullAgentById(result.id).subscribe({
-                    next: (fullAgent) => {
-                        if (fullAgent) {
-                            this.newlyCreatedAgent = fullAgent;
-                        } else {
-                            console.error(
-                                'Could not find newly created agent with ID:',
-                                result.id
-                            );
-                        }
-                        this.isLoadingAgent = false;
-                    },
-                    error: (error) => {
-                        console.error(
-                            'Error fetching newly created agent:',
-                            error
-                        );
-                        this.isLoadingAgent = false;
-                    },
-                });
+            if (result.kind === 'create') {
+                this.agentsTable.addPendingCreateFromDialog(result.payload);
+                return;
             }
+
+            // if (result.kind === 'update') {
+            //     this.agentsTable.addPendingUpdateFromDialog(result.payload);
+            // }
         });
     }
 
@@ -154,6 +140,8 @@ export class StaffPageComponent implements CanComponentDeactivate {
                 map((result) => result === 'save' || result === 'dont-save'),
             );
     }
+
+    
 
 
     @HostListener('window:beforeunload', ['$event'])
