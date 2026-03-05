@@ -1,0 +1,109 @@
+# docker-compose.dev.yaml
+
+services:
+  django_app:
+    command: sh -lc "
+      python manage.py check_db_init &&
+      python manage.py migrate &&
+      python manage.py fix_sequences &&
+      python manage.py upload_models &&
+      python manage.py collectstatic --noinput &&
+      python manage.py listen_redis &
+      python manage.py cache_redis &
+      uvicorn django_app.asgi:application --host 0.0.0.0 --port ${DJANGO_PORT:-8000} --reload --reload-dir /home/user/root/app/django_app"
+    ports:
+      - "${DJANGO_PORT:-8000}:${DJANGO_PORT:-8000}"
+    environment:
+      GUNICORN_RELOAD: 1
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      # Добавляем локальные папки к тем, что уже описаны в base.yaml
+      - ./django_app:/home/user/root/app/django_app:cached
+      - ./shared:/home/user/root/app/shared:cached
+
+  crewdb:
+    ports:
+      - "${DB_PORT:-5432}:${DB_PORT:-5432}"
+
+  redis:
+    ports:
+      - "${REDIS_PORT:-6379}:${REDIS_PORT:-6379}"
+
+  realtime:
+    ports:
+      - "${REALTIME_PORT:-8050}:${REALTIME_PORT:-8050}"
+    environment:
+      REALTIME_RELOAD: "True"
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - ./realtime:/home/user/root/app
+
+  manager:
+    command: uvicorn app:app --host 0.0.0.0 --port ${MANAGER_PORT:-8001} --workers 1 --reload
+    ports:
+      - "${MANAGER_PORT:-8001}:${MANAGER_PORT:-8001}"
+    env_file:
+      - .env
+      - ../dev/dev.env
+    environment:
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - ./manager:/home/user/root/app
+      - ./tool:/home/user/root/app/tool
+
+  crew:
+    command: >
+      sh -lc "cd /home/user/root/app &&
+      poetry run watchfiles
+      --filter python
+      'poetry run python3 /home/user/root/app/src/crew/main.py'
+      /home/user/root/app/src/crew/"
+    environment:
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - ./crew/callbacks:/home/user/root/app/src/crew/callbacks:cached
+      - ./crew/config:/home/user/root/app/src/crew/config:cached
+      - ./crew/models:/home/user/root/app/src/crew/models:cached
+      - ./crew/services:/home/user/root/app/src/crew/services:cached
+      - ./crew/utils:/home/user/root/app/src/crew/utils:cached
+      - ./crew/main.py:/home/user/root/app/src/crew/main.py:cached
+
+  frontend:
+    ports:
+      - "${FRONTEND_PORT:-4201}:80"
+    env_file:
+      - ./.env
+      - ../dev/dev.env
+
+  webhook:
+    command: >
+      sh -c "watchfiles --filter python 'python run.py' /app"
+    ports:
+      - "${WEBHOOK_PORT:-8051}:${WEBHOOK_PORT:-8051}"
+    env_file:
+      - ./.env
+      - ../dev/dev.env
+    environment:
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - ./webhook/app:/app/app
+      - ./webhook/run.py:/app/run.py
+
+  knowledge:
+    command: sh -c "watchfiles --filter python 'python main.py' ."
+    environment:
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - ./knowledge:/home/user/root/app
+
+  sandbox:
+    command: sh -c "watchfiles --filter python 'python main.py' ."
+    environment:
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - ./sandbox:/home/user/root/app
+      - ./shared:/home/user/root/app/shared
+
+  epicstaff-nginx:
+    profiles:
+      - prod
