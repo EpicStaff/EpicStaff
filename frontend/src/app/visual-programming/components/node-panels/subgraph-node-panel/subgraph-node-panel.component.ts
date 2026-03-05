@@ -7,6 +7,8 @@ import { CustomInputComponent } from '../../../../shared/components/form-input/f
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { GoToButtonComponent } from '../../../../shared/components/go-to-button/go-to-button.component';
+import { flowUrl } from '../../../../shared/utils/flow-links';
 
 interface InputMapPair {
     key: string;
@@ -16,7 +18,7 @@ interface InputMapPair {
 @Component({
     standalone: true,
     selector: 'app-subgraph-node-panel',
-    imports: [ReactiveFormsModule, CommonModule, CustomInputComponent, InputMapComponent],
+    imports: [ReactiveFormsModule, CommonModule, CustomInputComponent, InputMapComponent, GoToButtonComponent],
     template: `
         <div class="panel-container">
             <div class="panel-content">
@@ -49,16 +51,25 @@ interface InputMapPair {
                             Selected Flow
                             <i class="ti ti-help-circle tooltip-icon" title="Select the flow that this node will execute"></i>
                         </label>
-                        <select
-                            formControlName="selectedFlowId"
-                            class="select-field"
-                            (change)="onFlowChange()"
-                        >
-                            <option [value]="null" disabled>Select a flow</option>
-                            @for (flow of filteredFlows(); track flow.id) {
-                            <option [value]="flow.id">{{ flow.name }}</option>
-                            }
-                        </select>
+                        <div class="selected-flow-row">
+                            <select
+                                formControlName="selectedFlowId"
+                                class="select-field"
+                                (change)="onFlowChange()"
+                            >
+                                <option [value]="null" disabled>Select a flow</option>
+                                @for (flow of filteredFlows(); track flow.id) {
+                                <option [value]="flow.id">{{ flow.name }}</option>
+                                }
+                            </select>
+                            <app-go-to-button
+                                variant="full"
+                                label="Go to flow"
+                                [href]="getSelectedFlowUrl()"
+                                target="_blank"
+                                [disabled]="!selectedFlowExists()"
+                            ></app-go-to-button>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -106,7 +117,8 @@ interface InputMapPair {
             }
 
             .select-field {
-                width: 100%;
+                flex: 1;
+                width: auto;
                 padding: 0.5rem;
                 background: rgba(255, 255, 255, 0.05);
                 border: 1px solid rgba(255, 255, 255, 0.1);
@@ -125,6 +137,21 @@ interface InputMapPair {
             .select-field option {
                 background: #1a1a1a;
                 color: rgba(255, 255, 255, 0.9);
+            }
+
+            .selected-flow-row {
+                display: flex;
+                gap: 10px;
+                align-items: center;
+            }
+
+            .selected-flow-row app-go-to-button {
+                flex: 0 0 auto;
+            }
+
+            app-go-to-button.is-disabled {
+                pointer-events: none;
+                opacity: 0.5;
             }
         `,
     ],
@@ -251,5 +278,17 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
             return acc;
         }, {});
     }
-}
 
+    public getSelectedFlowUrl(): string | null {
+        const id = this.form.get('selectedFlowId')?.value;
+        if (!id) return null;
+        return `/flows/${Number(id)}`;
+    }
+
+    readonly selectedFlowExists = computed(() => {
+        const id = Number(this.form?.get('selectedFlowId')?.value);
+        if (!id) return false;
+
+        return this.availableFlows().some(f => f.id === id);
+    });
+}

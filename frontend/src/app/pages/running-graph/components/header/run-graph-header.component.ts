@@ -8,7 +8,7 @@ import { MatBadgeModule } from '@angular/material/badge';
 import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
 import { StatusBadgeComponent } from '../../../../shared/components/status-badge/status-badge.component';
 import { GraphSessionStatus } from '../../../../features/flows/services/flows-sessions.service';
-import { RunGraphPageService } from '../../run-graph-page.service';
+import { RunGraphPageService } from '../../services/run-graph-page.service';
 import { MemoriesSidebarComponent } from '../memory-sidebar/components/memory-sidebar/memory-sidebar.component';
 import { MemoryService } from '../memory-sidebar/service/memory.service';
 import { FlowSessionsListComponent } from '../../../../features/flows/components/flow-sessions-dialog/flow-sessions-list.component';

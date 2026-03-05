@@ -3,7 +3,7 @@ import { GetMcpToolRequest } from '../../features/tools/models/mcp-tool.model';
 import { FullTask } from './full-task.model';
 import { GetToolRequest } from '../../features/tools/models/tool.model';
 import { ToolUniqueName } from './agent.model';
-import { GetToolConfigRequest } from '../../features/tools/models/tool_config.model';
+import { GetToolConfigRequest } from '../../features/tools/models/tool-config.model';
 
 export interface GetTaskRequest {
     id: number;

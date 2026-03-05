@@ -14,7 +14,8 @@ RUN pip install poetry
 COPY ./sandbox/pyproject.toml .
 COPY ./sandbox/poetry.lock .
 
-RUN poetry config virtualenvs.create false 
+RUN poetry config virtualenvs.create false
+RUN poetry lock
 RUN poetry install --no-root
 RUN rm -rf /root/.cache
 

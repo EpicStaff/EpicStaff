@@ -3,7 +3,7 @@ import { GetAgentRequest } from '../../../shared/models/agent.model';
 import { GetLlmConfigRequest } from '../../../features/settings-dialog/models/llms/LLM_config.model';
 import { GetProjectRequest } from '../../../features/projects/models/project.model';
 import { CreateTaskRequest } from '../../../shared/models/task.model';
-import { ToolConfig } from '../../../features/tools/models/tool_config.model';
+import { ToolConfig } from '../../../features/tools/models/tool-config.model';
 import { GetPythonCodeToolRequest } from '../../../features/tools/models/python-code-tool.model';
 import {
     CreatePythonCodeRequest,

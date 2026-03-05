@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { forkJoin, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-import { EmbeddingConfigsService } from './embedding_configs.service';
+import { EmbeddingConfigsService } from './embedding-configs.service';
 import { EmbeddingModelsService } from './embeddings.service';
 import { GetEmbeddingConfigRequest } from '../shared/models/embedding-config.model';
 import { EmbeddingModel } from '../shared/models/embedding.model';

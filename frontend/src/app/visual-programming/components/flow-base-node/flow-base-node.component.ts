@@ -40,6 +40,8 @@ import { NoteNodeComponent } from '../nodes-components/note-node/note-node.compo
 import { getNodeTitle } from '../../core/enums/node-title.util';
 import { ResizeHandleComponent } from '../resize-handle/resize-handle.component';
 import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay.component';
+import { GoToButtonComponent } from '../../../shared/components/go-to-button/go-to-button.component';
+import { flowUrl } from '../../../shared/utils/flow-links';
 
 @Component({
     selector: 'app-flow-base-node',
@@ -56,6 +58,7 @@ import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay
         DecisionTableNodeComponent,
         NoteNodeComponent,
         FlowNodeVariablesOverlayComponent,
+        GoToButtonComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
@@ -204,5 +207,13 @@ export class FlowBaseNodeComponent {
 
     onNodeSizeChanged(size: { width: number; height: number }): void {
         this.fNodeSizeChange.emit(size);
+    }
+
+    public getSelectedFlowUrl(): string | null {
+        if (this.node?.type !== NodeType.SUBGRAPH) return null;
+        if (this.isBlockedSubgraph) return null;
+        const flowId = Number((this.node as any)?.data?.id);
+        if (!Number.isFinite(flowId) || flowId <= 0) return null;
+        return flowUrl(flowId);
     }
 }

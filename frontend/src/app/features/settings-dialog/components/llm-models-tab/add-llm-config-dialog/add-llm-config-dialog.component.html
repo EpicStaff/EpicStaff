@@ -268,19 +268,6 @@
                         [showHeader]="false"
                     />
                 </div>
-
-                <div class="llm-dialog__field">
-                    <label class="llm-dialog__label">
-                        Response Format (JSON)
-                        <app-help-tooltip text="Specify the format of the response (e.g., JSON mode)" />
-                    </label>
-                    <app-json-editor
-                        [jsonData]="responseFormatJson()"
-                        (jsonChange)="onResponseFormatChange($event)"
-                        [editorHeight]="120"
-                        [showHeader]="false"
-                    />
-                </div>
             </section>
         </form>
             </div>

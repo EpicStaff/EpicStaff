@@ -47,13 +47,13 @@ import { ErrorMessageComponent } from './components/error-message/error-message.
 import { ProjectTransitionComponent } from './components/transition/project-transition.component';
 import { WaitForUserInputComponent } from './components/user-input-component/user-input-component.component';
 import { SessionStatusMessageData } from '../../models/update-session-status.model';
-import { AnswerToLLMService } from '../../../../services/answerToLLMService.service';
+import { AnswerToLLMService } from '../../../../services/answer-to-llm.service';
 import { UserMessageComponent } from './components/user-message/user-message.component';
 import { SubgraphStartMessageComponent } from './components/subgraph-start-message/subgraph-start-message.component';
 import { SubgraphFinishMessageComponent } from './components/subgraph-finish-message/subgraph-finish-message.component';
 import { isMessageType } from './helper_functions/message-helper';
-import { RunGraphPageService } from '../../run-graph-page.service';
-import { RunSessionSSEService } from '../../../run-graph-page/run-graph-page-body/graph-session-sse.service';
+import { RunGraphPageService } from '../../services/run-graph-page.service';
+import { RunSessionSSEService } from '../../services/graph-session-sse.service';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { ExtractedChunksMessageComponent } from './components/extracted-chunks/extracted-chunks-message.component';

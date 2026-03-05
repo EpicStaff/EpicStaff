@@ -1,6 +1,6 @@
 import { GetPythonCodeToolRequest } from '../../features/tools/models/python-code-tool.model';
 import { GetToolRequest } from '../../features/tools/models/tool.model';
-import { GetToolConfigRequest } from '../../features/tools/models/tool_config.model';
+import { GetToolConfigRequest } from '../../features/tools/models/tool-config.model';
 import { GetMcpToolRequest } from '../../features/tools/models/mcp-tool.model';
 
 export type ToolUniqueName =

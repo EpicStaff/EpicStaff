@@ -11,6 +11,7 @@ redis = "5.2.1"
 loguru = "0.7.3"
 pydantic = ">=2.10.5"
 python-dotenv = "1.0.1"
+watchfiles = ">=0.22.0"
 
 
 [tool.poetry.group.dev.dependencies]

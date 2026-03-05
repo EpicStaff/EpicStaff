@@ -7,7 +7,7 @@ import {
 } from '@angular/core';
 import { NgClass, NgFor, NgIf } from '@angular/common';
 import { FullToolConfig } from '../../../../../../services/full-tool-config.service';
-import { GetToolConfigRequest } from '../../../../../../features/tools/models/tool_config.model';
+import { GetToolConfigRequest } from '../../../../../../features/tools/models/tool-config.model';
 import { animate, style, transition, trigger } from '@angular/animations';
 import { AppIconComponent } from '../../../../../../shared/components/app-icon/app-icon.component';
 

@@ -4,21 +4,21 @@ import { map } from 'rxjs/operators';
 
 import { AgentsService } from './staff.service';
 import { LLM_Config_Service } from '../features/settings-dialog/services/llms/LLM_config.service';
-import { ToolConfigService } from './tool_config.service';
+import { ToolConfigService } from './tool-config.service';
 import { PythonCodeToolService } from '../user-settings-page/tools/custom-tool-editor/services/pythonCodeToolService.service';
 import { LLM_Models_Service } from '../features/settings-dialog/services/llms/LLM_models.service';
 import { ProjectsStorageService } from '../features/projects/services/projects-storage.service';
-import { LLM_Providers_Service } from '../features/settings-dialog/services/LLM_providers.service';
+import { LLM_Providers_Service } from '../features/settings-dialog/services/llm-providers.service';
 import { BuiltinToolsService } from '../features/tools/services/builtin-tools/builtin-tools.service';
 import { McpToolsService } from '../features/tools/services/mcp-tools/mcp-tools.service';
 
 import { GetAgentRequest, PartialUpdateAgentRequest } from '../shared/models/agent.model';
-import { GetToolConfigRequest } from '../features/tools/models/tool_config.model';
+import { GetToolConfigRequest } from '../features/tools/models/tool-config.model';
 import { GetPythonCodeToolRequest } from '../features/tools/models/python-code-tool.model';
 import { GetMcpToolRequest } from '../features/tools/models/mcp-tool.model';
 import { RealtimeModelConfigsService } from '../features/settings-dialog/services/realtime-llms/real-time-model-config.service';
 import { RealtimeModelsService } from '../features/settings-dialog/services/realtime-llms/real-time-models.service';
-import { LLM_Provider } from '../features/settings-dialog/models/LLM_provider.model';
+import { LLM_Provider } from '../features/settings-dialog/models/llm-provider.model';
 import { FullLLMConfig } from '../features/settings-dialog/services/llms/full-llm-config.service';
 import { FullRealtimeConfig } from '../features/settings-dialog/services/realtime-llms/full-reamtime-config.service';
 import { Tool } from '../features/tools/models/tool.model';

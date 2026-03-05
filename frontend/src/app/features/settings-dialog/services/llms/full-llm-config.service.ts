@@ -4,10 +4,10 @@ import { map } from 'rxjs/operators';
 
 import { GetLlmConfigRequest } from '../../models/llms/LLM_config.model';
 import { GetLlmModelRequest } from '../../models/llms/LLM.model';
-import { LLM_Provider, ModelTypes } from '../../models/LLM_provider.model';
+import { LLM_Provider, ModelTypes } from '../../models/llm-provider.model';
 import { LLM_Config_Service } from './LLM_config.service';
 import { LLM_Models_Service } from './LLM_models.service';
-import { LLM_Providers_Service } from '../LLM_providers.service';
+import { LLM_Providers_Service } from '../llm-providers.service';
 
 export interface FullLLMConfig extends GetLlmConfigRequest {
   modelDetails: GetLlmModelRequest | null;

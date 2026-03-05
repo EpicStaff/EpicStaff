@@ -8,16 +8,16 @@ import {
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { RouterModule } from '@angular/router';
-import { GraphMessagesComponent } from './components/graph-messages/graph-messages.component';
-import { RunningGraphHeaderComponent } from './components/header/run-graph-header.component';
-import { FlowRepresentationComponent } from './components/graph-reprsentation/graph-representation.component';
-import { GraphSessionStatus } from '../../features/flows/services/flows-sessions.service';
+import { GraphMessagesComponent } from '../../components/graph-messages/graph-messages.component';
+import { RunningGraphHeaderComponent } from '../../components/header/run-graph-header.component';
+import { FlowRepresentationComponent } from '../../components/graph-reprsentation/graph-representation.component';
+import { GraphSessionStatus } from '../../../../features/flows/services/flows-sessions.service';
 
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
-import { GraphMessage } from './models/graph-session-message.model';
-import { GraphDto } from '../../features/flows/models/graph.model';
-import { FlowsApiService } from '../../features/flows/services/flows-api.service';
+import { GraphMessage } from '../../models/graph-session-message.model';
+import { GraphDto } from '../../../../features/flows/models/graph.model';
+import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 
 @Component({
   selector: 'app-running-graph',
