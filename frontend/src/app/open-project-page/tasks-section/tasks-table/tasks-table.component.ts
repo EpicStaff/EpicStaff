@@ -239,7 +239,11 @@ export class TasksTableComponent implements OnChanges {
         const tempDrafts = Array.from(existingByKey.values()).filter((r) => {
             const key = String(r?.id ?? '');
             if (!key.startsWith('temp_')) return false;
-            return this.localDraftTempKeys.has(key) || this.requiredErrorsRows.has(key);
+            return (
+                this.localPendingKeys.has(key) ||
+                this.localDraftTempKeys.has(key) ||
+                this.requiredErrorsRows.has(key)
+            );
         });
 
         this.rowData = [
@@ -1216,10 +1220,10 @@ export class TasksTableComponent implements OnChanges {
             }
 
             const tempRowKey = String(this.selectedRowData.id);
-            this.setPending(tempRowKey, null);
             this.localDraftTempKeys.delete(tempRowKey);
             this.requiredErrorsRows.delete(tempRowKey);
-            this.emitReorderPending();
+            this.setPending(tempRowKey, null);
+            this.maybeClearReorderPending();
             this.closeContextMenu();
             return;
         }
@@ -2171,5 +2175,33 @@ export class TasksTableComponent implements OnChanges {
         this.requiredErrorsRows?.delete(tempRowKey);
         this.baselineTasksById?.set(Number(created.id), this.normalizeTaskForCompare(newRow as any));
         this.cdr.markForCheck();
+    }
+
+    private maybeClearReorderPending(): void {
+        const displayedReal = this.rowData
+            .filter(t => t?.id != null)
+            .filter(t => !(typeof t.id === 'string' && t.id.startsWith('temp_')))
+            .map(t => ({ id: typeof t.id === 'string' ? Number(t.id) : t.id }))
+            .filter(x => Number.isFinite(x.id));
+
+        const displayedPayload = displayedReal.map((t, idx) => ({
+            id: Number(t.id),
+            order: idx + 1,
+        }));
+
+        const baselineReal = this.tasks
+            .filter(t => typeof t.id === 'number')
+            .map(t => ({ id: t.id as number }));
+
+        const baselinePayload = baselineReal.map((t, idx) => ({
+            id: t.id,
+            order: idx + 1,
+        }));
+
+        const same = JSON.stringify(displayedPayload) === JSON.stringify(baselinePayload);
+
+        if (same) {
+            this.setPending('__ALL__', null);
+        }
     }
 }
