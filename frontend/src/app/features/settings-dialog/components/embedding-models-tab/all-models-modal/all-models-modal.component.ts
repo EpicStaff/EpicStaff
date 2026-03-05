@@ -13,7 +13,7 @@ import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
-import { LLM_Provider } from '../../../models/LLM_provider.model';
+import { LLM_Provider } from '../../../models/llm-provider.model';
 import { EmbeddingModel } from '../../../models/embeddings/embedding.model';
 import { EmbeddingModelsService } from '../../../services/embeddings/embeddings.service';
 import { getProviderIconPath } from '../../../utils/get-provider-icon';

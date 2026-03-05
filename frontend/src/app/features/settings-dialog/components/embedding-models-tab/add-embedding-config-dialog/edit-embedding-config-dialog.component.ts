@@ -20,7 +20,7 @@ import { EmbeddingConfig } from '../../../models/embeddings/embedding-config.mod
 import { finalize } from 'rxjs/operators';
 import { FullEmbeddingConfig } from '../../../services/embeddings/full-embedding.service';
 import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
-import { LLM_Provider } from '../../../models/LLM_provider.model';
+import { LLM_Provider } from '../../../models/llm-provider.model';
 import { EmbeddingModel } from '../../../models/embeddings/embedding.model';
 import {
   ModelSelectorModalComponent,

@@ -18,7 +18,7 @@ import { GetPythonCodeToolRequest } from '../../tools/models/python-code-tool.mo
 import { GetMcpToolRequest } from '../../tools/models/mcp-tool.model';
 import { RealtimeModelConfigsService } from '../../settings-dialog/services/realtime-llms/real-time-model-config.service';
 import { RealtimeModelsService } from '../../settings-dialog/services/realtime-llms/real-time-models.service';
-import { LLM_Provider } from '../../settings-dialog/models/LLM_provider.model';
+import { LLM_Provider } from '../../settings-dialog/models/llm-provider.model';
 import { FullLLMConfig } from '../../settings-dialog/services/llms/full-llm-config.service';
 import { FullRealtimeConfig } from '../../settings-dialog/services/realtime-llms/full-reamtime-config.service';
 import { Tool } from '../../tools/models/tool.model';

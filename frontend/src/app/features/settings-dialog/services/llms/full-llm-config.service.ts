@@ -4,7 +4,7 @@ import { map } from 'rxjs/operators';
 
 import { GetLlmConfigRequest } from '../../models/llms/LLM_config.model';
 import { GetLlmModelRequest } from '../../models/llms/LLM.model';
-import { LLM_Provider, ModelTypes } from '../../models/LLM_provider.model';
+import { LLM_Provider, ModelTypes } from '../../models/llm-provider.model';
 import { LLM_Config_Service } from './llm-config.service';
 import { LLM_Models_Service } from './llm-models.service';
 import { LLM_Providers_Service } from '../llm-providers.service';

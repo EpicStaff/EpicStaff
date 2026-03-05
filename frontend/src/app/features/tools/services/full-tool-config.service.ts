@@ -8,7 +8,6 @@ import {
   CreateToolConfigRequest,
   GetToolConfigRequest,
 } from '../models/tool-config.model';
-
 export interface FullToolConfig extends Tool {
   toolConfigs: GetToolConfigRequest[]; // List of related tool configurations
 }

@@ -14,7 +14,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize, forkJoin } from 'rxjs';
 
 import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
-import { LLM_Provider, ModelTypes } from '../../../models/LLM_provider.model';
+import { LLM_Provider, ModelTypes } from '../../../models/llm-provider.model';
 import { EmbeddingModel } from '../../../models/embeddings/embedding.model';
 import { LLM_Providers_Service } from '../../../services/llm-providers.service';
 import { EmbeddingModelsService } from '../../../services/embeddings/embeddings.service';

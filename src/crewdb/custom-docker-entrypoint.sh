@@ -1,315 +1,389 @@
 #!/bin/bash
 set -e
 
-# Flag file to indicate users have been created
+# Flag file to indicate all table-level permissions have been granted
 USERS_CREATED_FLAG="/tmp/users_created"
 
-# Function to check Django health
-check_django_health() {
-    
-    if curl -f -H "Host: localhost" "http://django_app:${DJANGO_PORT}/ht/" > /dev/null 2>&1; then
-        echo "Django is healthy"
-        return 0
+# HEALTH CHECK ENTRY POINT
+# Only checks if postgres is ready + flag is set.
+# Called by Docker healthcheck — must be fast.
+if [[ "$1" = "healthcheck-users" ]]; then
+    pg_isready -U "${POSTGRES_USER:-postgres}" -p "${DB_PORT:-5432}" || exit 1
+    if [[ -f "$USERS_CREATED_FLAG" ]]; then
+        exit 0
     else
-        echo "Django is not healthy yet"
-        return 1
+        exit 1
     fi
-}
+fi
 
-# Function to create manager user
+# USER CREATION FUNCTIONS
+# These only create the DB roles — no table grants.
+# Safe to run as soon as postgres is up.
+
 create_manager_user() {
-    echo "=== Creating/Checking Manager User ==="
+    local manager_user="${DB_MANAGER_USER}"
+    local manager_password="${DB_MANAGER_PASSWORD}"
 
-    manager_user="${DB_MANAGER_USER}"
-    manager_password="${DB_MANAGER_PASSWORD}"
-    
-    # Check if required environment variables are set
     if [[ -z "$manager_user" || -z "$manager_password" ]]; then
-        echo "WARNING: DB_MANAGER_USER or DB_MANAGER_PASSWORD not set, skipping manager user creation"
+        echo "[manager] WARNING: DB_MANAGER_USER or DB_MANAGER_PASSWORD not set, skipping"
         return 0
     fi
-    
-    echo "Creating manager_user (${manager_user})..."
-    psql -U "${POSTGRES_USER:-postgres}" -d "$target_db" -p ${DB_PORT} <<EOF
+
+    echo "[manager] Creating role if not exists..."
+    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
 DO \$\$
 BEGIN
-   IF NOT EXISTS (
-      SELECT FROM pg_catalog.pg_roles WHERE rolname = '${manager_user}'
-   ) THEN
-      EXECUTE format('CREATE USER %I WITH PASSWORD %L', '${manager_user}', '${manager_password}');
-      RAISE NOTICE 'Created manager_user with read-only access to tables_session';
-   ELSE
-      RAISE NOTICE 'manager_user already exists, skipping creation';
-   END IF;
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${manager_user}') THEN
+        EXECUTE format('CREATE USER %I WITH PASSWORD %L', '${manager_user}', '${manager_password}');
+        RAISE NOTICE '[manager] Created user ${manager_user}';
+    ELSE
+        RAISE NOTICE '[manager] User ${manager_user} already exists, skipping';
+    END IF;
 END
 \$\$;
 
--- Revoke any existing privileges (for safety)
-REVOKE ALL ON ALL TABLES IN SCHEMA public FROM "${manager_user}";
-
--- Grant USAGE on the schema
 GRANT USAGE ON SCHEMA public TO "${manager_user}";
 
--- Grant SELECT only on the tables_session table (if it exists)
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    REVOKE ALL ON TABLES FROM "${manager_user}";
+EOF
+    echo "[manager] Role ready: ${manager_user}"
+}
+
+create_knowledge_user() {
+    local knowledge_user="${DB_KNOWLEDGE_USER}"
+    local knowledge_password="${DB_KNOWLEDGE_PASSWORD}"
+
+    if [[ -z "$knowledge_user" || -z "$knowledge_password" ]]; then
+        echo "[knowledge] WARNING: DB_KNOWLEDGE_USER or DB_KNOWLEDGE_PASSWORD not set, skipping"
+        return 0
+    fi
+
+    echo "[knowledge] Creating role if not exists..."
+    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
 DO \$\$
 BEGIN
-   IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'tables_session' AND table_schema = 'public') THEN
-      GRANT SELECT ON TABLE tables_session TO "${manager_user}";
-      RAISE NOTICE 'Granted SELECT on tables_session to manager_user';
-   ELSE
-      RAISE NOTICE 'tables_session table does not exist yet, permissions will need to be granted later';
-   END IF;
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${knowledge_user}') THEN
+        EXECUTE format('CREATE USER %I WITH PASSWORD %L', '${knowledge_user}', '${knowledge_password}');
+        RAISE NOTICE '[knowledge] Created user ${knowledge_user}';
+    ELSE
+        RAISE NOTICE '[knowledge] User ${knowledge_user} already exists, skipping';
+    END IF;
 END
 \$\$;
 
--- Prevent future tables from automatically granting access to this user
-ALTER DEFAULT PRIVILEGES IN SCHEMA public 
-  REVOKE ALL ON TABLES FROM "${manager_user}";
+GRANT USAGE ON SCHEMA public TO "${knowledge_user}";
+ALTER USER "${knowledge_user}" CREATEDB;
+GRANT CREATE ON SCHEMA public TO "${knowledge_user}";
+GRANT CREATE ON DATABASE "${TARGET_DB}" TO "${knowledge_user}";
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    REVOKE ALL ON TABLES FROM "${knowledge_user}";
 EOF
-    
-    echo "Manager user created or already exists with appropriate permissions: ${manager_user}"
-    echo "=== Manager User Setup Complete ==="
-    
-
-}
-
-create_knowledge_user(){
-      echo "=== Creating/Checking Knowledge User ==="
-      knowledge_user="${DB_KNOWLEDGE_USER}"
-      knowledge_password="${DB_KNOWLEDGE_PASSWORD}"
-
-      # Check if required environment variables are set
-      if [[ -z "$knowledge_user" || -z "$knowledge_password" ]]; then
-          echo "WARNING: DB_KNOWLEDGE_USER or DB_KNOWLEDGE_PASSWORD not set, skipping knowledge user creation"
-          return 0
-      fi
-
-      echo "Creating knowledge_user (${knowledge_user})..."
-      psql -U "${POSTGRES_USER:-postgres}" -d "$target_db" -p ${DB_PORT} <<EOF
-      DO \$\$
-      BEGIN
-          IF NOT EXISTS (
-              SELECT FROM pg_catalog.pg_roles WHERE rolname = '${knowledge_user}'
-          ) THEN
-              EXECUTE format('CREATE USER %I WITH PASSWORD %L', '${knowledge_user}', '${knowledge_password}');
-              RAISE NOTICE 'Created knowledge_user with appropriate permissions';
-          ELSE
-              RAISE NOTICE 'knowledge_user already exists, skipping creation';
-          END IF;
-      END
-      \$\$;
-
-      -- Revoke any existing privileges (for safety)
-      REVOKE ALL ON ALL TABLES IN SCHEMA public FROM "${knowledge_user}";
-
-      -- Grant USAGE on the schema
-      GRANT USAGE ON SCHEMA public TO "${knowledge_user}";
-
-      -- Grant permission to create extensions (needed for uuid-ossp and pgvector)
-      ALTER USER "${knowledge_user}" CREATEDB;
-      GRANT CREATE ON SCHEMA public TO "${knowledge_user}";
-
-      -- Grant CREATE privilege on the current database
-      GRANT CREATE ON DATABASE "$target_db" TO "${knowledge_user}";
-
-      -- === READ-ONLY TABLES ===
-
-      -- Core configuration tables
-      GRANT SELECT ON TABLE tables_provider TO "${knowledge_user}";
-      GRANT SELECT ON TABLE tables_embeddingmodel TO "${knowledge_user}";
-      GRANT SELECT ON TABLE tables_embeddingconfig TO "${knowledge_user}";
-
-      -- Collection and document tables
-      GRANT SELECT ON TABLE tables_sourcecollection TO "${knowledge_user}";
-      GRANT SELECT ON TABLE tables_documentmetadata TO "${knowledge_user}";
-      GRANT SELECT ON TABLE tables_documentcontent TO "${knowledge_user}";
-
-      -- BaseRagType table
-      GRANT SELECT ON TABLE tables_baseragtype TO "${knowledge_user}";
-
-      -- === STATUS UPDATE TABLES ===
-
-      GRANT SELECT, UPDATE ON TABLE tables_naiverag TO "${knowledge_user}";
-
-      GRANT SELECT, UPDATE ON TABLE tables_naiveragdocumentconfig TO "${knowledge_user}";
-
-      -- === FULL CRUD TABLES ===
-
-      -- NaiveRagChunk table
-      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tables_naiveragchunk TO "${knowledge_user}";
-      
-      -- NaiveRagPreviewChunk table
-      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tables_naiveragpreviewchunk TO "${knowledge_user}";
-
-      -- NaiveRagEmbedding table
-      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tables_naiveragembedding TO "${knowledge_user}";
-
-      -- === SEQUENCES ===
-
-      -- Sequence for NaiveRagChunk (chunk_id autoincrement)
-      GRANT USAGE, SELECT, UPDATE ON SEQUENCE tables_naiveragchunk_chunk_id_seq TO "${knowledge_user}";
-
-      -- tables_naiveragembedding uses UUID primary key so no sequence needed
-
-      -- Prevent automatic access to future tables (security measure)
-      ALTER DEFAULT PRIVILEGES IN SCHEMA public
-      REVOKE ALL ON TABLES FROM "${knowledge_user}";
-
-EOF
-      echo "Knowledge user created or already exists with appropriate permissions: ${knowledge_user}"
+    echo "[knowledge] Role ready: ${knowledge_user}"
 }
 
 create_realtime_user() {
-    echo "=== Creating/Checking Realtime User ==="
-    realtime_user="${DB_REALTIME_USER}"
-    realtime_password="${DB_REALTIME_PASSWORD}"
-    # Check if required environment variables are set
+    local realtime_user="${DB_REALTIME_USER}"
+    local realtime_password="${DB_REALTIME_PASSWORD}"
+
     if [[ -z "$realtime_user" || -z "$realtime_password" ]]; then
-        echo "WARNING: DB_REALTIME_USER or DB_REALTIME_PASSWORD not set, skipping manager user creation"
+        echo "[realtime] WARNING: DB_REALTIME_USER or DB_REALTIME_PASSWORD not set, skipping"
         return 0
     fi
-    echo "Creating realtime_user (${realtime_user})..."
-    psql -U "${POSTGRES_USER:-postgres}" -d "$target_db" -p ${DB_PORT} <<EOF
-    DO \$\$
-    BEGIN
-    IF NOT EXISTS (
-        SELECT FROM pg_catalog.pg_roles WHERE rolname = '${realtime_user}'
-    ) THEN
+
+    echo "[realtime] Creating role if not exists..."
+    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
+DO \$\$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${realtime_user}') THEN
         EXECUTE format('CREATE USER %I WITH PASSWORD %L', '${realtime_user}', '${realtime_password}');
-        RAISE NOTICE 'Created realtime_user with CRUD access to realtime_session_items';
+        RAISE NOTICE '[realtime] Created user ${realtime_user}';
     ELSE
-        RAISE NOTICE 'realtime_user already exists, skipping creation';
+        RAISE NOTICE '[realtime] User ${realtime_user} already exists, skipping';
     END IF;
-    END
-    \$\$;
+END
+\$\$;
 
-    -- Revoke all existing privileges for safety
-    REVOKE ALL ON ALL TABLES IN SCHEMA public FROM "${realtime_user}";
+GRANT USAGE ON SCHEMA public TO "${realtime_user}";
 
-    -- Grant basic usage
-    GRANT USAGE ON SCHEMA public TO "${realtime_user}";
-
-    -- Grant CRUD access to realtime_session_items
-    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE realtime_session_items TO "${realtime_user}";
-
-    -- Grant USAGE on sequences only for tables with INSERT permissions
-    DO \$\$
-    BEGIN
-        -- Grant sequence access for realtime_session_items (has INSERT permission)
-        IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'realtime_session_items' AND table_schema = 'public') THEN
-            GRANT USAGE ON SEQUENCE realtime_session_items_id_seq TO "${realtime_user}";
-            RAISE NOTICE 'Granted USAGE on realtime_session_items_id_seq to realtime_user';
-        END IF;
-    EXCEPTION
-        WHEN undefined_object THEN
-            RAISE NOTICE 'Sequence realtime_session_items_id_seq does not exist yet';
-    END
-    \$\$;
-
-    -- Prevent future tables from being auto-accessible
-    ALTER DEFAULT PRIVILEGES IN SCHEMA public 
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
     REVOKE ALL ON TABLES FROM "${realtime_user}";
 EOF
-    echo "Realtime user created or already exists with appropriate permissions: ${realtime_user}"
+    echo "[realtime] Role ready: ${realtime_user}"
 }
 
 create_crew_user() {
-    echo "=== Creating/Checking Crew User ==="
-    crew_user="${DB_CREW_USER}"
-    crew_password="${DB_CREW_PASSWORD}"
-    # Check if required environment variables are set
+    local crew_user="${DB_CREW_USER}"
+    local crew_password="${DB_CREW_PASSWORD}"
+
     if [[ -z "$crew_user" || -z "$crew_password" ]]; then
-        echo "WARNING: DB_CREW_USER or DB_CREW_PASSWORD not set, skipping manager user creation"
+        echo "[crew] WARNING: DB_CREW_USER or DB_CREW_PASSWORD not set, skipping"
         return 0
     fi
-    echo "Creating crew_user (${crew_user})..."
-    psql -U "${POSTGRES_USER:-postgres}" -d "$target_db" -p ${DB_PORT} <<EOF
-    DO \$\$
-    BEGIN
-    IF NOT EXISTS (
-        SELECT FROM pg_catalog.pg_roles WHERE rolname = '${crew_user}'
-    ) THEN
+
+    echo "[crew] Creating role if not exists..."
+    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
+DO \$\$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${crew_user}') THEN
         EXECUTE format('CREATE USER %I WITH PASSWORD %L', '${crew_user}', '${crew_password}');
-        RAISE NOTICE 'Created crew_user with CRUD access to tables_memorydatabase';
+        RAISE NOTICE '[crew] Created user ${crew_user}';
     ELSE
-        RAISE NOTICE 'crew_user already exists, skipping creation';
+        RAISE NOTICE '[crew] User ${crew_user} already exists, skipping';
     END IF;
-    END
-    \$\$;
+END
+\$\$;
 
-    -- Revoke all existing privileges for safety
-    REVOKE ALL ON ALL TABLES IN SCHEMA public FROM "${crew_user}";
+GRANT USAGE ON SCHEMA public TO "${crew_user}";
 
-    -- Grant basic schema usage
-    GRANT USAGE ON SCHEMA public TO "${crew_user}";
-
-    -- Grant full CRUD access to the required table
-    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tables_memorydatabase TO "${crew_user}";
-
-    -- Prevent automatic access to future tables (security measure)
-    ALTER DEFAULT PRIVILEGES IN SCHEMA public 
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
     REVOKE ALL ON TABLES FROM "${crew_user}";
 EOF
-    echo "Crew user created or already exists with appropriate permissions: ${crew_user}"
+    echo "[crew] Role ready: ${crew_user}"
 }
 
-# Function to wait for Django health and then create users
-wait_for_django_and_create_users() {
-    (
-        echo "Starting user creation process - waiting for Django health..."
-        
-        # Wait for Django to be healthy
-        while ! check_django_health; do
-            echo "Waiting for Django to be healthy..."
-            sleep 7
-        done
-        
-        echo "Django is healthy, proceeding with user creation"
+# TABLE PERMISSION GRANT FUNCTIONS
+# Called only after Django migrations have run.
+# Each function is safe to call multiple times.
 
-        # Wait for PostgreSQL to be ready
-        until pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" -h localhost -p "${DB_PORT}"; do
-            echo "Waiting for PostgreSQL to be ready on port ${DB_PORT}..."
+grant_manager_permissions() {
+    local manager_user="${DB_MANAGER_USER}"
+    [[ -z "$manager_user" ]] && return 0
+
+    echo "[manager] Granting table permissions..."
+    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
+-- Revoke stale permissions first
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM "${manager_user}";
+
+DO \$\$
+BEGIN
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_session'
+    ) THEN
+        GRANT SELECT ON TABLE tables_session TO "${manager_user}";
+        RAISE NOTICE '[manager] Granted SELECT on tables_session';
+    ELSE
+        RAISE NOTICE '[manager] tables_session not found, skipping';
+    END IF;
+END
+\$\$;
+EOF
+    echo "[manager] Permissions granted"
+}
+
+grant_knowledge_permissions() {
+    local knowledge_user="${DB_KNOWLEDGE_USER}"
+    [[ -z "$knowledge_user" ]] && return 0
+
+    echo "[knowledge] Granting table permissions..."
+    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM "${knowledge_user}";
+
+DO \$\$
+DECLARE
+    tbl  text;
+    seq  text;
+
+    -- Read-only tables
+    ro_tables text[] := ARRAY[
+        'tables_provider',
+        'tables_embeddingmodel',
+        'tables_embeddingconfig',
+        'tables_sourcecollection',
+        'tables_documentmetadata',
+        'tables_documentcontent',
+        'tables_baseragtype'
+    ];
+
+    -- Select + Update only
+    su_tables text[] := ARRAY[
+        'tables_naiverag',
+        'tables_naiveragdocumentconfig'
+    ];
+
+    -- Full CRUD
+    crud_tables text[] := ARRAY[
+        'tables_naiveragchunk',
+        'tables_naiveragpreviewchunk',
+        'tables_naiveragembedding'
+    ];
+
+BEGIN
+    FOREACH tbl IN ARRAY ro_tables LOOP
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name=tbl) THEN
+            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl, '${knowledge_user}');
+            RAISE NOTICE '[knowledge] SELECT granted on %', tbl;
+        ELSE
+            RAISE NOTICE '[knowledge] % not found, skipping', tbl;
+        END IF;
+    END LOOP;
+
+    FOREACH tbl IN ARRAY su_tables LOOP
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name=tbl) THEN
+            EXECUTE format('GRANT SELECT, UPDATE ON TABLE %I TO %I', tbl, '${knowledge_user}');
+            RAISE NOTICE '[knowledge] SELECT,UPDATE granted on %', tbl;
+        ELSE
+            RAISE NOTICE '[knowledge] % not found, skipping', tbl;
+        END IF;
+    END LOOP;
+
+    FOREACH tbl IN ARRAY crud_tables LOOP
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name=tbl) THEN
+            EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %I TO %I', tbl, '${knowledge_user}');
+            RAISE NOTICE '[knowledge] CRUD granted on %', tbl;
+        ELSE
+            RAISE NOTICE '[knowledge] % not found, skipping', tbl;
+        END IF;
+    END LOOP;
+
+    -- Sequence for naiveragchunk
+    IF EXISTS (SELECT FROM pg_sequences WHERE schemaname='public' AND sequencename='tables_naiveragchunk_chunk_id_seq') THEN
+        GRANT USAGE, SELECT, UPDATE ON SEQUENCE tables_naiveragchunk_chunk_id_seq TO "${knowledge_user}";
+        RAISE NOTICE '[knowledge] Sequence tables_naiveragchunk_chunk_id_seq granted';
+    END IF;
+END
+\$\$;
+EOF
+    echo "[knowledge] Permissions granted"
+}
+
+grant_realtime_permissions() {
+    local realtime_user="${DB_REALTIME_USER}"
+    [[ -z "$realtime_user" ]] && return 0
+
+    echo "[realtime] Granting table permissions..."
+    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM "${realtime_user}";
+
+DO \$\$
+BEGIN
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'realtime_session_items'
+    ) THEN
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE realtime_session_items TO "${realtime_user}";
+        RAISE NOTICE '[realtime] CRUD granted on realtime_session_items';
+
+        IF EXISTS (SELECT FROM pg_sequences WHERE schemaname='public' AND sequencename='realtime_session_items_id_seq') THEN
+            GRANT USAGE ON SEQUENCE realtime_session_items_id_seq TO "${realtime_user}";
+            RAISE NOTICE '[realtime] Sequence realtime_session_items_id_seq granted';
+        END IF;
+    ELSE
+        RAISE NOTICE '[realtime] realtime_session_items not found, skipping';
+    END IF;
+END
+\$\$;
+EOF
+    echo "[realtime] Permissions granted"
+}
+
+grant_crew_permissions() {
+    local crew_user="${DB_CREW_USER}"
+    [[ -z "$crew_user" ]] && return 0
+
+    echo "[crew] Granting table permissions..."
+    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM "${crew_user}";
+
+DO \$\$
+BEGIN
+    IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'tables_memorydatabase'
+    ) THEN
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tables_memorydatabase TO "${crew_user}";
+        RAISE NOTICE '[crew] CRUD granted on tables_memorydatabase';
+    ELSE
+        RAISE NOTICE '[crew] tables_memorydatabase not found, skipping';
+    END IF;
+END
+\$\$;
+EOF
+    echo "[crew] Permissions granted"
+}
+
+# TABLE EXISTENCE CHECK
+# Returns 0 only when ALL required tables are present.
+
+REQUIRED_TABLES=(
+    "tables_session"
+    "tables_naiveragchunk"
+    "tables_naiveragembedding"
+    "tables_memorydatabase"
+    "realtime_session_items"
+)
+
+all_tables_exist() {
+    for tbl in "${REQUIRED_TABLES[@]}"; do
+        local count
+        count=$(psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" -tAc \
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='${tbl}'" 2>/dev/null || echo "0")
+        if [[ "$count" != "1" ]]; then
+            echo "[check] Table '${tbl}' not yet present"
+            return 1
+        fi
+    done
+    return 0
+}
+
+# BACKGROUND WORKER
+# Phase 1: Wait for postgres → create roles immediately.
+# Phase 2: Wait for tables (created by Django migrations) → grant permissions.
+# No dependency on Django health endpoint at all.
+
+background_setup() {
+    (
+        export TARGET_DB="${POSTGRES_DB:-postgres}"
+
+        echo "=== [setup] Phase 1: Waiting for PostgreSQL and target database to be ready ==="
+        # pg_isready only checks if postgres accepts connections — it returns true
+        # even during the initdb temp-server phase, before POSTGRES_DB is created.
+        # We must wait until we can actually connect to the target database.
+        until psql -U "${POSTGRES_USER:-postgres}" -p "${DB_PORT:-5432}" -d "$TARGET_DB" -c "SELECT 1" > /dev/null 2>&1; do
+            echo "[setup] Waiting for database '${TARGET_DB}' to exist..."
             sleep 2
         done
-        target_db="${POSTGRES_DB:-postgres}"
+        echo "=== [setup] PostgreSQL is up and database '${TARGET_DB}' exists ==="
+
+        # Phase 1 — create roles (no tables needed)
         create_manager_user
         create_knowledge_user
         create_realtime_user
         create_crew_user
+        echo "=== [setup] Phase 1 complete: all roles created ==="
 
-        # Set the flag that users have been created
-        echo "All users created successfully"
-        touch "$USERS_CREATED_FLAG"
-        echo "USERS_CREATED flag set. Container crewdb is healthy"
-        
+        # Phase 2 — wait for Django to run migrations, then grant permissions
+        echo "=== [setup] Phase 2: Waiting for Django to create tables via migrations ==="
+        local attempt=0
+        local max_attempts=120   # 120 × 10s = 20 minutes max
 
+        while [[ $attempt -lt $max_attempts ]]; do
+            if all_tables_exist; then
+                echo "=== [setup] All required tables found. Granting permissions... ==="
+                grant_manager_permissions
+                grant_knowledge_permissions
+                grant_realtime_permissions
+                grant_crew_permissions
+                touch "$USERS_CREATED_FLAG"
+                echo "=== [setup] Phase 2 complete: all permissions granted. crewdb is FULLY READY ==="
+                exit 0
+            fi
+            attempt=$(( attempt + 1 ))
+            echo "[setup] Attempt ${attempt}/${max_attempts} — tables not ready yet, retrying in 10s..."
+            sleep 10
+        done
+
+        echo "=== [setup] ERROR: Timed out waiting for Django migrations after $(( max_attempts * 10 ))s ==="
+        exit 1
     ) &
 }
 
-# Health check function for users created
-users_created_healthcheck() {
-    if [[ -f "$USERS_CREATED_FLAG" ]]; then
-        echo "Users have been created"
-        exit 0
-    else
-        echo "Users not created yet"
-        exit 1
-    fi
-}
-
-# Handle health check command
-if [[ "$1" = "healthcheck-users" ]]; then
-    users_created_healthcheck
-fi
-
-# Check if this is the main postgres command
 if [[ "$1" = 'postgres' ]] || [[ "$1" = 'docker-entrypoint.sh' && "$2" = 'postgres' ]]; then
     echo "=== Starting Custom PostgreSQL Entrypoint ==="
-    
-    # If we're starting postgres, run our user creation process
-    wait_for_django_and_create_users
+    background_setup
 fi
 
-# Execute the original pgvector entrypoint with all arguments
-echo "=== Executing Original pgvector Entrypoint ==="
+echo "=== Handing off to original pgvector entrypoint ==="
 exec docker-entrypoint.sh "$@"

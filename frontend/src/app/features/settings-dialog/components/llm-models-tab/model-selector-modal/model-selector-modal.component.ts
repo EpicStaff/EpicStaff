@@ -15,7 +15,7 @@ import { forkJoin } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
 import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
-import { LLM_Provider, ModelTypes } from '../../../models/LLM_provider.model';
+import { LLM_Provider, ModelTypes } from '../../../models/llm-provider.model';
 import { LLM_Model } from '../../../models/llms/LLM.model';
 import { LLM_Providers_Service } from '../../../services/llm-providers.service';
 import { LLM_Models_Service } from '../../../services/llms/llm-models.service';

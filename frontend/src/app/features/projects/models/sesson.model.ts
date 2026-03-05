@@ -62,7 +62,6 @@ export interface LLMConfig {
   api_version?: string;
   temperature: number;
   top_logprobs?: any;
-  response_format?: string;
   presence_penalty?: number;
   frequency_penalty?: number;
   max_completion_tokens?: number;
