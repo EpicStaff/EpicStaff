@@ -162,7 +162,7 @@ export class AgentsTableComponent {
                     }
                 }
 
-                this.rowData.push(this.createEmptyFullAgent());
+                this.ensureSingleSpareEmptyRow();
                 console.log(this.rowData);
 
                 this.cdr.markForCheck();
@@ -213,9 +213,11 @@ export class AgentsTableComponent {
     }
     public onGridReady(params: GridReadyEvent): void {
         this.gridApi = params.api;
-
+        this.gridApi.setGridOption('rowData', [...this.rowData]);
+        this.gridApi.refreshCells({ force: true, columns: ['index'] });
         this.cdr.markForCheck();
     }
+    
     private createEmptyFullAgent(): TableFullAgent {
         const tempId = `temp_${Date.now()}_${Math.random()
             .toString(36)
@@ -768,6 +770,9 @@ export class AgentsTableComponent {
 
             this.draftTempRows.delete(rowId);
             this.emitDirty();
+            this.ensureSingleSpareEmptyRow();
+            this.gridApi.setGridOption('rowData', [...this.rowData]);
+            this.gridApi.refreshCells({ force: true, columns: ['index'] });
             this.cdr.markForCheck();
             return;
         }
@@ -1168,6 +1173,7 @@ export class AgentsTableComponent {
 
         // 2) insert locally
         this.rowData.splice(insertIndex, 0, newAgentData);
+        this.ensureSingleSpareEmptyRow();
 
         this.gridApi.applyTransaction({
             add: [newAgentData],
@@ -1250,6 +1256,7 @@ export class AgentsTableComponent {
 
         // Add to internal data array
         this.rowData.splice(insertIndex, 0, emptyAgent);
+        this.ensureSingleSpareEmptyRow();
 
         // Use transaction API instead of replacing whole array
         this.gridApi.applyTransaction({
@@ -1866,7 +1873,7 @@ export class AgentsTableComponent {
                                         );
                                     }
                                 }
-                                this.rowData.push(this.createEmptyFullAgent());
+                                this.ensureSingleSpareEmptyRow();
                                 this.gridApi.setGridOption('rowData', [...this.rowData]);
                                 this.gridApi.refreshCells({ force: true, columns: ['index'] });
                                 this.gridApi.redrawRows();
@@ -2473,6 +2480,36 @@ export class AgentsTableComponent {
         p.respect_context_window = p.respect_context_window ?? false;
 
         return p;
+    }
+
+    private isSpareEmptyTempRow(row: TableFullAgent): boolean {
+        const id = String(row?.id ?? '');
+        if (!id.startsWith('temp_')) return false;
+
+        return (
+            !this.isTempRowTouched(row) &&
+            !this.pending.has(id) &&
+            !this.draftTempRows.has(id) &&
+            !this.requiredErrorsRows.has(id) &&
+            !this.invalidTempRows.has(id)
+        );
+    }
+
+    private ensureSingleSpareEmptyRow(): void {
+        const spareIndexes: number[] = [];
+
+        for (let i = 0; i < this.rowData.length; i++) {
+            if (this.isSpareEmptyTempRow(this.rowData[i])) spareIndexes.push(i);
+        }
+
+        if (spareIndexes.length === 0) {
+            this.rowData.push(this.createEmptyFullAgent());
+            return;
+        }
+
+        for (let i = spareIndexes.length - 2; i >= 0; i--) {
+            this.rowData.splice(spareIndexes[i], 1);
+        }
     }
 
     @HostListener('document:mousedown', ['$event'])

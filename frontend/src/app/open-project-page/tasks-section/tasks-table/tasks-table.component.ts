@@ -249,9 +249,9 @@ export class TasksTableComponent implements OnChanges {
         this.rowData = [
             ...mergedRealTasks,
             ...tempDrafts,
-            this.createEmptyFullTask(),
-            this.createEmptyFullTask(),
         ];
+
+        this.ensureSingleSpareEmptyRow();
 
         if (this.localPendingKeys.size === 0) {
             this.baselineTasksById.clear();
@@ -263,9 +263,41 @@ export class TasksTableComponent implements OnChanges {
         }
     }
 
+    private isSpareEmptyTempRow(row: TableFullTask): boolean {
+        const id = String(row?.id ?? '');
+        if (!id.startsWith('temp_')) return false;
+
+        return (
+            !this.isTempRowTouched(row) &&
+            !this.localPendingKeys.has(id) &&
+            !this.localDraftTempKeys.has(id) &&
+            !this.requiredErrorsRows.has(id)
+        );
+    }
+
+    private ensureSingleSpareEmptyRow(): void {
+        const spareIndexes: number[] = [];
+
+        for (let i = 0; i < this.rowData.length; i++) {
+            if (this.isSpareEmptyTempRow(this.rowData[i])) spareIndexes.push(i);
+        }
+
+        if (spareIndexes.length === 0) {
+            this.rowData.push(this.createEmptyFullTask());
+            return;
+        }
+
+        for (let i = spareIndexes.length - 2; i >= 0; i--) {
+            this.rowData.splice(spareIndexes[i], 1);
+        }
+    }
+
     onGridReady(event: any): void {
         this.gridApi = event.api;
+        this.gridApi.setGridOption('rowData', [...this.rowData]);
+        this.gridApi.refreshCells({ force: true, columns: ['index'] });
     }
+
     private createEmptyFullTask(): TableFullTask {
         // Create a temporary ID for new tasks
         const tempId = `temp_${Date.now()}_${Math.random()
@@ -866,6 +898,7 @@ export class TasksTableComponent implements OnChanges {
             if (!touched) {
                 this.localDraftTempKeys.delete(rowKey);
                 this.setPending(rowKey, null);
+                
                 this.requiredErrorsRows.delete(rowKey);
                 this.gridApi.refreshCells({
                     rowNodes: [event.node],
@@ -915,6 +948,9 @@ export class TasksTableComponent implements OnChanges {
                 payload: createTaskData,
             });
 
+            this.ensureSingleSpareEmptyRow();
+            this.gridApi?.setGridOption('rowData', [...this.rowData]);
+            this.gridApi?.refreshCells({ force: true, columns: ['index'] });
             this.cdr.markForCheck();
             this.emitReorderPending();
             return;
@@ -1104,6 +1140,10 @@ export class TasksTableComponent implements OnChanges {
                 },
             });
 
+            this.ensureSingleSpareEmptyRow();
+            this.gridApi?.setGridOption('rowData', [...this.rowData]);
+            this.gridApi?.refreshCells({ force: true, columns: ['index'] });
+
             return;
         }
 
@@ -1223,6 +1263,9 @@ export class TasksTableComponent implements OnChanges {
             this.localDraftTempKeys.delete(tempRowKey);
             this.requiredErrorsRows.delete(tempRowKey);
             this.setPending(tempRowKey, null);
+            this.ensureSingleSpareEmptyRow();
+            this.gridApi.setGridOption('rowData', [...this.rowData]);
+            this.gridApi.refreshCells({ force: true, columns: ['index'] });
             this.maybeClearReorderPending();
             this.closeContextMenu();
             return;
@@ -2178,30 +2221,33 @@ export class TasksTableComponent implements OnChanges {
     }
 
     private maybeClearReorderPending(): void {
-        const displayedReal = this.rowData
+        const displayedRows: TableFullTask[] = [];
+
+        if (this.gridApi) {
+            const count = this.gridApi.getDisplayedRowCount();
+            for (let i = 0; i < count; i++) {
+                const node = this.gridApi.getDisplayedRowAtIndex(i);
+                if (node?.data) displayedRows.push(node.data as TableFullTask);
+            }
+        } else {
+            displayedRows.push(...this.rowData);
+        }
+
+        const displayedPayload = displayedRows
             .filter(t => t?.id != null)
             .filter(t => !(typeof t.id === 'string' && t.id.startsWith('temp_')))
-            .map(t => ({ id: typeof t.id === 'string' ? Number(t.id) : t.id }))
+            .map((t, idx) => ({
+                id: typeof t.id === 'string' ? Number(t.id) : t.id,
+                order: idx + 1,
+            }))
             .filter(x => Number.isFinite(x.id));
 
-        const displayedPayload = displayedReal.map((t, idx) => ({
-            id: Number(t.id),
-            order: idx + 1,
-        }));
-
-        const baselineReal = this.tasks
-            .filter(t => typeof t.id === 'number')
-            .map(t => ({ id: t.id as number }));
-
-        const baselinePayload = baselineReal.map((t, idx) => ({
-            id: t.id,
-            order: idx + 1,
-        }));
+        const baselinePayload = this.tasks
+            .filter(t => typeof t.id === 'number' && t.order != null)
+            .sort((a,b) => (a.order ?? 999999) - (b.order ?? 999999))
+            .map((t, idx) => ({ id: t.id, order: idx + 1 }));
 
         const same = JSON.stringify(displayedPayload) === JSON.stringify(baselinePayload);
-
-        if (same) {
-            this.setPending('__ALL__', null);
-        }
+        if (same) this.setPending('__ALL__', null);
     }
 }
