@@ -248,7 +248,7 @@ export class AgentsTableComponent {
             search_configs: {
                 naive: {
                     search_limit: 3,
-                    similarity_threshold: '0.2',
+                    similarity_threshold: 0.2,
                 }
             },
             // Replace realtime_config with realtime_agent object using provided defaults
@@ -865,8 +865,8 @@ export class AgentsTableComponent {
                 rag: agentData.rag ?? null,
                 search_configs: {
                     naive: {
-                        similarity_threshold: agentData.search_configs.naive.similarity_threshold ?? null,
-                        search_limit: agentData.search_configs.naive.search_limit ?? null,
+                        similarity_threshold: agentData.search_configs?.naive?.similarity_threshold ?? null,
+                        search_limit: agentData.search_configs?.naive?.search_limit ?? null,
                     }
                 },
                 memory: agentData.memory ?? true,
@@ -950,8 +950,6 @@ export class AgentsTableComponent {
         // Create or update the realtime_agent object
         const realtime_agent = {
             ...(updatedAgent.realtime_agent || {
-                similarity_threshold: '0.65',
-                search_limit: 3,
                 wake_word: '',
                 stop_prompt: 'stop',
                 language: null,
@@ -2037,6 +2035,8 @@ export class AgentsTableComponent {
     }
 
     private normalizeAdvancedSettings(input: any): Record<string, unknown> {
+        const sl = input?.search_configs?.naive?.search_limit;
+        const st = input?.search_configs?.naive?.similarity_threshold;
         return {
             fcm_llm_config_id:
                 input?.fullFcmLlmConfig?.id ??
@@ -2059,8 +2059,8 @@ export class AgentsTableComponent {
             cache: !!input?.cache,
             respect_context_window: !!input?.respect_context_window,
 
-            search_limit: input?.search_configs?.naive?.search_limit ?? null,
-            similarity_threshold: input?.search_configs?.naive?.similarity_threshold ?? null,
+            search_limit: sl == null ? null : Number(sl),
+            similarity_threshold: st == null ? null : Number(st),
         };
     }
 
@@ -2116,7 +2116,7 @@ export class AgentsTableComponent {
             search_configs: {
                 naive: {
                     search_limit: 3,
-                    similarity_threshold: '0.2',
+                    similarity_threshold: 0.2,
                 },
             },
             realtime_agent: {

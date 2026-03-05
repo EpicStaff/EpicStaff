@@ -250,7 +250,7 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
                     agent.mcp_tools || []
                 ),
                 search_limit: new FormControl<number>(
-                    agent.search_configs.naive.search_limit || 3,
+                    agent.search_configs.naive.search_limit ?? 3,
                     [Validators.min(1), Validators.max(1000)]
                 ),
                 similarity_threshold: new FormControl<number>(
@@ -524,7 +524,7 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
                 search_configs: {
                     naive: {
                         search_limit: formData.search_limit,
-                        similarity_threshold: formData.similarity_threshold.toString(),
+                        similarity_threshold: formData.similarity_threshold,
                     }
                 }
             };
@@ -563,8 +563,8 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
                 respect_context_window: formData.respect_context_window,
                 search_configs: {
                     naive: {
-                        search_limit: formData.search_limit,
-                        similarity_threshold: formData.similarity_threshold.toString(),
+                        search_limit: Number(formData.search_limit ?? 3),
+                        similarity_threshold: Number(formData.similarity_threshold ?? 0.2),
                     }
                 }
             };

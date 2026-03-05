@@ -85,7 +85,7 @@ export class RealtimeSettingsDialogComponent implements OnInit {
         this.settingsForm = this.fb.group({
             voice: [this.data.agent.realtime_agent.voice, Validators.required],
             threshold: [
-                parseFloat(this.data.agent.search_configs.naive.similarity_threshold || '0.2'),
+                Number(this.data.agent.search_configs?.naive?.similarity_threshold ?? 0.2),
                 [Validators.required, Validators.min(0), Validators.max(1)],
             ],
             searchLimit: [
