@@ -579,22 +579,10 @@ export class AgentsTableComponent {
             this.isLoading.set(false);
         },
         getRowId: (params) => {
-            // If the ID exists and is not null, use it
-            if (params.data.id) {
-                return params.data.id.toString();
-            }
-
-            // For new rows with temporary IDs, use the temporary ID
-            if (
-                params.data.id &&
-                params.data.id.toString().startsWith('temp_')
-            ) {
-                return params.data.id.toString();
-            }
-
-            return `temp_${Date.now()}_${Math.random()
-                .toString(36)
-                .substr(2, 9)}`;
+            const id = params.data?.id;
+            if (typeof id === 'string' && id.startsWith('temp_')) return id;
+            if (id !== null && id !== undefined) return String(id);
+            return `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         },
         onCellClicked: (event: CellClickedEvent<any, any>) =>
             this.onCellClicked(event),
@@ -1880,6 +1868,8 @@ export class AgentsTableComponent {
                                 }
                                 this.rowData.push(this.createEmptyFullAgent());
                                 this.gridApi.setGridOption('rowData', [...this.rowData]);
+                                this.gridApi.refreshCells({ force: true, columns: ['index'] });
+                                this.gridApi.redrawRows();
                                 this.pending.clear();
                                 this.dirtyChange.emit(false);
                                 this.cdr.markForCheck();
