@@ -5,10 +5,10 @@ from django.db import models
 from loguru import logger
 from django.utils import timezone
 
-from tables.models.base_models import BaseGraphEntity, BaseGlobalNode
+from tables.models.base_models import BaseGraphEntity, BaseGlobalNode, TimestampMixin
 
 
-class Graph(models.Model):
+class Graph(TimestampMixin, models.Model):
     tags = models.ManyToManyField(to="GraphTag", blank=True, default=[])
 
     name = models.CharField(max_length=255, blank=False)

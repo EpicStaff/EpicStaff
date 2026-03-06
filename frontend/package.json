@@ -21,6 +21,7 @@
         "@angular/platform-browser": "^19.2.0",
         "@angular/platform-browser-dynamic": "^19.2.0",
         "@angular/router": "^19.2.0",
+        "@astral-sh/ruff-wasm-web": "^0.15.2",
         "@foblex/2d": "1.2.1",
         "@foblex/flow": "17.7.1",
         "@foblex/mediator": "1.1.3",

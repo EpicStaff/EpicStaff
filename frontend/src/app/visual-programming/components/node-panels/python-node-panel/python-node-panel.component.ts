@@ -234,6 +234,8 @@ interface InputMapPair {
                     width: 100%;
 
                     &.code-editor-fullwidth {
+                        overflow: visible;
+
                         .form-fields {
                             display: none;
                         }
@@ -258,6 +260,8 @@ interface InputMapPair {
                     display: flex;
                     flex-direction: column;
                     gap: 1rem;
+                    overflow: visible;
+
                 }
             }
 
@@ -327,7 +331,7 @@ interface InputMapPair {
                 border: 1px solid
                     var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
                 border-radius: 0 8px 8px 0;
-                overflow: hidden;
+                overflow: visible;
                 display: flex;
                 flex-direction: column;               
 
@@ -352,6 +356,7 @@ interface InputMapPair {
                 .form-layout.expanded.code-editor-fullwidth & {
                     transform: scaleX(1) translateX(0);
                     opacity: 1;
+                    overflow: visible;
                 }
             }
 
@@ -423,9 +428,9 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
         const librariesArray = this.form.value.libraries
             ? this.form.value.libraries
-                  .split(',')
-                  .map((lib: string) => lib.trim())
-                  .filter((lib: string) => lib.length > 0)
+                .split(',')
+                .map((lib: string) => lib.trim())
+                .filter((lib: string) => lib.length > 0)
             : [];
 
         return {
