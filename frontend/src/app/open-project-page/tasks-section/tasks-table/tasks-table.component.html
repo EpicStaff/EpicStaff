@@ -1,6 +1,11 @@
 <!-- <div class="wrapper"> -->
 @if(isLoaded){
 
+<div 
+  #agGridWrap
+  class="ag-grid-wrap"
+  [class.tasks-table-wrap--saving]="isSaving"
+>
 <ag-grid-angular
   appPreventContextMenu
   class="ag-grid-staff"
@@ -15,6 +20,7 @@
   [domLayout]="'autoHeight'"
 >
 </ag-grid-angular>
+</div>
 }
 <!-- </div> -->
 <!-- Conditionally render the Tag Editor Dialog -->
@@ -23,7 +29,7 @@
 <app-ag-grid-context-menu
   clickOutside
   (clickOutside)="closeContextMenu()"
-  [visible]="contextMenuVisible()"
+  [visible]="!isSaving && contextMenuVisible()"
   [left]="menuLeft"
   [top]="menuTop"
   (delete)="handleDelete()"

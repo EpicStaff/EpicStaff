@@ -34,6 +34,7 @@ import { TasksService } from '../../features/tasks/services/tasks.service';
 })
 export class TasksSectionComponent implements OnInit, OnDestroy {
   @Input() project!: GetProjectRequest;
+  @Input() isSaving = false;
   @Output() taskPending = new EventEmitter<TaskPendingEvent>();
   @Output() dirtyChange = new EventEmitter<boolean>();
   @ViewChild(TasksTableComponent) private table?: TasksTableComponent;

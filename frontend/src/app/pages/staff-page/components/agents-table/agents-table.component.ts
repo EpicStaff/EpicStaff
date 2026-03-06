@@ -109,6 +109,7 @@ interface PendingChange {
 })
 export class AgentsTableComponent {
     @Input() newAgent: FullAgent | null = null;
+    @Input() isSaving = false;
     private gridApi!: GridApi;
 
     public isLoading = signal<boolean>(true);
@@ -174,6 +175,12 @@ export class AgentsTableComponent {
         });
     }
     ngOnChanges(changes: SimpleChanges): void {
+        if (changes['isSaving']?.currentValue) {
+            this.closePopup();
+            this.closeContextMenu();
+            this.gridApi?.stopEditing();
+        }
+
         if (
             changes['newAgent'] &&
             changes['newAgent'].currentValue &&
@@ -349,7 +356,7 @@ export class AgentsTableComponent {
             minWidth: 190,
             maxWidth: 400,
             //   rowDrag: true,
-            editable: true,
+            editable: () => !this.shouldBlockInteraction(),
         },
         {
             headerName: 'Goal',
@@ -392,7 +399,7 @@ export class AgentsTableComponent {
             flex: 1,
             minWidth: 280,
 
-            editable: true,
+            editable: () => !this.shouldBlockInteraction(),
         },
         {
             headerName: 'Backstory',
@@ -435,7 +442,7 @@ export class AgentsTableComponent {
             flex: 1,
             minWidth: 280,
 
-            editable: true,
+            editable: () => !this.shouldBlockInteraction(),
         },
 
         {
@@ -594,6 +601,7 @@ export class AgentsTableComponent {
     };
 
     onRowDragEnd(event: RowDragEndEvent) {
+        if (this.shouldBlockInteraction()) return;
         // Get the moved data
         const movedData = event.node.data;
         const index = this.rowData.findIndex((row) => row === movedData);
@@ -688,6 +696,10 @@ export class AgentsTableComponent {
     };
 
     private onCellValueChanged(event: any): void {
+        if (this.shouldBlockInteraction()) {
+            this.gridApi.stopEditing();
+            return;
+        }
         const colId = event.column.getColId();
         const fieldsToValidate = ['role', 'goal', 'backstory']; // List of fields to validate
 
@@ -839,6 +851,7 @@ export class AgentsTableComponent {
     }
 
     openSettingsDialog(agentData: TableFullAgent) {
+        if (this.shouldBlockInteraction()) return;
         const before = this.normalizeAdvancedSettings(agentData);
         const dialogRef = this.dialog.open(AdvancedSettingsDialogComponent, {
             data: {
@@ -887,6 +900,8 @@ export class AgentsTableComponent {
         updatedData: Partial<TableFullAgent>,
         agentData: TableFullAgent
     ): void {
+        if (this.shouldBlockInteraction()) return;
+
         const index = this.rowData.findIndex(
             (agent) => agent.id === agentData.id
         );
@@ -1014,6 +1029,10 @@ export class AgentsTableComponent {
     }
 
     public onCellContextMenu(event: CellContextMenuEvent) {
+        if (this.shouldBlockInteraction()) {
+            this.closeContextMenu();
+            return;
+        }
         if (!event.event) return;
         event.event.preventDefault();
 
@@ -1038,6 +1057,8 @@ export class AgentsTableComponent {
         this.contextMenuVisible.set(true);
     }
     public handleDelete(): void {
+        if (this.isSaving) return;
+
         // Make sure we have a selected row
         if (!this.selectedRowData) {
             console.log('No row selected');
@@ -1132,6 +1153,7 @@ export class AgentsTableComponent {
     }
 
     public handleCopy(): void {
+        if (this.shouldBlockInteraction()) return;
         if (!this.selectedRowData) return;
         this.copiedRowData = JSON.parse(JSON.stringify(this.selectedRowData));
         console.log('Copied row:', this.copiedRowData);
@@ -1139,6 +1161,7 @@ export class AgentsTableComponent {
     }
 
     public handlePasteBelow(): void {
+        if (this.shouldBlockInteraction()) return;
         if (!this.selectedRowData || !this.copiedRowData) return;
         const index = this.rowData.findIndex(
             (row) => row === this.selectedRowData
@@ -1148,6 +1171,7 @@ export class AgentsTableComponent {
     }
 
     public handlePasteAbove(): void {
+        if (this.shouldBlockInteraction()) return;
         if (!this.selectedRowData || !this.copiedRowData) return;
         const index = this.rowData.findIndex(
             (row) => row === this.selectedRowData
@@ -1161,6 +1185,7 @@ export class AgentsTableComponent {
     }
 
     private pasteNewAgentAt(insertIndex: number): void {
+        if (this.shouldBlockInteraction()) return;
         if (!this.copiedRowData) return;
 
         const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -1234,6 +1259,8 @@ export class AgentsTableComponent {
     }
 
     public handleAddEmptyAgentAbove(): void {
+        if (this.shouldBlockInteraction()) return;
+
         if (!this.selectedRowData) return;
         const index = this.rowData.findIndex(
             (row) => row === this.selectedRowData
@@ -1243,6 +1270,7 @@ export class AgentsTableComponent {
     }
 
     public handleAddEmptyAgentBelow(): void {
+        if (this.shouldBlockInteraction()) return;
         if (!this.selectedRowData) return;
         const index = this.rowData.findIndex(
             (row) => row === this.selectedRowData
@@ -1252,6 +1280,7 @@ export class AgentsTableComponent {
     }
 
     private insertEmptyAgentAt(insertIndex: number): void {
+        if (this.shouldBlockInteraction()) return;
         const emptyAgent = this.createEmptyFullAgent();
 
         // Add to internal data array
@@ -1274,6 +1303,7 @@ export class AgentsTableComponent {
         this.closeContextMenu();
     }
     private onCellClicked(event: CellClickedEvent<any, any>): void {
+        if (this.shouldBlockInteraction()) return;
         if (event.colDef.field === 'actions') {
             const agentData = event.data;
             this.closePopup();
@@ -1317,6 +1347,8 @@ export class AgentsTableComponent {
     }
 
     private onCellKeyDown(event: CellKeyDownEvent<any, any>): void {
+        if (this.shouldBlockInteraction()) return;
+
         const keyboardEvent = event.event as KeyboardEvent;
 
         if (keyboardEvent?.key === 'Enter') {
@@ -1392,6 +1424,7 @@ export class AgentsTableComponent {
     }
 
     private openPopup(event: PopupEvent, cell: CellInfo): void {
+        if (this.shouldBlockInteraction()) return;
         this.currentPopupCell = cell;
 
         // Get the container cell element.
@@ -1975,6 +2008,8 @@ export class AgentsTableComponent {
     }
 
     public addPendingCreateFromDialog(payload: CreateAgentRequest): void {
+        if (this.shouldBlockInteraction()) return;
+
         if (!this.gridApi) {
             const tempRow = this.createEmptyFullAgent();
             const tempId = String(tempRow.id);
@@ -2051,6 +2086,7 @@ export class AgentsTableComponent {
     }
 
     public addPendingUpdateFromDialog(payload: UpdateAgentRequest): void {
+        if (this.shouldBlockInteraction()) return;
         const rowId = String(payload.id);
 
         if (rowId.startsWith('temp_')) {
@@ -2548,6 +2584,10 @@ export class AgentsTableComponent {
         for (let i = spareIndexes.length - 2; i >= 0; i--) {
             this.rowData.splice(spareIndexes[i], 1);
         }
+    }
+
+    private shouldBlockInteraction(): boolean {
+        return this.isSaving;
     }
 
     @HostListener('document:mousedown', ['$event'])

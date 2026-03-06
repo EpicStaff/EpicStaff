@@ -143,6 +143,7 @@ export class TasksTableComponent implements OnChanges {
     }
     @Input() agents: FullAgent[] = [];
     @Input() project!: GetProjectRequest;
+    @Input() isSaving = false;
 
     @Output() taskPending = new EventEmitter<TaskPendingEvent>();
     @Output() dirtyChange = new EventEmitter<boolean>();

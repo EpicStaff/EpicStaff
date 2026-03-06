@@ -93,6 +93,7 @@
                     } @else if (section.id === 'tasks') {
                         <app-tasks-section
                             [project]="project"
+                            [isSaving]="isSaving"
                             (taskPending)="onTaskPending($event)"
                             (dirtyChange)="onTasksDirtyChange($event)"
                         ></app-tasks-section>
