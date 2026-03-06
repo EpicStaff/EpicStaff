@@ -13,30 +13,30 @@ import { LanguageSelectorComponent } from './language-selector/language-selector
 import { VoiceSelectorComponent } from './voice-selector/voice-selector.component';
 import { AVAILABLE_LANGUAGES } from '../../../../../../shared/constants/languages-selector.constants';
 import { AVAILABLE_VOICES } from '../../../../../../shared/constants/realtime-voice.constants';
-import { RealtimeAgentService } from '../../../../../../services/realtime-agent.service';
+import { RealtimeAgentService } from '../../../../../../features/staff/services/realtime-agent.service';
 import { finalize } from 'rxjs';
 import { HelpTooltipComponent } from '../../../../../../shared/components/help-tooltip/help-tooltip.component';
 
 import {
     RealtimeAgent,
     UpdateRealtimeAgentRequest,
-} from '../../../../../../shared/models/realtime-agent.model';
+} from '../../../../../../features/staff/models/realtime-agent.model';
 import { ToastService } from '../../../../../../services/notifications/toast.service';
 import {
     FullAgent,
     PartialAgent,
-} from '../../../../../../services/full-agent.service';
+} from '../../../../../../features/staff/services/full-agent.service';
 import {
     Agent,
     PartialUpdateAgentRequest,
     RealtimeAgentConfig,
-} from '../../../../../../shared/models/agent.model';
-import { AgentsService } from '../../../../../../services/staff.service';
-import { TranscriptionConfigsService } from '../../../../../../services/transcription-config.service';
+} from '../../../../../../features/staff/models/agent.model';
+import { AgentsService } from '../../../../../../features/staff/services/staff.service';
+import { TranscriptionConfigsService } from '../../../../../../features/transcription/services/transcription-config.service';
 import {
     EnhancedTranscriptionConfig,
     GetTranscriptionConfigRequest,
-} from '../../../../../../shared/models/transcription-config.model';
+} from '../../../../../../features/transcription/models/transcription-config.model';
 import { TranscriptionConfigSelectorComponent } from './transcription-model-selector/transcription-config-selector.component';
 import { AddTranscriptionConfigDialogComponent } from './add-transcription-dialog/add-transcription-dialog.component';
 import { buildToolIdsArray } from '../../../../../../shared/utils/tool-ids-builder.util';

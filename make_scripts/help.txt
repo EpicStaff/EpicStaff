@@ -1,0 +1,101 @@
+
+================================================================
+ Available commands
+================================================================
+
+ DEVELOPMENT
+----------------------------------------------------------------
+ make dev
+   Start the development environment (live-reload, mapped ports).
+   Uses docker-compose.yaml + docker-compose.dev.yaml.
+
+ make dev-down
+   Stop the development environment.
+
+ make dev-build
+   Build dev images without starting containers.
+
+ make dev-logs
+   Tail logs for all dev services.
+
+ make dev-restart s=<service>
+   Restart a single dev service.
+   Example: make dev-restart s=manager
+
+ make dev-logs-s s=<service>
+   Tail logs for a single dev service.
+   Example: make dev-logs-s s=django_app
+
+ make dev-rebuild-s s=<service>
+   Rebuild and restart a single dev service (uses cache).
+   Example: make dev-rebuild-s s=crew
+
+ make rebuild-dev
+   Rebuild ALL dev services from scratch (no cache) and start.
+   Use when dependencies or Dockerfiles changed.
+
+ PRODUCTION
+----------------------------------------------------------------
+ make prod  /  make start-prod
+   Build and start all production services.
+   Uses docker-compose.yaml + docker-compose.override.yaml.
+
+ make prod-down
+   Stop the production environment.
+
+ make prod-logs
+   Tail logs for all production services.
+
+ BRANCH SWITCHING  (fast builds via image cache)
+----------------------------------------------------------------
+ make switch b=<branch>
+   Full one-command environment switch. Does everything in order:
+     1. Saves current Docker images tagged with current branch name
+     2. Backs up current DB volume to a .tar file
+     3. Runs: git checkout <branch>
+     4. Loads cached Docker images for the new branch (if any)
+     5. Restores DB volume for the new branch (if backup exists)
+   After this: run  make dev  or  make prod  (build uses cache).
+   Example: make switch b=feature/EST-1234
+
+ make stash-tags
+   Tags each local Docker image with the current branch name.
+   Example: crew  ->  crew:feature-EST-1234
+   Run this BEFORE switching branches manually (git checkout).
+   Safe to run multiple times - skips images not built yet.
+
+ make apply-tags
+   Loads cached images for the current branch and retags them
+   back to their default names so Docker can use them as cache.
+   Example: crew:feature-EST-1234  ->  crew
+   Run this AFTER switching branches manually (git checkout).
+   If no cached images exist for this branch, build starts fresh.
+
+ make backup
+   Saves the current DB volume to make_scripts/backups/<branch>.tar
+   Run this before switching branches to preserve your test data.
+
+ make apply-backup
+   Restores the DB volume from make_scripts/backups/<branch>.tar.
+   If no backup file exists for this branch, nothing is restored.
+
+ UTILITIES
+----------------------------------------------------------------
+ make clean
+   Stop ALL environments and DELETE volumes. WARNING: wipes DB data.
+
+ make docker-generate-certs
+   Generate self-signed SSL certificates for local Nginx.
+
+================================================================
+ TYPICAL WORKFLOW
+----------------------------------------------------------------
+ Switch to another branch (one command):
+   make switch b=<branch>
+   make dev                    (or make prod)
+
+ Already ran git checkout manually:
+   make apply-tags
+   make apply-backup
+   make dev                    (or make prod)
+================================================================

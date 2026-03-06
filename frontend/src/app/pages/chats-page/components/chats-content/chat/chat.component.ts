@@ -2,7 +2,7 @@
 import { Component, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { FullAgent } from '../../../../../services/full-agent.service';
+import { FullAgent } from '../../../../../features/staff/services/full-agent.service';
 import { ChatMessagesComponent } from './chat-messages/chat-messages.component';
 import { ChatHeaderComponent } from './chat-header/chat-header.component';
 import { ChatsService } from '../../../services/chats.service';

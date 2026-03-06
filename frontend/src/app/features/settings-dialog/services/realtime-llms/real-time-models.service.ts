@@ -2,7 +2,7 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { map, Observable } from 'rxjs';
 import { ConfigService } from '../../../../services/config/config.service';
-import { ApiGetResponse } from '../../../../services/transcription-models.service';
+import { ApiGetResponse } from '../../../transcription/services/transcription-models.service';
 import { RealtimeModel } from '../../models/realtime-voice/realtime-model.model';
 
 @Injectable({

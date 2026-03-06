@@ -32,7 +32,7 @@ import {
   NgSwitchCase,
   NgSwitchDefault,
 } from '@angular/common';
-import { ToolConfigService } from '../../../../services/tool-config.service';
+import { ToolConfigService } from '../../../../features/tools/services/tool-config.service';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { LlmModelSelectorComponent } from '../../../../shared/components/llm-model-selector/llm-model-selector.component';
 import { EmbeddingModelSelectorComponent } from '../../../../shared/components/embedding-model-selector/embedding-model-selector.component';

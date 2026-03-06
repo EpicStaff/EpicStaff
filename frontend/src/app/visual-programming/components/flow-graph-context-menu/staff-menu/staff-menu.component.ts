@@ -8,8 +8,8 @@ import {
   Output,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { AgentsService } from '../../../../services/staff.service';
-import { GetAgentRequest } from '../../../../shared/models/agent.model';
+import { AgentsService } from '../../../../features/staff/services/staff.service';
+import { GetAgentRequest } from '../../../../features/staff/models/agent.model';
 import { NodeType } from '../../../core/enums/node-type';
 
 @Component({

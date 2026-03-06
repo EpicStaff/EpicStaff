@@ -2,11 +2,9 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-import { ApiGetRequest } from '../../../shared/models/api-request.model';
+import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { LLM_Provider, ModelTypes } from '../models/llm-provider.model';
 import { ConfigService } from '../../../services/config/config.service';
-
-
 
 @Injectable({
   providedIn: 'root',

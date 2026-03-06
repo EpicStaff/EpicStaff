@@ -8,13 +8,13 @@ import {
   Validators,
 } from '@angular/forms';
 import { ToastService } from '../../../../../../../services/notifications/toast.service';
-import { TranscriptionConfigsService } from '../../../../../../../services/transcription-config.service';
+import { TranscriptionConfigsService } from '../../../../../../../features/transcription/services/transcription-config.service';
 import {
   CreateTranscriptionConfigRequest,
   GetRealtimeTranscriptionModelRequest,
   GetTranscriptionConfigRequest,
-} from '../../../../../../../shared/models/transcription-config.model';
-import { ApiGetResponse, RealtimeTranscriptionModelsService } from '../../../../../../../services/transcription-models.service';
+} from '../../../../../../../features/transcription/models/transcription-config.model';
+import { ApiGetResponse, RealtimeTranscriptionModelsService } from '../../../../../../../features/transcription/services/transcription-models.service';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 export interface AddTranscriptionConfigDialogData {

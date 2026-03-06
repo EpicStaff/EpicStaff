@@ -2,7 +2,7 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ClickOutsideDirective } from '../../../../../../shared/directives/click-outside.directive';
 import { CardState } from '../staff-agent-card.component';
-import { FullAgent } from '../../../../../../services/full-agent.service';
+import { FullAgent } from '../../../../../../features/staff/services/full-agent.service';
 import { ToastService } from '../../../../../../services/notifications/toast.service';
 
 @Component({

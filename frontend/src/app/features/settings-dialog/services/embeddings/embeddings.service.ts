@@ -2,7 +2,7 @@ import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-import { ApiGetRequest } from '../../../../shared/models/api-request.model';
+import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { CreateEmbeddingModelRequest, EmbeddingModel } from '../../models/embeddings/embedding.model';
 import { ConfigService } from '../../../../services/config/config.service';
 

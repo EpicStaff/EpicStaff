@@ -1,6 +1,6 @@
 import {HttpClient, HttpHeaders} from "@angular/common/http";
 import {ConfigService} from "../../../../../services/config/config.service";
-import {ApiGetRequest} from "../../../../../shared/models/api-request.model";
+import {ApiGetRequest} from "../../../../../core/models/api-request.model";
 import {map, Observable} from "rxjs";
 import {
     CreateTelegramTriggerNodeRequest,

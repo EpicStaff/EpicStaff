@@ -12,7 +12,7 @@ def main():
         host="0.0.0.0",
         port=settings.REALTIME_PORT,
         reload=settings.REALTIME_RELOAD,
-        reload_dirs=["src"] if settings.REALTIME_RELOAD else None,
+        reload_dirs=["."] if settings.REALTIME_RELOAD else None,
         workers=settings.REALTIME_WORKERS,
         log_level="debug" if settings.REALTIME_DEBUG_MODE else "info",
     )

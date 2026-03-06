@@ -17,7 +17,7 @@ import {
     FullLLMConfigService,
     FullLLMConfig,
 } from '../../services/llms/full-llm-config.service';
-import { LLM_Config_Service } from '../../services/llms/LLM_config.service';
+import { LLM_Config_Service } from '../../services/llms/llm-config.service';
 import { UpdateLLMConfigRequest } from '../../models/llms/LLM_config.model';
 
 @Component({

@@ -1,58 +1,108 @@
-# Makefile for managing Docker volume backups and image tags
+# Makefile for managing Docker volume backups, image tags, and environments
 # Use cmd.exe as the shell for executing .bat files on Windows
 ifeq ($(OS),Windows_NT)
-    SHELL := cmd.exe
+	SHELL := cmd.exe
 else
-    SHELL := /bin/sh
+	SHELL := /bin/sh
 endif
 
 # IMPORTANT: This Makefile must be run from the project's root directory
 # (the same directory this file is in).
 
-# Define phony targets to ensure they run even if files with the same name exist
-# These are aliases for the batch scripts.
-.PHONY: backup apply-backup stash-tags apply-tags switch
+.DEFAULT_GOAL := help
+.PHONY: help \
+        backup apply-backup stash-tags apply-tags switch \
+        dev dev-down dev-build dev-logs dev-restart dev-logs-s dev-rebuild-s rebuild-dev \
+        prod start-prod prod-down prod-logs \
+        clean docker-generate-certs
 
-# --- Volume Backups ---
+# --- Help ---
 
-# Usage: make backup
-# Creates a .tar archive of the volume, named after the current branch.
+help:
+	@type make_scripts\help.txt
+
+# ==========================================
+# BRANCH SWITCHING
+# ==========================================
+
 backup:
 	@echo "--- Creating Volume Backup ---"
-	@.\\make_scripts\\backup.bat
+	@.\make_scripts\backup.bat
 
-# Usage: make apply-backup
-# Stops services and restores volume data from the branch's backup file.
 apply-backup:
 	@echo "--- Applying Volume Backup ---"
-	@.\\make_scripts\\apply_backup.bat
+	@.\make_scripts\apply_backup.bat
 
-# --- Docker Image Tagging ---
-
-# Usage: make stash-tags
-# Tags images (e.g., 'crew') with the branch name (e.g., 'crew:my-branch').
 stash-tags:
 	@echo "--- Stashing Image Tags ---"
-	@.\\make_scripts\\stash_tag_images.bat
+	@.\make_scripts\stash_tag_images.bat
 
-# Usage: make apply-tags
-# Re-tags images from the branch tag (e.g., 'crew:my-branch') back to the original (e.g., 'crew').
 apply-tags:
 	@echo "--- Applying Stashed Image Tags ---"
-	@.\\make_scripts\\apply_tag_images.bat
+	@.\make_scripts\apply_tag_images.bat
 
-# --- Full Environment Switching ---
-
-# Usage: make switch b=<branch-name>
-# Stashes, backs up, checks out, and applies the new branch's state.
 switch:
 	@echo "--- Switching Full Branch Environment ---"
-	@.\\make_scripts\\switch_branch.bat $(b)
+	@.\make_scripts\switch_branch.bat $(b)
 
+# ==========================================
+# DEVELOPMENT Environment
+# ==========================================
+
+dev:
+	@echo "--- Starting development services ---"
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env up -d
+
+dev-down:
+	@echo "--- Stopping development services ---"
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env down
+
+dev-build:
+	@echo "--- Building development services ---"
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env build
+
+dev-logs:
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env logs -f
+
+dev-restart:
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env restart $(s)
+
+dev-logs-s:
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env logs -f $(s)
+
+dev-rebuild-s:
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env up --build -d $(s)
+
+rebuild-dev:
+	@echo "--- Rebuilding development services (no cache) ---"
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env build --no-cache
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env up -d
+
+# ==========================================
+# PRODUCTION Environment
+# ==========================================
+
+prod: start-prod
 
 start-prod:
-	@echo "--- Starting prod services ---"
-	@cd src && docker compose -f docker-compose.yaml up --build -d
+	@echo "--- Starting production services ---"
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env up --build -d
+
+prod-down:
+	@echo "--- Stopping production services ---"
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env down
+
+prod-logs:
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env logs -f
+
+# ==========================================
+# UTILITIES
+# ==========================================
+
+clean:
+	@echo "--- Cleaning up all environments and removing volumes ---"
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env down -v --remove-orphans
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env down -v --remove-orphans
 
 docker-generate-certs:
 	docker run --rm -v "$(CURDIR)/src/nginx/certs:/certs" -w /certs alpine \

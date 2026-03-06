@@ -38,7 +38,7 @@ import { ConditionalEdgeService } from './services/conditional-edge.service';
 import { CrewNodeService } from './services/crew-node.service';
 import { EdgeService } from './services/edge.service';
 import { PythonNodeService } from './services/python-node.service';
-import { RunGraphService } from '../../../../services/run-graph-session.service';
+import { RunGraphService } from '../../../../features/flows/services/run-graph-session.service';
 import { StartNodeService } from './services/start-node.service';
 import { StartNode, CreateStartNodeRequest } from './models/start-node.model';
 

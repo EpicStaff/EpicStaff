@@ -2,7 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { map, Observable } from 'rxjs';
 import { ConfigService } from '../../../services/config/config.service';
-import { ApiGetRequest } from '../../../shared/models/api-request.model';
+import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { WarningMessages } from '../../../pages/running-graph/models/warning-messages.model';
 
 export interface GraphSessionGraph {

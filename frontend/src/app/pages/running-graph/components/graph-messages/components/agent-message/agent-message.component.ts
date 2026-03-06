@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { GraphMessage } from '../../../../models/graph-session-message.model';
 import { NgxJsonViewerModule } from 'ngx-json-viewer';
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
-import { GetAgentRequest } from '../../../../../../shared/models/agent.model';
+import { GetAgentRequest } from '../../../../../../features/staff/models/agent.model';
 
 @Component({
   selector: 'app-agent-message',

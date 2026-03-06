@@ -19,7 +19,7 @@ import { FormsModule } from '@angular/forms';
 
 import { Subscription } from 'rxjs';
 import { ProjectStateService } from '../services/project-state.service';
-import { FullAgent, FullAgentService } from '../../services/full-agent.service';
+import { FullAgent, FullAgentService } from '../../features/staff/services/full-agent.service';
 import {
     GridControlsComponent,
     GridSizeOption,
@@ -37,7 +37,7 @@ import {
 } from './grid-controls/dropdown-staff-agents/staff-agent-card/staff-agent-card.component';
 import { Dialog } from '@angular/cdk/dialog';
 import { CreateAgentFormComponent } from '../../shared/components/create-agent-form-dialog/create-agent-form-dialog.component';
-import { AgentsService } from '../../services/staff.service';
+import { AgentsService } from '../../features/staff/services/staff.service';
 import { ToastService } from '../../services/notifications/toast.service';
 import { ClickOutsideDirective } from '../../shared/directives/click-outside.directive';
 

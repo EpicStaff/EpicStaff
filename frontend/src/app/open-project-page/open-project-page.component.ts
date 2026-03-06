@@ -21,14 +21,14 @@ import { TasksSectionComponent } from './tasks-section/tasks-section.component';
 import { SettingsSectionComponent } from './settings-section/settings-section.component';
 import { FormsModule } from '@angular/forms';
 import { ProjectsStorageService } from '../features/projects/services/projects-storage.service';
-import { TasksService } from '../services/tasks.service';
 import { forkJoin, Subscription, of, Observable } from 'rxjs';
 import { catchError, map, finalize, switchMap, tap } from 'rxjs/operators';
+import { TasksService } from '../features/tasks/services/tasks.service';
 import { GetProjectRequest } from '../features/projects/models/project.model';
 import { Dialog } from '@angular/cdk/dialog';
-import { FullTask } from '../shared/models/full-task.model';
-import { FullAgentService, FullAgent } from '../services/full-agent.service';
-import { FullTaskService } from '../services/full-task.service';
+import { FullTask } from '../features/tasks/models/full-task.model';
+import { FullAgentService, FullAgent } from '../features/staff/services/full-agent.service';
+import { FullTaskService } from './services/full-task.service';
 import { ProjectStateService } from './services/project-state.service';
 import {
     trigger,
@@ -42,10 +42,10 @@ import { SpinnerComponent } from '../shared/components/spinner/spinner.component
 import { FlowGraphComponent } from '../visual-programming/flow-graph/flow-graph.component';
 import { ActivatedRoute } from '@angular/router';
 import { CreateAgentFormComponent } from '../shared/components/create-agent-form-dialog/create-agent-form-dialog.component';
-import { AgentsService } from '../services/staff.service';
 import { TaskPendingEvent } from './tasks-section/tasks-table/tasks-table.component';
 import { UnsavedChangesDialogService } from '../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
 import { CanComponentDeactivate } from '../core/guards/unsaved-changes.guard';
+import { AgentsService } from '../features/staff/services/staff.service';
 
 // Improved animations that work properly with content visibility
 export const expandCollapseAnimation = trigger('expandCollapse', [

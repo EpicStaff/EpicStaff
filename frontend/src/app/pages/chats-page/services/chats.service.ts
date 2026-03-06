@@ -1,5 +1,5 @@
 import { Injectable, signal, computed } from '@angular/core';
-import { FullAgent } from '../../../services/full-agent.service';
+import { FullAgent } from '../../../features/staff/services/full-agent.service';
 
 @Injectable({
   providedIn: 'root',

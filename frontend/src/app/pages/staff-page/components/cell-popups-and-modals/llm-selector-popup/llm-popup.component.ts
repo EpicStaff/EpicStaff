@@ -21,7 +21,7 @@ import { takeUntil } from 'rxjs/operators';
 import { FullLLMConfigService } from '../../../../../features/settings-dialog/services/llms/full-llm-config.service';
 import { FullRealtimeConfigService } from '../../../../../features/settings-dialog/services/realtime-llms/full-reamtime-config.service';
 import { LlmItemComponent } from './llm-item/llm-item.component';
-import { MergedConfig } from '../../../../../services/full-agent.service';
+import { MergedConfig } from '../../../../../features/staff/services/full-agent.service';
 
 @Component({
   selector: 'app-llm-popup',

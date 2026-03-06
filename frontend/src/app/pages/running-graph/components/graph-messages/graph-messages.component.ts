@@ -18,12 +18,12 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MarkdownModule } from 'ngx-markdown';
-import { AgentsService } from '../../../../services/staff.service';
-import { TasksService } from '../../../../services/tasks.service';
+import { AgentsService } from '../../../../features/staff/services/staff.service';
+import { TasksService } from '../../../../features/tasks/services/tasks.service';
 import { LoadingDotsComponent } from './components/loading-animation/loading-animation.component';
 
-import { GetAgentRequest } from '../../../../shared/models/agent.model';
-import { GetTaskRequest } from '../../../../shared/models/task.model';
+import { GetAgentRequest } from '../../../../features/staff/models/agent.model';
+import { GetTaskRequest } from '../../../../features/tasks/models/task.model';
 import { GetProjectRequest } from '../../../../features/projects/models/project.model';
 import { forkJoin, Observable, of, Subject } from 'rxjs';
 import { takeUntil, map, exhaustMap } from 'rxjs/operators';
@@ -47,7 +47,7 @@ import { ErrorMessageComponent } from './components/error-message/error-message.
 import { ProjectTransitionComponent } from './components/transition/project-transition.component';
 import { WaitForUserInputComponent } from './components/user-input-component/user-input-component.component';
 import { SessionStatusMessageData } from '../../models/update-session-status.model';
-import { AnswerToLLMService } from '../../../../services/answer-to-llm.service';
+import { AnswerToLLMService } from '../../services/answer-to-llm.service';
 import { UserMessageComponent } from './components/user-message/user-message.component';
 import { SubgraphStartMessageComponent } from './components/subgraph-start-message/subgraph-start-message.component';
 import { SubgraphFinishMessageComponent } from './components/subgraph-finish-message/subgraph-finish-message.component';

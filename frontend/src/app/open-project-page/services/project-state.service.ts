@@ -1,8 +1,8 @@
 import { Injectable, signal } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
-import { FullAgent, FullAgentService } from '../../services/full-agent.service';
-import { FullTask } from '../../shared/models/full-task.model';
+import { FullAgent, FullAgentService } from '../../features/staff/services/full-agent.service';
+import { FullTask } from '../../features/tasks/models/full-task.model';
 import { GetProjectRequest } from '../../features/projects/models/project.model';
 import { ProjectsStorageService } from '../../features/projects/services/projects-storage.service';
 import { ToastService } from '../../services/notifications/toast.service';

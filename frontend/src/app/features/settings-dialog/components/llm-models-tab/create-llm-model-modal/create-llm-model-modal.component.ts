@@ -10,7 +10,7 @@ import { ButtonComponent } from '../../../../../shared/components/buttons/button
 import { ToggleSwitchComponent } from '../../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 import { LLM_Provider } from '../../../models/llm-provider.model';
 import { LLM_Model } from '../../../models/llms/LLM.model';
-import { LLM_Models_Service } from '../../../services/llms/LLM_models.service';
+import { LLM_Models_Service } from '../../../services/llms/llm-models.service';
 import { getProviderIconPath } from '../../../utils/get-provider-icon';
 import { ToastService } from '../../../../../services/notifications/toast.service';
 

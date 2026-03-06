@@ -8,7 +8,7 @@ import {
   Output,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ToolConfigService } from '../../../../services/tool-config.service';
+import { ToolConfigService } from '../../../../features/tools/services/tool-config.service';
 import { ToolConfig } from '../../../../features/tools/models/tool-config.model';
 import { NodeType } from '../../../core/enums/node-type';
 

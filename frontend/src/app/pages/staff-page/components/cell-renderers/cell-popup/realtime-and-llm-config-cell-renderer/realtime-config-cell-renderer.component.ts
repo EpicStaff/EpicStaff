@@ -2,7 +2,7 @@ import { Component } from '@angular/core';
 import { ICellRendererAngularComp } from 'ag-grid-angular';
 import { ICellRendererParams } from 'ag-grid-community';
 import { CommonModule } from '@angular/common';
-import { MergedConfig } from '../../../../../../services/full-agent.service';
+import { MergedConfig } from '../../../../../../features/staff/services/full-agent.service';
 import { AppIconComponent } from '../../../../../../shared/components/app-icon/app-icon.component';
 import { getProviderIconPath } from '../../../../../../features/settings-dialog/constants/provider-icons.constants';
 

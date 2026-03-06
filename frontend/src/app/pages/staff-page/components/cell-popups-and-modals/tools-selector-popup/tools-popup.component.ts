@@ -22,11 +22,11 @@ import { FormsModule } from '@angular/forms';
 import { GetPythonCodeToolRequest } from '../../../../../features/tools/models/python-code-tool.model';
 import { GetMcpToolRequest } from '../../../../../features/tools/models/mcp-tool.model';
 import { BuiltinToolsService } from '../../../../../features/tools/services/builtin-tools/builtin-tools.service';
-import { ToolConfigService } from '../../../../../services/tool-config.service';
+import { ToolConfigService } from '../../../../../features/tools/services/tool-config.service';
 import {
   FullToolConfig,
   FullToolConfigService,
-} from '../../../../../services/full-tool-config.service';
+} from '../../../../../features/tools/services/full-tool-config.service';
 import { PythonCodeToolService } from '../../../../../user-settings-page/tools/custom-tool-editor/services/pythonCodeToolService.service';
 import { GetToolConfigRequest } from '../../../../../features/tools/models/tool-config.model';
 import { ToastService } from '../../../../../services/notifications/toast.service';

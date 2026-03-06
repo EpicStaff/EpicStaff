@@ -16,7 +16,7 @@ import { takeUntil } from 'rxjs/operators';
 import {
     FullToolConfigService,
     FullToolConfig,
-} from '../../../services/full-tool-config.service';
+} from '../../../features/tools/services/full-tool-config.service';
 import { PythonCodeToolService } from '../../../user-settings-page/tools/custom-tool-editor/services/pythonCodeToolService.service';
 import { GetPythonCodeToolRequest } from '../../../features/tools/models/python-code-tool.model';
 import { GetToolConfigRequest } from '../../../features/tools/models/tool-config.model';

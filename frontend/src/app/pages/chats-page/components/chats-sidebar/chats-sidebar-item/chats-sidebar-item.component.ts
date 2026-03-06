@@ -6,7 +6,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ChatsService } from '../../../services/chats.service';
-import { FullAgent } from '../../../../../services/full-agent.service';
+import { FullAgent } from '../../../../../features/staff/services/full-agent.service';
 import { ConsoleService } from '../../../services/console.service';
 import { Dialog } from '@angular/cdk/dialog';
 import { RealtimeSettingsDialogComponent } from './realtime-settings-dialog/realtime-settings-dialog.component';
