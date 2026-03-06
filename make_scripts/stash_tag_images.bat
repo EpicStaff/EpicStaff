@@ -1,33 +1,44 @@
 @echo off
-ECHO Stashing images with branch tag...
-SETLOCAL
+SETLOCAL ENABLEDELAYEDEXPANSION
 
-REM Get the current Git branch name
+REM Get current branch name and sanitize slashes (feature/foo -> feature-foo)
 FOR /F "tokens=*" %%a IN ('git rev-parse --abbrev-ref HEAD') DO SET BRANCH_NAME=%%a
+SET BRANCH_SAFE=%BRANCH_NAME:/=-%
 
-IF "%BRANCH_NAME%"=="" (
-    ECHO ERROR Could not determine Git branch. Make sure you are in a Git repository.
-    GOTO :EOF
+IF "%BRANCH_SAFE%"=="" (
+    ECHO [ERROR] Could not determine Git branch. Are you inside a git repository?
+    EXIT /B 1
 )
 
-ECHO Tagging for branch: %BRANCH_NAME%
+ECHO [stash-tags] Saving images for branch: %BRANCH_SAFE%
 ECHO.
 
-REM Loop through each image and tag it
+SET SUCCESS=0
+SET SKIPPED=0
+
 FOR %%i IN (
-    webhook
     django_app
-    realtime
-    manager
-    crewdb
-    redis
-    redis-monitor
     crew
+    manager
+    realtime
+    webhook
+    sandbox
+    knowledge
+    frontend
+    crewdb
+    redis-monitor
 ) DO (
-    ECHO Tagging %%i as %%i:%BRANCH_NAME%...
-    docker tag %%i %%i:%BRANCH_NAME%
+    docker image inspect %%i >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        docker tag %%i %%i:%BRANCH_SAFE% >nul
+        ECHO   [SAVED]  %%i  ->  %%i:%BRANCH_SAFE%
+        SET /A SUCCESS+=1
+    ) ELSE (
+        ECHO   [SKIP]   %%i  ^(not built yet^)
+        SET /A SKIPPED+=1
+    )
 )
 
 ECHO.
-ECHO All images tagged.
+ECHO Saved: %SUCCESS%   Skipped: %SKIPPED%
 ENDLOCAL

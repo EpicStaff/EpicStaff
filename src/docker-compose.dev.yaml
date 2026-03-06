@@ -74,6 +74,9 @@ services:
     env_file:
       - ./.env
       - ../dev/dev.env
+    environment:
+      API_URL: "http://127.0.0.1:${DJANGO_PORT:-8000}/api/"
+      REALTIME_API_URL: "http://127.0.0.1:${REALTIME_PORT:-8050}/"
 
   webhook:
     command: >
