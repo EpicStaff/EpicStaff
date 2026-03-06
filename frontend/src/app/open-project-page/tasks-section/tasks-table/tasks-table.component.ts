@@ -197,7 +197,7 @@ export class TasksTableComponent implements OnChanges {
     }
 
     ngOnChanges(changes: SimpleChanges): void {
-        if (changes['tasks'] && this.isLoaded) {
+        if ((changes['tasks'] || changes['agents']) && this.isLoaded) {
             this.updateRowData();
             if (this.gridApi) {
                 this.gridApi.setGridOption('rowData', this.rowData);
@@ -207,6 +207,9 @@ export class TasksTableComponent implements OnChanges {
     }
 
     private updateRowData(): void {
+        const validAgentIds = new Set(
+            (this.agents ?? []).map((a) => Number(a.id))
+        );
         const existingByKey = new Map<string, TableFullTask>();
         for (const row of this.rowData) {
             if (!row?.id) continue;
@@ -216,8 +219,29 @@ export class TasksTableComponent implements OnChanges {
             const key = String(t.id);
             const existing = existingByKey.get(key);
             if (!existing) {
-                return { ...t, mergedTools: (t as any).mergedTools || t.mergedTools || [] } as any;
+                const serverAgentId =
+                    t.agentData?.id != null
+                        ? Number(t.agentData.id)
+                        : Number((t as any).agent);
+
+                const hasValidServerAgent =
+                    Number.isFinite(serverAgentId) && validAgentIds.has(serverAgentId);
+
+                return {
+                    ...t,
+                    agentData: hasValidServerAgent ? t.agentData : null,
+                    agent: hasValidServerAgent ? serverAgentId : null,
+                    mergedTools: (t as any).mergedTools || t.mergedTools || [],
+                } as any;
             }
+
+            const existingAgentId =
+                existing.agentData?.id != null
+                    ? Number(existing.agentData.id)
+                    : Number(existing.agent);
+
+            const hasValidExistingAgent =
+                Number.isFinite(existingAgentId) && validAgentIds.has(existingAgentId);
 
             return {
                 ...t,
@@ -230,8 +254,8 @@ export class TasksTableComponent implements OnChanges {
                 config: existing.config,
                 output_model: existing.output_model,
                 task_context_list: existing.task_context_list,
-                agentData: existing.agentData,
-                agent: existing.agent,
+                agentData: hasValidExistingAgent ? existing.agentData : null,
+                agent: hasValidExistingAgent ? existingAgentId : null,
                 mergedTools: existing.mergedTools || (t as any).mergedTools || t.mergedTools || [],
                 order: existing.order ?? t.order,
             } as any;
@@ -850,17 +874,23 @@ export class TasksTableComponent implements OnChanges {
     }
 
     private parseTaskData(taskData: FullTask) {
-        const agentData = taskData.agentData || null;
-        const agentId = agentData ? agentData.id : null;
-        const crew = this.project ? this.project.id : null;
+        const rawAgentId =
+            taskData.agentData?.id ??
+            (taskData as any).agent ??
+            null;
 
-        // Process merged tools similar to agents table
+        const agentId =
+            rawAgentId == null || rawAgentId === ''
+                ? null
+                : Number(rawAgentId);
+
+        const crew = this.project ? this.project.id : null;
         const mergedTools = (taskData as any).mergedTools || [];
 
         const parsed = {
             ...taskData,
-            agent: agentId,
-            crew: crew,
+            agent: Number.isFinite(agentId) ? agentId : null,
+            crew,
             configured_tools: mergedTools
                 .filter((tool: any) => tool.type === 'tool-config')
                 .map((tool: any) => tool.id),
@@ -870,13 +900,10 @@ export class TasksTableComponent implements OnChanges {
             mcp_tools: mergedTools
                 .filter((tool: any) => tool.type === 'mcp-tool')
                 .map((tool: any) => tool.id),
-            // Explicitly preserve mergedTools for state updates
-            mergedTools: mergedTools,
+            mergedTools,
         };
 
-        // Delete tools field to ensure it's never included in update requests
         delete (parsed as any).tools;
-
         return parsed;
     }
 
@@ -1175,7 +1202,7 @@ export class TasksTableComponent implements OnChanges {
             config: updatedTask.config,
             output_model: updatedTask.output_model,
             crew: updatedTask.crew,
-            agent: updatedTask.agent,
+            agent: parsedTaskData.agent,
             task_context_list: updatedTask.task_context_list,
             configured_tools: settingsConfiguredToolIds,
             python_code_tools: settingsPythonToolIds,
