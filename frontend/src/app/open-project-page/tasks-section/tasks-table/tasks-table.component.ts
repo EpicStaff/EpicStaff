@@ -197,10 +197,19 @@ export class TasksTableComponent implements OnChanges {
     }
 
     ngOnChanges(changes: SimpleChanges): void {
-        if ((changes['tasks'] || changes['agents']) && this.isLoaded) {
+        if (changes['tasks'] && this.isLoaded) {
             this.updateRowData();
             if (this.gridApi) {
                 this.gridApi.setGridOption('rowData', this.rowData);
+            }
+            this.cdr.markForCheck();
+        }
+
+        if (changes['agents'] && this.isLoaded) {
+            this.syncAgentsInCurrentRows();
+
+            if (this.gridApi) {
+                this.gridApi.setGridOption('rowData', [...this.rowData]);
             }
             this.cdr.markForCheck();
         }
@@ -2277,5 +2286,52 @@ export class TasksTableComponent implements OnChanges {
 
         const same = JSON.stringify(displayedPayload) === JSON.stringify(baselinePayload);
         if (same) this.setPending('__ALL__', null);
+    }
+
+    private syncAgentsInCurrentRows(): void {
+        const validAgentIds = new Set(
+            (this.agents ?? []).map((a) => Number(a.id))
+        );
+
+        let changed = false;
+
+        this.rowData = this.rowData.map((row) => {
+            const rowAgentId =
+                row.agentData?.id != null
+                    ? Number(row.agentData.id)
+                    : row.agent != null
+                        ? Number(row.agent)
+                        : null;
+
+            const hasAgent =
+                rowAgentId != null && Number.isFinite(rowAgentId);
+
+            const isValidAgent =
+                hasAgent && validAgentIds.has(rowAgentId!);
+
+            if (!hasAgent || isValidAgent) {
+                return row;
+            }
+
+            changed = true;
+
+            const updatedRow: TableFullTask = {
+                ...row,
+                agentData: null,
+                agent: null,
+            };
+
+            const isTemp =
+                typeof updatedRow.id === 'string' &&
+                updatedRow.id.startsWith('temp_');
+
+            if (!isTemp) {
+                this.upsertPendingForExistingTask(updatedRow);
+            }
+
+            return updatedRow;
+        });
+
+        if (!changed) return;
     }
 }
