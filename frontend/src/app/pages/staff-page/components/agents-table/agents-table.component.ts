@@ -71,7 +71,7 @@ import { ToastService } from '../../../../services/notifications/toast.service';
 import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.component';
 import { buildToolIdsArray } from '../../../../shared/utils/tool-ids-builder.util';
 import { ConfigCellRendererComponent } from '../cell-renderers/llm-cell-renderer/realtime-config-cell-renderer.component';
-import { map, switchMap, Observable, of, from, EMPTY, concatMap, catchError, finalize, tap } from 'rxjs';
+import { map, switchMap, Observable, of, from, EMPTY, concatMap, catchError, finalize, tap, toArray } from 'rxjs';
 import { CreateRealtimeAgentRequest } from '../../../../features/staff/models/realtime-agent.model';
 import { RealtimeAgentService } from '../../../../features/staff/services/realtime-agent.service';
 
@@ -1813,12 +1813,15 @@ export class AgentsTableComponent {
 
         const changes = Array.from(this.pending.values());
 
-        const ordered = changes.sort((a, b) => {
-            const rank = (k: PendingKind) => (k === 'delete' ? 0 : k === 'create' ? 1 : 2);
+        const ordered = [...changes].sort((a, b) => {
+            const rank = (k: PendingKind) =>
+                k === 'delete' ? 0 : k === 'create' ? 1 : 2;
             return rank(a.kind) - rank(b.kind);
         });
 
-        return from(changes).pipe(
+        let needsReload = false;
+
+        return from(ordered).pipe(
             concatMap((change) => {
                 if (change.kind === 'delete') {
                     const idNum = Number(change.rowId);
@@ -1836,8 +1839,8 @@ export class AgentsTableComponent {
                             this.pending.delete(rowId);
                             this.deletedRows.delete(rowId);
                             this.savedSnapshot.delete(rowId);
-                            this.dirtyChange.emit(this.pending.size > 0);
-                            this.cdr.markForCheck();
+                            needsReload = true;
+                            this.emitDirty();
                         }),
                         catchError((err) => {
                             if (err?.status === 404) {
@@ -1845,8 +1848,8 @@ export class AgentsTableComponent {
                                 this.pending.delete(rowId);
                                 this.deletedRows.delete(rowId);
                                 this.savedSnapshot.delete(rowId);
+                                needsReload = true;
                                 this.emitDirty();
-                                this.cdr.markForCheck();
                                 return EMPTY;
                             }
 
@@ -1856,52 +1859,88 @@ export class AgentsTableComponent {
                         map(() => void 0),
                     );
                 }
+
                 if (change.kind === 'create') {
                     return this.agentsService
                         .createAgent(change.payload as CreateAgentRequest)
                         .pipe(
-                            switchMap(() => this.fullAgentService.getFullAgents()),
-                            tap((fullAgents: FullAgent[]) => {
-                                this.rowData = fullAgents.sort((a, b) => b.id - a.id);
-                                this.savedSnapshot.clear();
-                                for (const a of this.rowData) {
-                                    const rowId = String(a.id);
-                                    if (!rowId.startsWith('temp_')) {
-                                        this.savedSnapshot.set(
-                                            rowId,
-                                            this.buildComparablePayload(a)
-                                        );
-                                    }
-                                }
-                                this.ensureSingleSpareEmptyRow();
-                                this.gridApi.setGridOption('rowData', [...this.rowData]);
-                                this.gridApi.refreshCells({ force: true, columns: ['index'] });
-                                this.gridApi.redrawRows();
-                                this.pending.clear();
-                                this.dirtyChange.emit(false);
-                                this.cdr.markForCheck();
+                            tap(() => {
+                                const rowId = change.rowId;
+                                this.pending.delete(rowId);
+                                this.requiredErrorsRows.delete(rowId);
+                                this.invalidTempRows.delete(rowId);
+                                this.draftTempRows.delete(rowId);
+                                this.deletedRows.delete(rowId);
+                                needsReload = true;
+                                this.emitDirty();
                             }),
                             catchError(() => {
                                 this.toastService.error('Failed to create agent');
                                 return EMPTY;
                             }),
-                            map(() => void 0)
+                            map(() => void 0),
                         );
-                    }
-                return this.agentsService.updateAgent(change.payload as UpdateAgentRequest).pipe(
-                    tap(() => {
-                        const rowId = change.rowId;
-                        const current = this.rowData.find((r) => String(r.id) === rowId);
-                        if (current) {
-                            this.savedSnapshot.set(rowId, this.buildComparablePayload(current));
+                }
+
+                return this.agentsService
+                    .updateAgent(change.payload as UpdateAgentRequest)
+                    .pipe(
+                        tap(() => {
+                            const rowId = change.rowId;
+                            const current = this.rowData.find(
+                                (r) => String(r.id) === rowId
+                            );
+
+                            if (current) {
+                                this.savedSnapshot.set(
+                                    rowId,
+                                    this.buildComparablePayload(current)
+                                );
+                            }
+
+                            this.pending.delete(rowId);
+                            this.emitDirty();
+                        }),
+                        catchError(() => {
+                            this.toastService.error('Failed to update agent');
+                            return EMPTY;
+                        }),
+                        map(() => void 0),
+                    );
+            }),
+            toArray(),
+            switchMap(() => {
+                if (!needsReload) {
+                    this.emitDirty();
+                    this.cdr.markForCheck();
+                    return of(void 0);
+                }
+
+                return this.fullAgentService.getFullAgents().pipe(
+                    tap((fullAgents: FullAgent[]) => {
+                        this.rowData = fullAgents.sort((a, b) => b.id - a.id);
+                        this.savedSnapshot.clear();
+
+                        for (const a of this.rowData) {
+                            const rowId = String(a.id);
+                            if (!rowId.startsWith('temp_')) {
+                                this.savedSnapshot.set(
+                                    rowId,
+                                    this.buildComparablePayload(a)
+                                );
+                            }
                         }
-                        this.pending.delete(rowId);
-                        this.dirtyChange.emit(this.pending.size > 0);
+
+                        this.deletedRows.clear();
+                        this.ensureSingleSpareEmptyRow();
+                        this.gridApi.setGridOption('rowData', [...this.rowData]);
+                        this.gridApi.refreshCells({
+                            force: true,
+                            columns: ['index'],
+                        });
+                        this.gridApi.redrawRows();
+                        this.emitDirty();
                         this.cdr.markForCheck();
-                    }),
-                    catchError(() => {
-                        this.toastService.error('Failed to update agent');
-                        return EMPTY;
                     }),
                     map(() => void 0),
                 );
@@ -1909,7 +1948,6 @@ export class AgentsTableComponent {
             finalize(() => {
                 this.cdr.markForCheck();
             }),
-            map(() => void 0),
         );
     }
 
