@@ -1224,16 +1224,6 @@ export class TasksTableComponent implements OnChanges {
             kind: 'update',
             payload: updateTaskData,
         });
-        const preservedMergedTools =
-            this.tasks.find((t) => t.id === +updatedTask.id)?.mergedTools ||
-            (updatedTask as any).mergedTools ||
-            [];
-
-        this.projectStateService.updateTask({
-            ...(updatedTask as any),
-            id: typeof updatedTask.id === 'string' ? +updatedTask.id : updatedTask.id,
-            mergedTools: preservedMergedTools,
-        } as any);
 
         return;
     }
@@ -2035,12 +2025,6 @@ export class TasksTableComponent implements OnChanges {
             kind: 'update',
             payload: updateTaskRequest,
         });
-
-        this.projectStateService.updateTask({
-            ...(taskData as any),
-            id: idNum,
-            mergedTools: (taskData as any).mergedTools || [],
-        } as any);
     }
 
     public requiredErrorsRows = new Set<string>();
