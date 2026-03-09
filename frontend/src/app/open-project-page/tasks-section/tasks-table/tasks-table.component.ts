@@ -219,41 +219,63 @@ export class TasksTableComponent implements OnChanges {
         const validAgentIds = new Set(
             (this.agents ?? []).map((a) => Number(a.id))
         );
-        const existingByKey = new Map<string, TableFullTask>();
-        for (const row of this.rowData) {
-            if (!row?.id) continue;
-            existingByKey.set(String(row.id), row);
+
+        const serverTasksByKey = new Map<string, TableFullTask>();
+
+        for (const t of this.tasks) {
+            const serverAgentId =
+                t.agentData?.id != null
+                    ? Number(t.agentData.id)
+                    : Number((t as any).agent);
+
+            const hasValidServerAgent =
+                Number.isFinite(serverAgentId) && validAgentIds.has(serverAgentId);
+
+            serverTasksByKey.set(String(t.id), {
+                ...t,
+                agentData: hasValidServerAgent ? t.agentData : null,
+                agent: hasValidServerAgent ? serverAgentId : null,
+                mergedTools: (t as any).mergedTools || t.mergedTools || [],
+            } as any);
         }
-        const mergedRealTasks = this.tasks.map((t) => {
-            const key = String(t.id);
-            const existing = existingByKey.get(key);
-            if (!existing) {
-                const serverAgentId =
-                    t.agentData?.id != null
-                        ? Number(t.agentData.id)
-                        : Number((t as any).agent);
 
-                const hasValidServerAgent =
-                    Number.isFinite(serverAgentId) && validAgentIds.has(serverAgentId);
+        const nextRowData: TableFullTask[] = [];
+        const consumedServerKeys = new Set<string>();
 
-                return {
-                    ...t,
-                    agentData: hasValidServerAgent ? t.agentData : null,
-                    agent: hasValidServerAgent ? serverAgentId : null,
-                    mergedTools: (t as any).mergedTools || t.mergedTools || [],
-                } as any;
+        for (const existing of this.rowData) {
+            const key = String(existing?.id ?? '');
+
+            if (key.startsWith('temp_')) {
+                const shouldKeepTemp =
+                    this.localPendingKeys.has(key) ||
+                    this.localDraftTempKeys.has(key) ||
+                    this.requiredErrorsRows.has(key) ||
+                    this.isTempRowTouched(existing);
+
+                if (shouldKeepTemp) {
+                    nextRowData.push(existing);
+                }
+
+                continue;
             }
 
-            const existingAgentId =
-                existing.agentData?.id != null
-                    ? Number(existing.agentData.id)
-                    : Number(existing.agent);
+            const freshServerRow = serverTasksByKey.get(key);
+            if (!freshServerRow) {
+                continue;
+            }
 
-            const hasValidExistingAgent =
-                Number.isFinite(existingAgentId) && validAgentIds.has(existingAgentId);
+            consumedServerKeys.add(key);
 
-            return {
-                ...t,
+            const serverAgentId =
+                freshServerRow.agentData?.id != null
+                    ? Number(freshServerRow.agentData.id)
+                    : Number((freshServerRow as any).agent);
+
+            const hasValidServerAgent =
+                Number.isFinite(serverAgentId) && validAgentIds.has(serverAgentId);
+
+            nextRowData.push({
+                ...freshServerRow,
                 name: existing.name,
                 instructions: existing.instructions,
                 expected_output: existing.expected_output,
@@ -263,35 +285,33 @@ export class TasksTableComponent implements OnChanges {
                 config: existing.config,
                 output_model: existing.output_model,
                 task_context_list: existing.task_context_list,
-                agentData: hasValidExistingAgent ? existing.agentData : null,
-                agent: hasValidExistingAgent ? existingAgentId : null,
-                mergedTools: existing.mergedTools || (t as any).mergedTools || t.mergedTools || [],
-                order: existing.order ?? t.order,
-            } as any;
-        });
+                agentData: hasValidServerAgent ? freshServerRow.agentData : null,
+                agent: hasValidServerAgent ? serverAgentId : null,
+                mergedTools:
+                    existing.mergedTools ||
+                    (freshServerRow as any).mergedTools ||
+                    [],
+                order: existing.order ?? freshServerRow.order,
+            } as any);
+        }
 
-        const tempDrafts = Array.from(existingByKey.values()).filter((r) => {
-            const key = String(r?.id ?? '');
-            if (!key.startsWith('temp_')) return false;
-            return (
-                this.localPendingKeys.has(key) ||
-                this.localDraftTempKeys.has(key) ||
-                this.requiredErrorsRows.has(key)
-            );
-        });
+        for (const [key, serverRow] of serverTasksByKey.entries()) {
+            if (!consumedServerKeys.has(key)) {
+                nextRowData.push(serverRow);
+            }
+        }
 
-        this.rowData = [
-            ...mergedRealTasks,
-            ...tempDrafts,
-        ];
-
+        this.rowData = nextRowData;
         this.ensureSingleSpareEmptyRow();
 
         if (this.localPendingKeys.size === 0) {
             this.baselineTasksById.clear();
             for (const t of this.tasks) {
                 if (typeof t.id === 'number') {
-                    this.baselineTasksById.set(t.id, this.normalizeTaskForCompare(t));
+                    this.baselineTasksById.set(
+                        t.id,
+                        this.normalizeTaskForCompare(t)
+                    );
                 }
             }
         }
@@ -1116,6 +1136,15 @@ export class TasksTableComponent implements OnChanges {
             ...updatedData,
         };
 
+        const isAgentCleared =
+            ('agent' in updatedData && updatedData.agent == null) ||
+            ('agentData' in updatedData && updatedData.agentData == null);
+
+        if (isAgentCleared) {
+            updatedTask.agent = null;
+            updatedTask.agentData = null;
+        }
+
         // Update our local row data
         this.rowData[index] = updatedTask;
 
@@ -1205,7 +1234,6 @@ export class TasksTableComponent implements OnChanges {
             instructions: updatedTask.instructions,
             expected_output: updatedTask.expected_output,
             knowledge_query: updatedTask.knowledge_query ?? null,
-            order: updatedTask.order,
             human_input: updatedTask.human_input,
             async_execution: updatedTask.async_execution,
             config: updatedTask.config,
@@ -1291,8 +1319,7 @@ export class TasksTableComponent implements OnChanges {
             this.requiredErrorsRows.delete(tempRowKey);
             this.setPending(tempRowKey, null);
             this.ensureSingleSpareEmptyRow();
-            this.gridApi.setGridOption('rowData', [...this.rowData]);
-            this.gridApi.refreshCells({ force: true, columns: ['index'] });
+            this.reindexAndSyncPendingOrders();
             this.maybeClearReorderPending();
             this.closeContextMenu();
             return;
@@ -1310,15 +1337,7 @@ export class TasksTableComponent implements OnChanges {
 
         // Remove optimistically from local array
         let removedRow = this.rowData.splice(index, 1)[0];
-
-        // Refresh the grid with the updated data
-        this.gridApi.setGridOption('rowData', [...this.rowData]);
-
-        // Refresh index column
-        this.gridApi.refreshCells({
-            force: true,
-            columns: ['index'],
-        });
+        this.reindexAndSyncPendingOrders();
 
         this.cdr.markForCheck();
 
@@ -1407,7 +1426,7 @@ export class TasksTableComponent implements OnChanges {
             payload: createTaskData,
         });
         this.gridApi.applyTransaction({ update: [newTaskData] });
-        this.emitReorderPending();
+        this.reindexAndSyncPendingOrders();
         this.closeContextMenu();
         return; 
     }
@@ -1443,16 +1462,7 @@ export class TasksTableComponent implements OnChanges {
             addIndex: insertIndex,
         });
 
-        // Update the order for all tasks
-        this.rowData.forEach((row, i) => {
-            row.order = i;
-        });
-
-        // Refresh order cells
-        this.gridApi.refreshCells({
-            force: true,
-            columns: ['order'],
-        });
+        this.reindexAndSyncPendingOrders();
 
         // Mark for change detection
         this.cdr.markForCheck();
@@ -1461,97 +1471,9 @@ export class TasksTableComponent implements OnChanges {
     }
 
     updateTaskOrders(): void {
-        this.emitReorderPending();
-        // // Build the ordered list of tasks based on the grid's displayed order so
-        // // PATCH requests match what the user sees in the UI.
-        // let displayedRows: TableFullTask[] = [];
-        // if (this.gridApi) {
-        //     const count = this.gridApi.getDisplayedRowCount();
-        //     for (let i = 0; i < count; i++) {
-        //         const node = this.gridApi.getDisplayedRowAtIndex(i);
-        //         if (node && node.data) {
-        //             displayedRows.push(node.data as TableFullTask);
-        //         }
-        //     }
-        // } else {
-        //     // Fallback to local rowData
-        //     displayedRows = [...this.rowData];
-        // }
-
-        // // Filter displayed rows to only real tasks (exclude null and temp IDs)
-        // const tasksWithIds = displayedRows.filter((task: TableFullTask) => {
-        //     if (task.id === null || task.id === undefined) return false;
-        //     if (typeof task.id === 'string' && task.id.startsWith('temp_')) return false;
-        //     return true;
-        // });
-
-        // // Create an array of update requests with new order values (1-based)
-        // const updateRequests: Observable<GetTaskRequest>[] = tasksWithIds.map((task, index) => {
-        //     console.log('updating task order', task);
-        //     const taskId = typeof task.id === 'string' ? +task.id : task.id;
-        //     return this.tasksService.patchTaskOrder(taskId, index + 1);
-        // });
-
-        // // Execute all update requests in parallel using forkJoin
-        // if (updateRequests.length > 0) {
-        //     forkJoin(updateRequests).subscribe({
-        //         next: (results) => {
-        //             console.log(
-        //                 'All task orders updated successfully:',
-        //                 results
-        //             );
-
-        //             // Update local state to reflect the new orders
-        //             results.forEach((updatedTask) => {
-        //                 const index = this.rowData.findIndex((row) => {
-        //                     // Handle case where row.id might be a string
-        //                     if (typeof row.id === 'string') {
-        //                         return +row.id === updatedTask.id;
-        //                     }
-        //                     return row.id === updatedTask.id;
-        //                 });
-
-        //                 if (index !== -1) {
-        //                     this.rowData[index].order = updatedTask.order;
-        //                 }
-        //             });
-
-        //             // Refresh order cells to reflect updates
-        //             this.gridApi.refreshCells({
-        //                 force: true,
-        //                 columns: ['order'],
-        //             });
-
-        //             // Notify the state service with proper FullTask objects
-        //             results.forEach((updatedTask) => {
-        //                 // Find the corresponding row to get the agentData and mergedTools
-        //                 const rowWithAgentData = this.rowData.find((row) => {
-        //                     if (typeof row.id === 'string') {
-        //                         return +row.id === updatedTask.id;
-        //                     }
-        //                     return row.id === updatedTask.id;
-        //                 });
-
-        //                 if (rowWithAgentData) {
-        //                     // Create a FullTask object preserving agentData and mergedTools from our original row
-        //                     const fullTask: FullTask = {
-        //                         ...updatedTask,
-        //                         agentData: rowWithAgentData.agentData,
-        //                         mergedTools: (rowWithAgentData as any).mergedTools || [],
-        //                     };
-        //                     this.projectStateService.updateTask(fullTask);
-        //                 }
-        //             });
-
-        //             this.cdr.markForCheck();
-        //         },
-        //         error: (error) => {
-        //             console.error('Error updating task orders:', error);
-        //             this.toastService.error('Failed to update task orders');
-        //         },
-        //     });
-        // }
+        this.reindexAndSyncPendingOrders();
     }
+
     private onCellClicked(event: CellClickedEvent<any, any>): void {
         if (event.colDef.field === 'actions') {
             const taskData: TableFullTask = event.data;
@@ -1764,14 +1686,30 @@ export class TasksTableComponent implements OnChanges {
             }
             // Subscribe to the agentSelected event from the popup
             popupRef.instance.agentSelected.subscribe(
-                (selectedAgent: FullAgent) => {
-
+                (selectedAgent: FullAgent | null) => {
                     if (!this.currentPopupCell) return;
                     const rowIndex = this.currentPopupCell.rowIndex;
                     const rowNode = this.gridApi.getDisplayedRowAtIndex(rowIndex);
                     if (!rowNode) return;
                     const taskData = rowNode.data as TableFullTask;
-                    this.updateTaskDataInRow({ agentData: selectedAgent }, taskData);
+
+                    if (selectedAgent === null) {
+                        this.updateTaskDataInRow(
+                            {
+                                agent: null,
+                                agentData: null,
+                            },
+                            taskData
+                        );
+                    } else {
+                        this.updateTaskDataInRow(
+                            {
+                                agent: selectedAgent.id,
+                                agentData: selectedAgent,
+                            },
+                            taskData
+                        );
+                    }
                     this.closePopup();
                 }
             );
@@ -1918,7 +1856,7 @@ export class TasksTableComponent implements OnChanges {
             .filter((t) => !(typeof t.id === 'string' && t.id.startsWith('temp_')))
             .map((t, idx) => ({
                 id: typeof t.id === 'string' ? Number(t.id) : t.id,
-                order: idx + 1,
+                order: idx,
             }));
 
         this.setPending('__ALL__', {
@@ -2002,8 +1940,10 @@ export class TasksTableComponent implements OnChanges {
         const idNum = Number(parsedUpdateData.id);
         if (!Number.isFinite(idNum)) return;
 
+        const { order, ...parsedWithoutOrder } = parsedUpdateData;
+
         const updateTaskRequest: UpdateTaskRequest = {
-            ...parsedUpdateData,
+            ...parsedWithoutOrder,
             id: idNum,
             knowledge_query: parsedUpdateData.knowledge_query ?? null,
             configured_tools: configured,
@@ -2216,10 +2156,12 @@ export class TasksTableComponent implements OnChanges {
         return this.localDraftTempKeys.size > 0;
     }
 
-    public applyCreatedTask(tempRowKey: string, created: { id: number } & Partial<TableFullTask>): void {
+    public applyCreatedTask(
+        tempRowKey: string,
+        created: { id: number } & Partial<TableFullTask>
+    ): void {
         const idx = this.rowData.findIndex((t) => String(t.id) === tempRowKey);
         if (idx === -1) return;
-
         const oldRow = this.rowData[idx];
 
         const newRow: TableFullTask = {
@@ -2237,8 +2179,43 @@ export class TasksTableComponent implements OnChanges {
 
         this.localDraftTempKeys?.delete(tempRowKey);
         this.requiredErrorsRows?.delete(tempRowKey);
-        this.baselineTasksById?.set(Number(created.id), this.normalizeTaskForCompare(newRow as any));
+        this.localPendingKeys?.delete(tempRowKey);
+
+        this.baselineTasksById?.set(
+            Number(created.id),
+            this.normalizeTaskForCompare(newRow as any)
+        );
+
+        this.projectStateService.addTask(newRow as any);
+        this.reindexAndSyncPendingOrders();
         this.cdr.markForCheck();
+    }
+
+    public getCurrentReorderPayload(): Array<{ id: number; order: number }> {
+        const displayedRows: TableFullTask[] = [];
+
+        if (this.gridApi) {
+            const count = this.gridApi.getDisplayedRowCount();
+            for (let i = 0; i < count; i++) {
+                const node = this.gridApi.getDisplayedRowAtIndex(i);
+                if (node?.data) {
+                    displayedRows.push(node.data as TableFullTask);
+                }
+            }
+        } else {
+            displayedRows.push(...this.rowData);
+        }
+
+        return displayedRows
+            .filter((t) => t?.id != null)
+            .filter(
+                (t) => !(typeof t.id === 'string' && t.id.startsWith('temp_'))
+            )
+            .map((t, idx) => ({
+                id: typeof t.id === 'string' ? Number(t.id) : t.id,
+                order: idx,
+            }))
+            .filter((x) => Number.isFinite(x.id));
     }
 
     private maybeClearReorderPending(): void {
@@ -2259,14 +2236,14 @@ export class TasksTableComponent implements OnChanges {
             .filter(t => !(typeof t.id === 'string' && t.id.startsWith('temp_')))
             .map((t, idx) => ({
                 id: typeof t.id === 'string' ? Number(t.id) : t.id,
-                order: idx + 1,
+                order: idx,
             }))
             .filter(x => Number.isFinite(x.id));
 
         const baselinePayload = this.tasks
             .filter(t => typeof t.id === 'number' && t.order != null)
             .sort((a,b) => (a.order ?? 999999) - (b.order ?? 999999))
-            .map((t, idx) => ({ id: t.id, order: idx + 1 }));
+            .map((t, idx) => ({ id: t.id, order: idx }));
 
         const same = JSON.stringify(displayedPayload) === JSON.stringify(baselinePayload);
         if (same) this.setPending('__ALL__', null);
@@ -2317,5 +2294,72 @@ export class TasksTableComponent implements OnChanges {
         });
 
         if (!changed) return;
+    }
+
+    private reindexAndSyncPendingOrders(): void {
+        const displayedRows: TableFullTask[] = [];
+
+        if (this.gridApi) {
+            const count = this.gridApi.getDisplayedRowCount();
+            for (let i = 0; i < count; i++) {
+                const node = this.gridApi.getDisplayedRowAtIndex(i);
+                if (node?.data) {
+                    node.data.order = i;
+                    displayedRows.push(node.data as TableFullTask);
+                }
+            }
+        } else {
+            this.rowData.forEach((row, i) => {
+                row.order = i;
+                displayedRows.push(row);
+            });
+        }
+
+        this.rowData = [...displayedRows];
+
+        for (const row of this.rowData) {
+            const rowKey = String(row.id ?? '');
+            if (!rowKey.startsWith('temp_')) continue;
+            if (!this.isTempRowTouched(row)) continue;
+            if (!this.isTempRowValid(row)) continue;
+            const parsedData = this.parseTaskData(row as any);
+            const configuredToolIds = parsedData.configured_tools || [];
+            const pythonToolIds = parsedData.python_code_tools || [];
+            const mcpToolIds = parsedData.mcp_tools || [];
+            const toolIds = buildToolIdsArray(
+                configuredToolIds,
+                pythonToolIds,
+                mcpToolIds
+            );
+
+            const createTaskData: CreateTaskRequest = {
+                ...parsedData,
+                knowledge_query: parsedData.knowledge_query ?? null,
+                order: row.order ?? null,
+                human_input: parsedData.human_input ?? false,
+                async_execution: parsedData.async_execution ?? false,
+                config: parsedData.config ?? null,
+                output_model: parsedData.output_model ?? null,
+                task_context_list: parsedData.task_context_list ?? [],
+                configured_tools: configuredToolIds,
+                python_code_tools: pythonToolIds,
+                mcp_tools: mcpToolIds,
+                tool_ids: toolIds,
+            };
+
+            this.setPending(rowKey, {
+                rowKey,
+                kind: 'create',
+                payload: createTaskData,
+            });
+        }
+
+        this.gridApi?.setGridOption('rowData', [...this.rowData]);
+        this.gridApi?.refreshCells({
+            force: true,
+            columns: ['index', 'order'],
+        });
+
+        this.emitReorderPending();
     }
 }

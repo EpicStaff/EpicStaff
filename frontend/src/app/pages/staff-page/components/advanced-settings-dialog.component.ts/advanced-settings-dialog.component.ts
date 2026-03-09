@@ -86,7 +86,6 @@ export class AdvancedSettingsDialogComponent implements OnInit, OnDestroy {
     public knowledgeSourcesError: string | null = null;
 
     private readonly _destroyed$ = new Subject<void>();
-    public floatedThreshold = 0.2;
   public search_limit = 3;
 
     // Form controls for sliders
@@ -137,7 +136,6 @@ export class AdvancedSettingsDialogComponent implements OnInit, OnDestroy {
         this.maxRetryLimitControl.setValue(data.max_retry_limit ?? 3);
         const st = data.search_configs?.naive?.similarity_threshold;
         const threshold = st ?? 0.2;
-        this.floatedThreshold = threshold;
         this.similarityThresholdControl.setValue(threshold);
         const sl = data.search_configs?.naive?.search_limit;
         this.searchLimitControl.setValue(sl ?? 3);
@@ -350,12 +348,10 @@ export class AdvancedSettingsDialogComponent implements OnInit, OnDestroy {
     }
 
     public onThresholdChange(event: any): void {
-        const value = event.value;
-        this.agentData.search_configs.naive.similarity_threshold =
-            value === null || value === undefined ? null : Number(value);
-            this.similarityThresholdControl.setValue(
-            this.agentData.search_configs.naive.similarity_threshold ?? 0.2
-        );
+        const value = event?.value;
+        const normalizedValue =
+            value === null || value === undefined ? 0.2 : Number(value);
+        this.similarityThresholdControl.setValue(normalizedValue);
     }
 
     public onSearchLimitChange(event: any): void {
