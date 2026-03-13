@@ -24,7 +24,7 @@ export interface SelectItem {
 
 @Component({
     selector: 'app-select',
-    imports: [NgClass, TooltipComponent, OverlayModule],
+    imports: [NgClass, OverlayModule, TooltipComponent ],
     templateUrl: './select.component.html',
     styleUrls: ['./select.component.scss'],
     providers: [
