@@ -2,7 +2,7 @@ import uvicorn
 import sys
 from pyngrok import ngrok
 from loguru import logger
-from app.core.config import settings
+from app.core.settings import settings
 import dotenv
 
 dotenv.load_dotenv()

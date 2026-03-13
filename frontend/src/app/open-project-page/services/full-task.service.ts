@@ -4,15 +4,10 @@ import { TasksService } from '../../features/tasks/services/tasks.service';
 import { AgentsService } from '../../features/staff/services/staff.service';
 import { ToolConfigService } from '../../features/tools/services/tool-config.service';
 import { PythonCodeToolService } from '../../user-settings-page/tools/custom-tool-editor/services/pythonCodeToolService.service';
-import { BuiltinToolsService } from '../../features/tools/services/builtin-tools/builtin-tools.service';
 import { McpToolsService } from '../../features/tools/services/mcp-tools/mcp-tools.service';
 import { FullTask } from '../../features/tasks/models/full-task.model';
-import { GetTaskRequest } from '../../features/tasks/models/task.model';
 import { GetAgentRequest } from '../../features/staff/models/agent.model';
-import { GetToolConfigRequest } from '../../features/tools/models/tool-config.model';
-import { GetPythonCodeToolRequest } from '../../features/tools/models/python-code-tool.model';
 import { GetMcpToolRequest } from '../../features/tools/models/mcp-tool.model';
-import { Tool } from '../../features/tools/models/tool.model';
 
 export interface TableFullTask extends Omit<FullTask, 'id'> {
   id: number | string;
@@ -27,7 +22,6 @@ export class FullTaskService {
     private agentsService: AgentsService,
     private toolConfigService: ToolConfigService,
     private pythonCodeToolService: PythonCodeToolService,
-    private toolsService: BuiltinToolsService,
     private mcpToolsService: McpToolsService
   ) {}
 
@@ -38,19 +32,12 @@ export class FullTaskService {
       toolConfigs: this.toolConfigService.getToolConfigs(),
       pythonTools: this.pythonCodeToolService.getPythonCodeTools(),
       mcpTools: this.mcpToolsService.getMcpTools(),
-      tools: this.toolsService.getTools(),
     }).pipe(
-      map(({ tasks, agents, toolConfigs, pythonTools, mcpTools, tools }) => {
+      map(({ tasks, agents, toolConfigs, pythonTools, mcpTools }) => {
         // Create agent lookup map
         const agentMap = new Map<number, GetAgentRequest>();
         agents.forEach((agent) => {
           agentMap.set(agent.id, agent);
-        });
-
-        // Create tool lookup map
-        const toolsMap = new Map<number, string>();
-        tools.forEach((tool: Tool) => {
-          toolsMap.set(tool.id, tool.name);
         });
 
         return tasks.map((task) => {
@@ -90,7 +77,7 @@ export class FullTaskService {
             ...fullConfiguredTools.map((tc) => ({
               id: tc.id,
               configName: tc.name, // This is the config name
-              toolName: toolsMap.get(tc.tool) || 'Unknown Tool', // This is the actual tool name
+              toolName: 'Unknown Tool', // This is the actual tool name
               type: 'tool-config',
             })),
             ...fullPythonTools.map((pt) => ({
@@ -124,19 +111,12 @@ export class FullTaskService {
       toolConfigs: this.toolConfigService.getToolConfigs(),
       pythonTools: this.pythonCodeToolService.getPythonCodeTools(),
       mcpTools: this.mcpToolsService.getMcpTools(),
-      tools: this.toolsService.getTools(),
     }).pipe(
-      map(({ tasks, agents, toolConfigs, pythonTools, mcpTools, tools }) => {
+      map(({ tasks, agents, toolConfigs, pythonTools, mcpTools }) => {
         // Create agent lookup map
         const agentMap = new Map<number, GetAgentRequest>();
         agents.forEach((agent) => {
           agentMap.set(agent.id, agent);
-        });
-
-        // Create tool lookup map
-        const toolsMap = new Map<number, string>();
-        tools.forEach((tool: Tool) => {
-          toolsMap.set(tool.id, tool.name);
         });
 
         return tasks.map((task) => {
@@ -176,7 +156,7 @@ export class FullTaskService {
             ...fullConfiguredTools.map((tc) => ({
               id: tc.id,
               configName: tc.name, // This is the config name
-              toolName: toolsMap.get(tc.tool) || 'Unknown Tool', // This is the actual tool name
+              toolName: 'Unknown Tool', // This is the actual tool name
               type: 'tool-config',
             })),
             ...fullPythonTools.map((pt) => ({
@@ -210,9 +190,8 @@ export class FullTaskService {
       toolConfigs: this.toolConfigService.getToolConfigs(),
       pythonTools: this.pythonCodeToolService.getPythonCodeTools(),
       mcpTools: this.mcpToolsService.getMcpTools(),
-      tools: this.toolsService.getTools(),
     }).pipe(
-      map(({ task, agents, toolConfigs, pythonTools, mcpTools, tools }) => {
+      map(({ task, agents, toolConfigs, pythonTools, mcpTools }) => {
         if (!task) {
           return null;
         }
@@ -221,12 +200,6 @@ export class FullTaskService {
         const agentMap = new Map<number, GetAgentRequest>();
         agents.forEach((agent) => {
           agentMap.set(agent.id, agent);
-        });
-
-        // Create tool lookup map
-        const toolsMap = new Map<number, string>();
-        tools.forEach((tool: Tool) => {
-          toolsMap.set(tool.id, tool.name);
         });
 
         // Get agent data
@@ -263,7 +236,7 @@ export class FullTaskService {
           ...fullConfiguredTools.map((tc) => ({
             id: tc.id,
             configName: tc.name, // This is the config name
-            toolName: toolsMap.get(tc.tool) || 'Unknown Tool', // This is the actual tool name
+            toolName: 'Unknown Tool', // This is the actual tool name
             type: 'tool-config',
           })),
           ...fullPythonTools.map((pt) => ({

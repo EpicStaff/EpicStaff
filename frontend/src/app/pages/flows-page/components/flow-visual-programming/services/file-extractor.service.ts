@@ -32,6 +32,15 @@ export class FileExtractorService {
         });
     }
 
+    updateFileExtractorNode(
+        id: number,
+        request: CreateFileExtractorNodeRequest
+    ): Observable<any> {
+        return this.http.put<any>(`${this.apiUrl}${id}/`, request, {
+            headers: this.headers,
+        });
+    }
+
     getFileExtractorNodeById(
         id: number
     ): Observable<GetFileExtractorNodeRequest> {

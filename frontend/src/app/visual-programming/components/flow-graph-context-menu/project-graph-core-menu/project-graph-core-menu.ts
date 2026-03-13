@@ -176,8 +176,6 @@ export class ProjectGraphCoreMenuComponent {
         agent: null,
       };
       console.log('task node emitted');
-    } else if (type === NodeType.GROUP) {
-      data = 'group'; // Assign "group" if NodeType is GROUP
     } else {
       return;
     }

@@ -12,22 +12,26 @@
         #triggerBtn
         class="selector__btn"
         [disabled]="isDisabled()"
-        [ngClass]="'selector__btn--mod-' + mod()"
+        [ngClass]="'selector__btn--' + mod()"
         [class.selector__btn--invalid]="invalid()"
         [class.selector__btn--placeholder]="!selectedItem()"
         (click)="toggle()"
     >
-        {{ selectedItem() ? selectedItem()!.name : placeholder() }}
+        @if (loading()) {
+            <div class="selector__spinner" [ngClass]="'selector__spinner--' + mod()"></div>
+        } @else {
+            {{ selectedItem() ? selectedItem()!.name : placeholder() }}
 
-        <svg
-            class="selector__chevron"
-            [class.selector__chevron--open]="open()"
-            [ngClass]="'selector__chevron--mod-' + mod()"
-            width="16" height="16"
-            viewBox="0 0 24 24"
-        >
-            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
-        </svg>
+            <svg
+                class="selector__chevron"
+                [class.selector__chevron--open]="open()"
+                [ngClass]="'selector__chevron--' + mod()"
+                width="16" height="16"
+                viewBox="0 0 24 24"
+            >
+                <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+            </svg>
+        }
     </button>
 </div>
 
@@ -36,7 +40,7 @@
         @for (item of items(); track item.name) {
             <div
                 class="selector__option selector__option--exists"
-                [ngClass]="'selector__option--mod-' + mod()"
+                [ngClass]="'selector__option--' + mod()"
                 (click)="select(item)"
             >
                 {{ item.name }}
@@ -46,7 +50,7 @@
         @if (!items().length) {
             <div
                 class="selector__option selector__option--empty"
-                [ngClass]="'selector__option--mod-' + mod()"
+                [ngClass]="'selector__option--' + mod()"
             >
                 No items available
             </div>

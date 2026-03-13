@@ -1,33 +1,35 @@
 import json
 import os
 import time
-from typing import Type
-import redis
 from collections import defaultdict, deque
-from django.db import transaction, IntegrityError, models
-from tables.services.telegram_trigger_service import TelegramTriggerService
-from tables.services.webhook_trigger_service import WebhookTriggerService
-from tables.models import GraphSessionMessage
-from tables.models import PythonCodeResult
-from tables.models import GraphOrganization
-from tables.request_models import CodeResultData, GraphSessionMessageData
-from tables.request_models import (
-    WebhookEventData,
-)
-from tables.models import Session
+from typing import Type
+
+import redis
+from django.db import IntegrityError, models, transaction
 from loguru import logger
 
-
-SESSION_STATUS_CHANNEL = os.environ.get(
-    "SESSION_STATUS_CHANNEL", "sessions:session_status"
+from django_app.settings import (
+    CODE_RESULT_CHANNEL,
+    GRAPH_MESSAGE_UPDATE_CHANNEL,
+    GRAPH_MESSAGES_CHANNEL,
+    SESSION_STATUS_CHANNEL,
+    TELEGRAM_TRIGGER_PREFIX,
+    WEBHOOK_MESSAGE_CHANNEL,
+    REQUEST_WEBHOOK_UPDATE_CHANNEL,
 )
-CODE_RESULT_CHANNEL = os.environ.get("CODE_RESULT_CHANNEL", "code_results")
-GRAPH_MESSAGES_CHANNEL = os.environ.get("GRAPH_MESSAGES_CHANNEL", "graph:messages")
-GRAPH_MESSAGE_UPDATE_CHANNEL = os.environ.get(
-    "GRAPH_MESSAGE_UPDATE_CHANNEL", "graph:message:update"
+from tables.models import (
+    GraphOrganization,
+    GraphSessionMessage,
+    PythonCodeResult,
+    Session,
 )
-WEBHOOK_MESSAGE_CHANNEL = os.environ.get("WEBHOOK_MESSAGE_CHANNEL", "webhooks")
-TELEGRAM_TRIGGER_PREFIX = "telegram-trigger/"
+from src.shared.models import (
+    CodeResultData,
+    GraphSessionMessageData,
+    WebhookEventData,
+)
+from tables.services.telegram_trigger_service import TelegramTriggerService
+from tables.services.webhook_trigger_service import WebhookTriggerService
 
 
 class RedisPubSub:
@@ -70,7 +72,7 @@ class RedisPubSub:
                     Session.SessionStatus.ERROR,
                 ]:
                     logger.warning(
-                        f'Unable change status from {session.status} to {data["status"]}'
+                        f"Unable change status from {session.status} to {data['status']}"
                     )
                 else:
                     status_data = data.get("status_data", {})
@@ -81,6 +83,13 @@ class RedisPubSub:
                     session.status_data = status_data
                     session.token_usage = status_data["total_token_usage"]
                     session.save()
+
+                    if session.status in [
+                        Session.SessionStatus.END,
+                        Session.SessionStatus.ERROR,
+                    ]:
+                        self._save_organization_variables(session=session, data=data)
+
         except Exception as e:
             logger.error(f"Error handling session_status message: {e}")
 
@@ -101,17 +110,32 @@ class RedisPubSub:
                 TelegramTriggerService().handle_telegram_trigger(
                     url_path=data.path[len(TELEGRAM_TRIGGER_PREFIX) : -1],
                     payload=data.payload,
+                    config_id=data.config_id,
                 )
             else:
                 WebhookTriggerService().handle_webhook_trigger(
-                    path=data.path, payload=data.payload
+                    path=data.path,
+                    payload=data.payload,
+                    config_id=data.config_id,
                 )
         except Exception as e:
             logger.error(f"Error handling webhook_events_handler message: {e}")
 
+    def request_webhook_update_handler(self, message: dict):
+        try:
+            logger.debug(f"Received request to update webhook")
+            registered = WebhookTriggerService().register_webhooks()
+            if not registered:
+                raise ValueError("0 services listened for registration")
+        except Exception as e:
+            logger.error(
+                f"Error updating webhook with current webhook configurations {e}"
+            )
+
     def _save_organization_variables(self, session: Session, data: dict):
         """
-        Save organization and organization_user variables to database
+        Save organization and organization_user variables to database.
+        Only updates values that exist in the persistent_variables structure.
         """
         try:
             variables = data["status_data"]["variables"]
@@ -121,20 +145,53 @@ class RedisPubSub:
             graph_organization = GraphOrganization.objects.filter(
                 graph=session.graph
             ).first()
-            if graph_organization:
-                for key, value in variables.items():
-                    if key in graph_organization.persistent_variables:
-                        graph_organization.persistent_variables[key] = value
-                graph_organization.save(update_fields=["persistent_variables"])
+            if graph_organization and graph_organization.persistent_variables:
+                if self._update_persistent_values(
+                    graph_organization.persistent_variables, variables
+                ):
+                    graph_organization.save(update_fields=["persistent_variables"])
 
-            if session.graph_user:
-                for key, value in variables.items():
-                    if key in session.graph_user.persistent_variables:
-                        session.graph_user.persistent_variables[key] = value
-                session.graph_user.save(update_fields=["persistent_variables"])
+            if (
+                session.graph_user
+                and graph_organization.user_variables
+                and not session.graph_user.persistent_variables
+            ):
+                session.graph_user.persistent_variables = (
+                    graph_organization.user_variables
+                )
+                session.graph_user.save()
+
+            if session.graph_user and session.graph_user.persistent_variables:
+                if self._update_persistent_values(
+                    session.graph_user.persistent_variables, variables
+                ):
+                    session.graph_user.save(update_fields=["persistent_variables"])
 
         except Exception as e:
             logger.error(f"Error handling organization variables message: {e}")
+
+    def _update_persistent_values(self, persistent: dict, incoming: dict) -> bool:
+        """
+        Recursively update values in persistent dict from incoming dict.
+        Only updates keys that already exist in persistent.
+        Returns True if any values were updated.
+        """
+        updated = False
+
+        for key, persistent_value in persistent.items():
+            if key not in incoming:
+                continue
+
+            incoming_value = incoming[key]
+
+            if isinstance(persistent_value, dict) and isinstance(incoming_value, dict):
+                if self._update_persistent_values(persistent_value, incoming_value):
+                    updated = True
+            elif persistent_value != incoming_value:
+                persistent[key] = incoming_value
+                updated = True
+
+        return updated
 
     def _buffer_save(self, data, model: Type[models.Model]):
         try:
@@ -255,6 +312,9 @@ class RedisPubSub:
         self.set_handler(SESSION_STATUS_CHANNEL, self.session_status_handler)
         self.set_handler(CODE_RESULT_CHANNEL, self.code_results_handler)
         self.set_handler(WEBHOOK_MESSAGE_CHANNEL, self.webhook_events_handler)
+        self.set_handler(
+            REQUEST_WEBHOOK_UPDATE_CHANNEL, self.request_webhook_update_handler
+        )
         self.subscribe_to_channels()
 
         while True:

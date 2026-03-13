@@ -1,0 +1,44 @@
+.listbox {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    border-radius: 10px;
+    padding: 1rem;
+    border: 1px solid var(--color-divider-subtle);
+
+    &__input-container {
+        display: flex;
+        column-gap: 0.5rem;
+    }
+
+    &__item {
+        padding: 0.75rem 3rem 0.75rem 0.75rem;
+        border-radius: 6px;
+        background-color: var(--color-input-background);
+        color: var(--accent-color);
+        position: relative;
+        font-size: 0.875rem;
+    }
+
+    &__add-btn {
+        height: 40px;
+        width: 40px;
+        border-radius: 8px;
+        background-color: var(--accent-color);
+        color: #ffffff;
+        cursor: pointer;
+
+        &:hover {
+            background-color: var(--accent-color-hover);
+        }
+    }
+
+    &__remove-btn {
+        color: #ffffff;
+        cursor: pointer;
+        position: absolute;
+        right: 0;
+        top: 50%;
+        transform: translate(-50%, -50%);
+    }
+}

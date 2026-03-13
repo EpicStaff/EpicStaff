@@ -46,11 +46,20 @@ export class StartNodeService {
     });
   }
 
-  updateStartNode(
+  partialUpdateStartNode(
     id: number,
     request: Partial<CreateStartNodeRequest>
   ): Observable<StartNode> {
     return this.http.patch<StartNode>(`${this.apiUrl}${id}/`, request, {
+      headers: this.headers,
+    });
+  }
+
+  updateStartNode(
+    id: number,
+    request: CreateStartNodeRequest
+  ): Observable<StartNode> {
+    return this.http.put<StartNode>(`${this.apiUrl}${id}/`, request, {
       headers: this.headers,
     });
   }

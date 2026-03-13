@@ -1,9 +1,9 @@
 from django.db import migrations
 
-class Migration(migrations.Migration):
 
+class Migration(migrations.Migration):
     dependencies = [
-        ('tables', '0144_merge_add_meta_fields'),
+        ("tables", "0144_merge_add_meta_fields"),
     ]
 
     operations = [
@@ -18,6 +18,8 @@ class Migration(migrations.Migration):
               fk record;
               mapping_table text;
               max_id bigint;
+              child_tables text[];
+              ct_name text;
             BEGIN
               -- 1) List of tables
               FOREACH t IN ARRAY ARRAY[
@@ -34,6 +36,8 @@ class Migration(migrations.Migration):
                 'tables_telegramtriggernode'::regclass
               ]
               LOOP
+                child_tables := ARRAY[]::text[];
+
                 -- 2) Lock the table
                 EXECUTE format('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE', t);
 
@@ -82,7 +86,9 @@ class Migration(migrations.Migration):
                     ]
                 LOOP
                   EXECUTE format('LOCK TABLE %I.%I IN ACCESS EXCLUSIVE MODE', fk.src_schema, fk.src_table);
-                  
+                  EXECUTE format('ALTER TABLE %I.%I DISABLE TRIGGER ALL', fk.src_schema, fk.src_table);
+                  child_tables := array_append(child_tables, format('%I.%I', fk.src_schema, fk.src_table));
+
                   EXECUTE format(
                     'UPDATE %I.%I s
                      SET %I = m.new_id
@@ -103,6 +109,12 @@ class Migration(migrations.Migration):
                    WHERE tgt.id = m.old_id',
                   t, mapping_table
                 );
+
+                -- 6b) Re-enable triggers on child tables now that PKs hold the new IDs
+                FOREACH ct_name IN ARRAY child_tables
+                LOOP
+                  EXECUTE format('ALTER TABLE %s ENABLE TRIGGER ALL', ct_name);
+                END LOOP;
 
                 -- [ADDED] 7) Force execution of pending trigger checks (Foreign Keys)
                 -- This clears the queue so we can perform the final ALTER TABLE without error.
@@ -154,6 +166,6 @@ class Migration(migrations.Migration):
             ALTER TABLE tables_telegramtriggernode ALTER COLUMN id DROP DEFAULT;
 
             DROP SEQUENCE IF EXISTS tables_global_node_seq;
-            """
+            """,
         )
     ]

@@ -25,6 +25,12 @@ export class EdgeService {
     });
   }
 
+  updateEdge(id: number, request: CreateEdgeRequest): Observable<any> {
+    return this.http.put<any>(`${this.apiUrl}${id}/`, request, {
+      headers: this.headers,
+    });
+  }
+
   deleteEdge(id: number): Observable<any> {
     const url = `${this.apiUrl}${id}/`;
     return this.http.delete<any>(url, {

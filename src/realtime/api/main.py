@@ -4,7 +4,7 @@ import asyncio
 from loguru import logger
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from models.request_models import RealtimeAgentChatData
+from src.shared.models import RealtimeAgentChatData
 from services.chat_executor import ChatExecutor
 from services.python_code_executor_service import PythonCodeExecutorService
 from services.redis_service import RedisService

@@ -4,6 +4,7 @@ import { DialogRef } from '@angular/cdk/dialog';
 import { IconButtonComponent } from '../../shared/components/buttons/icon-button/icon-button.component';
 import { LlmModelsTabComponent } from './components/llm-models-tab/llm-models-tab.component';
 import { EmbeddingModelsTabComponent } from './components/embedding-models-tab/embedding-models-tab.component';
+import { NgrokConfigTabComponent } from "./components/ngrok-config-tab/ngrok-config-tab.component";
 import { VoiceModelsTabComponent } from './components/voice-models-tab/voice-models-tab.component';
 import { PreferencesTabComponent } from './components/preferences-tab/preferences-tab.component';
 import { AppIconComponent } from '../../shared/components/app-icon/app-icon.component';
@@ -15,6 +16,7 @@ export enum TabId {
   VOICE = 'voice',
   PREFERENCES = 'preferences',
   QUICKSTART = 'quickstart',
+  NGROK_CONFIG = 'ngrok_config',
 }
 
 export interface Tab {
@@ -34,6 +36,7 @@ export interface Tab {
     PreferencesTabComponent,
     AppIconComponent,
     QuickstartTabComponent,
+    NgrokConfigTabComponent,
   ],
   template: `
     <div class="settings-dialog">
@@ -75,6 +78,8 @@ export interface Tab {
           <app-preferences-tab></app-preferences-tab>
           } @case (TabId.QUICKSTART) {
           <app-quickstart-tab></app-quickstart-tab>
+          } @case (TabId.NGROK_CONFIG) {
+          <app-ngrok-config-tab></app-ngrok-config-tab>
           } }
         </div>
       </div>
@@ -174,6 +179,7 @@ export class SettingsDialogComponent {
     { id: TabId.VOICE, label: 'Voice Models' },
     // { id: TabId.PREFERENCES, label: 'Preferences' },
     { id: TabId.QUICKSTART, label: 'Quickstart' },
+    { id: TabId.NGROK_CONFIG, label: 'Ngrok Config' },
   ];
 
   public activeTabId = signal<TabId>(TabId.LLM);

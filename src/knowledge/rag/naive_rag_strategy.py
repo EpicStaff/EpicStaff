@@ -7,7 +7,7 @@ from services.cancellation_token import CancellationToken
 
 from psycopg2.errors import ForeignKeyViolation
 
-from models.redis_models import (
+from src.shared.models import (
     NaiveRagSearchConfig,
     BaseKnowledgeSearchMessageResponse,
 )

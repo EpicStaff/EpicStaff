@@ -12,7 +12,7 @@ from models.orm import (
     NaiveRagEmbedding,
     DocumentMetadata,
 )
-from models.redis_models import KnowledgeChunkResponse
+from src.shared.models import KnowledgeChunkResponse
 from chunkers.base_chunker import BaseChunkData
 
 

@@ -1,38 +1,11 @@
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 from loguru import logger
 from tables.models import (
-    StartNode,
     GraphOrganization,
     GraphOrganizationUser,
     OrganizationUser,
 )
-
-
-def prune_variables(
-    instance,
-    field_name,
-    display_name,
-    object_type="organization",
-    current_variables=None,
-):
-    """
-    Keep only keys in current_variables for a given JSON field on the instance.
-    Save and log if anything was removed.
-    """
-    if not current_variables:
-        return
-
-    original_vars = getattr(instance, field_name, {})
-    updated_vars = {k: v for k, v in original_vars.items() if k in current_variables}
-
-    if updated_vars != original_vars:
-        setattr(instance, field_name, updated_vars)
-        instance.save(update_fields=[field_name])
-        logger.info(
-            f"Some persistent {object_type} variables for {display_name} were removed "
-            "because initial domain was changed."
-        )
 
 
 def sync_variables(
@@ -43,70 +16,59 @@ def sync_variables(
     current_variables=None,
 ):
     """
-    Sync a JSON field on an instance with current_variables:
+    Sync a JSON field on an instance with current_variables (handles nested structures):
     - Remove keys that are not present in current_variables
     - Add key/value from current_variables if missing in the instance
-    - Keep existing values for keys that exist in both
+    - Keep existing values for keys that exist in both (recursively for nested dicts)
     """
-    if not current_variables:
+    if current_variables is None:
         return
 
     original_vars = getattr(instance, field_name, {}) or {}
-    updated_vars = {
-        k: original_vars[k] for k in original_vars if k in current_variables
-    }
 
-    for k, v in current_variables.items():
-        if k not in updated_vars:
-            updated_vars[k] = v
+    updated_vars, _, _ = _sync_nested_dict(original_vars, current_variables)
 
     if updated_vars != original_vars:
         setattr(instance, field_name, updated_vars)
         instance.save(update_fields=[field_name])
-        logger.info(
-            f"Persistent {object_type} variables for {display_name} were synced "
-            "(removed old keys or added missing ones)."
-        )
+        logger.info(f"Variables synced for {object_type} {display_name}.")
 
 
-@receiver(post_save, sender=StartNode)
-def update_organization_objects(sender, instance, created, **kwargs):
+def _sync_nested_dict(original, current, path=""):
     """
-    Updates persistent_variables for organizations and users if they were removed from domain.
+    Recursively sync nested dictionaries.
+    Returns: (updated_dict, removed_paths, added_paths)
     """
-    if created:
-        return
+    updated = {}
+    removed_paths = []
+    added_paths = []
 
-    graph = instance.graph
-    current_variables = instance.variables
+    for key in current.keys():
+        current_path = f"{path}.{key}" if path else key
 
-    graph_organization = GraphOrganization.objects.filter(graph=graph).first()
-    graph_organization_users = GraphOrganizationUser.objects.filter(graph=graph).all()
+        if key in original:
+            original_value = original[key]
+            current_value = current[key]
 
-    if graph_organization:
-        prune_variables(
-            graph_organization,
-            "persistent_variables",
-            graph_organization.organization.name,
-            "organization",
-            current_variables,
-        )
-        prune_variables(
-            graph_organization,
-            "user_variables",
-            graph_organization.organization.name,
-            "user",
-            current_variables,
-        )
+            if isinstance(original_value, dict) and isinstance(current_value, dict):
+                nested_result, nested_removed, nested_added = _sync_nested_dict(
+                    original_value, current_value, current_path
+                )
+                updated[key] = nested_result
+                removed_paths.extend(nested_removed)
+                added_paths.extend(nested_added)
+            else:
+                updated[key] = original_value
+        else:
+            updated[key] = current[key]
+            added_paths.append(current_path)
 
-    for graph_user in graph_organization_users:
-        prune_variables(
-            graph_user,
-            "persistent_variables",
-            graph_user.user.name,
-            "user",
-            current_variables,
-        )
+    for key in original.keys():
+        if key not in current:
+            removed_path = f"{path}.{key}" if path else key
+            removed_paths.append(removed_path)
+
+    return updated, removed_paths, added_paths
 
 
 @receiver(post_save, sender=GraphOrganization)

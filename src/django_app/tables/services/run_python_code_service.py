@@ -2,7 +2,7 @@ from datetime import datetime
 import os
 from typing import Any
 import uuid
-from tables.request_models import CodeTaskData
+from src.shared.models import CodeTaskData
 from tables.models import PythonCode
 from tables.services.redis_service import RedisService
 from utils.singleton_meta import SingletonMeta

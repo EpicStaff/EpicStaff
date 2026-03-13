@@ -261,3 +261,8 @@ knowledge/graph_data/
 *.crt!
 dev/dev.config.json
 dev/dev.env
+
+# AI Coding Assistant Configs
+.claude/
+CLAUDE.md
+CLAUDE.local.md

@@ -7,6 +7,7 @@ export interface CrewNode {
   crew: GetProjectRequest;
   input_map: Record<string, any>;
   output_variable_path: string | null;
+  metadata: Record<string, any>;
 }
 
 export interface CreateCrewNodeRequest {
@@ -15,4 +16,5 @@ export interface CreateCrewNodeRequest {
   crew_id: number;
   input_map: Record<string, any>;
   output_variable_path: string | null;
+  metadata?: Record<string, any>;
 }

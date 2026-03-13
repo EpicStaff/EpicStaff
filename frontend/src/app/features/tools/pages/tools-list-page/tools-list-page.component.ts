@@ -40,7 +40,7 @@ import { ToolsSearchService } from '../../services/tools-search.service';
 })
 export class ToolsListPageComponent {
   public tabs = [
-    { label: 'Built-in', link: 'built-in' },
+    // { label: 'Built-in', link: 'built-in' },
     { label: 'Custom', link: 'custom' },
     { label: 'MCP', link: 'mcp' },
   ];

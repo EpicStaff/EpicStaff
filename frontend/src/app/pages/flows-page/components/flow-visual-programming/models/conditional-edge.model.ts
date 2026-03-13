@@ -11,6 +11,7 @@ export interface ConditionalEdge {
   then: string;
   python_code: GetPythonCodeRequest;
   input_map: Record<string, any>;
+  metadata: Record<string, any>;
 }
 export interface GetConditionalEdgeRequest {
   id: number;
@@ -19,6 +20,7 @@ export interface GetConditionalEdgeRequest {
   then: string;
   python_code: GetPythonCodeRequest;
   input_map: Record<string, any>;
+  metadata: Record<string, any>;
 }
 export interface CreateConditionalEdgeRequest {
   graph: number;
@@ -26,6 +28,7 @@ export interface CreateConditionalEdgeRequest {
   then: string | null;
   python_code: CreatePythonCodeRequest;
   input_map: Record<string, any>;
+  metadata?: Record<string, any>;
 }
 
 export interface CustomConditionalEdgeModelForNode {

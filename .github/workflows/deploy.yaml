@@ -10,6 +10,10 @@ on:
         description: "Branch to deploy to test3"
         required: true
         default: "main"
+      nuke_db:
+        description: "Reset database (Nuke DB)?"
+        type: boolean
+        default: true
 
 concurrency:
   group: epicstaff-deploy
@@ -30,6 +34,7 @@ jobs:
           git fetch --prune
           git checkout main
           git pull --ff-only origin main
+          export NUKE_DB=false
           bash .github/scripts/deploy.sh main
 
   deploy_test_3:
@@ -47,4 +52,6 @@ jobs:
           git fetch --prune
           git checkout "$BRANCH"
           git pull --ff-only origin "$BRANCH"
+          
+          export NUKE_DB="${{ github.event.inputs.nuke_db }}"
           bash .github/scripts/deploy.sh "$BRANCH"

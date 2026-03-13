@@ -10,7 +10,7 @@ from src.crew.services.graph.events import StopEvent
 from src.crew.services.graph.nodes import BaseNode
 from src.crew.services.redis_service import RedisService
 from src.crew.services.knowledge_search_service import KnowledgeSearchService
-from src.crew.models.request_models import CrewData
+from src.shared.models import CrewData
 
 from src.crew.models.state import State
 

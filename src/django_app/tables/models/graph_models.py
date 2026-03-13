@@ -177,7 +177,7 @@ class ConditionalEdge(BaseGraphEntity, models.Model):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="conditional_edge_list"
     )
-    source = models.CharField(max_length=255, blank=False)
+    source = models.CharField(max_length=255, blank=True, default="")
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
     then = models.CharField(max_length=255, null=True, default=None)
     input_map = models.JSONField(default=dict)
@@ -185,7 +185,9 @@ class ConditionalEdge(BaseGraphEntity, models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["graph", "source"], name="unique_graph_conditional_edge_source"
+                fields=["graph", "source"],
+                condition=~models.Q(source=""),
+                name="unique_graph_conditional_edge_source",
             )
         ]
 
@@ -383,9 +385,14 @@ class TelegramTriggerNode(BaseGraphEntity, BaseGlobalNode):
     telegram_bot_api_key = models.CharField(
         max_length=255, blank=True, null=True, default=None
     )
-    url_path = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="telegram_trigger_node_list"
+    )
+    webhook_trigger = models.ForeignKey(
+        "WebhookTrigger",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="telegram_trigger_nodes",
     )
 
     class Meta:
@@ -412,3 +419,10 @@ class TelegramTriggerNodeField(models.Model):
                 name="unique_telegram_trigger_node_field_name_parent",
             )
         ]
+
+
+class NoteNode(BaseGraphEntity, BaseGlobalNode):
+    graph = models.ForeignKey(
+        "Graph", on_delete=models.CASCADE, related_name="note_node_list"
+    )
+    content = models.TextField()

@@ -4,7 +4,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from loguru import logger
 
 from ai.summarization.openai_summarization_client import OpenaiSummarizationClient
-from models.request_models import RealtimeAgentChatData
+from src.shared.models import RealtimeAgentChatData
 from ai.agent.openai_realtime_agent_client import (
     TurnDetectionMode,
 )

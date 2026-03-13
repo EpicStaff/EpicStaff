@@ -18,7 +18,7 @@ from src.crew.services.knowledge_search_service import KnowledgeSearchService
 
 from src.crew.utils.singleton_meta import SingletonMeta
 
-from src.crew.models.request_models import SessionData, StopSessionMessage
+from src.shared.models import SessionData, StopSessionMessage
 from src.crew.models.graph_models import GraphMessage
 
 

@@ -37,11 +37,20 @@ export class SubGraphNodeService {
         });
     }
 
-    updateSubGraphNode(
+    partialUpdateSubGraphNode(
         id: number,
         request: UpdateSubGraphNodeRequest
     ): Observable<SubGraphNode> {
         return this.http.patch<SubGraphNode>(`${this.apiUrl}${id}/`, request, {
+            headers: this.headers,
+        });
+    }
+
+    updateSubGraphNode(
+        id: number,
+        request: CreateSubGraphNodeRequest
+    ): Observable<SubGraphNode> {
+        return this.http.put<SubGraphNode>(`${this.apiUrl}${id}/`, request, {
             headers: this.headers,
         });
     }

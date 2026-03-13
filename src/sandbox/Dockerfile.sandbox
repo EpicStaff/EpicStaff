@@ -1,25 +1,33 @@
+# Use base image with Python 3.12.10
 FROM python:3.12.10
 
-WORKDIR /home/user/root/app
+# Set working dir
+WORKDIR /app/src/sandbox
 
+# Set Poetry env variables
+ENV PYTHONPATH=/app
+
+# Run update and clean installation garbage
 RUN apt-get update && \
     apt-get install -y ffmpeg && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip install --upgrade --no-cache-dir pip setuptools wheel
+# Install basic Python dependencies 
+RUN pip install --upgrade --no-cache-dir pip setuptools wheel poetry
 
-RUN pip install poetry
+# Install python poetry libraries
+COPY ./sandbox/pyproject.toml ./sandbox/poetry.lock .
+RUN poetry config virtualenvs.create false && \ 
+    poetry lock && \
+    poetry install --no-root && \
+    rm -rf /root/.cache
 
-COPY ./sandbox/pyproject.toml .
-COPY ./sandbox/poetry.lock .
-
-RUN poetry config virtualenvs.create false
-RUN poetry lock
-RUN poetry install --no-root
-RUN rm -rf /root/.cache
-
+# Copy sandbox code module
 COPY ./sandbox .
-COPY shared/ shared/
 
-CMD python main.py
+# Copy shared module
+COPY ./shared /app/src/shared
+
+# Run sandbox module
+CMD ["python", "main.py"]

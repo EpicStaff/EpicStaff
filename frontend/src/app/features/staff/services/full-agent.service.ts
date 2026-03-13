@@ -9,7 +9,6 @@ import { PythonCodeToolService } from '../../../user-settings-page/tools/custom-
 import { LLM_Models_Service } from '../../settings-dialog/services/llms/llm-models.service';
 import { ProjectsStorageService } from '../../projects/services/projects-storage.service';
 import { LLM_Providers_Service } from '../../settings-dialog/services/llm-providers.service';
-import { BuiltinToolsService } from '../../tools/services/builtin-tools/builtin-tools.service';
 import { McpToolsService } from '../../tools/services/mcp-tools/mcp-tools.service';
 
 import { GetAgentRequest, PartialUpdateAgentRequest } from '../models/agent.model';
@@ -27,7 +26,7 @@ export interface MergedConfig {
   id: number;
   custom_name: string;
   model_name: string;
-  type: 'llm' | 'realtime'; 
+  type: 'llm' | 'realtime';
   provider_id?: number;
   provider_name?: string;
 }
@@ -85,7 +84,6 @@ export class FullAgentService {
     private realtimeModelConfigsService: RealtimeModelConfigsService,
     private realtimeModelsService: RealtimeModelsService,
     private llmProvidersService: LLM_Providers_Service,
-    private toolService: BuiltinToolsService,
     private mcpToolsService: McpToolsService
   ) {}
 
@@ -100,7 +98,6 @@ export class FullAgentService {
       realtimeConfigs: this.realtimeModelConfigsService.getAllConfigs(),
       realtimeModels: this.realtimeModelsService.getAllModels(),
       llmProviders: this.llmProvidersService.getProviders(),
-      tools: this.toolService.getTools(),
     }).pipe(
       map(
         ({
@@ -113,7 +110,6 @@ export class FullAgentService {
           realtimeConfigs,
           realtimeModels,
           llmProviders,
-          tools,
         }) => {
           // Build lookup tables for models and providers
           const modelMap: Record<number, any> = {};
@@ -209,17 +205,12 @@ export class FullAgentService {
               mcpToolIds.includes(mcp.id)
             );
 
-            const toolsMap = new Map<number, string>();
-            tools.forEach((tool: Tool) => {
-              toolsMap.set(tool.id, tool.name);
-            });
-
             // Merge all sets of tools
             const mergedTools = [
               ...fullConfiguredTools.map((tc) => ({
                 id: tc.id,
                 configName: tc.name, // This is the config name
-                toolName: toolsMap.get(tc.tool) || 'Unknown Tool', // This is the actual tool name
+                toolName: 'Unknown Tool', // This is the actual tool name
                 type: 'tool-config',
               })),
               ...fullPythonTools.map((pt) => ({
@@ -299,7 +290,6 @@ export class FullAgentService {
       realtimeConfigs: this.realtimeModelConfigsService.getAllConfigs(),
       realtimeModels: this.realtimeModelsService.getAllModels(),
       llmProviders: this.llmProvidersService.getProviders(),
-      tools: this.toolService.getTools(),
     }).pipe(
       map(
         ({
@@ -313,7 +303,6 @@ export class FullAgentService {
           realtimeConfigs,
           realtimeModels,
           llmProviders,
-          tools,
         }) => {
           // Build lookup tables for models and providers
           const modelMap: Record<number, any> = {};
@@ -416,18 +405,12 @@ export class FullAgentService {
               mcpToolIds.includes(mcp.id)
             );
 
-            // Create a map of tool IDs to tool names
-            const toolsMap = new Map<number, string>();
-            tools.forEach((tool: Tool) => {
-              toolsMap.set(tool.id, tool.name);
-            });
-
             // Merge all sets of tools
             const mergedTools = [
               ...fullConfiguredTools.map((tc) => ({
                 id: tc.id,
                 configName: tc.name, // This is the config name
-                toolName: toolsMap.get(tc.tool) || 'Unknown Tool', // This is the actual tool name
+                toolName: 'Unknown Tool', // This is the actual tool name
                 type: 'tool-config',
               })),
               ...fullPythonTools.map((pt) => ({
@@ -505,7 +488,6 @@ export class FullAgentService {
       realtimeConfigs: this.realtimeModelConfigsService.getAllConfigs(),
       realtimeModels: this.realtimeModelsService.getAllModels(),
       llmProviders: this.llmProvidersService.getProviders(),
-      tools: this.toolService.getTools(),
     }).pipe(
       map(
         ({
@@ -518,7 +500,6 @@ export class FullAgentService {
           realtimeConfigs,
           realtimeModels,
           llmProviders,
-          tools,
         }) => {
           // Find the agent with the specified ID
           const agent = agents.find((agent) => agent.id === agentId);
@@ -606,7 +587,7 @@ export class FullAgentService {
                 mcpToolIds.push(tool.data.id);
               }
             });
-          }   
+          }
 
           // Tool configs based on parsed IDs
           const fullConfiguredTools = toolConfigs.filter((tool) =>
@@ -619,18 +600,12 @@ export class FullAgentService {
             mcpToolIds.includes(mcp.id)
           );
 
-          // Create a map of tool IDs to tool names
-          const toolsMap = new Map<number, string>();
-          tools.forEach((tool: Tool) => {
-            toolsMap.set(tool.id, tool.name);
-          });
-
           // Merge all sets of tools
           const mergedTools = [
             ...fullConfiguredTools.map((tc) => ({
               id: tc.id,
               configName: tc.name, // This is the config name
-              toolName: toolsMap.get(tc.tool) || 'Unknown Tool', // This is the actual tool name
+              toolName: 'Unknown Tool', // This is the actual tool name
               type: 'tool-config',
             })),
             ...fullPythonTools.map((pt) => ({

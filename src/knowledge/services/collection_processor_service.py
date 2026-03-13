@@ -4,7 +4,7 @@ from rag.rag_strategy_factory import RAGStrategyFactory
 from rag.base_rag_strategy import BaseRAGStrategy
 from settings import UnitOfWork
 from utils.singleton_meta import SingletonMeta
-from models.redis_models import BaseRagSearchConfig
+from src.shared.models import BaseRagSearchConfig
 from services.cancellation_token import CancellationToken
 
 

@@ -1,27 +1,26 @@
 # Use a base image with Python 3.12.10
 FROM python:3.12.10
 
-# Install updated pip, setuptools, and wheel
-RUN pip install --upgrade pip setuptools wheel
-
-RUN pip install poetry
-
 # Set the working directory in the Docker image
-WORKDIR /home/user/root/app
+WORKDIR /app/src/django_app
 
+# Set Poetry env variables
+ENV PYTHONPATH=/app
+
+# Install updated pip, setuptools, wheel and poetry
+RUN pip install --upgrade pip setuptools wheel poetry
+
+# Enable installing via setuptools for legacy packages
 ENV PEP517_BUILD_BACKEND=setuptools.build_meta
 
-COPY django_app/pyproject.toml .
-COPY django_app/poetry.lock .
-
-# Configure poetry to not create a virtual environment and install dependencies and delete cache
-RUN poetry config virtualenvs.create false && poetry install --no-root && rm -rf /root/.cache
+# Configure poetry to not create a virtual environment, install dependencies and delete cache
+COPY django_app/pyproject.toml django_app/poetry.lock .
+RUN poetry config virtualenvs.create false && \
+    poetry install --no-root && \ 
+    rm -rf /root/.cache
 
 #Coping file to workdir
-COPY ./django_app ./django_app
-COPY ./shared ./shared
-
-WORKDIR /home/user/root/app/django_app
-
+COPY ./django_app .
+COPY ./shared /app/src/shared
 
 RUN chmod +x ./entrypoint.sh

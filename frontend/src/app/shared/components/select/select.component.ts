@@ -24,7 +24,7 @@ export interface SelectItem {
 
 @Component({
     selector: 'app-select',
-    imports: [NgClass, TooltipComponent, OverlayModule],
+    imports: [NgClass, OverlayModule, TooltipComponent ],
     templateUrl: './select.component.html',
     styleUrls: ['./select.component.scss'],
     providers: [
@@ -41,6 +41,7 @@ export class SelectComponent implements ControlValueAccessor {
     label = input<string>('');
     required = input<boolean>(false);
     tooltipText = input<string>('');
+    loading = input<boolean>(false);
     mod = input<'default' | 'small'>('default');
     items = input<SelectItem[]>([]);
     placeholder = input<string>('Select option');

@@ -8,7 +8,7 @@ import {
     input,
     output, inject, computed, OnInit, model
 } from '@angular/core';
-import {TemplatePortal} from '@angular/cdk/portal';
+import { TemplatePortal } from '@angular/cdk/portal';
 
 import {AppIconComponent} from "../app-icon/app-icon.component";
 import {CheckboxComponent} from "../checkbox/checkbox.component";

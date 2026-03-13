@@ -1,0 +1,91 @@
+.segmented {
+    display: flex;
+
+    &--mod-default {
+        gap: 0.75rem;
+
+        .segmented__item {
+            height: 40px;
+            padding: 0.5rem 1rem;
+        }
+
+        .segmented__label {
+            font-size: 0.875rem;
+        }
+
+        .segmented__radio {
+            width: 14px;
+            height: 14px;
+
+            &--active {
+                &::before {
+                    height: 8px;
+                    width: 8px;
+                    top: 2px;
+                    left: 2px;
+                }
+            }
+        }
+    }
+
+    &--mod-small {
+        gap: 0.5rem;
+
+        .segmented__item {
+            height: 28px;
+            padding: 0.625rem 0.5rem;
+        }
+
+        .segmented__label {
+            font-size: 0.625rem;
+        }
+
+        .segmented__radio {
+            width: 10px;
+            height: 10px;
+
+            &--active {
+                &::before {
+                    height: 6px;
+                    width: 6px;
+                    top: 1px;
+                    left: 1px;
+                }
+            }
+        }
+    }
+}
+
+.segmented__item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--color-text-primary);
+    background: transparent;
+
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    &--active {
+        border-color: #6f6cff;
+    }
+}
+
+.segmented__radio {
+    border-radius: 50%;
+    border: 1px solid var(--color-text-primary);
+    position: relative;
+
+    &--active {
+        &::before {
+            content: "";
+            display: block;
+            position: absolute;
+            background-color: var(--color-text-primary);
+            border-radius: 50%;
+        }
+    }
+}

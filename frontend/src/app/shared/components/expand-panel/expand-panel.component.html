@@ -1,0 +1,23 @@
+<div class="expand-panel">
+    <div
+        class="expand-panel__header"
+        (click)="expandedState.set(!expandedState())"
+    >
+        <i
+            class="ti expand-panel__arrow"
+            [ngClass]="expandedState() ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
+        ></i>
+        <app-tooltip
+            [required]="required()"
+            [tooltipText]="tooltipText()"
+            [label]="label()"
+            [icon]="icon()"
+        />
+    </div>
+
+    <div class="collapsible-content"
+         [@expandCollapse]="expandedState() ? 'expanded' : 'collapsed'"
+    >
+        <ng-content></ng-content>
+    </div>
+</div>

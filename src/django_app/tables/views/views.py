@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from collections import defaultdict
 import uuid
 import base64
+from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.models.graph_models import TelegramTriggerNode
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.serializers.telegram_trigger_serializers import (
@@ -960,8 +961,20 @@ class RegisterTelegramTriggerApiView(APIView):
             telegram_trigger_service = TelegramTriggerService()
 
             telegram_trigger_service.register_telegram_trigger(
-                path=telegram_trigger_node.url_path,
-                telegram_bot_api_key=telegram_trigger_node.telegram_bot_api_key,
+                telegram_trigger_instance=telegram_trigger_node,
             )
 
             return Response(status=status.HTTP_200_OK)
+
+
+
+class RegisterWebhooksApiView(APIView):
+    @swagger_auto_schema(
+        responses={
+            200: "OK"
+        },
+    )
+    def post(self, request):
+        webhook_trigger_service = WebhookTriggerService()
+        webhook_trigger_service.register_webhooks()
+        return Response(status=status.HTTP_200_OK)

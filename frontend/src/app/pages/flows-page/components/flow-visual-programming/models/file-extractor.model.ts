@@ -4,6 +4,7 @@ export interface GetFileExtractorNodeRequest {
     graph: number;
     input_map: Record<string, any>;
     output_variable_path: string | null;
+    metadata: Record<string, any>;
 }
 
 export interface CreateFileExtractorNodeRequest {
@@ -11,4 +12,5 @@ export interface CreateFileExtractorNodeRequest {
     graph: number;
     input_map: Record<string, any>;
     output_variable_path: string | null;
+    metadata?: Record<string, any>;
 }

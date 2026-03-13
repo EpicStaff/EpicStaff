@@ -25,6 +25,15 @@ export class PythonNodeService {
     });
   }
 
+  updatePythonNode(
+    id: number,
+    request: CreatePythonNodeRequest
+  ): Observable<any> {
+    return this.http.put<any>(`${this.apiUrl}${id}/`, request, {
+      headers: this.headers,
+    });
+  }
+
   deletePythonNode(id: string): Observable<any> {
     return this.http.delete(`${this.apiUrl}${id}/`, {
       headers: this.headers,

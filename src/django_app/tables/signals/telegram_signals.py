@@ -13,7 +13,7 @@ def telegram_trigger_post_save_handler(sender, instance: TelegramTriggerNode, **
 
     try:
         TelegramTriggerService().register_telegram_trigger(
-            path=instance.url_path, telegram_bot_api_key=instance.telegram_bot_api_key
+            telegram_trigger_instance=instance
         )
         logger.info(
             f"Successfully registered telegram trigger for TelegramTriggerNode : {id_}"

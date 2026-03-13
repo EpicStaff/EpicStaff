@@ -1,0 +1,71 @@
+<div class="dialog">
+    <div class="dialog__header">
+        {{ data.action === 'create' ? 'Add Ngrok Configuration' : 'Update Ngrok Configuration' }}
+    </div>
+    <form
+        class="dialog__form"
+        [formGroup]="form"
+    >
+        <div *ngIf="errorMessage()" class="dialog__error-message">
+            <p>{{ errorMessage() }}</p>
+        </div>
+        <div>
+            <app-custom-input
+                label="Name"
+                formControlName="name"
+                [required]="true"
+                placeholder="Enter configuration name"
+                tooltipText="Configuration name"
+            />
+            <app-validation-errors [control]="form.get('name')!"/>
+        </div>
+
+        <div>
+            <app-custom-input
+                type="password"
+                label="Auth Token"
+                formControlName="auth_token"
+                [required]="true"
+                tooltipText="Auth Token from: https://dashboard.ngrok.com/get-started/your-authtoken"
+                placeholder="e.g. 39HouLFMClthJIAw5a••••••••••••••"
+            />
+            <app-validation-errors [control]="form.get('auth_token')!"/>
+        </div>
+
+        <app-select
+            label="Region"
+            formControlName="region"
+            [items]="regionSelectItems"
+            placeholder="Select region"
+            tooltipText="Region"
+        />
+
+        <app-custom-input
+            label="Domain"
+            formControlName="domain"
+            placeholder="e.g. my-app.ngrok.io"
+            tooltipText="Domain"
+        />
+    </form>
+    <div class="dialog__actions">
+        <app-button
+            type="outline-primary"
+            (click)="onCancel()"
+        >
+            Cancel
+        </app-button>
+        <app-button
+            type="primary"
+            (click)="onSubmit()"
+            [disabled]="form.invalid || isSubmitting()"
+        >
+            @if (isSubmitting()) {
+                {{ data.action === 'create' ? 'Creating...' : 'Updating...' }}
+            } @else {
+                {{ data.action === 'create' ? 'Create' : 'Update' }}
+            }
+        </app-button>
+    </div>
+</div>
+
+

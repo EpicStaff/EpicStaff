@@ -4,7 +4,7 @@
             <i class="ti ti-arrow-left"></i>
         </span>
     }
-    <span class="crumb" (click)="onCrumbClick($event, -1)" (mousedown)="$event.preventDefault()">state</span>
+    <span class="crumb" (click)="onCrumbClick($event, -1)" (mousedown)="$event.preventDefault()">{{ rootLabel() }}</span>
     @for (part of currentPath(); track $index) {
         <span class="separator">/</span>
         <span class="crumb" (click)="onCrumbClick($event, $index)" (mousedown)="$event.preventDefault()">{{ part }}</span>
@@ -31,7 +31,10 @@
         </li>
     }
     @if (filteredItems().length === 0) {
-        <li class="no-results">No matching variables</li>
+        <li class="no-results">
+            <i class="ti ti-info-circle"></i>
+            <span>{{ emptyMessage() }}</span>
+        </li>
     }
 </ul>
 

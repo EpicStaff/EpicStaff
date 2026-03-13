@@ -1,58 +1,154 @@
-##`Webhook_Developer_Guide.md`
-
-
-# 🛠️ Webhook Developer Guide
-
+🛠️ Webhook Developer Guide
 This guide covers the technical architecture and maintenance of the webhook system.
 
-## System Architecture
+System Architecture
+The webhook system is a three-part architecture that decouples the public-facing receiver from the internal graph execution.
 
-The webhook system is a **three-part architecture** that decouples the public-facing receiver from the internal graph execution.
+Django Application (The "Core"):
 
-1.  **Django Application (The "Core"):**
-    * **Purpose:** The main platform where users build graphs.
-    * **Components:**
-        * `WebhookTriggerNode` (model): Defined in `tables.models.graph_models`. This model links a `Graph` to the node.
-        * `WebhookTriggerNodeViewSet` (API): Defined in `tables.views.model_view_sets`. This exposes a CRUD endpoint (e.g., `/api/webhook-trigger-nodes/`) for the UI to create, read, and configure these nodes.
+Purpose: The main platform where users build graphs.
 
-2.  **FastAPI Webhook Service (The "Receiver"):**
-    * **Purpose:** A standalone, lightweight service (`run.py`, `main.py`) that receives incoming webhooks from the public internet. It is designed to be the *only* service exposed publicly, enhancing security.
-    * **Tunneling:** It uses `pyngrok` (managed by `WebhookService` in `webhook_service.py`) to create a secure public URL on startup if configured.
-    * **Endpoint:** It includes routes (from `webhook_routes.py`) that define the public endpoint, e.g., `@router.post("/webhooks/{trigger_id}/")`.
-    * **Core Logic:** When a `POST` request hits `/webhooks/{trigger_id}/`:
-        1.  It extracts the `trigger_id` from the URL.
-        2.  It parses the JSON payload from the request body.
-        3.  It must query the Django database to find the `WebhookTriggerNode` matching the `trigger_id`.
-        4.  From this node, it retrieves the associated `Graph` schema.
-        5.   It identifies the `node_name` of the `WebhookTriggerNode` (e.g., `"webhook_trigger_123"`) to use as the graph's `entrypoint`.
-        6.  It constructs a `SessionData` object. The `initial_state["variables"]` are set to the parsed JSON payload.
-        7.  It publishes this `SessionData` object as a JSON string to the `session_schema_channel` on Redis.
+Components:
 
-## Execution Flow of the WebhookTriggerNode
 
-This is how the webhook payload is processed *inside* the graph:
+NgrokWebhookConfig (model): Defines custom Ngrok tunnel settings including name, auth_token, domain, and region.
 
-1.  **Graph Start:** The `GraphSessionManagerService` starts the session, and `langgraph` immediately jumps to the graph's entrypoint, which is the `node_name` of the `WebhookTriggerNode`.
 
-2.  **Node Execution:** `WebhookTriggerNode.run()` is called.
 
-3.  **Get Input:** The `BaseNode.get_input()` method is called. Because the `WebhookTriggerNode` hardcodes `input_map="__all__"`, this method returns the *entire* `state["variables"]` object, which contains the original JSON payload from the webhook.
+WebhookTrigger / WebhookTriggerNode (models): These link a Graph to the trigger and optionally map to a specific NgrokWebhookConfig via the ngrok_webhook_config foreign key.
 
-4.  **Run Code:** `WebhookTriggerNode.execute()` is called. It passes the `state["variables"]` (as the `inputs` kwarg) to the `python_code_executor_service`, along with the specific Python code stored on that node.
+API ViewSets: Exposes CRUD endpoints to manage configurations and triggers (e.g., NgrokWebhookConfigViewSet and /api/webhook-trigger-nodes/).
 
-5.  **Process Payload:** The node's Python code runs, using the webhook payload as its `inputs` variable. It can perform any validation or transformation.
+Management & Signals: The backend registers tunnels dynamically by pushing config data to a Redis channel (REDIS_TUNNEL_CONFIG_CHANNEL) automatically when configurations are saved or deleted.
 
-6.  **Set Output:** The Python code *must* return a dictionary. The `BaseNode`'s `run` method captures this dictionary. Because `WebhookTriggerNode` hardcodes `output_variable_path="variables"`, this returned dictionary *replaces* the entire `state["variables"]` object.
 
-7.  **Continue Graph:** The graph execution proceeds to the next connected node, but now using the new, processed state returned by the `WebhookTriggerNode`.
+FastAPI Webhook Service (The "Receiver"):
 
-### Key Files Summary
+Purpose: A standalone, lightweight service (run.py, main.py) that receives incoming webhooks from the public internet.
 
-* **`run.py`**: Entrypoint for the FastAPI "Receiver" service.
-* **`main.py`**: FastAPI app factory; includes routes and the `/api/tunnel-url` helper.
-* **`webhook_service.py`**: Orchestrates `uvicorn` and the `pyngrok` tunnel for the Receiver.
-* **`graph_session_manager_service.py`**: The "Worker" service. Listens to Redis `session_schema_channel` and manages the session lifecycle.
-* **`graph_builder.py`**: Compiles the `langgraph` graph from the schema, adding the `WebhookTriggerNode` as a runnable node.
-* **`webhook_trigger_node.py`**: The `langgraph` node implementation. Executes Python code to process the incoming payload.
-* **`base_node.py`**: Provides the base `run` logic, including the `input_map="__all__"` and `output_variable_path="variables"` handling.
-* **`model_view_sets.py` / `urls.py`**: Define the Django API endpoint for creating and managing `WebhookTriggerNode` models in the "Core" application.
+
+Tunneling (TunnelRegistry): Instead of a single static tunnel, the application uses a TunnelRegistry that listens to the REDIS_TUNNEL_CONFIG_CHANNEL to dynamically register, update, or remove multiple Ngrok tunnels on the fly. The tunnels also include an auto-reconnect background task if they fail.
+
+
+Endpoints:
+
+Public route: e.g., @router.post("/webhooks/{trigger_id}/")
+
+Tunnel URL helper: /api/tunnel-url/{unique_id} dynamically fetches the public URL of a specific tunnel.
+
+Core Logic: When a POST request hits /webhooks/{trigger_id}/:
+
+It extracts the trigger_id from the URL.
+
+It parses the JSON payload from the request body.
+
+It queries the Django database to find the WebhookTriggerNode matching the trigger_id.
+
+From this node, it retrieves the associated Graph schema.
+
+It identifies the node_name of the WebhookTriggerNode to use as the graph's entrypoint.
+
+It constructs a SessionData object. The initial_state["variables"] are set to the parsed JSON payload.
+
+It publishes this SessionData object as a JSON string to the session_schema_channel on Redis.
+
+Key Files Summary
+run.py: Entrypoint for the FastAPI "Receiver" service.
+
+
+main.py: FastAPI app factory; sets up the lifespan context to subscribe to Redis tunnel configurations.
+
+
+tunnel_registry.py: Replaces the old webhook_service.py to maintain a pool of multiple AbstractTunnelProvider instances.
+
+
+
+provider_factory.py / ngrok_tunnel.py: Factories and implementation for configuring robust Ngrok connections.
+
+
+graph_session_manager_service.py: The "Worker" service. Listens to Redis session_schema_channel and manages the session lifecycle.
+
+graph_builder.py: Compiles the langgraph graph from the schema.
+
+webhook_trigger_node.py: Executing Python code to process the incoming payload.
+
+model_view_sets.py / urls.py: Define Django API endpoints for creating configs and triggers.
+
+
+Webhook-Related API Endpoints
+-----------------------------
+
+This section summarizes the REST API endpoints and payloads relevant to
+webhook triggers.
+
+WebhookTrigger
+~~~~~~~~~~~~~~
+
+- **Endpoint**: `/api/webhook-triggers/`  
+- **Methods**: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`
+
+Represents the logical webhook entry, including its path and associated Ngrok
+configuration.
+
+**Fields:**
+
+- **path** *(string, required)*: Unique path part used by the FastAPI receiver.
+  - Pattern: `^[a-zA-Z0-9]{1}[a-zA-Z0-9-_]*$`
+  - Length: 1–255 characters.
+- **ngrok_webhook_config** *(integer, optional)*: ID of the `NgrokWebhookConfig`
+  that defines the tunnel (domain, token, region).
+
+**Example `POST /api/webhook-triggers/` body:**
+
+```json
+{
+  "path": "myWebhook123",
+  "ngrok_webhook_config": 2
+}
+```
+
+WebhookTriggerNode
+~~~~~~~~~~~~~~~~~~
+
+- **Endpoint**: `/api/webhook-trigger-nodes/`  
+- **Methods**: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`
+
+Represents a node in the graph that starts execution when a webhook is
+received.
+
+**Fields:**
+
+- **node_name** *(string, required)*: Display name of the node (1–255 chars).
+- **graph** *(integer, required)*: ID of the graph that owns this node.
+- **python_code** *(object, required)*: Python code executed when the webhook
+  fires.
+  - **libraries** *(string[])*: List of library names to import.
+  - **code** *(string, required)*: Source code.
+  - **entrypoint** *(string, required)*: Name of the function to call.
+  - **global_kwargs** *(object, optional)*: Arbitrary key/value pairs available
+    to the code.
+- **webhook_trigger** *(object, optional)*: Nested `WebhookTrigger` definition.
+  - **path** *(string, required)*: Webhook path (see `WebhookTrigger` above).
+  - **ngrok_webhook_config** *(integer, optional)*: ID of the associated
+    `NgrokWebhookConfig`.
+
+**Example `POST /api/webhook-trigger-nodes/` body:**
+
+```json
+{
+  "node_name": "My Webhook Trigger",
+  "graph": 1,
+  "python_code": {
+    "libraries": ["requests", "json"],
+    "code": "def handler(event, context):\n    # your logic here\n    return event",
+    "entrypoint": "handler",
+    "global_kwargs": {
+      "some_flag": true
+    }
+  },
+  "webhook_trigger": {
+    "path": "myWebhook123",
+    "ngrok_webhook_config": 2
+  }
+}
+```

@@ -21,5 +21,5 @@ class UserBehavior(TaskSet):
 
 class WebsiteUser(HttpUser):
     tasks = [UserBehavior]
-    wait_time = between(1, 1)  # аналогично await asyncio.sleep(1)
+    wait_time = between(1, 1)  # equivalent to await asyncio.sleep(1)
     host = "http://127.0.0.1:8000"

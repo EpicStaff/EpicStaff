@@ -15,9 +15,6 @@
     </div>
 
     <div class="menu-header">
-      <button [class.active]="selectedMenu === 'builtin'" (click)="toggleToolType('builtin')">
-        Built-in Tools
-      </button>
       <button [class.active]="selectedMenu === 'custom'" (click)="toggleToolType('custom')">
         Custom Tools
       </button>
@@ -30,34 +27,34 @@
   <!-- Body -->
   <div class="body">
     <!-- Built-in Tools -->
-    <div class="tools-list" *ngIf="selectedMenu === 'builtin'">
-      <!-- Loading Spinner -->
-      <div *ngIf="loading" class="loading-spinner">
-        <div class="dots">
-          <div class="dot"></div>
-          <div class="dot"></div>
-          <div class="dot"></div>
-        </div>
-      </div>
+<!--    <div class="tools-list" *ngIf="selectedMenu === 'builtin'">-->
+<!--      &lt;!&ndash; Loading Spinner &ndash;&gt;-->
+<!--      <div *ngIf="loading" class="loading-spinner">-->
+<!--        <div class="dots">-->
+<!--          <div class="dot"></div>-->
+<!--          <div class="dot"></div>-->
+<!--          <div class="dot"></div>-->
+<!--        </div>-->
+<!--      </div>-->
 
-      <!-- No tools message -->
-      <div class="no-tools" *ngIf="!loading && tools.length === 0">
-        <p>No built-in tools available</p>
-      </div>
+<!--      &lt;!&ndash; No tools message &ndash;&gt;-->
+<!--      <div class="no-tools" *ngIf="!loading && tools.length === 0">-->
+<!--        <p>No built-in tools available</p>-->
+<!--      </div>-->
 
-      <!-- Using Tool Item Component for each tool -->
-      <app-tool-item
-        *ngFor="let tool of filteredTools"
-        [tool]="tool"
-        [isSelected]="isToolSelected(tool)"
-        [isExpanded]="expandedToolConfigs.has(tool.id)"
-        [selectedConfigIds]="selectedToolConfigs"
-        (toolToggled)="onCheckboxToggle($event)"
-        (configToggled)="onConfigToggle($event)"
-        (toolConfigsToggled)="toggleToolConfigs($event)"
-      >
-      </app-tool-item>
-    </div>
+<!--      &lt;!&ndash; Using Tool Item Component for each tool &ndash;&gt;-->
+<!--      <app-tool-item-->
+<!--        *ngFor="let tool of filteredTools"-->
+<!--        [tool]="tool"-->
+<!--        [isSelected]="isToolSelected(tool)"-->
+<!--        [isExpanded]="expandedToolConfigs.has(tool.id)"-->
+<!--        [selectedConfigIds]="selectedToolConfigs"-->
+<!--        (toolToggled)="onCheckboxToggle($event)"-->
+<!--        (configToggled)="onConfigToggle($event)"-->
+<!--        (toolConfigsToggled)="toggleToolConfigs($event)"-->
+<!--      >-->
+<!--      </app-tool-item>-->
+<!--    </div>-->
 
     <!-- Python/Custom Tools -->
     <div class="python-tools" *ngIf="selectedMenu === 'custom'">

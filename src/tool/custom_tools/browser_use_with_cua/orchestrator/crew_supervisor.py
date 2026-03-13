@@ -38,7 +38,7 @@ class StepToolResult(BaseModel):
 
 
 class BaseStepTool:
-    """Базовий інструмент: делегує виконання кроку у MCP через Hub."""
+    """Base tool: delegates step execution to MCP via Hub."""
 
     def __init__(self, hub: Hub, cfg: AgentConfig, tool_name: str):
         self.hub = hub

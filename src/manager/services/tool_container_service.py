@@ -146,6 +146,7 @@ class ToolContainerService:
             environment={"SAVE_FILE_PATH": "/home/user/root/app/savefiles"},
             mounts=[
                 Mount(
+                    # TODO: remove, crew_config is deprecated
                     source="crew_config",
                     target="/home/user/root/app/env_config/",
                 ),

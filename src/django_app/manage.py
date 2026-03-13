@@ -5,7 +5,6 @@ import os
 import sys
 from loguru import logger
 
-
 def main():
     """Run administrative tasks."""
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "django_app.settings")
@@ -21,7 +20,6 @@ def main():
         execute_from_command_line(sys.argv)
     except Exception as e:
         logger.exception(e)
-
 
 if __name__ == "__main__":
     main()

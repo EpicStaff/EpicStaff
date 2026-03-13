@@ -41,6 +41,19 @@ export class DecisionTableNodeService {
         });
     }
 
+    updateDecisionTableNode(
+        id: number,
+        request: CreateDecisionTableNodeRequest
+    ): Observable<GetDecisionTableNodeRequest> {
+        return this.http.put<GetDecisionTableNodeRequest>(
+            `${this.apiUrl}${id}/`,
+            request,
+            {
+                headers: this.headers,
+            }
+        );
+    }
+
     getDecisionTableNodeById(id: number): Observable<GetDecisionTableNodeRequest> {
         return this.http.get<GetDecisionTableNodeRequest>(`${this.apiUrl}${id}/`, {
             headers: this.headers,

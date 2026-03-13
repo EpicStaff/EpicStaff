@@ -9,7 +9,7 @@ from src.crew.services.graph.events import StopEvent
 from src.crew.services.graph.nodes import BaseNode
 from src.crew.services.run_python_code_service import RunPythonCodeService
 from src.crew.services.graph.exceptions import ReturnCodeError
-from src.crew.models.request_models import PythonCodeData
+from src.shared.models import PythonCodeData
 
 
 class PythonNode(BaseNode):

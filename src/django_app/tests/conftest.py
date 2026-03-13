@@ -2,6 +2,9 @@ from pathlib import Path
 import pytest
 from rest_framework.test import APIClient
 
+# Import shared fixtures (graph, crew, session_data, etc.)
+from .fixtures import *  # noqa: F401,F403
+
 
 @pytest.fixture
 def resources_path():

@@ -1,19 +1,27 @@
+# Use base image with Python 3.12.10
 FROM python:3.12.10
 
-WORKDIR /home/user/root/app
+# Set working directory
+WORKDIR /app/src/knowledge
 
-RUN pip install --upgrade --no-cache-dir pip setuptools wheel
+# Set Poetry env variables
+ENV PYTHONPATH=/app
 
-RUN pip install poetry
+# Run installing python dependencies
+RUN pip install --upgrade --no-cache-dir pip setuptools wheel poetry
 
-COPY ./pyproject.toml .
-COPY ./poetry.lock .
+# Install python poetry dependencies
+COPY ./knowledge/pyproject.toml ./knowledge/poetry.lock .
+RUN poetry config virtualenvs.create false && \
+    poetry lock && \
+    poetry install --no-root && \
+    rm -rf /root/.cache
 
-RUN poetry config virtualenvs.create false
-RUN poetry lock
-RUN poetry install --no-root
-RUN rm -rf /root/.cache
+# Copy knowledge module
+COPY ./knowledge .
 
-COPY . .
+# Copy shared module
+COPY ./shared /app/src/shared
 
-CMD python main.py
+# Run module
+CMD ["python", "main.py"]

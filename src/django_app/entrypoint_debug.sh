@@ -24,6 +24,7 @@ python manage.py fix_sequences
 echo "Uploading models..."
 python manage.py upload_models
 
+
 # Collect static files for production server
 echo "Collects static"
 python manage.py collectstatic --noinput

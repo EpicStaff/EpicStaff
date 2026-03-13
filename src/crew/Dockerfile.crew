@@ -1,28 +1,25 @@
 # Use a base image with Python 3.12.10
 FROM python:3.12.10
 
-# Poetry env
+# Project root (pyproject lives here)
+WORKDIR /app/src/crew
+
+# Set Poetry env variables 
+# PYTHONPATH sets root dir where to look for user-defined modules (helps import ../shared)
 ENV POETRY_VERSION=1.8.3 \
     POETRY_VIRTUALENVS_IN_PROJECT=true \
-    POETRY_NO_INTERACTION=1
+    POETRY_NO_INTERACTION=1 \
+    PYTHONPATH=/app
 
 # Install dependencies for Poetry
-RUN apt-get update && \
-    apt-get install -y curl && \
-    pip install poetry && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+RUN pip install poetry==$POETRY_VERSION
 
 # Add Poetry to the PATH
 ENV PATH="/root/.local/bin:$PATH"
 
-# Project root (pyproject lives here)
-WORKDIR /home/user/root/app
-
 # Copy only dependency descriptors first (better caching)
-COPY crew/pyproject.toml ./pyproject.toml
-COPY crew/poetry.lock ./poetry.lock
-COPY crew/libraries/ ./libraries/
+COPY ./crew/pyproject.toml ./crew/poetry.lock .
+COPY ./crew/libraries/ ./libraries
 
 ENV PEP517_BUILD_BACKEND=setuptools.build_meta
 
@@ -30,23 +27,15 @@ ENV PEP517_BUILD_BACKEND=setuptools.build_meta
 RUN poetry install --no-root --without dotdict,crew -v
 RUN poetry install --no-root --only crew -v
 
-# Now put source code under /src
-WORKDIR /home/user/root/app/src
-
 # Copy crew sources into src/
-COPY crew/ ./crew
+COPY ./crew .
 
 # Copy shared as sibling folder inside src/
-WORKDIR /home/user/root
-COPY shared/ ./shared/
+COPY ./shared /app/src/shared
 
-WORKDIR /home/user/root/app
 # If dotdict is a poetry group and depends on src/shared presence, install it now from project root
-
-RUN poetry install --no-root --only dotdict -v
-
-# Cleanup
-RUN rm -rf /root/.cache
+RUN poetry install --no-root --only dotdict -v && \
+    rm -rf /root/.cache
 
 # Run entrypoint (code is in /src)
-CMD ["poetry", "run", "python3", "/home/user/root/app/src/crew/main.py"]
+CMD ["poetry", "run", "python3", "/app/src/crew/main.py"]

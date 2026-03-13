@@ -1,92 +1,45 @@
-import {Injectable} from '@angular/core';
-import {EMPTY, forkJoin, Observable, of, throwError} from 'rxjs';
-import {catchError, map, switchMap} from 'rxjs/operators';
+import { Injectable } from '@angular/core';
+import { forkJoin, Observable, of, throwError } from 'rxjs';
+import { catchError, map, switchMap } from 'rxjs/operators';
+
 import { FlowsApiService } from '../../../features/flows/services/flows-api.service';
-import { GetProjectRequest } from '../../../features/projects/models/project.model';
-import { NodeType } from '../../core/enums/node-type';
-import { ConnectionModel } from '../../core/models/connection.model';
+import { GraphDto, UpdateGraphDtoRequest } from '../../../features/flows/models/graph.model';
 import { FlowModel } from '../../core/models/flow.model';
-import {
-    ProjectNodeModel,
-    PythonNodeModel,
-    EdgeNodeModel,
-    StartNodeModel,
-    LLMNodeModel,
-    NodeModel,
-    SubGraphNodeModel,
-} from '../../core/models/node.model';
-import {ToastService} from '../../../services/notifications/toast.service';
-import {
-    ConditionalEdge,
-    CreateConditionalEdgeRequest,
-    GetConditionalEdgeRequest,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
-import {
-    CreateFileExtractorNodeRequest,
-    GetFileExtractorNodeRequest,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/file-extractor.model';
-import {
-    CreateAudioToTextNodeRequest,
-    GetAudioToTextNodeRequest,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/audio-to-text.model';
-import {
-    CreateCrewNodeRequest,
-    CrewNode,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/crew-node.model';
-import {CreateEdgeRequest, Edge,} from '../../../pages/flows-page/components/flow-visual-programming/models/edge.model';
-import {
-    CreateLLMNodeRequest,
-    GetLLMNodeRequest,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/llm-node.model';
-import {
-    CreatePythonNodeRequest,
-    PythonNode,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/python-node.model';
-import {
-    ConditionalEdgeService
-} from '../../../pages/flows-page/components/flow-visual-programming/services/conditional-edge.service';
-import {CrewNodeService} from '../../../pages/flows-page/components/flow-visual-programming/services/crew-node.service';
-import {EdgeService} from '../../../pages/flows-page/components/flow-visual-programming/services/edge.service';
-import {LLMNodeService} from '../../../pages/flows-page/components/flow-visual-programming/services/llm-node.service';
-import {
-    PythonNodeService
-} from '../../../pages/flows-page/components/flow-visual-programming/services/python-node.service';
-import {
-    FileExtractorService
-} from '../../../pages/flows-page/components/flow-visual-programming/services/file-extractor.service';
-import {GraphDto, UpdateGraphDtoRequest,} from '../../../features/flows/models/graph.model';
-import {
-    CreateEndNodeRequest,
-    EndNode,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/end-node.model';
-import {
-    SubGraphNode,
-    CreateSubGraphNodeRequest,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/subgraph-node.model';
-import { SubGraphNodeService } from '../../../pages/flows-page/components/flow-visual-programming/services/subgraph-node.service';
-import { CreateWebhookTriggerNodeRequest, GetWebhookTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/webhook-trigger';
+import { ToastService } from '../../../services/notifications/toast.service';
+
+import { ConditionalEdgeService } from '../../../pages/flows-page/components/flow-visual-programming/services/conditional-edge.service';
+import { CrewNodeService } from '../../../pages/flows-page/components/flow-visual-programming/services/crew-node.service';
+import { EdgeService } from '../../../pages/flows-page/components/flow-visual-programming/services/edge.service';
+import { LLMNodeService } from '../../../pages/flows-page/components/flow-visual-programming/services/llm-node.service';
+import { PythonNodeService } from '../../../pages/flows-page/components/flow-visual-programming/services/python-node.service';
+import { FileExtractorService } from '../../../pages/flows-page/components/flow-visual-programming/services/file-extractor.service';
+import { AudioToTextService } from '../../../pages/flows-page/components/flow-visual-programming/services/audio-to-text-node';
+import { WebhookTriggerNodeService } from '../../../pages/flows-page/components/flow-visual-programming/services/webhook-trigger.service';
+import { TelegramTriggerNodeService } from '../../../pages/flows-page/components/flow-visual-programming/services/telegram-trigger-node.service';
 import { EndNodeService } from '../../../pages/flows-page/components/flow-visual-programming/services/end-node.service';
+import { SubGraphNodeService } from '../../../pages/flows-page/components/flow-visual-programming/services/subgraph-node.service';
+import { DecisionTableNodeService } from '../../../pages/flows-page/components/flow-visual-programming/services/decision-table-node.service';
+import { NoteNodeService } from '../../../pages/flows-page/components/flow-visual-programming/services/note-node.service';
+
+import { NodeDiff, GraphDiff, NodeDiffResult, CreatedNodeMapping } from './save-graph.types';
 import {
-    AudioToTextService
-} from '../../../pages/flows-page/components/flow-visual-programming/services/audio-to-text-node';
-import {
-    WebhookTriggerNodeService
-} from '../../../pages/flows-page/components/flow-visual-programming/services/webhook-trigger.service';
-import {
-    CreateConditionGroupRequest,
-    CreateDecisionTableNodeRequest,
-    GetDecisionTableNodeRequest,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/decision-table-node.model';
-import {
-    DecisionTableNodeService
-} from '../../../pages/flows-page/components/flow-visual-programming/services/decision-table-node.service';
-import {
-    CreateTelegramTriggerNodeRequest,
-    GetTelegramTriggerNodeRequest
-} from "../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model";
-import {
-    TelegramTriggerNodeService
-} from "../../../pages/flows-page/components/flow-visual-programming/services/telegram-trigger-node.service";
+    extractPreviousState,
+    extractNewState,
+    getGraphDiff,
+    buildCrewPayload,
+    buildPythonPayload,
+    buildLLMPayload,
+    buildFileExtractorPayload,
+    buildAudioToTextPayload,
+    buildSubGraphPayload,
+    buildWebhookPayload,
+    buildTelegramPayload,
+    buildCondEdgePayload,
+    buildEdgePayload,
+    buildEndNodePayload,
+    buildDecisionTablePayload,
+    buildNoteNodePayload,
+} from './save-graph.diff';
 
 @Injectable({
     providedIn: 'root',
@@ -106,651 +59,246 @@ export class GraphUpdateService {
         private endNodeService: EndNodeService,
         private subGraphNodeService: SubGraphNodeService,
         private decisionTableNodeService: DecisionTableNodeService,
+        private noteNodeService: NoteNodeService,
         private toastService: ToastService
-    ) { }
+    ) {}
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Private helpers — RxJS execution of diff operations
+    // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Clears all ports on nodes to null before saving
-     * This reduces the metadata size and prevents storing unnecessary port data
+     * Executes delete / create / update operations from a diff in parallel.
+     *
+     * Returns `NodeDiffResult` which includes `createdMappings` — a list of
+     * `{ uiNodeId, backendId }` pairs so callers can patch UI nodes with their
+     * newly-assigned backend IDs after a POST.
+     *
+     * @param diff - The diff result containing nodes to delete, create, and update
+     * @param deleteOperation - Function that performs HTTP DELETE for a backend node
+     * @param createOperation - Function that performs HTTP POST for a UI node
+     * @param updateOperation - Function that performs HTTP PUT for a UI node (takes backendId + UI node)
+     * @param getUINodeId - Extracts the UI node's UUID (`id`) from the generic TUI so we can
+     *                      map the POST response's backend `id` back to the correct UI node.
      */
-    private clearNodePorts(flowState: FlowModel): FlowModel {
-        // Create a deep copy of the flow state to avoid mutating the original
-        const flowStateCopy: FlowModel = {
-            ...flowState,
-            nodes: flowState.nodes.map((node) => ({
-                ...node,
-                ports: null, // Set all node ports to null
-            })),
-            connections: [...flowState.connections],
-            groups: [...flowState.groups],
-        };
+    private executeNodeDiff<TBackend extends { id: number }, TUI>(
+        diff: NodeDiff<TBackend, TUI>,
+        deleteOperation: (node: TBackend) => Observable<any>,
+        createOperation: (node: TUI) => Observable<any>,
+        updateOperation: (backendId: number, node: TUI) => Observable<any>,
+        getUINodeId: (node: TUI) => string
+    ): Observable<NodeDiffResult> {
+        const operations: Observable<{ type: string; uiNodeId?: string; result: any }>[] = [
+            ...diff.toDelete.map(n =>
+                deleteOperation(n).pipe(
+                    map(r => ({ type: 'delete', result: r })),
+                    catchError(err => throwError(() => err))
+                )
+            ),
+            ...diff.toCreate.map(n =>
+                createOperation(n).pipe(
+                    map(r => ({ type: 'create', uiNodeId: getUINodeId(n), result: r })),
+                    catchError(err => throwError(() => err))
+                )
+            ),
+            ...diff.toUpdate.map(({ backend, ui }) =>
+                updateOperation(backend.id, ui).pipe(
+                    map(r => ({ type: 'update', result: r })),
+                    catchError(err => throwError(() => err))
+                )
+            ),
+        ];
 
-        return flowStateCopy;
+        if (!operations.length) {
+            return of({ results: [], createdMappings: [] });
+        }
+
+        return forkJoin(operations).pipe(
+            map(results => {
+                const createdMappings: CreatedNodeMapping[] = results
+                    .filter(r => r.type === 'create' && r.uiNodeId && r.result?.id != null)
+                    .map(r => ({ uiNodeId: r.uiNodeId!, backendId: r.result.id }));
+
+                return { results, createdMappings };
+            })
+        );
     }
+
+    private applyEdgeDiff(
+        diff: GraphDiff['edges'],
+        graphId: number
+    ): Observable<any[]> {
+        const ops: Observable<any>[] = [
+            ...diff.toDelete.map(e =>
+                this.edgeService.deleteEdge(e.id).pipe(catchError(err => throwError(() => err)))
+            ),
+            ...diff.toCreate.map(e =>
+                this.edgeService.createEdge(buildEdgePayload(e, graphId))
+                    .pipe(catchError(err => throwError(() => err)))
+            ),
+        ];
+        return ops.length ? forkJoin(ops) : of([]);
+    }
+
+
+    /**
+     * Extracts only truly UI-only elements for storage in `graph.metadata`.
+     * Notes are now backend-managed, so metadata only stores an empty state
+     * (kept for backwards compatibility / future UI-only nodes).
+     */
+    private buildGraphMetadata(_flowState: FlowModel): Partial<FlowModel> {
+        return { nodes: [], connections: [] };
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Public API
+    // ─────────────────────────────────────────────────────────────────────────
 
     public saveGraph(
         flowState: FlowModel,
         graph: GraphDto
     ): Observable<{
         graph: GraphDto;
-        updatedNodes: {
-            crewNodes: CrewNode[];
-            pythonNodes: PythonNode[];
-            audioToTextNodes: any[];
-            llmNodes: any[];
-            fileExtractorNodes: any[];
-            conditionalEdges: any[];
-            edges: Edge[];
-
-            endNodes: EndNode[];
-            subGraphNodes: SubGraphNode[];
-            decisionTableNodes: GetDecisionTableNodeRequest[];
-        };
+        updatedNodes: Record<string, any>;
+        createdMappings: CreatedNodeMapping[];
     }> {
-        //
-        console.log('GraphUpdateService: Saving graph:', graph);
-        console.log('GraphUpdateService: Flow state:', flowState);
+        // ── 1. Extract what is currently saved in the backend ────────────────
+        const previousState = extractPreviousState(graph);
 
-        // Clear all ports on nodes before saving metadata
-        const flowStateWithoutPorts = this.clearNodePorts(flowState);
+        // ── 2. Extract what the user currently has in the UI ─────────────────
+        const newState = extractNewState(flowState);
 
-        let deleteCrewNodes$: Observable<any> = of(null);
-        if (graph.crew_node_list && graph.crew_node_list.length > 0) {
-            const deleteCrewRequests = graph.crew_node_list.map(
-                (crewNode: CrewNode) =>
-                    this.crewNodeService
-                        .deleteCrewNode(crewNode.id.toString())
-                        .pipe(catchError((err: any) => throwError(err)))
-            );
-            deleteCrewNodes$ = forkJoin(deleteCrewRequests);
-        }
+        // ── 3. Get the diff (pure, no side effects) ───────────────────────────
+        const diff = getGraphDiff(previousState, newState);
 
-        const crewNodes$ = deleteCrewNodes$.pipe(
-            switchMap(() => {
-                const projectNodes = flowState.nodes.filter(
-                    (node) => node.type === NodeType.PROJECT
-                ) as ProjectNodeModel[];
-                const crewNodeRequests = projectNodes.map(
-                    (node: ProjectNodeModel) => {
-                        const payload: CreateCrewNodeRequest = {
-                            node_name: node.node_name,
-                            graph: graph.id,
-                            crew_id: (node.data as GetProjectRequest).id,
-                            input_map: node.input_map || {},
-                            output_variable_path:
-                                node.output_variable_path || null,
-                        };
-                        return this.crewNodeService
-                            .createCrewNode(payload)
-                            .pipe(catchError((err: any) => throwError(err)));
-                    }
-                );
-                return crewNodeRequests.length
-                    ? forkJoin(crewNodeRequests)
-                    : of([]);
-            })
-        );
+        const { id: graphId } = graph;
+        const allNodes = newState.allNodes;
 
-        // ---- Handle Python Nodes ----
-        let deletePythonNodes$: Observable<any> = of(null);
-        if (graph.python_node_list && graph.python_node_list.length > 0) {
-            const deletePythonRequests = graph.python_node_list.map(
-                (pythonNode: PythonNode) =>
-                    this.pythonNodeService
-                        .deletePythonNode(pythonNode.id.toString())
-                        .pipe(catchError((err: any) => throwError(err)))
-            );
-            deletePythonNodes$ = forkJoin(deletePythonRequests);
-        }
-
-        const pythonNodes$ = deletePythonNodes$.pipe(
-            switchMap(() => {
-                const pythonNodes = flowState.nodes.filter(
-                    (node) => node.type === NodeType.PYTHON
-                ) as PythonNodeModel[];
-                const pythonNodeRequests = pythonNodes.map(
-                    (node: PythonNodeModel) => {
-                        const payload: CreatePythonNodeRequest = {
-                            node_name: node.node_name,
-                            graph: graph.id,
-                            python_code: node.data,
-                            input_map: node.input_map || {},
-                            output_variable_path:
-                                node.output_variable_path || null,
-                        };
-                        return this.pythonNodeService
-                            .createPythonNode(payload)
-                            .pipe(catchError((err: any) => throwError(err)));
-                    }
-                );
-                return pythonNodeRequests.length
-                    ? forkJoin(pythonNodeRequests)
-                    : of([]);
-            })
-        );
-
-        // ---- Handle File Extractor Nodes ----
-        let deleteFileExtractorNodes$: Observable<any> = of(null);
-        if (
-            graph.file_extractor_node_list &&
-            graph.file_extractor_node_list.length > 0
-        ) {
-            const deleteFERqs = graph.file_extractor_node_list.map(
-                (feNode: GetFileExtractorNodeRequest) =>
-                    this.fileExtractorService
-                        .deleteFileExtractorNode(feNode.id.toString())
-                        .pipe(catchError((err: any) => throwError(err)))
-            );
-            deleteFileExtractorNodes$ = forkJoin(deleteFERqs);
-        }
-
-        const fileExtractorNodes$ = deleteFileExtractorNodes$.pipe(
-            switchMap(() => {
-                const feNodes = flowState.nodes.filter(
-                    (node) => node.type === NodeType.FILE_EXTRACTOR
-                );
-
-                const requests = feNodes.map((node) => {
-                    const payload: CreateFileExtractorNodeRequest = {
-                        node_name: node.node_name,
-                        graph: graph.id,
-                        input_map: node.input_map || {},
-                        output_variable_path: node.output_variable_path || null,
-                    };
-                    return this.fileExtractorService
-                        .createFileExtractorNode(payload)
-                        .pipe(catchError((err: any) => throwError(err)));
-                });
-                return requests.length ? forkJoin(requests) : of([]);
-            })
-        );
-
-        // ---- Handle Audio Transcription (Audio -> Text) Nodes ----
-        let deleteAudioToTextNodes$: Observable<any> = of(null);
-        if (
-            graph.audio_transcription_node_list &&
-            graph.audio_transcription_node_list.length > 0
-        ) {
-            const deleteATReqs = graph.audio_transcription_node_list.map(
-                (atNode: GetAudioToTextNodeRequest) =>
-                    this.audioToTextService
-                        .deleteAudioToTextNode(atNode.id.toString())
-                        .pipe(catchError((err) => throwError(err)))
-            );
-            deleteAudioToTextNodes$ = forkJoin(deleteATReqs);
-        }
-
-        const audioToTextNodes$ = deleteAudioToTextNodes$.pipe(
-            switchMap(() => {
-                const atNodes = flowState.nodes.filter(
-                    (node) => node.type === NodeType.AUDIO_TO_TEXT
-                );
-
-                const requests = atNodes.map((node) => {
-                    const payload: CreateAudioToTextNodeRequest = {
-                        node_name: node.node_name,
-                        graph: graph.id,
-                        input_map: node.input_map || {},
-                        output_variable_path:
-                            node.output_variable_path || null,
-                    };
-                    return this.audioToTextService
-                        .createAudioToTextNode(payload)
-                        .pipe(catchError((err) => throwError(err)));
-                });
-                return requests.length ? forkJoin(requests) : of([]);
-            })
-        );
-
-        // ---- Handle LLM Nodes ----
-        let deleteLLMNodes$: Observable<any> = of(null);
-        if (graph.llm_node_list && graph.llm_node_list.length > 0) {
-            const deleteLLMRequests = graph.llm_node_list.map(
-                (llmNode: GetLLMNodeRequest) =>
-                    this.llmNodeService
-                        .deleteLLMNode(llmNode.id.toString())
-                        .pipe(catchError((err: any) => throwError(err)))
-            );
-            deleteLLMNodes$ = forkJoin(deleteLLMRequests);
-        }
-
-        const llmNodes$ = deleteLLMNodes$.pipe(
-            switchMap(() => {
-                const llmNodes = flowState.nodes.filter(
-                    (node) => node.type === NodeType.LLM
-                ) as LLMNodeModel[];
-                const llmNodeRequests = llmNodes.map((node) => {
-                    const payload: CreateLLMNodeRequest = {
-                        node_name: node.node_name,
-                        graph: graph.id,
-                        llm_config: node.data.id,
-                        input_map: node.input_map || {},
-                        output_variable_path: node.output_variable_path || null,
-                    };
-                    return this.llmNodeService
-                        .createLLMNode(payload)
-                        .pipe(catchError((err: any) => throwError(err)));
-                });
-                return llmNodeRequests.length
-                    ? forkJoin(llmNodeRequests)
-                    : of([]);
-            })
-        );
-
-        // ---- Handle End Nodes ----
-        let deleteEndNodes$: Observable<any> = of(null);
-        if (graph.end_node_list && graph.end_node_list.length > 0) {
-            const deleteEndReqs = graph.end_node_list.map((endNode: EndNode) =>
-                this.endNodeService
-                    .deleteEndNode(endNode.id)
-                    .pipe(catchError((err: any) => throwError(err)))
-            );
-            deleteEndNodes$ = forkJoin(deleteEndReqs);
-        }
-
-        const endNodes$ = deleteEndNodes$.pipe(
-            switchMap(() => {
-                const endNodes = flowState.nodes.filter(
-                    (node) => node.type === NodeType.END
-                );
-
-                const requests = endNodes.map((node) => {
-                    const payload: CreateEndNodeRequest = {
-                        graph: graph.id,
-                        output_map: (node as any).data?.output_map || {
-                            context: 'variables.context',
-                        },
-                    };
-                    return this.endNodeService
-                        .createEndNode(payload)
-                        .pipe(catchError((err: any) => throwError(err)));
-                });
-                return requests.length ? forkJoin(requests) : of([]);
-            })
-        );
-
-        // ---- Handle SubGraph Nodes ----
-        let deleteSubGraphNodes$: Observable<any> = of(null);
-        if (graph.subgraph_node_list && graph.subgraph_node_list.length > 0) {
-            const deleteSubGraphReqs = graph.subgraph_node_list.map(
-                (subGraphNode: SubGraphNode) =>
-                    this.subGraphNodeService
-                        .deleteSubGraphNode(subGraphNode.id)
-                        .pipe(catchError((err: any) => throwError(err)))
-            );
-            deleteSubGraphNodes$ = forkJoin(deleteSubGraphReqs);
-        }
-
-        const subGraphNodes$ = deleteSubGraphNodes$.pipe(
-            switchMap(() => {
-                const subGraphNodes = flowState.nodes.filter(
-                    (node) => node.type === NodeType.SUBGRAPH
-                ) as SubGraphNodeModel[];
-
-                const requests = subGraphNodes.map((node) => {
-                    const payload: CreateSubGraphNodeRequest = {
-                        node_name: node.node_name,
-                        graph: graph.id,
-                        subgraph: node.data.id,
-                        input_map: node.input_map || {},
-                        output_variable_path: node.output_variable_path || null,
-                    };
-                    return this.subGraphNodeService
-                        .createSubGraphNode(payload)
-                        .pipe(catchError((err: any) => throwError(err)));
-                });
-                return requests.length ? forkJoin(requests) : of([]);
-            })
-        );
-
-        // ---- Handle Webhook Trigger Nodes ----
-        let deleteWebhookTriggerNodes$: Observable<any> = of(null);
-        if (graph.webhook_trigger_node_list && graph.webhook_trigger_node_list.length > 0) {
-            const deleteWebhookTriggerReqs = graph.webhook_trigger_node_list.map(
-                (webhookTriggerNode: GetWebhookTriggerNodeRequest) =>
-                    this.webhookTriggerService
-                        .deleteWebhookTriggerNode(webhookTriggerNode.id.toString())
-                        .pipe(catchError((err: any) => throwError(err)))
-            );
-            deleteWebhookTriggerNodes$ = forkJoin(deleteWebhookTriggerReqs);
-        }
-
-        const webhookTriggerNodes$ = deleteWebhookTriggerNodes$.pipe(
-            switchMap(() => {
-                const webhookTriggerNodes = flowState.nodes.filter(
-                    (node) => node.type === NodeType.WEBHOOK_TRIGGER
-                );
-
-                const requests = webhookTriggerNodes.map((node) => {
-                    const request: CreateWebhookTriggerNodeRequest = {
-                        node_name: node.node_name,
-                        graph: graph.id,
-                        python_code: node.data.python_code,
-                        input_map: node.input_map || {},
-                        output_variable_path: node.output_variable_path,
-                        webhook_trigger_path: node.data.webhook_trigger_path
-                    };
-                    return this.webhookTriggerService.createWebhookTriggerNode(request);
-                });
-                return requests.length ? forkJoin(requests) : of([]);
-            })
-        );
-
-        // ---- Handle Telegram Trigger Nodes ----
-        let deleteTelegramTiggerNodes$: Observable<any> = of(null);
-        if (graph.telegram_trigger_node_list && graph.telegram_trigger_node_list.length > 0) {
-            const deleteTelegramTriggerReqs = graph.telegram_trigger_node_list.map(
-                (telegramTriggerNode: GetTelegramTriggerNodeRequest) =>
-                    this.telegramTriggerService
-                        .deleteTelegramTriggerNode(telegramTriggerNode.id)
-                        .pipe(catchError((err) => throwError(err)))
-            );
-            deleteTelegramTiggerNodes$ = forkJoin(deleteTelegramTriggerReqs);
-        }
-
-        const telegramTriggerNodes$ = deleteTelegramTiggerNodes$.pipe(
-            switchMap(() => {
-                const telegramTriggerNodes = flowState.nodes.filter(
-                    (node) => node.type === NodeType.TELEGRAM_TRIGGER
-                );
-
-                const requests = telegramTriggerNodes.map((node) => {
-                    const request: CreateTelegramTriggerNodeRequest = {
-                        node_name: node.node_name,
-                        graph: graph.id,
-                        telegram_bot_api_key: node.data.telegram_bot_api_key,
-                        fields: node.data.fields
-                    };
-                    return this.telegramTriggerService.createTelegramTriggerNode(request);
-                });
-                return requests.length ? forkJoin(requests) : of([]);
-            })
-        );
-
-        let deleteDecisionTableNodes$: Observable<any> = of(null);
-        if (
-            graph.decision_table_node_list &&
-            graph.decision_table_node_list.length > 0
-        ) {
-            const deleteDecisionTableReqs = graph.decision_table_node_list.map(
-                (dtNode: GetDecisionTableNodeRequest) =>
-                    this.decisionTableNodeService
-                        .deleteDecisionTableNode(dtNode.id.toString())
-                        .pipe(catchError((err: any) => throwError(err)))
-            );
-            deleteDecisionTableNodes$ = forkJoin(deleteDecisionTableReqs);
-        }
-
-        // ---- Handle Conditional Edges ----
-        let deleteConditionalEdges$: Observable<any> = of(null);
-        if (
-            graph.conditional_edge_list &&
-            graph.conditional_edge_list.length > 0
-        ) {
-            const deleteConditionalRequests = graph.conditional_edge_list.map(
-                (condEdge: GetConditionalEdgeRequest) =>
-                    this.conditionalEdgeService
-                        .deleteConditionalEdge(condEdge.id)
-                        .pipe(catchError((err: any) => throwError(err)))
-            );
-            deleteConditionalEdges$ = forkJoin(deleteConditionalRequests);
-        } else {
-            deleteConditionalEdges$ = of(null);
-        }
-
-        const conditionalEdges$ = deleteConditionalEdges$.pipe(
-            switchMap(() => {
-                const edgeNodes = flowState.nodes.filter(
-                    (node) => node.type === NodeType.EDGE
-                ) as EdgeNodeModel[];
-                // Filter valid edge nodes based on existing connections.
-                const validEdgeNodes = edgeNodes.filter((edgeNode) => {
-                    const connection = flowState.connections.find(
-                        (conn) => conn.targetNodeId === edgeNode.id
-                    );
-                    if (!connection) return false;
-                    return Boolean(
-                        flowState.nodes.find(
-                            (n) => n.id === connection.sourceNodeId
-                        )
-                    );
-                });
-                const conditionalEdgeRequests = validEdgeNodes.map(
-                    (edgeNode) => {
-                        const connection = flowState.connections.find(
-                            (conn) => conn.targetNodeId === edgeNode.id
-                        );
-                        const sourceNode = flowState.nodes.find(
-                            (n) => n.id === connection!.sourceNodeId
-                        );
-                        const payload: CreateConditionalEdgeRequest = {
-                            graph: graph.id,
-                            source: sourceNode ? sourceNode.node_name : null,
-                            then: null,
-                            python_code: edgeNode.data.python_code,
-                            input_map: edgeNode.input_map || {},
-                        };
-                        return this.conditionalEdgeService
-                            .createConditionalEdge(payload)
-                            .pipe(catchError((err: any) => throwError(err)));
-                    }
-                );
-                return conditionalEdgeRequests.length
-                    ? forkJoin(conditionalEdgeRequests)
-                    : of([]);
-            })
-        );
-
-        // ---- Handle Edge Connections ----
-        let deleteEdges$: Observable<any> = of(null);
-        console.log('before', graph.edge_list);
-
-        if (graph.edge_list && graph.edge_list.length > 0) {
-            const deleteEdgeRequests = graph.edge_list.map((edge: Edge) =>
-                this.edgeService
-                    .deleteEdge(edge.id)
-                    .pipe(catchError((err: any) => throwError(err)))
-            );
-            deleteEdges$ = forkJoin(deleteEdgeRequests);
-        }
-
-        const createEdges$ = deleteEdges$.pipe(
-            switchMap(() => {
-                const validNodes = flowState.nodes;
-                const validNodeIds = new Set(validNodes.map((n) => n.id));
-                const edgeRequests = flowState.connections
-                    .filter((conn: ConnectionModel) => {
-                        if (
-                            !validNodeIds.has(conn.sourceNodeId) ||
-                            !validNodeIds.has(conn.targetNodeId)
-                        )
-                            return false;
-                        const sourceNode = flowState.nodes.find(
-                            (n) => n.id === conn.sourceNodeId
-                        );
-                        const targetNode = flowState.nodes.find(
-                            (n) => n.id === conn.targetNodeId
-                        );
-                        // Skip if source or target node is of type EDGE
-                        if (sourceNode && sourceNode.type === NodeType.EDGE)
-                            return false;
-                        if (targetNode && targetNode.type === NodeType.EDGE)
-                            return false;
-                        // Skip if source node is of type TABLE
-                        if (sourceNode && sourceNode.type === NodeType.TABLE)
-                            return false;
-                        return true;
-                    })
-                    .map((conn) => {
-                        const sourceNode = flowState.nodes.find(
-                            (n) => n.id === conn.sourceNodeId
-                        );
-                        const targetNode = flowState.nodes.find(
-                            (n) => n.id === conn.targetNodeId
-                        );
-                        if (!sourceNode || !targetNode) return EMPTY;
-                        const payload: CreateEdgeRequest = {
-                            start_key: sourceNode.node_name,
-                            end_key: targetNode.node_name,
-                            graph: graph.id,
-                        };
-                        return this.edgeService
-                            .createEdge(payload)
-                            .pipe(catchError((err: any) => throwError(err)));
-                    });
-                return edgeRequests.length ? forkJoin(edgeRequests) : of([]);
-            })
-        );
-        console.log('before', graph.edge_list);
-
-        const decisionTableNodes$ = deleteDecisionTableNodes$.pipe(
-            switchMap(() => {
-                const decisionTableNodes = flowState.nodes.filter(
-                    (node) => node.type === NodeType.TABLE
-                );
-
-                const requests = decisionTableNodes.map((node) => {
-                    const tableData = (node as any).data?.table;
-
-                    // Helper to resolve node ID (or name) to current node name
-                    const resolveNodeName = (idOrName: string | null): string | null => {
-                        if (!idOrName) return null;
-                        // Try to find by ID first
-                        const targetNode = flowState.nodes.find((n) => n.id === idOrName);
-                        if (targetNode) return targetNode.node_name;
-                        // Fallback: maybe it's already a name?
-                        return idOrName;
-                    };
-
-                    const conditionGroups: CreateConditionGroupRequest[] = (
-                        tableData?.condition_groups || []
-                    )
-                        .filter((group: any) => group.valid !== false)
-                        .sort(
-                            (a: any, b: any) =>
-                                (a.order ?? Number.MAX_SAFE_INTEGER) -
-                                (b.order ?? Number.MAX_SAFE_INTEGER)
-                        )
-                        .map((group: any, index: number) => {
-                            const conditions =
-                                (group.conditions || []).map(
-                                    (condition: any) => ({
-                                        condition_name: condition.condition_name,
-                                        condition: condition.condition,
-                                    })
-                                ) || [];
-
-                            return {
-                                group_name: group.group_name,
-                                group_type: group.group_type || 'complex',
-                                expression: group.expression,
-                                conditions,
-                                manipulation: group.manipulation,
-                                next_node: resolveNodeName(group.next_node),
-                                order:
-                                    typeof group.order === 'number'
-                                        ? group.order
-                                        : index + 1,
-                            };
-                        });
-
-                    const payload: CreateDecisionTableNodeRequest = {
-                        graph: graph.id,
-                        node_name: node.node_name,
-                        condition_groups: conditionGroups,
-                        default_next_node: resolveNodeName(tableData?.default_next_node),
-                        next_error_node: resolveNodeName(tableData?.next_error_node),
-                    };
-
-                    return this.decisionTableNodeService
-                        .createDecisionTableNode(payload)
-                        .pipe(catchError((err: any) => throwError(err)));
-                });
-
-                return requests.length ? forkJoin(requests) : of([]);
-            })
-        );
-
-        // ---- Combine and Update Graph ----
+        // ── 4. Apply the diff — send only what changed to the backend ─────────
         return forkJoin({
-            crewNodes: crewNodes$,
-            pythonNodes: pythonNodes$,
-            audioToTextNodes: audioToTextNodes$,
-            llmNodes: llmNodes$,
-            fileExtractorNodes: fileExtractorNodes$,
-            webhookTriggerNodes: webhookTriggerNodes$,
-            telegramTriggerNodes: telegramTriggerNodes$,
-            conditionalEdges: conditionalEdges$,
-            endNodes: endNodes$,
-            subGraphNodes: subGraphNodes$,
-            edges: createEdges$,
-            decisionTableNodes: decisionTableNodes$,
+            crewNodes: this.executeNodeDiff(
+                diff.crewNodes,
+                n => this.crewNodeService.deleteCrewNode(n.id.toString()),
+                n => this.crewNodeService.createCrewNode(buildCrewPayload(n, graphId)),
+                (id, n) => this.crewNodeService.updateCrewNode(id, buildCrewPayload(n, graphId)),
+                n => n.id
+            ),
+            pythonNodes: this.executeNodeDiff(
+                diff.pythonNodes,
+                n => this.pythonNodeService.deletePythonNode(n.id.toString()),
+                n => this.pythonNodeService.createPythonNode(buildPythonPayload(n, graphId)),
+                (id, n) => this.pythonNodeService.updatePythonNode(id, buildPythonPayload(n, graphId)),
+                n => n.id
+            ),
+            llmNodes: this.executeNodeDiff(
+                diff.llmNodes,
+                n => this.llmNodeService.deleteLLMNode(n.id.toString()),
+                n => this.llmNodeService.createLLMNode(buildLLMPayload(n, graphId)),
+                (id, n) => this.llmNodeService.updateLLMNode(id, buildLLMPayload(n, graphId)),
+                n => n.id
+            ),
+            fileExtractorNodes: this.executeNodeDiff(
+                diff.fileExtractorNodes,
+                n => this.fileExtractorService.deleteFileExtractorNode(n.id.toString()),
+                n => this.fileExtractorService.createFileExtractorNode(buildFileExtractorPayload(n, graphId)),
+                (id, n) => this.fileExtractorService.updateFileExtractorNode(id, buildFileExtractorPayload(n, graphId)),
+                n => n.id
+            ),
+            audioToTextNodes: this.executeNodeDiff(
+                diff.audioToTextNodes,
+                n => this.audioToTextService.deleteAudioToTextNode(n.id.toString()),
+                n => this.audioToTextService.createAudioToTextNode(buildAudioToTextPayload(n, graphId)),
+                (id, n) => this.audioToTextService.updateAudioToTextNode(id, buildAudioToTextPayload(n, graphId)),
+                n => n.id
+            ),
+            subGraphNodes: this.executeNodeDiff(
+                diff.subGraphNodes,
+                n => this.subGraphNodeService.deleteSubGraphNode(n.id),
+                n => this.subGraphNodeService.createSubGraphNode(buildSubGraphPayload(n, graphId)),
+                (id, n) => this.subGraphNodeService.updateSubGraphNode(id, buildSubGraphPayload(n, graphId)),
+                n => n.id
+            ),
+            webhookTriggerNodes: this.executeNodeDiff(
+                diff.webhookTriggerNodes,
+                n => this.webhookTriggerService.deleteWebhookTriggerNode(n.id.toString()),
+                n => this.webhookTriggerService.createWebhookTriggerNode(buildWebhookPayload(n, graphId)),
+                (id, n) => this.webhookTriggerService.updateWebhookTriggerNode(id, buildWebhookPayload(n, graphId)),
+                n => n.id
+            ),
+            telegramTriggerNodes: this.executeNodeDiff(
+                diff.telegramTriggerNodes,
+                n => this.telegramTriggerService.deleteTelegramTriggerNode(n.id),
+                n => this.telegramTriggerService.createTelegramTriggerNode(buildTelegramPayload(n, graphId)),
+                (id, n) => this.telegramTriggerService.updateTelegramTriggerNode(id, buildTelegramPayload(n, graphId)),
+                n => n.id
+            ),
+            conditionalEdges: this.executeNodeDiff(
+                diff.conditionalEdges,
+                n => this.conditionalEdgeService.deleteConditionalEdge(n.id),
+                n => this.conditionalEdgeService.createConditionalEdge(buildCondEdgePayload(n, graphId)),
+                (id, n) => this.conditionalEdgeService.updateConditionalEdge(id, buildCondEdgePayload(n, graphId)),
+                n => n.edgeNode.id
+            ),
+            decisionTableNodes: this.executeNodeDiff(
+                diff.decisionTableNodes,
+                n => this.decisionTableNodeService.deleteDecisionTableNode(n.id.toString()),
+                n => this.decisionTableNodeService.createDecisionTableNode(buildDecisionTablePayload(n, graphId, allNodes)),
+                (id, n) => this.decisionTableNodeService.updateDecisionTableNode(id, buildDecisionTablePayload(n, graphId, allNodes)),
+                n => n.id
+            ),
+            edges: this.applyEdgeDiff(diff.edges, graphId),
+            endNodes: this.executeNodeDiff(
+                diff.endNodes,
+                n => this.endNodeService.deleteEndNode(n.id),
+                n => this.endNodeService.createEndNode(buildEndNodePayload(n, graphId)),
+                (id, n) => this.endNodeService.updateEndNode(id, buildEndNodePayload(n, graphId)),
+                n => n.id
+            ),
+            noteNodes: this.executeNodeDiff(
+                diff.noteNodes,
+                n => this.noteNodeService.deleteNoteNode(n.id.toString()),
+                n => this.noteNodeService.createNoteNode(buildNoteNodePayload(n, graphId)),
+                (id, n) => this.noteNodeService.updateNoteNode(id, buildNoteNodePayload(n, graphId)),
+                n => n.id
+            ),
         }).pipe(
-            switchMap(
-                (results: {
-                    crewNodes: CrewNode[];
-                    pythonNodes: PythonNode[];
-                    audioToTextNodes: GetAudioToTextNodeRequest[];
-                    llmNodes: any[];
-                    fileExtractorNodes: GetFileExtractorNodeRequest[];
-                    webhookTriggerNodes: GetWebhookTriggerNodeRequest[];
-                    telegramTriggerNodes: GetTelegramTriggerNodeRequest[],
-                    conditionalEdges: ConditionalEdge[];
-                    edges: Edge[];
-                    endNodes: EndNode[];
-                    subGraphNodes: SubGraphNode[];
-                    decisionTableNodes: GetDecisionTableNodeRequest[];
-                }) => {
-                    const updateGraphRequest: UpdateGraphDtoRequest = {
+            // ── 5. Collect all created node mappings (uiNodeId → backendId) ───
+            switchMap(results => {
+                // Gather createdMappings from every node-type diff result
+                const allCreatedMappings: CreatedNodeMapping[] = [
+                    ...results.crewNodes.createdMappings,
+                    ...results.pythonNodes.createdMappings,
+                    ...results.llmNodes.createdMappings,
+                    ...results.fileExtractorNodes.createdMappings,
+                    ...results.audioToTextNodes.createdMappings,
+                    ...results.subGraphNodes.createdMappings,
+                    ...results.webhookTriggerNodes.createdMappings,
+                    ...results.telegramTriggerNodes.createdMappings,
+                    ...results.conditionalEdges.createdMappings,
+                    ...results.decisionTableNodes.createdMappings,
+                    ...results.endNodes.createdMappings,
+                    ...results.noteNodes.createdMappings,
+                ];
+
+                // ── 6. Update the graph metadata ──────────────────────────────
+                const updateRequest: UpdateGraphDtoRequest = {
                         id: graph.id,
                         name: graph.name,
                         description: graph.description,
-                        metadata: flowStateWithoutPorts,
-                    };
-                    console.log(
-                        'sending this graph for update',
-                        updateGraphRequest
-                    );
+                    metadata: this.buildGraphMetadata(flowState),
+                };
 
-                    return this.graphService
-                        .updateGraph(graph.id, updateGraphRequest)
-                        .pipe(
-                            map((updatedGraph) => {
-                                console.log(
-                                    'GraphUpdateService: Graph updated successfully:',
-                                    updatedGraph
-                                );
-
+                return this.graphService.updateGraph(graph.id, updateRequest).pipe(
+                    map(updatedGraph => {
                                 return {
                                     graph: updatedGraph,
-                                    updatedNodes: {
-                                        crewNodes: results.crewNodes,
-                                        pythonNodes: results.pythonNodes,
-                                        audioToTextNodes:
-                                            results.audioToTextNodes,
-                                        llmNodes: results.llmNodes,
-                                        fileExtractorNodes:
-                                            results.fileExtractorNodes,
-                                        conditionalEdges:
-                                            results.conditionalEdges,
-                                        webhookTriggerNodes: results.webhookTriggerNodes,
-                                        telegramTriggerNodes: results.telegramTriggerNodes,
-                                        edges: results.edges,
-                                        endNodes: results.endNodes,
-                                        subGraphNodes: results.subGraphNodes,
-                                        decisionTableNodes:
-                                            results.decisionTableNodes,
-                                    },
+                            updatedNodes: results,
+                            createdMappings: allCreatedMappings,
                                 };
                             })
                         );
-                }
-            ),
-            catchError((err) => {
-                return throwError(err);
-            })
+            }),
+            catchError(err => throwError(() => err))
         );
     }
 }
-
-//trigger

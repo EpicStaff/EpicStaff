@@ -27,10 +27,8 @@
       "@shared/directives": ["src/app/shared/directives/index.ts"],
       "@shared/form-validators": ["src/app/shared/form-validators/index.ts"],
       "@shared/material-forms": ["src/app/shared/material-forms/index.ts"],
-      "@shared/models": ["src/app/shared/models/index.ts"],
       "@shared/services": ["src/app/shared/services/index.ts"],
       "@shared/utils": ["src/app/shared/utils/index.ts"],
-      "@services": ["src/app/services/index.ts"]
     }
   },
   "angularCompilerOptions": {

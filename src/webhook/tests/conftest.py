@@ -4,7 +4,6 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 from app.services.redis_service import RedisService
 from app.providers.base import AbstractTunnelProvider
-from app.services.webhook_service import WebhookService
 
 
 @pytest.fixture
@@ -19,14 +18,6 @@ def mock_tunnel_provider():
     tunnel = AsyncMock(spec=AbstractTunnelProvider)
     tunnel.public_url = "https://mock-tunnel.ngrok.io"
     return tunnel
-
-
-@pytest.fixture
-def mock_webhook_service(mock_tunnel_provider):
-    service = MagicMock(spec=WebhookService)
-    service.tunnel = mock_tunnel_provider
-    service.get_tunnel_url = AsyncMock(return_value=mock_tunnel_provider.public_url)
-    return service
 
 
 @pytest.fixture

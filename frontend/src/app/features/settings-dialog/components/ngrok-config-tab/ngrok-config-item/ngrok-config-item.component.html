@@ -1,0 +1,26 @@
+<div class="item">
+    <div class="item__left">
+        <app-icon
+            icon="ui/cloud"
+            [size]="'2rem'"
+            class="item__icon"
+        ></app-icon>
+        <div class="item__info">
+            <div class="item__name">{{ config().name }}</div>
+            <div class="item__config">
+                <span class="item__webhook-url">{{ config().domain }}</span> • {{ config().region }} Region
+            </div>
+        </div>
+    </div>
+    <div class="item__right">
+        <app-button type="ghost" (click)="onConfigure()">Configure</app-button>
+        <div class="item__separator"></div>
+        <app-icon-button
+            icon="ui/x"
+            [size]="'2rem'"
+            ariaLabel="Delete"
+            (onClick)="onDelete()"
+            class="item__delete-btn"
+        ></app-icon-button>
+    </div>
+</div>

@@ -5,12 +5,12 @@ import numpy as np
 
 
 def mulaw_to_pcm16(audio_chunk: bytes) -> bytes:
-    """Конвертация 8-bit mu-law в 16-bit PCM"""
+    """Convert 8-bit mu-law to 16-bit PCM"""
     return audioop.ulaw2lin(audio_chunk, 2)
 
 
 def pcm16_to_mulaw(pcm_chunk: bytes) -> bytes:
-    """Конвертация 16-bit PCM обратно в mu-law"""
+    """Convert 16-bit PCM back to mu-law"""
     return audioop.lin2ulaw(pcm_chunk, 2)
 
 
@@ -28,20 +28,20 @@ def base64_encode_audio(float32_array):
 
 def float32_to_mulaw(signal: np.ndarray, quantization_channels: int = 256) -> bytes:
     """
-    Преобразует float32 (-1..1) в 8-bit mu-law (Twilio compatible).
-    Возвращает bytes.
+    Converts float32 (-1..1) to 8-bit mu-law (Twilio compatible).
+    Returns bytes.
     """
-    # Клипируем сигнал в [-1,1]
+    # Clip signal to [-1, 1]
     signal = np.clip(signal, -1.0, 1.0)
 
-    # mu-law параметр
+    # mu-law parameter
     mu = quantization_channels - 1
 
-    # Применяем mu-law
+    # Apply mu-law
     magnitude = np.log1p(mu * np.abs(signal)) / np.log1p(mu)
     signal_mu = np.sign(signal) * magnitude
 
-    # Квантование в диапазон [0, 255]
+    # Quantize to range [0, 255]
     signal_quantized = ((signal_mu + 1) / 2 * mu + 0.5).astype(np.uint8)
 
     return signal_quantized.tobytes()

@@ -10,7 +10,6 @@ import { DEFAULT_EDGE_NODE_PORTS } from '../rules/edge-ports/edge-node-default-p
 import { DEFAULT_START_NODE_PORTS } from '../rules/start-ports/start-node-default-ports';
 
 import { DEFAULT_TABLE_NODE_PORTS } from '../rules/table-ports/table-ports';
-import { DEFAULT_GROUP_NODE_PORTS } from '../rules/group-ports/group-node-default-ports';
 import { DEFAULT_FILE_EXTRACTOR_NODE_PORTS } from '../rules/file-extractor-ports/file-extractor-default-ports';
 import { DEFAULT_END_NODE_PORTS } from '../rules/end-ports/end-ports-default-ports';
 import { NodeModel } from '../models/node.model';
@@ -59,8 +58,6 @@ export function getPortsForType(nodeType: NodeType): BasePort[] {
             return DEFAULT_EDGE_NODE_PORTS;
         case NodeType.START:
             return DEFAULT_START_NODE_PORTS;
-        case NodeType.GROUP:
-            return DEFAULT_GROUP_NODE_PORTS;
         case NodeType.TABLE:
             return DEFAULT_TABLE_NODE_PORTS;
         case NodeType.FILE_EXTRACTOR:

@@ -22,6 +22,12 @@ import { MatIconModule } from '@angular/material/icon';
         <div class="form-group">
             <div class="label-container" *ngIf="label">
                 <label [for]="id">{{ label }}</label>
+                <span
+                    *ngIf="required"
+                    class="required"
+                >
+                    *
+                </span>
                 <ng-container *ngIf="tooltipText">
                     <mat-icon
                         *ngIf="!isClassIcon"
@@ -30,7 +36,7 @@ import { MatIconModule } from '@angular/material/icon';
                         matTooltipClass="custom-tooltip"
                         class="help-icon"
                     >
-                        {{ icon || 'help' }}
+                        {{ icon }}
                     </mat-icon>
                     <i
                         *ngIf="isClassIcon"
@@ -62,18 +68,27 @@ import { MatIconModule } from '@angular/material/icon';
     `,
     styles: [
         `
+            :host {
+                width: 100%;
+            }
+
             .form-group {
                 .label-container {
                     display: flex;
                     align-items: center;
                     gap: 0.5rem;
                     margin-bottom: 8px;
+
+                    .required {
+                        color: #ef4444;
+                    }
                 }
 
                 label {
                     display: block;
-                    font-size: 14px;
-                    color: rgba(255, 255, 255, 0.7);
+                    font-size: 0.875rem;
+                    line-height: 130%;
+                    color: var(--color-ks-text);
                     margin: 0;
                 }
 
@@ -81,12 +96,12 @@ import { MatIconModule } from '@angular/material/icon';
                     font-size: 18px;
                     width: 18px;
                     height: 18px;
-                    color: rgba(255, 255, 255, 0.6);
+                    color: var(--accent-color);
                     cursor: help;
                     transition: color 0.2s ease;
 
                     &:hover {
-                        color: rgba(255, 255, 255, 0.9);
+                        color: var(--accent-color-hover);
                     }
 
                     &.class-icon {
@@ -102,9 +117,13 @@ import { MatIconModule } from '@angular/material/icon';
                     background-color: var(--color-input-background);
                     border: 1px solid rgba(255, 255, 255, 0.1);
                     border-radius: 6px;
-                    color: white;
+                    color: var(--color-text-primary);
                     font-size: 14px;
                     transition: border-color 0.2s ease;
+
+                    &::placeholder {
+                        color: var(--color-input-text-placeholder);
+                    }
 
                     &:focus {
                         outline: none;
@@ -150,7 +169,8 @@ export class CustomInputComponent implements ControlValueAccessor {
     @Input() name: string = '';
     @Input() autofocus: boolean = false;
     @Input() tooltipText: string = '';
-    @Input() icon: string = 'help';
+    @Input() icon: string = 'help_outline';
+    @Input() required: boolean = false;
     @Input() activeColor: string = '#685fff';
     @Input() errorMessage: string = '';
 

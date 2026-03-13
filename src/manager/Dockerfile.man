@@ -1,17 +1,25 @@
+# Use base image with Python 3.12.10-slim
 FROM python:3.12.10-slim
 
-WORKDIR /home/user/root/app
+# Set work dir
+WORKDIR /app/src/manager
 
-# RUN pip install --upgrade pip setuptools wheel
+# Install poetry package
 RUN pip install poetry
+# RUN pip install --upgrade pip setuptools wheel
 
-COPY ./manager/pyproject.toml .
-COPY ./manager/poetry.lock .
+# Copy and config other Python dependencies
+COPY ./manager/pyproject.toml ./manager/poetry.lock .
+RUN poetry config virtualenvs.create false && \
+    poetry install --no-root && \ 
+    rm -rf /root/.cache
 
-RUN poetry config virtualenvs.create false && poetry install --no-root && rm -rf /root/.cache
-
+# Copy manager module and tools into workdir
 COPY ./manager .
 COPY ./tool ./tool
 
+# Copy shared module to parent dir
+COPY ./shared /app/src/shared
 
+# Run the module
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

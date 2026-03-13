@@ -1,7 +1,7 @@
 from typing import cast, Any
 
 from langgraph.types import StreamWriter
-from src.crew.models.request_models import LLMData
+from src.shared.models import LLMData
 
 import litellm
 from litellm import Choices

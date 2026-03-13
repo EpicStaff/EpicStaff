@@ -1,6 +1,6 @@
 from crewai import LLM
 
-from models.request_models import LLMData
+from src.shared.models import LLMData
 
 
 def parse_llm(llm: LLMData, **kwargs):

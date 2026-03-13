@@ -1,4 +1,5 @@
 from typing import Iterable
+from tables.models.webhook_models import NgrokWebhookConfig
 from tables.models.python_models import PythonCodeToolConfig
 from tables.models.crew_models import (
     AgentConfiguredTools,
@@ -24,7 +25,7 @@ from tables.models import (
     PythonCodeTool,
     LLMNode,
 )
-
+from src.shared.models import NgrokConfigData
 from tables.models.realtime_models import RealtimeAgentChat
 from tables.models.graph_models import (
     Condition,
@@ -38,8 +39,36 @@ from tables.models.graph_models import (
     TelegramTriggerNode,
     WebhookTriggerNode,
 )
-from tables.request_models import *
-from tables.request_models import CrewData, EndNodeData
+from src.shared.models import (
+    RagSearchConfig,
+    NaiveRagSearchConfig,
+    GraphRagSearchConfig,
+    CrewData,
+    TaskData,
+    BaseToolData,
+    AgentData,
+    RealtimeAgentChatData,
+    PythonCodeData,
+    PythonCodeToolData,
+    ConfiguredToolData,
+    ToolConfigData,
+    McpToolData,
+    LLMConfigData,
+    LLMData,
+    EmbedderData,
+    EmbedderConfigData,
+    PythonNodeData,
+    ConditionalEdgeData,
+    LLMNodeData,
+    ConditionData,
+    ConditionGroupData,
+    DecisionTableNodeData,
+    CrewNodeData,
+    TelegramTriggerNodeData,
+    TelegramTriggerNodeFieldData,
+    EndNodeData,
+    WebhookTriggerNodeData,
+)
 from utils.singleton_meta import SingletonMeta
 
 from tables.serializers.model_serializers import ToolConfigSerializer
@@ -575,4 +604,14 @@ class ConverterService(metaclass=SingletonMeta):
         return TelegramTriggerNodeData(
             node_name=telegram_trigger_node.node_name,
             field_list=telegram_trigger_node_field_data,
+        )
+
+    def convert_ngrok_webhook_config_to_pydantic(
+        self, ngrok_webhook_config: NgrokWebhookConfig
+    ) -> NgrokConfigData:
+        return NgrokConfigData(
+            name=ngrok_webhook_config.name,
+            auth_token=ngrok_webhook_config.auth_token,
+            domain=ngrok_webhook_config.domain,
+            region=ngrok_webhook_config.region,
         )

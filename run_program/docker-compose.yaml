@@ -29,8 +29,6 @@ services:
 
       - GUNICORN_WORKERS=1
       - GUNICORN_THREADS=4
-    volumes:
-      - crew_config:/home/user/root/app/env_config
 
     networks:
       - backend-network
@@ -181,7 +179,6 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock 
       - /usr/bin/docker:/usr/bin/docker
-      - crew_config:/home/user/root/app/env_config/
     networks:
       - backend-network
     tty: true
@@ -256,8 +253,6 @@ volumes:
   sandbox_executions:
     external: true
   crew_pgdata:
-    external: true
-  crew_config:
     external: true
 
 networks:

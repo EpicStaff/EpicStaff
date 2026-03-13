@@ -7,10 +7,12 @@ from tables.views.model_view_sets import (
     DecisionTableNodeModelViewSet,
     EdgeViewSet,
     EndNodeModelViewSet,
+    NoteNodeViewSet,
     SubGraphNodeModelViewSet,
     GraphLightViewSet,
     GraphViewSet,
     McpToolViewSet,
+    NgrokWebhookConfigViewSet,
     PythonCodeToolConfigFieldViewSet,
     PythonCodeToolConfigViewSet,
     PythonNodeViewSet,
@@ -60,6 +62,7 @@ from tables.views.views import (
     InitRealtimeAPIView,
     RegisterTelegramTriggerApiView,
     ProcessRagIndexingView,
+    RegisterWebhooksApiView,
     RunPythonCodeAPIView,
     TelegramTriggerNodeAvailableFieldsView,
     ToolListRetrieveUpdateGenericViewSet,
@@ -169,6 +172,9 @@ router.register(r"telegram-trigger-nodes", TelegramTriggerNodeViewSet)
 router.register(r"telegram-trigger-node-fields", TelegramTriggerNodeFieldViewSet)
 router.register(r"python-code-tool-configs", PythonCodeToolConfigViewSet)
 router.register(r"python-code-tool-config-fields", PythonCodeToolConfigFieldViewSet)
+router.register(r"note-nodes", NoteNodeViewSet)
+router.register(r"ngrok-config", NgrokWebhookConfigViewSet)
+
 
 urlpatterns = [
     path(
@@ -328,5 +334,10 @@ urlpatterns = [
         "register-telegram-trigger/",
         RegisterTelegramTriggerApiView.as_view(),
         name="register-telegram-trigger",
+    ),
+    path(
+        "register-webhooks/",
+        RegisterWebhooksApiView.as_view(),
+        name="register-webhooks",
     ),
 ]

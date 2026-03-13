@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock
 from services.graph.nodes.telegram_trigger_node import TelegramTriggerNode
-from models.request_models import TelegramTriggerNodeFieldData
+from src.shared.models import TelegramTriggerNodeFieldData
 
 
 @pytest.mark.asyncio

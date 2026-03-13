@@ -20,6 +20,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import { ToolConfigurationDialogComponent } from '../../../../../../user-settings-page/tools/tool-configuration-dialog/tool-configuration-dialog.component';
 import { ToastService } from '../../../../../../services/notifications/toast.service';
 
+// hidden for now (EST-2215)
 @Component({
   selector: 'app-built-in-tools',
   standalone: true,
@@ -41,23 +42,23 @@ export class BuiltInToolsComponent implements OnInit {
   // Local state management
   private readonly allTools = signal<Tool[]>([]);
   private readonly selectedCategorySignal = signal<string | null>(null);
-  
+
   public readonly error = signal<string | null>(null);
   public readonly isLoaded = signal<boolean>(false);
   public readonly selectedCategory = computed(() => this.selectedCategorySignal());
   public readonly filteredTools = computed(() => {
     const tools = this.allTools();
     const category = this.selectedCategorySignal();
-    
+
     if (!category) {
       return tools.slice().sort((a, b) => b.id - a.id);
     }
-    
+
     const categoryConfig = TOOL_CATEGORIES_CONFIG.find(cat => cat.name === category);
     if (!categoryConfig) {
       return tools.slice().sort((a, b) => b.id - a.id);
     }
-    
+
     return tools
       .filter(tool => categoryConfig.toolIds.includes(tool.id))
       .sort((a, b) => b.id - a.id);

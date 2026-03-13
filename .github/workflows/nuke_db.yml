@@ -1,0 +1,46 @@
+name: Manual Database Reset
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_server:
+        description: 'Select target server'
+        required: true
+        type: choice
+        options:
+          - test2
+          - test3
+      confirm_nuke:
+        description: 'Type "NUKE" to confirm reset'
+        required: true
+        type: string
+
+jobs:
+  nuke_database:
+    name: Nuke DB on ${{ github.event.inputs.target_server }}
+    runs-on: [self-hosted, "${{ github.event.inputs.target_server }}"]
+    
+    steps:
+      - name: Validate confirmation
+        if: ${{ github.event.inputs.confirm_nuke != 'NUKE' }}
+        run: |
+          echo "Error: Confirmation word 'NUKE' was not entered correctly."
+          exit 1
+
+      - name: Run Nuke Script
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /home/developer/EpicStaff
+          
+          echo ">> Starting database reset on ${{ github.event.inputs.target_server }}..."
+          
+          docker compose -f src/docker-compose.yaml stop crewdb || true
+          
+          docker volume rm crew_pgdata || true
+          
+          docker volume create crew_pgdata
+          
+          docker compose -f src/docker-compose.yaml up -d crewdb
+          
+          echo "✅ Database on ${{ github.event.inputs.target_server }} has been wiped."

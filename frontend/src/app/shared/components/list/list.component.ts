@@ -4,7 +4,7 @@ import {
     ContentChild, input,
     TemplateRef
 } from "@angular/core";
-import {NgTemplateOutlet} from "@angular/common";
+import { NgTemplateOutlet } from "@angular/common";
 
 @Component({
     selector: 'app-list',

@@ -1,6 +1,6 @@
 import asyncio
 import aiohttp
-from models.request_models import (
+from src.shared.models import (
     ConfiguredToolData,
     ToolInitConfigurationModel,
 )

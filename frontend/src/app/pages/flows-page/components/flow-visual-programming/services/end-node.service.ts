@@ -31,11 +31,20 @@ export class EndNodeService {
         });
     }
 
-    updateEndNode(
+    partialUpdateEndNode(
         id: number,
         request: UpdateEndNodeRequest
     ): Observable<EndNode> {
         return this.http.patch<EndNode>(`${this.apiUrl}${id}/`, request, {
+            headers: this.headers,
+        });
+    }
+
+    updateEndNode(
+        id: number,
+        request: CreateEndNodeRequest
+    ): Observable<EndNode> {
+        return this.http.put<EndNode>(`${this.apiUrl}${id}/`, request, {
             headers: this.headers,
         });
     }

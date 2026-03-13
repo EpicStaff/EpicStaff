@@ -5,7 +5,7 @@ from typing import Any
 from loguru import logger
 from utils.singleton_meta import SingletonMeta
 from services.redis_service import RedisService
-from models.request_models import CodeResultData, CodeTaskData, PythonCodeData
+from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
 
 
 class PythonCodeExecutorService(metaclass=SingletonMeta):

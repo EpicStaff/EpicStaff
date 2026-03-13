@@ -108,3 +108,18 @@ docker-generate-certs:
 	docker run --rm -v "$(CURDIR)/src/nginx/certs:/certs" -w /certs alpine \
 		sh -c "apk add openssl && openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout privkey.pem -out fullchain.pem -subj '/CN=localhost'"
 	@echo "SSL certificates generated!"
+
+# ==========================================
+# LOCAL DJANGO DEVELOPMENT
+# ==========================================
+
+django-makemigrations django-migrate django-manage: export PYTHONPATH = $(CURDIR)
+
+django-makemigrations:
+	@cd src/django_app && python manage.py makemigrations $(ARGS)
+
+django-migrate:
+	@cd src/django_app && python manage.py migrate $(ARGS)
+
+django-manage:
+	@cd src/django_app && python manage.py $(CMD)

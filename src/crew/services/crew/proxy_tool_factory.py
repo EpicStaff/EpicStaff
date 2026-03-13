@@ -9,7 +9,7 @@ from loguru import logger
 from crewai.tools.base_tool import Tool
 
 from src.crew.models.response_models import ToolResponse
-from src.crew.models.request_models import (
+from src.shared.models import (
     PythonCodeToolData,
     ConfiguredToolData,
     ToolInitConfigurationModel,
@@ -39,7 +39,13 @@ class ProxyToolFactory:
         global_kwargs: dict[str, Any],
         stop_event: StopEvent,
     ) -> Tool:
-        args_schema = generate_model_from_schema(python_code_tool_data.args_schema)
+        args_schema_raw = python_code_tool_data.args_schema
+        args_schema_dict = (
+            args_schema_raw
+            if isinstance(args_schema_raw, dict)
+            else args_schema_raw.model_dump()
+        )
+        args_schema = generate_model_from_schema(args_schema_dict)
         name = python_code_tool_data.name
         description = python_code_tool_data.description
 

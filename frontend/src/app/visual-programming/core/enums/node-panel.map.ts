@@ -9,7 +9,7 @@ import { SubGraphNodePanelComponent } from '../../components/node-panels/subgrap
 import { AudioToTextNodePanelComponent } from '../../components/node-panels/audio-to-text-node-panel/audio-to-text-node-panel.component';
 import { NodeType } from './node-type';
 import { DecisionTableNodePanelComponent } from '../../components/node-panels/decision-table-node-panel/decision-table-node-panel.component';
-import { WebhookTriggerNodePanelComponent } from '../../components/node-panels/webhook-trigger-node-panel/webhook-trigger-node-panel';
+import { WebhookTriggerNodePanelComponent } from '../../components/node-panels/webhook-trigger-node-panel/webhook-trigger-node-panel.component';
 import { TelegramTriggerNodePanelComponent } from "../../components/node-panels/telegram-trigger-node-panel/telegram-trigger-node-panel.component";
 
 

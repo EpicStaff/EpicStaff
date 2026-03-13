@@ -9,7 +9,7 @@ from langgraph.types import StreamWriter
 from src.crew.models.graph_models import GraphMessage
 from src.crew.services.graph.events import StopEvent
 from src.crew.services.redis_service import RedisService, SyncPubsubSubscriber
-from src.crew.models.request_models import (
+from src.shared.models import (
     RagSearchConfig,
     NaiveRagSearchConfig,
     GraphRagSearchConfig,

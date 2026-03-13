@@ -21,15 +21,11 @@ import { FormsModule } from '@angular/forms';
 
 import { GetPythonCodeToolRequest } from '../../../../../features/tools/models/python-code-tool.model';
 import { GetMcpToolRequest } from '../../../../../features/tools/models/mcp-tool.model';
-import { BuiltinToolsService } from '../../../../../features/tools/services/builtin-tools/builtin-tools.service';
-import { ToolConfigService } from '../../../../../features/tools/services/tool-config.service';
 import {
   FullToolConfig,
-  FullToolConfigService,
 } from '../../../../../features/tools/services/full-tool-config.service';
 import { PythonCodeToolService } from '../../../../../user-settings-page/tools/custom-tool-editor/services/pythonCodeToolService.service';
 import { GetToolConfigRequest } from '../../../../../features/tools/models/tool-config.model';
-import { ToastService } from '../../../../../services/notifications/toast.service';
 import { ToolItemComponent } from './tool-item/tool-item.component';
 import { PythonToolItemComponent } from './python-tool-item/python-tool-item.component';
 import { McpToolItemComponent } from './mcp-tool-item/mcp-tool-item.component';
@@ -39,7 +35,6 @@ import { McpToolDialogComponent } from '../../../../../features/tools/components
 import { Dialog } from '@angular/cdk/dialog';
 import { CustomToolsService } from '../../../../../features/tools/services/custom-tools/custom-tools.service';
 import { McpToolsService } from '../../../../../features/tools/services/mcp-tools/mcp-tools.service';
-import { Router } from '@angular/router';
 
 @Component({
   selector: 'app-tools-list',
@@ -89,12 +84,12 @@ export class ToolsPopupComponent
 
   @Output() public cancel = new EventEmitter<void>();
 
-  public menuItems: { type: 'builtin' | 'custom' | 'mcp'; label: string }[] = [
-    { type: 'builtin', label: 'Built-in Tools' },
+  public menuItems: { type: 'custom' | 'mcp'; label: string }[] = [
+    // { type: 'builtin', label: 'Built-in Tools' },
     { type: 'custom', label: 'Custom Tools' },
     { type: 'mcp', label: 'MCP Tools' },
   ];
-  public selectedMenu: 'builtin' | 'custom' | 'mcp' = 'builtin';
+  public selectedMenu: 'custom' | 'mcp' = 'custom';
   public searchTerm = '';
   public loading = true;
 
@@ -112,16 +107,11 @@ export class ToolsPopupComponent
   private readonly _destroyed$ = new Subject<void>();
 
   constructor(
-    private readonly _toolsService: BuiltinToolsService,
-    private readonly _toolConfigService: ToolConfigService,
     private readonly _pythonCodeToolService: PythonCodeToolService,
-    private readonly _fullToolConfigService: FullToolConfigService,
     private readonly _cdr: ChangeDetectorRef,
-    private readonly toastService: ToastService,
     private readonly cdkDialog: Dialog,
     private readonly customToolsService: CustomToolsService,
     private readonly mcpToolsService: McpToolsService,
-    private readonly router: Router,
     private readonly cdr: ChangeDetectorRef,
 
 
@@ -156,18 +146,15 @@ export class ToolsPopupComponent
     console.log('Loading tools data...');
     this.loading = true;
     forkJoin({
-      fullTools: this._fullToolConfigService.getFullToolConfigs(),
       pythonTools: this._pythonCodeToolService.getPythonCodeTools(),
       mcpTools: this.mcpToolsService.getMcpTools(),
     })
       .pipe(takeUntil(this._destroyed$))
       .subscribe({
-        next: ({ fullTools, pythonTools, mcpTools }) => {
-          console.log('Full tools data received:', fullTools);
+        next: ({ pythonTools, mcpTools }) => {
           console.log('Python tools data received:', pythonTools);
           console.log('MCP tools data received:', mcpTools);
 
-          this.tools = this._sortToolsBySelection(fullTools);
           this.pythonTools = this._sortPythonToolsBySelection(pythonTools);
           this.mcpTools = this._sortMcpToolsBySelection(mcpTools);
 
@@ -291,13 +278,13 @@ export class ToolsPopupComponent
     }
   }
 
-  public toggleToolType(type: 'builtin' | 'custom' | 'mcp'): void {
+  public toggleToolType(type: 'custom' | 'mcp'): void {
     this.selectedMenu = type;
     this.showPythonTools = type === 'custom';
     this._cdr.markForCheck();
   }
 
-  public onSelectMenu(type: 'builtin' | 'custom' | 'mcp'): void {
+  public onSelectMenu(type: 'custom' | 'mcp'): void {
     this.selectedMenu = type;
     this.showPythonTools = type === 'custom';
     this._cdr.markForCheck();
@@ -435,7 +422,7 @@ export class ToolsPopupComponent
     const dialogRef = this.cdkDialog.open(McpToolDialogComponent, {
       data: {},
     });
-    
+
     dialogRef.closed.subscribe((result) => {
       if (result) {
         console.log('New MCP tool created:', result);
@@ -448,12 +435,12 @@ export class ToolsPopupComponent
   // This method is commented out as per the requirement
   /* public onCreateConfig(tool: FullToolConfig): void {
     if (!tool) return;
-    
+
     this.toastService.showToast({
       title: "Create Config",
       message: `Creating a new configuration for tool: ${tool.name}`,
     });
-    
+
     // Additional logic for creating a configuration would go here
   } */
 }

@@ -29,6 +29,15 @@ export class AudioToTextService {
         });
     }
 
+    updateAudioToTextNode(
+        id: number,
+        request: CreateAudioToTextNodeRequest
+    ): Observable<any> {
+        return this.http.put<any>(`${this.apiUrl}${id}/`, request, {
+            headers: this.headers,
+        });
+    }
+
     getAudioToTextNodeById(
         id: number
     ): Observable<GetAudioToTextNodeRequest> {

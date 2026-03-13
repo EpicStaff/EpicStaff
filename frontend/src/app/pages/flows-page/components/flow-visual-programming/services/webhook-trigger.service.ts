@@ -42,6 +42,15 @@ export class WebhookTriggerNodeService {
     });
   }
 
+  updateWebhookTriggerNode(
+    id: number,
+    request: CreateWebhookTriggerNodeRequest
+  ): Observable<any> {
+    return this.http.put<any>(`${this.apiUrlNode}${id}/`, request, {
+      headers: this.headers,
+    });
+  }
+
   deleteWebhookTriggerNode(id: string): Observable<any> {
     return this.http.delete(`${this.apiUrlNode}${id}/`, {
       headers: this.headers,

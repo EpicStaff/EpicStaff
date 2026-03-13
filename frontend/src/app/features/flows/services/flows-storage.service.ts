@@ -238,6 +238,7 @@ export class FlowsStorageService {
                     subgraph_node_list: sourceFlow.subgraph_node_list,
                     audio_transcription_node_list: sourceFlow.audio_transcription_node_list,
                     decision_table_node_list: sourceFlow.decision_table_node_list,
+                    note_node_list: sourceFlow.note_node_list ?? [],
                 };
                 return this.flowsApiService.copyGraph(payload).pipe(
                     tap((created) => this.addFlowToCache(created))

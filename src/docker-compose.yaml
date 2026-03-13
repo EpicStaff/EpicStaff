@@ -40,8 +40,8 @@ services:
       DJANGO_PORT: ${DJANGO_PORT:-8000}
       LOAD_DEBUG_ENV: ${LOAD_DEBUG_ENV}
     volumes:
-      - crew_config:/home/user/root/app/env_config
-      - media_data:/app/media
+      - media_data:/app/src/django_app/media
+
     networks:
       - backend-network
     depends_on:
@@ -60,8 +60,9 @@ services:
     image: realtime
     container_name: realtime
     build:
-      context: ./realtime
-      dockerfile: Dockerfile.realtime
+      context: .
+      dockerfile: ./realtime/Dockerfile.realtime
+
     environment:
       <<: *common_env
       KNOWLEDGE_SEARCH_GET_CHANNEL: knowledge:search:get
@@ -137,7 +138,7 @@ services:
       DJANGO_HOST: ${DJANGO_HOST}
       DJANGO_PORT: ${DJANGO_PORT:-8000}
     volumes:
-      - crew_pgdata:${PGDATA}
+      - crew_pgdata:/var/lib/postgresql/data
     networks:
       - backend-network
     healthcheck:
@@ -158,6 +159,7 @@ services:
       - backend-network
     volumes:
       - ./redis.conf:/usr/local/etc/redis/redis.conf
+      - redis_data:/data
     environment:
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
@@ -212,15 +214,16 @@ services:
     volumes:
       - ${DOCKER_SOCK_PATH}:${DOCKER_SOCK_PATH}
       - ${DOCKER_BIN_PATH}:${DOCKER_BIN_PATH}
-      - crew_config:/home/user/root/app/env_config/
     networks:
       - backend-network
     tty: true
     stdin_open: true
     depends_on:
-      crewdb:
-        condition: service_healthy
       redis:
+        condition: service_healthy
+      sandbox:
+        condition: service_started
+      crewdb:
         condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -251,8 +254,8 @@ services:
   knowledge:
     image: knowledge
     build:
-      context: ./knowledge
-      dockerfile: Dockerfile.knowledge
+      context: .
+      dockerfile: ./knowledge/Dockerfile.knowledge
     container_name: knowledge
     environment:
       <<: *common_env
@@ -343,10 +346,9 @@ volumes:
     external: true
   crew_pgdata:
     external: true
-  crew_config:
-    external: true
   media_data:
     external: true
+  redis_data: {}
 
 networks:
   backend-network:

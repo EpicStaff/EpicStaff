@@ -14,7 +14,7 @@ from django_app.settings import (
     KNOWLEDGE_INDEXING_CHANNEL,
     STOP_SESSION_CHANNEL,
 )
-from tables.request_models import (
+from src.shared.models import (
     ChunkDocumentMessage,
     ChunkDocumentMessageResponse,
     ProcessRagIndexingMessage,

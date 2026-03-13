@@ -1,0 +1,131 @@
+<div class="panel-container">
+    <div class="panel-content">
+        <form [formGroup]="form" class="form-container">
+            <div
+                class="form-layout"
+                [class.expanded]="isExpanded()"
+                [class.collapsed]="!isExpanded()"
+                [class.code-editor-fullwidth]="isCodeEditorFullWidth()"
+            >
+                <div class="form-fields">
+                    <app-custom-input
+                        label="Node Name"
+                        tooltipText="The unique identifier used to reference this Python node. This name must be unique within the flow."
+                        formControlName="node_name"
+                        placeholder="Enter node name"
+                        [activeColor]="activeColor"
+                        [errorMessage]="getNodeNameErrorMessage()"
+                    ></app-custom-input>
+
+                    <app-custom-input
+                        label="Webhook trigger path"
+                        tooltipText="Only enter the webhook name. The base URL is shown below."
+                        formControlName="webhook_trigger_path"
+                        placeholder="Enter webhook path"
+                        [required]="true"
+                        [activeColor]="activeColor"
+                        [errorMessage]="getWebhookNameErrorMessage()"
+                    ></app-custom-input>
+
+                    <div>
+                        <app-select
+                            [loading]="ngrokConfigsLoading()"
+                            label="Select Ngrok config"
+                            tooltipText="Select the ngrok config. Full URL is shown below."
+                            formControlName="ngrok_webhook_config"
+                            [items]="ngrokConfigSelectItems()"
+                            (changed)="ngrokConfigId.set($event)"
+                        />
+                        <div class="webhook-url-display">
+                            @if (webhookUrlDisplay(); as url) {
+                                <span class="webhook-url-text" [style.color]="activeColor">
+                                {{ url }}
+                            </span>
+                                <button
+                                    type="button"
+                                    class="copy-button"
+                                    (click)="copyWebhookUrl()"
+                                    [disabled]="!url"
+                                    aria-label="Copy webhook URL"
+                                >
+                                    <span class="copy-icon" aria-hidden="true"></span>
+                                    <span>Copy</span>
+                                </button>
+                            } @else if (loadingTunnel()) {
+                                <div class="webhook-url-placeholder">
+                                    Fetching tunnel URL...
+                                </div>
+                            } @else {
+                                <div class="webhook-url-error">Ngrok config or path is empty</div>
+                            }
+
+                        </div>
+                    </div>
+
+                    <app-custom-input
+                        label="Libraries"
+                        tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
+                        formControlName="libraries"
+                        placeholder="Enter libraries (e.g., requests, pandas, numpy)"
+                        [activeColor]="activeColor"
+                    ></app-custom-input>
+                </div>
+                @if (isExpanded()) {
+                    <div class="code-editor-wrapper">
+                        <button
+                            type="button"
+                            class="toggle-icon-button"
+                            (click)="toggleCodeEditorFullWidth()"
+                            [attr.aria-label]="
+                                        isCodeEditorFullWidth()
+                                            ? 'Collapse code editor'
+                                            : 'Expand code editor'
+                                    "
+                        >
+                            <svg
+                                width="9"
+                                height="22"
+                                viewBox="0 0 9 22"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                                [style.transform]="
+                                            isCodeEditorFullWidth()
+                                                ? 'scaleX(1)'
+                                                : 'scaleX(-1)'
+                                        "
+                            >
+                                <path
+                                    d="M7.16602 21.0001L1.16602 11.0001L7.16602 1.00012"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                />
+                            </svg>
+                        </button>
+                        <div class="code-editor-section">
+                            <app-code-editor
+                                [pythonCode]="pythonCode"
+                                (pythonCodeChange)="
+                                            onPythonCodeChange($event)
+                                        "
+                                (errorChange)="
+                                            onCodeErrorChange($event)
+                                        "
+                            ></app-code-editor>
+                        </div>
+                    </div>
+                } @else {
+                    <div class="code-editor-section">
+                        <app-code-editor
+                            [pythonCode]="pythonCode"
+                            (pythonCodeChange)="
+                                        onPythonCodeChange($event)
+                                    "
+                            (errorChange)="onCodeErrorChange($event)"
+                        ></app-code-editor>
+                    </div>
+                }
+            </div>
+        </form>
+    </div>
+</div>

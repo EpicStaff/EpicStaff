@@ -1,0 +1,14 @@
+:host {
+    width: 100%;
+}
+
+.expand-panel {
+    &__header {
+        display: flex;
+    }
+
+    &__arrow {
+        cursor: pointer;
+        margin-right: 0.75rem;
+    }
+}

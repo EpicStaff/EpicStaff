@@ -1,7 +1,6 @@
 import { Routes } from '@angular/router';
 import { MainLayoutComponent } from './layouts/main-layout/main-layout.component';
 
-import { BuiltInToolsComponent } from './features/tools/pages/tools-list-page/components/built-in-tools/built-in-tools.component';
 import { CustomToolsComponent } from './features/tools/pages/tools-list-page/components/custom-tools/custom-tools.component';
 import { McpToolsComponent } from './features/tools/pages/tools-list-page/components/mcp-tools/mcp-tools.component';
 
@@ -57,8 +56,7 @@ export const routes: Routes = [
                 path: 'tools',
                 component: ToolsListPageComponent,
                 children: [
-                    { path: '', redirectTo: 'built-in', pathMatch: 'full' },
-                    { path: 'built-in', component: BuiltInToolsComponent },
+                    { path: '', redirectTo: 'custom', pathMatch: 'full' },
                     { path: 'custom', component: CustomToolsComponent },
                     { path: 'mcp', component: McpToolsComponent },
                 ],

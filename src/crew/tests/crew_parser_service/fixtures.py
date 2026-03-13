@@ -5,7 +5,7 @@ from callbacks.session_callback_factory import CrewCallbackFactory
 from services.knowledge_search_service import KnowledgeSearchService
 
 if TYPE_CHECKING:
-    from models.request_models import AgentData, TaskData, CrewData
+    from src.shared.models import AgentData, TaskData, CrewData
 
 import pytest
 from polyfactory.factories.pydantic_factory import ModelFactory
@@ -13,7 +13,7 @@ from callbacks import GraphSessionCallbackFactory
 from unittest.mock import MagicMock
 from services.redis_service import RedisService
 
-from models.request_models import (
+from src.shared.models import (
     AgentData,
     CrewData,
     EmbedderData,

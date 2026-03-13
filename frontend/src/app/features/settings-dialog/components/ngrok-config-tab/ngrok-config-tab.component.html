@@ -1,0 +1,48 @@
+<div class="tab">
+    <div class="tab__header">
+        <div>
+            <h3 class="tab__title">Ngrok Configuration Parameters</h3>
+            <p class="tab__subtitle">
+                Configure and manage settings through the Ngrok tunnel.
+            </p>
+        </div>
+        <app-button
+            type="primary"
+            leftIcon="ui/plus"
+            (click)="onAddConfig()"
+        >
+            Add
+        </app-button>
+    </div>
+
+    <div class="tab__ngrok-config-list">
+        @if (status() === 'loading') {
+            <div class="tab__loading-state">
+                <p>Loading Ngrok configurations...</p>
+            </div>
+        } @else if (status() === 'error') {
+            <div class="tab__loading-state tab__loading-state--error">
+                <p>{{ errorMessage() }}</p>
+                <app-button
+                    type="secondary"
+                    leftIcon="ui/refresh"
+                    (click)="refreshData()"
+                >
+                    Retry
+                </app-button>
+            </div>
+        } @else if (ngrokConfigs().length === 0) {
+            <div class="tab__loading-state">
+                <p>No ngrok configurations found. Add one to get started.</p>
+            </div>
+        } @else {
+            @for (config of ngrokConfigs(); track config.id) {
+                <app-ngrok-config-item
+                    [config]="config"
+                    (configureClicked)="onEditConfig(config)"
+                    (deleteClicked)="onRemoveConfig(config)"
+                />
+            }
+        }
+    </div>
+</div>

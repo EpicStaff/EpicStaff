@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
-from models import CodeTaskData
+from src.shared.models import CodeTaskData
 from services.redis_service import RedisService
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain
 from utils.logger import logger

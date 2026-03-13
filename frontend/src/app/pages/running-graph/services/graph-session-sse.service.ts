@@ -129,6 +129,7 @@ export class RunSessionSSEService {
         execution_order: raw.execution_order,
         created_at: raw.created_at || raw.timestamp,
         message_data: raw.message_data,
+        metadata: raw.metadata || {},
       };
 
       const messagesList = this.messages();

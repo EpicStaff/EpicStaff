@@ -28,6 +28,12 @@ export class CrewNodeService {
     });
   }
 
+  updateCrewNode(id: number, request: CreateCrewNodeRequest): Observable<any> {
+    return this.http.put<any>(`${this.apiUrl}${id}/`, request, {
+      headers: this.headers,
+    });
+  }
+
   deleteCrewNode(id: string): Observable<any> {
     return this.http.delete(`${this.apiUrl}${id}/`, { headers: this.headers });
   }

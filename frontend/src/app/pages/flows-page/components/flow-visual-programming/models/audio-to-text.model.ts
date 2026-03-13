@@ -4,6 +4,7 @@ export interface GetAudioToTextNodeRequest {
     graph: number;
     input_map: Record<string, any>;
     output_variable_path: string | null;
+    metadata: Record<string, any>;
 }
 
 export interface CreateAudioToTextNodeRequest {
@@ -11,4 +12,5 @@ export interface CreateAudioToTextNodeRequest {
     graph: number;
     input_map: Record<string, any>;
     output_variable_path: string | null;
+    metadata?: Record<string, any>;
 }

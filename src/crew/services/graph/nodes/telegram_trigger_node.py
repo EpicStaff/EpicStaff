@@ -3,7 +3,7 @@ from typing import Any
 from langgraph.types import StreamWriter
 from loguru import logger
 
-from src.crew.models.request_models import TelegramTriggerNodeFieldData
+from src.shared.models import TelegramTriggerNodeFieldData
 from src.crew.models.state import State
 from src.crew.services.graph.events import StopEvent
 from src.crew.services.graph.nodes import BaseNode

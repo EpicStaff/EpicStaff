@@ -30,6 +30,15 @@ export class ConditionalEdgeService {
     });
   }
 
+  updateConditionalEdge(
+    id: number,
+    request: CreateConditionalEdgeRequest
+  ): Observable<any> {
+    return this.http.put<any>(`${this.apiUrl}${id}/`, request, {
+      headers: this.headers,
+    });
+  }
+
   getConditionalEdgeById(id: number): Observable<GetConditionalEdgeRequest> {
     return this.http.get<GetConditionalEdgeRequest>(`${this.apiUrl}${id}/`, {
       headers: this.headers,

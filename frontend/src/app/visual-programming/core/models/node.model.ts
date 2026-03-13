@@ -12,15 +12,17 @@ import {
 import { NodeType } from '../enums/node-type';
 import { ConnectionModel } from './connection.model';
 import { ViewPort } from './port.model';
-import { GroupNodeModel } from './group.model';
 import { DecisionTableNode } from './decision-table.model';
 import {
     TelegramTriggerNodeField
 } from "../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model";
+import { WebhookTriggerModel } from "./webhook-trigger.model";
 import { GetGraphLightRequest } from '../../../features/flows/models/graph.model';
 
 export interface BaseNodeModel {
     id: string;
+    /** Backend primary key — set on load, null for newly created nodes. */
+    backendId: number | null;
     category: 'web' | 'vscode';
     position: { x: number; y: number };
     ports: ViewPort[] | null;
@@ -107,7 +109,7 @@ export interface AudioToTextNodeModel extends BaseNodeModel {
 export interface WebhookTriggerNodeModel extends BaseNodeModel {
     type: NodeType.WEBHOOK_TRIGGER;
     data: {
-        webhook_trigger_path: string;
+        webhook_trigger: WebhookTriggerModel | null;
         python_code: CustomPythonCode;
     }
 }
@@ -116,6 +118,7 @@ export interface TelegramTriggerNodeModel extends BaseNodeModel {
     type: NodeType.TELEGRAM_TRIGGER;
     data: {
         telegram_bot_api_key: string;
+        webhook_trigger: WebhookTriggerModel | null;
         fields: TelegramTriggerNodeField[];
     }
 }
@@ -144,7 +147,6 @@ export type NodeModel =
     | PythonNodeModel
     | EdgeNodeModel
     | StartNodeModel
-    | GroupNodeModel
     | DecisionTableNodeModel
     | NoteNodeModel
     | FileExtractorNodeModel

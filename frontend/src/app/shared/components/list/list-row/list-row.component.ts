@@ -1,4 +1,4 @@
-import {ChangeDetectionStrategy, Component, HostBinding, signal} from "@angular/core";
+import { ChangeDetectionStrategy, Component, HostBinding, signal } from "@angular/core";
 
 @Component({
     selector: 'app-list-row',

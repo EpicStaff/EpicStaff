@@ -1,5 +1,5 @@
 from models.ai_models import RealtimeTool
-from models.request_models import (
+from src.shared.models import (
     ConfiguredToolData,
     PythonCodeToolData,
     RealtimeAgentChatData,

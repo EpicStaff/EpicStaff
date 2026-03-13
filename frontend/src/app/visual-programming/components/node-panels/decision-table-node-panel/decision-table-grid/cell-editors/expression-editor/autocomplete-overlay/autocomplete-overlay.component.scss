@@ -119,12 +119,30 @@
         }
 
         &.no-results {
-            color: #888;
-            font-style: italic;
-            justify-content: center;
+            color: #9ca3af;
+            font-style: normal;
+            font-family: inherit;
+            font-size: 12px;
+            justify-content: flex-start;
             cursor: default;
+            padding: 12px 14px;
+            gap: 10px;
+            line-height: 1.4;
+
+            i {
+                font-size: 16px;
+                color: #685fff;
+                flex-shrink: 0;
+                margin-top: 1px;
+            }
+
+            span {
+                white-space: normal;
+            }
+
             &:hover {
                 background-color: transparent;
+                color: #9ca3af;
             }
         }
         

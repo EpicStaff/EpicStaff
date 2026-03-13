@@ -6,7 +6,7 @@ from services.redis_service import RedisService
 from uuid import uuid4
 
 from .base_tool_executor import BaseToolExecutor
-from models.request_models import (
+from src.shared.models import (
     BaseKnowledgeSearchMessage,
     RagSearchConfig,
     NaiveRagSearchConfig,

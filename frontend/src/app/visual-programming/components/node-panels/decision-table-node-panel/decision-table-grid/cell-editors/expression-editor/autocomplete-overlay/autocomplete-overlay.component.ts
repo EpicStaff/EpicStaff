@@ -34,6 +34,8 @@ export class AutocompleteOverlayComponent {
     public items = signal<AutocompleteItem[]>([]);
     public currentPath = signal<string[]>([]);
     public filterText = signal<string>('');
+    public rootLabel = signal<string>('state');
+    public emptyMessage = signal<string>('No matching variables');
     
     public itemSelected = output<AutocompleteItem>();
     public navigateUp = output<void>();
@@ -68,10 +70,22 @@ export class AutocompleteOverlayComponent {
     }
     
     // Public method to update data and force refresh (for dynamic component usage)
-    public updateData(items: AutocompleteItem[], path: string[], filter: string): void {
+    public updateData(
+        items: AutocompleteItem[],
+        path: string[],
+        filter: string,
+        rootLabel?: string,
+        emptyMessage?: string,
+    ): void {
         this.items.set(items);
         this.currentPath.set(path);
         this.filterText.set(filter);
+        if (rootLabel !== undefined) {
+            this.rootLabel.set(rootLabel);
+        }
+        if (emptyMessage !== undefined) {
+            this.emptyMessage.set(emptyMessage);
+        }
         this.cdr.detectChanges();
     }
 

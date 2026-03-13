@@ -18,8 +18,6 @@ import {
 import { generatePortsForDecisionTableNode } from '../core/helpers/helpers';
 
 import { NodeType } from '../core/enums/node-type';
-import { FDropToGroupEvent } from '@foblex/flow';
-import { GroupNodeModel } from '../core/models/group.model';
 
 export interface FlattenedPort {
     nodeId: string;
@@ -33,12 +31,10 @@ export class FlowService {
     private flowSignal = signal<FlowModel>({
         nodes: [],
         connections: [],
-        groups: [],
     });
 
     public readonly nodes = computed(() => this.flowSignal().nodes);
     public readonly connections = computed(() => this.flowSignal().connections);
-    public readonly groups = computed(() => this.flowSignal().groups);
 
     public readonly noteNodes = computed(() =>
         this.nodes().filter((node) => node.type === NodeType.NOTE)
@@ -61,174 +57,11 @@ export class FlowService {
         return this.nodes().some((node) => node.type === type);
     }
 
-    public visibleConnections = computed(() => {
-        const connections = this.connections();
-        const groups = this.groups();
+    public visibleConnections = computed(() => this.connections());
 
-        // Get all collapsed groups
-        const collapsedGroups = groups.filter((g) => g.collapsed);
-
-        if (collapsedGroups.length === 0) {
-            return connections;
-        }
-
-        // Find connections that should be hidden
-        const hiddenConnectionIds = new Set<string>();
-
-        // Step 1: Hide all original connections stored in collapsed groups
-        // (but only if they still exist in the connections array)
-        collapsedGroups.forEach((group) => {
-            const connectionData = group.data?.connectionData;
-            if (connectionData) {
-                connectionData.inputs?.forEach((conn) => {
-                    if (connections.some((c) => c.id === conn.id)) {
-                        hiddenConnectionIds.add(conn.id);
-                    }
-                });
-
-                connectionData.outputs?.forEach((conn) => {
-                    if (connections.some((c) => c.id === conn.id)) {
-                        hiddenConnectionIds.add(conn.id);
-                    }
-                });
-
-                connectionData.internal?.forEach((conn) => {
-                    if (connections.some((c) => c.id === conn.id)) {
-                        hiddenConnectionIds.add(conn.id);
-                    }
-                });
-            }
-        });
-
-        // Step 2: Hide virtual connections for descendants of collapsed groups
-        const descendantsOfCollapsedGroups = new Set<string>();
-
-        // Build set of all groups that are inside any collapsed group
-        collapsedGroups.forEach((group) => {
-            const descendants = this.getAllDescendantIds(group.id);
-            descendants.forEach((id) => descendantsOfCollapsedGroups.add(id));
-        });
-
-        // Hide virtual connections for any group that's a descendant of a collapsed group
-        connections.forEach((conn) => {
-            // Check if this is a virtual connection
-            if (
-                conn.sourcePortId.includes('group-') ||
-                conn.targetPortId.includes('group-')
-            ) {
-                // Get the group IDs from the connection
-                const sourceGroupId = conn.sourceNodeId;
-                const targetGroupId = conn.targetNodeId;
-
-                // If either end is a descendant of a collapsed group, hide it
-                if (
-                    descendantsOfCollapsedGroups.has(sourceGroupId) ||
-                    descendantsOfCollapsedGroups.has(targetGroupId)
-                ) {
-                    hiddenConnectionIds.add(conn.id);
-                }
-            }
-        });
-
-        // Return filtered connections
-        return connections.filter((conn) => !hiddenConnectionIds.has(conn.id));
-    });
-    // Add this computed property to your FlowService class
-    public visibleGroups = computed(() => {
-        const groups = this.groups();
-
-        // Create a map of collapsed group IDs for quick lookup
-        const collapsedGroups = new Map<string, GroupNodeModel>();
-        groups.forEach((group) => {
-            if (group.collapsed) {
-                collapsedGroups.set(group.id, group);
-            }
-        });
-
-        // Skip filtering if no collapsed groups
-        if (collapsedGroups.size === 0) {
-            return groups;
-        }
-
-        // Helper function to check if a group is inside a collapsed group
-        const isInsideCollapsedGroup = (
-            groupParentId: string | null
-        ): boolean => {
-            if (!groupParentId) return false;
-
-            // Check if direct parent is collapsed
-            if (collapsedGroups.has(groupParentId)) {
-                return true;
-            }
-
-            // If parent group exists, check its parent recursively
-            const parentGroup = groups.find((g) => g.id === groupParentId);
-            if (parentGroup && parentGroup.parentId) {
-                return isInsideCollapsedGroup(parentGroup.parentId);
-            }
-
-            return false;
-        };
-
-        // Filter groups
-        return groups.filter(
-            (group) => !isInsideCollapsedGroup(group.parentId)
-        );
-    });
     public visibleNodes = computed(() => {
-        const nodes = this.nodes();
-        const groups = this.groups();
-
-        // Create a map of collapsed group IDs for quick lookup
-        const collapsedGroups = new Map<string, GroupNodeModel>();
-        groups.forEach((group) => {
-            if (group.collapsed) {
-                collapsedGroups.set(group.id, group);
-            }
-        });
-
-        // Skip filtering if no collapsed groups
-        const filteredByGroups =
-            collapsedGroups.size === 0
-                ? nodes
-                : nodes.filter(
-                      (node) =>
-                          !this.isInsideCollapsedGroup(
-                              node.parentId,
-                              groups,
-                              collapsedGroups
-                          )
-                  );
-
-        // Additionally filter out nodes with category 'vscode'
-        return filteredByGroups.filter((node) => node.category !== 'vscode');
+        return this.nodes().filter((node) => node.category !== 'vscode');
     });
-
-    // Helper method for the recursion (extract from the visibleNodes computed)
-    private isInsideCollapsedGroup(
-        nodeParentId: string | null,
-        groups: GroupNodeModel[],
-        collapsedGroups: Map<string, GroupNodeModel>
-    ): boolean {
-        if (!nodeParentId) return false;
-
-        // Check if direct parent is collapsed
-        if (collapsedGroups.has(nodeParentId)) {
-            return true;
-        }
-
-        // If parent group exists, check its parent recursively
-        const parentGroup = groups.find((g) => g.id === nodeParentId);
-        if (parentGroup && parentGroup.parentId) {
-            return this.isInsideCollapsedGroup(
-                parentGroup.parentId,
-                groups,
-                collapsedGroups
-            );
-        }
-
-        return false;
-    }
 
     // Add a new computed property for vscode nodes
     public vscodeNodes = computed(() => {
@@ -249,12 +82,6 @@ export class FlowService {
         this.flowSignal.set(flow);
     }
 
-    public addGroup(group: GroupNodeModel) {
-        this.flowSignal.update((flow: FlowModel) => ({
-            ...flow,
-            groups: [...flow.groups, group],
-        }));
-    }
     public addNode(node: NodeModel) {
         this.flowSignal.update((flow: FlowModel) => ({
             ...flow,
@@ -507,37 +334,6 @@ export class FlowService {
 
         return `${groupsKey}__default:${defaultKey}__error:${errorKey}`;
     }
-    public updateGroupsInBatch(groups: GroupNodeModel[]): void {
-        if (!groups || groups.length === 0) {
-            return;
-        }
-
-        this.flowSignal.update((flow: FlowModel) => {
-            // Create a map of group ids to their updated versions for quick lookup
-            const groupUpdatesMap = new Map<string, GroupNodeModel>();
-            groups.forEach((group) => groupUpdatesMap.set(group.id, group));
-
-            // Create a new groups array with updates applied
-            const updatedGroups = flow.groups.map((existingGroup) => {
-                // If this group is in our update list, return the updated version
-                if (groupUpdatesMap.has(existingGroup.id)) {
-                    return groupUpdatesMap.get(existingGroup.id)!;
-                }
-                // Otherwise return the existing group unchanged
-                return existingGroup;
-            });
-
-            // Log the batch update
-            console.log(`Batch updated ${groups.length} groups`);
-
-            // Return updated flow state
-            return {
-                ...flow,
-                groups: updatedGroups,
-            };
-        });
-    }
-
     public updateConnectionsInBatch(connections: ConnectionModel[]): void {
         if (!connections || connections.length === 0) {
             return;
@@ -832,11 +628,6 @@ export class FlowService {
         return `${normalizedSourcePortId}+${targetPortId}`;
     }
 
-    private isGroupPortId(portId: string): boolean {
-        const role = this.extractPortRole(portId);
-        return role?.startsWith('group-') ?? false;
-    }
-
     private extractPortRole(portId: string): string | null {
         const underscoreIndex = portId.indexOf('_');
         if (underscoreIndex === -1) {
@@ -852,29 +643,6 @@ export class FlowService {
     ): boolean {
         const portIdValue = `${portId}`;
         return portIdValue.startsWith(`${tableNodeId}_decision-`);
-    }
-
-    public updateGroup(updatedGroup: GroupNodeModel): void {
-        this.flowSignal.update((flow: FlowModel) => {
-            // Find the index of the group to update
-            const index: number = flow.groups.findIndex(
-                (g) => g.id === updatedGroup.id
-            );
-            if (index < 0) {
-                console.warn('Group not found in flow:', updatedGroup.id);
-                return flow; // Return unchanged flow if group isn't found
-            }
-
-            // Create a new array, replacing just the updated group
-            const updatedGroups: GroupNodeModel[] = [...flow.groups];
-            updatedGroups[index] = updatedGroup;
-
-            // Return a new FlowModel object (signals need new references)
-            return {
-                ...flow,
-                groups: updatedGroups,
-            };
-        });
     }
 
     private canPortsConnect(
@@ -918,12 +686,9 @@ export class FlowService {
     public deleteSelections(selections: {
         fNodeIds: string[];
         fConnectionIds: string[];
-        fGroupIds: string[];
     }): void {
-        // Filter out any virtual connections from deletion requests
         this.flowSignal.update((flow: FlowModel) => {
             const nodeIdsToRemove = new Set(selections.fNodeIds);
-            const groupIdsToRemove = new Set(selections.fGroupIds);
             const connectionIdsToRemove = new Set<string>();
 
             const connectionsById = new Map(
@@ -944,92 +709,29 @@ export class FlowService {
                     return;
                 }
 
-                const isVirtual =
-                    this.isGroupPortId(connection.sourcePortId) ||
-                    this.isGroupPortId(connection.targetPortId);
-
-                if (isVirtual) {
-                    return;
-                }
-
                 connectionIdsToRemove.add(connection.id);
             });
 
-            // Track nodes and groups that need parentId update
-            const nodesToUpdate: NodeModel[] = [];
-            const groupsToUpdate: GroupNodeModel[] = [];
-
-            // Recursively find all descendants of collapsed groups
-            const addAllDescendants = (
-                groupId: string,
-                isCollapsed: boolean
-            ) => {
-                flow.nodes.forEach((node) => {
-                    if (node.parentId === groupId) {
-                        if (isCollapsed) {
-                            // If parent group is collapsed, mark node for removal
-                            nodeIdsToRemove.add(node.id);
-                        } else {
-                            // If parent group is expanded, update the parentId to null
-                            nodesToUpdate.push({ ...node, parentId: null });
-                        }
-                    }
-                });
-
-                flow.groups.forEach((childGroup) => {
-                    if (childGroup.parentId === groupId) {
-                        if (isCollapsed) {
-                            // If parent group is collapsed, mark group for removal
-                            groupIdsToRemove.add(childGroup.id);
-                            // Process its descendants
-                            addAllDescendants(childGroup.id, true);
-                        } else {
-                            // If parent group is expanded, update the parentId to null
-                            groupsToUpdate.push({
-                                ...childGroup,
-                                parentId: null,
-                            });
-                        }
-                    }
-                });
-            };
-
-            // Process all groups that are being deleted
-            flow.groups.forEach((group) => {
-                if (groupIdsToRemove.has(group.id)) {
-                    addAllDescendants(group.id, group.collapsed);
-                }
-            });
-
-            console.log('Group IDs to remove:', Array.from(groupIdsToRemove));
             console.log('Node IDs to remove:', Array.from(nodeIdsToRemove));
-            console.log('Nodes to update:', nodesToUpdate.length);
-            console.log('Groups to update:', groupsToUpdate.length);
 
-            // Track removed connection IDs for logging
-            const removedConnectionIds: string[] = [];
+            // Track removed connections for decision table cleanup
             const removedConnections: ConnectionModel[] = [];
 
             const updatedConnections = flow.connections.filter((conn) => {
                 const isSelected = connectionIdsToRemove.has(conn.id);
 
-                // Check if connection involves any node or group being removed
+                // Check if connection involves any node being removed
                 const isOrphaned =
                     nodeIdsToRemove.has(conn.sourceNodeId) ||
-                    nodeIdsToRemove.has(conn.targetNodeId) ||
-                    groupIdsToRemove.has(conn.sourceNodeId) ||
-                    groupIdsToRemove.has(conn.targetNodeId);
+                    nodeIdsToRemove.has(conn.targetNodeId);
 
                 if (isSelected || isOrphaned) {
-                    removedConnectionIds.push(conn.id);
                     removedConnections.push(conn);
                     return false; // remove connection
                 }
 
                 return true; // keep connection
             });
-
-            console.log('Connection IDs to remove:', removedConnectionIds);
 
             const decisionTableUpdates = new Map<
                 string,
@@ -1102,7 +804,7 @@ export class FlowService {
                 });
             });
 
-            // Filter out nodes and groups marked for removal
+            // Filter out nodes marked for removal
             const updatedNodes = flow.nodes
                 .filter((node) => !nodeIdsToRemove.has(node.id))
                 .map((node) => {
@@ -1123,62 +825,12 @@ export class FlowService {
                     } as NodeModel;
                 });
 
-            const updatedGroups = flow.groups.filter(
-                (group) => !groupIdsToRemove.has(group.id)
-            );
-
-            // Create an updated flow state
-            const newFlowState = {
+            return {
                 ...flow,
                 nodes: updatedNodes,
                 connections: updatedConnections,
-                groups: updatedGroups,
             };
-
-            // Schedule batch updates for nodes and groups that need parentId updates
-            setTimeout(() => {
-                if (nodesToUpdate.length > 0) {
-                    this.updateNodesInBatch(nodesToUpdate);
-                }
-
-                if (groupsToUpdate.length > 0) {
-                    this.updateGroupsInBatch(groupsToUpdate);
-                }
-            }, 0);
-
-            return newFlowState;
         });
-    }
-
-    // Helper method in FlowService
-    public getAllDescendantIds(groupId: string): Set<string> {
-        const descendantIds = new Set<string>();
-        const allNodes = this.nodes();
-        const allGroups = this.groups();
-
-        // Recursive function to add descendants
-        const addDescendants = (parentId: string) => {
-            // Add direct child nodes
-            allNodes.forEach((node) => {
-                if (node.parentId === parentId) {
-                    descendantIds.add(node.id);
-                }
-            });
-
-            // Add and process child groups
-            allGroups.forEach((group) => {
-                if (group.parentId === parentId) {
-                    descendantIds.add(group.id);
-                    // Recursively process this group's children
-                    addDescendants(group.id);
-                }
-            });
-        };
-
-        // Start recursion
-        addDescendants(groupId);
-
-        return descendantIds;
     }
 
     // Compute a mapping from each port id to an array of eligible connection port ids.

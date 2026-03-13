@@ -16,6 +16,7 @@ class TablesConfig(AppConfig):
         import tables.signals.telegram_signals
         import tables.signals.python_code_tool_config_signals
         import tables.signals.naive_rag_signals
+        import tables.signals.webhook_signals
         from tables.services.config_service import YamlConfigService
         from tables.services.converter_service import ConverterService
         from tables.services.redis_service import RedisService
@@ -51,8 +52,15 @@ class TablesConfig(AppConfig):
         RealtimeService(
             redis_service=redis_service, converter_service=converter_service
         )
-        WebhookTriggerService(session_manager_service=session_manager_service)
-        TelegramTriggerService(session_manager_service=session_manager_service)
+        webhook_trigger_service = WebhookTriggerService(
+            session_manager_service=session_manager_service,
+            redis_service=redis_service,
+            converter_service=converter_service,
+        )
+        TelegramTriggerService(
+            session_manager_service=session_manager_service,
+            webhook_trigger_service=webhook_trigger_service,
+        )
 
         # Register strategies for import/export entities
         entity_registry.register(llm_models.LLMModelStrategy())

@@ -10,16 +10,15 @@ services:
       python manage.py collectstatic --noinput &&
       python manage.py listen_redis &
       python manage.py cache_redis &
-      uvicorn django_app.asgi:application --host 0.0.0.0 --port ${DJANGO_PORT:-8000} --reload --reload-dir /home/user/root/app/django_app"
+      uvicorn django_app.asgi:application --host 0.0.0.0 --port ${DJANGO_PORT:-8000} --reload --reload-dir /app/src/django_app"
     ports:
       - "${DJANGO_PORT:-8000}:${DJANGO_PORT:-8000}"
     environment:
       GUNICORN_RELOAD: 1
       WATCHFILES_FORCE_POLLING: "true"
     volumes:
-      # Добавляем локальные папки к тем, что уже описаны в base.yaml
-      - ./django_app:/home/user/root/app/django_app:cached
-      - ./shared:/home/user/root/app/shared:cached
+      - ./django_app:/app/src/django_app:cached
+      - ./shared:/app/src/shared:cached
 
   crewdb:
     ports:
@@ -36,7 +35,7 @@ services:
       REALTIME_RELOAD: "True"
       WATCHFILES_FORCE_POLLING: "true"
     volumes:
-      - ./realtime:/home/user/root/app
+      - ./realtime:/app/src/realtime
 
   manager:
     command: uvicorn app:app --host 0.0.0.0 --port ${MANAGER_PORT:-8001} --workers 1 --reload
@@ -48,25 +47,25 @@ services:
     environment:
       WATCHFILES_FORCE_POLLING: "true"
     volumes:
-      - ./manager:/home/user/root/app
-      - ./tool:/home/user/root/app/tool
+      - ./manager:/app/src/manager
+      - ./tool:/app/src/manager/tool
 
   crew:
     command: >
-      sh -lc "cd /home/user/root/app &&
+      sh -lc "cd /app/src/crew &&
       poetry run watchfiles
       --filter python
-      'poetry run python3 /home/user/root/app/src/crew/main.py'
-      /home/user/root/app/src/crew/"
+      'poetry run python3 /app/src/crew/main.py'
+      /app/src/crew/"
     environment:
       WATCHFILES_FORCE_POLLING: "true"
     volumes:
-      - ./crew/callbacks:/home/user/root/app/src/crew/callbacks:cached
-      - ./crew/config:/home/user/root/app/src/crew/config:cached
-      - ./crew/models:/home/user/root/app/src/crew/models:cached
-      - ./crew/services:/home/user/root/app/src/crew/services:cached
-      - ./crew/utils:/home/user/root/app/src/crew/utils:cached
-      - ./crew/main.py:/home/user/root/app/src/crew/main.py:cached
+      - ./crew/callbacks:/app/src/crew/callbacks:cached
+      - ./crew/config:/app/src/crew/config:cached
+      - ./crew/models:/app/src/crew/models:cached
+      - ./crew/services:/app/src/crew/services:cached
+      - ./crew/utils:/app/src/crew/utils:cached
+      - ./crew/main.py:/app/src/crew/main.py:cached
 
   frontend:
     ports:
@@ -80,7 +79,7 @@ services:
 
   webhook:
     command: >
-      sh -c "watchfiles --filter python 'python run.py' /app"
+      sh -c "watchfiles --filter python 'python run.py' /app/src/webhook"
     ports:
       - "${WEBHOOK_PORT:-8051}:${WEBHOOK_PORT:-8051}"
     env_file:
@@ -89,23 +88,23 @@ services:
     environment:
       WATCHFILES_FORCE_POLLING: "true"
     volumes:
-      - ./webhook/app:/app/app
-      - ./webhook/run.py:/app/run.py
+      - ./webhook/app:/app/src/webhook/app
+      - ./webhook/run.py:/app/src/webhook/run.py
 
   knowledge:
     command: sh -c "watchfiles --filter python 'python main.py' ."
     environment:
       WATCHFILES_FORCE_POLLING: "true"
     volumes:
-      - ./knowledge:/home/user/root/app
+      - ./knowledge:/app/src/knowledge
 
   sandbox:
-    command: sh -c "watchfiles --filter python 'python main.py' ."
+    command: sh -c "watchfiles --filter python --ignore-paths ./executions,./savefiles,./venvs 'python main.py' ."
     environment:
       WATCHFILES_FORCE_POLLING: "true"
     volumes:
-      - ./sandbox:/home/user/root/app
-      - ./shared:/home/user/root/app/shared
+      - ./sandbox:/app/src/sandbox
+      - ./shared:/app/src/shared
 
   epicstaff-nginx:
     profiles:

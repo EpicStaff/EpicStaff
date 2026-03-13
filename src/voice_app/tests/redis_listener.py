@@ -1,14 +1,14 @@
 import asyncio
 import redis.asyncio as redis
-from app.core.config import settings
+from app.core.settings import settings
 
 
 async def listen_to_voice():
-    # Подключаемся к Redis
+    # Connect to Redis
     r = redis.from_url(settings.REDIS_URL)
     pubsub = r.pubsub()
 
-    # Подписываемся на все каналы звонков (используем паттерн psubscribe)
+    # Subscribe to all call channels (using psubscribe pattern)
     await pubsub.psubscribe("voice:stream:*")
     print("Listening for voice streams in Redis...")
 
@@ -19,7 +19,7 @@ async def listen_to_voice():
                 data_len = len(message["data"])
                 print(f"received {data_len} bytes from {channel}")
 
-                # Здесь в реальном приложении данные уходили бы в Whisper или TTS
+                # In a real application, data would be sent to Whisper or TTS here
     except KeyboardInterrupt:
         await pubsub.punsubscribe("voice:stream:*")
 

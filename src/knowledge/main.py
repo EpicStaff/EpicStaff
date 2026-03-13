@@ -8,7 +8,7 @@ from loguru import logger
 from services.collection_processor_service import CollectionProcessorService
 from services.redis_service import RedisService
 from services.chunking_job_registry import chunking_job_registry
-from models.redis_models import (
+from src.shared.models import (
     ChunkDocumentMessage,
     ChunkDocumentMessageResponse,
     BaseKnowledgeSearchMessage,

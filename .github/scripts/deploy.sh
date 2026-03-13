@@ -3,21 +3,31 @@ set -euo pipefail
 
 APP_DIR="/home/developer/EpicStaff"
 COMPOSE_DIR="$APP_DIR/src"
-COMPOSE_FILE="docker-compose.deploy.yaml"
+COMPOSE_FILE="docker-compose.yaml"
+NUKE_DB=${NUKE_DB:-false}
 
 echo ">> deploy from current checkout"
 echo ">> repo dir: $APP_DIR"
+echo ">> nuke database: $NUKE_DB"
 
 cd "$COMPOSE_DIR"
 
 echo ">> docker compose down"
 docker compose -f "$COMPOSE_FILE" down --remove-orphans
 
-echo ">> docker volume rm crew_pgdata"
-docker volume rm crew_pgdata || true
-
-echo ">> docker volume create crew_pgdata"
-docker volume create crew_pgdata
+if [ "$NUKE_DB" = "true" ]; then
+  echo "⚠️  NUKE_DB is set to true. Resetting database volumes..."
+  
+  if [ -f "./nuke_db.sh" ]; then
+    bash ./nuke_db.sh
+  else
+    docker volume rm crew_pgdata || true
+    docker volume create crew_pgdata
+    # docker volume rm redis_data || true
+  fi
+else
+  echo ">> Skipping database reset (data preserved)."
+fi
 
 FAILED=0
 

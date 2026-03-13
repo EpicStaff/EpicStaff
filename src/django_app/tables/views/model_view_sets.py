@@ -1,6 +1,57 @@
-from tables.models.python_models import PythonCodeToolConfig, PythonCodeToolConfigField
-from tables.models.webhook_models import WebhookTrigger
+from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.db.models import NOT_PROVIDED, IntegerField, Prefetch
+from django.db.models.functions import Cast
 from django_filters import rest_framework as filters
+from django_filters.rest_framework import (
+    CharFilter,
+    DjangoFilterBackend,
+    FilterSet,
+    NumberFilter,
+)
+from rest_framework import filters as drf_filters
+from rest_framework import mixins, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.response import Response
+from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
+
+from tables.exceptions import (
+    AgentSerializerError,
+    BuiltInToolModificationError,
+    TaskSerializerError,
+)
+from tables.filters import EmbeddingModelFilter, LLMModelFilter, ProviderFilter
+from tables.models import (
+    Agent,
+    AudioTranscriptionNode,
+    ConditionalEdge,
+    Crew,
+    CrewNode,
+    Edge,
+    EmbeddingConfig,
+    EmbeddingModel,
+    FileExtractorNode,
+    Graph,
+    GraphFile,
+    GraphSessionMessage,
+    LLMConfig,
+    LLMModel,
+    Provider,
+    PythonCode,
+    PythonCodeResult,
+    PythonCodeTool,
+    PythonNode,
+    RealtimeModel,
+    StartNode,
+    SubGraphNode,
+    Task,
+    TaskContext,
+    TemplateAgent,
+    ToolConfig,
+    ToolConfigField,
+)
 from tables.models.crew_models import (
     AgentConfiguredTools,
     AgentMcpTools,
@@ -8,9 +59,19 @@ from tables.models.crew_models import (
     TaskMcpTools,
     TaskPythonCodeToolConfigs,
 )
-from tables.exceptions import (
-    TaskSerializerError,
-    AgentSerializerError,
+from tables.models.graph_models import (
+    Condition,
+    ConditionGroup,
+    DecisionTableNode,
+    EndNode,
+    GraphOrganization,
+    GraphOrganizationUser,
+    LLMNode,
+    Organization,
+    OrganizationUser,
+    TelegramTriggerNode,
+    TelegramTriggerNodeField,
+    WebhookTriggerNode,
 )
 from tables.models.llm_models import (
     RealtimeConfig,
@@ -37,6 +98,7 @@ from tables.models.graph_models import (
     DecisionTableNode,
     EndNode,
     LLMNode,
+    NoteNode,
     Organization,
     OrganizationUser,
     GraphOrganization,
@@ -45,15 +107,17 @@ from tables.models.graph_models import (
     TelegramTriggerNodeField,
     WebhookTriggerNode,
 )
+from tables.models.mcp_models import McpTool
+from tables.models.python_models import PythonCodeToolConfig, PythonCodeToolConfigField
 from tables.models.realtime_models import (
-    RealtimeSessionItem,
     RealtimeAgent,
     RealtimeAgentChat,
+    RealtimeSessionItem,
 )
-from tables.filters import EmbeddingModelFilter, LLMModelFilter, ProviderFilter
 from tables.models.tag_models import AgentTag, CrewTag, GraphTag
 from tables.models.vector_models import MemoryDatabase
 from tables.models.mcp_models import McpTool
+from tables.models.webhook_models import NgrokWebhookConfig, WebhookTrigger
 from utils.logger import logger
 from django.db.models import IntegerField, NOT_PROVIDED
 from django.db.models.functions import Cast
@@ -64,6 +128,7 @@ from tables.serializers.model_serializers import (
     AgentTagSerializer,
     DecisionTableNodeSerializer,
     EndNodeSerializer,
+    NoteNodeSerializer,
     SubGraphNodeSerializer,
     GraphLightSerializer,
     GraphTagSerializer,
@@ -86,92 +151,89 @@ from tables.serializers.model_serializers import (
     WebhookTriggerSerializer,
 )
 from tables.serializers.copy_serializers import (
-    AgentCopySerializer,
     AgentCopyDeserializer,
-    CrewCopySerializer,
+    AgentCopySerializer,
     CrewCopyDeserializer,
-    GraphCopySerializer,
+    CrewCopySerializer,
     GraphCopyDeserializer,
+    GraphCopySerializer,
 )
-from tables.serializers.telegram_trigger_serializers import (
-    TelegramTriggerNodeSerializer,
-    TelegramTriggerNodeFieldSerializer,
-)
-from tables.serializers.serializers import (
-    UploadGraphFileSerializer,
-    GraphFileUpdateSerializer,
-    BulkExportSerializer,
-)
-
-from tables.models import (
-    Agent,
-    Task,
-    TemplateAgent,
-    ToolConfig,
-    LLMConfig,
-    EmbeddingModel,
-    LLMModel,
-    Provider,
-    Crew,
-    EmbeddingConfig,
-    ConditionalEdge,
-    CrewNode,
-    Edge,
-    Graph,
-    GraphSessionMessage,
-    PythonCode,
-    PythonCodeResult,
-    PythonCodeTool,
-    PythonNode,
-    FileExtractorNode,
-    SubGraphNode,
-    AudioTranscriptionNode,
-    RealtimeModel,
-    StartNode,
-    ToolConfigField,
-    TaskContext,
-    GraphFile,
-)
-
 
 from tables.serializers.model_serializers import (
-    ConditionalEdgeSerializer,
-    CrewNodeSerializer,
-    EdgeSerializer,
-    GraphSerializer,
-    GraphSessionMessageSerializer,
-    LLMNodeSerializer,
-    MemorySerializer,
-    PythonCodeResultSerializer,
-    PythonCodeSerializer,
-    PythonCodeToolSerializer,
-    PythonNodeSerializer,
-    FileExtractorNodeSerializer,
+    AgentReadSerializer,
+    AgentTagSerializer,
+    AgentWriteSerializer,
     AudioTranscriptionNodeSerializer,
-    TemplateAgentSerializer,
-    LLMConfigSerializer,
-    ProviderSerializer,
-    LLMModelSerializer,
-    EmbeddingModelSerializer,
-    EmbeddingConfigSerializer,
+    ConditionalEdgeSerializer,
+    ConditionGroupSerializer,
+    ConditionSerializer,
+    CrewNodeSerializer,
     CrewSerializer,
-    ToolConfigSerializer,
-    RealtimeModelSerializer,
-    RealtimeTranscriptionConfigSerializer,
-    RealtimeTranscriptionModelSerializer,
-    OrganizationSerializer,
-    OrganizationUserSerializer,
+    CrewTagSerializer,
+    DecisionTableNodeSerializer,
+    EdgeSerializer,
+    EmbeddingConfigSerializer,
+    EmbeddingModelSerializer,
+    EndNodeSerializer,
+    FileExtractorNodeSerializer,
+    GraphFileReadSerializer,
+    GraphLightSerializer,
     GraphOrganizationSerializer,
     GraphOrganizationUserSerializer,
+    GraphSerializer,
+    GraphSessionMessageSerializer,
+    GraphTagSerializer,
+    LLMConfigSerializer,
+    LLMModelSerializer,
+    LLMNodeSerializer,
+    McpToolSerializer,
+    MemorySerializer,
+    NgrokWebhookConfigModelSerializer,
+    OrganizationSerializer,
+    OrganizationUserSerializer,
+    ProviderSerializer,
+    PythonCodeResultSerializer,
+    PythonCodeSerializer,
+    PythonCodeToolConfigFieldSerializer,
+    PythonCodeToolConfigSerializer,
+    PythonCodeToolSerializer,
+    PythonNodeSerializer,
+    RealtimeAgentChatSerializer,
+    RealtimeAgentSerializer,
+    RealtimeConfigSerializer,
+    RealtimeModelSerializer,
+    RealtimeSessionItemSerializer,
+    RealtimeTranscriptionConfigSerializer,
+    RealtimeTranscriptionModelSerializer,
+    StartNodeSerializer,
+    SubGraphNodeSerializer,
+    TaskConfiguredTools,
+    TaskPythonCodeTools,
+    TaskReadSerializer,
+    TaskWriteSerializer,
+    TemplateAgentSerializer,
+    ToolConfigSerializer,
+    WebhookTriggerNodeSerializer,
+    WebhookTriggerSerializer,
 )
-
+from tables.serializers.serializers import (
+    GraphFileUpdateSerializer,
+    UploadGraphFileSerializer,
+    BulkExportSerializer,
+)
+from tables.serializers.telegram_trigger_serializers import (
+    TelegramTriggerNodeFieldSerializer,
+    TelegramTriggerNodeSerializer,
+)
 from tables.services.redis_service import RedisService
+from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.utils.mixins import DeepCopyMixin
 from tables.exceptions import BuiltInToolModificationError
+from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from tables.import_export.enums import EntityType
 from tables.serializers.import_serializers import FileImportSerializer
-
+from utils.logger import logger
 
 redis_service = RedisService()
 
@@ -184,10 +246,9 @@ class BasePredefinedRestrictedViewSet(ModelViewSet):
     """
 
     def get_queryset(self):
-
         if self.action == "destroy":
             return self.queryset.filter(predefined=False)
-        
+
         return self.queryset
 
     def perform_create(self, serializer):
@@ -202,15 +263,14 @@ class BasePredefinedRestrictedViewSet(ModelViewSet):
         validated_data = serializer.validated_data
 
         if instance.predefined:
-            
             # Should not be able to change name
-            if 'name' in validated_data and validated_data['name'] != instance.name:
+            if "name" in validated_data and validated_data["name"] != instance.name:
                 e = f"Cannot change the name of a predefined {self.queryset.model.__name__.lower()}"
                 logger.warning(e)
                 raise ValidationError({"name": e})
 
             # Should not be able to remove predefined
-            if 'predefined' in validated_data and validated_data['predefined'] is False:
+            if "predefined" in validated_data and validated_data["predefined"] is False:
                 e = "Cannot unset predefined status for this object"
                 logger.warning(e)
                 raise ValidationError({"predefined": e})
@@ -229,6 +289,7 @@ class BasePredefinedRestrictedViewSet(ModelViewSet):
             logger.error(e)
             raise PermissionDenied(e)
         instance.delete()
+
 
 class TemplateAgentReadWriteViewSet(ModelViewSet):
     queryset = TemplateAgent.objects.all()
@@ -276,6 +337,7 @@ class EmbeddingModelReadWriteViewSet(BasePredefinedRestrictedViewSet):
     serializer_class = EmbeddingModelSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = EmbeddingModelFilter
+
 
 class EmbeddingConfigReadWriteViewSet(ModelViewSet):
     class EmbeddingConfigFilter(filters.FilterSet):
@@ -706,7 +768,9 @@ class GraphViewSet(viewsets.ModelViewSet, DeepCopyMixin):
 
     def perform_create(self, serializer):
         created_graph = serializer.save()
-        organization, _ = Organization.objects.get_or_create(name="default")
+        organization, _ = Organization.objects.get_or_create(
+            name=DEFAULT_ORGANIZATION_NAME
+        )
         GraphOrganization.objects.create(graph=created_graph, organization=organization)
 
     @action(detail=True, methods=["get"], url_path="files")
@@ -1164,3 +1228,27 @@ class TelegramTriggerNodeViewSet(ModelViewSet):
 class TelegramTriggerNodeFieldViewSet(ModelViewSet):
     queryset = TelegramTriggerNodeField.objects.select_related("telegram_trigger_node")
     serializer_class = TelegramTriggerNodeFieldSerializer
+
+
+class NoteNodeViewSet(ModelViewSet):
+    queryset = NoteNode.objects.all()
+    serializer_class = NoteNodeSerializer
+
+    
+class NgrokWebhookConfigViewSet(ModelViewSet):
+    queryset = NgrokWebhookConfig.objects.all()
+    serializer_class = NgrokWebhookConfigModelSerializer
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        instance = NgrokWebhookConfig.objects.get(pk=response.data["id"])
+        WebhookTriggerService().wait_for_tunnel_url(instance)
+        response.data = self.get_serializer(instance).data
+        return response
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        instance = NgrokWebhookConfig.objects.get(pk=response.data["id"])
+        WebhookTriggerService().wait_for_tunnel_url(instance)
+        response.data = self.get_serializer(instance).data
+        return response

@@ -1,7 +1,7 @@
 from utils import map_variables_to_input
 from copy import deepcopy
 from dotdict import DotDict
-from models.request_models import SubGraphNodeData, GraphData, SubGraphData
+from src.shared.models import SubGraphNodeData, GraphData, SubGraphData
 from models.graph_models import (
     GraphMessage,
     SubGraphFinishMessageData,
@@ -58,7 +58,7 @@ class SubGraphNode:
 
     def _create_temp_session_data(self, initial_state):
         """Create temporary session data for subgraph building."""
-        from models.request_models import SessionData
+        from src.shared.models import SessionData
 
         return SessionData(
             id=self.session_id,
@@ -84,7 +84,7 @@ class SubGraphNode:
     def _build_simple_graph(self) -> CompiledStateGraph:
         """Build simple graph without SessionGraphBuilder."""
         subgraph_data = self.subgraph_data.data
-        self._graph_builder.set_entry_point(subgraph_data.data.entry_point)
+        self._graph_builder.set_entry_point(subgraph_data.data.entrypoint)
         return self._graph_builder.compile()
 
     async def run(self, state, writer: StreamWriter):

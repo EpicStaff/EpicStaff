@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
-from models import CodeResultData
+from src.shared.models import CodeResultData
 from utils.logger import logger
 
 
@@ -62,7 +62,7 @@ class CreateVenvHandler(AbstractHandler):
 
         context["libraries"] = set(context["libraries"])
         # Install libraries
-        predefined_libraries = {"/home/user/root/app/shared/dotdict"}
+        predefined_libraries = {"/app/src/shared/dotdict"}  # TODO: deal with hard coded path
         context["libraries"].update(predefined_libraries)
 
         context["libraries"] = sorted(context["libraries"])

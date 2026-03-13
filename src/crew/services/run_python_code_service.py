@@ -6,7 +6,7 @@ from loguru import logger
 from src.crew.services.graph.events import StopEvent
 from src.crew.utils.singleton_meta import SingletonMeta
 from src.crew.services.redis_service import AsyncPubsubSubscriber, RedisService
-from src.crew.models.request_models import CodeResultData, CodeTaskData, PythonCodeData
+from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
 
 
 class RunPythonCodeService(metaclass=SingletonMeta):

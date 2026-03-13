@@ -6,7 +6,7 @@ from fastapi import APIRouter, WebSocket, Response
 from loguru import logger
 
 from app.client.realtime_client import RealtimeClient, TurnDetectionMode
-from app.core.config import settings
+from app.core.settings import settings
 
 router = APIRouter(prefix="/voice", tags=["voice"])
 
