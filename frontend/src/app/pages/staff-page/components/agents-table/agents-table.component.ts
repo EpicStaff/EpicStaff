@@ -854,6 +854,7 @@ export class AgentsTableComponent {
         if (this.shouldBlockInteraction()) return;
         const before = this.normalizeAdvancedSettings(agentData);
         const dialogRef = this.dialog.open(AdvancedSettingsDialogComponent, {
+            disableClose: true,
             data: {
                 id: agentData.id,
                 agentRole: agentData.role,

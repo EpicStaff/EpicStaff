@@ -1124,7 +1124,7 @@ export class TasksTableComponent implements OnChanges {
         updatedData: Partial<TableFullTask>,
         taskData: TableFullTask
     ): void {
-        const index = this.rowData.findIndex((task) => task === taskData);
+        const index = this.rowData.findIndex((task) => task.id === taskData.id);
         if (index === -1) {
             console.error('Task not found in rowData for update:', taskData);
             return;
@@ -2188,6 +2188,25 @@ export class TasksTableComponent implements OnChanges {
 
         this.projectStateService.addTask(newRow as any);
         this.reindexAndSyncPendingOrders();
+        this.cdr.markForCheck();
+    }
+
+    public applyUpdatedTask(
+        rowKey: string,
+        updated: Partial<TableFullTask>
+    ): void {
+        const idx = this.rowData.findIndex((t) => String(t.id) === rowKey);
+        if (idx === -1) return;
+        const oldRow = this.rowData[idx];
+
+        const newRow: TableFullTask = { ...oldRow, ...updated };
+        this.rowData.splice(idx, 1, newRow);
+        this.gridApi?.applyTransaction({ update: [newRow] });
+
+        this.baselineTasksById?.set(
+            Number(newRow.id),
+            this.normalizeTaskForCompare(newRow as any)
+        );
         this.cdr.markForCheck();
     }
 

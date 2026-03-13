@@ -283,7 +283,10 @@ export class AdvancedSettingsDialogComponent implements OnInit, OnDestroy {
             this.dialogRef.keydownEvents
                 .pipe(takeUntil(this._destroyed$))
                 .subscribe((e) => {
-                    if (e.key === 'Escape') this.closeAndApply();
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        this.closeAndApply();
+                    }
                 });
     }
 

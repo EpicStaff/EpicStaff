@@ -95,6 +95,10 @@ export class TasksSectionComponent implements OnInit, OnDestroy {
     this.table?.applyCreatedTask(tempRowKey, created);
   }
 
+  public applyUpdatedTask(rowKey: string, updated: any): void {
+    this.table?.applyUpdatedTask(rowKey, updated);
+  }
+
   public getCurrentReorderPayload(): Array<{ id: number; order: number }> {
     return this.table?.getCurrentReorderPayload() ?? [];
   }

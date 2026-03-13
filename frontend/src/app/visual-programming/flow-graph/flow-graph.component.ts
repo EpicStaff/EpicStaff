@@ -688,6 +688,7 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
             const startNodeInitialState = startNode.data?.initialState || {};
 
             const dialogRef = this.dialog.open(DomainDialogComponent, {
+                disableClose: true,
                 width: '1000px',
                 height: '800px',
                 maxWidth: '90vw',

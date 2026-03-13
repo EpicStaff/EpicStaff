@@ -1,5 +1,6 @@
 import {
     Component,
+    DestroyRef,
     Inject,
     ViewEncapsulation,
     OnDestroy,
@@ -8,6 +9,7 @@ import {
     signal,
     computed,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { JsonEditorComponent } from '../../../shared/components/json-editor/json-editor.component';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
@@ -287,12 +289,27 @@ export class DomainDialogComponent implements OnDestroy {
     private contextObject: any = null;
     private keyDownDisposable: any = null;
     private cursorDisposable: any = null;
+    private destroyRef = inject(DestroyRef);
 
     constructor(
         private dialogRef: DialogRef<Record<string, unknown> | null>,
         @Inject(DIALOG_DATA) public data: DomainDialogData
     ) {
         this.initializeJsonEditor();
+
+        this.dialogRef.backdropClick
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.close());
+
+        this.dialogRef.keydownEvents
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((e: KeyboardEvent) => {
+                if (e.key === 'Escape') {
+                    if (this.overlayRef?.hasAttached()) return;
+                    e.preventDefault();
+                    this.close();
+                }
+            });
     }
 
     ngOnDestroy(): void {

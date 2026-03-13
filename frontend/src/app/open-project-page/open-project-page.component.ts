@@ -601,6 +601,18 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                 }
             }),
             switchMap(() => update$),
+            tap((updateResults: any[]) => {
+                for (const item of updateResults) {
+                    const ev = item?.ev;
+                    const res = item?.res;
+                    if (ev?.kind === 'update' && res != null) {
+                        this.tasksSection?.applyUpdatedTask(
+                            String(ev.rowKey),
+                            res
+                        );
+                    }
+                }
+            }),
             switchMap(() => {
                 if (!shouldRunReorder) {
                     return of([]);
@@ -855,6 +867,18 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                 }
             }),
             switchMap(() => update$),
+            tap((updateResults: any[]) => {
+                for (const item of updateResults) {
+                    const ev = item?.ev;
+                    const res = item?.res;
+                    if (ev?.kind === 'update' && res != null) {
+                        this.tasksSection?.applyUpdatedTask(
+                            String(ev.rowKey),
+                            res
+                        );
+                    }
+                }
+            }),
             switchMap(() => {
                 if (!shouldRunReorder) {
                     return of([]);

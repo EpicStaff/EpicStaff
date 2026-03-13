@@ -111,11 +111,7 @@ export class AdvancedTaskSettingsDialogComponent implements OnInit {
     }
 
     public ngOnInit(): void {
-        const savedSchema = this.loadSchemaFromLocalStorage();
-
-        if (savedSchema) {
-            this.jsonConfig.set(this.stripTypeAndTitle(savedSchema));
-        } else if (this.taskData.output_model) {
+        if (this.taskData.output_model) {
             try {
                 const outputModel = this.taskData.output_model;
                 const schemaString = JSON.stringify(outputModel, null, 2);
@@ -143,46 +139,6 @@ export class AdvancedTaskSettingsDialogComponent implements OnInit {
             return JSON.stringify(rest, null, 2);
         } catch (e) {
             return schemaString;
-        }
-    }
-
-    private getLocalStorageKey(): string | null {
-        if (!this.taskData.taskId) {
-            return null;
-        }
-        return `task_output_schema_${this.taskData.taskId}`;
-    }
-
-    private loadSchemaFromLocalStorage(): string | null {
-        const key = this.getLocalStorageKey();
-        if (!key) {
-            return null;
-        }
-
-        try {
-            const savedSchema = localStorage.getItem(key);
-            if (savedSchema) {
-                JSON.parse(savedSchema);
-                return savedSchema;
-            }
-        } catch (e) {
-            localStorage.removeItem(key);
-        }
-        return null;
-    }
-
-    private saveSchemaToLocalStorage(): void {
-        const key = this.getLocalStorageKey();
-        if (!key) {
-            return;
-        }
-
-        try {
-            if (this.jsonConfig()) {
-                localStorage.setItem(key, this.jsonConfig());
-            }
-        } catch (e) {
-            console.error('Error saving schema to localStorage:', e);
         }
     }
 
@@ -256,8 +212,6 @@ export class AdvancedTaskSettingsDialogComponent implements OnInit {
             if (this.useOutputModel()) {
                 outputModel = this.tryProcessOutputModel(this.jsonConfig());
             }
-
-            this.saveSchemaToLocalStorage();
 
             const result = {
                 ...this.taskData,
