@@ -1,6 +1,7 @@
 from typing import Literal
 from itertools import chain
 
+from django.db import transaction
 from loguru import logger
 
 from tables.serializers.base_serializer import BaseGraphEntityMixin
@@ -101,6 +102,12 @@ from tables.models import (
 )
 from tables.models import (
     ToolConfig,
+)
+from tables.constants.variables_constants import (
+    DOMAIN_VARIABLES_KEY,
+    DOMAIN_ORGANIZATION_KEY,
+    DOMAIN_USER_KEY,
+    DOMAIN_PERSISTENT_KEY,
 )
 from tables.services.rag_assignment_service import (
     RagAssignmentService,
@@ -1365,6 +1372,119 @@ class StartNodeSerializer(serializers.ModelSerializer):
 
     def get_node_name(self, obj):
         return "__start__"
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        old_variables = instance.variables.copy() if instance.variables else {}
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        graph_organization = GraphOrganization.objects.filter(
+            graph=instance.graph
+        ).first()
+
+        if not graph_organization:
+            return instance
+
+        if self._should_update_persistent(
+            old_variables,
+            instance.variables,
+            graph_organization.persistent_variables or {},
+            DOMAIN_ORGANIZATION_KEY,
+        ):
+            graph_organization.persistent_variables = self._get_persistent_variables(
+                instance.variables, DOMAIN_ORGANIZATION_KEY
+            )
+
+        if self._should_update_persistent(
+            old_variables,
+            instance.variables,
+            graph_organization.user_variables or {},
+            DOMAIN_USER_KEY,
+        ):
+            graph_organization.user_variables = self._get_persistent_variables(
+                instance.variables, DOMAIN_USER_KEY
+            )
+
+        graph_organization.save()
+        return instance
+
+    def validate(self, attrs):
+        variables = attrs.get("variables")
+        actual_variables = variables.get(DOMAIN_VARIABLES_KEY, {})
+
+        persistent_variables = variables.get(DOMAIN_PERSISTENT_KEY, {})
+        organization_variables = persistent_variables.get(DOMAIN_ORGANIZATION_KEY, [])
+        user_variables = persistent_variables.get(DOMAIN_USER_KEY, [])
+
+        for path in organization_variables + user_variables:
+            value = self._get_by_path(actual_variables, path)
+            if value is None:
+                raise ValidationError(
+                    f"Path {path} in {DOMAIN_PERSISTENT_KEY} does not exist in {DOMAIN_VARIABLES_KEY}."
+                )
+
+        return super().validate(attrs)
+
+    def _should_update_persistent(
+        self, old_vars: dict, new_vars: dict, existing_persistent: dict, object_key: str
+    ) -> bool:
+        """
+        Check if we should update persistent storage:
+        1. If tracked paths changed
+        2. If persistent storage is empty but we have paths to track
+        """
+        old_paths = set(old_vars.get(DOMAIN_PERSISTENT_KEY, {}).get(object_key, []))
+        new_paths = set(new_vars.get(DOMAIN_PERSISTENT_KEY, {}).get(object_key, []))
+
+        if old_paths != new_paths:
+            return True
+        if new_paths and not existing_persistent:
+            return True
+
+        return False
+
+    def _get_persistent_variables(self, variables: dict, object_key: str) -> dict:
+        """
+        Extract multiple dot-paths from `variables` and merge them
+        into a single nested dict.
+        """
+        persistent_variables = variables.get(DOMAIN_PERSISTENT_KEY, {}).get(
+            object_key, []
+        )
+        if not persistent_variables:
+            return {}
+
+        result = {}
+        for path in persistent_variables:
+            actual_variables = variables.get(DOMAIN_VARIABLES_KEY)
+            value = self._get_by_path(actual_variables, path)
+            if value is None:
+                continue
+            self._set_by_path(result, path, value)
+
+        return result
+
+    def _get_by_path(self, source: dict, path: str) -> dict | None:
+        """Get value from nested dict by dot-path. Returns None if path not found."""
+        current = source
+        try:
+            for key in path.split("."):
+                current = current[key]
+            return current
+        except (KeyError, TypeError):
+            return None
+
+    def _set_by_path(self, target: dict, path: str, value) -> None:
+        current = target
+        keys = path.split(".")
+
+        for key in keys[:-1]:
+            current = current.setdefault(key, {})
+
+        current[keys[-1]] = value
 
 
 class EndNodeSerializer(serializers.ModelSerializer):

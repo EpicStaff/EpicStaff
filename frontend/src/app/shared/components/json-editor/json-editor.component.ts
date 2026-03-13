@@ -45,6 +45,7 @@ export class JsonEditorComponent implements OnChanges {
   private isUserTyping: boolean = false;
   @Output() public jsonChange = new EventEmitter<string>();
   @Output() public validationChange = new EventEmitter<boolean>();
+  @Output() public editorReady = new EventEmitter<any>();
 
   private monacoEditor: any;
   public jsonIsValid = true;
@@ -137,6 +138,7 @@ export class JsonEditorComponent implements OnChanges {
       }, 100);
     }
 
+    this.editorReady.emit(editor);
     this.cdr.markForCheck();
   }
 
