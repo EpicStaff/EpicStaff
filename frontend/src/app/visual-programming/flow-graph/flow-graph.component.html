@@ -4,6 +4,9 @@
         (mousePosition)="updateMouseTrackerPosition($event)"
         (contextmenu)="onContextMenu($event)"
         fDraggable
+        [vCellSize]="GRID_CELL_SIZE"
+        [hCellSize]="GRID_CELL_SIZE"
+        [fCellSizeWhileDragging]="false"
         class="visual-programming-flow"
         appShortcutListener
         (delete)="onDelete()"
@@ -16,6 +19,7 @@
         (fCreateConnection)="onConnectionAdded($event)"
         (fReassignConnection)="onReassignConnection($event)"
         (fCreateNode)="onCreateNode($event)"
+        (fDragEnded)="onDragEnded()"
     >
         <f-background>
             <f-circle-pattern></f-circle-pattern>

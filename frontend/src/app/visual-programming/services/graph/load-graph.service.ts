@@ -78,6 +78,8 @@ function getDefaultSize(nodeType: NodeType): { width: number; height: number } {
             return { width: 200, height: 150 };
         case NodeType.TABLE:
             return { width: 330, height: 152 };
+        case NodeType.EDGE:
+            return { width: 300, height: 180 };
         default:
             return { width: 330, height: 60 };
     }

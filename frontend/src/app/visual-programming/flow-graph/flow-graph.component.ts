@@ -111,6 +111,9 @@ import { FlowShortcutsButtonComponent } from '../components/flow-shortcuts-butto
     ],
 })
 export class FlowGraphComponent implements OnInit, OnDestroy {
+    public readonly GRID_CELL_SIZE = 20;
+    private readonly draggedNodeIds = new Set<string>();
+
     @Input() flowState!: FlowModel;
     @Input() nodesMode!: 'project-graph' | 'flow-graph';
     @Input() currentFlowId: number | null = null;
@@ -428,12 +431,17 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
         let pastePosition: IRect;
 
         if (this.mouseCursorPosition) {
-            pastePosition = this.fFlowComponent.getPositionInFlow(
+            const rawPastePos = this.fFlowComponent.getPositionInFlow(
                 PointExtensions.initialize(
                     this.mouseCursorPosition.x,
                     this.mouseCursorPosition.y
                 )
             );
+            pastePosition = {
+                ...rawPastePos,
+                x: this.snapToGrid(rawPastePos.x),
+                y: this.snapToGrid(rawPastePos.y),
+            };
         } else {
             console.warn(
                 'No current mouse position available, using default paste position.'
@@ -518,10 +526,14 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
             // Create a copy of the node with updated position and category
             const updatedNode: NodeModel = {
                 ...nodeData,
-                position: {
-                    x: event.rect.x,
-                    y: event.rect.y,
-                },
+                position: this.findFreePosition(
+                    {
+                        x: this.snapToGrid(event.rect.x),
+                        y: this.snapToGrid(event.rect.y),
+                    },
+                    this.getCollisionBounds(nodeData),
+                    this.flowService.nodes()
+                ),
                 category: 'web', // Change category from 'vscode' to 'web'
             };
 
@@ -588,8 +600,8 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
             const tableData = event.data?.table;
             const conditionGroups = tableData?.condition_groups ?? [];
             const headerHeight = 60;
-            const rowHeight = 46;
-            const validGroupsCount = conditionGroups.filter((g: any) => g.valid).length;
+            const rowHeight = 48;
+            const validGroupsCount = conditionGroups.filter((g: any) => g.valid !== false).length;
             const hasDefaultRow = 1;
             const hasErrorRow = 1;
             const totalRows = Math.max(
@@ -601,6 +613,8 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
                 width: 330,
                 height: Math.max(calculatedHeight, 152),
             };
+        } else if (event.type === NodeType.EDGE) {
+            nodeSize = { width: 300, height: 180 };
         } else {
             nodeSize = {
                 width: 330,
@@ -635,11 +649,38 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
             };
         }
 
+        const nodeBounds = this.getCollisionBounds({
+            id: newNodeId,
+            backendId: null,
+            category: 'web',
+            position: {
+                x: this.snapToGrid(position.x),
+                y: this.snapToGrid(position.y),
+            },
+            ports: [],
+            parentId: null,
+            type: event.type as NodeModel['type'],
+            node_name: newNodeName,
+            data: nodeData,
+            color: nodeColor,
+            icon: nodeIcon,
+            input_map: {},
+            output_variable_path: null,
+            size: nodeSize,
+        });
+
         const newNode: NodeModel = {
             id: newNodeId,
             backendId: null,
             category: 'web',
-            position: { x: position.x, y: position.y },
+            position: this.findFreePosition(
+                {
+                    x: this.snapToGrid(position.x),
+                    y: this.snapToGrid(position.y),
+                },
+                nodeBounds,
+                this.flowService.nodes()
+            ),
             ports,
             parentId: null,
             type: event.type as NodeModel['type'],
@@ -738,15 +779,171 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
         }
     }
 
+    private snapToGrid(value: number): number {
+        return Math.round(value / this.GRID_CELL_SIZE) * this.GRID_CELL_SIZE;
+    }
+
+    private rectOverlaps(
+        aPos: { x: number; y: number },
+        aBounds: { width: number; height: number; offsetX: number; offsetY: number },
+        bPos: { x: number; y: number },
+        bBounds: { width: number; height: number; offsetX: number; offsetY: number }
+    ): boolean {
+        const aLeft = aPos.x + aBounds.offsetX;
+        const aTop = aPos.y + aBounds.offsetY;
+        const aRight = aLeft + aBounds.width;
+        const aBottom = aTop + aBounds.height;
+        const bLeft = bPos.x + bBounds.offsetX;
+        const bTop = bPos.y + bBounds.offsetY;
+        const bRight = bLeft + bBounds.width;
+        const bBottom = bTop + bBounds.height;
+
+        return (
+            aLeft < bRight &&
+            aRight > bLeft &&
+            aTop < bBottom &&
+            aBottom > bTop
+        );
+    }
+
+    private getCollisionBounds(node: NodeModel): {
+        width: number;
+        height: number;
+        offsetX: number;
+        offsetY: number;
+    } {
+        switch (node.type) {
+            case NodeType.EDGE:
+                return {
+                    width: 340,
+                    height: 200,
+                    offsetX: 0,
+                    offsetY: -70,
+                };
+
+            case NodeType.TABLE: {
+                const tableData = (node.data as any)?.table;
+                const conditionGroups = (tableData?.condition_groups ?? []) as any[];
+                const validGroupsCount = conditionGroups.filter(
+                    (g: any) => g.valid !== false
+                ).length;
+                const totalRows = Math.max(validGroupsCount + 2, 2);
+                const calculatedHeight = 60 + 48 * totalRows;
+                const baseHeight = Math.max(node.size.height, calculatedHeight, 152);
+
+                return {
+                    width: node.size.width + 10,
+                    height: baseHeight + 70,
+                    offsetX: 0,
+                    offsetY: -12,
+                };
+            }
+
+            default:
+                return {
+                    width: node.size.width + 8,
+                    height: node.size.height + 8,
+                    offsetX: 0,
+                    offsetY: -4,
+                };
+        }
+    }
+
+    private findFreePosition(
+        proposed: { x: number; y: number },
+        bounds: { width: number; height: number; offsetX: number; offsetY: number },
+        existingNodes: NodeModel[]
+    ): { x: number; y: number } {
+        const overlaps = (pos: { x: number; y: number }) =>
+            existingNodes.some((n) =>
+                this.rectOverlaps(pos, bounds, n.position, this.getCollisionBounds(n))
+            );
+
+        if (!overlaps(proposed)) return proposed;
+
+        const MAX_STEPS = 10;
+        for (let row = 0; row <= MAX_STEPS; row++) {
+            for (let col = row === 0 ? 1 : 0; col <= MAX_STEPS; col++) {
+                const candidate = {
+                    x: proposed.x + col * this.GRID_CELL_SIZE,
+                    y: proposed.y + row * this.GRID_CELL_SIZE,
+                };
+                if (!overlaps(candidate)) return candidate;
+            }
+        }
+
+        return proposed; // fallback: never block creation
+    }
+
+    private findNearestFreePosition(
+        proposed: { x: number; y: number },
+        bounds: { width: number; height: number; offsetX: number; offsetY: number },
+        otherNodes: NodeModel[]
+    ): { x: number; y: number } {
+        const overlaps = (pos: { x: number; y: number }) =>
+            otherNodes.some((n) =>
+                this.rectOverlaps(pos, bounds, n.position, this.getCollisionBounds(n))
+            );
+
+        if (!overlaps(proposed)) return proposed;
+
+        const MAX_R = 10;
+        const candidates: Array<[number, number]> = [];
+        for (let dx = -MAX_R; dx <= MAX_R; dx++) {
+            for (let dy = -MAX_R; dy <= MAX_R; dy++) {
+                if (dx === 0 && dy === 0) continue;
+                candidates.push([dx, dy]);
+            }
+        }
+        candidates.sort(
+            (a, b) => a[0] * a[0] + a[1] * a[1] - (b[0] * b[0] + b[1] * b[1])
+        );
+
+        for (const [dx, dy] of candidates) {
+            const candidate = {
+                x: proposed.x + dx * this.GRID_CELL_SIZE,
+                y: proposed.y + dy * this.GRID_CELL_SIZE,
+            };
+            if (!overlaps(candidate)) return candidate;
+        }
+
+        return proposed; // fallback: never block movement
+    }
+
     public onNodePositionChanged(
         event: IPoint,
         node: NodeModel
     ): void {
+        this.draggedNodeIds.add(node.id);
         const updatedNode = {
             ...node,
-            position: { x: event.x, y: event.y },
+            position: {
+                x: this.snapToGrid(event.x),
+                y: this.snapToGrid(event.y),
+            },
         };
         this.flowService.updateNode(updatedNode);
+    }
+
+    public onDragEnded(): void {
+        for (const id of this.draggedNodeIds) {
+            const currentNodes = this.flowService.nodes();
+            const current = currentNodes.find((n) => n.id === id);
+            if (!current) continue;
+            const otherNodes = currentNodes.filter((n) => n.id !== id);
+            const freePos = this.findNearestFreePosition(
+                current.position,
+                this.getCollisionBounds(current),
+                otherNodes
+            );
+            if (
+                freePos.x !== current.position.x ||
+                freePos.y !== current.position.y
+            ) {
+                this.flowService.updateNode({ ...current, position: freePos });
+            }
+        }
+        this.draggedNodeIds.clear();
     }
 
     public onNodeSizeChanged(
