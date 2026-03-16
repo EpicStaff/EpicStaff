@@ -615,6 +615,14 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                     )
                 )
                 : of([]);
+
+        console.log('taskUpdates', taskUpdates);
+console.log('deleteEvents', deleteEvents);
+console.log('createEvents', createEvents);
+console.log('updateEvents', updateEvents);
+console.log('preCreateReorderPayload', preCreateReorderPayload);
+console.log('finalReorderPayload', this.tasksSection?.getCurrentReorderPayload?.());
+
         const flushTasks$ = delete$.pipe(
             switchMap(() => create$),
             tap((createResults: any[]) => {
@@ -1066,11 +1074,11 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
     }
 
     private sanitizePendingTaskContexts(): void {
-        const currentRows = this.tasksSection?.getCurrentRows?.() ?? [];
-        const validTaskIds = new Set(
-            currentRows
-                .map((row: any) => Number(row?.id))
-                .filter((id: number) => Number.isFinite(id))
+        const deletedIds = new Set(
+            Array.from(this.pendingTaskUpdates.values())
+                .filter((ev) => ev.kind === 'delete')
+                .map((ev) => Number(ev.payload?.id))
+                .filter((id) => Number.isFinite(id))
         );
 
         for (const [rowKey, ev] of this.pendingTaskUpdates.entries()) {
@@ -1083,13 +1091,11 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                 continue;
             }
 
-            const sanitized = ctxList.filter((id: unknown) =>
-                validTaskIds.has(Number(id))
+            const sanitized = ctxList.filter(
+                (id: unknown) => !deletedIds.has(Number(id))
             );
 
-            const changed = sanitized.length !== ctxList.length;
-
-            if (!changed) {
+            if (sanitized.length === ctxList.length) {
                 continue;
             }
 
