@@ -852,11 +852,13 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
     } {
         switch (node.type) {
             case NodeType.EDGE:
+                // SVG diamond bounding box is exactly 300×180.
+                // 4px padding on all sides, same convention as regular nodes.
                 return {
-                    width: 340,
-                    height: 200,
-                    offsetX: 0,
-                    offsetY: -70,
+                    width: 308,
+                    height: 188,
+                    offsetX: -4,
+                    offsetY: -4,
                 };
 
             case NodeType.TABLE: {
@@ -869,11 +871,14 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
                 const calculatedHeight = 60 + 48 * totalRows;
                 const baseHeight = Math.max(node.size.height, calculatedHeight, 152);
 
+                // 4px padding on top/bottom, same convention as regular nodes.
+                // The previous +70/−12 created a 58px phantom zone below the table's
+                // visual bottom, blocking nodes from fitting in legitimate gaps.
                 return {
                     width: node.size.width + 10,
-                    height: baseHeight + 70,
+                    height: baseHeight + 8,
                     offsetX: 0,
-                    offsetY: -12,
+                    offsetY: -4,
                 };
             }
 
@@ -925,7 +930,7 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
 
         if (!overlaps(proposed)) return proposed;
 
-        const MAX_R = 10;
+        const MAX_R = 20;
         const candidates: Array<[number, number]> = [];
         for (let dx = -MAX_R; dx <= MAX_R; dx++) {
             for (let dy = -MAX_R; dy <= MAX_R; dy++) {
@@ -1004,7 +1009,6 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
     public onZoomInNode(node: NodeModel): void {
         this.fCanvasComponent.centerGroupOrNode(node.id, true);
     }
-
 
     // Add this method to handle double-click on nodes from search
     public onNodeDoubleClickAndZoom(data: {
