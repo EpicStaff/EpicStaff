@@ -615,10 +615,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                     )
                 )
                 : of([]);
-
         const flushTasks$ = delete$.pipe(
-            switchMap(() => preCreateReorder$),
-
             switchMap(() => create$),
             tap((createResults: any[]) => {
                 for (const item of createResults) {
@@ -627,6 +624,17 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
 
                     if (ev?.kind === 'create' && res?.id != null) {
                         this.tasksSection?.applyCreatedTask(ev.rowKey, res);
+                    }
+                }
+            }),
+            switchMap(() => update$),
+            tap((updateResults: any[]) => {
+                for (const item of updateResults) {
+                    const ev = item?.ev;
+                    const res = item?.res;
+
+                    if (ev?.kind === 'update' && res != null) {
+                        this.tasksSection?.applyUpdatedTask(String(ev.rowKey), res);
                     }
                 }
             }),
@@ -646,23 +654,8 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                 return forkJoin(
                     reorderPayload.map((x) =>
                         this.tasksService.patchTaskOrder(x.id, x.order)
-                    )
+                    )      
                 );
-            }),
-
-            switchMap(() => update$),
-            tap((updateResults: any[]) => {
-                for (const item of updateResults) {
-                    const ev = item?.ev;
-                    const res = item?.res;
-
-                    if (ev?.kind === 'update' && res != null) {
-                        this.tasksSection?.applyUpdatedTask(
-                            String(ev.rowKey),
-                            res
-                        );
-                    }
-                }
             })
         );
 
@@ -935,8 +928,6 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                 : of([]);
 
         const flushTasks$ = delete$.pipe(
-            switchMap(() => preCreateReorder$),
-
             switchMap(() => create$),
             tap((createResults: any[]) => {
                 for (const item of createResults) {
@@ -948,11 +939,22 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                     }
                 }
             }),
+            switchMap(() => update$),
+            tap((updateResults: any[]) => {
+                for (const item of updateResults) {
+                    const ev = item?.ev;
+                    const res = item?.res;
+
+                    if (ev?.kind === 'update' && res != null) {
+                        this.tasksSection?.applyUpdatedTask(String(ev.rowKey), res);
+                    }
+                }
+            }),
 
             switchMap(() => {
                 if (!shouldRunReorder) {
                     return of([]);
-                }
+                }   
 
                 const reorderPayload =
                     this.tasksSection?.getCurrentReorderPayload() ?? [];
@@ -964,23 +966,8 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                 return forkJoin(
                     reorderPayload.map((x) =>
                         this.tasksService.patchTaskOrder(x.id, x.order)
-                    )
+                    )         
                 );
-            }),
-
-            switchMap(() => update$),
-            tap((updateResults: any[]) => {
-                for (const item of updateResults) {
-                    const ev = item?.ev;
-                    const res = item?.res;
-
-                    if (ev?.kind === 'update' && res != null) {
-                        this.tasksSection?.applyUpdatedTask(
-                            String(ev.rowKey),
-                            res
-                        );
-                    }
-                }
             })
         );
 
