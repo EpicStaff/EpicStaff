@@ -17,7 +17,6 @@ export class CrewNodeService {
     private configService: ConfigService
   ) {}
 
-  // Dynamically retrieve the API URL from ConfigService
   private get apiUrl(): string {
     return this.configService.apiUrl + 'crewnodes/';
   }

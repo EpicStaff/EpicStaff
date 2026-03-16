@@ -35,8 +35,6 @@ export const DEFAULT_FILE_EXTRACTOR_NODE_PORTS: BasePort[] = [
             'table-in',
             'llm-out-left',
             'file-extractor-in',
-            'webhook-trigger-in',
-            'telegram-trigger-in',
             'end-in',
             'subgraph-in',
             'audio-to-text-in',

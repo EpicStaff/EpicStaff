@@ -9,6 +9,7 @@ from tables.models import (
     DecisionTableNode,
     SubGraphNode,
 )
+from tables.models.graph_models import NoteNode
 from tables.import_export.enums import NodeType, EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
@@ -27,6 +28,7 @@ from tables.import_export.serializers.graph import (
     ConditionGroupImportSerializer,
     ConditionImportSerializer,
     SubgraphNodeImportSerializer,
+    NoteNodeImportSerializer,
 )
 
 
@@ -99,13 +101,18 @@ def import_decision_table_node(
     serializer.is_valid(raise_exception=True)
     decision_table_node = serializer.save()
 
-    for data in condition_groups_data:
-        conditions_data = data.pop("conditions", [])
-        data["decision_table_node_id"] = decision_table_node.id
+    for group_data in condition_groups_data:
+        conditions_data = group_data.pop("conditions", [])
+        group_data["decision_table_node_id"] = decision_table_node.id
 
-        serializer = ConditionGroupImportSerializer(data=data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
+        group_serializer = ConditionGroupImportSerializer(data=group_data)
+        group_serializer.is_valid(raise_exception=True)
+        condition_group = group_serializer.save()
+
+        for condition_data in conditions_data:
+            condition_serializer = ConditionImportSerializer(data=condition_data)
+            condition_serializer.is_valid(raise_exception=True)
+            condition_serializer.save(condition_group=condition_group)
 
     return decision_table_node
 
@@ -191,5 +198,9 @@ NODE_HANDLERS = {
         "serializer": EndNodeImportSerializer,
         "relation": "end_node",
         "import_hook": import_end_node,
+    },
+    NodeType.NOTE_NODE: {
+        "serializer": NoteNodeImportSerializer,
+        "relation": "note_node_list",
     },
 }

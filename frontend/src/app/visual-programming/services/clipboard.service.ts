@@ -30,10 +30,8 @@ export class ClipboardService {
 
     public setClipboardData(data: ClipboardData): void {
         this.clipboard = data;
-        console.log('Clipboard data set:', this.clipboard);
     }
 
-    // Get clipboard data
     public getClipboardData(): ClipboardData | null {
         return this.clipboard;
     }
@@ -43,14 +41,11 @@ export class ClipboardService {
             !selection ||
             selection.fNodeIds.length === 0
         ) {
-            console.warn('No selected nodes to copy.');
             return;
         }
 
-        // 1) Get all nodes from the current flow state
         const allNodes: NodeModel[] = this.flowService.getFlowState().nodes;
 
-        // Get selected nodes (excluding Start nodes)
         const selectedNodes: NodeModel[] = allNodes.filter(
             (node) =>
                 selection.fNodeIds.includes(node.id) &&
@@ -58,11 +53,9 @@ export class ClipboardService {
         );
 
         if (selectedNodes.length === 0) {
-            console.warn('No valid nodes found for copying.');
             return;
         }
 
-        // 2) Compute bounding box for all selected elements
         const minX: number = Math.min(
             ...selectedNodes.map((el) => el.position.x)
         );
@@ -70,12 +63,10 @@ export class ClipboardService {
             ...selectedNodes.map((el) => el.position.y)
         );
 
-        // 3) Build sets of selected element IDs
         const selectedNodeIdSet = new Set<string>(
             selectedNodes.map((n) => n.id)
         );
 
-        // 4) Get relevant connections
         const allConnections: ConnectionModel[] =
             this.flowService.getFlowState().connections;
         const selectedConnections: ConnectionModel[] = allConnections.filter(
@@ -84,7 +75,6 @@ export class ClipboardService {
                 const targetParsed = parsePortId(conn.targetPortId);
                 if (!sourceParsed || !targetParsed) return false;
 
-                // Check if both ends of the connection are in selected nodes
                 const sourceInSelection =
                     selectedNodeIdSet.has(sourceParsed.nodeId);
                 const targetInSelection =
@@ -94,11 +84,9 @@ export class ClipboardService {
             }
         );
 
-        // 5) Store deep clones in clipboard to avoid ID conflicts
         this.clipboard = {
             nodes: selectedNodes.map((node) => ({
                 ...node,
-                // Create a deep clone to ensure no shared references
                 data: node.data
                     ? JSON.parse(JSON.stringify(node.data))
                     : node.data,
@@ -108,8 +96,6 @@ export class ClipboardService {
             connections: selectedConnections.map((conn) => ({ ...conn })),
             boundingBox: { minX, minY },
         };
-
-        console.log('Copied nodes and connections:', this.clipboard);
     }
 
     public paste(mousePosition: { x: number; y: number }): {

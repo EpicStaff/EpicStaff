@@ -47,7 +47,6 @@ import {
     SubGraphNodeModel,
     WebhookTriggerNodeModel,
     TelegramTriggerNodeModel,
-    EdgeNodeModel,
     NodeModel,
 } from '../../core/models/node.model';
 import { ResolvedConditionalEdge, NodeUIMetadata, getUIMetadataForComparison } from './save-graph.types';
@@ -58,10 +57,6 @@ import { EndNodeModel } from '../../core/models/node.model';
 // Shared UI-metadata comparison helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Extracts the metadata object from a backend node for comparison.
- * Falls back to a zeroed-out object so a missing metadata never equals a real one.
- */
 function getBackendMetadataForComparison(node: { metadata?: any }): NodeUIMetadata {
     const m = node.metadata ?? {};
     return {
@@ -71,6 +66,13 @@ function getBackendMetadataForComparison(node: { metadata?: any }): NodeUIMetada
         size: m['size'] ?? { width: 0, height: 0 },
         parentId: m['parentId'] ?? null,
     };
+}
+
+/** Resolves a frontend UUID to a backend ID using the node list. */
+function resolveBackendId(uuid: string | null, allNodes: NodeModel[]): number | null {
+    if (!uuid) return null;
+    const match = allNodes.find(n => n.id === uuid);
+    return match?.backendId ?? null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -270,47 +272,36 @@ export function getTelegramTriggerNodeForComparisonFromUI(node: TelegramTriggerN
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ConditionalEdge
+// ConditionalEdge (now uses source_node_id and stores then_node_id in metadata)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function getConditionalEdgeForComparisonFromBackend(node: ConditionalEdge) {
     return {
-        source: node.source || null,
-        node_name: (node.metadata as any)?.['node_name'] ?? '',
+        source_node_id: node.source_node_id,
         libraries: node.python_code.libraries,
         code: (node.python_code.code || '').trimEnd(),
         entrypoint: node.python_code.entrypoint,
         input_map: node.input_map,
-        then: node.then,
+        then_node_id: (node.metadata as any)?.['then_node_id'] ?? null,
         metadata: getBackendMetadataForComparison(node),
     };
 }
 
 export function getConditionalEdgeForComparisonFromUI(node: ResolvedConditionalEdge) {
     return {
-        source: node.sourceName || null,
-        node_name: node.edgeNode.node_name,
+        source_node_id: node.sourceBackendId,
         libraries: node.edgeNode.data.python_code.libraries,
         code: (node.edgeNode.data.python_code.code || '').trimEnd(),
         entrypoint: node.edgeNode.data.python_code.entrypoint,
         input_map: node.edgeNode.input_map || {},
-        then: node.targetName,
+        then_node_id: node.targetBackendId,
         metadata: getUIMetadataForComparison(node.edgeNode),
     };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DecisionTableNode
+// DecisionTableNode (now uses _node_id fields instead of node name strings)
 // ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Resolves a node ID (UUID) or already-a-name to a node_name using the UI node list.
- */
-function resolveNodeName(idOrName: string | null, allNodes: NodeModel[]): string | null {
-    if (!idOrName) return null;
-    const match = allNodes.find(n => n.id === idOrName);
-    return match ? match.node_name : idOrName;
-}
 
 export function getDecisionTableNodeForComparisonFromBackend(node: GetDecisionTableNodeRequest) {
     return {
@@ -324,11 +315,11 @@ export function getDecisionTableNodeForComparisonFromBackend(node: GetDecisionTa
                 condition: c.condition,
             })),
             manipulation: g.manipulation,
-            next_node: g.next_node,
+            next_node_id: g.next_node_id,
             order: g.order,
         })),
-        default_next_node: node.default_next_node,
-        next_error_node: node.next_error_node,
+        default_next_node_id: node.default_next_node_id,
+        next_error_node_id: node.next_error_node_id,
         metadata: getBackendMetadataForComparison(node),
     };
 }
@@ -350,15 +341,15 @@ export function getDecisionTableNodeForComparisonFromUI(
                 condition: c.condition,
             })),
             manipulation: g.manipulation,
-            next_node: resolveNodeName(g.next_node, allNodes),
+            next_node_id: resolveBackendId(g.next_node, allNodes),
             order: typeof g.order === 'number' ? g.order : idx + 1,
         }));
 
     return {
         node_name: node.node_name,
         condition_groups: groups,
-        default_next_node: resolveNodeName(tableData?.default_next_node, allNodes),
-        next_error_node: resolveNodeName(tableData?.next_error_node, allNodes),
+        default_next_node_id: resolveBackendId(tableData?.default_next_node, allNodes),
+        next_error_node_id: resolveBackendId(tableData?.next_error_node, allNodes),
         metadata: getUIMetadataForComparison(node as any),
     };
 }
@@ -408,4 +399,3 @@ export function getNoteNodeForComparisonFromUI(node: NoteNodeModel) {
         },
     };
 }
-

@@ -5,6 +5,7 @@ import { catchError, map, switchMap } from 'rxjs/operators';
 import { FlowsApiService } from '../../../features/flows/services/flows-api.service';
 import { GraphDto, UpdateGraphDtoRequest } from '../../../features/flows/models/graph.model';
 import { FlowModel } from '../../core/models/flow.model';
+import { NodeModel, DecisionTableNodeModel } from '../../core/models/node.model';
 import { ToastService } from '../../../services/notifications/toast.service';
 
 import { ConditionalEdgeService } from '../../../pages/flows-page/components/flow-visual-programming/services/conditional-edge.service';
@@ -21,11 +22,13 @@ import { SubGraphNodeService } from '../../../pages/flows-page/components/flow-v
 import { DecisionTableNodeService } from '../../../pages/flows-page/components/flow-visual-programming/services/decision-table-node.service';
 import { NoteNodeService } from '../../../pages/flows-page/components/flow-visual-programming/services/note-node.service';
 
-import { NodeDiff, GraphDiff, NodeDiffResult, CreatedNodeMapping } from './save-graph.types';
+import { NodeDiff, NodeDiffResult, CreatedNodeMapping, NodeOnlyDiff, ConnectionDiff } from './save-graph.types';
 import {
     extractPreviousState,
     extractNewState,
-    getGraphDiff,
+    getNodeOnlyDiff,
+    getConnectionDiff,
+    buildUuidToBackendIdMap,
     buildCrewPayload,
     buildPythonPayload,
     buildLLMPayload,
@@ -64,23 +67,9 @@ export class GraphUpdateService {
     ) {}
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Private helpers — RxJS execution of diff operations
+    // Private helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Executes delete / create / update operations from a diff in parallel.
-     *
-     * Returns `NodeDiffResult` which includes `createdMappings` — a list of
-     * `{ uiNodeId, backendId }` pairs so callers can patch UI nodes with their
-     * newly-assigned backend IDs after a POST.
-     *
-     * @param diff - The diff result containing nodes to delete, create, and update
-     * @param deleteOperation - Function that performs HTTP DELETE for a backend node
-     * @param createOperation - Function that performs HTTP POST for a UI node
-     * @param updateOperation - Function that performs HTTP PUT for a UI node (takes backendId + UI node)
-     * @param getUINodeId - Extracts the UI node's UUID (`id`) from the generic TUI so we can
-     *                      map the POST response's backend `id` back to the correct UI node.
-     */
     private executeNodeDiff<TBackend extends { id: number }, TUI>(
         diff: NodeDiff<TBackend, TUI>,
         deleteOperation: (node: TBackend) => Observable<any>,
@@ -125,7 +114,7 @@ export class GraphUpdateService {
     }
 
     private applyEdgeDiff(
-        diff: GraphDiff['edges'],
+        diff: ConnectionDiff['edges'],
         graphId: number
     ): Observable<any[]> {
         const ops: Observable<any>[] = [
@@ -140,18 +129,12 @@ export class GraphUpdateService {
         return ops.length ? forkJoin(ops) : of([]);
     }
 
-
-    /**
-     * Extracts only truly UI-only elements for storage in `graph.metadata`.
-     * Notes are now backend-managed, so metadata only stores an empty state
-     * (kept for backwards compatibility / future UI-only nodes).
-     */
     private buildGraphMetadata(_flowState: FlowModel): Partial<FlowModel> {
         return { nodes: [], connections: [] };
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Public API
+    // Public API — Two-phase save
     // ─────────────────────────────────────────────────────────────────────────
 
     public saveGraph(
@@ -162,19 +145,64 @@ export class GraphUpdateService {
         updatedNodes: Record<string, any>;
         createdMappings: CreatedNodeMapping[];
     }> {
-        // ── 1. Extract what is currently saved in the backend ────────────────
         const previousState = extractPreviousState(graph);
-
-        // ── 2. Extract what the user currently has in the UI ─────────────────
         const newState = extractNewState(flowState);
-
-        // ── 3. Get the diff (pure, no side effects) ───────────────────────────
-        const diff = getGraphDiff(previousState, newState);
+        const nodeDiff = getNodeOnlyDiff(previousState, newState);
 
         const { id: graphId } = graph;
         const allNodes = newState.allNodes;
 
-        // ── 4. Apply the diff — send only what changed to the backend ─────────
+        // ── Phase 1: Create/update/delete all nodes ──────────────────────────
+        return this.executePhase1(nodeDiff, graphId, allNodes).pipe(
+            switchMap(phase1Results => {
+                const phase1Mappings = this.collectMappings(phase1Results);
+
+                // Build complete UUID → backendId map (existing + newly created)
+                const idMap = buildUuidToBackendIdMap(allNodes, phase1Mappings);
+
+                // ── Phase 2: Create/update/delete edges + conditional edges + DT refs ──
+                const connDiff = getConnectionDiff(
+                    previousState.edges,
+                    previousState.conditionalEdges,
+                    newState.edges,
+                    newState.conditionalEdges,
+                    idMap
+                );
+
+                return this.executePhase2(connDiff, graphId, newState.decisionTableNodes, allNodes, idMap).pipe(
+                    switchMap(phase2Results => {
+                        const phase2Mappings = phase2Results.conditionalEdges.createdMappings;
+                        const allCreatedMappings = [...phase1Mappings, ...phase2Mappings];
+
+                        // ── Update graph metadata ────────────────────────────
+                        const updateRequest: UpdateGraphDtoRequest = {
+                            id: graph.id,
+                            name: graph.name,
+                            description: graph.description,
+                            metadata: this.buildGraphMetadata(flowState),
+                        };
+
+                        return this.graphService.updateGraph(graph.id, updateRequest).pipe(
+                            map(updatedGraph => ({
+                                graph: updatedGraph,
+                                updatedNodes: { ...phase1Results, ...phase2Results },
+                                createdMappings: allCreatedMappings,
+                            }))
+                        );
+                    })
+                );
+            }),
+            catchError(err => throwError(() => err))
+        );
+    }
+
+    // ── Phase 1: All node-type operations in parallel ────────────────────────
+
+    private executePhase1(
+        diff: NodeOnlyDiff,
+        graphId: number,
+        allNodes: any[]
+    ): Observable<Record<string, NodeDiffResult>> {
         return forkJoin({
             crewNodes: this.executeNodeDiff(
                 diff.crewNodes,
@@ -232,13 +260,6 @@ export class GraphUpdateService {
                 (id, n) => this.telegramTriggerService.updateTelegramTriggerNode(id, buildTelegramPayload(n, graphId)),
                 n => n.id
             ),
-            conditionalEdges: this.executeNodeDiff(
-                diff.conditionalEdges,
-                n => this.conditionalEdgeService.deleteConditionalEdge(n.id),
-                n => this.conditionalEdgeService.createConditionalEdge(buildCondEdgePayload(n, graphId)),
-                (id, n) => this.conditionalEdgeService.updateConditionalEdge(id, buildCondEdgePayload(n, graphId)),
-                n => n.edgeNode.id
-            ),
             decisionTableNodes: this.executeNodeDiff(
                 diff.decisionTableNodes,
                 n => this.decisionTableNodeService.deleteDecisionTableNode(n.id.toString()),
@@ -246,7 +267,6 @@ export class GraphUpdateService {
                 (id, n) => this.decisionTableNodeService.updateDecisionTableNode(id, buildDecisionTablePayload(n, graphId, allNodes)),
                 n => n.id
             ),
-            edges: this.applyEdgeDiff(diff.edges, graphId),
             endNodes: this.executeNodeDiff(
                 diff.endNodes,
                 n => this.endNodeService.deleteEndNode(n.id),
@@ -261,44 +281,46 @@ export class GraphUpdateService {
                 (id, n) => this.noteNodeService.updateNoteNode(id, buildNoteNodePayload(n, graphId)),
                 n => n.id
             ),
-        }).pipe(
-            // ── 5. Collect all created node mappings (uiNodeId → backendId) ───
-            switchMap(results => {
-                // Gather createdMappings from every node-type diff result
-                const allCreatedMappings: CreatedNodeMapping[] = [
-                    ...results.crewNodes.createdMappings,
-                    ...results.pythonNodes.createdMappings,
-                    ...results.llmNodes.createdMappings,
-                    ...results.fileExtractorNodes.createdMappings,
-                    ...results.audioToTextNodes.createdMappings,
-                    ...results.subGraphNodes.createdMappings,
-                    ...results.webhookTriggerNodes.createdMappings,
-                    ...results.telegramTriggerNodes.createdMappings,
-                    ...results.conditionalEdges.createdMappings,
-                    ...results.decisionTableNodes.createdMappings,
-                    ...results.endNodes.createdMappings,
-                    ...results.noteNodes.createdMappings,
-                ];
+        });
+    }
 
-                // ── 6. Update the graph metadata ──────────────────────────────
-                const updateRequest: UpdateGraphDtoRequest = {
-                        id: graph.id,
-                        name: graph.name,
-                        description: graph.description,
-                    metadata: this.buildGraphMetadata(flowState),
-                };
+    // ── Phase 2: Edge + conditional edge + decision table ref updates ────────
 
-                return this.graphService.updateGraph(graph.id, updateRequest).pipe(
-                    map(updatedGraph => {
-                                return {
-                                    graph: updatedGraph,
-                            updatedNodes: results,
-                            createdMappings: allCreatedMappings,
-                                };
-                            })
-                        );
-            }),
-            catchError(err => throwError(() => err))
-        );
+    private executePhase2(
+        diff: ConnectionDiff,
+        graphId: number,
+        dtNodes: DecisionTableNodeModel[],
+        allNodes: NodeModel[],
+        idMap: Map<string, number>
+    ): Observable<{ edges: any[]; conditionalEdges: NodeDiffResult; dtRefUpdates: any[] }> {
+        // Build DT reference update operations for nodes that have backend IDs
+        const dtRefOps: Observable<any>[] = dtNodes
+            .filter(n => n.backendId != null)
+            .map(n => {
+                const payload = buildDecisionTablePayload(n, graphId, allNodes, idMap);
+                return this.decisionTableNodeService.updateDecisionTableNode(
+                    n.backendId!, payload
+                ).pipe(catchError(err => throwError(() => err)));
+            });
+
+        return forkJoin({
+            edges: this.applyEdgeDiff(diff.edges, graphId),
+            conditionalEdges: this.executeNodeDiff(
+                diff.conditionalEdges,
+                n => this.conditionalEdgeService.deleteConditionalEdge(n.id),
+                n => this.conditionalEdgeService.createConditionalEdge(buildCondEdgePayload(n, graphId)),
+                (id, n) => this.conditionalEdgeService.updateConditionalEdge(id, buildCondEdgePayload(n, graphId)),
+                n => n.edgeNode.id
+            ),
+            dtRefUpdates: dtRefOps.length ? forkJoin(dtRefOps) : of([]),
+        });
+    }
+
+    private collectMappings(results: Record<string, NodeDiffResult>): CreatedNodeMapping[] {
+        const mappings: CreatedNodeMapping[] = [];
+        for (const key of Object.keys(results)) {
+            mappings.push(...(results[key]?.createdMappings ?? []));
+        }
+        return mappings;
     }
 }

@@ -38,8 +38,6 @@ export const DEFAULT_PYTHON_NODE_PORTS: BasePort[] = [
             'end-in',
             'subgraph-in',
             'audio-to-text-in',
-            'webhook-trigger-in',
-            'telegram-trigger-in',
         ],
         position: 'right',
         color: '#ffcf3f',

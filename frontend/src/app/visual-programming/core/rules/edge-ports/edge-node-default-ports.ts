@@ -4,7 +4,7 @@ export const DEFAULT_EDGE_NODE_PORTS: BasePort[] = [
     {
         port_type: 'input',
         role: 'edge-in',
-        multiple: true,
+        multiple: false,
         label: 'In',
         allowedConnections: [
             'project-out',
@@ -34,8 +34,7 @@ export const DEFAULT_EDGE_NODE_PORTS: BasePort[] = [
             'python-in',
             'llm-out-left',
             'file-extractor-in',
-            'webhook-trigger-in',
-            'telegram-trigger-in',
+            'table-in',
             'end-in',
             'subgraph-in',
             'audio-to-text-in',

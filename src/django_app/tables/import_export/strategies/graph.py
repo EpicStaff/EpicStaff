@@ -8,7 +8,9 @@ from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.serializers.graph import (
     GraphImportSerializer,
     EdgeImportSerializer,
+    ConditionalEdgeImportSerializer,
 )
+from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.utils import ensure_unique_identifier
@@ -59,13 +61,21 @@ class GraphStrategy(EntityImportExportStrategy):
 
         nodes_data = import_data.pop("nodes", [])
         edges_data = import_data.pop("edge_list", [])
+        conditional_edges_data = import_data.pop("conditional_edge_list", [])
 
         serializer = self.serializer_class(data=import_data)
         serializer.is_valid(raise_exception=True)
         graph = serializer.save()
 
+        # Pass 1: create all nodes and build the old→new node ID mapping
         self._create_nodes(nodes_data, graph, id_mapper)
-        self._create_edges(edges_data, graph)
+
+        # Pass 2: create edges/conditional-edges with remapped node IDs,
+        # then fix stale node-ID references in decision tables and metadata
+        self._create_edges(edges_data, graph, id_mapper)
+        self._create_conditional_edges(conditional_edges_data, graph, id_mapper)
+        self._remap_decision_table_references(graph, id_mapper)
+        self._update_metadata_node_ids(graph, id_mapper)
 
         return graph
 
@@ -87,24 +97,107 @@ class GraphStrategy(EntityImportExportStrategy):
 
     def _create_nodes(
         self, nodes_data: list, graph: Graph, id_mapper: IDMapper
-    ) -> dict:
+    ) -> None:
         for node_data in nodes_data:
             node_type = node_data.pop("node_type")
+            old_id = node_data.get("id")
 
             config = NODE_HANDLERS[node_type]
 
             if "import_hook" in config:
-                config["import_hook"](graph, node_data, id_mapper)
+                node = config["import_hook"](graph, node_data, id_mapper)
             else:
-                self._default_import_node(graph, node_data, config)
+                node = self._default_import_node(graph, node_data, config)
 
-    def _create_edges(self, edges_data: list, graph: Graph):
+            if old_id and node:
+                id_mapper.map(EntityType.NODE, old_id, node.id)
+
+    def _create_edges(self, edges_data: list, graph: Graph, id_mapper: IDMapper):
         for edge_data in edges_data:
             edge_data["graph"] = graph.id
+            edge_data["start_node_id"] = id_mapper.get(
+                EntityType.NODE, edge_data["start_node_id"]
+            )
+            edge_data["end_node_id"] = id_mapper.get(
+                EntityType.NODE, edge_data["end_node_id"]
+            )
 
             serializer = EdgeImportSerializer(data=edge_data)
             serializer.is_valid(raise_exception=True)
             serializer.save()
+
+    def _create_conditional_edges(
+        self, conditional_edges_data: list, graph: Graph, id_mapper: IDMapper
+    ):
+        for edge_data in conditional_edges_data:
+            python_code_data = edge_data.pop("python_code", None)
+
+            python_code_serializer = PythonCodeImportSerializer(data=python_code_data)
+            python_code_serializer.is_valid(raise_exception=True)
+            python_code = python_code_serializer.save()
+
+            edge_data["graph"] = graph.id
+            edge_data["python_code_id"] = python_code.id
+            edge_data["source_node_id"] = id_mapper.get(
+                EntityType.NODE, edge_data["source_node_id"]
+            )
+
+            serializer = ConditionalEdgeImportSerializer(data=edge_data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+
+    def _remap_decision_table_references(self, graph: Graph, id_mapper: IDMapper):
+        for dt_node in graph.decision_table_node_list.all():
+            updated = False
+
+            if dt_node.default_next_node_id:
+                new_id = id_mapper.get_or_none(
+                    EntityType.NODE, dt_node.default_next_node_id
+                )
+                if new_id:
+                    dt_node.default_next_node_id = new_id
+                    updated = True
+
+            if dt_node.next_error_node_id:
+                new_id = id_mapper.get_or_none(
+                    EntityType.NODE, dt_node.next_error_node_id
+                )
+                if new_id:
+                    dt_node.next_error_node_id = new_id
+                    updated = True
+
+            if updated:
+                dt_node.save(
+                    update_fields=["default_next_node_id", "next_error_node_id"]
+                )
+
+            for group in dt_node.condition_groups.all():
+                if group.next_node_id:
+                    new_id = id_mapper.get_or_none(EntityType.NODE, group.next_node_id)
+                    if new_id:
+                        group.next_node_id = new_id
+                        group.save(update_fields=["next_node_id"])
+
+    def _update_metadata_node_ids(self, graph: Graph, id_mapper: IDMapper):
+        metadata = graph.metadata
+        if not metadata:
+            return
+
+        nodes = metadata.get("nodes", [])
+        changed = False
+
+        for node in nodes:
+            data = node.get("data") or {}
+            node_id = data.get("id")
+            if node_id is not None:
+                new_id = id_mapper.get_or_none(EntityType.NODE, node_id)
+                if new_id and new_id != node_id:
+                    data["id"] = new_id
+                    changed = True
+
+        if changed:
+            graph.metadata = metadata
+            graph.save(update_fields=["metadata"])
 
     def _default_import_node(self, graph: Graph, node_data: dict, config: dict):
         """Default import logic for simple nodes"""

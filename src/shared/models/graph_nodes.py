@@ -76,6 +76,7 @@ class DecisionTableNodeData(BaseModel):
 
 
 class EndNodeData(BaseModel):
+    node_name: str
     output_map: dict[str, Any]
 
     model_config = ConfigDict(from_attributes=True)
@@ -91,7 +92,7 @@ class EdgeData(BaseModel):
 class ConditionalEdgeData(BaseModel):
     source: str
     python_code: PythonCodeData
-    then: str | None
+    then: str | None = None
     input_map: dict[str, Any]
 
     model_config = ConfigDict(from_attributes=True)

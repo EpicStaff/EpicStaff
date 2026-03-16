@@ -1,5 +1,4 @@
 from langgraph.types import StreamWriter
-
 from src.crew.models.graph_models import GraphMessage
 from src.crew.models.state import State
 from src.crew.services.graph.events import StopEvent
@@ -16,10 +15,11 @@ class EndNode(BaseNode):
         session_id: int,
         stop_event: StopEvent,
         output_map: dict,
+        node_name: str = "__end_node__",
     ):
         super().__init__(
             session_id=session_id,
-            node_name="__end_node__",
+            node_name=node_name,
             stop_event=stop_event,
         )
         self.output_map = output_map

@@ -4,8 +4,9 @@
  * Responsibilities:
  *   1. extractPreviousState  — pull the current backend state out of GraphDto
  *   2. extractNewState       — pull the current UI state out of FlowModel
- *   3. getGraphDiff           — compare the two states, return what changed
- *   4. Payload builders      — convert UI nodes into API request bodies
+ *   3. getNodeOnlyDiff       — compare node-only states (Phase 1)
+ *   4. getConnectionDiff     — compare edge/cond-edge states after IDs are known (Phase 2)
+ *   5. Payload builders      — convert UI nodes into API request bodies
  */
 
 import { isEqual } from 'lodash';
@@ -52,9 +53,13 @@ import {
     NodeDiff,
     GraphPreviousState,
     GraphNewState,
-    GraphDiff,
+    NodeOnlyDiff,
+    ConnectionDiff,
     ResolvedConditionalEdge,
+    ResolvedUiEdge,
+    UiEdge,
     NodeUIMetadata,
+    CreatedNodeMapping,
     getUIMetadataForComparison,
 } from './save-graph.types';
 import {
@@ -84,32 +89,21 @@ import {
     getNoteNodeForComparisonFromUI,
 } from './save-graph.comparators';
 
-// getUIMetadataForComparison is imported from save-graph.types.ts
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Generic diff utility
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Diffs two lists by matching UI nodes to backend nodes via `backendId`.
- *
- * - UI node with `backendId != null` that matches a backend `id` → compare for update
- * - UI node with `backendId == null` → create (new node)
- * - Backend node whose `id` wasn't claimed by any UI node → delete
- *
- * Uses deep equality (lodash isEqual) to decide whether a matched pair
- * actually changed and needs an update request.
  */
 export function diffByKey<TBackend extends { id: number }, TUI>(
     backendNodes: TBackend[],
     uiNodes: TUI[],
-    /** Extract the backend integer ID from a UI node (typically `n.backendId`). Returns null for new nodes. */
     getUIBackendId: (node: TUI) => number | null,
     toComparableFromBackend: (node: TBackend) => unknown,
     toComparableFromUI: (node: TUI) => unknown,
     nodeTypeName: string = 'Node'
 ): NodeDiff<TBackend, TUI> {
-    // Map backend nodes by their integer ID
     const backendMap = new Map<number, TBackend>();
     for (const node of backendNodes) {
         backendMap.set(node.id, node);
@@ -124,14 +118,12 @@ export function diffByKey<TBackend extends { id: number }, TUI>(
         const bid = getUIBackendId(uiNode);
 
         if (bid == null) {
-            // New node — no backend counterpart
             toCreate.push(uiNode);
             continue;
         }
 
         const backendNode = backendMap.get(bid);
         if (!backendNode) {
-            // backendId was set but the backend no longer has it — treat as create
             toCreate.push(uiNode);
             continue;
         }
@@ -147,7 +139,6 @@ export function diffByKey<TBackend extends { id: number }, TUI>(
         }
     }
 
-    // Backend nodes not matched by any UI node → delete
     for (const [id, backendNode] of backendMap) {
         if (!matchedBackendIds.has(id)) {
             toDelete.push(backendNode);
@@ -183,17 +174,15 @@ export function extractPreviousState(graph: GraphDto): GraphPreviousState {
 // Step 2 — Extract new state (UI FlowModel → structured object)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Resolves a node ID (UUID) or already-a-name to a node_name using the UI node list. */
-function resolveNodeName(idOrName: string | null, allNodes: NodeModel[]): string | null {
-    if (!idOrName) return null;
-    const match = allNodes.find(n => n.id === idOrName);
-    return match ? match.node_name : idOrName;
+/** Resolves a frontend UUID to a backend ID using the node list. */
+function resolveBackendId(uuid: string | null, allNodes: NodeModel[]): number | null {
+    if (!uuid) return null;
+    const match = allNodes.find(n => n.id === uuid);
+    return match?.backendId ?? null;
 }
 
 /**
- * Resolves each EdgeNodeModel to its source and target node names.
- * - source: the node that connects INTO this edge node (where the edge node is the target)
- * - target: the node that this edge node connects TO (where the edge node is the source)
+ * Resolves each EdgeNodeModel to its source and target node UUIDs and backend IDs.
  */
 function resolveConditionalEdges(
     edgeNodes: EdgeNodeModel[],
@@ -213,22 +202,24 @@ function resolveConditionalEdges(
 
         return {
             edgeNode,
-            sourceName: sourceNode?.node_name ?? null,
-            targetName: targetNode?.node_name ?? null,
+            sourceNodeUuid: sourceNode?.id ?? null,
+            targetNodeUuid: targetNode?.id ?? null,
+            sourceBackendId: sourceNode?.backendId ?? null,
+            targetBackendId: targetNode?.backendId ?? null,
         };
     });
 }
 
 /**
- * Converts valid flow connections into flat {start_key, end_key} pairs,
- * filtering out connections that involve EDGE or TABLE nodes.
+ * Converts valid flow connections into UiEdge entries with UUIDs and backend IDs,
+ * filtering out connections that involve EDGE or TABLE source nodes.
  */
 function resolveEdges(
     connections: ConnectionModel[],
     allNodes: NodeModel[]
-): Array<{ start_key: string; end_key: string }> {
+): UiEdge[] {
     const nodeById = new Map(allNodes.map(n => [n.id, n]));
-    const result: Array<{ start_key: string; end_key: string }> = [];
+    const result: UiEdge[] = [];
 
     for (const conn of connections) {
         const source = nodeById.get(conn.sourceNodeId);
@@ -236,7 +227,12 @@ function resolveEdges(
         if (!source || !target) continue;
         if (source.type === NodeType.EDGE || target.type === NodeType.EDGE) continue;
         if (source.type === NodeType.TABLE) continue;
-        result.push({ start_key: source.node_name, end_key: target.node_name });
+        result.push({
+            sourceNodeUuid: source.id,
+            targetNodeUuid: target.id,
+            sourceBackendId: source.backendId,
+            targetBackendId: target.backendId,
+        });
     }
 
     return result;
@@ -266,128 +262,90 @@ export function extractNewState(flowState: FlowModel): GraphNewState {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Step 3 — Compute the diff between previous and new state
+// Step 3a — Node-only diff (Phase 1)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// EndNodes now use the same diffByKey pattern as other nodes
-
-export function getGraphDiff(
+export function getNodeOnlyDiff(
     previous: GraphPreviousState,
     current: GraphNewState
-): GraphDiff {
+): NodeOnlyDiff {
     const allNodes = current.allNodes;
 
     const crewNodes = diffByKey(
-        previous.crewNodes,
-        current.crewNodes,
+        previous.crewNodes, current.crewNodes,
         n => n.backendId,
-        getCrewNodeForComparisonFromBackend,
-        getCrewNodeForComparisonFromUI,
+        getCrewNodeForComparisonFromBackend, getCrewNodeForComparisonFromUI,
         'CrewNode'
     );
 
     const pythonNodes = diffByKey(
-        previous.pythonNodes,
-        current.pythonNodes,
+        previous.pythonNodes, current.pythonNodes,
         n => n.backendId,
-        getPythonNodeForComparisonFromBackend,
-        getPythonNodeForComparisonFromUI,
+        getPythonNodeForComparisonFromBackend, getPythonNodeForComparisonFromUI,
         'PythonNode'
     );
 
     const llmNodes = diffByKey(
-        previous.llmNodes,
-        current.llmNodes,
+        previous.llmNodes, current.llmNodes,
         n => n.backendId,
-        getLLMNodeForComparisonFromBackend,
-        getLLMNodeForComparisonFromUI,
+        getLLMNodeForComparisonFromBackend, getLLMNodeForComparisonFromUI,
         'LLMNode'
     );
 
     const fileExtractorNodes = diffByKey(
-        previous.fileExtractorNodes,
-        current.fileExtractorNodes,
+        previous.fileExtractorNodes, current.fileExtractorNodes,
         n => n.backendId,
-        getFileExtractorNodeForComparisonFromBackend,
-        getFileExtractorNodeForComparisonFromUI,
+        getFileExtractorNodeForComparisonFromBackend, getFileExtractorNodeForComparisonFromUI,
         'FileExtractorNode'
     );
 
     const audioToTextNodes = diffByKey(
-        previous.audioToTextNodes,
-        current.audioToTextNodes,
+        previous.audioToTextNodes, current.audioToTextNodes,
         n => n.backendId,
-        getAudioToTextNodeForComparisonFromBackend,
-        getAudioToTextNodeForComparisonFromUI,
+        getAudioToTextNodeForComparisonFromBackend, getAudioToTextNodeForComparisonFromUI,
         'AudioToTextNode'
     );
 
     const subGraphNodes = diffByKey(
-        previous.subGraphNodes,
-        current.subGraphNodes,
+        previous.subGraphNodes, current.subGraphNodes,
         n => n.backendId,
-        getSubGraphNodeForComparisonFromBackend,
-        getSubGraphNodeForComparisonFromUI,
+        getSubGraphNodeForComparisonFromBackend, getSubGraphNodeForComparisonFromUI,
         'SubGraphNode'
     );
 
     const webhookTriggerNodes = diffByKey(
-        previous.webhookTriggerNodes,
-        current.webhookTriggerNodes,
+        previous.webhookTriggerNodes, current.webhookTriggerNodes,
         n => n.backendId,
-        getWebhookTriggerNodeForComparisonFromBackend,
-        getWebhookTriggerNodeForComparisonFromUI,
+        getWebhookTriggerNodeForComparisonFromBackend, getWebhookTriggerNodeForComparisonFromUI,
         'WebhookTriggerNode'
     );
 
     const telegramTriggerNodes = diffByKey(
-        previous.telegramTriggerNodes,
-        current.telegramTriggerNodes,
+        previous.telegramTriggerNodes, current.telegramTriggerNodes,
         n => n.backendId,
-        getTelegramTriggerNodeForComparisonFromBackend,
-        getTelegramTriggerNodeForComparisonFromUI,
+        getTelegramTriggerNodeForComparisonFromBackend, getTelegramTriggerNodeForComparisonFromUI,
         'TelegramTriggerNode'
     );
 
-    const conditionalEdges = diffByKey(
-        previous.conditionalEdges,
-        current.conditionalEdges,
-        n => n.edgeNode.backendId,
-        getConditionalEdgeForComparisonFromBackend,
-        getConditionalEdgeForComparisonFromUI,
-        'ConditionalEdge'
-    );
-
     const decisionTableNodes = diffByKey(
-        previous.decisionTableNodes,
-        current.decisionTableNodes,
+        previous.decisionTableNodes, current.decisionTableNodes,
         n => n.backendId,
         getDecisionTableNodeForComparisonFromBackend,
         n => getDecisionTableNodeForComparisonFromUI(n, allNodes),
         'DecisionTableNode'
     );
 
-    // Edges: no update logic (key = start+end, so a "changed" edge is a delete+create)
-    const backendEdgeMap = new Map(previous.edges.map(e => [`${e.start_key}__${e.end_key}`, e]));
-    const uiEdgeKeys = new Set(current.edges.map(e => `${e.start_key}__${e.end_key}`));
-    const edgesToDelete = previous.edges.filter(e => !uiEdgeKeys.has(`${e.start_key}__${e.end_key}`));
-    const edgesToCreate = current.edges.filter(e => !backendEdgeMap.has(`${e.start_key}__${e.end_key}`));
-
     const endNodes = diffByKey(
-        previous.endNodes,
-        current.endNodes,
+        previous.endNodes, current.endNodes,
         n => n.backendId,
-        getEndNodeForComparisonFromBackend,
-        getEndNodeForComparisonFromUI,
+        getEndNodeForComparisonFromBackend, getEndNodeForComparisonFromUI,
         'EndNode'
     );
 
     const noteNodes = diffByKey(
-        previous.noteNodes,
-        current.noteNodes,
+        previous.noteNodes, current.noteNodes,
         n => n.backendId,
-        getNoteNodeForComparisonFromBackend,
-        getNoteNodeForComparisonFromUI,
+        getNoteNodeForComparisonFromBackend, getNoteNodeForComparisonFromUI,
         'NoteNode'
     );
 
@@ -400,11 +358,97 @@ export function getGraphDiff(
         subGraphNodes,
         webhookTriggerNodes,
         telegramTriggerNodes,
-        conditionalEdges,
         decisionTableNodes,
-        edges: { toDelete: edgesToDelete, toCreate: edgesToCreate },
         endNodes,
         noteNodes,
+    };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Step 3b — Connection diff (Phase 2 — after node backend IDs are resolved)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Builds a complete UUID → backendId map from the current node list
+ * plus any newly-created node mappings from Phase 1.
+ */
+export function buildUuidToBackendIdMap(
+    allNodes: NodeModel[],
+    createdMappings: CreatedNodeMapping[]
+): Map<string, number> {
+    const map = new Map<string, number>();
+    for (const node of allNodes) {
+        if (node.backendId != null) {
+            map.set(node.id, node.backendId);
+        }
+    }
+    for (const m of createdMappings) {
+        map.set(m.uiNodeId, m.backendId);
+    }
+    return map;
+}
+
+/**
+ * Updates ResolvedConditionalEdges with backend IDs from the complete map.
+ */
+export function resolveConditionalEdgeIds(
+    condEdges: ResolvedConditionalEdge[],
+    idMap: Map<string, number>
+): ResolvedConditionalEdge[] {
+    return condEdges.map(re => ({
+        ...re,
+        sourceBackendId: re.sourceNodeUuid ? (idMap.get(re.sourceNodeUuid) ?? re.sourceBackendId) : re.sourceBackendId,
+        targetBackendId: re.targetNodeUuid ? (idMap.get(re.targetNodeUuid) ?? re.targetBackendId) : re.targetBackendId,
+    }));
+}
+
+/**
+ * Resolves UI edges to backend IDs and computes the edge diff (create/delete only).
+ */
+export function getConnectionDiff(
+    previousEdges: GraphPreviousState['edges'],
+    previousCondEdges: GraphPreviousState['conditionalEdges'],
+    currentEdges: UiEdge[],
+    currentCondEdges: ResolvedConditionalEdge[],
+    idMap: Map<string, number>
+): ConnectionDiff {
+    // ── Resolve UI edge backend IDs ──
+    const resolvedUiEdges: ResolvedUiEdge[] = currentEdges
+        .map(e => ({
+            start_node_id: idMap.get(e.sourceNodeUuid) ?? e.sourceBackendId,
+            end_node_id: idMap.get(e.targetNodeUuid) ?? e.targetBackendId,
+        }))
+        .filter((e): e is ResolvedUiEdge => e.start_node_id != null && e.end_node_id != null);
+
+    // ── Edge diff (create/delete only, no update) ──
+    const backendEdgeMap = new Map(
+        previousEdges.map(e => [`${e.start_node_id}__${e.end_node_id}`, e])
+    );
+    const uiEdgeKeys = new Set(
+        resolvedUiEdges.map(e => `${e.start_node_id}__${e.end_node_id}`)
+    );
+    const edgesToDelete = previousEdges.filter(
+        e => !uiEdgeKeys.has(`${e.start_node_id}__${e.end_node_id}`)
+    );
+    const edgesToCreate = resolvedUiEdges.filter(
+        e => !backendEdgeMap.has(`${e.start_node_id}__${e.end_node_id}`)
+    );
+
+    // ── Conditional edge diff ──
+    const resolvedCondEdges = resolveConditionalEdgeIds(currentCondEdges, idMap);
+    const conditionalEdgesRaw = diffByKey(
+        previousCondEdges,
+        resolvedCondEdges,
+        n => n.edgeNode.backendId,
+        getConditionalEdgeForComparisonFromBackend,
+        getConditionalEdgeForComparisonFromUI,
+        'ConditionalEdge'
+    );
+    const conditionalEdges = conditionalEdgesRaw;
+
+    return {
+        conditionalEdges,
+        edges: { toDelete: edgesToDelete, toCreate: edgesToCreate },
     };
 }
 
@@ -503,19 +547,18 @@ export function buildTelegramPayload(n: TelegramTriggerNodeModel, graphId: numbe
 export function buildCondEdgePayload(re: ResolvedConditionalEdge, graphId: number): CreateConditionalEdgeRequest {
     return {
         graph: graphId,
-        source: re.sourceName ?? '',
-        then: re.targetName,
+        source_node_id: re.sourceBackendId ?? null,
         python_code: re.edgeNode.data.python_code,
         input_map: re.edgeNode.input_map || {},
         metadata: {
             ...getUIMetadataForComparison(re.edgeNode),
-            node_name: re.edgeNode.node_name,
+            then_node_id: re.targetBackendId ?? null,
         },
     };
 }
 
-export function buildEdgePayload(e: { start_key: string; end_key: string }, graphId: number): CreateEdgeRequest {
-    return { start_key: e.start_key, end_key: e.end_key, graph: graphId };
+export function buildEdgePayload(e: ResolvedUiEdge, graphId: number): CreateEdgeRequest {
+    return { start_node_id: e.start_node_id, end_node_id: e.end_node_id, graph: graphId };
 }
 
 export function buildEndNodePayload(n: EndNodeModel, graphId: number): CreateEndNodeRequest {
@@ -526,10 +569,21 @@ export function buildEndNodePayload(n: EndNodeModel, graphId: number): CreateEnd
     };
 }
 
+/** Resolves a UUID to a backend ID using idMap first (Phase 2), then falling back to allNodes. */
+function resolveBackendIdWithMap(uuid: string | null, allNodes: NodeModel[], idMap?: Map<string, number>): number | null {
+    if (!uuid) return null;
+    if (idMap) {
+        const mapped = idMap.get(uuid);
+        if (mapped != null) return mapped;
+    }
+    return resolveBackendId(uuid, allNodes);
+}
+
 export function buildDecisionTablePayload(
     node: DecisionTableNodeModel,
     graphId: number,
-    allNodes: NodeModel[]
+    allNodes: NodeModel[],
+    idMap?: Map<string, number>
 ): CreateDecisionTableNodeRequest {
     const tableData = (node as any).data?.table;
 
@@ -545,7 +599,7 @@ export function buildDecisionTablePayload(
                 condition: c.condition,
             })),
             manipulation: g.manipulation,
-            next_node: resolveNodeName(g.next_node, allNodes),
+            next_node_id: resolveBackendIdWithMap(g.next_node, allNodes, idMap),
             order: typeof g.order === 'number' ? g.order : idx + 1,
         }));
 
@@ -553,8 +607,8 @@ export function buildDecisionTablePayload(
         graph: graphId,
         node_name: node.node_name,
         condition_groups: conditionGroups,
-        default_next_node: resolveNodeName(tableData?.default_next_node, allNodes),
-        next_error_node: resolveNodeName(tableData?.next_error_node, allNodes),
+        default_next_node_id: resolveBackendIdWithMap(tableData?.default_next_node, allNodes, idMap),
+        next_error_node_id: resolveBackendIdWithMap(tableData?.next_error_node, allNodes, idMap),
         metadata: getUIMetadataForComparison(node),
     };
 }
