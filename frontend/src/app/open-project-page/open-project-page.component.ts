@@ -769,11 +769,31 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
     }
 
     public onTaskPending(ev: TaskPendingEvent): void {
-        if (ev.payload == null) { 
+        if (ev.payload == null) {
             this.pendingTaskUpdates.delete(ev.rowKey);
             this.recomputeUnsaved();
             this.cdr.markForCheck();
             return;
+        }
+
+        if (ev.kind === 'delete') {
+            const deletedId = Number(ev.payload.id);
+            for (const [rowKey, pendingEv] of this.pendingTaskUpdates.entries()) {
+                if (pendingEv.kind === 'create' || pendingEv.kind === 'update') {
+                    const ctxList = pendingEv.payload?.task_context_list;
+                    if (Array.isArray(ctxList) && ctxList.some((id: unknown) => Number(id) === deletedId)) {
+                        this.pendingTaskUpdates.set(rowKey, {
+                            ...pendingEv,
+                            payload: {
+                                ...pendingEv.payload,
+                                task_context_list: ctxList.filter(
+                                    (id: unknown) => Number(id) !== deletedId
+                                ),
+                            },
+                        });
+                    }
+                }
+            }
         }
 
         this.pendingTaskUpdates.set(ev.rowKey, ev);
