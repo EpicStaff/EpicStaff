@@ -533,6 +533,8 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
             return;
         }   
 
+        this.sanitizePendingTaskContexts();
+
         const appliedUpdate = this.pendingProjectUpdate;
         const agentUpdates = Array.from(this.pendingAgentUpdates.values());
         const taskUpdates = Array.from(this.pendingTaskUpdates.values());
@@ -552,9 +554,19 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
             deleteEvents.length > 0
                 ? forkJoin(
                     deleteEvents.map((ev) =>
-                        this.tasksService
-                            .deleteTask(ev.payload.id)
-                            .pipe(map((res) => ({ ev, res })))
+                        this.tasksService.deleteTask(ev.payload.id).pipe(
+                            map((res) => ({ ev, res })),
+                            catchError((error) => {
+                                if (
+                                    error instanceof HttpErrorResponse &&
+                                    error.status === 404
+                                ) {
+                                    return of({ ev, res: null });
+                                }
+
+                                throw error;
+                            })
+                        )   
                     )
                 )
                 : of([]);
@@ -577,7 +589,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                         this.tasksService
                             .updateTask(ev.payload)
                             .pipe(map((res) => ({ ev, res })))
-                    )
+                        )
                 )
                 : of([]);
 
@@ -588,7 +600,25 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                 ev.kind === 'reorder'
         );
 
+        const fullReorderPayload =
+            shouldRunReorder
+                ? this.tasksSection?.getCurrentReorderPayload() ?? []
+                : [];
+
+        const preCreateReorderPayload = fullReorderPayload;
+
+        const preCreateReorder$ =
+            preCreateReorderPayload.length > 0
+                ? forkJoin(
+                    preCreateReorderPayload.map((x) =>
+                        this.tasksService.patchTaskOrder(x.id, x.order)
+                    )
+                )
+                : of([]);
+
         const flushTasks$ = delete$.pipe(
+            switchMap(() => preCreateReorder$),
+
             switchMap(() => create$),
             tap((createResults: any[]) => {
                 for (const item of createResults) {
@@ -600,19 +630,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                     }
                 }
             }),
-            switchMap(() => update$),
-            tap((updateResults: any[]) => {
-                for (const item of updateResults) {
-                    const ev = item?.ev;
-                    const res = item?.res;
-                    if (ev?.kind === 'update' && res != null) {
-                        this.tasksSection?.applyUpdatedTask(
-                            String(ev.rowKey),
-                            res
-                        );
-                    }
-                }
-            }),
+
             switchMap(() => {
                 if (!shouldRunReorder) {
                     return of([]);
@@ -630,6 +648,21 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                         this.tasksService.patchTaskOrder(x.id, x.order)
                     )
                 );
+            }),
+
+            switchMap(() => update$),
+            tap((updateResults: any[]) => {
+                for (const item of updateResults) {
+                    const ev = item?.ev;
+                    const res = item?.res;
+
+                    if (ev?.kind === 'update' && res != null) {
+                        this.tasksSection?.applyUpdatedTask(
+                            String(ev.rowKey),
+                            res
+                        );
+                    }
+                }
             })
         );
 
@@ -815,6 +848,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         return of(false);
     }
 
+        this.sanitizePendingTaskContexts();
         const appliedUpdate = this.pendingProjectUpdate;
         const agentUpdates = Array.from(this.pendingAgentUpdates.values());
         const taskUpdates = Array.from(this.pendingTaskUpdates.values()).filter(ev => ev.payload != null);
@@ -838,9 +872,19 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
             deleteEvents.length > 0
                 ? forkJoin(
                     deleteEvents.map((ev) =>
-                        this.tasksService
-                            .deleteTask(ev.payload.id)
-                            .pipe(map((res) => ({ ev, res })))
+                        this.tasksService.deleteTask(ev.payload.id).pipe(
+                            map((res) => ({ ev, res })),
+                            catchError((error) => {
+                                if (
+                                    error instanceof HttpErrorResponse &&
+                                    error.status === 404
+                                ) {
+                                    return of({ ev, res: null });
+                                }
+
+                                throw error;
+                            })
+                        )   
                     )
                 )
                 : of([]);
@@ -863,18 +907,36 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                         this.tasksService
                             .updateTask(ev.payload)
                             .pipe(map((res) => ({ ev, res })))
-                    )
+                        )
                 )
                 : of([]);
-        
+
         const shouldRunReorder = taskUpdates.some(
             (ev) =>
                 ev.kind === 'create' ||
                 ev.kind === 'delete' ||
                 ev.kind === 'reorder'
-        );
+            );
+
+        const fullReorderPayload =
+            shouldRunReorder
+                ? this.tasksSection?.getCurrentReorderPayload() ?? []
+                : [];
+
+        const preCreateReorderPayload = fullReorderPayload;
+
+        const preCreateReorder$ =
+            preCreateReorderPayload.length > 0
+                ? forkJoin(
+                    preCreateReorderPayload.map((x) =>
+                        this.tasksService.patchTaskOrder(x.id, x.order)
+                    )
+                )
+                : of([]);
 
         const flushTasks$ = delete$.pipe(
+            switchMap(() => preCreateReorder$),
+
             switchMap(() => create$),
             tap((createResults: any[]) => {
                 for (const item of createResults) {
@@ -886,19 +948,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                     }
                 }
             }),
-            switchMap(() => update$),
-            tap((updateResults: any[]) => {
-                for (const item of updateResults) {
-                    const ev = item?.ev;
-                    const res = item?.res;
-                    if (ev?.kind === 'update' && res != null) {
-                        this.tasksSection?.applyUpdatedTask(
-                            String(ev.rowKey),
-                            res
-                        );
-                    }
-                }
-            }),
+
             switchMap(() => {
                 if (!shouldRunReorder) {
                     return of([]);
@@ -916,6 +966,21 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                         this.tasksService.patchTaskOrder(x.id, x.order)
                     )
                 );
+            }),
+
+            switchMap(() => update$),
+            tap((updateResults: any[]) => {
+                for (const item of updateResults) {
+                    const ev = item?.ev;
+                    const res = item?.res;
+
+                    if (ev?.kind === 'update' && res != null) {
+                        this.tasksSection?.applyUpdatedTask(
+                            String(ev.rowKey),
+                            res
+                        );
+                    }
+                }
             })
         );
 
@@ -1013,6 +1078,44 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         event.returnValue = '';
     }
 
+    private sanitizePendingTaskContexts(): void {
+        const currentRows = this.tasksSection?.getCurrentRows?.() ?? [];
+        const validTaskIds = new Set(
+            currentRows
+                .map((row: any) => Number(row?.id))
+                .filter((id: number) => Number.isFinite(id))
+        );
+
+        for (const [rowKey, ev] of this.pendingTaskUpdates.entries()) {
+            if (ev.kind !== 'create' && ev.kind !== 'update') {
+                continue;
+            }
+
+            const ctxList = ev.payload?.task_context_list;
+            if (!Array.isArray(ctxList)) {
+                continue;
+            }
+
+            const sanitized = ctxList.filter((id: unknown) =>
+                validTaskIds.has(Number(id))
+            );
+
+            const changed = sanitized.length !== ctxList.length;
+
+            if (!changed) {
+                continue;
+            }
+
+            this.pendingTaskUpdates.set(rowKey, {
+                ...ev,
+                payload: {
+                    ...ev.payload,
+                    task_context_list: sanitized,
+                },
+            });
+        }
+    }
+    
     private tasksLocalDirty = false;
     private agentsLocalDirty = false;
 

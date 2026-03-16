@@ -2381,4 +2381,8 @@ export class TasksTableComponent implements OnChanges {
 
         this.emitReorderPending();
     }
+
+    public getCurrentRows(): any[] {
+        return [...this.rowData];
+    }
 }
