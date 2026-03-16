@@ -21,8 +21,8 @@ import { TasksSectionComponent } from './tasks-section/tasks-section.component';
 import { SettingsSectionComponent } from './settings-section/settings-section.component';
 import { FormsModule } from '@angular/forms';
 import { ProjectsStorageService } from '../features/projects/services/projects-storage.service';
-import { forkJoin, Subscription, of, Observable } from 'rxjs';
-import { catchError, map, finalize, switchMap, tap } from 'rxjs/operators';
+import { forkJoin, Subscription, of, Observable, from  } from 'rxjs';
+import { catchError, map, finalize, switchMap, tap, concatMap, toArray  } from 'rxjs/operators';
 import { TasksService } from '../features/tasks/services/tasks.service';
 import { GetProjectRequest } from '../features/projects/models/project.model';
 import { Dialog } from '@angular/cdk/dialog';
@@ -550,6 +550,12 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         const deleteEvents = taskUpdates.filter((ev) => ev.kind === 'delete');
         const createEvents = taskUpdates.filter((ev) => ev.kind === 'create');
         const updateEvents = taskUpdates.filter((ev) => ev.kind === 'update');
+        const deletedIds = new Set(
+            deleteEvents
+                .map((ev) => Number(ev.payload?.id))
+                .filter((id) => Number.isFinite(id))
+        );
+
         const delete$ =
             deleteEvents.length > 0
                 ? forkJoin(
@@ -563,10 +569,9 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                                 ) {
                                     return of({ ev, res: null });
                                 }
-
                                 throw error;
                             })
-                        )   
+                        )
                     )
                 )
                 : of([]);
@@ -576,7 +581,12 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                 ? forkJoin(
                     createEvents.map((ev) =>
                         this.tasksService
-                            .createTask(ev.payload)
+                            .createTask(
+                                this.sanitizeTaskPayloadByDeletedIds(
+                                    ev.payload,
+                                    deletedIds
+                                )
+                            )
                             .pipe(map((res) => ({ ev, res })))
                     )
                 )
@@ -587,9 +597,14 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                 ? forkJoin(
                     updateEvents.map((ev) =>
                         this.tasksService
-                            .updateTask(ev.payload)
+                            .updateTask(
+                                this.sanitizeTaskPayloadByDeletedIds(
+                                    ev.payload,
+                                    deletedIds
+                                )
+                            )
                             .pipe(map((res) => ({ ev, res })))
-                        )
+                    )
                 )
                 : of([]);
 
@@ -598,30 +613,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                 ev.kind === 'create' ||
                 ev.kind === 'delete' ||
                 ev.kind === 'reorder'
-        );
-
-        const fullReorderPayload =
-            shouldRunReorder
-                ? this.tasksSection?.getCurrentReorderPayload() ?? []
-                : [];
-
-        const preCreateReorderPayload = fullReorderPayload;
-
-        const preCreateReorder$ =
-            preCreateReorderPayload.length > 0
-                ? forkJoin(
-                    preCreateReorderPayload.map((x) =>
-                        this.tasksService.patchTaskOrder(x.id, x.order)
-                    )
-                )
-                : of([]);
-
-        console.log('taskUpdates', taskUpdates);
-console.log('deleteEvents', deleteEvents);
-console.log('createEvents', createEvents);
-console.log('updateEvents', updateEvents);
-console.log('preCreateReorderPayload', preCreateReorderPayload);
-console.log('finalReorderPayload', this.tasksSection?.getCurrentReorderPayload?.());
+            );
 
         const flushTasks$ = delete$.pipe(
             switchMap(() => create$),
@@ -646,97 +638,90 @@ console.log('finalReorderPayload', this.tasksSection?.getCurrentReorderPayload?.
                     }
                 }
             }),
-
             switchMap(() => {
                 if (!shouldRunReorder) {
                     return of([]);
                 }
 
-                const reorderPayload =
-                    this.tasksSection?.getCurrentReorderPayload() ?? [];
+                const reorderPayload = (this.tasksSection?.getCurrentReorderPayload() ?? [])
+                    .filter((x) => !deletedIds.has(Number(x.id)))
+                    .sort((a, b) => a.order - b.order);
 
-                if (reorderPayload.length === 0) {
-                    return of([]);
-                }
-
-                return forkJoin(
-                    reorderPayload.map((x) =>
-                        this.tasksService.patchTaskOrder(x.id, x.order)
-                    )      
-                );
-            })
-        );
-
-        flushAgents$
-            .pipe(
-                tap(() => {
-                    for (const a of agentUpdates) {
-                        const id = Number((a as any).id);
-                        if (Number.isFinite(id)) {
-                            this.baselineAgentsById.set(id, structuredClone(a as any));
-                        }
-                    }
-                    this.pendingAgentUpdates.clear();
-                    this.recomputeUnsaved();
-                }),
-                switchMap(() => flushTasks$),
-                tap((results: any[]) => {
-                    for (const item of results) {
-                        const ev = item?.ev;
-                        const res = item?.res;
-
-                        if (ev?.kind === 'create' && res?.id != null) {
-                            this.tasksSection?.applyCreatedTask(ev.rowKey, res);
-                        }
+                    if (reorderPayload.length === 0) {
+                        return of([]);
                     }
 
-                    this.pendingTaskUpdates.clear();
-                    this.tasksSection?.clearLocalDirtyAfterSave();
-                    this.tasksLocalDirty = false;
-                    this.recomputeUnsaved();
-                }),
-                switchMap(() => {
-                    if (!appliedUpdate) return of(null);
-
-                    return this.projectsService.patchUpdateProject(this.project!.id, appliedUpdate);
-                }),
-                finalize(() => {
-                    this.isSaving = false;
-                    this.cdr.markForCheck();
+                    return this.patchTaskOrderSequentially(reorderPayload);
                 })
-            )
-            .subscribe({
-                next: (updatedProject: any) => {
-                    if (appliedUpdate) {
-                        const serverPatch = updatedProject ?? {};
-                        this.project = { ...this.project!, ...appliedUpdate, ...serverPatch };
-                        this.projectStateService.setProject(this.project);
-                        this.projectsService.updateProjectInCache(this.project);
+            );
 
-                        this.suppressNextSettingsEmit = true;
-                        this.setupSections();
-                        queueMicrotask(() => (this.suppressNextSettingsEmit = false));
-                    }
+            flushAgents$
+                .pipe(
+                    tap(() => {
+                        for (const a of agentUpdates) {
+                            const id = Number((a as any).id);
+                            if (Number.isFinite(id)) {
+                                this.baselineAgentsById.set(id, structuredClone(a as any));
+                            }
+                        }
+                        this.pendingAgentUpdates.clear();
+                        this.recomputeUnsaved();
+                    }),
+                    switchMap(() => flushTasks$),
+                    tap((results: any[]) => {
+                        for (const item of results) {
+                            const ev = item?.ev;
+                            const res = item?.res;
 
-                    this.pendingProjectUpdate = null;
-                    this.recomputeUnsaved();
-                    this.toastService.success('Project updated successfully');
-                },
-                error: (error: unknown) => {
-                    const msg =
-                        (error as any)?.error?.message ??
-                        (appliedUpdate
-                                ? 'Failed to update project'
-                                : agentUpdates.length > 0 || taskUpdates.length > 0
-                                    ? 'Failed to save changes'
-                                    : 'Failed to save');
-                    console.error(error);
-                    this.toastService.error(msg);
-                    this.cdr.markForCheck();
-                },
-            });
-    
-    }
+                            if (ev?.kind === 'create' && res?.id != null) {
+                                this.tasksSection?.applyCreatedTask(ev.rowKey, res);
+                            }
+                        }
+
+                        this.pendingTaskUpdates.clear();
+                        this.tasksSection?.clearLocalDirtyAfterSave();
+                        this.tasksLocalDirty = false;
+                        this.recomputeUnsaved();
+                    }),
+                    switchMap(() => {
+                        if (!appliedUpdate) return of(null);
+                        return this.projectsService.patchUpdateProject(this.project!.id, appliedUpdate);
+                    }),
+                    finalize(() => {
+                        this.isSaving = false;
+                        this.cdr.markForCheck();
+                    })
+                )
+                .subscribe({
+                    next: (updatedProject: any) => {
+                        if (appliedUpdate) {
+                            const serverPatch = updatedProject ?? {};
+                            this.project = { ...this.project!, ...appliedUpdate, ...serverPatch };
+                            this.projectStateService.setProject(this.project);
+                            this.projectsService.updateProjectInCache(this.project);
+                            this.suppressNextSettingsEmit = true;
+                            this.setupSections();
+                            queueMicrotask(() => (this.suppressNextSettingsEmit = false));
+                        }
+
+                        this.pendingProjectUpdate = null;
+                        this.recomputeUnsaved();
+                        this.toastService.success('Project updated successfully');
+                    },
+                    error: (error: unknown) => {
+                        const msg =
+                            (error as any)?.error?.message ??
+                                (appliedUpdate
+                                    ? 'Failed to update project'
+                                    : agentUpdates.length > 0 || taskUpdates.length > 0
+                                        ? 'Failed to save changes'
+                                        : 'Failed to save');
+                        console.error(error);
+                        this.toastService.error(msg);
+                        this.cdr.markForCheck();
+                    },
+                }); 
+        }
 
     public get detailsTagsAsStrings(): string[] {
         const tags = (this.project as any)?.tags ?? [];
@@ -866,9 +851,15 @@ console.log('finalReorderPayload', this.tasksSection?.getCurrentReorderPayload?.
                 ? forkJoin(agentUpdates.map((a) => this.agentsService.updateAgent(a as any)))
                 : of([]);
 
-                const deleteEvents = taskUpdates.filter((ev) => ev.kind === 'delete');
+        const deleteEvents = taskUpdates.filter((ev) => ev.kind === 'delete');
         const createEvents = taskUpdates.filter((ev) => ev.kind === 'create');
         const updateEvents = taskUpdates.filter((ev) => ev.kind === 'update');
+        const deletedIds = new Set(
+            deleteEvents
+                .map((ev) => Number(ev.payload?.id))
+                .filter((id) => Number.isFinite(id))
+        );
+
         const delete$ =
             deleteEvents.length > 0
                 ? forkJoin(
@@ -882,10 +873,9 @@ console.log('finalReorderPayload', this.tasksSection?.getCurrentReorderPayload?.
                                 ) {
                                     return of({ ev, res: null });
                                 }
-
                                 throw error;
                             })
-                        )   
+                        )
                     )
                 )
                 : of([]);
@@ -895,7 +885,12 @@ console.log('finalReorderPayload', this.tasksSection?.getCurrentReorderPayload?.
                 ? forkJoin(
                     createEvents.map((ev) =>
                         this.tasksService
-                            .createTask(ev.payload)
+                            .createTask(
+                                this.sanitizeTaskPayloadByDeletedIds(
+                                    ev.payload,
+                                    deletedIds
+                                )
+                            )
                             .pipe(map((res) => ({ ev, res })))
                     )
                 )
@@ -906,9 +901,14 @@ console.log('finalReorderPayload', this.tasksSection?.getCurrentReorderPayload?.
                 ? forkJoin(
                     updateEvents.map((ev) =>
                         this.tasksService
-                            .updateTask(ev.payload)
+                            .updateTask(
+                                this.sanitizeTaskPayloadByDeletedIds(
+                                    ev.payload,
+                                    deletedIds
+                                )
+                            )
                             .pipe(map((res) => ({ ev, res })))
-                        )
+                    )
                 )
                 : of([]);
 
@@ -918,22 +918,6 @@ console.log('finalReorderPayload', this.tasksSection?.getCurrentReorderPayload?.
                 ev.kind === 'delete' ||
                 ev.kind === 'reorder'
             );
-
-        const fullReorderPayload =
-            shouldRunReorder
-                ? this.tasksSection?.getCurrentReorderPayload() ?? []
-                : [];
-
-        const preCreateReorderPayload = fullReorderPayload;
-
-        const preCreateReorder$ =
-            preCreateReorderPayload.length > 0
-                ? forkJoin(
-                    preCreateReorderPayload.map((x) =>
-                        this.tasksService.patchTaskOrder(x.id, x.order)
-                    )
-                )
-                : of([]);
 
         const flushTasks$ = delete$.pipe(
             switchMap(() => create$),
@@ -958,26 +942,22 @@ console.log('finalReorderPayload', this.tasksSection?.getCurrentReorderPayload?.
                     }
                 }
             }),
-
             switchMap(() => {
                 if (!shouldRunReorder) {
                     return of([]);
-                }   
-
-                const reorderPayload =
-                    this.tasksSection?.getCurrentReorderPayload() ?? [];
-
-                if (reorderPayload.length === 0) {
-                    return of([]);
                 }
 
-                return forkJoin(
-                    reorderPayload.map((x) =>
-                        this.tasksService.patchTaskOrder(x.id, x.order)
-                    )         
-                );
-            })
-        );
+                const reorderPayload = (this.tasksSection?.getCurrentReorderPayload() ?? [])
+                    .filter((x) => !deletedIds.has(Number(x.id)))
+                    .sort((a, b) => a.order - b.order);
+
+                    if (reorderPayload.length === 0) {
+                        return of([]);
+                    }
+
+                    return this.patchTaskOrderSequentially(reorderPayload);
+                })
+            );
 
         return flushAgents$.pipe(
             tap(() => this.pendingAgentUpdates.clear()),
@@ -1107,6 +1087,41 @@ console.log('finalReorderPayload', this.tasksSection?.getCurrentReorderPayload?.
                 },
             });
         }
+    }
+
+    private sanitizeTaskPayloadByDeletedIds(
+        payload: any,
+        deletedIds: Set<number>
+    ): any {
+        if (!payload) return payload;
+
+        return {
+            ...payload,
+            task_context_list: Array.isArray(payload.task_context_list)
+                ? payload.task_context_list.filter(
+                    (id: unknown) => !deletedIds.has(Number(id))
+                )
+                : payload.task_context_list,
+        };
+    }
+
+    private patchTaskOrderSequentially(
+        reorderPayload: Array<{ id: number; order: number }>
+    ): Observable<any[]> {
+        if (reorderPayload.length === 0) {
+            return of([]);
+        }
+
+        const sorted = [...reorderPayload].sort((a, b) => a.order - b.order);
+
+        return from(sorted).pipe(
+            concatMap((item) =>
+                this.tasksService.patchTaskOrder(item.id, item.order).pipe(
+                    map((res) => ({ item, res }))
+                )
+            ),
+            toArray()
+        );
     }
     
     private tasksLocalDirty = false;
