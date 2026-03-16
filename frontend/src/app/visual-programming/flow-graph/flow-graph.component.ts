@@ -649,7 +649,22 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
             const calculatedHeight = headerHeight + rowHeight * totalRows;
             nodeSize = {
                 width: 330,
-                height: Math.max(calculatedHeight, 152),
+                height: this.getDecisionTableVisualHeight({
+                    id: newNodeId,
+                    backendId: null,
+                    category: 'web',
+                    position: { x: 0, y: 0 },
+                    ports: [],
+                    parentId: null,
+                    type: NodeType.TABLE as NodeModel['type'],
+                    node_name: '',
+                    data: event.data,
+                    color: nodeColor,
+                    icon: nodeIcon,
+                    input_map: {},
+                    output_variable_path: null,
+                    size: { width: 330, height: 152 },
+                }),
             };
         } else if (event.type === NodeType.EDGE) {
             nodeSize = { width: 300, height: 180 };
@@ -857,27 +872,17 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
                 return {
                     width: 308,
                     height: 196,
-                    offsetX: -4,
-                    offsetY: -46,
+                    offsetX: 15,
+                    offsetY: -58,
                 };
 
             case NodeType.TABLE: {
-                const tableData = (node.data as any)?.table;
-                const conditionGroups = (tableData?.condition_groups ?? []) as any[];
-                const validGroupsCount = conditionGroups.filter(
-                    (g: any) => g.valid !== false
-                ).length;
-                const totalRows = Math.max(validGroupsCount + 2, 2);
-                const calculatedHeight = 60 + 48 * totalRows;
-                const baseHeight = Math.max(node.size.height, calculatedHeight, 152);
+                const visualHeight = this.getDecisionTableVisualHeight(node);
 
-                // 4px padding on top/bottom, same convention as regular nodes.
-                // The previous +70/−12 created a 58px phantom zone below the table's
-                // visual bottom, blocking nodes from fitting in legitimate gaps.
                 return {
-                    width: node.size.width + 10,
-                    height: baseHeight + 8,
-                    offsetX: 0,
+                    width: node.size.width + 8,
+                    height: visualHeight + 56,
+                    offsetX: -4,
                     offsetY: -4,
                 };
             }
@@ -1114,5 +1119,20 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
 
     public onOpenShortcuts(anchorEl: HTMLElement): void {
         this.openShortcuts.emit(anchorEl.getBoundingClientRect());
+    }
+
+    private getDecisionTableVisualHeight(node: NodeModel): number {
+        const tableData = (node.data as any)?.table;
+        const conditionGroups = (tableData?.condition_groups ?? []) as any[];
+        const validGroupsCount = conditionGroups.filter(
+            (g: any) => g.valid !== false
+        ).length;
+
+        const HEADER_HEIGHT = 60;
+        const ROW_HEIGHT = 40;
+        const BASE_ROWS = 2;
+
+        const totalRows = Math.max(validGroupsCount + BASE_ROWS, BASE_ROWS);
+        return Math.max(HEADER_HEIGHT + ROW_HEIGHT * totalRows, 152);
     }
 }
