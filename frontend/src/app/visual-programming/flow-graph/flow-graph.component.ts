@@ -856,9 +856,9 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
                 // 4px padding on all sides, same convention as regular nodes.
                 return {
                     width: 308,
-                    height: 188,
+                    height: 196,
                     offsetX: -4,
-                    offsetY: -4,
+                    offsetY: -46,
                 };
 
             case NodeType.TABLE: {
