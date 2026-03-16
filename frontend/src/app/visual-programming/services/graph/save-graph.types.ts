@@ -75,17 +75,30 @@ export interface NodeDiffResult {
 
 // ---- Intermediate types ----
 
-/** An EdgeNodeModel paired with its resolved source and target node names. */
+/** An EdgeNodeModel paired with its resolved source/target node UUIDs and backend IDs. */
 export interface ResolvedConditionalEdge {
     edgeNode: EdgeNodeModel;
-    sourceName: string | null;
-    targetName: string | null;
+    sourceNodeUuid: string | null;
+    targetNodeUuid: string | null;
+    sourceBackendId: number | null;
+    targetBackendId: number | null;
 }
 
-/** A plain connection reduced to its start/end node names. */
+/**
+ * A UI connection reduced to source/target UUIDs and (possibly) backend IDs.
+ * Backend IDs are resolved after Phase 1 of the save.
+ */
 export interface UiEdge {
-    start_key: string;
-    end_key: string;
+    sourceNodeUuid: string;
+    targetNodeUuid: string;
+    sourceBackendId: number | null;
+    targetBackendId: number | null;
+}
+
+/** An edge fully resolved to backend IDs, ready for API payload. */
+export interface ResolvedUiEdge {
+    start_node_id: number;
+    end_node_id: number;
 }
 
 // ---- Previous state (what the backend currently has) ----
@@ -117,22 +130,20 @@ export interface GraphNewState {
     subGraphNodes: SubGraphNodeModel[];
     webhookTriggerNodes: WebhookTriggerNodeModel[];
     telegramTriggerNodes: TelegramTriggerNodeModel[];
-    /** Edge nodes resolved with their source node name (needed for backend matching). */
+    /** Edge nodes resolved with their source/target UUIDs and backend IDs. */
     conditionalEdges: ResolvedConditionalEdge[];
-    /** Plain connections reduced to start/end node names. */
+    /** Plain connections reduced to source/target UUIDs and backend IDs. */
     edges: UiEdge[];
     endNodes: EndNodeModel[];
     decisionTableNodes: DecisionTableNodeModel[];
     noteNodes: NoteNodeModel[];
-    /** All UI nodes — used to resolve node ID → node_name for decision tables. */
+    /** All UI nodes — used to resolve UUID → backendId for decision tables/edges. */
     allNodes: NodeModel[];
 }
 
-// EndNodes now use NodeDiff like other nodes (matching by node_name)
+// ---- Node-only diff (Phase 1) ----
 
-// ---- Full graph diff ----
-
-export interface GraphDiff {
+export interface NodeOnlyDiff {
     crewNodes: NodeDiff<CrewNode, ProjectNodeModel>;
     pythonNodes: NodeDiff<PythonNode, PythonNodeModel>;
     llmNodes: NodeDiff<GetLLMNodeRequest, LLMNodeModel>;
@@ -141,11 +152,18 @@ export interface GraphDiff {
     subGraphNodes: NodeDiff<SubGraphNode, SubGraphNodeModel>;
     webhookTriggerNodes: NodeDiff<GetWebhookTriggerNodeRequest, WebhookTriggerNodeModel>;
     telegramTriggerNodes: NodeDiff<GetTelegramTriggerNodeRequest, TelegramTriggerNodeModel>;
-    conditionalEdges: NodeDiff<ConditionalEdge, ResolvedConditionalEdge>;
     decisionTableNodes: NodeDiff<GetDecisionTableNodeRequest, DecisionTableNodeModel>;
-    /** Edges only support create/delete — no meaningful "update" exists. */
-    edges: { toDelete: Edge[]; toCreate: UiEdge[] };
     endNodes: NodeDiff<EndNode, EndNodeModel>;
     noteNodes: NodeDiff<NoteNode, NoteNodeModel>;
 }
 
+// ---- Connection diff (Phase 2 — after node IDs are known) ----
+
+export interface ConnectionDiff {
+    conditionalEdges: NodeDiff<ConditionalEdge, ResolvedConditionalEdge>;
+    edges: { toDelete: Edge[]; toCreate: ResolvedUiEdge[] };
+}
+
+// ---- Full graph diff (combined) ----
+
+export interface GraphDiff extends NodeOnlyDiff, ConnectionDiff {}

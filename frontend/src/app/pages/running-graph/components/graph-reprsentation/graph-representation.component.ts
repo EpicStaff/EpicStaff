@@ -215,26 +215,46 @@ export class FlowRepresentationComponent implements OnChanges {
     const nodesMap: {
       [nodeName: string]: CrewNode | PythonNode | GetLLMNodeRequest;
     } = {};
-    graph.crew_node_list.forEach((node) => (nodesMap[node.node_name] = node));
-    graph.python_node_list.forEach((node) => (nodesMap[node.node_name] = node));
-    graph.llm_node_list.forEach((node) => (nodesMap[node.node_name] = node));
+    const idToName: { [id: number]: string } = {};
+    const nameToId: { [name: string]: number } = {};
+
+    graph.crew_node_list.forEach((node) => {
+      nodesMap[node.node_name] = node;
+      idToName[node.id] = node.node_name;
+      nameToId[node.node_name] = node.id;
+    });
+    graph.python_node_list.forEach((node) => {
+      nodesMap[node.node_name] = node;
+      idToName[node.id] = node.node_name;
+      nameToId[node.node_name] = node.id;
+    });
+    graph.llm_node_list.forEach((node) => {
+      nodesMap[node.node_name] = node;
+      idToName[node.id] = node.node_name;
+      nameToId[node.node_name] = node.id;
+    });
+
+    if (graph.start_node_list?.[0]) {
+      const startId = graph.start_node_list[0].id;
+      idToName[startId] = '__start__';
+      nameToId['__start__'] = startId;
+    }
 
     const ordered: (CrewNode | PythonNode | GetLLMNodeRequest)[] = [];
-    let currentNodeName = graph.start_node_list[0].node_name;
-    if (!currentNodeName) return ordered;
+    const startId = graph.start_node_list?.[0]?.id;
+    if (startId == null) return ordered;
 
-    while (true) {
-      const node = nodesMap[currentNodeName];
-      if (!node) break;
-      ordered.push(node);
+    let currentId: number | undefined = startId;
+    while (currentId != null) {
+      const nodeName = idToName[currentId];
+      if (!nodeName) break;
+      const node = nodesMap[nodeName];
+      if (node) ordered.push(node);
+
       const nextEdge = graph.edge_list.find(
-        (edge) => edge.start_key === currentNodeName
+        (edge) => edge.start_node_id === currentId
       );
-      if (nextEdge && nextEdge.end_key) {
-        currentNodeName = nextEdge.end_key;
-      } else {
-        break;
-      }
+      currentId = nextEdge?.end_node_id;
     }
     return ordered;
   }

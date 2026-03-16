@@ -1,7 +1,6 @@
 import { BasePort } from '../../models/port.model';
 
 export const DEFAULT_WEBHOOK_TRIGGER_NODE_PORTS: BasePort[] = [
-
     {
         port_type: 'output',
         role: 'webhook-trigger-out',
@@ -14,7 +13,8 @@ export const DEFAULT_WEBHOOK_TRIGGER_NODE_PORTS: BasePort[] = [
             'table-in',
             'llm-out-left',
             'file-extractor-in',
-            'webhook-trigger',
+            'subgraph-in',
+            'audio-to-text-in',
             'end-in',
         ],
         position: 'right',

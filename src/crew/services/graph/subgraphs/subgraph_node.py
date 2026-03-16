@@ -1,16 +1,18 @@
-from utils import map_variables_to_input
 from copy import deepcopy
+
 from dotdict import DotDict
-from src.shared.models import SubGraphNodeData, GraphData, SubGraphData
+from langgraph.graph import StateGraph
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import StreamWriter
+from src.shared.models import GraphData, SubGraphData, SubGraphNodeData
+
 from models.graph_models import (
     GraphMessage,
     SubGraphFinishMessageData,
     SubGraphStartMessageData,
 )
-from langgraph.graph import StateGraph
-from langgraph.graph.state import CompiledStateGraph
-from langgraph.types import StreamWriter
 from services.graph.custom_message_writer import CustomSessionMessageWriter
+from utils import map_variables_to_input
 from utils.set_output_variables import set_output_variables
 
 

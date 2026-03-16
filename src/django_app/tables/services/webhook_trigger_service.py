@@ -12,6 +12,7 @@ from src.shared.models import WebhookConfigData
 from tables.services.converter_service import ConverterService
 from tables.services.redis_service import RedisService
 from tables.services.session_manager_service import SessionManagerService
+from utils.graph_utils import generate_node_name
 from utils.singleton_meta import SingletonMeta
 
 
@@ -62,7 +63,9 @@ class WebhookTriggerService(metaclass=SingletonMeta):
             self.session_manager_service.run_session(
                 graph_id=webhook_trigger_node.graph.pk,
                 variables=variables,
-                entrypoint=webhook_trigger_node.node_name,
+                entrypoint=generate_node_name(
+                    webhook_trigger_node.id, webhook_trigger_node.node_name
+                ),
             )
 
     def register_webhooks(self) -> bool:

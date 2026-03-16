@@ -38,16 +38,6 @@ interface InputMapPair {
             <div class="panel-content">
                 <form [formGroup]="form" class="form-container">                   
                     @if (!isExpanded() || isFormFieldsVisible()) {
-                        <!-- Node Name Field -->
-                        <app-custom-input
-                            label="Node Name"
-                            tooltipText="The unique identifier used to reference this conditional edge. This name must be unique within the flow."
-                            formControlName="node_name"
-                            placeholder="Enter node name"
-                            [activeColor]="activeColor"
-                            [errorMessage]="getNodeNameErrorMessage()"
-                        ></app-custom-input>
-
                         <!-- Input Map Key-Value Pairs -->
                         <div class="input-map">
                             <app-input-map
@@ -282,7 +272,6 @@ export class ConditionalEdgeNodePanelComponent extends BaseSidePanel<EdgeNodeMod
      */
     protected initializeForm(): FormGroup {
         const form = this.fb.group({
-            node_name: [this.node().node_name, this.createNodeNameValidators()],
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
             libraries: [
@@ -318,7 +307,6 @@ export class ConditionalEdgeNodePanelComponent extends BaseSidePanel<EdgeNodeMod
 
         return {
             ...this.node(),
-            node_name: this.form.value.node_name,
             input_map: inputMapValue,
             output_variable_path: this.form.value.output_variable_path || null,
             data: {

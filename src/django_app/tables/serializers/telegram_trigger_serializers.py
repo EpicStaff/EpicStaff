@@ -1,16 +1,15 @@
 from loguru import logger
 from rest_framework import serializers
 
-from tables.models.webhook_models import WebhookTrigger
-from tables.models.graph_models import TelegramTriggerNode, TelegramTriggerNodeField
 from tables.models import (
     TelegramTriggerNode,
     TelegramTriggerNodeField,
     WebhookTrigger,
 )
-
-from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
+from tables.models.graph_models import TelegramTriggerNode, TelegramTriggerNodeField
+from tables.models.webhook_models import WebhookTrigger
 from tables.serializers.base_serializer import BaseGraphEntityMixin
+from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 
 
 class TelegramTriggerNodeFieldSerializer(serializers.ModelSerializer):

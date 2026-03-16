@@ -338,10 +338,9 @@ class SessionGraphBuilder:
 
         if schema.entrypoint is not None:
             self.set_entrypoint(schema.entrypoint)
-        # name always __end_node__
-        # TODO: remove validation here and in request model
         if schema.end_node is not None:
             end_node = EndNode(
+                node_name=schema.end_node.node_name,
                 session_graph_builder_instance=self,
                 session_id=self.session_id,
                 output_map=schema.end_node.output_map,

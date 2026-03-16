@@ -55,6 +55,7 @@ services:
       sh -lc "cd /app/src/crew &&
       poetry run watchfiles
       --filter python
+      --ignore-paths /app/src/crew/.venv
       'poetry run python3 /app/src/crew/main.py'
       /app/src/crew/"
     environment:

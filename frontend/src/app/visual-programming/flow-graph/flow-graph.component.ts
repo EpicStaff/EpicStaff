@@ -162,7 +162,41 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
         this.initializeFlowStateIfEmpty();
         this.addStartNodeIfNeeded();
         this.generatePortsForNodesIfNeeded();
+        this.sanitizeConnections();
         this.flowService.setFlow(this.flowState);
+    }
+
+    /**
+     * Strips connections that reference ports not actually present on the rendered nodes.
+     * Prevents f-flow errors like "fOutput with id ...table-out not found".
+     */
+    private sanitizeConnections(): void {
+        const portIds = new Set<string>();
+        for (const node of this.flowState.nodes) {
+            if (node.ports) {
+                for (const port of node.ports) {
+                    portIds.add(port.id);
+                }
+            }
+        }
+
+        const before = this.flowState.connections.length;
+        this.flowState.connections = this.flowState.connections.filter(conn => {
+            const srcOk = portIds.has(conn.sourcePortId);
+            const tgtOk = portIds.has(conn.targetPortId);
+            if (!srcOk || !tgtOk) {
+                console.warn(
+                    `[flow-graph] Removing invalid connection ${conn.id}: ` +
+                    `sourcePort "${conn.sourcePortId}" ${srcOk ? 'OK' : 'MISSING'}, ` +
+                    `targetPort "${conn.targetPortId}" ${tgtOk ? 'OK' : 'MISSING'}`
+                );
+            }
+            return srcOk && tgtOk;
+        });
+
+        if (this.flowState.connections.length < before) {
+            console.warn(`[flow-graph] Removed ${before - this.flowState.connections.length} invalid connections`);
+        }
     }
 
     private initializeFlowStateIfEmpty(): void {
@@ -242,6 +276,10 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
     public onInitialized(): void {
         // this.fCanvasComponent.fitToScreen(new Point(140, 140), false);
         this.isLoaded.set(true);
+        setTimeout(() => {
+            this.fFlowComponent?.redraw();
+            this.cd.detectChanges();
+        });
     }
     public updateMouseTrackerPosition(event: { x: number; y: number }) {
         this.mouseCursorPosition = event;

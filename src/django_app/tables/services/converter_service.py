@@ -1,83 +1,96 @@
 from typing import Iterable
-from tables.models.webhook_models import NgrokWebhookConfig
-from tables.models.python_models import PythonCodeToolConfig
-from tables.models.crew_models import (
-    AgentConfiguredTools,
-    AgentMcpTools,
-    AgentPythonCodeTools,
-    AgentPythonCodeToolConfigs,
+
+from src.shared.models import (
+    AgentData,
+    AudioTranscriptionNodeData,
+    BaseToolData,
+    ConditionalEdgeData,
+    ConditionData,
+    ConditionGroupData,
+    ConfiguredToolData,
+    CrewData,
+    CrewNodeData,
+    DecisionTableNodeData,
+    EdgeData,
+    EmbedderConfigData,
+    EmbedderData,
+    EndNodeData,
+    FileExtractorNodeData,
+    GraphRagSearchConfig,
+    LLMConfigData,
+    LLMData,
+    LLMNodeData,
+    McpToolData,
+    NaiveRagSearchConfig,
+    NgrokConfigData,
+    PythonCodeData,
+    PythonCodeToolData,
+    PythonNodeData,
+    RagSearchConfig,
+    RealtimeAgentChatData,
+    SubGraphNodeData,
+    TaskData,
+    TelegramTriggerNodeData,
+    TelegramTriggerNodeFieldData,
+    ToolConfigData,
+    WebhookTriggerNodeData,
 )
-from tables.models.mcp_models import McpTool
-from tables.models.llm_models import (
-    RealtimeConfig,
-    RealtimeTranscriptionConfig,
-    LLMConfig,
-)
+
 from tables.models import (
     Agent,
+    Crew,
+    EmbeddingConfig,
+    LLMConfig,
+    LLMNode,
+    PythonCode,
+    PythonCodeTool,
     Task,
     TaskContext,
     ToolConfig,
-    LLMConfig,
-    EmbeddingConfig,
-    Crew,
-    PythonCode,
-    PythonCodeTool,
-    LLMNode,
 )
-from src.shared.models import NgrokConfigData
-from tables.models.realtime_models import RealtimeAgentChat
+from tables.models.crew_models import (
+    AgentConfiguredTools,
+    AgentMcpTools,
+    AgentPythonCodeToolConfigs,
+    AgentPythonCodeTools,
+)
 from tables.models.graph_models import (
+    AudioTranscriptionNode,
     Condition,
-    ConditionGroup,
     ConditionalEdge,
+    ConditionGroup,
     CrewNode,
     DecisionTableNode,
+    Edge,
     EndNode,
+    FileExtractorNode,
+    Graph,
     PythonNode,
     SubGraphNode,
     TelegramTriggerNode,
     WebhookTriggerNode,
 )
-from src.shared.models import (
-    RagSearchConfig,
-    NaiveRagSearchConfig,
-    GraphRagSearchConfig,
-    CrewData,
-    TaskData,
-    BaseToolData,
-    AgentData,
-    RealtimeAgentChatData,
-    PythonCodeData,
-    PythonCodeToolData,
-    ConfiguredToolData,
-    ToolConfigData,
-    McpToolData,
-    LLMConfigData,
-    LLMData,
-    EmbedderData,
-    EmbedderConfigData,
-    PythonNodeData,
-    ConditionalEdgeData,
-    LLMNodeData,
-    ConditionData,
-    ConditionGroupData,
-    DecisionTableNodeData,
-    CrewNodeData,
-    TelegramTriggerNodeData,
-    TelegramTriggerNodeFieldData,
-    EndNodeData,
-    WebhookTriggerNodeData,
+from tables.models.llm_models import (
+    LLMConfig,
+    RealtimeConfig,
+    RealtimeTranscriptionConfig,
 )
-from utils.singleton_meta import SingletonMeta
-
+from tables.models.mcp_models import McpTool
+from tables.models.python_models import PythonCodeToolConfig
+from tables.models.realtime_models import RealtimeAgentChat
+from tables.models.webhook_models import NgrokWebhookConfig
 from tables.serializers.model_serializers import ToolConfigSerializer
+from tables.validators.crew_memory_validator import CrewMemoryValidator
+from tables.validators.task_validator import TaskValidator
 from tables.validators.tool_config_validator import (
     ToolConfigValidator,
     validate_tool_configs,
 )
-from tables.validators.crew_memory_validator import CrewMemoryValidator
-from tables.validators.task_validator import TaskValidator
+from utils.graph_utils import (
+    SINGLE_LOOKUP_RESOLVER,
+    NodeNameResolver,
+)
+from utils.singleton_meta import SingletonMeta
 
 tool_config_serializer = ToolConfigSerializer(
     ToolConfigValidator(validate_missing_reqired_fields=True, validate_null_fields=True)
@@ -501,31 +514,41 @@ class ConverterService(metaclass=SingletonMeta):
             ),
         )
 
-    def convert_python_node_to_pydantic(self, python_node: PythonNode):
-        python_code: PythonCode = python_node.python_code
-        python_code_data = self.convert_python_code_to_pydantic(python_code=python_code)
-
+    def convert_python_node_to_pydantic(
+        self,
+        python_node: PythonNode,
+        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+    ) -> PythonNodeData:
+        python_code_data = self.convert_python_code_to_pydantic(
+            python_code=python_node.python_code
+        )
         return PythonNodeData(
-            node_name=python_node.node_name,
+            node_name=resolver(python_node.id),
             python_code=python_code_data,
             input_map=python_node.input_map,
             output_variable_path=python_node.output_variable_path,
         )
 
-    def convert_conditional_edge_to_pydantic(self, conditional_edge: ConditionalEdge):
-        python_code = conditional_edge.python_code
-        python_code_data = self.convert_python_code_to_pydantic(python_code=python_code)
+    def convert_conditional_edge_to_pydantic(
+        self,
+        conditional_edge: ConditionalEdge,
+        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+    ) -> ConditionalEdgeData:
+        python_code_data = self.convert_python_code_to_pydantic(
+            python_code=conditional_edge.python_code
+        )
         return ConditionalEdgeData(
-            source=conditional_edge.source,
+            source=resolver(conditional_edge.source_node_id),
             python_code=python_code_data,
-            then=conditional_edge.then,
             input_map=conditional_edge.input_map,
         )
 
-    def convert_llm_node_to_pydantic(self, llm_node: LLMNode):
+    def convert_llm_node_to_pydantic(
+        self, llm_node: LLMNode, resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER
+    ) -> LLMNodeData:
         llm_data = self.convert_llm_config_to_pydantic(config=llm_node.llm_config)
         return LLMNodeData(
-            node_name=llm_node.node_name,
+            node_name=resolver(llm_node.id),
             llm_data=llm_data,
             input_map=llm_node.input_map,
             output_variable_path=llm_node.output_variable_path,
@@ -534,7 +557,11 @@ class ConverterService(metaclass=SingletonMeta):
     def convert_condition_to_pydantic(self, condition: Condition) -> ConditionData:
         return ConditionData(condition=condition.condition)
 
-    def convert_condition_group_to_pydantic(self, condition_group: ConditionGroup):
+    def convert_condition_group_to_pydantic(
+        self,
+        condition_group: ConditionGroup,
+        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+    ) -> ConditionGroupData:
         return ConditionGroupData(
             group_name=condition_group.group_name,
             group_type=condition_group.group_type,
@@ -544,66 +571,118 @@ class ConverterService(metaclass=SingletonMeta):
                 ConditionData(condition=condition.condition)
                 for condition in condition_group.conditions.all()
             ],
-            next_node=condition_group.next_node,
+            next_node=resolver(condition_group.next_node_id),
         )
 
     def convert_decision_table_node_to_pydantic(
-        self, decision_table_node: DecisionTableNode
-    ):
+        self,
+        decision_table_node: DecisionTableNode,
+        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+    ) -> DecisionTableNodeData:
         condition_group_list = [
-            self.convert_condition_group_to_pydantic(condition_group)
+            self.convert_condition_group_to_pydantic(condition_group, resolver)
             for condition_group in decision_table_node.condition_groups.all()
         ]
-
         return DecisionTableNodeData(
-            node_name=decision_table_node.node_name,
+            node_name=resolver(decision_table_node.id),
             conditional_group_list=condition_group_list,
-            default_next_node=decision_table_node.default_next_node,
-            next_error_node=decision_table_node.next_error_node,
+            default_next_node=resolver(decision_table_node.default_next_node_id),
+            next_error_node=resolver(decision_table_node.next_error_node_id),
         )
 
-    def convert_crew_node_to_pydantic(self, crew_node: CrewNode):
+    def convert_crew_node_to_pydantic(
+        self, crew_node: CrewNode, resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER
+    ) -> CrewNodeData:
         crew: Crew = crew_node.crew
         validate_tool_configs(crew)
-
         crew_data = self.convert_crew_to_pydantic(crew_id=crew.pk)
         return CrewNodeData(
-            node_name=crew_node.node_name,
+            node_name=resolver(crew_node.id),
             crew=crew_data,
             input_map=crew_node.input_map,
             output_variable_path=crew_node.output_variable_path,
         )
 
-    def convert_end_node_to_pydantic(self, end_node: EndNode):
-        return EndNodeData(output_map=end_node.output_map)
+    def convert_end_node_to_pydantic(
+        self, end_node: EndNode, resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER
+    ) -> EndNodeData:
+        return EndNodeData(
+            node_name=resolver(end_node.id),
+            output_map=end_node.output_map,
+        )
 
     def convert_webhook_trigger_node_to_pydantic(
-        self, webhook_trigger_node: WebhookTriggerNode
-    ):
-        python_code: PythonCode = webhook_trigger_node.python_code
-        python_code_data = self.convert_python_code_to_pydantic(python_code=python_code)
-
+        self,
+        webhook_trigger_node: WebhookTriggerNode,
+        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+    ) -> WebhookTriggerNodeData:
+        python_code_data = self.convert_python_code_to_pydantic(
+            python_code=webhook_trigger_node.python_code
+        )
         return WebhookTriggerNodeData(
-            node_name=webhook_trigger_node.node_name,
+            node_name=resolver(webhook_trigger_node.id),
             python_code=python_code_data,
         )
 
     def convert_telegram_trigger_node_to_pydantic(
-        self, telegram_trigger_node: TelegramTriggerNode
-    ):
-        telegram_trigger_node_field_data: list[TelegramTriggerNodeFieldData] = []
-        for field in telegram_trigger_node.fields.all():
-            telegram_trigger_node_field_data.append(
-                TelegramTriggerNodeFieldData(
-                    parent=field.parent,
-                    field_name=field.field_name,
-                    variable_path=field.variable_path,
-                )
+        self,
+        telegram_trigger_node: TelegramTriggerNode,
+        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+    ) -> TelegramTriggerNodeData:
+        field_data = [
+            TelegramTriggerNodeFieldData(
+                parent=field.parent,
+                field_name=field.field_name,
+                variable_path=field.variable_path,
             )
-
+            for field in telegram_trigger_node.fields.all()
+        ]
         return TelegramTriggerNodeData(
-            node_name=telegram_trigger_node.node_name,
-            field_list=telegram_trigger_node_field_data,
+            node_name=resolver(telegram_trigger_node.id),
+            field_list=field_data,
+        )
+
+    def convert_edge_to_pytdantic(
+        self, edge: Edge, resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER
+    ) -> EdgeData:
+        return EdgeData(
+            start_key=resolver(edge.start_node_id),
+            end_key=resolver(edge.end_node_id),
+        )
+
+    def convert_file_extractor_node_to_pydantic(
+        self,
+        file_extractor_node: FileExtractorNode,
+        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+    ) -> FileExtractorNodeData:
+        return FileExtractorNodeData(
+            node_name=resolver(file_extractor_node.id),
+            input_map=file_extractor_node.input_map,
+            output_variable_path=file_extractor_node.output_variable_path,
+        )
+
+    def convert_audio_transcription_node_to_pydantic(
+        self,
+        audio_transcription_node: AudioTranscriptionNode,
+        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+    ) -> AudioTranscriptionNodeData:
+        return AudioTranscriptionNodeData(
+            node_name=resolver(audio_transcription_node.id),
+            input_map=audio_transcription_node.input_map,
+            output_variable_path=audio_transcription_node.output_variable_path,
+        )
+
+    def convert_subgraph_node_to_pydantic(
+        self,
+        subgraph_node: SubGraphNode,
+        subgraph: Graph,
+        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+    ) -> SubGraphNodeData:
+        return SubGraphNodeData(
+            node_name=resolver(subgraph_node.id),
+            subgraph_id=subgraph.id,
+            input_map=subgraph_node.input_map,
+            output_variable_path=subgraph_node.output_variable_path,
         )
 
     def convert_ngrok_webhook_config_to_pydantic(

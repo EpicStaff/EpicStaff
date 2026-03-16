@@ -1,47 +1,53 @@
-from django.db.models import Q, Value, JSONField
+from django.db.models import JSONField, Q, Value
 from rest_framework import serializers
 
-from tables.models.mcp_models import McpTool
 from tables.models import (
     Agent,
+    ConditionalEdge,
+    Crew,
+    CrewNode,
+    Edge,
+    EmbeddingConfig,
+    EmbeddingModel,
+    EndNode,
+    FileExtractorNode,
+    Graph,
     LLMConfig,
     LLMModel,
     PythonCode,
     PythonCodeTool,
-    ToolConfig,
+    PythonNode,
     RealtimeAgent,
-    Crew,
-    Task,
-    Tool,
-    EmbeddingConfig,
-    EmbeddingModel,
-    Graph,
     RealtimeConfig,
     RealtimeModel,
     RealtimeTranscriptionConfig,
     RealtimeTranscriptionModel,
-    CrewNode,
+    StartNode,
+    Task,
+    Tool,
+    ToolConfig,
 )
-from tables.serializers.model_serializers import (
-    PythonNodeSerializer,
-    EdgeSerializer,
-    ConditionalEdgeSerializer,
-    StartNodeSerializer,
-    FileExtractorNodeSerializer,
-    EndNodeSerializer,
-)
+from tables.models.mcp_models import McpTool
 from tables.serializers.export_serializers import NestedCrewExportSerializer
-from tables.utils.helpers import generate_new_unique_name
+from tables.serializers.model_serializers import (
+    ConditionalEdgeSerializer,
+    EdgeSerializer,
+    EndNodeSerializer,
+    FileExtractorNodeSerializer,
+    PythonNodeSerializer,
+    StartNodeSerializer,
+)
 from tables.services.import_services import (
-    ToolsImportService,
     AgentsImportService,
     CrewsImportService,
     LLMConfigsImportService,
+    RealtimeAgentImportService,
     RealtimeConfigsImportService,
     RealtimeTranscriptionConfigsImportService,
-    RealtimeAgentImportService,
     TasksImportService,
+    ToolsImportService,
 )
+from tables.utils.helpers import generate_new_unique_name
 
 
 class FileImportSerializer(serializers.Serializer):
@@ -757,14 +763,20 @@ class NestedCrewImportSerializer(CrewImportSerializer):
         return super().to_representation(instance)
 
 
+# --- NODE SERIALIZERS WITH ID MAPPING LOGIC ---
+
+
 class CrewNodeImportSerializer(serializers.ModelSerializer):
     crew_id = serializers.IntegerField()
+    # Accept ID from import as integer to build mapping, but don't save to DB directly
+    id = serializers.IntegerField(write_only=True, required=False)
 
     class Meta:
         model = CrewNode
         exclude = ["graph", "crew"]
 
     def create(self, validated_data):
+        validated_data.pop("id", None)
         data = {"graph": self.context.get("graph"), **validated_data}
         return super().create(data)
 
@@ -772,28 +784,34 @@ class CrewNodeImportSerializer(serializers.ModelSerializer):
 class PythonNodeImportSerializer(PythonNodeSerializer):
     python_code = PythonCodeImportSerializer()
     graph = None
+    id = serializers.IntegerField(write_only=True, required=False)
 
     class Meta(PythonNodeSerializer.Meta):
         fields = None
         exclude = ["graph"]
 
     def create(self, validated_data):
+        validated_data.pop("id", None)
         data = {"graph": self.context.get("graph"), **validated_data}
         return super().create(data)
 
 
 class StartNodeImportSerializer(StartNodeSerializer):
+    id = serializers.IntegerField(write_only=True, required=False)
+
     class Meta(StartNodeSerializer.Meta):
         fields = None
         exclude = ["graph"]
 
     def create(self, validated_data):
+        validated_data.pop("id", None)
         data = {"graph": self.context.get("graph"), **validated_data}
         return super().create(data)
 
 
 class EndNodeImportSerializer(EndNodeSerializer):
     graph = None
+    id = serializers.IntegerField(write_only=True, required=False)
 
     class Meta(EndNodeSerializer.Meta):
         fields = None
@@ -801,12 +819,14 @@ class EndNodeImportSerializer(EndNodeSerializer):
         validators = []
 
     def create(self, validated_data):
+        validated_data.pop("id", None)
         data = {"graph": self.context.get("graph"), **validated_data}
         return super().create(data)
 
 
 class FileExtractorNodeImportSerializer(FileExtractorNodeSerializer):
     graph = None
+    id = serializers.IntegerField(write_only=True, required=False)
 
     class Meta(FileExtractorNodeSerializer.Meta):
         fields = None
@@ -814,12 +834,21 @@ class FileExtractorNodeImportSerializer(FileExtractorNodeSerializer):
         validators = []
 
     def create(self, validated_data):
+        validated_data.pop("id", None)
         data = {"graph": self.context.get("graph"), **validated_data}
         return super().create(data)
 
 
 class EdgeImportSerializer(EdgeSerializer):
     graph = None
+    # Use Integers for IDs (Global ID Sequence)
+    # Required=False because we fill them manually in create from the mapping
+    start_node_id = serializers.IntegerField(required=False)
+    end_node_id = serializers.IntegerField(required=False)
+
+    # Accept legacy keys for mapping context, but write-only and optional
+    start_key = serializers.IntegerField(write_only=True, required=False)
+    end_key = serializers.IntegerField(write_only=True, required=False)
 
     class Meta(EdgeSerializer.Meta):
         fields = None
@@ -827,12 +856,41 @@ class EdgeImportSerializer(EdgeSerializer):
         validators = []
 
     def create(self, validated_data):
-        data = {"graph": self.context.get("graph"), **validated_data}
-        return super().create(data)
+        graph = self.context.get("graph")
+        id_map = self.context.get("id_map", {})
+
+        # Extract source/target using either legacy or new fields
+        old_start = validated_data.pop("start_key", None) or validated_data.get(
+            "start_node_id"
+        )
+        old_end = validated_data.pop("end_key", None) or validated_data.get(
+            "end_node_id"
+        )
+
+        # Map to new IDs
+        new_start_id = id_map.get(old_start)
+        new_end_id = id_map.get(old_end)
+
+        if new_start_id and new_end_id:
+            data = {
+                "graph": graph,
+                "start_node_id": new_start_id,
+                "end_node_id": new_end_id,
+                **validated_data,
+            }
+            return super().create(data)
+        else:
+            # Skip invalid edges
+            return None
 
 
 class ConditionalEdgeImportSerializer(ConditionalEdgeSerializer):
     python_code = PythonCodeImportSerializer()
+
+    # Use Integer for Source ID (Global ID Sequence), optional for initial validation
+    source_node_id = serializers.IntegerField(required=False)
+    # Legacy source key for mapping, optional
+    source = serializers.IntegerField(write_only=True, required=False)
 
     class Meta(ConditionalEdgeSerializer.Meta):
         fields = None
@@ -840,7 +898,30 @@ class ConditionalEdgeImportSerializer(ConditionalEdgeSerializer):
         validators = []
 
     def create(self, validated_data):
-        data = {"graph": self.context.get("graph"), **validated_data}
+        graph = self.context.get("graph")
+        id_map = self.context.get("id_map", {})
+
+        # Determine the source ID from incoming data
+        old_source_id = validated_data.pop("source", None)
+        if old_source_id is None:
+            old_source_id = validated_data.get("source_node_id")
+
+        validated_data.pop("then", None)
+
+        # Map to new ID
+        new_source_id = id_map.get(old_source_id)
+
+        if not new_source_id:
+            # Fallback check if ID is already valid
+            if isinstance(old_source_id, int):
+                pass
+            else:
+                # If we really can't find it, raise error
+                raise serializers.ValidationError(
+                    f"ConditionalEdge source ID '{old_source_id}' not found in imported nodes map."
+                )
+
+        data = {"graph": graph, "source_node_id": new_source_id, **validated_data}
         return super().create(data)
 
 
@@ -862,26 +943,44 @@ class MetdataNodeSerializer(serializers.Serializer):
     )
 
     def create(self, validated_data):
-        mapped_crews = self.context.get("mapped_crews")
-        mapped_node_names = self.context.get("mapped_node_names")
+        mapped_crews = self.context.get("mapped_crews", {})
+        mapped_node_names = self.context.get("mapped_node_names", {})
+        id_map = self.context.get("id_map", {})
+
+        # Update Node ID in metadata to the newly generated DB ID
+        # Handle string vs int lookup
+        old_id_str = validated_data.get("id")
+        new_id = None
+
+        if old_id_str in id_map:
+            new_id = id_map[old_id_str]
+        elif old_id_str.isdigit() and int(old_id_str) in id_map:
+            new_id = id_map[int(old_id_str)]
+
+        if new_id:
+            validated_data["id"] = str(new_id)
 
         type_ = validated_data.get("type")
         data = validated_data.pop("data", {})
 
         if type_ == "project":
             crew_id = data.get("id")
-            crew = mapped_crews.get(crew_id)
+            if crew_id in mapped_crews:
+                crew = mapped_crews.get(crew_id)
+                crew_data = NestedCrewExportSerializer(instance=crew).data
+                crew_data["tasks"] = [task["id"] for task in crew_data["tasks"]]
+                data = crew_data
+
             node_name = validated_data.pop("node_name")
-            node_name = mapped_node_names.get(node_name)
+            if node_name in mapped_node_names:
+                node_name = mapped_node_names[node_name]
 
-            crew_data = NestedCrewExportSerializer(instance=crew).data
-            crew_data["tasks"] = [task["id"] for task in crew_data["tasks"]]
-
-            return {"data": crew_data, "node_name": node_name, **validated_data}
+            return {"data": data, "node_name": node_name, **validated_data}
 
         if type_ == "python":
             node_name = validated_data.pop("node_name")
-            node_name = mapped_node_names.get(node_name)
+            if node_name in mapped_node_names:
+                node_name = mapped_node_names[node_name]
             return {"node_name": node_name, "data": data, **validated_data}
 
         return {"data": data, **validated_data}
@@ -894,16 +993,12 @@ class GraphMetadataSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         nodes_data = validated_data.pop("nodes", [])
-        mapped_crews = self.context.get("mapped_crews")
-        mapped_node_names = self.context.get("mapped_node_names")
+        context = self.context
 
         nodes_serializer = MetdataNodeSerializer(
             data=nodes_data,
             many=True,
-            context={
-                "mapped_crews": mapped_crews,
-                "mapped_node_names": mapped_node_names,
-            },
+            context=context,
         )
         nodes_serializer.is_valid(raise_exception=True)
         nodes = nodes_serializer.save()
@@ -938,8 +1033,6 @@ class GraphImportSerializer(serializers.ModelSerializer):
         many=True, required=False
     )
     end_node_list = EndNodeImportSerializer(many=True, required=False)
-    # llm_node_list = LLMNodeSerializer(many=True)
-    # decision_table_node_list = DecisionTableNodeSerializer(many=True)
 
     metadata = GraphMetadataSerializer()
 
@@ -957,35 +1050,32 @@ class GraphImportSerializer(serializers.ModelSerializer):
         llm_configs_data = validated_data.pop("llm_configs", [])
         realtime_agents_data = validated_data.pop("realtime_agents", {})
 
-        crew_node_list_data = validated_data.pop("crew_node_list", [])
-        python_node_list_data = validated_data.pop("python_node_list", [])
+        # Collect node data
+        node_data_map = {
+            "crew": validated_data.pop("crew_node_list", []),
+            "python": validated_data.pop("python_node_list", []),
+            "start": validated_data.pop("start_node_list", []),
+            "end": validated_data.pop("end_node_list", []),
+            "file": validated_data.pop("file_extractor_node_list", []),
+        }
+
         edge_list_data = validated_data.pop("edge_list", [])
         conditional_edge_list_data = validated_data.pop("conditional_edge_list", [])
-        start_node_list_data = validated_data.pop("start_node_list", [])
-        end_node_list_data = validated_data.pop("end_node_list", [])
-        file_extractor_node_list_data = validated_data.pop(
-            "file_extractor_node_list", []
-        )
-        # llm_node_list_data = validated_data.pop("llm_node_list", [])
-        # decision_table_node_list_data = validated_data.pop(
-        #     "decision_table_node_list", []
-        # )
-
         metadata = validated_data.pop("metadata", {})
 
-        tools_service = None
-        agents_service = None
-        crews_service = None
-        llm_configs_service = None
-
+        # Create Graph
         previous_name = validated_data.pop("name")
         unique_name = generate_new_unique_name(
             previous_name,
             Graph.objects.values_list("name", flat=True),
         )
         graph = Graph.objects.create(name=unique_name, **validated_data)
-        # Store previous node names and map those to new node names
-        mapped_node_names = {}
+
+        # Init Services
+        tools_service = None
+        agents_service = None
+        crews_service = None
+        llm_configs_service = None
 
         if tools_data:
             tools_service = ToolsImportService(tools_data)
@@ -1013,7 +1103,15 @@ class GraphImportSerializer(serializers.ModelSerializer):
                 agents_service, tools_service, llm_configs_service
             )
 
-        for node_data in crew_node_list_data:
+        # --- ID Mapping Logic ---
+        # Maps old import IDs (int or str) to new DB IDs (int)
+        id_map = {}
+        mapped_node_names = {}
+
+        # Create Crew Nodes
+        for node_data in node_data_map["crew"]:
+            import_id = node_data.get("id") or node_data.get("node_name")
+
             crew_id = node_data.pop("crew_id", None)
             crew = crews_service.mapped_crews.get(crew_id)
 
@@ -1028,65 +1126,97 @@ class GraphImportSerializer(serializers.ModelSerializer):
 
             serializer = CrewNodeImportSerializer(data=data, context={"graph": graph})
             serializer.is_valid(raise_exception=True)
-            serializer.save()
+            node_instance = serializer.save()
 
-        for node_data in python_node_list_data:
+            if import_id is not None:
+                id_map[import_id] = node_instance.id
+
+        # Create Python Nodes
+        for node_data in node_data_map["python"]:
+            import_id = node_data.get("id") or node_data.get("node_name")
             data = self._prepare_node_data(node_data, mapped_node_names)
 
             serializer = PythonNodeImportSerializer(data=data, context={"graph": graph})
             serializer.is_valid(raise_exception=True)
-            serializer.save()
+            node_instance = serializer.save()
 
-        for node_data in start_node_list_data:
+            if import_id is not None:
+                id_map[import_id] = node_instance.id
+
+        # Create Start Nodes
+        for node_data in node_data_map["start"]:
+            import_id = node_data.get("id") or "start_node"
             data = self._prepare_node_data(node_data, mapped_node_names)
 
             serializer = StartNodeImportSerializer(data=data, context={"graph": graph})
             serializer.is_valid(raise_exception=True)
-            serializer.save()
+            node_instance = serializer.save()
 
-        for node_data in end_node_list_data:
+            if import_id is not None:
+                id_map[import_id] = node_instance.id
+
+            if "__start__" not in id_map:
+                id_map["__start__"] = node_instance.id
+
+        # Create End Nodes
+        for node_data in node_data_map["end"]:
+            import_id = node_data.get("id")
             data = self._prepare_node_data(node_data, mapped_node_names)
 
             serializer = EndNodeImportSerializer(data=data, context={"graph": graph})
             serializer.is_valid(raise_exception=True)
-            serializer.save()
+            node_instance = serializer.save()
 
-        for node_data in file_extractor_node_list_data:
+            if import_id is not None:
+                id_map[import_id] = node_instance.id
+
+        # Create File Extractor Nodes
+        for node_data in node_data_map["file"]:
+            import_id = node_data.get("id") or node_data.get("node_name")
             data = self._prepare_node_data(node_data, mapped_node_names)
 
             serializer = FileExtractorNodeImportSerializer(
                 data=data, context={"graph": graph}
             )
             serializer.is_valid(raise_exception=True)
-            serializer.save()
+            node_instance = serializer.save()
 
+            if import_id is not None:
+                id_map[import_id] = node_instance.id
+
+        # Create Edges (using mapped IDs)
         for edge_data in edge_list_data:
             start_key = edge_data.pop("start_key", None)
             end_key = edge_data.pop("end_key", None)
 
-            mapped_key = mapped_node_names.get(start_key)
-            if mapped_key:
-                start_key = mapped_key
+            # Resolve real DB IDs using the map
+            start_node_id = id_map.get(start_key)
+            end_node_id = id_map.get(end_key)
 
-            mapped_key = mapped_node_names.get(end_key)
-            if mapped_key:
-                end_key = mapped_key
+            if start_node_id and end_node_id:
+                data = {
+                    "start_node_id": start_node_id,
+                    "end_node_id": end_node_id,
+                    **edge_data,
+                }
+                serializer = EdgeImportSerializer(data=data, context={"graph": graph})
+                serializer.is_valid(raise_exception=True)
+                serializer.save()
 
-            data = {"start_key": start_key, "end_key": end_key, **edge_data}
-            serializer = EdgeImportSerializer(data=data, context={"graph": graph})
-            serializer.is_valid(raise_exception=True)
-            serializer.save()
-
+        # Create Conditional Edges (using mapped IDs)
         for edge_data in conditional_edge_list_data:
             serializer = ConditionalEdgeImportSerializer(
-                data=edge_data, context={"graph": graph}
+                data=edge_data, context={"graph": graph, "id_map": id_map}
             )
             serializer.is_valid(raise_exception=True)
             serializer.save()
 
-        context = {"mapped_node_names": mapped_node_names}
-        if crews_service:
-            context["mapped_crews"] = crews_service.mapped_crews
+        # Save Metadata (updating IDs)
+        context = {
+            "mapped_node_names": mapped_node_names,
+            "mapped_crews": crews_service.mapped_crews if crews_service else {},
+            "id_map": id_map,
+        }
 
         metadata_serializer = GraphMetadataSerializer(data=metadata, context=context)
         metadata_serializer.is_valid(raise_exception=True)
@@ -1096,7 +1226,6 @@ class GraphImportSerializer(serializers.ModelSerializer):
         return graph
 
     def _prepare_node_data(self, node_data, mapped_node_names):
-        """Restore original node_name and register it in mapped_node_names."""
         previous_name = node_data.pop("node_name", None)
         if previous_name:
             mapped_node_names[previous_name] = previous_name

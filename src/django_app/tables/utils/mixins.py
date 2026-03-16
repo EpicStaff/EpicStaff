@@ -1,24 +1,28 @@
-import os
 import json
+import os
 import time
-from datetime import datetime
-
-from typing import AsyncGenerator, AsyncIterable, Callable, Union
 from abc import ABC, abstractmethod
+from datetime import datetime
+from functools import partial
+from typing import AsyncGenerator, AsyncIterable, Callable, Union
 
-from rest_framework import status
-from rest_framework.response import Response
-from rest_framework.decorators import action
-from loguru import logger
 from asgiref.sync import sync_to_async
-from django.http import StreamingHttpResponse
 from django.core.serializers.json import DjangoJSONEncoder
-from django.views import View
 from django.db import IntegrityError, transaction
+from django.http import HttpResponse, StreamingHttpResponse
+from django.views import View
+from drf_yasg.utils import swagger_auto_schema
+from loguru import logger
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.response import Response
 
 from tables.models.knowledge_models.collection_models import DocumentMetadata
+from tables.serializers.import_serializers import FileImportSerializer
 from tables.services.redis_service import RedisService
-from functools import partial
+
+from .helpers import generate_file_name
 
 ALLOWED_FILE_TYPES = {choice[0] for choice in DocumentMetadata.DocumentFileType.choices}
 MAX_FILE_SIZE = 12 * 1024 * 1024  # 12MB
