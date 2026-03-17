@@ -7,7 +7,23 @@
         "build": "ng build",
         "watch": "ng build --watch --configuration development",
         "test": "ng test",
-        "build-mym": "ng build --base-href /epicstaff/"
+        "build-mym": "ng build --base-href /epicstaff/",
+        "prepare": "cd .. && npx husky frontend/.husky",
+        "lint": "eslint src",
+        "lint:fix": "eslint src --fix",
+        "format": "prettier --write \"src/**/*.{ts,html,scss,json}\""
+    },
+    "lint-staged": {
+        "src/**/*.ts": [
+            "prettier --write",
+            "eslint --fix --max-warnings=0"
+        ],
+        "src/**/*.html": [
+            "prettier --write"
+        ],
+        "src/**/*.scss": [
+            "prettier --write"
+        ]
     },
     "private": true,
     "dependencies": {
@@ -45,17 +61,24 @@
     },
     "devDependencies": {
         "@angular-devkit/build-angular": "^19.2.0",
+        "@angular-eslint/eslint-plugin": "^19.8.1",
         "@angular/cli": "^19.2.0",
         "@angular/compiler-cli": "^19.2.0",
         "@types/jasmine": "~5.1.0",
         "@types/lodash": "^4.17.14",
+        "eslint": "^9.39.4",
+        "eslint-plugin-simple-import-sort": "^12.1.1",
+        "husky": "^9.1.7",
         "jasmine-core": "~5.2.0",
         "karma": "^6.4.4",
         "karma-chrome-launcher": "^3.2.0",
         "karma-coverage": "^2.2.1",
         "karma-jasmine": "^5.1.0",
         "karma-jasmine-html-reporter": "^2.1.0",
+        "lint-staged": "^16.3.3",
+        "prettier": "^3.8.1",
         "puppeteer": "^23.7.1",
-        "typescript": "~5.5.2"
+        "typescript": "~5.5.2",
+        "typescript-eslint": "^8.57.0"
     }
 }
