@@ -3,6 +3,8 @@ import {
   OnInit,
   Inject,
   ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  HostListener
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -14,7 +16,8 @@ import { NoteNodeModel } from '../../core/models/node.model';
   standalone: true,
   imports: [CommonModule, FormsModule],
   template: `
-    <div class="wrapper">
+  <div class="backdrop" (click)="close()">
+    <div class="wrapper" (click)="$event.stopPropagation()">
       <div class="dialog-header">
         <div class="icon-and-title">
           <i class="ti ti-note"></i>
@@ -23,7 +26,7 @@ import { NoteNodeModel } from '../../core/models/node.model';
         <div class="header-actions">
           <div class="close-action">
             <span class="esc-label">ESC</span>
-            <i class="ti ti-x" (click)="onCancel()"></i>
+            <i class="ti ti-x" (click)="close()"></i>
           </div>
         </div>
       </div>
@@ -38,12 +41,8 @@ import { NoteNodeModel } from '../../core/models/node.model';
           ></textarea>
         </div>
       </div>
-
-      <div class="dialog-footer">
-        <button class="cancel-button" (click)="onCancel()">Cancel</button>
-        <button class="save-button" (click)="onSave()">Save</button>
-      </div>
     </div>
+  </div>
   `,
   styles: [
     `
@@ -150,46 +149,6 @@ import { NoteNodeModel } from '../../core/models/node.model';
       .note-textarea:focus {
         border-color: var(--accent-color, #4a6da7);
       }
-
-      .dialog-footer {
-        display: flex;
-        justify-content: flex-end;
-        gap: 10px;
-        padding: 1rem 1.5rem;
-        border-top: 1px solid var(--color-divider-subtle, #333);
-      }
-
-      button {
-        padding: 0.5rem 1.5rem;
-        border-radius: 6px;
-        font-weight: 500;
-        cursor: pointer;
-        font-size: 0.875rem;
-        transition: all 0.2s ease;
-      }
-
-      .cancel-button {
-        background: transparent;
-        color: var(--color-text-secondary, #aaa);
-        border: 1px solid var(--color-divider-subtle, #444);
-      }
-
-      .cancel-button:hover {
-        border-color: #666;
-        color: white;
-        background-color: rgba(255, 255, 255, 0.05);
-      }
-
-      .save-button {
-        background: var(--accent-color, #4a6da7);
-        color: white;
-        border: none;
-      }
-
-      .save-button:hover {
-        background: var(--accent-color-hover, #5a7db7);
-        transform: translateY(-1px);
-      }
     `,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -199,19 +158,23 @@ export class NoteEditDialogComponent implements OnInit {
 
   constructor(
     public dialogRef: DialogRef<{ content: string }>,
-    @Inject(DIALOG_DATA) public data: { node: NoteNodeModel }
+    @Inject(DIALOG_DATA) public data: { node: NoteNodeModel },
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
     // Initialize with the current note content
     this.noteContent = this.data.node.data.content || '';
+    this.cdr.detectChanges();
   }
 
-  onCancel(): void {
-    this.dialogRef.close();
-  }
-
-  onSave(): void {
+  close(): void {
     this.dialogRef.close({ content: this.noteContent });
+  }
+
+  @HostListener('document:keydown.escape', ['$event'])
+  onEsc(event: KeyboardEvent): void {
+    event.preventDefault();
+    this.close();
   }
 }

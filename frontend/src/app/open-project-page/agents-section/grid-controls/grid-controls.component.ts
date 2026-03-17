@@ -12,6 +12,7 @@ import { SearchDropdownComponent } from './dropdown-staff-agents/search-dropdown
 import { ProjectFavoriteButtonComponent } from '../../../shared/components/header/header-components/header-favorite/header-favorite-button.component';
 import { ProjectFilterButtonComponent } from '../../../shared/components/header/header-components/header-filter/header-filter-button.component';
 import { ProjectSortButtonComponent } from '../../../shared/components/header/header-components/header-sort/header-sort-button.component';
+import { FullAgent } from '../../../features/staff/services/full-agent.service';
 
 export type GridSizeOption = 'small' | 'medium' | 'large';
 
@@ -30,6 +31,7 @@ export class GridControlsComponent {
   @Output() filterChange = new EventEmitter<void>();
   @Output() sortChange = new EventEmitter<void>();
   @Output() favoriteToggle = new EventEmitter<void>();
+  @Output() staffAgentAdded = new EventEmitter<FullAgent>();
 
   public showDropdown = false;
   public sizeOptions: GridSizeOption[] = ['small', 'medium', 'large'];
@@ -77,5 +79,9 @@ export class GridControlsComponent {
     this.isFavoriteActive = !this.isFavoriteActive;
     this.favoriteToggle.emit();
     this.cdr.markForCheck();
+  }
+
+  public onStaffAgentAdded(agent: FullAgent): void {
+    this.staffAgentAdded.emit(agent);
   }
 }

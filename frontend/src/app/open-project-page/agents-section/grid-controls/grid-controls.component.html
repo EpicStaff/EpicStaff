@@ -75,6 +75,7 @@
     class="dropdown-container"
     [currentSize]="currentSize"
     [searchTerm]="searchTerm"
+    (staffAgentAdded)="onStaffAgentAdded($event)"
   ></app-search-dropdown>
   }
 </div>

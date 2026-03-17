@@ -256,3 +256,20 @@ $transition-default: all 0.2s ease;
 ::ng-deep .ag-grid-staff .cell-warning {
   border: 1px solid orange !important;
 }
+
+:host ::ng-deep .ag-grid-staff .ag-header-cell.required-header .ag-header-cell-text::after {
+  content: ' *';
+  color: rgba(255, 77, 79, 1);
+  font-weight: 700;
+}
+
+::ng-deep .ag-grid-staff .cell-required-invalid {
+  border: 1px solid rgba(255, 77, 79, 0.95) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 77, 79, 0.35);
+  border-radius: 6px;
+}
+
+.wrapper.agents-table-wrap--saving {
+  pointer-events: none;
+  opacity: 0.85;
+}

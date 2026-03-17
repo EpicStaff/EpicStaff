@@ -4,6 +4,9 @@ import {
     OnDestroy,
     ChangeDetectionStrategy,
     ChangeDetectorRef,
+    Input, 
+    Output, 
+    EventEmitter,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -28,6 +31,8 @@ import { NODE_COLORS } from '../../visual-programming/core/enums/node-config';
 import { NODE_ICONS } from '../../visual-programming/core/enums/node-config';
 import { FlowsApiService } from '../../features/flows/services/flows-api.service';
 import { ConfirmationDialogService } from '../../shared/components/cofirm-dialog/confimation-dialog.service';
+import { SaveWithIndicatorComponent } from '../../shared/components/save-with-indicator/save-with-indicator.component';
+import { UnsavedIndicatorComponent } from '../../shared/components/unsaved-indicator/unsaved-indicator.component';
 
 @Component({
     selector: 'app-header',
@@ -39,6 +44,8 @@ import { ConfirmationDialogService } from '../../shared/components/cofirm-dialog
         CommonModule,
         AppIconComponent,
         ButtonComponent,
+        SaveWithIndicatorComponent,
+        UnsavedIndicatorComponent,
     ],
     templateUrl: './header.component.html',
     styleUrl: './header.component.scss',
@@ -48,6 +55,10 @@ export class HeaderComponent implements OnInit, OnDestroy {
     public project: GetProjectRequest | null = null;
 
     private destroy$ = new Subject<void>();
+
+    @Input() public hasUnsavedChanges = false;
+    @Input() public isSaving = false;
+    @Output() public save = new EventEmitter<void>();
 
     constructor(
         private runGraphService: RunGraphService,
@@ -209,5 +220,13 @@ export class HeaderComponent implements OnInit, OnDestroy {
                 }
                 // If result is false or 'close', the action is cancelled (do nothing)
             });
+    }
+
+    public onDirtyChange(isDirty: boolean) {
+        this.hasUnsavedChanges = isDirty;
+    }
+
+    public onSaveClick(): void {
+        this.save.emit();
     }
 }

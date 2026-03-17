@@ -7,6 +7,9 @@
                     <span class="subtitle-inline"
                         >Manage your AI agents and their capabilities.</span
                     >
+                    <app-unsaved-indicator
+                        [show]="hasUnsavedChanges"
+                    ></app-unsaved-indicator>
                 </h1>
             </div>
             <div class="header-actions">
@@ -14,6 +17,13 @@
           [searchPlaceholder]="'Search agents...'"
           [showTags]="true"
         ></app-filters-list> -->
+                <app-save-with-indicator
+                    [isSaving]="isSaving"
+                    [disabled]="isSaving || !hasUnsavedChanges"
+                    [hasUnsavedChanges]="hasUnsavedChanges"
+                    (save)="onSave()"
+                ></app-save-with-indicator>
+
                 <app-button
                     type="primary"
                     class="btn-primary create-btn"
@@ -26,14 +36,9 @@
         </header>
     </div>
     <section class="body">
-        <!-- Loading Spinner -->
-        <div *ngIf="isLoadingAgent" class="loading-overlay">
-            <app-loading-spinner
-                [message]="'Adding agent...'"
-                [size]="'md'"
-            ></app-loading-spinner>
-        </div>
-
-        <app-agents-table [newAgent]="newlyCreatedAgent"></app-agents-table>
+        <app-agents-table 
+            [isSaving]="isSaving"
+            (dirtyChange)="hasUnsavedChanges = $event">
+        </app-agents-table>
     </section>
 </div>

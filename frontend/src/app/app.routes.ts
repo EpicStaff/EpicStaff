@@ -45,10 +45,12 @@ export const routes: Routes = [
             {
                 path: 'projects/:projectId',
                 component: OpenProjectPageComponent,
+                canDeactivate: [UnsavedChangesGuard],
             },
             {
                 path: 'staff',
                 component: StaffPageComponent,
+                canDeactivate: [UnsavedChangesGuard],
             },
             {
                 path: 'tools',

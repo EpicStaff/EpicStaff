@@ -8,7 +8,11 @@
         ></app-spinner>
     </div>
     } @else { @if (!showHeader) {
-    <app-header></app-header>
+    <app-header
+        [hasUnsavedChanges]="hasUnsavedChanges"
+        [isSaving]="isSaving"
+        (save)="onSaveAll()"
+    ></app-header>
     }
 
     <!-- <div class="tabs-container">
@@ -72,6 +76,27 @@
                         (settingsChange)="onSettingsChanged($event)"
                     >
                     </app-settings-section>
+                    } @else if (section.id === 'details') {
+                        <app-details-content
+                            [projectId]="project?.id ?? 0"
+                            [description]="project?.description ?? ''"
+                            [tags]="detailsTagsAsStrings"
+                            (detailsChange)="onDetailsChanged($event)"
+                            (dirtyChange)="onDetailsDirtyChange($event)"
+                        ></app-details-content>
+                    } @else if (section.id === 'agents') {
+                        <app-agents-section
+                            (agentsIdsChange)="onAgentsIdsChanged($event)"
+                            (agentUpdatePending)="onAgentUpdatePending($event)"
+                            (dirtyChange)="onAgentsDirtyChange($event)"
+                        ></app-agents-section>
+                    } @else if (section.id === 'tasks') {
+                        <app-tasks-section
+                            [project]="project"
+                            [isSaving]="isSaving"
+                            (taskPending)="onTaskPending($event)"
+                            (dirtyChange)="onTasksDirtyChange($event)"
+                        ></app-tasks-section>
                     } @else {
                     <ng-container
                         [ngComponentOutlet]="section.component"

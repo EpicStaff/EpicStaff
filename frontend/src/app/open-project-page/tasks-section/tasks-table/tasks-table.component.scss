@@ -240,3 +240,19 @@ $transition-default: all 0.2s ease;
 ::ng-deep .ag-grid-staff .cell-warning {
   border: 1px solid orange !important;
 }
+
+:host ::ng-deep .required-header .ag-header-cell-text::after {
+  content: '*';
+  color: #ff3b30;
+  margin-left: 4px;
+}
+
+:host ::ng-deep .cell-required-invalid {
+  border: 1px solid rgba(255, 77, 79, 0.95) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 77, 79, 0.35);
+  border-radius: 6px;
+}
+
+.ag-grid-wrap.tasks-table-wrap--saving {
+  pointer-events: none;
+}

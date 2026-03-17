@@ -3,5 +3,8 @@
     [project]="project"
     [tasks]="tasks"
     [agents]="agents"
+    [isSaving]="isSaving"
+    (taskPending)="onTaskPending($event)"
+    (dirtyChange)="onDirtyChange($event)"
   ></app-tasks-table>
 </div>

@@ -70,6 +70,10 @@ interface AgentFormData {
     respect_context_window: boolean;
 }
 
+export type AgentDialogResult =
+    | { kind: 'create'; payload: CreateAgentRequest }
+    | { kind: 'update'; payload: GetAgentRequest };
+
 @Component({
     selector: 'app-create-agent-form',
     templateUrl: './create-agent-form-dialog.component.html',
@@ -147,12 +151,10 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
     constructor(
         private fb: FormBuilder,
         private cdr: ChangeDetectorRef,
-        private agentService: AgentsService,
         private realtimeAgentService: RealtimeAgentService,
-        private toastService: ToastService,
         private fullLLMConfigService: FullLLMConfigService,
         private collectionsService: CollectionsApiService,
-        public dialogRef: DialogRef<GetAgentRequest | undefined>
+        public dialogRef: DialogRef<AgentDialogResult | undefined>,
     ) {
         // Check edit mode
         const data = this.dialogRef.config?.data as
@@ -249,7 +251,7 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
                     agent.mcp_tools || []
                 ),
                 search_limit: new FormControl<number>(
-                    agent.search_configs.naive.search_limit || 3,
+                    agent.search_configs.naive.search_limit ?? 3,
                     [Validators.min(1), Validators.max(1000)]
                 ),
                 similarity_threshold: new FormControl<number>(
@@ -523,30 +525,15 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
                 search_configs: {
                     naive: {
                         search_limit: formData.search_limit,
-                        similarity_threshold: formData.similarity_threshold.toString(),
+                        similarity_threshold: formData.similarity_threshold,
                     }
                 }
             };
 
             console.log('Update request:', updateRequest);
 
-            this.agentService.updateAgent(updateRequest).subscribe({
-                next: (updatedAgent) => {
-                    this.isSubmitting.set(false);
-
-                    const completeAgent: GetAgentRequest = {
-                        ...this.agentToEdit!,
-                        ...updatedAgent,
-                        tools: this.agentToEdit!.tools,
-                    };
-                    this.dialogRef.close(completeAgent);
-                },
-                error: (error) => {
-                    this.isSubmitting.set(false);
-                    console.error('Error updating agent:', error);
-                    this.toastService.error('Failed to update agent');
-                },
-            });
+            this.isSubmitting.set(false);
+            this.dialogRef.close({ kind: 'update', payload: updateRequest });
         } else {
             // Create mode - add new agent
             const agentRequest: CreateAgentRequest = {
@@ -577,28 +564,16 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
                 respect_context_window: formData.respect_context_window,
                 search_configs: {
                     naive: {
-                        search_limit: formData.search_limit,
-                        similarity_threshold: formData.similarity_threshold.toString(),
+                        search_limit: Number(formData.search_limit ?? 3),
+                        similarity_threshold: Number(formData.similarity_threshold ?? 0.2),
                     }
                 }
             };
 
             console.log('Create request:', agentRequest);
 
-            this.agentService.createAgent(agentRequest).subscribe({
-                next: (createdAgent: GetAgentRequest) => {
-                    this.toastService.success(
-                        `Agent ${createdAgent.role} created`
-                    );
-                    this.isSubmitting.set(false);
-                    this.dialogRef.close(createdAgent);
-                },
-                error: (error) => {
-                    this.isSubmitting.set(false);
-                    console.error('Error creating agent:', error);
-                    this.toastService.error('Failed to create agent');
-                },
-            });
+            this.isSubmitting.set(false);
+            this.dialogRef.close({ kind: 'create', payload: agentRequest });
         }
     }
 

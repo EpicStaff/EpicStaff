@@ -1,4 +1,8 @@
-<div class="wrapper">
+<div 
+  #agGridWrap
+  class="wrapper"
+  [class.agents-table-wrap--saving]="isSaving"
+>
   <app-spinner
     *ngIf="isLoading()"
     [text]="'Agents coming...'"
@@ -26,7 +30,7 @@
 <app-ag-grid-context-menu
   clickOutside
   (clickOutside)="closeContextMenu()"
-  [visible]="contextMenuVisible()"
+  [visible]="!isSaving && contextMenuVisible()"
   [left]="menuLeft"
   [top]="menuTop"
   (delete)="handleDelete()"

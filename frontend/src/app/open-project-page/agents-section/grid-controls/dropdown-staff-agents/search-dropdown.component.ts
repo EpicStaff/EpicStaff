@@ -8,6 +8,8 @@ import {
   HostBinding,
   OnChanges,
   SimpleChanges,
+  Output, 
+  EventEmitter,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -34,6 +36,7 @@ export class SearchDropdownComponent implements OnInit, OnChanges, OnDestroy {
   public currentSize: 'small' | 'medium' | 'large' = 'small';
 
   @Input() searchTerm: string = '';
+  @Output() staffAgentAdded = new EventEmitter<FullAgent>();
 
   public staffAgents: FullAgent[] = [];
   public filteredStaffAgents: FullAgent[] = [];
@@ -116,7 +119,7 @@ export class SearchDropdownComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   public onAddStaffAgent(staffAgent: FullAgent): void {
-    this.projectStateService.addAgent(staffAgent);
+    this.staffAgentAdded.emit(staffAgent);
   }
 
   public trackStaffAgentById(

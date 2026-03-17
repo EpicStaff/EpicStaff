@@ -5,7 +5,10 @@ import {
     ChangeDetectionStrategy,
     signal,
     computed,
+    DestroyRef,
+    inject,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { NgIf, NgFor, NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -45,6 +48,7 @@ export class AdvancedTaskSettingsDialogComponent implements OnInit {
     public selectedTaskIds = signal<number[]>([]);
     public readonly availableTasks: any[];
     public useOutputModel = signal<boolean>(false);
+    private readonly destroyRef = inject(DestroyRef);
 
     constructor(
         public dialogRef: DialogRef<AdvancedTaskSettingsData>,
@@ -85,14 +89,29 @@ export class AdvancedTaskSettingsDialogComponent implements OnInit {
             this.taskData.output_model !== null &&
                 this.taskData.output_model !== undefined
         );
+
+        this.dialogRef
+            .backdropClick
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => {
+                console.log('[Dialog] backdrop click');
+                this.requestClose()
+            });
+
+        this.dialogRef
+            .keydownEvents
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((event: KeyboardEvent) => {
+                console.log('[Dialog] keydown', event.key);
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    this.requestClose();
+                }
+            });
     }
 
     public ngOnInit(): void {
-        const savedSchema = this.loadSchemaFromLocalStorage();
-
-        if (savedSchema) {
-            this.jsonConfig.set(this.stripTypeAndTitle(savedSchema));
-        } else if (this.taskData.output_model) {
+        if (this.taskData.output_model) {
             try {
                 const outputModel = this.taskData.output_model;
                 const schemaString = JSON.stringify(outputModel, null, 2);
@@ -120,46 +139,6 @@ export class AdvancedTaskSettingsDialogComponent implements OnInit {
             return JSON.stringify(rest, null, 2);
         } catch (e) {
             return schemaString;
-        }
-    }
-
-    private getLocalStorageKey(): string | null {
-        if (!this.taskData.taskId) {
-            return null;
-        }
-        return `task_output_schema_${this.taskData.taskId}`;
-    }
-
-    private loadSchemaFromLocalStorage(): string | null {
-        const key = this.getLocalStorageKey();
-        if (!key) {
-            return null;
-        }
-
-        try {
-            const savedSchema = localStorage.getItem(key);
-            if (savedSchema) {
-                JSON.parse(savedSchema);
-                return savedSchema;
-            }
-        } catch (e) {
-            localStorage.removeItem(key);
-        }
-        return null;
-    }
-
-    private saveSchemaToLocalStorage(): void {
-        const key = this.getLocalStorageKey();
-        if (!key) {
-            return;
-        }
-
-        try {
-            if (this.jsonConfig()) {
-                localStorage.setItem(key, this.jsonConfig());
-            }
-        } catch (e) {
-            console.error('Error saving schema to localStorage:', e);
         }
     }
 
@@ -234,8 +213,6 @@ export class AdvancedTaskSettingsDialogComponent implements OnInit {
                 outputModel = this.tryProcessOutputModel(this.jsonConfig());
             }
 
-            this.saveSchemaToLocalStorage();
-
             const result = {
                 ...this.taskData,
                 config: null,
@@ -243,11 +220,13 @@ export class AdvancedTaskSettingsDialogComponent implements OnInit {
                 task_context_list: this.selectedTaskIds(),
             };
 
-            console.log('Saving data:', result);
             this.dialogRef.close(result);
         } catch (e) {
-            console.error('Invalid JSON format:', e);
             this.isJsonValid.set(false);
         }
+    }
+
+    public requestClose(): void {
+        this.save();
     }
 }

@@ -41,6 +41,11 @@ import { AgentsService } from '../../features/staff/services/staff.service';
 import { ToastService } from '../../services/notifications/toast.service';
 import { ClickOutsideDirective } from '../../shared/directives/click-outside.directive';
 
+export type AgentPendingAction =
+  | { kind: 'add'; agentId: number }
+  | { kind: 'remove'; agentId: number }
+  | { kind: 'update'; agent: FullAgent }; 
+
 @Component({
     selector: 'app-agents-section',
     templateUrl: './agents-section.component.html',
@@ -70,6 +75,11 @@ export class AgentsSectionComponent implements OnInit, OnDestroy {
     @HostBinding('class.size-large') get isLargeSize() {
         return this.currentGridSize === 'large';
     }
+
+    @Output() agentsIdsChange = new EventEmitter<number[]>();
+    @Output() agentUpdatePending = new EventEmitter<FullAgent>();
+    @Output() dirtyChange = new EventEmitter<boolean>();
+    @Output() agentsPendingChange = new EventEmitter<AgentPendingAction>();
 
     public cardState: CardState = 'removing';
 
@@ -114,8 +124,16 @@ export class AgentsSectionComponent implements OnInit, OnDestroy {
         }
         this.cdr.markForCheck();
     }
+    
     public onRemoveStaffAgent(staffAgent: FullAgent) {
-        this.projectStateService.removeAgent(staffAgent);
+        const id = Number(staffAgent.id);
+        this.agents = this.agents.filter(a => Number(a.id) !== id);
+        const nextIds = this.agents.map(a => Number(a.id));
+        this.agentsIdsChange.emit(nextIds);
+        this.agentsPendingChange.emit({ kind: 'remove', agentId: id });
+        this.projectStateService.updateAgents(this.agents);
+        this.dirtyChange.emit(true);
+        this.cdr.markForCheck();
     }
 
     public onEditAgent(agent: FullAgent): void {
@@ -130,19 +148,11 @@ export class AgentsSectionComponent implements OnInit, OnDestroy {
         );
 
         dialogRef.closed.subscribe((updatedAgent) => {
-            if (updatedAgent) {
-                // Update the agent via service
-                this.agentsService.updateAgent(updatedAgent as any).subscribe({
-                    next: (result) => {
-                        // After updating the agent, refresh the full agent data
-                        this.projectStateService.refreshAgent(result.id);
-                    },
-                    error: (error) => {
-                        console.error('Error updating agent:', error);
-                        this.toastService.error('Failed to update agent');
-                    },
-                });
-            }
+            if (!updatedAgent) return;
+            this.agentUpdatePending.emit(updatedAgent);
+            this.projectStateService.refreshAgent((updatedAgent as any).id);
+            this.dirtyChange.emit(true);
+            this.cdr.markForCheck();
         });
     }
 
@@ -151,5 +161,17 @@ export class AgentsSectionComponent implements OnInit, OnDestroy {
         staffAgent: FullAgent
     ): string | number {
         return staffAgent.id;
+    }
+
+    public onAddStaffAgent(staffAgent: FullAgent): void {
+        const id = Number(staffAgent.id);
+        if (this.agents.some(a => Number(a.id) === id)) return;
+        this.agents = [...this.agents, staffAgent];
+        const nextIds = this.agents.map(a => Number(a.id));
+        this.agentsIdsChange.emit(nextIds);
+        this.agentsPendingChange.emit({ kind: 'add', agentId: id });
+        this.projectStateService.updateAgents(this.agents);
+        this.dirtyChange.emit(true);
+        this.cdr.markForCheck();
     }
 }

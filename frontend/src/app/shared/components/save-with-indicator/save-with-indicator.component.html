@@ -1,0 +1,8 @@
+<button class="save-button" [disabled]="disabled" (click)="onSave()">
+    @if (isSaving) {
+        <app-spinner2 [size]="16"></app-spinner2>
+    } @else {
+        <i class="ti ti-device-floppy"></i>
+    }
+    {{ label }}
+</button>

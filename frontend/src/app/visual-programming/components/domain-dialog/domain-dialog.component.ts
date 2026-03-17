@@ -1,5 +1,6 @@
 import {
     Component,
+    DestroyRef,
     Inject,
     ViewEncapsulation,
     OnDestroy,
@@ -8,6 +9,7 @@ import {
     signal,
     computed,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { JsonEditorComponent } from '../../../shared/components/json-editor/json-editor.component';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
@@ -57,7 +59,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
         <div class="dialog-container">
             <div class="dialog-header">
                 <h2 class="dialog-title">Domain Variables</h2>
-                <button class="close-button" (click)="onClose()">
+                <button class="close-button" (click)="close()">
                     <i class="ti ti-x"></i>
                 </button>
             </div>
@@ -98,17 +100,6 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                         [fullHeight]="true"
                     ></app-json-editor>
                 </div>
-            </div>
-
-            <div class="dialog-actions">
-                <button class="btn-secondary" (click)="onClose()">Close</button>
-                <button
-                    class="btn-primary"
-                    [disabled]="!isJsonValid || hasPathErrors()"
-                    (click)="onSave()"
-                >
-                    Save
-                </button>
             </div>
         </div>
     `,
@@ -271,44 +262,6 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                 padding: 1rem 1.5rem;
                 border-top: 1px solid var(--color-divider-subtle, #444);
             }
-
-            .btn-primary {
-                background-color: var(--accent-color, #6562f5);
-                color: white;
-                border: 1px solid var(--accent-color, #6562f5);
-                padding: 0.5rem 1rem;
-                border-radius: 6px;
-                font-size: 0.875rem;
-                font-weight: 400;
-                cursor: pointer;
-                transition: all 0.2s ease;
-
-                &:hover:not(:disabled) {
-                    background-color: #5a5ae0;
-                    border-color: #5a5ae0;
-                }
-
-                &:disabled {
-                    opacity: 0.5;
-                    cursor: not-allowed;
-                }
-            }
-
-            .btn-secondary {
-                background-color: transparent;
-                color: var(--color-text-primary, #fff);
-                border: 1px solid var(--color-divider-subtle, #444);
-                padding: 0.5rem 1rem;
-                border-radius: 6px;
-                font-size: 0.875rem;
-                font-weight: 400;
-                cursor: pointer;
-                transition: all 0.2s ease;
-
-                &:hover {
-                    background-color: var(--color-surface-hover, #333);
-                }
-            }
         `,
     ],
 })
@@ -336,12 +289,27 @@ export class DomainDialogComponent implements OnDestroy {
     private contextObject: any = null;
     private keyDownDisposable: any = null;
     private cursorDisposable: any = null;
+    private destroyRef = inject(DestroyRef);
 
     constructor(
         private dialogRef: DialogRef<Record<string, unknown> | null>,
         @Inject(DIALOG_DATA) public data: DomainDialogData
     ) {
         this.initializeJsonEditor();
+
+        this.dialogRef.backdropClick
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.close());
+
+        this.dialogRef.keydownEvents
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((e: KeyboardEvent) => {
+                if (e.key === 'Escape') {
+                    if (this.overlayRef?.hasAttached()) return;
+                    e.preventDefault();
+                    this.close();
+                }
+            });
     }
 
     ngOnDestroy(): void {
@@ -393,29 +361,30 @@ export class DomainDialogComponent implements OnDestroy {
         this.isJsonValid = isValid;
     }
 
-    public onSave(): void {
-        if (!this.isJsonValid || this.hasPathErrors()) {
-            return;
-        }
+    private buildResult(): Record<string, unknown> {
+        if (!this.isJsonValid) throw new Error('Invalid JSON');
 
         try {
-            let parsedData: unknown = JSON.parse(this.initialStateJson);
+            let parsed: unknown = JSON.parse(this.initialStateJson);
+
             if (
-                parsedData &&
-                typeof parsedData === 'object' &&
-                !Array.isArray(parsedData) &&
-                Object.keys(parsedData as Record<string, unknown>).length === 0
+                parsed &&
+                typeof parsed === 'object' &&
+                !Array.isArray(parsed) &&
+                Object.keys(parsed as Record<string, unknown>).length === 0
             ) {
-                parsedData = { ...DEFAULT_INITIAL_STATE };
+                parsed = { context: null };
             }
-            this.dialogRef.close(parsedData as Record<string, unknown>);
-        } catch (e) {
-            this.dialogRef.close({ ...DEFAULT_INITIAL_STATE });
+
+            return parsed as Record<string, unknown>;
+        } catch {
+            return { context: null };
         }
     }
 
-    public onClose(): void {
-        this.dialogRef.close(null);
+    public close(): void {
+        if (!this.isJsonValid || this.hasPathErrors()) return;
+        this.dialogRef.close(this.buildResult());
     }
 
     // --- Monaco editor & autocomplete setup ---

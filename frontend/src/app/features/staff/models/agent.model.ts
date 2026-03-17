@@ -92,7 +92,7 @@ export interface GetAgentRequest {
     search_configs: {
         naive: {
             search_limit: number | null;
-            similarity_threshold: string | null;
+            similarity_threshold: number | null;
         }
     }
 }
@@ -135,7 +135,7 @@ export interface CreateAgentRequest {
     search_configs: {
         naive: {
             search_limit: number | null;
-            similarity_threshold: string | null;
+            similarity_threshold: number | null;
         }
     }
 }
@@ -182,7 +182,7 @@ export interface UpdateAgentRequest {
     search_configs: {
         naive: {
             search_limit: number | null;
-            similarity_threshold: string | null;
+            similarity_threshold: number | null;
         }
     }
 }

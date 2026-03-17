@@ -47,7 +47,7 @@ export interface AdvancedSettingsData {
     } | null
     search_configs: {
         naive: {
-            similarity_threshold: string | null;
+            similarity_threshold: number | null;
             search_limit: number | null;
         }
     }
@@ -86,8 +86,7 @@ export class AdvancedSettingsDialogComponent implements OnInit, OnDestroy {
     public knowledgeSourcesError: string | null = null;
 
     private readonly _destroyed$ = new Subject<void>();
-    public floatedThreshold: any;
-    public search_limit: any;
+  public search_limit = 3;
 
     // Form controls for sliders
     public maxIterControl = new FormControl(10, [
@@ -110,7 +109,7 @@ export class AdvancedSettingsDialogComponent implements OnInit, OnDestroy {
         Validators.min(1),
         Validators.max(1000),
     ]);
-    public similarityThresholdControl = new FormControl(0.2, [
+    public similarityThresholdControl = new FormControl<number | null>(0.2, [
         Validators.min(0.0),
         Validators.max(1.0),
     ]);
@@ -131,21 +130,15 @@ export class AdvancedSettingsDialogComponent implements OnInit, OnDestroy {
         this.agentData = { ...data };
 
         // Initialize form controls with data
-        this.maxIterControl.setValue(data.max_iter || 10);
-        this.maxRpmControl.setValue(data.max_rpm || 10);
-        this.maxExecutionTimeControl.setValue(data.max_execution_time || 60);
+        this.maxIterControl.setValue(data.max_iter ?? 10);
+        this.maxRpmControl.setValue(data.max_rpm ?? 10);
+        this.maxExecutionTimeControl.setValue(data.max_execution_time ?? 60);
         this.maxRetryLimitControl.setValue(data.max_retry_limit ?? 3);
-        this.searchLimitControl.setValue(data.search_configs?.naive?.search_limit || 3);
-
-        if (data.search_configs.naive.similarity_threshold !== null) {
-            this.floatedThreshold = parseFloat(data.search_configs.naive.similarity_threshold);
-            this.similarityThresholdControl.setValue(
-                parseFloat(data.search_configs?.naive?.similarity_threshold)
-            );
-        } else {
-            this.floatedThreshold = 0.2;
-            this.similarityThresholdControl.setValue(0.2);
-        }
+        const st = data.search_configs?.naive?.similarity_threshold;
+        const threshold = st ?? 0.2;
+        this.similarityThresholdControl.setValue(threshold);
+        const sl = data.search_configs?.naive?.search_limit;
+        this.searchLimitControl.setValue(sl ?? 3);
         this.search_limit =
             this.agentData.search_configs.naive.search_limit !== null
                 ? this.agentData.search_configs.naive.search_limit
@@ -282,6 +275,19 @@ export class AdvancedSettingsDialogComponent implements OnInit, OnDestroy {
                     this.cdr.markForCheck();
                 },
             });
+        
+            this.dialogRef.backdropClick
+                .pipe(takeUntil(this._destroyed$))
+                .subscribe(() => this.closeAndApply());
+
+            this.dialogRef.keydownEvents
+                .pipe(takeUntil(this._destroyed$))
+                .subscribe((e) => {
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        this.closeAndApply();
+                    }
+                });
     }
 
     public onLlmChange(llmId: number | null): void {
@@ -345,8 +351,10 @@ export class AdvancedSettingsDialogComponent implements OnInit, OnDestroy {
     }
 
     public onThresholdChange(event: any): void {
-        const value = event.value;
-        this.agentData.search_configs.naive.similarity_threshold = JSON.stringify(value);
+        const value = event?.value;
+        const normalizedValue =
+            value === null || value === undefined ? 0.2 : Number(value);
+        this.similarityThresholdControl.setValue(normalizedValue);
     }
 
     public onSearchLimitChange(event: any): void {
@@ -390,7 +398,7 @@ export class AdvancedSettingsDialogComponent implements OnInit, OnDestroy {
         this.agentData.search_configs = {
             naive: {
                 search_limit: this.searchLimitControl.value || 3,
-                similarity_threshold: this.similarityThresholdControl.value?.toString() || '0.2',
+                similarity_threshold: this.similarityThresholdControl.value ?? 0.2,
             }
         };
 
@@ -418,5 +426,9 @@ export class AdvancedSettingsDialogComponent implements OnInit, OnDestroy {
     public ngOnDestroy(): void {
         this._destroyed$.next();
         this._destroyed$.complete();
+    }
+
+    public closeAndApply(): void {
+        this.save();
     }
 }
