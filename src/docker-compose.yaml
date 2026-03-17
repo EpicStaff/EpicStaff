@@ -325,7 +325,9 @@ services:
       KNOWLEDGE_SOURCES_CHANNEL: knowledge_sources
       DB_KNOWLEDGE_USER: ${DB_KNOWLEDGE_USER}
       DB_KNOWLEDGE_PASSWORD: ${DB_KNOWLEDGE_PASSWORD}
+      EMBEDDING_HEADERS: ${EMBEDDING_HEADERS:-}
       GRAPH_DATA_DIR: /home/user/root/app/graph_data
+
     volumes:
       - graph_data:/home/user/root/app/graph_data
     networks:
