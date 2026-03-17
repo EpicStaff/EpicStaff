@@ -476,7 +476,7 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
 
         const updatedNode: NodeModel = {
             ...normalizedNode,
-            position: this.findFreePosition(
+            position: this.findNearestFreePosition(
                 {
                     x: this.snapToGrid(event.rect.x),
                     y: this.snapToGrid(event.rect.y),
@@ -1023,7 +1023,7 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
                     width: 308,
                     height: 196,
                     offsetX: 5,
-                    offsetY: -10,
+                    offsetY: -12,
                 };
 
             case NodeType.TABLE: {
@@ -1031,7 +1031,7 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
 
                 return {
                     width: node.size.width + 8,
-                    height: visualHeight + 56,
+                    height: visualHeight + 68,
                     offsetX: -4,
                     offsetY: -4,
                 };
@@ -1039,10 +1039,10 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
 
             default:
                 return {
-                    width: node.size.width + 8,
-                    height: node.size.height + 8,
-                    offsetX: -4,
-                    offsetY: -4,
+                    width: node.size.width + 10,
+                    height: node.size.height + 10,
+                    offsetX: -5,
+                    offsetY: -5,
                 };
         }
     }
@@ -1140,12 +1140,12 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
             (g: any) => g.valid !== false
         ).length;
 
-        const HEADER_HEIGHT = 60;
-        const ROW_HEIGHT = 40;
+        const HEADER_HEIGHT = 62;
+        const ROW_HEIGHT = 46;
         const BASE_ROWS = 2;
 
         const totalRows = Math.max(validGroupsCount + BASE_ROWS, BASE_ROWS);
-        return Math.max(HEADER_HEIGHT + ROW_HEIGHT * totalRows, 152);
+        return Math.max(HEADER_HEIGHT + ROW_HEIGHT * totalRows, 170);
     }
 
     private getDefaultNodeSize(type: NodeType, data?: any): { width: number; height: number } {
