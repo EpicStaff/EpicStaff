@@ -378,29 +378,41 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
                 y: this.snapToGrid(rawPastePos.y),
             };
         } else {
-            console.warn(
-                'No current mouse position available, using default paste position.'
-            );
-            pastePosition = { x: 0, y: 0 } as IRect; // Set default position
+            pastePosition = { x: 0, y: 0 } as IRect;
         }
 
         this.undoRedoService.stateChanged();
+        const { newNodes, newConnections } = this.clipboardService.paste(pastePosition);
+        const placedNodes: NodeModel[] = [];
+        const existingBeforePaste = this.flowService.nodes()
+            .filter((n) => !newNodes.some((p) => p.id === n.id));
 
-        const { newNodes, newConnections } =
-            this.clipboardService.paste(pastePosition);
+        for (const rawNode of newNodes) {
+            const node = this.ensureNodeSize(rawNode as NodeModel);
+            const safePosition = this.findNearestFreePosition(
+                {
+                    x: this.snapToGrid(node.position.x),
+                    y: this.snapToGrid(node.position.y),
+                },
+                this.getCollisionBounds(node),
+                [...existingBeforePaste, ...placedNodes]
+            );
 
-        // After pasting, select the new nodes and connections
-        const newNodeIds: string[] = newNodes.map((node) => node.id);
-        const newConnectionIds: string[] = newConnections.map(
-            (conn) => conn.id
-        );
+            const updatedNode = {
+                ...node,
+                position: safePosition,
+            };
+
+            this.flowService.updateNode(updatedNode);
+            placedNodes.push(updatedNode);
+        }
+
+        const newNodeIds = newNodes.map((node) => node.id);
+        const newConnectionIds = newConnections.map((conn) => conn.id);
 
         setTimeout(() => {
             this.fFlowComponent.select(newNodeIds, newConnectionIds);
         }, 0);
-
-        console.log('Pasted nodes:', newNodes);
-        console.log('Pasted connections:', newConnections);
     }
 
     public onUndo(): void {
@@ -455,28 +467,26 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
         });
     }
 
-    public onCreateNode(event: FCreateNodeEvent) {
-        if (event.data && typeof event.data === 'object') {
-            const nodeData = event.data as NodeModel;
-            // Create a copy of the node with updated position and category
-            const updatedNode: NodeModel = {
-                ...nodeData,
-                position: this.findFreePosition(
-                    {
-                        x: this.snapToGrid(event.rect.x),
-                        y: this.snapToGrid(event.rect.y),
-                    },
-                    this.getCollisionBounds(nodeData),
-                    this.flowService.nodes()
-                ),
-                category: 'web', // Change category from 'vscode' to 'web'
-            };
-
-            // Call the flow service to update the node
-            this.flowService.updateNode(updatedNode);
-
-            console.log('Node added to canvas:', updatedNode);
+    public onCreateNode(event: FCreateNodeEvent): void {
+        if (!event.data || typeof event.data !== 'object') {
+            return;
         }
+
+        const normalizedNode = this.ensureNodeSize(event.data as NodeModel);
+
+        const updatedNode: NodeModel = {
+            ...normalizedNode,
+            position: this.findFreePosition(
+                {
+                    x: this.snapToGrid(event.rect.x),
+                    y: this.snapToGrid(event.rect.y),
+                },
+                this.getCollisionBounds(normalizedNode),
+                this.flowService.nodes()
+            ),
+            category: 'web',
+        };
+        this.flowService.updateNode(updatedNode);
     }
 
     public onContextMenu(event: MouseEvent): void {
@@ -534,16 +544,6 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
         } else if (event.type === NodeType.TABLE) {
             const tableData = event.data?.table;
             const conditionGroups = tableData?.condition_groups ?? [];
-            const headerHeight = 60;
-            const rowHeight = 48;
-            const validGroupsCount = conditionGroups.filter((g: any) => g.valid !== false).length;
-            const hasDefaultRow = 1;
-            const hasErrorRow = 1;
-            const totalRows = Math.max(
-                validGroupsCount + hasDefaultRow + hasErrorRow,
-                2
-            );
-            const calculatedHeight = headerHeight + rowHeight * totalRows;
             nodeSize = {
                 width: 330,
                 height: this.getDecisionTableVisualHeight({
@@ -623,7 +623,7 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
             id: newNodeId,
             backendId: null,
             category: 'web',
-            position: this.findFreePosition(
+            position: this.findNearestFreePosition(
                 {
                     x: this.snapToGrid(position.x),
                     y: this.snapToGrid(position.y),
@@ -643,6 +643,16 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
             size: nodeSize,
         };
         this.flowService.addNode(newNode);
+
+        const freePos = this.findNearestFreePosition(
+            newNode.position,
+            this.getCollisionBounds(newNode),
+            this.flowService.nodes().filter((n) => n.id !== newNode.id)
+        );
+
+        if (freePos.x !== newNode.position.x || freePos.y !== newNode.position.y) {
+            this.flowService.updateNode({ ...newNode, position: freePos });
+        }
     }
 
     // side panel logic
@@ -706,20 +716,22 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
     }
 
     public onNodePanelSaved(updatedNode: NodeModel): void {
-        console.log(
-            'Parent received save event. Calling service with:',
-            updatedNode
-        );
-        this.flowService.updateNode(updatedNode);
+        const normalizedNode = this.normalizeTableNode(updatedNode);
+        this.flowService.updateNode(normalizedNode);
+
+        if (normalizedNode.type === NodeType.TABLE) {
+            this.resolveOverlapsForNode(normalizedNode.id);
+        }
         this.sidePanelService.clearSelection();
     }
 
     public onNodePanelAutosaved(updatedNode: NodeModel): void {
-        console.log(
-            'Parent received autosave event. Calling service with:',
-            updatedNode
-        );
-        this.flowService.updateNode(updatedNode);
+        const normalizedNode = this.normalizeTableNode(updatedNode);
+        this.flowService.updateNode(normalizedNode);
+
+        if (normalizedNode.type === NodeType.TABLE) {
+            this.resolveOverlapsForNode(normalizedNode.id);
+        }
     }
 
     public flushOpenSidePanelState(): void {
@@ -1010,8 +1022,8 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
                 return {
                     width: 308,
                     height: 196,
-                    offsetX: 15,
-                    offsetY: -58,
+                    offsetX: 5,
+                    offsetY: -10,
                 };
 
             case NodeType.TABLE: {
@@ -1029,7 +1041,7 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
                 return {
                     width: node.size.width + 8,
                     height: node.size.height + 8,
-                    offsetX: 0,
+                    offsetX: -4,
                     offsetY: -4,
                 };
         }
@@ -1073,7 +1085,7 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
 
         if (!overlaps(proposed)) return proposed;
 
-        const MAX_R = 20;
+        const MAX_R = 40;
         const candidates: Array<[number, number]> = [];
         for (let dx = -MAX_R; dx <= MAX_R; dx++) {
             for (let dy = -MAX_R; dy <= MAX_R; dy++) {
@@ -1134,5 +1146,95 @@ export class FlowGraphComponent implements OnInit, OnDestroy {
 
         const totalRows = Math.max(validGroupsCount + BASE_ROWS, BASE_ROWS);
         return Math.max(HEADER_HEIGHT + ROW_HEIGHT * totalRows, 152);
+    }
+
+    private getDefaultNodeSize(type: NodeType, data?: any): { width: number; height: number } {
+        if (type === NodeType.NOTE) {
+            return { width: 200, height: 150 };
+        }
+
+        if (type === NodeType.TABLE) {
+            return {
+                width: 330,
+                height: this.getDecisionTableVisualHeight({
+                    id: '',
+                    backendId: null,
+                    category: 'web',
+                    position: { x: 0, y: 0 },
+                    ports: [],
+                    parentId: null,
+                    type: NodeType.TABLE as NodeModel['type'],
+                    node_name: '',
+                    data,
+                    color: '',
+                    icon: '',
+                    input_map: {},
+                    output_variable_path: null,
+                    size: { width: 330, height: 152 },
+                } as NodeModel),
+            };
+        }
+
+        if (type === NodeType.EDGE) {
+            return { width: 300, height: 180 };
+        }
+
+        return { width: 330, height: 60 };
+    }
+
+    private ensureNodeSize(node: NodeModel): NodeModel {
+        if (node.size?.width && node.size?.height) {
+            return node;
+        }
+
+        return {
+            ...node,
+            size: this.getDefaultNodeSize(node.type as NodeType, node.data),
+        };
+    }
+
+    private resolveOverlapsForNode(anchorId: string): void {
+        const allNodes = this.flowService.nodes();
+        const anchor = allNodes.find((n) => n.id === anchorId);
+        if (!anchor) return;
+        const anchorBounds = this.getCollisionBounds(anchor);
+
+        const otherNodes = allNodes
+            .filter((n) => n.id !== anchorId)
+            .sort((a, b) => a.position.y - b.position.y);
+
+        for (const node of otherNodes) {
+            const overlaps = this.rectOverlaps(
+                node.position,
+                this.getCollisionBounds(node),
+                anchor.position,
+                anchorBounds
+            );
+
+            if (!overlaps) continue;
+
+            const freePos = this.findNearestFreePosition(
+                node.position,
+                this.getCollisionBounds(node),
+                this.flowService.nodes().filter((n) => n.id !== node.id)
+            );
+
+            if (freePos.x !== node.position.x || freePos.y !== node.position.y) {
+                this.flowService.updateNode({ ...node, position: freePos });
+            }
+        }
+    }
+
+    private normalizeTableNode(node: NodeModel): NodeModel {
+        if (node.type !== NodeType.TABLE) return node;
+        const visualHeight = this.getDecisionTableVisualHeight(node);
+        return {
+            ...node,
+            size: {
+                ...node.size,
+                width: node.size?.width ?? 330,
+                height: visualHeight,
+            },
+        };
     }
 }
