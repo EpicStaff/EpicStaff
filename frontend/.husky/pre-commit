@@ -1,1 +1,3 @@
-cd frontend && node_modules/.bin/lint-staged
+if [ -f frontend/node_modules/.bin/lint-staged ]; then
+  cd frontend && node_modules/.bin/lint-staged
+fi
