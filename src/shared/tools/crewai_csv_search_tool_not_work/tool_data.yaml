@@ -1,0 +1,7 @@
+tool-data:
+  name: "CSV Search Tool TESTED"
+  description: "Tool to search content in a CSV file. Takes in parameters: 'search_query' (required), 'csv' (optional file path), 'similarity_threshold' (optional), 'limit' (optional)."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "CSVSearchTool.run"
+  requirements: "requirements.txt"

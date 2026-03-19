@@ -1,0 +1,24 @@
+{
+  "title": "PGSearchToolArgs",
+  "type": "object",
+  "properties": {
+    "db_uri": {
+      "type": "string",
+      "description": "PostgreSQL connection URI"
+    },
+    "table_name": {
+      "type": "string",
+      "description": "Database table name to search"
+    },
+    "search_query": {
+      "type": "string",
+      "description": "Search query text"
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Maximum number of rows to return",
+      "default": 10
+    }
+  },
+  "required": ["db_uri", "table_name", "search_query"]
+}

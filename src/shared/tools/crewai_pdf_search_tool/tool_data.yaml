@@ -1,0 +1,7 @@
+tool-data:
+  name: "PDF Semantic Search Tool - DEVELOPER"
+  description: "A tool that can perform semantic search over PDF content using OpenAI embeddings."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

@@ -1,0 +1,7 @@
+tool-data:
+  name: "Dall-E Tool TESTED"
+  description: "Generates images using OpenAI's Dall-E model. Takes one parameter: 'image_description'."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

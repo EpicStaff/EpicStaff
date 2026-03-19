@@ -1,0 +1,7 @@
+tool-data:
+  name: "File Writer Tool TESTED"
+  description: "Tool to write content to a file with optional directory creation and overwrite support."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

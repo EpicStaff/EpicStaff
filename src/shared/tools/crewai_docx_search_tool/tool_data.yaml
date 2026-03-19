@@ -1,0 +1,7 @@
+tool-data:
+  name: "DOCX Search Tool TESTED"
+  description: "Tool to search for a query inside a DOCX file. Takes two parameters: 'docx' - the DOCX file path, 'search_query' - text to search."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

@@ -1,0 +1,15 @@
+{
+  "title": "DOCXSearchToolArgs",
+  "type": "object",
+  "properties": {
+    "docx": {
+      "type": "string",
+      "description": "File path of the DOCX file to be searched"
+    },
+    "search_query": {
+      "type": "string",
+      "description": "Search query you want to find in the DOCX file"
+    }
+  },
+  "required": ["docx", "search_query"]
+}

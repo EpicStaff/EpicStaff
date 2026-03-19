@@ -1,0 +1,23 @@
+{
+  "title": "FileCompressorToolInput",
+  "type": "object",
+  "properties": {
+    "input_path": {
+      "type": "string",
+      "description": "Path to the file or directory to compress."
+    },
+    "output_path": {
+      "type": "string",
+      "description": "Optional output archive filename."
+    },
+    "overwrite": {
+      "type": "boolean",
+      "description": "Whether to overwrite the archive if it already exists."
+    },
+    "format": {
+      "type": "string",
+      "description": "Compression format ('zip', 'tar', 'tar.gz', 'tar.bz2', 'tar.xz')."
+    }
+  },
+  "required": ["input_path"]
+}

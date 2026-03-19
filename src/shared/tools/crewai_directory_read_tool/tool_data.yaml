@@ -1,0 +1,7 @@
+tool-data:
+  name: "Directory Read Tool TESTED"
+  description: "A tool that recursively lists all files in a given directory. Input parameter: 'directory'."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

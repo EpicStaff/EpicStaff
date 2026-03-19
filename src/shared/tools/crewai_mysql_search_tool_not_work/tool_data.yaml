@@ -1,0 +1,7 @@
+tool-data:
+  name: "MySQL Search Tool - DEVELOPER"
+  description: "A standalone tool to search a database table's content using a query. All parameters are injected directly into main."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

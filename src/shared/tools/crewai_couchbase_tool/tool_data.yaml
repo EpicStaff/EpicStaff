@@ -1,0 +1,7 @@
+tool-data:
+  name: "Couchbase FTS Vector Search Tool DEVELOP"
+  description: "Vector search over Couchbase Full Text Search index"
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

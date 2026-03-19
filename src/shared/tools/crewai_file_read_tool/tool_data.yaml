@@ -1,0 +1,7 @@
+tool-data:
+  name: "File Read Tool TESTED"
+  description: "Reads the content of a file. Provide 'file_path'. Optionally, 'start_line' and 'line_count'."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

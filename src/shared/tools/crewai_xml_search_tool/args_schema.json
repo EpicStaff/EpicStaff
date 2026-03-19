@@ -1,0 +1,25 @@
+{
+  "title": "XMLSearchToolArgs",
+  "type": "object",
+  "properties": {
+    "search_query": {
+      "type": "string",
+      "description": "Mandatory search query you want to use to search the XML's content."
+    },
+    "xml": {
+      "type": "string",
+      "description": "File path or URL of a XML file to be searched."
+    },
+    "similarity_threshold": {
+      "type": "number",
+      "description": "Optional similarity threshold for matching results.",
+      "default": null
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Maximum number of results to return.",
+      "default": null
+    }
+  },
+  "required": ["search_query", "xml"]
+}

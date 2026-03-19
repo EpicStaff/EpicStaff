@@ -1,0 +1,7 @@
+tool-data:
+  name: "PostgreSQL Search Tool DEVELOPER"
+  description: "Standalone tool to search PostgreSQL table content using text matching."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

@@ -1,0 +1,7 @@
+tool-data:
+  name: "PDF Text Writing Tool DEVELOPER"
+  description: "Tool to write text directly into the PDF content stream at a specified position, preserving all existing content. Standard PDF fonts supported."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

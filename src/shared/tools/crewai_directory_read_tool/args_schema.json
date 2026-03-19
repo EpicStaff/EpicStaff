@@ -1,0 +1,11 @@
+{
+  "title": "DirectoryReadToolArgs",
+  "type": "object",
+  "properties": {
+    "directory": {
+      "type": "string",
+      "description": "Directory to list content"
+    }
+  },
+  "required": ["directory"]
+}

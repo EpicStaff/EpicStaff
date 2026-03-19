@@ -1,0 +1,25 @@
+{
+  "title": "CSVSearchToolArgs",
+  "type": "object",
+  "properties": {
+    "search_query": {
+      "type": "string",
+      "description": "Mandatory search query you want to use to search the CSV's content"
+    },
+    "csv": {
+      "type": "string",
+      "description": "File path or URL of a CSV file to be searched"
+    },
+    "similarity_threshold": {
+      "type": "number",
+      "description": "Optional similarity threshold for search",
+      "nullable": true
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Maximum number of results to return",
+      "nullable": true
+    }
+  },
+  "required": ["search_query"]
+}

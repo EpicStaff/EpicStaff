@@ -1,0 +1,20 @@
+{
+  "title": "DirectorySearchToolArgs",
+  "type": "object",
+  "properties": {
+    "search_query": {
+      "type": "string",
+      "description": "Query string to search in the directory"
+    },
+    "directory": {
+      "type": "string",
+      "description": "Optional directory to search"
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Maximum number of matches per file",
+      "default": 5
+    }
+  },
+  "required": ["search_query"]
+}

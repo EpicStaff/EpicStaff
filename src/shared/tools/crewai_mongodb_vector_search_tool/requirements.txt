@@ -1,0 +1,2 @@
+pymongo>=4.5.0
+openai>=1.0.0

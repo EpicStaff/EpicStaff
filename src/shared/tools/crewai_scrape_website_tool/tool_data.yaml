@@ -1,0 +1,7 @@
+tool-data:
+  name: "Scrape Website Tool TESTED"
+  description: "Tool to fetch and scrape readable text content from a website URL."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

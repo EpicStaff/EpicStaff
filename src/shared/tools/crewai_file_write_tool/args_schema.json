@@ -1,0 +1,25 @@
+{
+  "title": "FileWriterToolArgs",
+  "type": "object",
+  "properties": {
+    "filename": {
+      "type": "string",
+      "description": "Name of the file to write content to."
+    },
+    "directory": {
+      "type": "string",
+      "description": "Directory path to save the file in (optional).",
+      "default": "./"
+    },
+    "overwrite": {
+      "type": ["string", "boolean"],
+      "description": "Whether to overwrite the file if it exists (true/false).",
+      "default": false
+    },
+    "content": {
+      "type": "string",
+      "description": "Content to write into the file."
+    }
+  },
+  "required": ["filename", "content"]
+}

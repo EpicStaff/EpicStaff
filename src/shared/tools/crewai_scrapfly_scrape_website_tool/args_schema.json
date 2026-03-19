@@ -1,0 +1,31 @@
+{
+  "title": "ScrapflyScrapeWebsiteToolArgs",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "description": "Webpage URL to scrape"
+    },
+    "scrape_format": {
+      "type": "string",
+      "enum": ["raw", "markdown", "text"],
+      "default": "markdown",
+      "description": "Webpage extraction format"
+    },
+    "scrape_config": {
+      "type": "object",
+      "description": "Scrapfly request scrape config",
+      "additionalProperties": true
+    },
+    "ignore_scrape_failures": {
+      "type": "boolean",
+      "description": "Whether to ignore failures",
+      "default": false
+    },
+    "api_key": {
+      "type": "string",
+      "description": "Scrapfly API Key"
+    }
+  },
+  "required": ["url", "api_key"]
+}

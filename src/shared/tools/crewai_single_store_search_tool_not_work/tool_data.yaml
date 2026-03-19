@@ -1,0 +1,7 @@
+tool-data:
+  name: "SingleStore Search Tool DEVELOPER"
+  description: "Tool for performing semantic searches on SingleStore database tables. Supports only SELECT and SHOW queries."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

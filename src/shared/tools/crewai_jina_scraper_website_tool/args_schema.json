@@ -1,0 +1,15 @@
+{
+  "title": "JinaReaderArgs",
+  "type": "object",
+  "properties": {
+    "website_url": {
+      "type": "string",
+      "description": "Mandatory website URL to read content."
+    },
+    "api_key": {
+      "type": "string",
+      "description": "Your Jina.ai API key."
+    }
+  },
+  "required": ["website_url", "api_key"]
+}

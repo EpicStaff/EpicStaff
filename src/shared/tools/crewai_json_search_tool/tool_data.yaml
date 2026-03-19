@@ -1,0 +1,7 @@
+tool-data:
+  name: "JSON Search Tool TESTED"
+  description: "A tool to search a JSON file for a query string. Returns JSON objects that match the query. Takes parameters: 'json_path', 'search_query', optional 'limit'."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

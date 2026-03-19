@@ -1,0 +1,21 @@
+{
+  "title": "FileReadToolArgs",
+  "type": "object",
+  "properties": {
+    "file_path": {
+      "type": "string",
+      "description": "Mandatory file full path to read the file"
+    },
+    "start_line": {
+      "type": "integer",
+      "description": "Line number to start reading from (1-indexed)",
+      "default": 1
+    },
+    "line_count": {
+      "type": ["integer", "null"],
+      "description": "Number of lines to read. If null, reads the entire file",
+      "default": null
+    }
+  },
+  "required": ["file_path"]
+}

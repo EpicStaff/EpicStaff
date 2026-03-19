@@ -1,0 +1,11 @@
+{
+  "title": "ScrapeWebsiteToolArgs",
+  "type": "object",
+  "properties": {
+    "website_url": {
+      "type": "string",
+      "description": "Mandatory website URL to read content from"
+    }
+  },
+  "required": ["website_url"]
+}

@@ -1,0 +1,7 @@
+tool-data:
+  name: "File Compressor Tool TESTED"
+  description: "Compresses a file or directory into an archive (.zip, .tar, .tar.gz, .tar.bz2, .tar.xz). Useful for archiving logs, documents, or backups."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

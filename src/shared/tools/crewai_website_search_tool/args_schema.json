@@ -1,0 +1,25 @@
+{
+  "title": "WebsiteSearchToolArgs",
+  "type": "object",
+  "properties": {
+    "search_query": {
+      "type": "string",
+      "description": "Mandatory search query you want to use to search a specific website"
+    },
+    "website": {
+      "type": "string",
+      "description": "Mandatory valid website URL you want to search on"
+    },
+    "similarity_threshold": {
+      "type": "number",
+      "description": "Optional similarity threshold for search results",
+      "default": null
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Optional maximum number of results to return",
+      "default": null
+    }
+  },
+  "required": ["search_query", "website"]
+}

@@ -1,0 +1,29 @@
+{
+  "title": "PDFSearchToolArgs",
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Mandatory query you want to search inside the PDF"
+    },
+    "pdf": {
+      "type": "string",
+      "description": "File path or URL of a PDF file to be searched"
+    },
+    "openai_api_key": {
+      "type": "string",
+      "description": "OpenAI API key (can be provided via env var OPENAI_API_KEY)"
+    },
+    "similarity_threshold": {
+      "type": "number",
+      "description": "Optional threshold for similarity (0-1)",
+      "default": 0.7
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Optional limit of top results to return",
+      "default": 5
+    }
+  },
+  "required": ["query", "pdf"]
+}

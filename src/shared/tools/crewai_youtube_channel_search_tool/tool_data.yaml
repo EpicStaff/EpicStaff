@@ -1,0 +1,7 @@
+tool-data:
+  name: "Youtube Channel Search Tool TESTED"
+  description: "A tool that can be used to semantic search a query from a Youtube Channel's content."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

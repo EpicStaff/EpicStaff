@@ -1,0 +1,20 @@
+{
+  "title": "VisionToolArgs",
+  "type": "object",
+  "properties": {
+    "image_path_url": {
+      "type": "string",
+      "description": "Path to a local image or URL of the image."
+    },
+    "openai_api_key": {
+      "type": "string",
+      "description": "OpenAI API key for Vision API access."
+    },
+    "model": {
+      "type": "string",
+      "description": "OpenAI model identifier to use.",
+      "default": "gpt-4o-mini"
+    }
+  },
+  "required": ["image_path_url", "openai_api_key"]
+}

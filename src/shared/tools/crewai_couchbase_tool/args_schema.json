@@ -1,0 +1,63 @@
+{
+  "title": "CouchbaseFTSVectorSearchArgs",
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "The search query text. Pass only the query, not a question."
+    },
+    "connection_string": {
+      "type": "string",
+      "description": "Couchbase connection string (e.g. couchbase://localhost)"
+    },
+    "username": {
+      "type": "string",
+      "description": "Couchbase username"
+    },
+    "password": {
+      "type": "string",
+      "description": "Couchbase password"
+    },
+    "bucket_name": {
+      "type": "string",
+      "description": "Couchbase bucket name"
+    },
+    "scope_name": {
+      "type": "string",
+      "description": "Couchbase scope name"
+    },
+    "collection_name": {
+      "type": "string",
+      "description": "Couchbase collection name"
+    },
+    "index_name": {
+      "type": "string",
+      "description": "FTS index name"
+    },
+    "embedding_key": {
+      "type": "string",
+      "description": "Field name in the FTS index that stores the vector",
+      "default": "embedding"
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Number of results to return",
+      "default": 3
+    },
+    "scoped_index": {
+      "type": "boolean",
+      "description": "Whether the FTS index is scoped",
+      "default": true
+    }
+  },
+  "required": [
+    "query",
+    "connection_string",
+    "username",
+    "password",
+    "bucket_name",
+    "scope_name",
+    "collection_name",
+    "index_name"
+  ]
+}

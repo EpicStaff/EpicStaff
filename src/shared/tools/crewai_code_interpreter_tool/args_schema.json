@@ -1,0 +1,23 @@
+{
+  "title": "CodeInterpreterArgs",
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "string",
+      "description": "Python3 code to execute. The code MUST print its final output."
+    },
+    "libraries_used": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Python libraries to install via pip before execution"
+    },
+    "unsafe_mode": {
+      "type": "boolean",
+      "description": "Run code directly on host without sandbox or Docker",
+      "default": false
+    }
+  },
+  "required": ["code"]
+}

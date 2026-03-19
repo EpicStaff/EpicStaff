@@ -1,0 +1,2 @@
+# No external requirements are strictly needed.
+# Add any packages if you plan to do real semantic search.

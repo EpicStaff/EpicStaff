@@ -1,0 +1,7 @@
+tool-data:
+  name: "Directory Search Tool TESTED"
+  description: "Standalone tool to search for a query in files within one or multiple directories. Performs exact or partial word matches."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

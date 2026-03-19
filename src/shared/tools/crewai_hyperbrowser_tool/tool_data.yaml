@@ -1,0 +1,7 @@
+tool-data:
+  name: "Hyperbrowser Load Tool TESTED"
+  description: "Scrape or crawl a website using Hyperbrowser. Requires API key."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "hyperbrowser"

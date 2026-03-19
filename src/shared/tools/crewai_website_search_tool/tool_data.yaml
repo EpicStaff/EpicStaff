@@ -1,0 +1,7 @@
+tool-data:
+  name: "Website Search Tool TESTED"
+  description: "Standalone tool to search for a query in a specific website's text content. Takes parameters: 'search_query', 'website', optional 'similarity_threshold', 'limit'."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

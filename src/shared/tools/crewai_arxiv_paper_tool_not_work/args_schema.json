@@ -1,0 +1,33 @@
+{
+  "title": "ArxivToolArgs",
+  "type": "object",
+  "properties": {
+    "search_query": {
+      "type": "string",
+      "description": "Search query for Arxiv, e.g., 'transformer neural network'"
+    },
+    "max_results": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 5,
+      "description": "Max results to fetch; must be between 1 and 100"
+    },
+    "download_pdfs": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether to download PDF files for the papers"
+    },
+    "save_dir": {
+      "type": "string",
+      "default": "./arxiv_pdfs",
+      "description": "Directory to save downloaded PDFs"
+    },
+    "use_title_as_filename": {
+      "type": "boolean",
+      "default": false,
+      "description": "Use paper title as filename instead of arXiv ID"
+    }
+  },
+  "required": ["search_query"]
+}

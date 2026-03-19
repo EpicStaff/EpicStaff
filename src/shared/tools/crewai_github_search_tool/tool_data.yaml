@@ -1,0 +1,7 @@
+tool-data:
+  name: "Local/Remote GitHub Search Tool TESTED"
+  description: "Tool to perform semantic search in a local folder or a public GitHub repo. No API key is required."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

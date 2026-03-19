@@ -1,0 +1,4 @@
+pydantic
+PyPDF2
+openai
+numpy

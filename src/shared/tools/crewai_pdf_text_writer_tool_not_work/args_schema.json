@@ -1,0 +1,46 @@
+{
+  "title": "PDFTextWritingToolArgs",
+  "type": "object",
+  "properties": {
+    "pdf_path": {
+      "type": "string",
+      "description": "Path to the PDF file to modify"
+    },
+    "text": {
+      "type": "string",
+      "description": "Text to add to the PDF"
+    },
+    "position": {
+      "type": "array",
+      "items": { "type": "number" },
+      "description": "Tuple of (x, y) coordinates for text placement"
+    },
+    "font_size": {
+      "type": "integer",
+      "default": 12,
+      "description": "Font size of the text"
+    },
+    "font_color": {
+      "type": "array",
+      "items": { "type": "number" },
+      "default": [0, 0, 0],
+      "description": "RGB color tuple (0-1)"
+    },
+    "font_name": {
+      "type": "string",
+      "default": "F1",
+      "description": "Font name for standard fonts"
+    },
+    "page_number": {
+      "type": "integer",
+      "default": 0,
+      "description": "Page number to add text to"
+    },
+    "output_pdf_path": {
+      "type": "string",
+      "default": "modified_output.pdf",
+      "description": "Output PDF file path"
+    }
+  },
+  "required": ["pdf_path", "text", "position"]
+}

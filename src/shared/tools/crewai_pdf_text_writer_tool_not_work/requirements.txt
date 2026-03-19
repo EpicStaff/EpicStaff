@@ -1,0 +1,2 @@
+pydantic>=2.0
+pypdf>=3.16

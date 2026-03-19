@@ -1,0 +1,72 @@
+{
+  "title": "SingleStoreSearchToolArgs",
+  "type": "object",
+  "properties": {
+    "search_query": {
+      "type": "string",
+      "description": "Mandatory semantic search query you want to use to search the database's content. Only SELECT and SHOW queries are supported."
+    },
+    "host": {
+      "type": "string",
+      "description": "Database host address",
+      "default": null
+    },
+    "user": {
+      "type": "string",
+      "description": "Database username",
+      "default": null
+    },
+    "password": {
+      "type": "string",
+      "description": "Database password",
+      "default": null
+    },
+    "port": {
+      "type": "integer",
+      "description": "Database port number",
+      "default": null
+    },
+    "database": {
+      "type": "string",
+      "description": "Database name",
+      "default": null
+    },
+    "ssl_key": {
+      "type": "string",
+      "description": "Path to SSL key file",
+      "default": null
+    },
+    "ssl_cert": {
+      "type": "string",
+      "description": "Path to SSL cert file",
+      "default": null
+    },
+    "ssl_ca": {
+      "type": "string",
+      "description": "Path to SSL certificate authority file",
+      "default": null
+    },
+    "pool_size": {
+      "type": "integer",
+      "description": "Maximum number of connections in the pool",
+      "default": 5
+    },
+    "max_overflow": {
+      "type": "integer",
+      "description": "Maximum overflow connections beyond pool size",
+      "default": 10
+    },
+    "timeout": {
+      "type": "number",
+      "description": "Connection pool timeout in seconds",
+      "default": 30
+    },
+    "tables": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of table names to work with. If empty, all tables will be used.",
+      "default": []
+    }
+  },
+  "required": ["search_query"]
+}

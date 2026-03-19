@@ -1,0 +1,7 @@
+tool-data:
+  name: "Arxiv Paper Fetcher TESTED"
+  description: "Fetches metadata from Arxiv based on a search query and optionally downloads PDFs."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

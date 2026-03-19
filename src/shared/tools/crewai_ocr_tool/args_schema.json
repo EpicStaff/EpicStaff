@@ -1,0 +1,15 @@
+{
+  "title": "OCRToolArgs",
+  "type": "object",
+  "properties": {
+    "openai_api_key": {
+      "type": "string",
+      "description": "OpenAI API key used for OCR via Vision models."
+    },
+    "image_path_url": {
+      "type": "string",
+      "description": "Path to a local image file or a public image URL."
+    }
+  },
+  "required": ["openai_api_key", "image_path_url"]
+}

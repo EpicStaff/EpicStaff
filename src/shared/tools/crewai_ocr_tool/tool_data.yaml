@@ -1,0 +1,7 @@
+tool-data:
+  name: "OCR Vision Tool - TESTED"
+  description: "Extracts text from images using OpenAI Vision models (OCR). Requires OPENAI_API_KEY."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

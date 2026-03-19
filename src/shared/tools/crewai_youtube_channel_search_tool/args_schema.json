@@ -1,0 +1,25 @@
+{
+  "title": "YoutubeChannelSearchToolArgs",
+  "type": "object",
+  "properties": {
+    "search_query": {
+      "type": "string",
+      "description": "Mandatory search query you want to use to search the Youtube Channels content"
+    },
+    "youtube_channel_handle": {
+      "type": "string",
+      "description": "Mandatory youtube_channel_handle path you want to search"
+    },
+    "similarity_threshold": {
+      "type": "number",
+      "description": "Optional similarity threshold for semantic search",
+      "default": null
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Optional limit on number of search results",
+      "default": null
+    }
+  },
+  "required": ["search_query", "youtube_channel_handle"]
+}

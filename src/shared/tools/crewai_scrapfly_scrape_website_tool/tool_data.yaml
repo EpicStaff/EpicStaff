@@ -1,0 +1,7 @@
+tool-data:
+  name: "Scrapfly Web Scraper Tool DEVELOPER"
+  description: "Scrape a webpage using Scrapfly API and return its content in raw, markdown, or text format."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

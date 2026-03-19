@@ -1,0 +1,25 @@
+{
+  "title": "TXTSearchToolArgs",
+  "type": "object",
+  "properties": {
+    "txt": {
+      "type": "string",
+      "description": "File path or URL of a TXT file to be searched"
+    },
+    "search_query": {
+      "type": "string",
+      "description": "Mandatory search query you want to use to search the TXT content"
+    },
+    "similarity_threshold": {
+      "type": "number",
+      "description": "Optional similarity threshold for search",
+      "default": 0.7
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Maximum number of search results",
+      "default": 5
+    }
+  },
+  "required": ["txt", "search_query"]
+}

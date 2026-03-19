@@ -1,0 +1,19 @@
+{
+  "title": "JSONSearchToolArgs",
+  "type": "object",
+  "properties": {
+    "json_path": {
+      "type": "string",
+      "description": "File path of a JSON file to be searched"
+    },
+    "search_query": {
+      "type": "string",
+      "description": "Query string to search in JSON content"
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Optional maximum number of results"
+    }
+  },
+  "required": ["json_path", "search_query"]
+}

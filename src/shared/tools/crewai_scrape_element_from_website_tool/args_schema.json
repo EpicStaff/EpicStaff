@@ -1,0 +1,15 @@
+{
+  "title": "ScrapeElementFromWebsiteToolArgs",
+  "type": "object",
+  "properties": {
+    "website_url": {
+      "type": "string",
+      "description": "Mandatory website url to read the file"
+    },
+    "css_element": {
+      "type": "string",
+      "description": "Mandatory css reference for element to scrape from the website"
+    }
+  },
+  "required": ["website_url", "css_element"]
+}

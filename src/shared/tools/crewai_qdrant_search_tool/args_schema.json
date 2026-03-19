@@ -1,0 +1,55 @@
+{
+  "title": "QdrantVectorSearchArgs",
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Search query text. Used to generate embedding."
+    },
+    "collection_name": {
+      "type": "string",
+      "description": "Qdrant collection name."
+    },
+    "qdrant_url": {
+      "type": "string",
+      "description": "URL of the Qdrant server."
+    },
+    "qdrant_api_key": {
+      "type": "string",
+      "description": "API key for Qdrant. Can be empty if not required."
+    },
+    "openai_api_key": {
+      "type": "string",
+      "description": "OpenAI API key used for embeddings."
+    },
+    "filter_by": {
+      "type": "string",
+      "description": "Optional metadata field to filter by."
+    },
+    "filter_value": {
+      "type": "string",
+      "description": "Optional metadata value to filter by."
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Maximum number of results to return.",
+      "default": 3
+    },
+    "score_threshold": {
+      "type": "number",
+      "description": "Minimum similarity score threshold.",
+      "default": 0.35
+    },
+    "embedding_model": {
+      "type": "string",
+      "description": "OpenAI embedding model name.",
+      "default": "text-embedding-3-large"
+    }
+  },
+  "required": [
+    "query",
+    "collection_name",
+    "qdrant_url",
+    "openai_api_key"
+  ]
+}

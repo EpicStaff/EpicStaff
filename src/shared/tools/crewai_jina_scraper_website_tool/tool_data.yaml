@@ -1,0 +1,7 @@
+tool-data:
+  name: "Jina Website Reader Tool"
+  description: "Tool to read website content using Jina.ai and return markdown. Requires Jina.ai API key. Takes parameters: 'website_url' and 'api_key'."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

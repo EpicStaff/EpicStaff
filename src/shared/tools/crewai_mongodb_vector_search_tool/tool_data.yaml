@@ -1,0 +1,7 @@
+tool-data:
+  name: "MongoDB Vector Search Tool DEVELOPER"
+  description: "Standalone tool to perform vector search in a MongoDB collection using OpenAI embeddings. Requires query, OpenAI API key, MongoDB connection string, database and collection names. Optional parameters allow configuring embeddings, index, and result limits."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

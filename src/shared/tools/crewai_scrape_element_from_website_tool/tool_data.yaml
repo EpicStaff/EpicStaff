@@ -1,0 +1,7 @@
+tool-data:
+  name: "Scrape Element From Website Tool TESTED"
+  description: "Tool to fetch a website and extract text from elements using a CSS selector."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

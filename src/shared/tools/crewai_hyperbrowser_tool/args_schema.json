@@ -1,0 +1,20 @@
+{
+  "title": "HyperbrowserLoadToolArgs",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "description": "Website URL to scrape or crawl"
+    },
+    "operation": {
+      "type": "string",
+      "enum": ["scrape", "crawl"],
+      "description": "Operation to perform on the website. Either 'scrape' or 'crawl'"
+    },
+    "params": {
+      "type": "object",
+      "description": "Optional parameters for scrape or crawl"
+    }
+  },
+  "required": ["url", "operation"]
+}

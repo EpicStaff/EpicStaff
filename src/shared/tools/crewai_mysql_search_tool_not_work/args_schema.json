@@ -1,0 +1,23 @@
+{
+  "title": "MySQLSearchToolArgs",
+  "type": "object",
+  "properties": {
+    "db_uri": {
+      "type": "string",
+      "description": "Mandatory database URI (sqlite path or MySQL connection string)."
+    },
+    "table_name": {
+      "type": "string",
+      "description": "Database table to search in."
+    },
+    "search_query": {
+      "type": "string",
+      "description": "Mandatory semantic search query you want to use to search the database's content."
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Optional limit of results to return."
+    }
+  },
+  "required": ["db_uri", "table_name", "search_query"]
+}
