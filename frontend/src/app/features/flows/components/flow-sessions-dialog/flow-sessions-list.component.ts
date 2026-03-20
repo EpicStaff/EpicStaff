@@ -18,7 +18,8 @@ import { CommonModule } from '@angular/common';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { Router } from '@angular/router';
 import { FlowSessionsTableComponent } from './flow-sessions-table.component';
-import { PaginationControlsComponent, IconButtonComponent } from '@shared/components';
+import { PaginationControlsComponent } from '@shared/components';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-filter-dropdown.component';
 
 @Component({
@@ -28,7 +29,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
   standalone: true,
   imports: [
     CommonModule,
-    IconButtonComponent,
+    AppSvgIconComponent,
     FlowSessionsTableComponent,
     PaginationControlsComponent,
     FlowSessionStatusFilterDropdownComponent,

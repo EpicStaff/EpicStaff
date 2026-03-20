@@ -26,7 +26,7 @@ import { Dialog } from '@angular/cdk/dialog';
 
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
 import { TabButtonComponent } from '../../../../shared/components/tab-button/tab-button.component';
-import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
     FiltersListComponent,
     SearchFilterChange,
@@ -50,7 +50,7 @@ import { FlowService } from '../../../../visual-programming/services/flow.servic
         ButtonComponent,
         TabButtonComponent,
         FormsModule,
-        AppIconComponent,
+        AppSvgIconComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

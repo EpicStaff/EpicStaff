@@ -12,13 +12,13 @@ import {
   OnDestroy,
 } from '@angular/core';
 import { NgIf, NgClass } from '@angular/common';
-import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { FlowMenuItemComponent } from './flow-menu-item/flow-menu-item.component';
 
 @Component({
   selector: 'app-flow-menu',
   standalone: true,
-  imports: [NgIf, NgClass, FlowMenuItemComponent, AppIconComponent],
+  imports: [NgIf, NgClass, FlowMenuItemComponent, AppSvgIconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './flow-menu.component.html',
   styleUrls: ['./flow-menu.component.scss'],

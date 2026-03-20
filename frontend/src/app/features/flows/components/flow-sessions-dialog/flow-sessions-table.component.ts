@@ -7,7 +7,8 @@ import {
   ChangeDetectorRef,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { CheckboxComponent, LoadingSpinnerComponent, IconButtonComponent } from "@shared/components";
+import { CheckboxComponent, LoadingSpinnerComponent } from "@shared/components";
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { FlowSessionStatusBadgeComponent } from './flow-session-status-badge.component';
 import {
   GraphSession,
@@ -23,7 +24,7 @@ import { GraphDto } from '../../models/graph.model';
     CheckboxComponent,
     FlowSessionStatusBadgeComponent,
     LoadingSpinnerComponent,
-    IconButtonComponent,
+    AppSvgIconComponent,
   ],
   template: `
     <div class="table-header">
@@ -118,12 +119,13 @@ import { GraphDto } from '../../models/graph.model';
               </div>
             </td>
             <td>
-              <app-icon-button
-                icon="ui/x"
-                size="1.5rem"
-                ariaLabel="Delete session"
-                (onClick)="deleteSelected.emit([session.id])"
-              ></app-icon-button>
+              <button
+                class="icon-btn"
+                aria-label="Delete session"
+                (click)="deleteSelected.emit([session.id])"
+              >
+                <app-svg-icon icon="x" size="1rem"></app-svg-icon>
+              </button>
             </td>
           </tr>
           }

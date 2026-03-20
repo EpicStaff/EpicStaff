@@ -252,6 +252,16 @@ table {
     color: #fff;
 }
 
+.icon-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
 .no-sessions-message {
     display: flex;
     flex-direction: column;

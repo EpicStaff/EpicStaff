@@ -14,6 +14,7 @@ import {
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
 import { finalize } from 'rxjs/operators';
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 export interface FlowDialogData {
   isEdit: boolean;
@@ -23,7 +24,7 @@ export interface FlowDialogData {
 @Component({
   selector: 'app-create-flow-dialog',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, ButtonComponent],
+  imports: [CommonModule, ReactiveFormsModule, ButtonComponent, AppSvgIconComponent],
   templateUrl: './create-flow-dialog.component.html',
   styleUrls: ['./create-flow-dialog.component.scss'],
 })
