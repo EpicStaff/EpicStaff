@@ -43,7 +43,7 @@
             (click)="toggleApiKeyVisibility()"
             [attr.aria-label]="showApiKey() ? 'Hide API key' : 'Show API key'"
           >
-            <i [class]="showApiKey() ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
+            <app-svg-icon [icon]="showApiKey() ? 'eye-off' : 'eye'" size="1.25rem" />
           </button>
         </div>
         <div

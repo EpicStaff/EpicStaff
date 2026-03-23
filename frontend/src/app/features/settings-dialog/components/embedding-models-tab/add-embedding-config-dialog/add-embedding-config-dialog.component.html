@@ -15,7 +15,7 @@
         </label>
         <button type="button" class="model-selector" (click)="openModelSelector()">
           @if (selectedProvider()) {
-            <app-icon [icon]="getProviderIcon(selectedProvider()!.name)" size="1.25rem" />
+            <app-svg-icon [icon]="getProviderIcon(selectedProvider()!.name)" size="1.25rem" />
           }
           @if (selectedModel() && selectedProvider()) {
             <span class="model-selector__text">
@@ -28,7 +28,7 @@
               Select a model...
             </span>
           }
-          <app-icon icon="ui/chevron-down" size="1rem" />
+          <app-svg-icon icon="chevron-down" size="1rem" />
         </button>
         @if (form.get('modelId')?.invalid && (form.get('modelId')?.dirty || submitAttempted()) && !selectedModel()) {
           <div class="error-hint">
@@ -47,7 +47,7 @@
             formControlName="apiKey"
           />
           <button type="button" class="form-input-action" (click)="toggleApiKeyVisibility()">
-            <app-icon [icon]="showApiKey() ? 'ui/eye-off' : 'ui/eye'" size="1.25rem" />
+            <app-svg-icon [icon]="showApiKey() ? 'eye-off' : 'eye'" size="1.25rem" />
           </button>
         </div>
         @if (form.get('apiKey')?.invalid && (form.get('apiKey')?.dirty || submitAttempted())) {

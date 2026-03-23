@@ -31,13 +31,13 @@ import { RealtimeModelsService } from '../../../settings-dialog/services/realtim
 import { Router } from '@angular/router';
 import { RealtimeModel } from '../../../settings-dialog/models/realtime-voice/realtime-model.model';
 import { CreateRealtimeModelConfigRequest } from '../../../settings-dialog/models/realtime-voice/realtime-llm-config.model';
-import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
 
 @Component({
     selector: 'app-quickstart-tab',
     standalone: true,
-    imports: [NgIf, ReactiveFormsModule, AppIconComponent, ButtonComponent],
+    imports: [NgIf, ReactiveFormsModule, AppSvgIconComponent, ButtonComponent],
     template: `
         <div class="quick-start-container">
             <div class="quick-start-header">
@@ -52,11 +52,11 @@ import { ButtonComponent } from '../../../../shared/components/buttons/button/bu
                     <div class="provider-label">
                         <label for="apiKey" class="api-key-label">
                             <div class="openai-logo">
-                                <app-icon
-                                    icon="llm-providers-logos/openai-logo"
-                                    [size]="'24px'"
+                                <app-svg-icon
+                                    icon="provider-openai"
+                                    size="24px"
                                     ariaLabel="OpenAI Logo"
-                                ></app-icon>
+                                />
                             </div>
                             Please provide an OpenAI API Key
                         </label>
@@ -82,59 +82,10 @@ import { ButtonComponent } from '../../../../shared/components/buttons/button/bu
                             class="eye-button"
                             (click)="toggleApiKeyVisibility()"
                         >
-                            <svg
-                                *ngIf="showApiKey"
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                xmlns="http://www.w3.org/2000/svg"
-                            >
-                                <path
-                                    d="M2 12C2 12 5 5 12 5C19 5 22 12 22 12C22 12 19 19 12 19C5 19 2 12 2 12Z"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                />
-                                <path
-                                    d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                />
-                                <path
-                                    d="M3 3L21 21"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                />
-                            </svg>
-                            <svg
-                                *ngIf="!showApiKey"
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                xmlns="http://www.w3.org/2000/svg"
-                            >
-                                <path
-                                    d="M2 12C2 12 5 5 12 5C19 5 22 12 22 12C22 12 19 19 12 19C5 19 2 12 2 12Z"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                />
-                                <path
-                                    d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                />
-                            </svg>
+                            <app-svg-icon
+                                [icon]="showApiKey ? 'eye-off' : 'eye'"
+                                size="16px"
+                            />
                         </button>
                     </div>
                     <div class="api-key-description">

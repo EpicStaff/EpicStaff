@@ -6,7 +6,7 @@ import {
     EventEmitter,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { IconButtonComponent } from '../../../../../shared/components/buttons/icon-button/icon-button.component';
 import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
 import { FullLLMConfig } from '../../../services/llms/full-llm-config.service';
@@ -18,7 +18,7 @@ import { ToggleSwitchComponent } from '../../../../../shared/components/form-con
     standalone: true,
     imports: [
         CommonModule,
-        AppIconComponent,
+        AppSvgIconComponent,
         IconButtonComponent,
         ButtonComponent,
     ],

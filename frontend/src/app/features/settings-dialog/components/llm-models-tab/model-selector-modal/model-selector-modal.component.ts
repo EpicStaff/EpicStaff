@@ -14,7 +14,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { forkJoin } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
-import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { LLM_Provider, ModelTypes } from '../../../models/llm-provider.model';
 import { LLM_Model } from '../../../models/llms/LLM.model';
 import { LLM_Providers_Service } from '../../../services/llm-providers.service';
@@ -53,7 +53,7 @@ const TOP_PROVIDERS = [
 @Component({
     selector: 'app-model-selector-modal',
     standalone: true,
-    imports: [CommonModule, FormsModule, AppIconComponent],
+    imports: [CommonModule, FormsModule, AppSvgIconComponent],
     templateUrl: './model-selector-modal.component.html',
     styleUrls: ['./model-selector-modal.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

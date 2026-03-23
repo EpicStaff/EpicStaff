@@ -16,6 +16,7 @@ import {
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
 import { CustomInputComponent } from '../../../../../shared/components/form-input/form-input.component';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { MatSliderModule } from '@angular/material/slider';
 import { LLM_Config_Service } from '../../../services/llms/llm-config.service';
 import { UpdateLLMConfigRequest } from '../../../models/llms/LLM_config.model';
@@ -29,6 +30,7 @@ import { UpdateLLMConfigRequest } from '../../../models/llms/LLM_config.model';
         ButtonComponent,
         CustomInputComponent,
         MatSliderModule,
+        AppSvgIconComponent,
     ],
     templateUrl: './edit-llm-config-dialog.component.html',
     styleUrls: ['./edit-llm-config-dialog.component.scss'],

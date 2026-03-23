@@ -19,6 +19,7 @@ import { UpdateRealtimeModelConfigRequest } from '../../../models/realtime-voice
 import { finalize } from 'rxjs/operators';
 import { CustomInputComponent } from '../../../../../shared/components/form-input/form-input.component';
 import { FullRealtimeConfig } from '../../../services/realtime-llms/full-reamtime-config.service';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-edit-voice-config-dialog',
@@ -28,6 +29,7 @@ import { FullRealtimeConfig } from '../../../services/realtime-llms/full-reamtim
     ReactiveFormsModule,
     ButtonComponent,
     CustomInputComponent,
+    AppSvgIconComponent,
   ],
   templateUrl: './edit-voice-config-dialog.component.html',
   styleUrls: ['./edit-voice-config-dialog.component.scss'],

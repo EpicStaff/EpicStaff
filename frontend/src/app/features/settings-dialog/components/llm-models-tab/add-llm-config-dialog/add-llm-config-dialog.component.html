@@ -7,7 +7,7 @@
             (click)="onCancel()"
             [disabled]="isSubmitting()"
         >
-            <app-icon icon="ui/x" size="1rem" />
+            <app-svg-icon icon="x" size="1rem" />
         </button>
     </div>
 
@@ -34,7 +34,7 @@
                         (click)="openModelSelector()"
                     >
                         @if (selectedProvider()) {
-                            <app-icon
+                            <app-svg-icon
                                 [icon]="getProviderIcon(selectedProvider()!.name)"
                                 size="1.25rem"
                             />
@@ -50,7 +50,7 @@
                                 Select a model...
                             </span>
                         }
-                        <app-icon icon="ui/chevron-down" size="1rem" />
+                        <app-svg-icon icon="chevron-down" size="1rem" />
                     </button>
                 </div>
 
@@ -72,8 +72,8 @@
                             class="llm-dialog__input-action"
                             (click)="toggleApiKeyVisibility()"
                         >
-                            <app-icon
-                                [icon]="showApiKey() ? 'ui/eye-off' : 'ui/eye'"
+                            <app-svg-icon
+                                [icon]="showApiKey() ? 'eye-off' : 'eye'"
                                 size="1.25rem"
                             />
                         </button>
@@ -126,7 +126,7 @@
                                     (click)="removeHeaderEntry(i)"
                                     [title]="'Remove header'"
                                 >
-                                    <app-icon icon="ui/x" size="1rem" />
+                                    <app-svg-icon icon="x" size="1rem" />
                                 </button>
                                 @if (i === headersArray.length - 1) {
                                     <button
@@ -135,7 +135,7 @@
                                         (click)="addHeaderEntry()"
                                         [title]="'Add header'"
                                     >
-                                        <app-icon icon="ui/plus" size="1rem" />
+                                        <app-svg-icon icon="plus" size="1rem" />
                                     </button>
                                 } @else {
                                     <div class="llm-dialog__header-action llm-dialog__header-action--spacer"></div>

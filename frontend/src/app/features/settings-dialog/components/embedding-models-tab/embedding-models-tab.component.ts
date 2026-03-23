@@ -7,7 +7,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Dialog } from '@angular/cdk/dialog';
-import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
+
 import {
   FullEmbeddingConfig,
   FullEmbeddingConfigService,
@@ -25,7 +25,6 @@ import { EmbeddingConfig } from '../../models/embeddings/embedding-config.model'
   standalone: true,
   imports: [
     CommonModule,
-    AppIconComponent,
     EmbeddingConfigItemComponent,
     ButtonComponent,
   ],

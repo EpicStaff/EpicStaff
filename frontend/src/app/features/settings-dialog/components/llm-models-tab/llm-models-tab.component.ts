@@ -7,7 +7,6 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Dialog } from '@angular/cdk/dialog';
-import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { LlmConfigItemComponent } from './llm-config-item/llm-config-item.component';

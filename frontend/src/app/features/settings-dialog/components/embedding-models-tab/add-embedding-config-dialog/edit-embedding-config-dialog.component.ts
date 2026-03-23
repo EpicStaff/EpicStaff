@@ -19,7 +19,7 @@ import { EmbeddingConfigsService } from '../../../services/embeddings/embedding_
 import { EmbeddingConfig } from '../../../models/embeddings/embedding-config.model';
 import { finalize } from 'rxjs/operators';
 import { FullEmbeddingConfig } from '../../../services/embeddings/full-embedding.service';
-import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { LLM_Provider } from '../../../models/llm-provider.model';
 import { EmbeddingModel } from '../../../models/embeddings/embedding.model';
 import {
@@ -35,7 +35,7 @@ import { getProviderIconPath } from '../../../utils/get-provider-icon';
     CommonModule,
     ReactiveFormsModule,
     ButtonComponent,
-    AppIconComponent,
+    AppSvgIconComponent,
   ],
   templateUrl: './edit-embedding-config-dialog.component.html',
   styleUrls: ['./edit-embedding-config-dialog.component.scss'],

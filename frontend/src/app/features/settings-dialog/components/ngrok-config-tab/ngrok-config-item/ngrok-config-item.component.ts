@@ -6,17 +6,17 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
-    AppIconComponent,
     IconButtonComponent,
     ButtonComponent
 } from '@shared/components';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { GetNgrokConfigResponse } from "../../../models/ngrok-config.model";
 
 @Component({
     selector: 'app-ngrok-config-item',
     imports: [
         CommonModule,
-        AppIconComponent,
+        AppSvgIconComponent,
         IconButtonComponent,
         ButtonComponent,
     ],

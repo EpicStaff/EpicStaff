@@ -2,7 +2,7 @@
     <div class="create-model__header">
         <h3 class="create-model__title">Add Embedding Model</h3>
         <button type="button" class="create-model__close-btn" (click)="onClose()">
-            <app-icon icon="ui/x" size="0.875rem" />
+            <app-svg-icon icon="x" size="0.875rem" />
         </button>
     </div>
 
@@ -12,7 +12,7 @@
                 Provider <span class="create-model__label-required">*</span>
             </label>
             <div class="create-model__provider">
-                <app-icon [icon]="getProviderIcon(provider.name)" size="1rem" />
+                <app-svg-icon [icon]="getProviderIcon(provider.name)" size="1rem" />
                 <span>{{ provider.name | uppercase }}</span>
             </div>
         </div>

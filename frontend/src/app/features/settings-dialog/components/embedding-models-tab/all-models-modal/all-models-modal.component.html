@@ -1,7 +1,7 @@
 <div class="all-models">
   <div class="all-models__header">
     <div class="all-models__header-info">
-      <app-icon
+      <app-svg-icon
         [icon]="getProviderIcon(provider().name)"
         size="1.25rem"
       />
@@ -12,7 +12,7 @@
       class="all-models__close-btn"
       (click)="onClose()"
     >
-      <app-icon icon="ui/x" size="0.875rem" />
+      <app-svg-icon icon="x" size="0.875rem" />
     </button>
   </div>
 
@@ -32,7 +32,7 @@
   <div class="all-models__content">
     @if (filteredModels().length === 0) {
       <div class="all-models__empty">
-        <app-icon icon="ui/search" size="2rem" />
+        <app-svg-icon icon="search" size="2rem" />
         <p>No models found</p>
       </div>
     } @else {
@@ -51,9 +51,9 @@
             [title]="isModelVisible(model) ? 'Hide model' : 'Show model'"
           >
             @if (isModelVisible(model)) {
-              <app-icon icon="ui/eye" size="1rem" />
+              <app-svg-icon icon="eye" size="1rem" />
             } @else {
-              <app-icon icon="ui/eye-off" size="1rem" />
+              <app-svg-icon icon="eye-off" size="1rem" />
             }
           </button>
         </div>

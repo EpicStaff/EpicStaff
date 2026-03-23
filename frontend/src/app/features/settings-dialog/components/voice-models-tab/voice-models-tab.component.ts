@@ -6,7 +6,7 @@ import {
   inject,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
+
 import {
   FullRealtimeConfig,
   FullRealtimeConfigService,

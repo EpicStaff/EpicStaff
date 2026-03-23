@@ -12,7 +12,7 @@ import { FormsModule } from '@angular/forms';
 import { Dialog, DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
-import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { LLM_Provider } from '../../../models/llm-provider.model';
 import { LLM_Model } from '../../../models/llms/LLM.model';
 import { LLM_Models_Service } from '../../../services/llms/llm-models.service';
@@ -31,7 +31,7 @@ export interface AllModelsResult {
 @Component({
     selector: 'app-all-models-modal',
     standalone: true,
-    imports: [CommonModule, FormsModule, AppIconComponent],
+    imports: [CommonModule, FormsModule, AppSvgIconComponent],
     templateUrl: './all-models-modal.component.html',
     styleUrls: ['./all-models-modal.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

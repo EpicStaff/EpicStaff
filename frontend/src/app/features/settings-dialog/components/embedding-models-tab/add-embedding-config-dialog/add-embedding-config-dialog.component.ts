@@ -21,7 +21,7 @@ import { EmbeddingConfigsService } from '../../../services/embeddings/embedding_
 import { CreateEmbeddingConfigRequest } from '../../../models/embeddings/embedding-config.model';
 import { finalize } from 'rxjs/operators';
 import { EmbeddingModel } from '../../../models/embeddings/embedding.model';
-import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
   ModelSelectorModalComponent,
   ModelSelectorResult,
@@ -36,7 +36,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
     CommonModule,
     ReactiveFormsModule,
     ButtonComponent,
-    AppIconComponent,
+    AppSvgIconComponent,
   ],
   templateUrl: './add-embedding-config-dialog.component.html',
   styleUrls: ['./add-embedding-config-dialog.component.scss'],

@@ -13,7 +13,7 @@ import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize, forkJoin } from 'rxjs';
 
-import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { LLM_Provider, ModelTypes } from '../../../models/llm-provider.model';
 import { EmbeddingModel } from '../../../models/embeddings/embedding.model';
 import { LLM_Providers_Service } from '../../../services/llm-providers.service';
@@ -52,7 +52,7 @@ const TOP_PROVIDERS = [
 @Component({
   selector: 'app-embedding-model-selector-modal',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppIconComponent],
+  imports: [CommonModule, FormsModule, AppSvgIconComponent],
   templateUrl: './model-selector-modal.component.html',
   styleUrls: ['./model-selector-modal.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,

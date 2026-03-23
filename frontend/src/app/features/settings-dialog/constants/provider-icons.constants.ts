@@ -1,11 +1,11 @@
 export const PROVIDER_ICON_PATHS: Record<string, string> = {
-  openai: 'llm-providers-logos/openai-logo',
-  anthropic: 'llm-providers-logos/claude-logo',
-  ollama: 'llm-providers-logos/ollama-logo',
-  huggingface: 'llm-providers-logos/huggingface-logo',
-  groq: 'llm-providers-logos/groq-logo',
-  azure: 'llm-providers-logos/azure-logo',
+  openai: 'provider-openai',
+  anthropic: 'provider-claude',
+  ollama: 'provider-default',
+  huggingface: 'provider-huggingface',
+  groq: 'provider-groq',
+  azure: 'provider-azure',
 
   // Default icon
-  default: 'llm-providers-logos/logo',
+  default: 'provider-default',
 };

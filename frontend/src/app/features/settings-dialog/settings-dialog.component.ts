@@ -7,7 +7,7 @@ import { EmbeddingModelsTabComponent } from './components/embedding-models-tab/e
 import { NgrokConfigTabComponent } from "./components/ngrok-config-tab/ngrok-config-tab.component";
 import { VoiceModelsTabComponent } from './components/voice-models-tab/voice-models-tab.component';
 import { PreferencesTabComponent } from './components/preferences-tab/preferences-tab.component';
-import { AppIconComponent } from '../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../shared/components/app-svg-icon/app-svg-icon.component';
 import { QuickstartTabComponent } from './components/quickstart-tab/quickstart-tab.component';
 
 export enum TabId {
@@ -34,7 +34,7 @@ export interface Tab {
     EmbeddingModelsTabComponent,
     VoiceModelsTabComponent,
     PreferencesTabComponent,
-    AppIconComponent,
+    AppSvgIconComponent,
     QuickstartTabComponent,
     NgrokConfigTabComponent,
   ],
@@ -42,7 +42,7 @@ export interface Tab {
     <div class="settings-dialog">
       <header>
         <div class="header-title">
-          <app-icon icon="ui/settings-filled" size="20"></app-icon>
+          <app-svg-icon icon="settings-filled" size="20px" />
           <h2>Settings</h2>
         </div>
         <app-icon-button

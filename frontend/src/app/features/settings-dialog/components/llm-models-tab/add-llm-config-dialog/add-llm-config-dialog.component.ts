@@ -19,7 +19,7 @@ import { ButtonComponent } from '../../../../../shared/components/buttons/button
 import { SliderWithStepperComponent } from '../../../../../shared/components/slider-with-stepper/slider-with-stepper.component';
 import { NumberStepperComponent } from '../../../../../shared/components/number-stepper/number-stepper.component';
 import { JsonEditorComponent } from '../../../../../shared/components/json-editor/json-editor.component';
-import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { HelpTooltipComponent } from '../../../../../shared/components/help-tooltip/help-tooltip.component';
 
 import { LLM_Provider, ModelTypes } from '../../../models/llm-provider.model';
@@ -55,7 +55,7 @@ export interface AddLlmConfigDialogData {
         SliderWithStepperComponent,
         NumberStepperComponent,
         JsonEditorComponent,
-        AppIconComponent,
+        AppSvgIconComponent,
         HelpTooltipComponent,
     ],
     templateUrl: './add-llm-config-dialog.component.html',
