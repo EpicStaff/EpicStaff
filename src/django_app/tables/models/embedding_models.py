@@ -11,7 +11,7 @@ class EmbeddingModel(models.Model):
         "Provider", on_delete=models.SET_NULL, null=True, default=None
     )
     deployment = models.TextField(null=True, blank=True)
-    base_url = models.URLField(null=True, blank=True, default=None)
+    base_url = models.TextField(null=True, blank=True, default=None)
     is_visible = models.BooleanField(default=True)
     is_custom = models.BooleanField(default=False)
     tags = models.ManyToManyField(
