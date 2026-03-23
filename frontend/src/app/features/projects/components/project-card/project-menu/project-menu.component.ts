@@ -14,12 +14,12 @@ import {
 import { NgIf, NgClass } from '@angular/common';
 import { ClickOutsideDirective } from '../../../../../shared/directives/click-outside.directive';
 import { ProjectMenuItemComponent } from './project-menu-item/project-menu-item.component';
-import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-project-menu',
   standalone: true,
-  imports: [NgIf, NgClass, ProjectMenuItemComponent, AppIconComponent],
+  imports: [NgIf, NgClass, ProjectMenuItemComponent, AppSvgIconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './project-menu.component.html',
   styleUrls: ['./project-menu.component.scss'],

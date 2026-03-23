@@ -4,18 +4,18 @@ import {
     Output,
     EventEmitter,
 } from '@angular/core';
-import { AppIconComponent } from '../../../../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-add-project-card',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [AppIconComponent],
+    imports: [AppSvgIconComponent],
     template: `
         <div class="add-project-card" (click)="createClick.emit()">
             <div class="content">
                 <div class="plus-icon">
-                    <app-icon icon="ui/plus" size="2.5rem"></app-icon>
+                    <app-svg-icon icon="plus" size="2.5rem" />
                 </div>
                 <div class="title">Create New Project</div>
             </div>
@@ -62,7 +62,7 @@ import { AppIconComponent } from '../../../../../../../shared/components/app-ico
                 margin-bottom: 0.5rem;
             }
 
-            .plus-icon app-icon {
+            .plus-icon app-svg-icon {
                 color: var(--accent-color);
                 width: 2.5rem;
                 height: 2.5rem;

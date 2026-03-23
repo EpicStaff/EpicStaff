@@ -1,12 +1,7 @@
 <div class="project-card" (click)="cardClick.emit()">
     <div class="card-header">
         <div class="icon-container" [ngStyle]="getIconContainerStyle()">
-            <app-icon
-                [icon]="getProjectIconPath()"
-                [size]="'20'"
-                [ngStyle]="getIconStyle()"
-            >
-            </app-icon>
+            <app-svg-icon icon="project" size="20px" style="color: var(--accent-color)" />
         </div>
         <div class="title-section">
             <h3 class="title">{{ project.name }}</h3>

@@ -19,7 +19,7 @@ import { SearchFilterChange } from '../../../../shared/components/filters-list/f
 import { Subject, Subscription } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { FormsModule } from '@angular/forms';
-import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-projects-list-page',
@@ -35,7 +35,7 @@ import { AppIconComponent } from '../../../../shared/components/app-icon/app-ico
         TabButtonComponent,
 
         FormsModule,
-        AppIconComponent,
+        AppSvgIconComponent,
     ],
 })
 export class ProjectsListPageComponent implements OnDestroy {

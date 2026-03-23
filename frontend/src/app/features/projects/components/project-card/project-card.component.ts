@@ -17,7 +17,7 @@ import { NgClass, NgIf, NgFor, NgStyle } from '@angular/common';
 import { TagComponent } from './tag.component';
 import { ProjectMenuComponent } from './project-menu/project-menu.component';
 import { ProjectTagsStorageService } from '../../services/project-tags-storage.service';
-import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-project-card',
@@ -28,7 +28,7 @@ import { AppIconComponent } from '../../../../shared/components/app-icon/app-ico
         NgStyle,
         TagComponent,
         ProjectMenuComponent,
-        AppIconComponent,
+        AppSvgIconComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './project-card.component.html',
@@ -61,16 +61,6 @@ export class ProjectCardComponent implements OnInit, OnChanges {
         return {
             'background-color': '#333333',
         };
-    }
-
-    public getIconStyle() {
-        return {
-            color: 'var(--accent-color)',
-        };
-    }
-
-    public getProjectIconPath(): string {
-        return 'ui/project';
     }
 
     public readonly projectTags = computed(() => {

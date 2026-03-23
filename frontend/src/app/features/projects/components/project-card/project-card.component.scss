@@ -47,7 +47,7 @@
                     cubic-bezier(0.68, -0.55, 0.27, 1.55);
             }
 
-            ::ng-deep app-icon {
+            ::ng-deep app-svg-icon {
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -63,7 +63,7 @@
                 animation: bounce-wiggle 0.7s;
             }
 
-            &:hover ::ng-deep app-icon svg {
+            &:hover ::ng-deep app-svg-icon svg {
                 animation: bounce-wiggle 0.7s;
             }
         }
