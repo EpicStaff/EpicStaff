@@ -8,9 +8,10 @@ import {
     signal, SimpleChanges
 } from "@angular/core";
 import {
-    AppIconComponent, SpinnerComponent, ValidationErrorsComponent, DragDropAreaComponent,
+    SpinnerComponent, ValidationErrorsComponent, DragDropAreaComponent,
     ConfirmationDialogService
 } from "@shared/components";
+import {AppSvgIconComponent} from "../../../../../../shared/components/app-svg-icon/app-svg-icon.component";
 import {FormControl, FormsModule, ReactiveFormsModule, Validators} from "@angular/forms";
 import {CreateCollectionDtoResponse} from "../../../../models/collection.model";
 import {CollectionsStorageService} from "../../../../services/collections-storage.service";
@@ -31,7 +32,7 @@ import {ToastService} from "../../../../../../services/notifications";
     styleUrls: ["./collection-details.component.scss"],
     templateUrl: "./collection-details.component.html",
     imports: [
-        AppIconComponent,
+        AppSvgIconComponent,
         FormsModule,
         ReactiveFormsModule,
         DragDropAreaComponent,

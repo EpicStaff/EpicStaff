@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component } from "@angular/core";
 import { StrategyForm } from "../strategy-config-form.abstract";
 import { FormGroup, ReactiveFormsModule, Validators } from "@angular/forms";
 import { CustomInputComponent, InputNumberComponent, ValidationErrorsComponent } from "@shared/components";
+import { AppSvgIconComponent } from "../../../../../../../shared/components/app-svg-icon/app-svg-icon.component";
 import { MATERIAL_FORMS } from "@shared/material-forms";
 import { CharacterStrategyModel } from "../../../../../models/strategy.model";
 
@@ -12,6 +13,7 @@ import { CharacterStrategyModel } from "../../../../../models/strategy.model";
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
         CustomInputComponent,
+        AppSvgIconComponent,
         MATERIAL_FORMS,
         InputNumberComponent,
         ReactiveFormsModule,

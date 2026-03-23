@@ -28,10 +28,10 @@
             >
                 {{ nextButtonText() }}
             </app-button>
-            <app-icon
-                [icon]="'ui/close'"
+            <app-svg-icon
+                icon="x"
                 class="dialog__actions--close"
-                [size]="'1.5rem'"
+                size="1.5rem"
                 (click)="onClose()"
             />
         </div>

@@ -1,5 +1,5 @@
 import {ChangeDetectionStrategy, Component, DestroyRef, inject, input, model} from "@angular/core";
-import {AppIconComponent} from "../../../../../../../shared/components/app-icon/app-icon.component";
+import {AppSvgIconComponent} from "../../../../../../../shared/components/app-svg-icon/app-svg-icon.component";
 import {FileSizePipe} from "../../../../../../../shared/pipes/file-size.pipe";
 import {
     ListActionsComponent
@@ -15,7 +15,7 @@ import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
     templateUrl: './collection-files.component.html',
     styleUrls: ['./collection-files.component.scss'],
     imports: [
-        AppIconComponent,
+        AppSvgIconComponent,
         FileSizePipe,
         ListActionsComponent,
         ListComponent,

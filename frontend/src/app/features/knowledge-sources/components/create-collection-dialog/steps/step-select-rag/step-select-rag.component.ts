@@ -6,6 +6,7 @@ import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { EmbeddingConfigsService } from "../../../../../settings-dialog/services/embeddings/embedding_configs.service";
 import { EmbeddingConfig } from "../../../../../settings-dialog/models/embeddings/embedding-config.model";
 import { SelectComponent, SelectItem } from "@shared/components";
+import { AppSvgIconComponent } from "../../../../../../shared/components/app-svg-icon/app-svg-icon.component";
 import { map } from "rxjs/operators";
 import { RagType } from "../../../../models/naive-rag.model";
 import { ToastService } from "../../../../../../services/notifications";
@@ -17,6 +18,7 @@ import { MATERIAL_FORMS } from "@shared/material-forms";
     styleUrls: ["./step-select-rag.component.scss"],
     imports: [
         RagTypeComponent,
+        AppSvgIconComponent,
         SelectComponent,
         MATERIAL_FORMS
     ],

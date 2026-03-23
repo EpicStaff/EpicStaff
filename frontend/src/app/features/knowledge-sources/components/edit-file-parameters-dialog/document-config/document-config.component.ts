@@ -7,6 +7,7 @@ import {
 } from "@angular/core";
 import { MATERIAL_FORMS } from "@shared/material-forms";
 import { SelectComponent } from "@shared/components";
+import { AppSvgIconComponent } from "../../../../../shared/components/app-svg-icon/app-svg-icon.component";
 import { CHUNK_STRATEGIES_SELECT_ITEMS } from "../../../constants/constants";
 
 import { FormGroup, ReactiveFormsModule } from "@angular/forms";
@@ -19,6 +20,7 @@ import { TableDocument } from "../../rag-configuration/configuration-table/confi
     templateUrl: './document-config.component.html',
     styleUrls: ['./document-config.component.scss'],
     imports: [
+        AppSvgIconComponent,
         MATERIAL_FORMS,
         SelectComponent,
         ReactiveFormsModule,

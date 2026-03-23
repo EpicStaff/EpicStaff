@@ -7,9 +7,9 @@
                     context: { disabled: false, statusText: null, statusClass: null, btnText: 'Run chunk' }"
                 ></ng-container>
                 <div class="chunks__empty">
-                    <app-icon
-                        [icon]="'ui/file-checked'"
-                        [size]="'3rem'"
+                    <app-svg-icon
+                        icon="file-checked"
+                        size="3rem"
                     />
                     <span>Chunking Ready Document</span>
                 </div>
@@ -36,7 +36,7 @@
                         disabled: true,
                         statusText: 'Synchronized',
                         statusClass: 'synchronized',
-                        statusIcon: 'ui/check',
+                        statusIcon: 'check',
                         btnText: 'Fresh chunks'
                     }"
                 ></ng-container>
@@ -53,7 +53,7 @@
                         disabled: false,
                         statusText: 'Outdated',
                         statusClass: 'outdated',
-                        statusIcon: 'ui/clock',
+                        statusIcon: 'clock',
                         btnText: 'Fresh chunks'
                     }"
                 ></ng-container>
@@ -67,9 +67,9 @@
     } @else {
         <div class="chunks__header"></div>
         <div class="chunks__empty">
-            <app-icon
-                [icon]="'ui/file'"
-                [size]="'3rem'"
+            <app-svg-icon
+                icon="file"
+                size="3rem"
             />
             <span>Select document for Chunk Preview</span>
         </div>
@@ -88,7 +88,7 @@
         <span>Chunk Preview</span>
         @if (statusText) {
             <div class="chunks__status chunks__status--{{statusClass}}">
-                <app-icon
+                <app-svg-icon
                     [icon]="statusIcon"
                     size="0.75rem"
                 />

@@ -27,7 +27,7 @@
                     <app-list-row class="list__file">
                         <div class="list__name-column">
                             <span class="list__file-index">{{ i + 1 }}</span>
-                            <app-icon icon="ui/document" size="0.75rem"/>
+                            <app-svg-icon icon="document" size="0.75rem"/>
                             <span class="list__file-name">{{ item.file_name }}</span>
                             <div
                                 [class.list__file-error]="!item.isValidSize || !item.isValidType"
@@ -43,9 +43,8 @@
                         <div class="list__size-column">
                             <span class="files__size">{{ item.file_size | fileSize }}</span>
                             <app-list-actions>
-                                <app-icon
-                                    [isAction]="true"
-                                    icon="ui/close"
+                                <app-svg-icon
+                                    icon="x"
                                     class="files__file-action"
                                     size="1rem"
                                     (click)="onDelete(item)"

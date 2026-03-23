@@ -6,9 +6,9 @@
 
         <div class="dialog__actions">
             <div class="dialog__actions-switcher">
-                <app-icon
-                    [icon]="'ui/arrow-left'"
-                    [size]="'1.5rem'"
+                <app-svg-icon
+                    icon="arrow-left"
+                    size="1.5rem"
                     class="dialog__action"
                     [class.dialog__action--disabled]="isPrevDisabled()"
                     (click)="prevDocument()"
@@ -16,18 +16,18 @@
                 <span>
                     {{ document().file_name }}
                 </span>
-                <app-icon
-                    [icon]="'ui/arrow-right'"
+                <app-svg-icon
+                    icon="arrow-right"
+                    size="1.5rem"
                     class="dialog__action"
-                    [size]="'1.5rem'"
                     [class.dialog__action--disabled]="isNextDisabled()"
                     (click)="nextDocument()"
                 />
             </div>
-            <app-icon
-                [icon]="'ui/close'"
+            <app-svg-icon
+                icon="x"
+                size="1.5rem"
                 class="dialog__action"
-                [size]="'1.5rem'"
                 (click)="onClose()"
             />
         </div>

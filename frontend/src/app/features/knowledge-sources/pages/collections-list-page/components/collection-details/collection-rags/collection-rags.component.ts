@@ -1,5 +1,5 @@
 import {ChangeDetectionStrategy, Component, DestroyRef, inject, input} from "@angular/core";
-import {AppIconComponent} from "@shared/components";
+import {AppSvgIconComponent} from "../../../../../../../shared/components/app-svg-icon/app-svg-icon.component";
 import {Dialog} from "@angular/cdk/dialog";
 import {
     NaiveRagConfigurationDialog
@@ -19,7 +19,7 @@ import {throwError} from "rxjs";
     templateUrl: 'collection-rags.component.html',
     styleUrls: ['./collection-rags.component.scss'],
     imports: [
-        AppIconComponent
+        AppSvgIconComponent
     ],
     changeDetection: ChangeDetectionStrategy.OnPush
 })

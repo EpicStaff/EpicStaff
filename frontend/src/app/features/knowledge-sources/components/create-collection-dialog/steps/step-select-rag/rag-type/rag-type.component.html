@@ -4,24 +4,21 @@
     [class.rag--disabled]="rag().disabled"
 >
     <div class="rag__header">
-        <app-icon
+        <app-svg-icon
             [icon]="rag().icon"
-            [size]="'40px'"
+            size="40px"
         />
         <div class="rag__header-level">
             <p class="rag__level">{{ rag().level }}</p>
             <div class="rag__stars">
-                <app-icon
-                    [icon]="'ui/star-filled'"
-                    [size]="'20px'"
+                <app-svg-icon icon="star-filled" size="20px" />
+                <app-svg-icon
+                    [icon]="rag().stars >= 2 ? 'star-filled' : 'star'"
+                    size="20px"
                 />
-                <app-icon
-                    [icon]="rag().stars >= 2 ? 'ui/star-filled' : 'ui/star'"
-                    [size]="'20px'"
-                />
-                <app-icon
-                    [icon]="rag().stars >= 3 ? 'ui/star-filled' : 'ui/star'"
-                    [size]="'20px'"
+                <app-svg-icon
+                    [icon]="rag().stars >= 3 ? 'star-filled' : 'star'"
+                    size="20px"
                 />
             </div>
         </div>

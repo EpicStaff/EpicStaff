@@ -3,6 +3,7 @@ import { StrategyForm } from "../strategy-config-form.abstract";
 import { FormGroup, ReactiveFormsModule, Validators } from "@angular/forms";
 import { JsonStrategyModel } from "../../../../../models/strategy.model";
 import { InputNumberComponent, ValidationErrorsComponent } from "@shared/components";
+import { AppSvgIconComponent } from "../../../../../../../shared/components/app-svg-icon/app-svg-icon.component";
 import { MATERIAL_FORMS } from "@shared/material-forms";
 
 @Component({
@@ -12,6 +13,7 @@ import { MATERIAL_FORMS } from "@shared/material-forms";
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
         InputNumberComponent,
+        AppSvgIconComponent,
         MATERIAL_FORMS,
         ReactiveFormsModule,
         ValidationErrorsComponent

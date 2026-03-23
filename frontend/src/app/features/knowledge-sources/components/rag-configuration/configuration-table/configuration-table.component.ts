@@ -19,11 +19,11 @@ import {
     SelectComponent,
     SelectItem,
     MultiSelectComponent,
-    AppIconComponent,
     ButtonComponent,
     InputNumberComponent,
     CheckboxComponent
 } from "@shared/components";
+import { AppSvgIconComponent } from "../../../../../shared/components/app-svg-icon/app-svg-icon.component";
 import { CHUNK_STRATEGIES_SELECT_ITEMS, FILE_TYPES } from "../../../constants/constants";
 
 @Component({
@@ -32,7 +32,7 @@ import { CHUNK_STRATEGIES_SELECT_ITEMS, FILE_TYPES } from "../../../constants/co
     styleUrls: ['./configuration-table.component.scss'],
     imports: [
         SelectComponent,
-        AppIconComponent,
+        AppSvgIconComponent,
         ButtonComponent,
         InputNumberComponent,
         CheckboxComponent,

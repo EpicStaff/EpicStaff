@@ -26,14 +26,13 @@
                 Embedder
             </label>
 
-            <mat-icon
+            <app-svg-icon
+                icon="help"
                 class="select-rag__config-tooltip"
                 matTooltip="Select the embedding model that will convert your documents into vector representations. Different models have different capabilities and performance characteristics."
                 matTooltipPosition="above"
                 matTooltipClass="dialog__label-tooltip"
-            >
-                help_outline
-            </mat-icon>
+            />
 
             <app-select
                 [items]="embeddingConfigs()"

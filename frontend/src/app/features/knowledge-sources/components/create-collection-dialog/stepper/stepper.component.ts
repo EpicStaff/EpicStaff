@@ -1,9 +1,10 @@
 import { Component, input } from '@angular/core';
 import {NgClass, NgStyle} from '@angular/common';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-stepper',
-    imports: [NgClass, NgStyle],
+    imports: [NgClass, NgStyle, AppSvgIconComponent],
     templateUrl: './stepper.component.html',
     styleUrls: ['./stepper.component.scss'],
 })

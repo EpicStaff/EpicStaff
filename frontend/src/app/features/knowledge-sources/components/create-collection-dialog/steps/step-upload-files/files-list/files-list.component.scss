@@ -79,3 +79,12 @@
         color: var(--color-ks-transparent-text-80);
     }
 }
+
+.files__file-action {
+    border-radius: 50%;
+    cursor: pointer;
+    &:hover {
+        transition: .3s;
+        background-color: var(--color-ks-hover-row);
+    }
+}

@@ -9,7 +9,7 @@ import {
     output, ViewChild
 } from "@angular/core";
 import {ButtonComponent} from "../../../../../../../shared/components/buttons/button/button.component";
-import {AppIconComponent} from "../../../../../../../shared/components/app-icon/app-icon.component";
+import { AppSvgIconComponent } from "../../../../../../../shared/components/app-svg-icon/app-svg-icon.component";
 import {FileSizePipe} from "../../../../../../../shared/pipes/file-size.pipe";
 import { DisplayedListDocument} from "../../../../../models/document.model";
 import {DocumentsStorageService} from "../../../../../services/documents-storage.service";
@@ -28,7 +28,7 @@ import {ListRowComponent} from "../../../../../../../shared/components/list/list
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
         ButtonComponent,
-        AppIconComponent,
+        AppSvgIconComponent,
         FileSizePipe,
         DragDropAreaComponent,
         ListActionsComponent,

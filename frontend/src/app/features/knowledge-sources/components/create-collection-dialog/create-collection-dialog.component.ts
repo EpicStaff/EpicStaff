@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from "@angular/core";
-import { ButtonComponent, AppIconComponent } from "@shared/components";
+import { ButtonComponent } from "@shared/components";
+import { AppSvgIconComponent } from "../../../../shared/components/app-svg-icon/app-svg-icon.component";
 import { DIALOG_DATA, DialogRef } from "@angular/cdk/dialog";
 import { CreateCollectionStep } from "../../models/collection.model";
 import { StepUploadFilesComponent } from "./steps/step-upload-files/step-upload-files.component";
@@ -29,12 +30,11 @@ export interface StepConfig {
     styleUrls: ['create-collection-dialog.component.scss'],
     imports: [
         ButtonComponent,
-        AppIconComponent,
+        AppSvgIconComponent,
         StepUploadFilesComponent,
         StepSelectRagComponent,
         StepperComponent,
         RagConfigurationComponent,
-        AppIconComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush
 })

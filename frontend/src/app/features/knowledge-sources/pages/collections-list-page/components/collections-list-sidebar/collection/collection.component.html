@@ -14,7 +14,7 @@
         class="collection__status"
         [ngClass]="'collection__status--' + collection()?.status"
     >
-        <app-icon [icon]="statusData.icon" size="0.75rem" class="collection__status-icon"/>
+        <app-svg-icon [icon]="statusData.icon" size="0.75rem" class="collection__status-icon"/>
         {{statusData.text}}
     </span>
 </div>

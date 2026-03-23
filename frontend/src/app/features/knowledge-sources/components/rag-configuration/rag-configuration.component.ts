@@ -12,11 +12,11 @@ import {
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { FormsModule } from "@angular/forms";
 import {
-    AppIconComponent,
     ButtonComponent,
     ConfirmationDialogService,
     SearchComponent,
 } from "@shared/components";
+import { AppSvgIconComponent } from "../../../../shared/components/app-svg-icon/app-svg-icon.component";
 import { EMPTY, groupBy, mergeMap, of, Subject } from "rxjs";
 import { catchError, debounceTime, switchMap } from "rxjs/operators";
 
@@ -40,7 +40,7 @@ import { DocFieldChange, } from "./configuration-table/configuration-table.inter
         FormsModule,
         SearchComponent,
         ConfigurationTableComponent,
-        AppIconComponent,
+        AppSvgIconComponent,
         ButtonComponent,
         DocumentChunksSectionComponent,
     ],

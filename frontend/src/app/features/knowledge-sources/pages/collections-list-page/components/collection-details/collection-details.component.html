@@ -9,7 +9,7 @@
         </div>
     } @else if (!loadingCollection() && !fullCollection()) {
         <div class="details__empty">
-            <app-icon [icon]="'ui/folder'" class="details__empty-icon" size="3.125rem"/>
+            <app-svg-icon icon="folder" class="details__empty-icon" size="3.125rem"/>
             <p class="details__empty-text">
                 Select a collection to view files
             </p>
@@ -33,10 +33,10 @@
                 />
                 <app-validation-errors [control]="collectionName"/>
             </div>
-            <app-icon
-                [icon]="'ui/trash'"
+            <app-svg-icon
+                icon="trash"
                 class="details__action details__action--large"
-                [size]="'1.5rem'"
+                size="1.5rem"
                 (click)="onCollectionDelete()"
             />
         </div>
@@ -54,9 +54,9 @@
                             <span class="details__section-title">RAG types</span>
 
                             <div class="details__section-actions">
-                                <app-icon
+                                <app-svg-icon
                                     style="cursor: not-allowed"
-                                    icon="ui/plus"
+                                    icon="plus"
                                     class="details__action details__action--medium"
                                     size="1rem"
                                 />
@@ -87,16 +87,16 @@
                                     <!--                                    mod="small"-->
                                     <!--                                    [items]="[]"-->
                                     <!--                                />-->
-                                    <app-icon
+                                    <app-svg-icon
                                         style="cursor: not-allowed"
-                                        icon="ui/files-filled"
+                                        icon="files-filled"
                                         class="details__action details__action--medium"
                                         size="0.75rem"
                                     />
 
                                     <label (click)="fileInput.click()">
-                                        <app-icon
-                                            icon="ui/plus"
+                                        <app-svg-icon
+                                            icon="plus"
                                             class="details__action details__action--medium"
                                             size="1rem"
                                         />

@@ -2,14 +2,13 @@
     <div class="config__grid config__grid--pt-0" formGroupName="mainParams">
         <div class="config__grid-item">
             <label>Chunk Size</label>
-            <mat-icon
+            <app-svg-icon
+                icon="help"
                 class="config__tooltip"
                 matTooltip="The maximum size of each document chunk. Smaller chunks are more precise but may lose context. Larger chunks preserve more context but may be less precise."
                 matTooltipPosition="above"
                 matTooltipClass="dialog__label-tooltip"
-            >
-                help_outline
-            </mat-icon>
+            />
         </div>
         <div class="config__grid-item config__grid-item--short">
             <app-input-number
@@ -22,14 +21,13 @@
 
         <div class="config__grid-item">
             <label>Chunk Overlap</label>
-            <mat-icon
+            <app-svg-icon
+                icon="help"
                 class="config__tooltip"
                 matTooltip="The number of characters or tokens that overlap between chunks. Helps maintain context between chunks. Must be smaller than chunk size."
                 matTooltipPosition="above"
                 matTooltipClass="dialog__label-tooltip"
-            >
-                help_outline
-            </mat-icon>
+            />
         </div>
         <div class="config__grid-item config__grid-item--short">
             <app-input-number
@@ -49,14 +47,13 @@
 
         <div class="config__grid-item">
             <label>Preserve Links</label>
-            <mat-icon
+            <app-svg-icon
+                icon="help"
                 class="config__tooltip"
                 matTooltip="Keeps hyperlinks in the extracted content instead of removing them. Useful when link references provide important context."
                 matTooltipPosition="above"
                 matTooltipClass="dialog__label-tooltip"
-            >
-                help_outline
-            </mat-icon>
+            />
         </div>
         <div class="config__grid-item">
             <app-toggle-switch
@@ -65,14 +62,13 @@
         </div>
         <div class="config__grid-item">
             <label>Normalize Text</label>
-            <mat-icon
+            <app-svg-icon
+                icon="help"
                 class="config__tooltip"
                 matTooltip="Cleans and standardizes extracted text by removing extra whitespace, formatting inconsistencies, and HTML artifacts."
                 matTooltipPosition="above"
                 matTooltipClass="dialog__label-tooltip"
-            >
-                help_outline
-            </mat-icon>
+            />
         </div>
         <div class="config__grid-item">
             <app-toggle-switch
@@ -81,14 +77,13 @@
         </div>
         <div class="config__grid-item">
             <label>External Metadata</label>
-            <mat-icon
+            <app-svg-icon
+                icon="help"
                 class="config__tooltip"
                 matTooltip="Additional metadata provided as a JSON object. This metadata will be attached to each generated chunk."
                 matTooltipPosition="above"
                 matTooltipClass="dialog__label-tooltip"
-            >
-                help_outline
-            </mat-icon>
+            />
         </div>
         <div class="config__grid-item">
             <app-json-editor
@@ -104,14 +99,13 @@
 
         <div class="config__grid-item">
             <label>Denylist Tags</label>
-            <mat-icon
+            <app-svg-icon
+                icon="help"
                 class="config__tooltip"
                 matTooltip="A list of HTML tags to exclude from processing (e.g., script, style). Content inside these tags will be removed before chunking."
                 matTooltipPosition="above"
                 matTooltipClass="dialog__label-tooltip"
-            >
-                help_outline
-            </mat-icon>
+            />
         </div>
         <div class="config__grid-item">
             <app-custom-input

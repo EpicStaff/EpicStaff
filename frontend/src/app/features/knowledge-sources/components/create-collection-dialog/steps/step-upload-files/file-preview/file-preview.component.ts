@@ -1,12 +1,12 @@
 import {ChangeDetectionStrategy, Component, input} from "@angular/core";
-import {AppIconComponent} from "../../../../../../../shared/components/app-icon/app-icon.component";
+import { AppSvgIconComponent } from "../../../../../../../shared/components/app-svg-icon/app-svg-icon.component";
 
 @Component({
     selector: "app-file-preview",
     templateUrl: "./file-preview.component.html",
     styleUrls: ["./file-preview.component.scss"],
     imports: [
-        AppIconComponent
+        AppSvgIconComponent
     ],
     changeDetection: ChangeDetectionStrategy.OnPush
 })

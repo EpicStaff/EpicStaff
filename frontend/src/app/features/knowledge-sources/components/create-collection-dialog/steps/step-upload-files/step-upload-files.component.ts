@@ -5,6 +5,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {UpperCasePipe} from "@angular/common";
 import {CreateCollectionDtoResponse} from "../../../../models/collection.model";
 import {MATERIAL_FORMS} from "@shared/material-forms";
+import { AppSvgIconComponent } from "../../../../../../shared/components/app-svg-icon/app-svg-icon.component";
 import {FileUploaderComponent} from "../../file-uploader/file-uploader.component";
 import {FilesListComponent} from "./files-list/files-list.component";
 import {FilePreviewComponent} from "./file-preview/file-preview.component";
@@ -22,6 +23,7 @@ import {EMPTY, filter} from "rxjs";
     templateUrl: "./step-upload-files.component.html",
     styleUrls: ["./step-upload-files.component.scss"],
     imports: [
+        AppSvgIconComponent,
         MATERIAL_FORMS,
         ReactiveFormsModule,
         FileUploaderComponent,

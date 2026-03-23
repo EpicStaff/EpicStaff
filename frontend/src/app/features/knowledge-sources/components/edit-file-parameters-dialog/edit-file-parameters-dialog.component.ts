@@ -9,7 +9,8 @@ import {
     ViewChild
 } from "@angular/core";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
-import { AppIconComponent, ButtonComponent } from "@shared/components";
+import { ButtonComponent } from "@shared/components";
+import { AppSvgIconComponent } from "../../../../shared/components/app-svg-icon/app-svg-icon.component";
 import { DIALOG_DATA, DialogRef } from "@angular/cdk/dialog";
 import { ToastService } from "../../../../services/notifications";
 import { NaiveRagDocumentsStorageService } from "../../services/naive-rag-documents-storage.service";
@@ -22,7 +23,7 @@ import { DocumentConfigComponent } from "./document-config/document-config.compo
     templateUrl: './edit-file-parameters-dialog.component.html',
     styleUrls: ['./edit-file-parameters-dialog.component.scss'],
     imports: [
-        AppIconComponent,
+        AppSvgIconComponent,
         DocumentConfigComponent,
         DocumentChunksSectionComponent,
         ButtonComponent

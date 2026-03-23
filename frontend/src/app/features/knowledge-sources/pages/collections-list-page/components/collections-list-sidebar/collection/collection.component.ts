@@ -1,7 +1,7 @@
 import {ChangeDetectionStrategy, Component, input} from "@angular/core";
 import {CollectionStatus, GetCollectionRequest} from "../../../../../models/collection.model";
 import {NgClass} from "@angular/common";
-import {AppIconComponent} from "../../../../../../../shared/components/app-icon/app-icon.component";
+import {AppSvgIconComponent} from "../../../../../../../shared/components/app-svg-icon/app-svg-icon.component";
 
 @Component({
     selector: 'app-collection',
@@ -9,7 +9,7 @@ import {AppIconComponent} from "../../../../../../../shared/components/app-icon/
     styleUrls: ['./collection.component.scss'],
     imports: [
         NgClass,
-        AppIconComponent
+        AppSvgIconComponent
     ],
     changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -20,23 +20,23 @@ export class CollectionComponent {
     statusMap: Record<CollectionStatus, {text: string, icon: string} > = {
         completed: {
             text: "Completed",
-            icon: "ui/check",
+            icon: "check",
         },
         empty: {
             text: "New",
-            icon: "ui/circle",
+            icon: "circle",
         },
         warning: {
             text: "Warning",
-            icon: "ui/warning",
+            icon: "warning",
         },
         uploading: {
             text: "Processing",
-            icon: "ui/processing",
+            icon: "processing",
         },
         failed: {
             text: "Failed",
-            icon: "ui/close",
+            icon: "x",
         },
     } as const;
 

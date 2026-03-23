@@ -4,7 +4,7 @@
             <app-list-row class="files__file">
                 <div class="files__name-column">
                     <span>{{ i + 1 }}</span>
-                    <app-icon icon="ui/document" size="0.75rem"/>
+                    <app-svg-icon icon="document" size="0.75rem"/>
 
                     <span class="files__name">
                         {{ item.file_name }}
@@ -41,10 +41,10 @@
 <!--                            size="1rem"-->
 <!--                            (click)="onDocumentDelete(item)"-->
 <!--                        />-->
-                        <app-icon
-                            [isAction]="true"
-                            icon="ui/close"
+                        <app-svg-icon
+                            icon="x"
                             size="1rem"
+                            class="files__close-action"
                             (click)="onDelete(item)"
                         />
                     </app-list-actions>

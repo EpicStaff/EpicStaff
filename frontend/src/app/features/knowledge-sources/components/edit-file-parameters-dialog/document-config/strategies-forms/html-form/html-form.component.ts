@@ -8,6 +8,7 @@ import {
     JsonEditorComponent,
     ToggleSwitchComponent, ValidationErrorsComponent
 } from "@shared/components";
+import { AppSvgIconComponent } from "../../../../../../../shared/components/app-svg-icon/app-svg-icon.component";
 import { MATERIAL_FORMS } from "@shared/material-forms";
 
 @Component({
@@ -17,6 +18,7 @@ import { MATERIAL_FORMS } from "@shared/material-forms";
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
         ToggleSwitchComponent,
+        AppSvgIconComponent,
         MATERIAL_FORMS,
         CustomInputComponent,
         ReactiveFormsModule,
