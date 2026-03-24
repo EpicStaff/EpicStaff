@@ -12,7 +12,7 @@
       *ngIf="!isLoading && filteredStaffAgents.length === 0"
       class="empty-state"
     >
-      <i class="ti ti-search-off"></i>
+      <app-svg-icon icon="search-off" size="2rem" />
       <p *ngIf="searchTerm && searchTerm.trim() !== ''">
         No staff agents found matching "{{ searchTerm }}"
       </p>

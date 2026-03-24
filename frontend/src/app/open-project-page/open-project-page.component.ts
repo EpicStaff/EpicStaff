@@ -46,6 +46,7 @@ import { TaskPendingEvent } from './tasks-section/tasks-table/tasks-table.compon
 import { UnsavedChangesDialogService } from '../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
 import { CanComponentDeactivate } from '../core/guards/unsaved-changes.guard';
 import { AgentsService } from '../features/staff/services/staff.service';
+import { AppSvgIconComponent } from '../shared/components/app-svg-icon/app-svg-icon.component';
 
 // Improved animations that work properly with content visibility
 export const expandCollapseAnimation = trigger('expandCollapse', [
@@ -110,6 +111,7 @@ interface FlowModel {
         SettingsSectionComponent,
         FormsModule,
         SpinnerComponent,
+        AppSvgIconComponent,
     ],
     animations: [expandCollapseAnimation],
     changeDetection: ChangeDetectionStrategy.OnPush,

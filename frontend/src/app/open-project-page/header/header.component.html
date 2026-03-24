@@ -3,7 +3,7 @@
   <div class="title-section">
     <div class="title" *ngIf="project">
       <div class="project-prefix" routerLink="/projects">
-        <app-icon [icon]="'ui/arrow-left'" size="20" class="back-arrow" />
+        <app-svg-icon icon="arrow-left" size="20px" class="back-arrow" />
         <span>Projects</span>
       </div>
       <span class="separator"> / </span>
@@ -12,8 +12,8 @@
           {{ project.name }}
         </span>
 
-        <app-icon
-          icon="ui/edit"
+        <app-svg-icon
+          icon="edit"
           size="1rem"
           class="project-name__edit"
           (click)="openEditTitleDialog()"

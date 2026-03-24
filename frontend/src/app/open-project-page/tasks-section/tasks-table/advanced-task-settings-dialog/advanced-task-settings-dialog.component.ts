@@ -15,6 +15,7 @@ import { FormsModule } from '@angular/forms';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { JsonEditorComponent } from '../../../../shared/components/json-editor/json-editor.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 export interface AdvancedTaskSettingsData {
     config: any | null;
@@ -36,6 +37,7 @@ export interface AdvancedTaskSettingsData {
         MatSlideToggleModule,
         JsonEditorComponent,
         HelpTooltipComponent,
+        AppSvgIconComponent,
     ],
     templateUrl: './advanced-task-settings-dialog.component.html',
     styleUrls: ['./advanced-task-settings-dialog.component.scss'],

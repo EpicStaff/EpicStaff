@@ -23,7 +23,7 @@ import {
     GetProjectRequest,
     ProjectProcess,
 } from '../../features/projects/models/project.model';
-import { AppIconComponent } from '../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../../shared/components/buttons/button/button.component';
 import { v4 as uuidv4 } from 'uuid';
 import { NodeType } from '../../visual-programming/core/enums/node-type';
@@ -42,7 +42,7 @@ import { UnsavedIndicatorComponent } from '../../shared/components/unsaved-indic
         FormsModule,
         DialogModule,
         CommonModule,
-        AppIconComponent,
+        AppSvgIconComponent,
         ButtonComponent,
         SaveWithIndicatorComponent,
         UnsavedIndicatorComponent,

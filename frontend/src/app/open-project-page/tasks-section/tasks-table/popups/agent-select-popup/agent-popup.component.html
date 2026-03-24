@@ -8,7 +8,7 @@
       placeholder="Search agents..."
     />
     <button class="filter-button">
-      <i class="ti ti-filter"></i>
+      <app-svg-icon icon="filter-outline" size="14px" />
       Filter
     </button>
   </div>
@@ -25,7 +25,7 @@
         tabindex="0"
       >
         <div class="agent-avatar">
-          <i class="ti ti-robot"></i>
+          <app-svg-icon icon="agent" size="16px" />
         </div>
 
         <div class="item-content">
@@ -42,16 +42,17 @@
               : 'Select this agent'
           "
         >
-          <i
-            [class]="agent.id === selectedAgentId ? 'ti ti-x' : 'ti ti-plus'"
-          ></i>
+          <app-svg-icon
+            [icon]="agent.id === selectedAgentId ? 'x' : 'plus'"
+            size="14px"
+          />
         </button>
       </li>
 
       <!-- No results message -->
       <li class="no-results" *ngIf="filteredAgents.length === 0">
         <div class="empty-state">
-          <i class="ti ti-search-off"></i>
+          <app-svg-icon icon="search-off" size="24px" />
           <p>No matching agents found</p>
         </div>
       </li>

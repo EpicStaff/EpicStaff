@@ -6,18 +6,7 @@
       class="search-container"
       [class.has-content]="searchTerm.trim().length > 0"
     >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="20"
-        height="20"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-        viewBox="0 0 24 24"
-      >
-        <circle cx="11" cy="11" r="8"></circle>
-        <line x1="16" y1="16" x2="21.5" y2="21.5"></line>
-      </svg>
+      <app-svg-icon icon="search" size="20px" />
       <input
         type="text"
         class="search-input"
@@ -34,7 +23,7 @@
         aria-label="Clear search and close dropdown"
       >
         <span class="close-label">Clear search</span>
-        <i class="ti ti-x"></i>
+        <app-svg-icon icon="x" size="16px" />
       </button>
       }
     </div>

@@ -80,10 +80,7 @@ $transition-default: all 0.2s ease;
       transition: $transition-default;
       border: none;
 
-      i {
-        font-size: 14px;
-        width: 14px;
-        height: 14px;
+      app-svg-icon {
         margin-bottom: 2px;
       }
 
@@ -117,8 +114,7 @@ $transition-default: all 0.2s ease;
         justify-content: center;
         color: $text-secondary;
 
-        i {
-          font-size: 24px;
+        app-svg-icon {
           margin-bottom: 8px;
           opacity: 0.7;
         }
@@ -174,9 +170,6 @@ $transition-default: all 0.2s ease;
         color: $accent-blue;
         border: 1px solid rgba($accent-blue, 0.2);
 
-        i {
-          font-size: 16px;
-        }
       }
 
       .item-content {
@@ -222,7 +215,7 @@ $transition-default: all 0.2s ease;
         border: none;
         margin-left: 8px;
 
-        i {
+        app-svg-icon {
           transition: transform 0.2s ease;
         }
 

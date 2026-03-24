@@ -44,11 +44,11 @@
       </div>
       <div class="session-actions">
         <button mat-button *ngIf="session.status === 'active'" (click)="stopSession(session.id)">
-          <mat-icon>stop</mat-icon>
+          <app-svg-icon icon="stop" size="18px" />
           Stop
         </button>
         <button mat-button (click)="viewSession(session.id)">
-          <mat-icon>visibility</mat-icon>
+          <app-svg-icon icon="eye" size="18px" />
           View
         </button>
       </div>

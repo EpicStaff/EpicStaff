@@ -18,11 +18,12 @@ import { FormsModule } from '@angular/forms';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { FullAgent } from '../../../../../features/staff/services/full-agent.service';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-agent-selection-popup',
   standalone: true,
-  imports: [NgFor, FormsModule, NgIf],
+  imports: [NgFor, FormsModule, NgIf, AppSvgIconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './agent-popup.component.html',
   styleUrls: ['./agent-popup.component.scss'],

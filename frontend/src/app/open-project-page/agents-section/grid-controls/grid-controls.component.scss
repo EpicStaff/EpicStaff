@@ -27,7 +27,7 @@
     position: relative;
 
     &.has-content {
-      svg {
+      app-svg-icon {
         color: var(--accent-color);
       }
     }
@@ -35,15 +35,13 @@
     &:focus-within {
       background-color: rgba(255, 255, 255, 0.06);
 
-      svg {
+      app-svg-icon {
         color: var(--accent-color);
       }
     }
 
-    svg {
+    app-svg-icon {
       flex-shrink: 0;
-      width: 16px;
-      height: 16px;
       color: #6b7280;
       transition: color 0.2s ease;
     }
@@ -94,9 +92,6 @@
         color: #f9fafb;
       }
 
-      i {
-        font-size: 0.875rem;
-      }
     }
   }
 

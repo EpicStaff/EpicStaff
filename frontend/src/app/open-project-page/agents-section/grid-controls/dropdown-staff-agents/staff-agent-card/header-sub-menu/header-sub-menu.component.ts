@@ -3,12 +3,13 @@ import { CommonModule } from '@angular/common';
 import { ClickOutsideDirective } from '../../../../../../shared/directives/click-outside.directive';
 import { CardState } from '../staff-agent-card.component';
 import { FullAgent } from '../../../../../../features/staff/services/full-agent.service';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ToastService } from '../../../../../../services/notifications/toast.service';
 
 @Component({
   selector: 'app-agent-menu',
   standalone: true,
-  imports: [CommonModule, ClickOutsideDirective],
+  imports: [CommonModule, ClickOutsideDirective, AppSvgIconComponent],
   template: `
     <div
       class="menu-container"
@@ -39,23 +40,7 @@ import { ToastService } from '../../../../../../services/notifications/toast.ser
         class="menu-item remove-item"
         (click)="onRemoveAgent()"
       >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-          <path d="M4 7h16" />
-          <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
-          <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
-          <path d="M10 12l4 4m0 -4l-4 4" />
-        </svg>
+        <app-svg-icon icon="trash" size="16px" />
         <span>Remove Agent</span>
       </div>
     </div>
@@ -87,10 +72,10 @@ import { ToastService } from '../../../../../../services/notifications/toast.ser
         background-color: var(--gray-800);
         color: var(--gray-100);
       }
-      .menu-item svg {
+      .menu-item app-svg-icon {
         opacity: 0.8;
       }
-      .menu-item:hover svg {
+      .menu-item:hover app-svg-icon {
         opacity: 1;
       }
       .remove-item {

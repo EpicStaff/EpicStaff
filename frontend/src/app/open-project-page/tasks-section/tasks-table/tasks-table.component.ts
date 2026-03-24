@@ -628,7 +628,7 @@ export class TasksTableComponent implements OnChanges {
             headerName: '',
             field: 'actions',
             cellRenderer: (params: ICellRendererParams) => {
-                return `<i class="ti ti-settings action-icon"></i>`;
+                return `<svg class="action-icon" width="16" height="16"><use href="#icon-settings"></use></svg>`;
             },
             width: 40,
             cellClass: 'action-cell',

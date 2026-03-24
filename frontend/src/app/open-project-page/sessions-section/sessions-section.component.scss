@@ -144,12 +144,6 @@
           cursor: pointer;
           transition: all 0.2s ease;
 
-          mat-icon {
-            font-size: 18px;
-            width: 18px;
-            height: 18px;
-          }
-
           &:hover {
             background: rgba(255, 255, 255, 0.1);
           }

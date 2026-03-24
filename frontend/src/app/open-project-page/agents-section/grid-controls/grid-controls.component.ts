@@ -13,13 +13,14 @@ import { ProjectFavoriteButtonComponent } from '../../../shared/components/heade
 import { ProjectFilterButtonComponent } from '../../../shared/components/header/header-components/header-filter/header-filter-button.component';
 import { ProjectSortButtonComponent } from '../../../shared/components/header/header-components/header-sort/header-sort-button.component';
 import { FullAgent } from '../../../features/staff/services/full-agent.service';
+import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 export type GridSizeOption = 'small' | 'medium' | 'large';
 
 @Component({
   selector: 'app-grid-controls',
   standalone: true,
-  imports: [CommonModule, FormsModule, SearchDropdownComponent],
+  imports: [CommonModule, FormsModule, SearchDropdownComponent, AppSvgIconComponent],
   templateUrl: './grid-controls.component.html',
   styleUrls: ['./grid-controls.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -20,6 +20,7 @@ import { GetLlmConfigRequest } from '../../features/settings-dialog/models/llms/
 import { GetEmbeddingConfigRequest } from '../../features/settings-dialog/models/embeddings/embedding-config.model';
 
 import { HelpTooltipComponent } from '../../shared/components/help-tooltip/help-tooltip.component';
+import { AppSvgIconComponent } from '../../shared/components/app-svg-icon/app-svg-icon.component';
 
 import { LlmModelSelectorComponent } from '../../shared/components/llm-model-selector/llm-model-selector.component';
 import { EmbeddingModelSelectorComponent } from '../../shared/components/embedding-model-selector/embedding-model-selector.component';
@@ -39,6 +40,7 @@ import { RangeSliderComponent } from '../../shared/components/range-slider/range
         LlmModelSelectorComponent,
         EmbeddingModelSelectorComponent,
         RangeSliderComponent,
+        AppSvgIconComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

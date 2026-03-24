@@ -13,12 +13,13 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { AppSvgIconComponent } from '../../shared/components/app-svg-icon/app-svg-icon.component';
 import { Variable } from '../models/variable.model';
 
 @Component({
   selector: 'app-variables-content',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, AppSvgIconComponent],
   templateUrl: './variables-content.component.html',
   styleUrls: ['./variables-content.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,

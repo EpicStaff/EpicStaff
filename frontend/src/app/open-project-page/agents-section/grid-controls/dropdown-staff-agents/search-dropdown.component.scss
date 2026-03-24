@@ -75,8 +75,7 @@
   min-height: 160px; // Ensure empty state has reasonable height
 }
 
-.empty-state i {
-  font-size: 2rem;
+.empty-state app-svg-icon {
   color: var(--gray-400);
   margin-bottom: 1rem;
 }
