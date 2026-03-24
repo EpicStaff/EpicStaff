@@ -7,7 +7,7 @@
   </div>
   <div class="tool-header">
     <div class="tool-icon">
-      <app-icon icon="ui/python" size="35"></app-icon>
+      <app-svg-icon icon="python" size="35px" />
     </div>
     <div class="tool-info">
       <div class="tool-name">{{ tool.name }}</div>
@@ -30,10 +30,10 @@
         (click)="onStar()"
         [class.active]="starred"
       >
-        <app-icon [icon]="starIcon" size="1.2rem"></app-icon>
+        <app-svg-icon [icon]="starIcon" size="1.2rem" />
       </button>
       <button class="delete-btn" aria-label="Delete tool" (click)="onDelete()">
-        <app-icon icon="ui/x" size="1.2rem"></app-icon>
+        <app-svg-icon icon="x" size="1.2rem" />
       </button>
     </div>
   </div>

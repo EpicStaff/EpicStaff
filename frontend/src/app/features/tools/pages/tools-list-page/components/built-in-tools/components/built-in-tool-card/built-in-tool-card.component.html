@@ -1,7 +1,7 @@
 <div class="tool-card" [class.disabled]="!tool.enabled">
   <div class="tool-header">
     <div class="tool-icon-large">
-      <app-icon [icon]="getIconName()" size="35"></app-icon>
+      <app-svg-icon [icon]="getIconName()" size="35px" />
     </div>
     <div class="tool-header-info">
       <div class="tool-name">{{ tool.name }}</div>
@@ -18,14 +18,6 @@
         [checked]="tool.enabled"
         (checkedChange)="onToggle($event)"
       ></app-toggle-switch>
-      <!-- <button
-        class="star-btn"
-        aria-label="Favorite"
-        (click)="onStar()"
-        [class.active]="starred"
-      >
-        <app-icon [icon]="starIcon" size="1.2rem"></app-icon>
-      </button> -->
     </div>
   </div>
 </div>

@@ -16,7 +16,7 @@ import { CustomToolDialogComponent } from '../../../../user-settings-page/tools/
 import { CustomToolsService } from '../../services/custom-tools/custom-tools.service';
 import { GetPythonCodeToolRequest } from '../../models/python-code-tool.model';
 import { FormsModule } from '@angular/forms';
-import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { McpToolDialogComponent } from '../../components/mcp-tool-dialog/mcp-tool-dialog.component';
 import { GetMcpToolRequest } from '../../models/mcp-tool.model';
 import { ToolsEventsService } from '../../services/tools-events.service';
@@ -32,7 +32,7 @@ import { ToolsSearchService } from '../../services/tools-search.service';
     TabButtonComponent,
     ButtonComponent,
     FormsModule,
-    AppIconComponent,
+    AppSvgIconComponent,
   ],
   templateUrl: './tools-list-page.component.html',
   styleUrls: ['./tools-list-page.component.scss'],
@@ -72,7 +72,7 @@ export class ToolsListPageComponent {
   }
 
   public get createButtonIcon(): string {
-    return 'ui/plus';
+    return 'plus';
   }
 
   public onSearchTermChange(term: string): void {

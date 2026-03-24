@@ -7,7 +7,7 @@ import {
   Output,
 } from '@angular/core';
 import { GetPythonCodeToolRequest } from '../../../../../../models/python-code-tool.model';
-import { AppIconComponent } from '../../../../../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ToggleSwitchComponent } from '../../../../../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 import { ButtonComponent } from '../../../../../../../../shared/components/buttons/button/button.component';
 
@@ -16,7 +16,7 @@ import { ButtonComponent } from '../../../../../../../../shared/components/butto
   standalone: true,
   templateUrl: './custom-tool-card.component.html',
   styleUrls: ['./custom-tool-card.component.scss'],
-  imports: [AppIconComponent, ToggleSwitchComponent, ButtonComponent],
+  imports: [AppSvgIconComponent, ToggleSwitchComponent, ButtonComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CustomToolCardComponent {
@@ -37,7 +37,7 @@ export class CustomToolCardComponent {
   constructor(private cdr: ChangeDetectorRef) {}
 
   public get starIcon(): string {
-    return this.starred ? 'ui/star-filled' : 'ui/star';
+    return this.starred ? 'star-filled' : 'star';
   }
 
   public onConfigure(): void {

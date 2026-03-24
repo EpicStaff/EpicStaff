@@ -1,7 +1,7 @@
 <div class="tool-card">
   <div class="tool-header">
     <div class="tool-icon">
-      <mat-icon>hub</mat-icon>
+      <app-svg-icon icon="hub" size="24px" />
     </div>
     <div class="tool-info">
       <div class="tool-name">{{ tool.name }}</div>
@@ -33,10 +33,10 @@
         (click)="onStar()"
         [class.active]="starred"
       >
-        <app-icon [icon]="starIcon" size="1.2rem"></app-icon>
+        <app-svg-icon [icon]="starIcon" size="1.2rem" />
       </button>
       <button class="delete-btn" aria-label="Delete tool" (click)="onDelete()">
-        <app-icon icon="ui/x" size="1.2rem"></app-icon>
+        <app-svg-icon icon="x" size="1.2rem" />
       </button>
     </div>
   </div>

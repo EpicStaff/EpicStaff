@@ -8,7 +8,7 @@ import {
 } from '@angular/core';
 import { Tool } from '../../../../../../models/tool.model';
 import { CommonModule } from '@angular/common';
-import { AppIconComponent } from '../../../../../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { TOOL_CATEGORIES_CONFIG } from '../../../../../../constants/built-in-tools-categories';
 import { ToggleSwitchComponent } from '../../../../../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 import { ButtonComponent } from '../../../../../../../../shared/components/buttons/button/button.component';
@@ -19,7 +19,7 @@ import { TOOL_PROVIDERS_AND_DESCRIPTIONS } from '../../../../../../constants/too
   standalone: true,
   imports: [
     CommonModule,
-    AppIconComponent,
+    AppSvgIconComponent,
     ToggleSwitchComponent,
     ButtonComponent,
   ],
@@ -64,10 +64,6 @@ export class BuiltInToolCardComponent {
 
   public get toolDescription(): string {
     return TOOL_PROVIDERS_AND_DESCRIPTIONS[this.tool.id]?.description || '';
-  }
-
-  public get starIcon(): string {
-    return this.starred ? 'ui/star-filled' : 'ui/star';
   }
 
   public onConfigure(): void {
