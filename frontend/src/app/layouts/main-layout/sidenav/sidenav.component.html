@@ -31,10 +31,9 @@
                     (click)="item.action ? handleItemClick(item, $event) : null"
                     [attr.href]="item.routeLink || (item.action ? '#' : null)"
                 >
-                    <div
-                        class="sidenav-link-icon"
-                        [innerHTML]="item.svgIcon"
-                    ></div>
+                    <div class="sidenav-link-icon">
+                        <app-svg-icon [icon]="item.icon" size="1.4rem" />
+                    </div>
                 </a>
                 <app-tooltip
                     [text]="item.label"
@@ -61,10 +60,9 @@
                     (click)="handleItemClick(item, $event)"
                     [attr.href]="item.routeLink || (item.action ? '#' : null)"
                 >
-                    <div
-                        class="sidenav-link-icon"
-                        [innerHTML]="item.svgIcon"
-                    ></div>
+                    <div class="sidenav-link-icon">
+                        <app-svg-icon [icon]="item.icon" size="1.4rem" />
+                    </div>
                 </a>
                 <app-tooltip
                     [text]="item.label"

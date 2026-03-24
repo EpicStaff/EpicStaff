@@ -1,8 +1,7 @@
 import { Component, ChangeDetectionStrategy } from '@angular/core';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { ICONS } from '../../../shared/constants/icons.constants';
 import { TooltipComponent } from './tooltip/tooltip.component';
 import { RouterLink, RouterLinkActive } from '@angular/router';
+import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { SettingsDialogService } from '../../../features/settings-dialog/settings-dialog.service';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { PortalModule } from '@angular/cdk/portal';
@@ -10,7 +9,7 @@ import { PortalModule } from '@angular/cdk/portal';
 interface NavItem {
     id: string;
     routeLink?: string;
-    svgIcon: SafeHtml;
+    icon: string;
     label: string;
     showTooltip: boolean;
     action?: () => void;
@@ -26,6 +25,7 @@ interface NavItem {
         RouterLink,
         OverlayModule,
         PortalModule,
+        AppSvgIconComponent,
     ],
     templateUrl: './sidenav.component.html',
     styleUrls: ['./sidenav.component.scss'],
@@ -36,49 +36,48 @@ export class LeftSidebarComponent {
     public bottomNavItems: NavItem[];
 
     constructor(
-        private sanitizer: DomSanitizer,
         private settingsDialogService: SettingsDialogService
     ) {
         this.topNavItems = [
             {
                 id: 'projects',
                 routeLink: 'projects',
-                svgIcon: this.sanitizer.bypassSecurityTrustHtml(ICONS.projects),
+                icon: 'project',
                 label: 'Projects',
                 showTooltip: false,
             },
             {
                 id: 'staff',
                 routeLink: 'staff',
-                svgIcon: this.sanitizer.bypassSecurityTrustHtml(ICONS.staff),
+                icon: 'agent',
                 label: 'Staff',
                 showTooltip: false,
             },
             {
                 id: 'tools',
                 routeLink: 'tools',
-                svgIcon: this.sanitizer.bypassSecurityTrustHtml(ICONS.tools),
+                icon: 'tools',
                 label: 'Tools',
                 showTooltip: false,
             },
             {
                 id: 'flows',
                 routeLink: 'flows',
-                svgIcon: this.sanitizer.bypassSecurityTrustHtml(ICONS.flows),
+                icon: 'flows',
                 label: 'Flows',
                 showTooltip: false,
             },
             {
                 id: 'knowledge-sources',
                 routeLink: 'knowledge-sources',
-                svgIcon: this.sanitizer.bypassSecurityTrustHtml(ICONS.sources),
+                icon: 'sources',
                 label: 'Knowledge Sources',
                 showTooltip: false,
             },
             {
                 id: 'chats',
                 routeLink: 'chats',
-                svgIcon: this.sanitizer.bypassSecurityTrustHtml(ICONS.chats),
+                icon: 'chats',
                 label: 'Chats',
                 showTooltip: false,
             },
@@ -87,7 +86,7 @@ export class LeftSidebarComponent {
         this.bottomNavItems = [
             {
                 id: 'settings',
-                svgIcon: this.sanitizer.bypassSecurityTrustHtml(ICONS.settings),
+                icon: 'settings',
                 label: 'Settings',
                 showTooltip: false,
                 action: () => this.onSettingsClick(),
