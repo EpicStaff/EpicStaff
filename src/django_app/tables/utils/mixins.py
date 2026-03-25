@@ -151,7 +151,6 @@ class SSEMixin(View, ABC):
             headers={
                 "Connection": "keep-alive",
                 "Cache-Control": "no-cache",
-                "Access-Control-Allow-Origin": "*",
                 "X-Accel-Buffering": "no",
                 "Transfer-Encoding": "chunked",
             },

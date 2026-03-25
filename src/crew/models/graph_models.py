@@ -36,6 +36,7 @@ class FinishMessageData:
     state: dict
     message_type: str = "finish"
     additional_data: dict | None = None
+    sse_visible: bool | None = None
 
 
 @dataclass

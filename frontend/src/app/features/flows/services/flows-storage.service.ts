@@ -1,21 +1,11 @@
-import { Injectable, signal, computed, inject } from '@angular/core';
+import { computed, inject, Injectable, signal } from '@angular/core';
 import { Observable, of } from 'rxjs';
-import {
-    tap,
-    map,
-    delay,
-    shareReplay,
-    catchError,
-    switchMap,
-} from 'rxjs/operators';
+import { catchError, delay, map, shareReplay, switchMap, tap } from 'rxjs/operators';
 
-import {
-    GraphDto,
-    CreateGraphDtoRequest,
-    UpdateGraphDtoRequest,
-} from '../models/graph.model';
-import { FlowsApiService } from './flows-api.service';
 import { SearchFilterChange } from '../../../shared/components/filters-list/filters-list.component';
+import { CreateGraphDtoRequest, GraphDto, UpdateGraphDtoRequest } from '../models/graph.model';
+import { FlowsApiService } from './flows-api.service';
+import { LabelsStorageService } from './labels-storage.service';
 
 const TEMPLATE_FLOWS: GraphDto[] = [];
 
@@ -24,6 +14,7 @@ const TEMPLATE_FLOWS: GraphDto[] = [];
 })
 export class FlowsStorageService {
     private readonly flowsApiService = inject(FlowsApiService);
+    private readonly labelsStorage = inject(LabelsStorageService);
 
     // --- State Signals ---
     private flowsSignal = signal<GraphDto[]>([]);
@@ -35,6 +26,7 @@ export class FlowsStorageService {
     // --- Public State Accessors ---
     public readonly isFlowsLoaded = this.flowsLoaded.asReadonly();
     public readonly isTemplatesLoaded = this.templatesLoaded.asReadonly();
+    public readonly flows = this.flowsSignal.asReadonly();
 
     public selectMode = signal<boolean>(false);
     public selectedFlowIds = signal<number[]>([]);
@@ -43,16 +35,20 @@ export class FlowsStorageService {
         const flows = this.flowsSignal();
         const filter = this.filterSignal();
         let filtered = flows;
-        if (filter) {
-            if (filter.searchTerm) {
-                filtered = filtered.filter((f) =>
-                    f.name
-                        .toLowerCase()
-                        .includes(filter.searchTerm.toLowerCase())
-                );
-            }
+        if (filter?.searchTerm) {
+            const term = filter.searchTerm.toLowerCase();
+            const labels = this.labelsStorage.labels();
+            filtered = filtered.filter((f) => {
+                if (f.name.toLowerCase().includes(term)) return true;
+                return (f.label_ids || []).some((id) => {
+                    const label = labels.find((l) => l.id === id);
+                    return (
+                        label &&
+                        (label.name.toLowerCase().includes(term) || label.full_path.toLowerCase().includes(term))
+                    );
+                });
+            });
         }
-        // Always sort by id descending
         return filtered.slice().sort((a, b) => b.id - a.id);
     });
 
@@ -62,9 +58,7 @@ export class FlowsStorageService {
         if (!filter) return templates;
         let filtered = templates;
         if (filter.searchTerm) {
-            filtered = filtered.filter((t) =>
-                t.name.toLowerCase().includes(filter.searchTerm.toLowerCase())
-            );
+            filtered = filtered.filter((t) => t.name.toLowerCase().includes(filter.searchTerm.toLowerCase()));
         }
         return filtered;
     });
@@ -96,8 +90,7 @@ export class FlowsStorageService {
         }
 
         // Compare searchTerm
-        const searchTermChanged =
-            currentFilter.searchTerm !== filter.searchTerm;
+        const searchTermChanged = currentFilter.searchTerm !== filter.searchTerm;
 
         // Only update if there's a change
         if (searchTermChanged) {
@@ -111,21 +104,36 @@ export class FlowsStorageService {
     }
 
     // --- Data Fetching Methods ---
-    public getFlows(forceRefresh = false): Observable<GraphDto[]> {
-        if (this.flowsLoaded() && !forceRefresh) {
+    public getFlows(forceRefresh = false, labelFilter?: 'all' | 'unlabeled' | number): Observable<GraphDto[]> {
+        const isFiltered = labelFilter !== undefined && labelFilter !== 'all';
+        const params = this.buildLabelParams(labelFilter);
+
+        // Only use cache for unfiltered "all" requests
+        if (this.flowsLoaded() && !forceRefresh && !isFiltered) {
             return of(this.flowsSignal());
         }
-        return this.flowsApiService.getGraphsLight().pipe(
+
+        return this.flowsApiService.getGraphsLight(params).pipe(
             tap((flows) => {
-                this.setFlows(flows);
+                this.flowsSignal.set(flows);
+                if (!isFiltered) {
+                    this.flowsLoaded.set(true);
+                }
             }),
-        
             shareReplay(1),
             catchError(() => {
-                this.flowsLoaded.set(false);
+                if (!isFiltered) this.flowsLoaded.set(false);
                 return of([]);
             })
         );
+    }
+
+    private buildLabelParams(
+        filter?: 'all' | 'unlabeled' | number
+    ): { label_id?: number; no_label?: boolean } | undefined {
+        if (!filter || filter === 'all') return undefined;
+        if (filter === 'unlabeled') return { no_label: true };
+        return { label_id: filter as number };
     }
 
     public getFlowTemplates(forceRefresh = false): Observable<GraphDto[]> {
@@ -142,15 +150,11 @@ export class FlowsStorageService {
     }
 
     public getFlowById(id: number): Observable<GraphDto | undefined> {
-        const cachedFlow: GraphDto | undefined = this.flowsSignal().find(
-            (flow) => flow.id === id
-        );
+        const cachedFlow: GraphDto | undefined = this.flowsSignal().find((flow) => flow.id === id);
         if (cachedFlow) {
             return of(cachedFlow);
         }
-        return this.flowsApiService
-            .getGraphById(id)
-            .pipe(catchError(() => of(undefined)));
+        return this.flowsApiService.getGraphById(id).pipe(catchError(() => of(undefined)));
     }
 
     // --- CRUD Methods ---
@@ -166,31 +170,27 @@ export class FlowsStorageService {
         return this.flowsApiService.updateGraph(flowData.id, flowData).pipe(
             tap((updatedFlow) => {
                 const currentFlows = this.flowsSignal();
-                const index = currentFlows.findIndex(
-                    (f) => f.id === updatedFlow.id
-                );
+                const index = currentFlows.findIndex((f) => f.id === updatedFlow.id);
                 if (index !== -1) {
                     const updatedFlowsList = [...currentFlows];
-                    updatedFlowsList[index] = updatedFlow;
+                    const cleanUpdate = Object.fromEntries(
+                        Object.entries(updatedFlow).filter(([, v]) => v !== undefined)
+                    ) as GraphDto;
+                    updatedFlowsList[index] = { ...currentFlows[index], ...cleanUpdate };
                     this.flowsSignal.set(updatedFlowsList);
                 }
             })
         );
     }
 
-    public patchUpdateFlow(
-        id: number,
-        updateData: Partial<GraphDto>
-    ): Observable<GraphDto> {
+    public patchUpdateFlow(id: number, updateData: Partial<GraphDto>): Observable<GraphDto> {
         return this.getFlowById(id).pipe(
             switchMap((currentFlow: GraphDto | undefined) => {
-                if (!currentFlow)
-                    throw new Error('Flow not found for patching');
+                if (!currentFlow) throw new Error('Flow not found for patching');
                 const updatedPayload: UpdateGraphDtoRequest = {
                     id: currentFlow.id,
                     name: updateData.name || currentFlow.name,
-                    description:
-                        updateData.description || currentFlow.description,
+                    description: updateData.description || currentFlow.description,
                     metadata: updateData.metadata || currentFlow.metadata,
                     tags: updateData.tags || currentFlow.tags || [],
                 };
@@ -199,26 +199,48 @@ export class FlowsStorageService {
         );
     }
 
+    public updateFlowLabels(id: number, labelIds: number[]): Observable<GraphDto> {
+        return this.flowsApiService.patchGraph(id, { label_ids: labelIds }).pipe(
+            tap((updatedFlow) => {
+                const currentFlows = this.flowsSignal();
+                const index = currentFlows.findIndex((f) => f.id === updatedFlow.id);
+                if (index !== -1) {
+                    const updatedFlowsList = [...currentFlows];
+                    const cleanUpdate = Object.fromEntries(
+                        Object.entries(updatedFlow).filter(([, v]) => v !== undefined)
+                    ) as GraphDto;
+                    updatedFlowsList[index] = { ...currentFlows[index], ...cleanUpdate };
+                    this.flowsSignal.set(updatedFlowsList);
+                }
+            })
+        );
+    }
+
     public deleteFlow(id: number): Observable<void> {
         return this.flowsApiService.deleteGraph(id).pipe(
             tap(() => {
                 const currentFlows = this.flowsSignal();
-                this.flowsSignal.set(currentFlows.filter((f) => f.id !== id));
+                this.flowsSignal.set(
+                    currentFlows
+                        .filter((f) => f.id !== id)
+                        .map((f) => {
+                            if (!f.subflows?.length) return f;
+                            const updatedSubflows = f.subflows.filter((s) => s.id !== id);
+                            if (updatedSubflows.length === f.subflows.length) return f;
+                            return { ...f, subflows: updatedSubflows };
+                        })
+                );
                 // Remove deleted flow from export selection
                 const currentSelected = this.selectedFlowIds();
                 if (currentSelected.includes(id)) {
-                    this.selectedFlowIds.set(
-                        currentSelected.filter((selectedId) => selectedId !== id)
-                    );
+                    this.selectedFlowIds.set(currentSelected.filter((selectedId) => selectedId !== id));
                 }
             })
         );
     }
 
     public copyFlow(sourceId: number, newName: string): Observable<GraphDto> {
-        return this.flowsApiService.copyGraph(sourceId, newName).pipe(
-            tap((created) => this.addFlowToCache(created))
-        );
+        return this.flowsApiService.copyGraph(sourceId, newName).pipe(tap((created) => this.addFlowToCache(created)));
     }
 
     // --- Cache Management ---
@@ -239,9 +261,9 @@ export class FlowsStorageService {
     public toggleFlowSelection(id: number): void {
         const current = this.selectedFlowIds();
         if (current.includes(id)) {
-            this.selectedFlowIds.set(current.filter(item => item !== id));
+            this.selectedFlowIds.set(current.filter((item) => item !== id));
         } else {
-            this.selectedFlowIds.set([...current, id])
+            this.selectedFlowIds.set([...current, id]);
         }
     }
 
@@ -250,7 +272,7 @@ export class FlowsStorageService {
     }
 
     public selectAllFlows(): void {
-        const allFlowIds = this.filteredFlows().map(flow => flow.id);
+        const allFlowIds = this.filteredFlows().map((flow) => flow.id);
         this.selectedFlowIds.set(allFlowIds);
     }
 
@@ -259,9 +281,9 @@ export class FlowsStorageService {
     }
 
     public isAllFlowsSelected(): boolean {
-        const allFlowIds = this.filteredFlows().map(flow => flow.id);
+        const allFlowIds = this.filteredFlows().map((flow) => flow.id);
         const selectedIds = this.selectedFlowIds();
-        return allFlowIds.length > 0 && allFlowIds.every(id => selectedIds.includes(id));
+        return allFlowIds.length > 0 && allFlowIds.every((id) => selectedIds.includes(id));
     }
 
     public toggleSelectAllFlows(): void {

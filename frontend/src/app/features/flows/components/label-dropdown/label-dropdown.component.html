@@ -1,0 +1,136 @@
+<div class="label-dropdown-wrapper">
+    <button type="button" class="trigger-btn" (click)="$event.stopPropagation(); toggle()" [class.open]="isOpen()">
+        <span class="trigger-text">{{ triggerLabel }}</span>
+        <svg class="chevron" [class.rotated]="isOpen()" width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path
+                d="M2 4L6 8L10 4"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            />
+        </svg>
+    </button>
+
+    @if (isOpen()) {
+        <div class="dropdown-panel" (click)="$event.stopPropagation()">
+            <div class="labels-section-header">
+                <div class="header-labels-left">
+                    <app-icon icon="ui/label" size="1.125rem" class="section-label-icon"></app-icon>
+                    <span>Labels</span>
+                </div>
+                @if (!addingRoot()) {
+                    <button type="button" class="add-root-btn" (click)="startAddRoot()">
+                        <app-icon icon="ui/plus" size="0.6rem"></app-icon>
+                        <span>Add label</span>
+                    </button>
+                }
+            </div>
+
+            @if (addingRoot()) {
+                <div class="add-label-row">
+                    <input
+                        class="label-input"
+                        [class.has-error]="addLabelError()"
+                        [ngModel]="newLabelName()"
+                        (ngModelChange)="newLabelName.set($event); onNewLabelInput()"
+                        placeholder="Enter label name..."
+                        (keyup.enter)="confirmAdd()"
+                        (keyup.escape)="cancelAdd()"
+                        autofocus
+                    />
+                    <button type="button" class="cancel-btn-icon" (click)="cancelAdd()" title="Cancel">
+                        <app-icon icon="ui/x" size="0.85rem"></app-icon>
+                    </button>
+                    <button type="button" class="confirm-btn" (click)="confirmAdd()" title="Confirm">
+                        <app-icon icon="ui/check" size="0.85rem"></app-icon>
+                    </button>
+                </div>
+                @if (addLabelError()) {
+                    <div class="label-error">{{ addLabelError() }}</div>
+                }
+            }
+
+            <div class="labels-list">
+                @if (labelTree().length === 0 && !addingRoot()) {
+                    <div class="empty-text">No labels yet. Add label to mark the flow</div>
+                }
+
+                @for (item of flatTree(); track item.node.id) {
+                    <div
+                        class="tree-row"
+                        [class.selected]="isSelected(item.node.id)"
+                        [style.paddingLeft]="getIndentPadding(item.depth)"
+                        (mouseenter)="onTreeRowHover($event)"
+                    >
+                        <button
+                            type="button"
+                            class="toggle-btn"
+                            (click)="$event.stopPropagation(); toggleExpand(item.node.id)"
+                            [style.visibility]="item.node.children.length > 0 ? 'visible' : 'hidden'"
+                            title="{{ isExpanded(item.node.id) ? 'Collapse' : 'Expand' }}"
+                        >
+                            <app-icon
+                                icon="ui/expand"
+                                size="0.6rem"
+                                class="expand-icon"
+                                [class.expanded]="isExpanded(item.node.id)"
+                            ></app-icon>
+                        </button>
+
+                        <input
+                            type="checkbox"
+                            class="label-checkbox"
+                            [checked]="isSelected(item.node.id)"
+                            (change)="toggleSelection(item.node.id)"
+                            (click)="$event.stopPropagation()"
+                        />
+
+                        <span class="label-name">{{ item.node.name }}</span>
+
+                        <button
+                            type="button"
+                            class="add-child-btn"
+                            (click)="$event.stopPropagation(); startAddChild(item.node.id)"
+                            title="Add sublabel"
+                        >
+                            <app-icon icon="ui/plus" size="0.8rem"></app-icon>
+                        </button>
+                    </div>
+
+                    @if (addingChildOf() === item.node.id) {
+                        <div class="add-label-row child-add" [style.paddingLeft]="getIndentPadding(item.depth + 1)">
+                            <input
+                                class="label-input"
+                                [class.has-error]="addLabelError()"
+                                [ngModel]="newLabelName()"
+                                (ngModelChange)="newLabelName.set($event); onNewLabelInput()"
+                                placeholder="Enter sublabel name..."
+                                (keyup.enter)="confirmAdd()"
+                                (keyup.escape)="cancelAdd()"
+                                autofocus
+                            />
+                            <button type="button" class="cancel-btn-icon" (click)="cancelAdd()" title="Cancel">
+                                <app-icon icon="ui/x" size="0.85rem"></app-icon>
+                            </button>
+                            <button type="button" class="confirm-btn" (click)="confirmAdd()" title="Confirm">
+                                <app-icon icon="ui/check" size="0.85rem"></app-icon>
+                            </button>
+                        </div>
+                        @if (addLabelError()) {
+                            <div class="label-error">{{ addLabelError() }}</div>
+                        }
+                    }
+                }
+            </div>
+
+            <div class="dropdown-footer">
+                <app-button type="outline-primary" (click)="clear()">Clear filter</app-button>
+                <div class="footer-right">
+                    <app-button type="outline-primary" (click)="close()">Cancel</app-button>
+                    <app-button type="primary" (click)="save()">Save changes</app-button>
+                </div>
+            </div>
+        </div>
+    }
+</div>

@@ -1,0 +1,374 @@
+.label-dropdown-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.trigger-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.525rem 0.625rem;
+    background-color: var(--color-input-background);
+    border: 1px solid var(--color-input-border);
+    border-radius: 6px;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.2s;
+
+    &:hover,
+    &:focus {
+        outline: none;
+        border-color: var(--accent-color);
+    }
+
+    .trigger-text {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--color-text-primary);
+    }
+
+    .chevron {
+        flex-shrink: 0;
+        margin-left: 0.5rem;
+        color: var(--color-text-secondary);
+        transition: transform 0.15s ease;
+
+        &.rotated {
+            transform: rotate(180deg);
+        }
+    }
+}
+
+.dropdown-panel {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    width: 100%;
+    z-index: 200;
+    background: var(--color-sidenav-background);
+    border: 1px solid var(--color-input-border);
+    border-radius: 10px;
+    box-shadow:
+        0px 6px 10px rgba(0, 0, 0, 0.15),
+        0px 2px 3px rgba(0, 0, 0, 0.3);
+}
+
+.labels-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.25rem 1.25rem 0.75rem;
+
+    .header-labels-left {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 400;
+        color: var(--color-text-primary);
+
+        ::ng-deep svg path {
+            fill: var(--color-text-primary);
+        }
+    }
+}
+
+.add-root-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    background: var(--accent-color);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--color-text-primary);
+    font-size: 0.75rem;
+    font-weight: 400;
+    height: 28px;
+    padding: 0 0.5rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: background 0.15s;
+
+    &:hover {
+        background: var(--accent-color-hover, var(--accent-color));
+        filter: brightness(1.1);
+    }
+}
+
+.labels-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 260px;
+    overflow-y: auto;
+    overflow-x: auto;
+    padding: 0 1.25rem 0.5rem;
+
+    // Custom scrollbar
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-input-background) transparent;
+
+    &::-webkit-scrollbar {
+        width: 8px;
+    }
+    &::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    &::-webkit-scrollbar-thumb {
+        background: var(--color-input-background);
+        border-radius: 4px;
+    }
+}
+
+.empty-text {
+    font-size: 0.82rem;
+    color: var(--color-text-secondary);
+    text-align: center;
+    padding: 0.5rem 0.75rem 0.75rem;
+}
+
+.tree-row {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0 1rem 0 0.25rem;
+    cursor: pointer;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    position: relative;
+    height: 40px;
+    background: var(--color-input-background);
+    border: 1px solid rgba(217, 217, 222, 0.16);
+    border-radius: 4px;
+    flex-shrink: 0;
+    transition: border-color 0.15s;
+    min-width: max-content;
+
+    &:hover {
+        border-color: var(--accent-color);
+
+        .add-child-btn {
+            opacity: 1;
+        }
+    }
+
+    &:active {
+        background: var(--color-ghost-btn-active);
+        border-color: var(--accent-color);
+    }
+
+    &.selected {
+        border-color: var(--accent-color);
+        background: rgba(104, 95, 255, 0.08);
+    }
+
+    .label-name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+    }
+}
+
+.toggle-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    flex-shrink: 0;
+    width: 0.5rem;
+    height: 0.5rem;
+
+    &:hover {
+        color: var(--color-text-primary);
+    }
+}
+
+.expand-icon {
+    transition: transform 0.15s ease;
+    display: flex;
+    align-items: center;
+
+    &.expanded {
+        transform: rotate(90deg);
+    }
+}
+
+.label-checkbox {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid var(--color-text-primary);
+    border-radius: 4px;
+    background: transparent;
+    position: relative;
+    transition:
+        background 0.15s,
+        border-color 0.15s;
+
+    &:checked {
+        background: var(--accent-color);
+        border-color: var(--accent-color);
+
+        &::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 5px;
+            height: 8px;
+            border: 2px solid #fff;
+            border-top: none;
+            border-left: none;
+            transform: translate(-50%, -60%) rotate(45deg);
+        }
+    }
+
+    &:hover:not(:checked) {
+        border-color: var(--accent-color);
+    }
+}
+
+.add-child-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 4px;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    opacity: 0;
+    transition:
+        opacity 0.1s ease,
+        background 0.1s ease;
+
+    &:hover {
+        background: var(--accent-color-hover, var(--accent-color));
+        opacity: 1;
+    }
+}
+
+.tree-row:hover .add-child-btn {
+    background: var(--accent-color);
+    opacity: 1;
+}
+
+.add-label-row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.3rem 0.5rem;
+    min-width: max-content;
+
+    &.child-add {
+        padding-right: 0.5rem;
+    }
+
+    .label-input {
+        flex: 1;
+        min-width: 100px;
+        background: var(--color-input-background);
+        border: 1px solid var(--color-input-border);
+        border-radius: 4px;
+        color: var(--color-text-primary);
+        padding: 0.25rem 0.5rem;
+        font-size: 0.85rem;
+        outline: none;
+
+        &:focus {
+            border-color: var(--accent-color);
+        }
+
+        &::placeholder {
+            color: var(--color-text-secondary);
+            opacity: 0.7;
+        }
+
+        &.has-error {
+            border-color: var(--color-ks-status-failed) !important;
+        }
+    }
+
+    .confirm-btn {
+        background: var(--accent-color);
+        border: none;
+        cursor: pointer;
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.2rem;
+        border-radius: 4px;
+        flex-shrink: 0;
+        width: 26px;
+        height: 26px;
+
+        &:hover {
+            background: var(--accent-color-hover, var(--accent-color));
+        }
+    }
+
+    .cancel-btn-icon {
+        background: transparent;
+        border: 1px solid var(--accent-color);
+        cursor: pointer;
+        color: var(--accent-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.2rem;
+        border-radius: 4px;
+        flex-shrink: 0;
+        width: 26px;
+        height: 26px;
+
+        &:hover {
+            background: var(--color-ghost-btn-hover);
+        }
+    }
+}
+
+.label-error {
+    margin: 0.1rem 0.5rem 0.3rem;
+    padding: 0.35rem 0.6rem;
+    background: rgba(220, 91, 96, 0.12);
+    border: 1px solid rgba(220, 91, 96, 0.3);
+    border-radius: 4px;
+    color: var(--color-ks-status-failed);
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+.dropdown-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1.25rem;
+    border-top: 1px solid var(--color-input-border);
+    gap: 0.5rem;
+
+    .footer-right {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+}

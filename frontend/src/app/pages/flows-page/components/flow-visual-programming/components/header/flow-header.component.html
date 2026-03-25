@@ -2,51 +2,47 @@
     <div class="title-search">
         <h2 class="title">
             <div class="flows-prefix" routerLink="/flows">
-                <app-icon
-                    [icon]="'ui/arrow-left'"
-                    size="20"
-                    class="back-arrow"
-                />
+                <app-icon [icon]="'ui/arrow-left'" size="20" class="back-arrow" />
                 <span>Flows</span>
             </div>
             <span class="slash">/</span>
-            <div class="graph-name project-link">
-                {{ graphName ?? "Loading..." }}
-                @if (hasUnsavedChanges) {
-                <span class="unsaved-indicator" title="Unsaved changes">
-                    <i class="ti ti-circle"></i>
-                    <span class="unsaved-text">Unsaved changes</span>
-                </span>
-                }
+            <div class="graph-name-row">
+                <div class="graph-name project-link">
+                    {{ graphName ?? 'Loading...' }}
+                    @if (hasUnsavedChanges) {
+                        <span class="unsaved-indicator" title="Unsaved changes">
+                            <i class="ti ti-circle"></i>
+                            <span class="unsaved-text">Unsaved changes</span>
+                        </span>
+                    }
+                </div>
+                <button class="edit-name-btn" (click)="openRenameDialog()" title="Edit flow">
+                    <app-icon icon="ui/edit" size="16px"></app-icon>
+                </button>
             </div>
         </h2>
     </div>
     <div class="header-actions">
-        <button class="sessions-button" (click)="onViewSessions()">
-            <i class="ti ti-history"></i> Sessions
-        </button>
+        <button class="sessions-button" (click)="onViewSessions()"><i class="ti ti-history"></i> Sessions</button>
         <button class="get-curl-button" (click)="onGetCurl()">Get CURL</button>
-        <button
-            class="save-button"
-            [disabled]="isSaving || isRunning"
-            (click)="onSave()"
-        >
-            @if(isSaving) {
-            <app-spinner2 [size]="16"></app-spinner2>
+        @if (isEpicChatEnabled) {
+            <button class="connect-chat-button" (click)="onConnectChat()">Connect chat</button>
+        }
+        <button class="save-button" [disabled]="isSaving || isRunning" (click)="onSave()">
+            @if (isSaving) {
+                <app-spinner2 [size]="16"></app-spinner2>
             } @else {
-            <i class="ti ti-device-floppy"></i>
-            } Save
+                <i class="ti ti-device-floppy"></i>
+            }
+            Save
         </button>
-        <button
-            class="run-button"
-            [disabled]="isSaving || isRunning"
-            (click)="onRun()"
-        >
-            @if(isRunning) {
-            <app-spinner2 [size]="16"></app-spinner2>
+        <button class="run-button" [disabled]="isSaving || isRunning" (click)="onRun()">
+            @if (isRunning) {
+                <app-spinner2 [size]="16"></app-spinner2>
             } @else {
-            <i class="ti ti-player-play-filled"></i>
-            } Run
+                <i class="ti ti-player-play-filled"></i>
+            }
+            Run
         </button>
     </div>
 </div>

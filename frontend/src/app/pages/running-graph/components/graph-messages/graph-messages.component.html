@@ -70,6 +70,11 @@
                 [message]="entry.message"
                 [project]="entry.project"
             ></app-finish-message>
+            } @case ('code_agent_stream') {
+            <app-code-agent-stream-message
+                [message]="entry.message"
+                [allMessages]="messages"
+            ></app-code-agent-stream-message>
             } @case ('subgraph_start') {
             <ng-container *ngIf="entry.rootView as rootView; else rootSubgraphMessage">
                 <div class="subgraph-drilldown" [class.is-closing]="rootView.isClosing">
@@ -234,6 +239,11 @@
                                 [message]="nestedEntry.message"
                                 [project]="nestedEntry.project"
                             ></app-finish-message>
+                            } @case ('code_agent_stream') {
+                            <app-code-agent-stream-message
+                                [message]="nestedEntry.message"
+                                [allMessages]="messages"
+                            ></app-code-agent-stream-message>
                             } @case ('subgraph_start') {
                             <app-subgraph-start-message
                                 [message]="nestedEntry.message"

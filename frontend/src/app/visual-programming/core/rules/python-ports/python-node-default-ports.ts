@@ -18,6 +18,7 @@ export const DEFAULT_PYTHON_NODE_PORTS: BasePort[] = [
             'audio-to-text-out',
             'webhook-trigger-out',
             'telegram-trigger-out',
+            'code-agent-out',
         ],
         position: 'left',
         color: '#ffcf3f',
@@ -38,8 +39,10 @@ export const DEFAULT_PYTHON_NODE_PORTS: BasePort[] = [
             'end-in',
             'subgraph-in',
             'audio-to-text-in',
+            'code-agent-in',
         ],
         position: 'right',
         color: '#ffcf3f',
     },
 ];
+// MERGE_COMMENT: merged line 42. check and remove comment

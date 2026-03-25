@@ -29,6 +29,7 @@ class GraphCopyService(BaseCopyService):
             time_to_live=graph.time_to_live,
             persistent_variables=graph.persistent_variables,
         )
+        new_graph.labels.set(graph.labels.all())
 
         node_id_map: dict[int, int] = {}
         for _, (relation_name, handler) in NODE_COPY_HANDLERS.items():

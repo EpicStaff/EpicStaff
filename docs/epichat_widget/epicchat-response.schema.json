@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EpicChatResponse",
+  "description": "Load skill 'epicchat-response' for full formatting guide (tables, buttons, navigation, build mode).",
+  "type": "object",
+  "required": ["message"],
+  "additionalProperties": true,
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "Main chat reply (Markdown supported). This is the ONLY required field."
+    },
+    "tools": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["Build mode"] }
+    },
+    "ef_tables": {
+      "type": "array",
+      "description": "Interactive data tables below the message. Each object needs at minimum a 'rows' array of objects.",
+      "items": { "type": "object" }
+    },
+    "action_message": {
+      "type": "array",
+      "description": "Buttons, links, prompt suggestions displayed with the message.",
+      "items": { "$ref": "#/$defs/action" }
+    }
+  },
+  "$defs": {
+    "action": {
+      "type": "object",
+      "required": ["type"],
+      "description": "An interactive element: button, link, or prompt suggestion.\n\n## Build Mode\nYou might be in plan mode (read-only). The user already knows — do not explain it.\nTo let the user launch you in build mode, offer a button: {\"type\": \"button\", \"text\": \"Allow build mode (N turns)\", \"action\": \"sendAction\"}\nOnce the user clicks it, you will be relaunched in build mode and can make changes.\nIf you need more turns while already in build mode, offer the button again.\nAt each build turn, show how many build turns remain.\nErr on the side of offering the button — always better to offer than to omit.\n\n### Button text patterns\n- 'Allow build mode' — 1 turn\n- 'Allow build mode (N turns)' — N turns\n- 'Allow build mode (N turns) - <option>' — N turns, forwards the chosen option label. Use when proposing multiple approaches.\n\nExample with options:\n  {\"type\": \"button\", \"text\": \"Allow build mode (3 turns) - Fix existing code\", \"action\": \"sendAction\"}\n  {\"type\": \"button\", \"text\": \"Allow build mode (3 turns) - Rewrite from scratch\", \"action\": \"sendAction\"}\n\n## Navigation Actions\nThe widget supports navigating the user to flows and nodes in the EpicStaff UI:\n- **openFlow**: Opens a flow by ID in the visual programming editor AND automatically refreshes the page cache. Offer this after creating or modifying a flow. Example: {\"type\": \"button\", \"text\": \"Open flow <ID>\", \"action\": \"openFlow\", \"params\": {\"flowId\": \"<flow_id>\"}}\n- **openNode**: Opens a specific node within a flow (expands the node panel) AND automatically refreshes. Offer this when discussing or modifying a specific node. Example: {\"type\": \"button\", \"text\": \"Open <node_name>\", \"action\": \"openNode\", \"params\": {\"flowId\": \"<flow_id>\", \"nodeId\": \"<node_uuid>\"}}\n- **refreshCache**: Reloads the page to pick up metadata changes. Use ONLY standalone when the user is already viewing the correct flow and just needs a reload.\n\n### Navigation Rules\n- After modifications, ALWAYS include a refreshCache button alongside your navigation button (openFlow or openNode) to ensure the user sees the latest state.\n- Example: offer both 'Open flow <ID>' (openFlow) and 'Refresh cache' (refreshCache) as two buttons.\n\n## Prompt Suggestions\nUse 'prompt' type elements to suggest follow-up questions or actions. These appear as chips in the input footer. Clicking one sends that text as a new user message. Always offer 2-3 relevant suggestions after completing a task.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["button", "link", "prompt"],
+          "description": "'button' = clickable button below message (removed after click). 'link' = clickable hyperlink. 'prompt' = suggestion chip in input footer that sends its text as a new user message when clicked."
+        },
+        "text": {
+          "type": "string",
+          "description": "Display label for the button/link/prompt. For 'prompt' type, this is also the text sent as the next user message. For 'button' with action 'sendAction' or 'sendButtonTextWithParams', this is sent as 'user_action' to the flow. To request build mode, use text 'Allow build mode' (1 turn) or 'Allow build mode (N turns)' for multi-turn."
+        },
+        "action": {
+          "type": "string",
+          "description": "Action identifier. Common values: 'sendAction' = sends text as user_action to the flow. 'sendButtonTextWithParams' = sends text + params as user_action + context. 'link' = opens params.url in browser. 'processTables' = sends edited/selected table data back to the flow. 'switchAgent' = switches to another flow (params.flow_id). 'openFlow' = navigates to a flow in the visual editor (params.flowId required). 'openNode' = opens a specific node panel in a flow (params.flowId + params.nodeId required). 'refreshCache' = reloads the page to pick up flow/node changes — always offer after modifying flows. For 'prompt' type, action is not needed — clicking sends the text automatically."
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Extra parameters for the action. For 'link': {\"url\": \"https://...\"}. For 'switchAgent': {\"flow_id\": \"<flow_id>\"}. For 'openFlow': {\"flowId\": \"<flow_id>\"}. For 'openNode': {\"flowId\": \"<flow_id>\", \"nodeId\": \"<node_uuid>\"}. For 'sendButtonTextWithParams': arbitrary key-value pairs sent as context extras to the flow."
+        }
+      }
+    }
+  }
+}

@@ -1,32 +1,35 @@
 <div class="flow-grid-container">
-  @if (!isFlowsLoaded()) {
-  <app-loading-spinner
-    size="md"
-    message="Loading flows..."
-  ></app-loading-spinner>
-  } @else { @if (error()) {
-  <div class="error-message">
-    {{ error() }}
-    <button type="button" (click)="ngOnInit()" class="retry-button">
-      Retry
-    </button>
-  </div>
-  } @else {
-  <div class="grid">
-    @if (filteredFlows().length === 0) {
-    <div class="empty-message">
-      <p>No flows found. Create your first flow to get started.</p>
-    </div>
-    } @else { @for (flow of filteredFlows(); track flow.id) {
-    <app-flow-card
-      [flow]="flow"
-      [selectMode]="selectMode()"
-      [isSelected]="isFlowSelected(flow.id)"
-      (selectionToggle)="onFlowSelect(flow.id)"
-      (cardClick)="handleFlowCardAction({ action: 'open', flow: flow })"
-      (action)="handleFlowCardAction($event)"
-    ></app-flow-card>
-    } }
-  </div>
-  } }
+    @if (!isFlowsLoaded()) {
+        <app-loading-spinner size="md" message="Loading flows..."></app-loading-spinner>
+    } @else {
+        @if (error()) {
+            <div class="error-message">
+                {{ error() }}
+                <button type="button" (click)="retryLoad()" class="retry-button">Retry</button>
+            </div>
+        } @else {
+            <div class="grid">
+                @if (filteredFlows().length === 0) {
+                    <div class="empty-message">
+                        @if (activeLabelFilter() !== 'all' && activeLabelFilter() !== 'unlabeled') {
+                            <p>No flows found for this label.</p>
+                        } @else {
+                            <p>No flows found. Create your first flow to get started.</p>
+                        }
+                    </div>
+                } @else {
+                    @for (flow of filteredFlows(); track flow.id) {
+                        <app-flow-card
+                            [flow]="flow"
+                            [selectMode]="selectMode()"
+                            [isSelected]="isFlowSelected(flow.id)"
+                            (selectionToggle)="onFlowSelect(flow.id)"
+                            (cardClick)="handleFlowCardAction({ action: 'open', flow: $event })"
+                            (action)="handleFlowCardAction($event)"
+                        ></app-flow-card>
+                    }
+                }
+            </div>
+        }
+    }
 </div>

@@ -527,6 +527,7 @@ class ConverterService(metaclass=SingletonMeta):
             python_code=python_code_data,
             input_map=python_node.input_map,
             output_variable_path=python_node.output_variable_path,
+            stream_config=python_node.stream_config or {},
         )
 
     def convert_conditional_edge_to_pydantic(
@@ -601,6 +602,7 @@ class ConverterService(metaclass=SingletonMeta):
             crew=crew_data,
             input_map=crew_node.input_map,
             output_variable_path=crew_node.output_variable_path,
+            stream_config=crew_node.stream_config or {},
         )
 
     def convert_end_node_to_pydantic(

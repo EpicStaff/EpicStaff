@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["src/app/components/shared/microphone/microphone.component.scss"],
+  "sourcesContent": [".microphone-container {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  cursor: pointer;\r\n}\r\n\r\n.microphone-icon {\r\n  display: flex;\r\n  align-items: center;\r\n  justify-content: center;\r\n  transition: opacity 0.2s ease;\r\n\r\n  &:hover {\r\n    opacity: 0.8;\r\n  }\r\n}\r\n\r\n.microphone_blinking {\r\n  animation: blink 1s infinite;\r\n}\r\n\r\n@keyframes blink {\r\n  0%,\r\n  50% {\r\n    opacity: 1;\r\n  }\r\n  51%,\r\n  100% {\r\n    opacity: 0.3;\r\n  }\r\n}\r\n"],
+  "mappings": ";AAAA,CAAA;AACE,WAAA;AACA,eAAA;AACA,mBAAA;AACA,UAAA;;AAGF,CAAA;AACE,WAAA;AACA,eAAA;AACA,mBAAA;AACA,cAAA,QAAA,KAAA;;AAEA,CANF,eAME;AACE,WAAA;;AAIJ,CAAA;AACE,aAAA,MAAA,GAAA;;AAGF,WAHE;AAIA;AAEE,aAAA;;AAEF;AAEE,aAAA;;;",
+  "names": []
+}

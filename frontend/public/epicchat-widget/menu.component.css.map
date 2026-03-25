@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["src/app/components/shared/menu/menu.component.scss"],
+  "sourcesContent": [":host {\n  position: absolute;\n  display: flex;\n  flex-direction: column;\n  z-index: 1005;\n  padding: 12px 0;\n  background-color: var(--ep-color-surface);\n  box-shadow: 0px 2px 4px 0px var(--ep-color-shadow);\n  border-radius: 4px;\n  min-width: 160px;\n}\n\n:host(.ep-menu--panel) {\n  padding: 0;\n  min-width: var(--ep-menu-panel-min-width, 170px);\n  background-color: var(--ep-menu-panel-bg, var(--ep-color-surface));\n  border: 1px solid var(--ep-menu-panel-border, var(--ep-color-border));\n  border-radius: var(--ep-menu-panel-radius, 8px);\n  box-shadow: var(--ep-menu-panel-shadow, 0 2px 4px 0 var(--ep-color-shadow));\n  overflow: hidden;\n}\n"],
+  "mappings": ";AAAA;AACE,YAAA;AACA,WAAA;AACA,kBAAA;AACA,WAAA;AACA,WAAA,KAAA;AACA,oBAAA,IAAA;AACA,cAAA,IAAA,IAAA,IAAA,IAAA,IAAA;AACA,iBAAA;AACA,aAAA;;AAGF,MAAA,CAAA;AACE,WAAA;AACA,aAAA,IAAA,yBAAA,EAAA;AACA,oBAAA,IAAA,kBAAA,EAAA,IAAA;AACA,UAAA,IAAA,MAAA,IAAA,sBAAA,EAAA,IAAA;AACA,iBAAA,IAAA,sBAAA,EAAA;AACA,cAAA,IAAA,sBAAA,EAAA,EAAA,IAAA,IAAA,EAAA,IAAA;AACA,YAAA;;",
+  "names": []
+}

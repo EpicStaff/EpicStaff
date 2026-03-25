@@ -21,7 +21,7 @@ from tables.models import (
     Condition,
     SubGraphNode,
 )
-from tables.models.graph_models import NoteNode
+from tables.models.graph_models import GraphNote
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 
 
@@ -33,13 +33,13 @@ class BaseNodeImportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = None
-        exclude = ["created_at", "updated_at", "content_hash"]
+        exclude = ["created_at", "updated_at"]
 
 
 class StartNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = StartNode
-        exclude = ["created_at", "updated_at", "content_hash"]
+        exclude = ["created_at", "updated_at"]
 
 
 class WebhookTriggerNodeImportSerializer(BaseNodeImportSerializer):
@@ -53,11 +53,13 @@ class WebhookTriggerNodeImportSerializer(BaseNodeImportSerializer):
         queryset=WebhookTrigger.objects.all(),
         source="webhook_trigger",
         write_only=True,
+        allow_null=True,
+        required=False,
     )
 
     class Meta(BaseNodeImportSerializer.Meta):
         model = WebhookTriggerNode
-        exclude = ["created_at", "updated_at", "content_hash"]
+        exclude = ["created_at", "updated_at"]
 
 
 class ConditionImportSerializer(serializers.ModelSerializer):
@@ -89,7 +91,7 @@ class DecisionTableNodeImportSerializer(BaseNodeImportSerializer):
 
     class Meta(BaseNodeImportSerializer.Meta):
         model = DecisionTableNode
-        exclude = ["created_at", "updated_at", "content_hash"]
+        exclude = ["created_at", "updated_at"]
 
 
 class TelegramTriggerNodeFieldImportSerializer(serializers.ModelSerializer):
@@ -103,7 +105,7 @@ class TelegramTriggerNodeImportSerializer(BaseNodeImportSerializer):
 
     class Meta:
         model = TelegramTriggerNode
-        exclude = ["created_at", "updated_at", "content_hash", "telegram_bot_api_key"]
+        exclude = ["created_at", "updated_at", "telegram_bot_api_key"]
 
 
 class PythonNodeImportSerializer(BaseNodeImportSerializer):
@@ -116,55 +118,55 @@ class PythonNodeImportSerializer(BaseNodeImportSerializer):
 
     class Meta(BaseNodeImportSerializer.Meta):
         model = PythonNode
-        exclude = ["created_at", "updated_at", "content_hash"]
+        exclude = ["created_at", "updated_at"]
 
 
 class EndNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = EndNode
-        exclude = ["created_at", "updated_at", "content_hash"]
+        exclude = ["created_at", "updated_at"]
 
 
 class FileExtractorNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = FileExtractorNode
-        exclude = ["created_at", "updated_at", "content_hash"]
+        exclude = ["created_at", "updated_at"]
 
 
 class AudioTranscriptionNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = AudioTranscriptionNode
-        exclude = ["created_at", "updated_at", "content_hash"]
+        exclude = ["created_at", "updated_at"]
 
 
 class LLMNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = LLMNode
-        exclude = ["created_at", "updated_at", "content_hash"]
+        exclude = ["created_at", "updated_at"]
 
 
 class CrewNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = CrewNode
-        exclude = ["created_at", "updated_at", "content_hash"]
+        exclude = ["created_at", "updated_at"]
 
 
 class SubgraphNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = SubGraphNode
-        exclude = ["created_at", "updated_at", "content_hash"]
+        exclude = ["created_at", "updated_at"]
 
 
-class NoteNodeImportSerializer(BaseNodeImportSerializer):
+class GraphNoteImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
-        model = NoteNode
-        exclude = ["created_at", "updated_at", "content_hash"]
+        model = GraphNote
+        exclude = ["created_at", "updated_at"]
 
 
 class EdgeImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Edge
-        exclude = ["created_at", "updated_at", "content_hash"]
+        exclude = ["created_at", "updated_at"]
 
 
 class ConditionalEdgeImportSerializer(serializers.ModelSerializer):
@@ -177,7 +179,7 @@ class ConditionalEdgeImportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ConditionalEdge
-        exclude = ["created_at", "updated_at", "content_hash"]
+        exclude = ["created_at", "updated_at"]
 
 
 class GraphImportSerializer(serializers.ModelSerializer):
@@ -187,4 +189,4 @@ class GraphImportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Graph
-        exclude = ["tags", "created_at", "updated_at"]
+        exclude = ["tags", "created_at", "updated_at", "labels"]

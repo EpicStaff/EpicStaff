@@ -1,39 +1,38 @@
-@if (isLoaded ) {
-<app-flow-header
-    [graphName]="graph.name"
-    [graphId]="graph.id"
-    [isSaving]="isSaving"
-    [isRunning]="isRunning"
-    [hasUnsavedChanges]="hasUnsavedChanges()"
-    (save)="handleSaveFlow(true).subscribe()"
-    (viewSessions)="handleViewSessions()"
-    (run)="handleRunFlow()"
-    (getCurl)="handleGetCurl()"
-></app-flow-header>
-
-<div class="body">
-    <app-flow-graph
-        [flowState]="loadedFlowState"
-        [nodesMode]="'flow-graph'"
-        [currentFlowId]="graph.id"
+@if (isLoaded) {
+    <app-flow-header
+        [graphName]="graph.name"
+        [graphId]="graph.id"
+        [isEpicChatEnabled]="isEpicChatEnabled"
+        [graph]="graph"
+        [isSaving]="isSaving"
+        [isRunning]="isRunning"
+        [hasUnsavedChanges]="hasUnsavedChanges()"
         (save)="handleSaveFlow(true).subscribe()"
-        (openShortcuts)="openShortcutsModal($event)"
-    ></app-flow-graph>
-    <app-shortcuts-modal
-        [open]="isShortcutsOpen()"
-        [pos]="shortcutsPos()"
-        title="Command & Shortcuts"
-        iconSrc="assets/icons/ui/shortcut.svg"
-        [sections]="shortcutSections"
-        (closed)="closeShortcutsModal()"
-    ></app-shortcuts-modal>
-</div>
+        (viewSessions)="handleViewSessions()"
+        (run)="handleRunFlow()"
+        (getCurl)="handleGetCurl()"
+        (connectChat)="connectToEpicChat()"
+        (flowEdited)="onFlowEdited($event)"
+    ></app-flow-header>
+
+    <div class="body">
+        <app-flow-graph
+            [flowState]="loadedFlowState"
+            [nodesMode]="'flow-graph'"
+            [currentFlowId]="graph.id"
+            [initialNodeId]="initialNodeId"
+            (save)="handleSaveFlow(true).subscribe()"
+            (openShortcuts)="openShortcutsModal($event)"
+        ></app-flow-graph>
+        <app-shortcuts-modal
+            [open]="isShortcutsOpen()"
+            [pos]="shortcutsPos()"
+            title="Command & Shortcuts"
+            iconSrc="assets/icons/ui/shortcut.svg"
+            [sections]="shortcutSections"
+            (closed)="closeShortcutsModal()"
+        ></app-shortcuts-modal>
+    </div>
 } @else {
-
-<app-spinner
-    [text]="'Loading flow...'"
-    [accentColor]="'#6562f5'"
-    [isOverlay]="false"
-></app-spinner>
-
+    <app-spinner [text]="'Loading flow...'" [accentColor]="'#6562f5'" [isOverlay]="false"></app-spinner>
 }

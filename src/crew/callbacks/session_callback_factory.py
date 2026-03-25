@@ -19,6 +19,7 @@ from src.crew.models.graph_models import (
     TaskMessageData,
     UpdateSessionStatusMessageData,
 )
+from src.crew.services.graph.custom_message_writer import CustomSessionMessageWriter
 from src.crew.services.redis_service import RedisService, SyncPubsubSubscriber
 from src.crew.services.knowledge_search_service import KnowledgeSearchService
 
@@ -104,6 +105,7 @@ class CrewCallbackFactory:
         knowledge_search_service: KnowledgeSearchService,
         crewai_output_channel: str,
         stream_writer: Optional[StreamWriter] = None,
+        stream_config: dict | None = None,
     ):
         self.redis_service = redis_service
         self.crewai_output_channel = crewai_output_channel
@@ -113,6 +115,8 @@ class CrewCallbackFactory:
         self.execution_order = execution_order
         self.stream_writer = stream_writer
         self.knowledge_search_service = knowledge_search_service
+        self.stream_config = stream_config or {}
+        self._message_writer = CustomSessionMessageWriter()
 
     def get_step_callback(
         self, agent_id: int
@@ -165,6 +169,10 @@ class CrewCallbackFactory:
 
             if self.stream_writer is not None:
                 self.stream_writer(graph_message)
+                self._emit_crewai_output(
+                    text=agent_finish.output or agent_finish.text,
+                    category="agent_activity",
+                )
 
         except Exception as e:
             logger.error(f"Error in step callback for session {self.session_id}: {e}")
@@ -202,6 +210,10 @@ class CrewCallbackFactory:
 
             if self.stream_writer is not None:
                 self.stream_writer(graph_message)
+                self._emit_crewai_output(
+                    text=agent_action.thought or agent_action.text,
+                    category="agent_reasoning",
+                )
 
         except Exception as e:
             logger.error(f"Error in step callback for session {self.session_id}: {e}")
@@ -232,11 +244,36 @@ class CrewCallbackFactory:
 
                 if self.stream_writer is not None:
                     self.stream_writer(graph_message)
+                    self._emit_crewai_output(
+                        text=output.raw,
+                        category="task_progress",
+                    )
 
             except Exception as e:
                 logger.error(f"Error in task callback: {e}")
 
         return inner
+
+    def _emit_crewai_output(self, text: str, category: str) -> None:
+        """Emit a crewai_output message for the EpicChat widget.
+        The widget recognizes this message_type for the Thinking expander.
+        sse_visible is controlled by stream_config."""
+        if not text or self.stream_writer is None:
+            return
+        visible = self.stream_config.get(category, True)
+        self._message_writer.add_custom_message(
+            session_id=self.session_id,
+            node_name=self.node_name,
+            writer=self.stream_writer,
+            execution_order=self.execution_order,
+            message_data={
+                "message_type": "crewai_output",
+                "text": text,
+                "category": category,
+                "is_final": False,
+                "sse_visible": visible,
+            },
+        )
 
     def _extract_knowledges(self, knowledge_snippets: list) -> str:
         snippet = "\n\n".join(knowledge_snippets)

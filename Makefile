@@ -27,23 +27,43 @@ help:
 
 backup:
 	@echo "--- Creating Volume Backup ---"
+ifeq ($(OS),Windows_NT)
 	@.\make_scripts\backup.bat
+else
+	@./make_scripts/backup.sh
+endif
 
 apply-backup:
 	@echo "--- Applying Volume Backup ---"
+ifeq ($(OS),Windows_NT)
 	@.\make_scripts\apply_backup.bat
+else
+	@./make_scripts/apply_backup.sh
+endif
 
 stash-tags:
 	@echo "--- Stashing Image Tags ---"
+ifeq ($(OS),Windows_NT)
 	@.\make_scripts\stash_tag_images.bat
+else
+	@./make_scripts/stash_tag_images.sh
+endif
 
 apply-tags:
 	@echo "--- Applying Stashed Image Tags ---"
+ifeq ($(OS),Windows_NT)
 	@.\make_scripts\apply_tag_images.bat
+else
+	@./make_scripts/apply_tag_images.sh
+endif
 
 switch:
 	@echo "--- Switching Full Branch Environment ---"
+ifeq ($(OS),Windows_NT)
 	@.\make_scripts\switch_branch.bat $(b)
+else
+	@./make_scripts/switch_branch.sh $(b)
+endif
 
 # ==========================================
 # DEVELOPMENT Environment

@@ -1,32 +1,28 @@
-import { BasePort, CustomPortId, ViewPort } from '../models/port.model';
 import { NodeType } from '../enums/node-type';
-import { DEFAULT_TOOL_NODE_PORTS } from '../rules/tool-ports/tool-node-default-ports';
+import { ConditionGroup } from '../models/decision-table.model';
+import { NodeModel } from '../models/node.model';
+import { BasePort, CustomPortId, ViewPort } from '../models/port.model';
 import { PORTS_DICTIONARY } from '../rules/all_ports';
+import { DEFAULT_AUDIO_TO_TEXT_NODE_PORTS } from '../rules/audio-to-text-node-ports/audio-to-text-node-ports';
+import { DEFAULT_CODE_AGENT_NODE_PORTS } from '../rules/code-agent-ports/code-agent-node-default-ports';
+import { DEFAULT_EDGE_NODE_PORTS } from '../rules/edge-ports/edge-node-default-ports';
+import { DEFAULT_END_NODE_PORTS } from '../rules/end-ports/end-ports-default-ports';
+import { DEFAULT_FILE_EXTRACTOR_NODE_PORTS } from '../rules/file-extractor-ports/file-extractor-default-ports';
 import { DEFAULT_LLM_NODE_PORTS } from '../rules/llm-ports/llm-node-default-ports';
 import { DEFAULT_PROJECT_NODE_PORTS } from '../rules/project-ports/project-node-default-ports';
-import { DEFAULT_TASK_NODE_PORTS } from '../rules/task-ports/task-node-defaults-ports';
 import { DEFAULT_PYTHON_NODE_PORTS } from '../rules/python-ports/python-node-default-ports';
-import { DEFAULT_EDGE_NODE_PORTS } from '../rules/edge-ports/edge-node-default-ports';
 import { DEFAULT_START_NODE_PORTS } from '../rules/start-ports/start-node-default-ports';
-
-import { DEFAULT_TABLE_NODE_PORTS } from '../rules/table-ports/table-ports';
-import { DEFAULT_FILE_EXTRACTOR_NODE_PORTS } from '../rules/file-extractor-ports/file-extractor-default-ports';
-import { DEFAULT_END_NODE_PORTS } from '../rules/end-ports/end-ports-default-ports';
-import { NodeModel } from '../models/node.model';
-import { ConditionGroup } from '../models/decision-table.model';
 import { DEFAULT_SUBGRAPH_NODE_PORTS } from '../rules/subgraph-ports/subgraph-node-default-ports';
-import { DEFAULT_AUDIO_TO_TEXT_NODE_PORTS } from '../rules/audio-to-text-node-ports/audio-to-text-node-ports';
+import { DEFAULT_TABLE_NODE_PORTS } from '../rules/table-ports/table-ports';
+import { DEFAULT_TASK_NODE_PORTS } from '../rules/task-ports/task-node-defaults-ports';
+import { DEFAULT_TELEGRAM_TRIGGER_NODE_PORTS } from '../rules/telegram-trigger-ports/telegram-trigger-default-ports';
+import { DEFAULT_TOOL_NODE_PORTS } from '../rules/tool-ports/tool-node-default-ports';
 import { DEFAULT_WEBHOOK_TRIGGER_NODE_PORTS } from '../rules/webhook-trigger-ports/webhook-trigger-default-ports';
-import {DEFAULT_TELEGRAM_TRIGGER_NODE_PORTS} from "../rules/telegram-trigger-ports/telegram-trigger-default-ports";
 
 export const isDecisionPortRole = (role: string) =>
-    role.startsWith('decision-out-') ||
-    role === 'decision-default' ||
-    role === 'decision-error';
+    role.startsWith('decision-out-') || role === 'decision-default' || role === 'decision-error';
 
-export function parsePortId(
-    portId: string
-): { nodeId: string; portRole: string } | null {
+export function parsePortId(portId: string): { nodeId: string; portRole: string } | null {
     const underscoreIndex = portId.indexOf('_');
     if (underscoreIndex === -1) return null;
     const nodeId = portId.substring(0, underscoreIndex);
@@ -43,7 +39,6 @@ export function parsePortId(
 
 export function getPortsForType(nodeType: NodeType): BasePort[] {
     switch (nodeType) {
-
         case NodeType.TASK:
             return DEFAULT_TASK_NODE_PORTS;
         case NodeType.LLM:
@@ -72,6 +67,10 @@ export function getPortsForType(nodeType: NodeType): BasePort[] {
             return DEFAULT_END_NODE_PORTS;
         case NodeType.SUBGRAPH:
             return DEFAULT_SUBGRAPH_NODE_PORTS;
+        case NodeType.CODE_AGENT:
+            return DEFAULT_CODE_AGENT_NODE_PORTS;
+        case NodeType.NOTE:
+            return [];
         default:
             console.warn(`Unsupported node type: ${nodeType}`);
             return [];
@@ -86,18 +85,13 @@ export function getPortByRole(portRole: string): BasePort | undefined {
     return port;
 }
 
-export function isConnectionValid(
-    sourcePortId: CustomPortId,
-    targetPortId: CustomPortId
-): boolean {
+export function isConnectionValid(sourcePortId: CustomPortId, targetPortId: CustomPortId): boolean {
     // 1️⃣ Parse the port IDs
     const sourceInfo = parsePortId(sourcePortId);
     const targetInfo = parsePortId(targetPortId);
 
     if (!sourceInfo || !targetInfo) {
-        console.warn(
-            `Could not parse portId(s): ${sourcePortId}, ${targetPortId}`
-        );
+        console.warn(`Could not parse portId(s): ${sourcePortId}, ${targetPortId}`);
         return false;
     }
 
@@ -120,15 +114,12 @@ export function isConnectionValid(
     }
 
     if (!sourcePort || !targetPort) {
-        console.warn(
-            'One or both ports could not be found in PORTS_DICTIONARY:',
-            {
-                sourcePortId,
-                targetPortId,
-                sourceRole: sourceInfo.portRole,
-                targetRole: targetInfo.portRole,
-            }
-        );
+        console.warn('One or both ports could not be found in PORTS_DICTIONARY:', {
+            sourcePortId,
+            targetPortId,
+            sourceRole: sourceInfo.portRole,
+            targetRole: targetInfo.portRole,
+        });
         return false;
     }
 
@@ -139,24 +130,21 @@ export function isConnectionValid(
 
     // 4️⃣ Disallow input→input or output→output
     if (
-        (sourcePort.port_type === 'input' &&
-            targetPort.port_type === 'input') ||
+        (sourcePort.port_type === 'input' && targetPort.port_type === 'input') ||
         (sourcePort.port_type === 'output' && targetPort.port_type === 'output')
     ) {
-        console.warn(
-            `Cannot connect two ports of the same type: ${sourcePort.port_type}-${targetPort.port_type}`
-        );
+        console.warn(`Cannot connect two ports of the same type: ${sourcePort.port_type}-${targetPort.port_type}`);
         return false;
     }
 
     // 5️⃣ Validate allowedConnections
-    const sourceAllowsTarget = sourcePort.allowedConnections.some(allowed => {
+    const sourceAllowsTarget = sourcePort.allowedConnections.some((allowed) => {
         if (allowed === targetPort.role) return true;
         if (allowed === 'table-out' && isDecisionPortRole(targetInfo.portRole)) return true;
         return false;
     });
 
-    const targetAllowsSource = targetPort.allowedConnections.some(allowed => {
+    const targetAllowsSource = targetPort.allowedConnections.some((allowed) => {
         if (allowed === sourcePort.role) return true;
         if (allowed === 'table-out' && isDecisionPortRole(sourceInfo.portRole)) return true;
         return false;
@@ -225,29 +213,27 @@ export function defineSourceTargetPair(
         };
     }
 
-    console.warn(
-        `Unsupported port types: portA.type=${portA.port_type}, portB.type=${portB.port_type}`
-    );
+    console.warn(`Unsupported port types: portA.type=${portA.port_type}, portB.type=${portB.port_type}`);
     return null;
 }
 
-export function generatePortsForNode(
-    newNodeId: string,
-    nodeType: NodeType,
-    data?: any
-): ViewPort[] {
+export function generatePortsForNode(newNodeId: string, nodeType: NodeType, data?: unknown): ViewPort[] {
     if (nodeType === NodeType.TABLE) {
         // Defensive: check for data.table.condition_groups
-        const tableData = data?.table ?? {};
-        const conditionGroups = tableData?.condition_groups ?? [];
+        const tableData =
+            (
+                data as {
+                    table?: {
+                        condition_groups?: ConditionGroup[];
+                        default_next_node?: unknown;
+                        next_error_node?: unknown;
+                    };
+                }
+            )?.table ?? {};
+        const conditionGroups: ConditionGroup[] = tableData?.condition_groups ?? [];
         const hasDefault = Boolean(tableData?.default_next_node);
         const hasError = Boolean(tableData?.next_error_node);
-        return generatePortsForDecisionTableNode(
-            newNodeId,
-            conditionGroups,
-            hasDefault,
-            hasError
-        );
+        return generatePortsForDecisionTableNode(newNodeId, conditionGroups, hasDefault, hasError);
     }
     const portsConfig: BasePort[] = getPortsForType(nodeType);
     return portsConfig.map((config) => ({
@@ -263,9 +249,7 @@ export function generatePortsForDecisionTableNode(
     _hasErrorNode?: boolean
 ): ViewPort[] {
     // Use the default input port from DEFAULT_TABLE_NODE_PORTS
-    const inputPortConfig = DEFAULT_TABLE_NODE_PORTS.find(
-        (p) => p.port_type === 'input'
-    );
+    const inputPortConfig = DEFAULT_TABLE_NODE_PORTS.find((p) => p.port_type === 'input');
     const inputPort = {
         ...(inputPortConfig ?? {
             port_type: 'input',
@@ -289,19 +273,11 @@ export function generatePortsForDecisionTableNode(
 
     const validGroups = conditionGroups
         .filter((group) => group.valid !== false)
-        .sort(
-            (a, b) =>
-                (a.order ?? Number.MAX_SAFE_INTEGER) -
-                (b.order ?? Number.MAX_SAFE_INTEGER)
-        );
+        .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
 
-    const defaultOutputConfig = DEFAULT_TABLE_NODE_PORTS.find(
-        (p) => p.port_type === 'output'
-    );
+    const defaultOutputConfig = DEFAULT_TABLE_NODE_PORTS.find((p) => p.port_type === 'output');
     const outputPorts: ViewPort[] = validGroups.map((group) => {
-        const normalizedGroupName = group.group_name
-            .toLowerCase()
-            .replace(/\s+/g, '-');
+        const normalizedGroupName = group.group_name.toLowerCase().replace(/\s+/g, '-');
 
         return {
             ...(defaultOutputConfig ?? {
@@ -315,7 +291,6 @@ export function generatePortsForDecisionTableNode(
                     'end-in',
                     'decision-out-in',
                     'file-extractor-in',
-
                 ],
                 position: 'right',
                 color: '#00aaff',

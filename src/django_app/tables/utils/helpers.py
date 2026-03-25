@@ -2,6 +2,32 @@ import re
 from datetime import datetime
 
 
+def natural_sort_key(s: str) -> list:
+    """Sort key that compares embedded numbers numerically: 'label2' < 'label10'."""
+    return [
+        int(chunk) if chunk.isdigit() else chunk.lower()
+        for chunk in re.split(r"(\d+)", s)
+    ]
+
+
+def get_label_descendant_ids(label_id: int) -> set[int]:
+    """Return the given label ID plus all descendant label IDs (one DB query)."""
+    from tables.models.label_models import Label
+
+    all_labels = Label.objects.values("id", "parent_id")
+    children_map: dict[int, list[int]] = {}
+    for row in all_labels:
+        if row["parent_id"] is not None:
+            children_map.setdefault(row["parent_id"], []).append(row["id"])
+    result: set[int] = set()
+    queue = [label_id]
+    while queue:
+        current = queue.pop()
+        result.add(current)
+        queue.extend(children_map.get(current, []))
+    return result
+
+
 def generate_file_name(
     base_name: str, prefix: str = "", default_name: str = "export"
 ) -> str:

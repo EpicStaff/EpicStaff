@@ -1,36 +1,99 @@
-<div class="flow-card" [class.selected]="isSelected" (click)="selectMode ? onSelectionToggle($event) : onCardClick()">
-
-  <div class="card-header">
-
-    @if(selectMode){
-      <div class="selection-checkbox">
-        <app-checkbox 
-        variant="mainColor"
-          [checked]="isSelected"
-        ></app-checkbox>
-      </div>
+<div
+    class="flow-card"
+    [class.selected]="isSelected"
+    [class.has-subflows]="hasSubflows"
+    [class.is-expanded]="isExpanded()"
+    (click)="selectMode ? onSelectionToggle($event) : onCardClick()"
+>
+    @if (selectMode) {
+        <div class="selection-checkbox">
+            <app-checkbox variant="mainColor" [checked]="isSelected"></app-checkbox>
+        </div>
     }
 
-    <h3 class="flow-name">{{ flow.name }}</h3>
-    <div class="header-actions">
-      <app-button
-        type="secondary"
-        (click)="onViewSessions($event)"
-        ariaLabel="View Sessions"
-      >
-        View Sessions
-      </app-button>
-      <app-flow-menu
-        [isOpen]="isMenuOpen"
-        (menuToggle)="onMenuToggle($event)"
-        (actionSelected)="onActionSelected($event)"
-      ></app-flow-menu>
+    <div class="card-main">
+        <div class="card-info">
+            <div class="name-row">
+                <span class="flow-name">{{ flow.name }}</span>
+                <span class="flow-id">- ID {{ flow.id }}</span>
+            </div>
+            <div class="flow-description" [class.placeholder]="!flow.description">
+                {{ flow.description || 'No description provided.' }}
+            </div>
+        </div>
+        <div class="card-actions">
+            @if (hasSubflows) {
+                <app-button
+                    [type]="isExpanded() ? 'outline-primary' : 'primary'"
+                    mod="small"
+                    (click)="toggleSubflows($event)"
+                    >Subflows
+                    <app-icon
+                        icon="ui/chevron-down"
+                        size="16px"
+                        [style.transform]="isExpanded() ? 'rotate(180deg)' : ''"
+                    ></app-icon>
+                </app-button>
+            }
+            <app-flow-menu
+                [isOpen]="isMenuOpen"
+                (menuToggle)="onMenuToggle($event)"
+                (actionSelected)="onActionSelected($event)"
+            ></app-flow-menu>
+        </div>
     </div>
-  </div>
 
-  <div class="card-content">
-    <p class="flow-description" [class.placeholder]="!flow.description">
-      {{ flow.description || "No description provided." }}
-    </p>
-  </div>
+    <div class="card-footer">
+        <div class="label-chips">
+            @for (labelId of flow.label_ids || []; track labelId) {
+                @let labelName = getLabelName(labelId);
+                @if (labelName) {
+                    <span class="label-chip">{{ labelName }}</span>
+                }
+            }
+        </div>
+        <div class="flow-date">
+            <span class="date-part">{{ formatDateOnly(flow.updated_at) }}</span>
+            <span class="time-part">, {{ formatTimeOnly(flow.updated_at) }}</span>
+        </div>
+    </div>
+
+    @if (isExpanded() && hasSubflows) {
+        <div class="subflows-list">
+            @for (subflow of flow.subflows; track subflow.id) {
+                <div class="subflow-item" (click)="$event.stopPropagation(); onSubflowClick(subflow)">
+                    <div class="subflow-main">
+                        <div class="subflow-info">
+                            <div class="subflow-name-row">
+                                <span class="subflow-name">{{ subflow.name }}</span>
+                                <span class="flow-id">· ID {{ subflow.id }}</span>
+                            </div>
+                            <div class="subflow-description" [class.placeholder]="!subflow.description">
+                                {{ subflow.description || 'No description provided.' }}
+                            </div>
+                        </div>
+                        <app-flow-menu
+                            [isOpen]="isSubflowMenuOpen(subflow.id)"
+                            (menuToggle)="onSubflowMenuToggle(subflow.id, $event)"
+                            (actionSelected)="onSubflowActionSelected($event, subflow)"
+                        ></app-flow-menu>
+                    </div>
+                    <div class="subflow-footer">
+                        <div class="label-chips">
+                            @for (labelId of subflow.label_ids || []; track labelId) {
+                                @let labelName = getLabelName(labelId);
+                                @if (labelName) {
+                                    <span class="label-chip">{{ labelName }}</span>
+                                }
+                            }
+                        </div>
+                        <div class="flow-date">
+                            <span class="date-part">{{ formatDateOnly(subflow.updated_at) }}</span>
+                            <span class="time-part">, {{ formatTimeOnly(subflow.updated_at) }}</span>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
 </div>

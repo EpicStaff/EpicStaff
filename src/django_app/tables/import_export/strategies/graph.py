@@ -100,6 +100,9 @@ class GraphStrategy(EntityImportExportStrategy):
     ) -> None:
         for node_data in nodes_data:
             node_type = node_data.pop("node_type")
+            # Backwards compat: old exports used "NoteNode"
+            if node_type == "NoteNode":
+                node_type = "GraphNote"
             old_id = node_data.get("id")
 
             config = NODE_HANDLERS[node_type]
@@ -138,9 +141,10 @@ class GraphStrategy(EntityImportExportStrategy):
 
             edge_data["graph"] = graph.id
             edge_data["python_code_id"] = python_code.id
-            edge_data["source_node_id"] = id_mapper.get(
-                EntityType.NODE, edge_data["source_node_id"]
-            )
+            if edge_data["source_node_id"] is not None:
+                edge_data["source_node_id"] = id_mapper.get(
+                    EntityType.NODE, edge_data["source_node_id"]
+                )
 
             serializer = ConditionalEdgeImportSerializer(data=edge_data)
             serializer.is_valid(raise_exception=True)

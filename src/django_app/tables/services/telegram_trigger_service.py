@@ -52,10 +52,18 @@ class TelegramTriggerService(metaclass=SingletonMeta):
     def register_telegram_trigger(self, telegram_trigger_instance: TelegramTriggerNode):
         # TODO: update this to extend to other tunnels
         webhook_trigger: WebhookTrigger = telegram_trigger_instance.webhook_trigger
-        if webhook_trigger.ngrok_webhook_config is None:
-            raise RegisterTelegramTriggerError(
-                f"Webhook trigger does not set", status_code=400
+        # TODO: consider to raise error explicitly
+        # raise RegisterTelegramTriggerError( f"Webhook trigger does not set", status_code=400)
+        if webhook_trigger is None:
+            logger.warning(
+                f"[TelegramTrigger] Skipping registration for node {telegram_trigger_instance.pk}: no webhook_trigger configured."
             )
+            return
+        if webhook_trigger.ngrok_webhook_config is None:
+            logger.warning(
+                f"[TelegramTrigger] Skipping registration for node {telegram_trigger_instance.pk}: webhook_trigger has no ngrok_webhook_config."
+            )
+            return
         try:
             webhook_tunnel_url = self.webhook_trigger_service.get_tunnel_url(
                 ngrok_webhook_config=webhook_trigger.ngrok_webhook_config

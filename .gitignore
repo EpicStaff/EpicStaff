@@ -143,7 +143,6 @@ venv.bak/
 *venv
 venvs/
 run_program/manager.env
-!src/.env
 !src/debug.env
 
 # Spyder project settings
@@ -249,6 +248,9 @@ executions
 openai-realtime-console
 src/django_app/staticfiles/*
 
+# EpicStaff CLI local state
+.my_epicstaff/
+
 # Cursor AI rules
 .cursorrules
 
@@ -264,5 +266,9 @@ dev/dev.env
 
 # AI Coding Assistant Configs
 .claude/
+.claude-local/
 CLAUDE.md
 CLAUDE.local.md
+
+# Self — local gitignore tweaks should not be tracked
+.gitignore

@@ -5,48 +5,22 @@
                 <h1 class="title">
                     Flows
                     <span class="subtitle-inline"
-                        >A flow is a sequence of projects and custom logic built
-                        for automating complex tasks.</span
+                        >A flow is a sequence of projects and custom logic built for automating complex tasks.</span
                     >
                 </h1>
             </div>
             <div class="header-actions">
                 @if (selectMode()) {
-                    <app-button
-                    type="ghost"
-                    (click)="cancelExport()"
-                    >
-                        Cancel
-                    </app-button>
-                    <app-button
-                    type="ghost"
-                    (click)="selectAllFlows()"
-                    >
+                    <app-button type="ghost" (click)="cancelExport()"> Cancel </app-button>
+                    <app-button type="ghost" (click)="selectAllFlows()">
                         {{ isAllSelected() ? 'Deselect all' : 'Select all' }}
                     </app-button>
-                    <app-button
-                    type="primary"
-                    [disabled]="selectedFlowIds().length === 0"
-                    (click)="confirmExport()"
-                    >
-                        Export {{selectedFlowIds().length}} flows
+                    <app-button type="primary" [disabled]="selectedFlowIds().length === 0" (click)="confirmExport()">
+                        Export {{ selectedFlowIds().length }} flows
                     </app-button>
                 } @else {
-                    <app-button
-                    type="ghost"
-                    [leftIcon]="'ui/download'"
-                    (click)="onImportClick()"
-                    >
-                        Import
-                    </app-button>
-                    <app-button
-                        type="ghost"
-                        [leftIcon]="'ui/upload'"
-                        (click)="onExportClick()"
-                    >
-                        
-                        Export
-                    </app-button>
+                    <app-button type="ghost" [leftIcon]="'ui/download'" (click)="onImportClick()"> Import </app-button>
+                    <app-button type="ghost" [leftIcon]="'ui/upload'" (click)="onExportClick()"> Export </app-button>
                     <app-button
                         type="primary"
                         class="btn-primary create-btn"
@@ -61,14 +35,14 @@
         <nav class="tabs">
             <div class="tabs-left">
                 @for (tab of tabs; track tab.link) {
-                <app-tab-button
-                    routerLink="{{ tab.link }}"
-                    routerLinkActive="active"
-                    #rla="routerLinkActive"
-                    [active]="rla.isActive"
-                >
-                    {{ tab.label }}
-                </app-tab-button>
+                    <app-tab-button
+                        routerLink="{{ tab.link }}"
+                        routerLinkActive="active"
+                        #rla="routerLinkActive"
+                        [active]="rla.isActive"
+                    >
+                        {{ tab.label }}
+                    </app-tab-button>
                 }
             </div>
             <div class="tabs-right">
@@ -81,25 +55,51 @@
                     <input
                         type="text"
                         class="search-input"
-                        placeholder="Search flows..."
+                        placeholder="Search by name or label..."
                         [(ngModel)]="searchTerm"
                         (ngModelChange)="onSearchTermChange($event)"
                     />
                     @if (searchTerm) {
-                    <button
-                        type="button"
-                        class="clear-btn"
-                        aria-label="Clear"
-                        (click)="clearSearch()"
-                    >
-                        <app-svg-icon icon="x" size="1.1rem"></app-svg-icon>
-                    </button>
+                        <button
+                            type="button"
+                            class="clear-btn"
+                            aria-label="Clear"
+                            (click)="clearSearch()"
+                        >
+                            <app-svg-icon icon="x" size="1.1rem"></app-svg-icon>
+                        </button>
                     }
                 </div>
             </div>
         </nav>
     </div>
     <section class="body">
-        <router-outlet></router-outlet>
+        @if (showSidebar()) {
+            <app-flows-label-sidebar (closeSidebar)="toggleSidebar()"></app-flows-label-sidebar>
+        }
+        <div class="body-content">
+            <div class="breadcrumb-bar">
+                <button
+                    class="expand-sidebar-btn"
+                    (click)="toggleSidebar()"
+                    [class.active]="showSidebar()"
+                    title="Label Branches"
+                >
+                    <app-icon icon="ui/expand-sidebar" size="0.85rem"></app-icon>
+                </button>
+                <div class="breadcrumb-path">
+                    <button class="breadcrumb-home" (click)="selectAllLabels()" title="All Flows">
+                        <app-icon icon="ui/home" size="1rem"></app-icon>
+                    </button>
+                    @if (activeLabelFilterDisplay() !== 'all') {
+                        <span class="breadcrumb-sep">/</span>
+                        <span class="breadcrumb-label">{{ activeLabelFilterDisplay() }}</span>
+                    }
+                </div>
+            </div>
+            <div class="content-wrapper">
+                <router-outlet></router-outlet>
+            </div>
+        </div>
     </section>
 </div>

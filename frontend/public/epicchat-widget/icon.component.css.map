@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["src/app/components/shared/icon/icon.component.ts"],
+  "sourcesContent": ["\n            :host {\n                display: inline-flex;\n                align-items: center;\n                justify-content: center;\n            }\n            span {\n                display: inline-flex;\n                align-items: center;\n                justify-content: center;\n                width: 100%;\n                height: 100%;\n            }\n            svg {\n                display: block;\n                width: 100%;\n                height: 100%;\n            }\n        "],
+  "mappings": ";AACY;AACI,WAAA;AACA,eAAA;AACA,mBAAA;;AAEJ;AACI,WAAA;AACA,eAAA;AACA,mBAAA;AACA,SAAA;AACA,UAAA;;AAEJ;AACI,WAAA;AACA,SAAA;AACA,UAAA;;",
+  "names": []
+}

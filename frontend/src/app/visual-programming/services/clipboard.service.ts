@@ -1,18 +1,17 @@
 import { Injectable } from '@angular/core';
-import { FlowService } from './flow.service';
-
-import { NodeModel } from '../core/models/node.model';
-import { ConnectionModel } from '../core/models/connection.model';
-
-import { v4 as uuidv4 } from 'uuid';
 import { FSelectionChangeEvent } from '@foblex/flow';
-import { CustomPortId, ViewPort } from '../core/models/port.model';
-import {
-    parsePortId,
-    getPortsForType,
-    generatePortsForNode,
-} from '../core/helpers/helpers';
+import { v4 as uuidv4 } from 'uuid';
+
 import { NodeType } from '../core/enums/node-type';
+import {
+    generateMultipleNodeDisplayNames,
+    generateNodeDisplayName,
+} from '../core/helpers/generate-node-display-name.util';
+import { generatePortsForNode,getPortsForType, parsePortId } from '../core/helpers/helpers';
+import { ConnectionModel } from '../core/models/connection.model';
+import { NodeModel } from '../core/models/node.model';
+import { CustomPortId, ViewPort } from '../core/models/port.model';
+import { FlowService } from './flow.service';
 
 interface ClipboardData {
     nodes: NodeModel[];
@@ -37,59 +36,41 @@ export class ClipboardService {
     }
 
     public copy(selection: FSelectionChangeEvent): void {
-        if (
-            !selection ||
-            selection.fNodeIds.length === 0
-        ) {
+        if (!selection || selection.fNodeIds.length === 0) {
             return;
         }
 
         const allNodes: NodeModel[] = this.flowService.getFlowState().nodes;
 
         const selectedNodes: NodeModel[] = allNodes.filter(
-            (node) =>
-                selection.fNodeIds.includes(node.id) &&
-                node.type !== NodeType.START
+            (node) => selection.fNodeIds.includes(node.id) && node.type !== NodeType.START
         );
 
         if (selectedNodes.length === 0) {
             return;
         }
 
-        const minX: number = Math.min(
-            ...selectedNodes.map((el) => el.position.x)
-        );
-        const minY: number = Math.min(
-            ...selectedNodes.map((el) => el.position.y)
-        );
+        const minX: number = Math.min(...selectedNodes.map((el) => el.position.x));
+        const minY: number = Math.min(...selectedNodes.map((el) => el.position.y));
 
-        const selectedNodeIdSet = new Set<string>(
-            selectedNodes.map((n) => n.id)
-        );
+        const selectedNodeIdSet = new Set<string>(selectedNodes.map((n) => n.id));
 
-        const allConnections: ConnectionModel[] =
-            this.flowService.getFlowState().connections;
-        const selectedConnections: ConnectionModel[] = allConnections.filter(
-            (conn) => {
-                const sourceParsed = parsePortId(conn.sourcePortId);
-                const targetParsed = parsePortId(conn.targetPortId);
-                if (!sourceParsed || !targetParsed) return false;
+        const allConnections: ConnectionModel[] = this.flowService.getFlowState().connections;
+        const selectedConnections: ConnectionModel[] = allConnections.filter((conn) => {
+            const sourceParsed = parsePortId(conn.sourcePortId);
+            const targetParsed = parsePortId(conn.targetPortId);
+            if (!sourceParsed || !targetParsed) return false;
 
-                const sourceInSelection =
-                    selectedNodeIdSet.has(sourceParsed.nodeId);
-                const targetInSelection =
-                    selectedNodeIdSet.has(targetParsed.nodeId);
+            const sourceInSelection = selectedNodeIdSet.has(sourceParsed.nodeId);
+            const targetInSelection = selectedNodeIdSet.has(targetParsed.nodeId);
 
-                return sourceInSelection && targetInSelection;
-            }
-        );
+            return sourceInSelection && targetInSelection;
+        });
 
         this.clipboard = {
             nodes: selectedNodes.map((node) => ({
                 ...node,
-                data: node.data
-                    ? JSON.parse(JSON.stringify(node.data))
-                    : node.data,
+                data: node.data ? JSON.parse(JSON.stringify(node.data)) : node.data,
                 ports: node.ports ? [...node.ports] : node.ports,
                 position: { ...node.position },
             })),
@@ -106,11 +87,7 @@ export class ClipboardService {
             return { newNodes: [], newConnections: [] };
         }
 
-        const {
-            nodes: clipboardNodes,
-            connections: clipboardConnections,
-            boundingBox,
-        } = this.clipboard;
+        const { nodes: clipboardNodes, connections: clipboardConnections, boundingBox } = this.clipboard;
 
         if (clipboardNodes.length === 0) {
             return { newNodes: [], newConnections: [] };
@@ -121,20 +98,23 @@ export class ClipboardService {
 
         const oldToNewIdMap = new Map<string, string>();
 
-        const allNodes = [...this.flowService.getFlowState().nodes];
+        // Generate display names for all nodes at once
+        const currentNodes = this.flowService.getFlowState().nodes;
+        const nodesToCreate = clipboardNodes.map((oldNode) => ({
+            type: oldNode.type,
+            data: oldNode.data,
+        }));
 
-        const newNodes: NodeModel[] = clipboardNodes.map((oldNode) => {
+        const displayNames = generateMultipleNodeDisplayNames(nodesToCreate, currentNodes);
+
+        // Create new nodes with backendId: null for diff-save support
+        const newNodes: NodeModel[] = clipboardNodes.map((oldNode, index) => {
             const newNodeId = uuidv4();
             oldToNewIdMap.set(oldNode.id, newNodeId);
 
-            const newPorts: ViewPort[] = generatePortsForNode(
-                newNodeId,
-                oldNode.type
-            );
+            const newPorts: ViewPort[] = generatePortsForNode(newNodeId, oldNode.type);
 
-            const newName = this.deriveUniqueName(oldNode.node_name, oldNode.type, allNodes);
-
-            const newNode = {
+            return {
                 ...oldNode,
                 id: newNodeId,
                 backendId: null,
@@ -143,13 +123,8 @@ export class ClipboardService {
                     y: oldNode.position.y + offsetY,
                 },
                 ports: newPorts,
-                parentId: null,
-                node_name: newName,
+                node_name: displayNames[index],
             };
-
-            allNodes.push(newNode);
-
-            return newNode;
         });
 
         const newConnections = clipboardConnections
@@ -191,14 +166,5 @@ export class ClipboardService {
         });
 
         return { newNodes, newConnections };
-    }
-
-    private deriveUniqueName(
-        originalName: string,
-        nodeType: NodeType,
-        allNodes: NodeModel[]
-    ): string {
-        const count = allNodes.filter((n) => n.type === nodeType).length + 1;
-        return `${originalName} (#${count})`;
     }
 }

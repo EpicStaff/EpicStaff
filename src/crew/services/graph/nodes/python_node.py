@@ -24,6 +24,7 @@ class PythonNode(BaseNode):
         output_variable_path: str,
         python_code_executor_service: RunPythonCodeService,
         python_code_data: PythonCodeData,
+        stream_config: dict | None = None,
     ):
         super().__init__(
             session_id=session_id,
@@ -34,10 +35,25 @@ class PythonNode(BaseNode):
         )
         self.python_code_executor_service = python_code_executor_service
         self.python_code_data = python_code_data
+        self.stream_config = stream_config or {}
 
     async def execute(
         self, state: State, writer: StreamWriter, execution_order: int, input_: Any
     ):
+        self.custom_session_message_writer.add_custom_message(
+            session_id=self.session_id,
+            node_name=self.node_name,
+            writer=writer,
+            execution_order=execution_order,
+            message_data={
+                "message_type": "python_stream",
+                "text": f"Executing '{self.node_name}'...",
+                "is_final": False,
+                "sse_visible": not self.stream_config
+                or self.stream_config.get("execution_status", True),
+            },
+        )
+
         additional_global_kwargs = {
             "state": {
                 "variables": state["variables"].model_dump(),

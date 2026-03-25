@@ -58,6 +58,7 @@ import { FlowsApiService } from '../../../../features/flows/services/flows-api.s
 import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { ExtractedChunksMessageComponent } from './components/extracted-chunks/extracted-chunks-message.component';
 import { WarningMessagesComponent } from '../warning-messages/warning-messages.component';
+import { CodeAgentStreamMessageComponent } from './components/code-agent-stream-message/code-agent-stream-message.component';
 
 interface MessageContext {
   key: string;
@@ -116,6 +117,7 @@ interface RootDrilldownView {
     WarningMessagesComponent,
     SubgraphStartMessageComponent,
     SubgraphFinishMessageComponent,
+    CodeAgentStreamMessageComponent,
   ],
   templateUrl: './graph-messages.component.html',
   styleUrls: ['./graph-messages.component.scss'],
@@ -955,8 +957,39 @@ export class GraphMessagesComponent
   }
 
   private updateVisibleMessages(): void {
+    // Build a set of message indices to show for code_agent_stream:
+    // One card per node name — prefer final, fall back to latest non-final.
+    const caShowIndex = new Map<string, number>(); // node_name -> message index to show
+
+    for (const context of this.messageContexts) {
+      if (context.path.length !== 0) continue;
+      const msg = this.messages[context.index];
+      if (msg?.message_data?.message_type !== 'code_agent_stream') continue;
+
+      const isFinal = (msg.message_data as any).is_final === true;
+      const existing = caShowIndex.get(msg.name);
+
+      if (isFinal) {
+        caShowIndex.set(msg.name, context.index);
+      } else if (existing === undefined) {
+        caShowIndex.set(msg.name, context.index);
+      } else {
+        const existingMsg = this.messages[existing];
+        if ((existingMsg?.message_data as any)?.is_final !== true) {
+          caShowIndex.set(msg.name, context.index);
+        }
+      }
+    }
+
+    const caShowSet = new Set(caShowIndex.values());
+
     this.visibleMessageEntries = this.messageContexts
       .filter((context) => context.path.length === 0)
+      .filter((context) => {
+        const msg = this.messages[context.index];
+        if (msg?.message_data?.message_type !== 'code_agent_stream') return true;
+        return caShowSet.has(context.index);
+      })
       .map((context) =>
         this.buildMessageEntry(this.messages[context.index], context)
       );
@@ -1084,6 +1117,10 @@ export class GraphMessagesComponent
   }
 
   private getMessageKey(message: GraphMessage): string {
+    // Stable key for code_agent_stream: one component per node name
+    if (message.message_data?.message_type === 'code_agent_stream') {
+      return `ca_stream_${message.name}`;
+    }
     return message.uuid ?? `${message.id}-${message.execution_order}-${message.created_at}`;
   }
 

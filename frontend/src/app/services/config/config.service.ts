@@ -8,6 +8,7 @@ export interface AppConfig {
   apiUrl: string;
   type: string;
   realtimeApiUrl?: string;
+  isEpicChatEnabled?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -16,6 +17,15 @@ export class ConfigService {
   private readonly http = inject(HttpClient);
 
   async loadConfig(): Promise<void> {
+    if (!environment.production) {
+      this.config = {
+        type: 'fallback',
+        apiUrl: environment.apiUrl,
+        realtimeApiUrl: environment.realtimeApiUrl,
+        isEpicChatEnabled: environment.isEpicChatEnabled ?? false,
+      };
+      return;
+    }
     try {
       const config = await firstValueFrom(
         this.http.get<AppConfig>('/config.json').pipe(
@@ -27,6 +37,7 @@ export class ConfigService {
               apiUrl: environment.apiUrl,
 
               realtimeApiUrl: environment.realtimeApiUrl,
+              isEpicChatEnabled: environment.isEpicChatEnabled ?? false,
             } as AppConfig);
           })
         )
@@ -39,6 +50,7 @@ export class ConfigService {
         type: 'fallback',
         apiUrl: environment.apiUrl,
         realtimeApiUrl: environment.realtimeApiUrl,
+        isEpicChatEnabled: false,
       };
     }
   }
@@ -61,5 +73,9 @@ export class ConfigService {
       return environment.realtimeApiUrl || '';
     }
     return this.config.realtimeApiUrl;
+  }
+
+  get isEpicChatEnabled(): boolean {
+    return this.config?.isEpicChatEnabled ?? false;
   }
 }

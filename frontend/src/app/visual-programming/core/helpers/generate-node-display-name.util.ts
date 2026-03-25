@@ -1,6 +1,6 @@
 import { NodeType } from '../enums/node-type';
-import { NodeModel } from '../models/node.model';
 import { NODE_TYPE_PREFIXES } from '../enums/node-type-prefixes';
+import { NodeModel } from '../models/node.model';
 
 /**
  * Generate a display name for a node, following the same rules as onAddNodeFromContextMenu.
@@ -8,16 +8,12 @@ import { NODE_TYPE_PREFIXES } from '../enums/node-type-prefixes';
  * @param data Optional node data (may contain name for PROJECT)
  * @param currentNodes All current nodes in the flow (for counting)
  */
-export function generateNodeDisplayName(
-    type: NodeType,
-    data: any,
-    currentNodes: NodeModel[]
-): string {
+export function generateNodeDisplayName(type: NodeType, data: unknown, currentNodes: NodeModel[]): string {
     if (type === NodeType.END) {
         return '__end_node__';
     }
     if (type === NodeType.PROJECT) {
-        const projectName = data?.name || 'My Project';
+        const projectName = (data as { name?: string } | null)?.name || 'My Project';
         const count = getNextAvailableNumber(currentNodes, type, projectName);
         return `${projectName} (#${count})`;
     } else {
@@ -34,29 +30,19 @@ export function generateNodeDisplayName(
  * @param namePrefix The prefix to match against (e.g., "Agent-Node" or "My Project")
  * @returns Next available number
  */
-function getNextAvailableNumber(
-    currentNodes: NodeModel[],
-    type: NodeType,
-    namePrefix: string
-): number {
-    // Get all existing node names of this type
+function getNextAvailableNumber(currentNodes: NodeModel[], type: NodeType, namePrefix: string): number {
+    // Get all existing node names of this type (filter out undefined for nodes like GraphNote that lack node_name)
     const existingNames = currentNodes
         .filter((n) => n.type === type)
-        .map((n) => n.node_name);
+        .map((n) => n.node_name)
+        .filter((name): name is string => !!name);
 
     // Extract numbers from existing names that match our prefix pattern
     const usedNumbers = new Set<number>();
 
     existingNames.forEach((name) => {
         // Match pattern like "Agent-Node (#1)" or "My Project (#2)"
-        const match = name.match(
-            new RegExp(
-                `^${namePrefix.replace(
-                    /[.*+?^${}()|[\]\\]/g,
-                    '\\$&'
-                )} \\(#(\\d+)\\)$`
-            )
-        );
+        const match = name.match(new RegExp(`^${namePrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\(#(\\d+)\\)$`));
         if (match) {
             const number = parseInt(match[1], 10);
             usedNumbers.add(number);
@@ -87,9 +73,7 @@ function getNextAvailableNumberForBatch(
     allExistingNames: Set<string>
 ): number {
     // Get all existing node names of this type from current nodes
-    const existingNames = currentNodes
-        .filter((n) => n.type === type)
-        .map((n) => n.node_name);
+    const existingNames = currentNodes.filter((n) => n.type === type).map((n) => n.node_name);
 
     // Extract numbers from existing names that match our prefix pattern
     const usedNumbers = new Set<number>();
@@ -97,14 +81,7 @@ function getNextAvailableNumberForBatch(
     // Check both current nodes and names generated in this batch
     [...existingNames, ...Array.from(allExistingNames)].forEach((name) => {
         // Match pattern like "Agent-Node (#1)" or "My Project (#2)"
-        const match = name.match(
-            new RegExp(
-                `^${namePrefix.replace(
-                    /[.*+?^${}()|[\]\\]/g,
-                    '\\$&'
-                )} \\(#(\\d+)\\)$`
-            )
-        );
+        const match = name.match(new RegExp(`^${namePrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\(#(\\d+)\\)$`));
         if (match) {
             const number = parseInt(match[1], 10);
             usedNumbers.add(number);
@@ -128,7 +105,7 @@ function getNextAvailableNumberForBatch(
  * @returns Array of display names in the same order as nodesToCreate
  */
 export function generateMultipleNodeDisplayNames(
-    nodesToCreate: Array<{ type: NodeType; data: any }>,
+    nodesToCreate: Array<{ type: NodeType; data: unknown }>,
     currentNodes: NodeModel[]
 ): string[] {
     console.log('=== GENERATE MULTIPLE NODE DISPLAY NAMES DEBUG ===');
@@ -168,22 +145,14 @@ export function generateMultipleNodeDisplayNames(
         // Get the name prefix for this node type
         const namePrefix =
             type === NodeType.PROJECT
-                ? data?.name || 'My Project'
+                ? (data as { name?: string } | null)?.name || 'My Project'
                 : NODE_TYPE_PREFIXES[type] || 'Node';
 
         // Get all existing node names of this type (including ones created in this batch)
-        const allExistingNames = new Set([
-            ...existingNames,
-            ...Array.from(generatedNames),
-        ]);
+        const allExistingNames = new Set([...existingNames, ...Array.from(generatedNames)]);
 
         // Find the next available number for this specific prefix
-        const nextNumber = getNextAvailableNumberForBatch(
-            currentNodes,
-            type,
-            namePrefix,
-            allExistingNames
-        );
+        const nextNumber = getNextAvailableNumberForBatch(currentNodes, type, namePrefix, allExistingNames);
 
         // Generate the display name
         let displayName: string;

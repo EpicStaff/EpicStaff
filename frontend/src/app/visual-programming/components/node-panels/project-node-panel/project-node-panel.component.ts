@@ -58,6 +58,32 @@ interface InputMapPair {
                         placeholder="Enter output variable path (leave empty for null)"
                         [activeColor]="activeColor"
                     ></app-custom-input>
+
+                    <div class="stream-config-section" formGroupName="stream_config">
+                        <span class="section-label">Streaming to EpicChat</span>
+                        <div class="checkbox-list">
+                            <label class="checkbox-item">
+                                <input type="checkbox" formControlName="agent_activity" [style.accent-color]="activeColor" />
+                                <span>Agent activity</span>
+                            </label>
+                            <label class="checkbox-item">
+                                <input type="checkbox" formControlName="task_progress" [style.accent-color]="activeColor" />
+                                <span>Task progress</span>
+                            </label>
+                            <label class="checkbox-item">
+                                <input type="checkbox" formControlName="agent_reasoning" [style.accent-color]="activeColor" />
+                                <span>Agent reasoning</span>
+                            </label>
+                            <label class="checkbox-item">
+                                <input type="checkbox" formControlName="tool_calls" [style.accent-color]="activeColor" />
+                                <span>Tool calls</span>
+                            </label>
+                            <label class="checkbox-item">
+                                <input type="checkbox" formControlName="final_reply" [style.accent-color]="activeColor" />
+                                <span>Final reply</span>
+                            </label>
+                        </div>
+                    </div>
                 </form>
             </div>
         </div>
@@ -94,6 +120,40 @@ interface InputMapPair {
                 margin: 0 0 0.5rem 0;
                 color: #333;
             }
+
+            .section-label {
+                font-size: 0.75rem;
+                color: #d9d9d999;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
+
+            .stream-config-section {
+                display: flex;
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+
+            .checkbox-list {
+                display: flex;
+                flex-direction: column;
+                gap: 0.35rem;
+            }
+
+            .checkbox-item {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                font-size: 0.85rem;
+                color: #d4d4d4;
+                cursor: pointer;
+
+                input[type='checkbox'] {
+                    width: 16px;
+                    height: 16px;
+                    cursor: pointer;
+                }
+            }
         `,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -112,10 +172,18 @@ export class ProjectNodePanelComponent extends BaseSidePanel<ProjectNodeModel> {
     }
 
     protected initializeForm(): FormGroup {
+        const sc = this.node().stream_config;
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
+            stream_config: this.fb.group({
+                agent_activity: [sc?.['agent_activity'] ?? true],
+                task_progress: [sc?.['task_progress'] ?? true],
+                agent_reasoning: [sc?.['agent_reasoning'] ?? true],
+                final_reply: [sc?.['final_reply'] ?? true],
+                tool_calls: [sc?.['tool_calls'] ?? true],
+            }),
         });
 
         this.initializeInputMap(form);
@@ -131,6 +199,7 @@ export class ProjectNodePanelComponent extends BaseSidePanel<ProjectNodeModel> {
             node_name: this.form.value.node_name,
             input_map: inputMapValue,
             output_variable_path: this.form.value.output_variable_path || null,
+            stream_config: this.form.value.stream_config || {},
         };
     }
 

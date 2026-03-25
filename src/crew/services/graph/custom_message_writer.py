@@ -80,10 +80,12 @@ class CustomSessionMessageWriter:
         written using the provided stream writer.
         """
 
+        sse_visible = kwargs.pop("sse_visible", None)
         finish_message_data = FinishMessageData(
             output=output,
             state=cls._convert_state(state=state),
             additional_data=kwargs,
+            sse_visible=sse_visible,
         )
         graph_message = GraphMessage(
             session_id=session_id,

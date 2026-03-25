@@ -97,6 +97,9 @@ class BaseNode(ABC):
         additional data passed as keyword arguments. The message is then
         written using the provided stream writer.
         """
+        sc = getattr(self, "stream_config", None)
+        if sc and sc.get("final_reply") is False:
+            kwargs["sse_visible"] = False
         self.custom_session_message_writer.add_finish_message(
             session_id=self.session_id,
             node_name=self.node_name,

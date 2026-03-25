@@ -1,23 +1,26 @@
 .menu-item {
-  display: flex;
-  align-items: center;
-  padding: 8px 12px;
-  font-size: 13px;
-  color: var(--color-text-primary);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.15s, color 0.15s;
-  user-select: none;
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--color-text-primary);
+    border-radius: 6px;
+    cursor: pointer;
+    transition:
+        background-color 0.15s,
+        color 0.15s;
+    user-select: none;
 
-  &:hover {
-    background-color: rgba(255, 255, 255, 0.08);
-  }
+    &:hover {
+        background-color: rgba(255, 255, 255, 0.08);
+    }
 
-  &:active {
-    background-color: rgba(255, 255, 255, 0.12);
-  }
+    &:active {
+        background-color: rgba(255, 255, 255, 0.12);
+    }
 
-  &.delete-action {
-    color: var(--color-danger);
-  }
+    &.delete-action {
+        border-top: 1px solid var(--color-flow-card-bg);
+        margin-top: 2px;
+    }
 }

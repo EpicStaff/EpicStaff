@@ -16,6 +16,7 @@ export const DEFAULT_WEBHOOK_TRIGGER_NODE_PORTS: BasePort[] = [
             'subgraph-in',
             'audio-to-text-in',
             'end-in',
+            'code-agent-in',
         ],
         position: 'right',
         color: '#21f367ff',

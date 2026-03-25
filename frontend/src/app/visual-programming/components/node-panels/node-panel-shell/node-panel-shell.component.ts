@@ -196,6 +196,10 @@ export class NodePanelShellComponent {
         this.isExpanded.update((expanded) => !expanded);
     }
 
+    public expandPanel(): void {
+        this.isExpanded.set(true);
+    }
+
     private saveSidePanel(): void {
         console.log('Saving side panel');
         if (

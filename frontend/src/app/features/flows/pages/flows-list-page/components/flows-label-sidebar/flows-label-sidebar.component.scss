@@ -1,0 +1,396 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    width: 422px;
+    min-width: 280px;
+    height: 100%;
+    background-color: var(--color-background-body);
+    border-right: 1px solid var(--color-divider-subtle);
+    border-radius: 0 0 0 12px;
+    overflow-y: auto;
+    overflow-x: auto;
+    flex-shrink: 0;
+    font-family: 'Inter', sans-serif;
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px 8px 24px;
+    height: 40px;
+    border-bottom: 1px solid var(--color-divider-subtle);
+    flex-shrink: 0;
+
+    .sidebar-title {
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: var(--color-text-secondary);
+        letter-spacing: 0.05em;
+    }
+
+    .close-btn {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        color: var(--color-text-secondary);
+        display: flex;
+        align-items: center;
+        padding: 0.2rem;
+        border-radius: 4px;
+
+        &:hover {
+            color: var(--color-ks-text);
+        }
+    }
+}
+
+.sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: auto;
+    padding-bottom: 1rem;
+}
+
+.tree-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.75rem 0.45rem 1rem;
+    cursor: pointer;
+    color: var(--color-ks-text);
+    font-size: 14px;
+    position: relative;
+    min-width: max-content;
+
+    &:hover {
+        background: var(--color-ghost-btn-hover);
+        color: var(--color-ks-text);
+    }
+
+    &.active {
+        background: var(--color-ghost-btn-active);
+        color: var(--accent-color);
+    }
+
+    .item-actions {
+        display: none;
+        margin-left: auto;
+        gap: 0.6rem;
+        align-items: center;
+        flex-shrink: 0;
+    }
+
+    &:hover .item-actions {
+        display: flex;
+    }
+
+    .label-name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 80px;
+    }
+
+    .label-icon {
+        flex-shrink: 0;
+    }
+}
+
+.all-flows-item {
+    margin-top: 0.75rem;
+    font-weight: 500;
+    gap: 0.6rem;
+
+    span {
+        padding-top: 4px;
+    }
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem 0.25rem;
+
+    .section-label-header {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+
+        ::ng-deep app-icon svg path {
+            fill: var(--color-ks-text);
+            opacity: 0.4;
+        }
+    }
+
+    .section-label {
+        font-size: 14px;
+        color: var(--color-ks-text);
+        letter-spacing: 0.08em;
+    }
+
+    .add-btn {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        color: var(--color-text-secondary);
+        display: flex;
+        align-items: center;
+        padding: 0.15rem;
+        border-radius: 4px;
+
+        &:hover {
+            color: var(--color-ks-text);
+        }
+
+        &:active {
+            color: var(--color-ks-text);
+        }
+    }
+}
+
+.add-label-row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.3rem 0.5rem;
+    margin: 0.1rem 0.5rem;
+    min-width: max-content;
+
+    &.child-add {
+        padding-left: 0;
+        padding-right: 0.5rem;
+        margin: 0.1rem 0.5rem;
+    }
+
+    .label-input {
+        flex: 1;
+        min-width: 120px;
+        background: var(--color-input-background);
+        border: 1px solid var(--color-input-border);
+        border-radius: 4px;
+        color: var(--color-text-primary);
+        padding: 0.25rem 0.5rem;
+        font-size: 0.85rem;
+        outline: none;
+
+        &:focus {
+            border-color: var(--accent-color);
+        }
+
+        &::placeholder {
+            color: var(--color-text-secondary);
+            opacity: 0.7;
+        }
+    }
+}
+
+.confirm-btn,
+.cancel-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.2rem;
+    border-radius: 4px;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+}
+
+.confirm-btn {
+    color: #ffffff;
+    background: var(--accent-color);
+
+    &:hover {
+        background: var(--accent-color-hover);
+    }
+
+    &:active {
+        background: var(--accent-color-active);
+    }
+}
+
+.cancel-btn {
+    color: var(--accent-color);
+    background: transparent;
+    border: 1px solid var(--accent-color);
+
+    &:hover {
+        color: var(--accent-color-hover);
+    }
+
+    &:active {
+        color: var(--accent-color-active);
+    }
+}
+
+.toggle-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    flex-shrink: 0;
+    width: 0.8rem;
+    height: 0.8rem;
+
+    &:hover {
+        background: var(--color-ghost-btn-hover);
+        color: var(--color-ks-text);
+    }
+
+    &:active {
+        background: var(--color-ghost-btn-active);
+    }
+}
+
+.expand-icon {
+    transition: transform 0.15s ease;
+    display: flex;
+    align-items: center;
+
+    &.expanded {
+        transform: rotate(90deg);
+    }
+}
+
+.tree-item.active {
+    ::ng-deep .expand-icon svg path {
+        fill: var(--accent-color);
+    }
+}
+
+.rename-input {
+    flex: 1;
+    min-width: 120px;
+    background: var(--color-input-background);
+    border: 1px solid var(--accent-color);
+    border-radius: 4px;
+    color: var(--color-text-primary);
+    padding: 0.15rem 0.4rem;
+    font-size: 0.9rem;
+    outline: none;
+}
+
+.action-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.15rem;
+    border-radius: 3px;
+
+    &:hover {
+        color: var(--color-ks-text);
+    }
+
+    &:active {
+        color: var(--color-ks-text);
+    }
+}
+
+.edit-label-btn {
+    ::ng-deep app-icon svg path {
+        fill: #d9d9de;
+        fill-opacity: 0.6;
+        transition:
+            fill 0.15s ease,
+            fill-opacity 0.15s ease;
+    }
+
+    &:hover ::ng-deep app-icon svg path {
+        fill: var(--color-ks-text);
+        fill-opacity: 1;
+    }
+
+    &:active ::ng-deep app-icon svg path {
+        fill: var(--color-ks-text);
+        fill-opacity: 1;
+    }
+}
+
+.unlabeled-item {
+    border-top: 1px solid var(--color-divider-subtle);
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+}
+
+// ── Icon color states ──
+
+.all-flows-item {
+    ::ng-deep app-icon svg path {
+        fill: var(--color-text-secondary);
+        transition: fill 0.15s ease;
+    }
+
+    &:hover ::ng-deep app-icon svg path {
+        fill: var(--color-ks-text);
+    }
+
+    &:active ::ng-deep app-icon svg path,
+    &.active ::ng-deep app-icon svg path {
+        fill: var(--accent-color);
+    }
+}
+
+.label-item {
+    ::ng-deep .label-icon svg path {
+        fill: var(--color-ks-text);
+        transition: fill 0.15s ease;
+    }
+
+    &:hover ::ng-deep .label-icon svg path {
+        fill: var(--color-ks-text);
+    }
+
+    &:active ::ng-deep .label-icon svg path,
+    &.active ::ng-deep .label-icon svg path {
+        fill: var(--accent-color);
+    }
+}
+
+.unlabeled-item {
+    ::ng-deep app-icon svg path {
+        stroke: var(--color-text-secondary);
+        transition: stroke 0.15s ease;
+    }
+
+    &:hover ::ng-deep app-icon svg path {
+        stroke: var(--color-ks-text);
+    }
+
+    &:active ::ng-deep app-icon svg path,
+    &.active ::ng-deep app-icon svg path {
+        stroke: var(--accent-color);
+    }
+}
+
+// ── Validation error ──
+
+.label-error {
+    margin: 0.1rem 0 0.3rem;
+    padding: 0.35rem 0.6rem;
+    background: rgba(245, 66, 66, 0.1);
+    border: 1px solid rgba(245, 66, 66, 0.3);
+    border-left: 3px solid var(--color-error);
+    border-radius: 4px;
+    color: var(--color-error);
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+.label-input.has-error,
+.rename-input.has-error {
+    border-color: var(--color-error) !important;
+}

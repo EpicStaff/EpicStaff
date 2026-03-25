@@ -12,43 +12,43 @@
 import { v4 as uuidv4 } from 'uuid';
 
 import { GraphDto } from '../../../features/flows/models/graph.model';
-import { FlowModel } from '../../core/models/flow.model';
-import { NodeType } from '../../core/enums/node-type';
+import { GetAudioToTextNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/audio-to-text.model';
+import { GetCodeAgentNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/code-agent-node.model';
+import { ConditionalEdge } from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
+import { CrewNode } from '../../../pages/flows-page/components/flow-visual-programming/models/crew-node.model';
+import { GetDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/decision-table-node.model';
+import { Edge } from '../../../pages/flows-page/components/flow-visual-programming/models/edge.model';
+import { EndNode } from '../../../pages/flows-page/components/flow-visual-programming/models/end-node.model';
+import { GetFileExtractorNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/file-extractor.model';
+import { GraphNote } from '../../../pages/flows-page/components/flow-visual-programming/models/graph-note.model';
+import { GetLLMNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/llm-node.model';
+import { PythonNode } from '../../../pages/flows-page/components/flow-visual-programming/models/python-node.model';
+import { StartNode } from '../../../pages/flows-page/components/flow-visual-programming/models/start-node.model';
+import { SubGraphNode } from '../../../pages/flows-page/components/flow-visual-programming/models/subgraph-node.model';
+import { GetTelegramTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
+import { GetWebhookTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/webhook-trigger';
 import { NODE_COLORS, NODE_ICONS } from '../../core/enums/node-config';
+import { NodeType } from '../../core/enums/node-type';
 import { ConnectionModel } from '../../core/models/connection.model';
-import { CustomPortId } from '../../core/models/port.model';
+import { FlowModel } from '../../core/models/flow.model';
 import {
+    AudioToTextNodeModel,
+    CodeAgentNodeModel,
+    DecisionTableNodeModel,
+    EdgeNodeModel,
+    EndNodeModel,
+    FileExtractorNodeModel,
+    GraphNoteModel,
+    LLMNodeModel,
     NodeModel,
-    StartNodeModel,
     ProjectNodeModel,
     PythonNodeModel,
-    LLMNodeModel,
-    FileExtractorNodeModel,
-    AudioToTextNodeModel,
+    StartNodeModel,
     SubGraphNodeModel,
-    WebhookTriggerNodeModel,
     TelegramTriggerNodeModel,
-    EndNodeModel,
-    EdgeNodeModel,
-    DecisionTableNodeModel,
-    NoteNodeModel,
+    WebhookTriggerNodeModel,
 } from '../../core/models/node.model';
-
-import { CrewNode } from '../../../pages/flows-page/components/flow-visual-programming/models/crew-node.model';
-import { PythonNode } from '../../../pages/flows-page/components/flow-visual-programming/models/python-node.model';
-import { GetLLMNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/llm-node.model';
-import { GetFileExtractorNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/file-extractor.model';
-import { GetAudioToTextNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/audio-to-text.model';
-import { SubGraphNode } from '../../../pages/flows-page/components/flow-visual-programming/models/subgraph-node.model';
-import { GetWebhookTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/webhook-trigger';
-import { GetTelegramTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
-import { ConditionalEdge } from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
-import { Edge } from '../../../pages/flows-page/components/flow-visual-programming/models/edge.model';
-import { StartNode } from '../../../pages/flows-page/components/flow-visual-programming/models/start-node.model';
-import { EndNode } from '../../../pages/flows-page/components/flow-visual-programming/models/end-node.model';
-import { GetDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/decision-table-node.model';
-import { NoteNode } from '../../../pages/flows-page/components/flow-visual-programming/models/note-node.model';
-
+import { CustomPortId } from '../../core/models/port.model';
 import { NodeUIMetadata } from './save-graph.types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,17 +56,25 @@ import { NodeUIMetadata } from './save-graph.types';
 // ─────────────────────────────────────────────────────────────────────────────
 
 function readUIMetadata(
-    metadata: Record<string, any> | undefined | null,
+    metadata: Record<string, unknown> | undefined | null,
     nodeType: NodeType,
     fallbackIndex: number
 ): NodeUIMetadata {
     const m = metadata ?? {};
+    const position = m['position'] as { x?: number; y?: number } | undefined;
+    const size = m['size'] as { width?: number; height?: number } | undefined;
+
     return {
-        position: m['position'] ?? { x: 100 + (fallbackIndex % 5) * 400, y: 100 + Math.floor(fallbackIndex / 5) * 200 },
-        color: m['color'] ?? NODE_COLORS[nodeType] ?? '#685fff',
-        icon: m['icon'] ?? NODE_ICONS[nodeType] ?? 'ti ti-code',
-        size: m['size'] ?? getDefaultSize(nodeType),
-        parentId: null,
+        position: {
+            x: position?.x ?? 100 + (fallbackIndex % 5) * 400,
+            y: position?.y ?? 100 + Math.floor(fallbackIndex / 5) * 200,
+        },
+        color: typeof m['color'] === 'string' ? m['color'] : (NODE_COLORS[nodeType] ?? '#685fff'),
+        icon: typeof m['icon'] === 'string' ? m['icon'] : (NODE_ICONS[nodeType] ?? 'ti ti-code'),
+        size: {
+            width: size?.width ?? getDefaultSize(nodeType).width,
+            height: size?.height ?? getDefaultSize(nodeType).height,
+        },
     };
 }
 
@@ -122,7 +130,7 @@ function buildStartNode(sn: StartNode, idx: number): StartNodeModel {
         data: { initialState: sn.variables ?? {} },
         position: ui.position,
         ports: null,
-        parentId: null,
+
         color: ui.color,
         icon: ui.icon,
         input_map: {},
@@ -142,11 +150,12 @@ function buildCrewNode(cn: CrewNode, idx: number): ProjectNodeModel {
         data: cn.crew,
         position: ui.position,
         ports: null,
-        parentId: null,
+
         color: ui.color,
         icon: ui.icon,
         input_map: cn.input_map ?? {},
         output_variable_path: cn.output_variable_path,
+        stream_config: cn.stream_config ?? {},
         size: ui.size,
     };
 }
@@ -167,11 +176,47 @@ function buildPythonNode(pn: PythonNode, idx: number): PythonNodeModel {
         },
         position: ui.position,
         ports: null,
-        parentId: null,
+
         color: ui.color,
         icon: ui.icon,
         input_map: pn.input_map ?? {},
         output_variable_path: pn.output_variable_path,
+        stream_config: pn.stream_config ?? {},
+        size: ui.size,
+    };
+}
+
+function buildCodeAgentNode(ca: GetCodeAgentNodeRequest, idx: number): CodeAgentNodeModel {
+    const ui = readUIMetadata(ca.metadata, NodeType.CODE_AGENT, idx);
+    return {
+        id: uuidv4(),
+        backendId: ca.id,
+        category: 'web',
+        type: NodeType.CODE_AGENT,
+        node_name: ca.node_name,
+        data: {
+            llm_config_id: ca.llm_config,
+            agent_mode: ca.agent_mode ?? 'build',
+            session_id: ca.session_id ?? '',
+            system_prompt: ca.system_prompt ?? '',
+            stream_handler_code: ca.stream_handler_code ?? '',
+            libraries: ca.libraries ?? [],
+            polling_interval_ms: ca.polling_interval_ms ?? 1000,
+            silence_indicator_s: ca.silence_indicator_s ?? 3,
+            indicator_repeat_s: ca.indicator_repeat_s ?? 5,
+            chunk_timeout_s: ca.chunk_timeout_s ?? 30,
+            inactivity_timeout_s: ca.inactivity_timeout_s ?? 120,
+            max_wait_s: ca.max_wait_s ?? 300,
+            output_schema: ca.output_schema ?? {},
+        },
+        position: ui.position,
+        ports: null,
+
+        color: ui.color,
+        icon: ui.icon,
+        input_map: ca.input_map ?? {},
+        output_variable_path: ca.output_variable_path,
+        stream_config: ca.stream_config ?? {},
         size: ui.size,
     };
 }
@@ -204,7 +249,7 @@ function buildLLMNode(ln: GetLLMNodeRequest, idx: number): LLMNodeModel {
         data: configDetail,
         position: ui.position,
         ports: null,
-        parentId: null,
+
         color: ui.color,
         icon: ui.icon,
         input_map: ln.input_map ?? {},
@@ -224,7 +269,7 @@ function buildFileExtractorNode(n: GetFileExtractorNodeRequest, idx: number): Fi
         data: undefined,
         position: ui.position,
         ports: null,
-        parentId: null,
+
         color: ui.color,
         icon: ui.icon,
         input_map: n.input_map ?? {},
@@ -244,7 +289,7 @@ function buildAudioToTextNode(n: GetAudioToTextNodeRequest, idx: number): AudioT
         data: undefined,
         position: ui.position,
         ports: null,
-        parentId: null,
+
         color: ui.color,
         icon: ui.icon,
         input_map: n.input_map ?? {},
@@ -270,7 +315,7 @@ function buildSubGraphNode(sn: SubGraphNode, idx: number): SubGraphNodeModel {
         data: subgraphDetail,
         position: ui.position,
         ports: null,
-        parentId: null,
+
         color: ui.color,
         icon: ui.icon,
         input_map: sn.input_map ?? {},
@@ -299,7 +344,7 @@ function buildWebhookTriggerNode(wn: GetWebhookTriggerNodeRequest, idx: number):
         },
         position: ui.position,
         ports: null,
-        parentId: null,
+
         color: ui.color,
         icon: ui.icon,
         input_map: wn.input_map ?? {},
@@ -323,10 +368,10 @@ function buildTelegramTriggerNode(tn: GetTelegramTriggerNodeRequest, idx: number
         },
         position: ui.position,
         ports: null,
-        parentId: null,
+
         color: ui.color,
         icon: ui.icon,
-        input_map: {} as Record<string, any>,
+        input_map: {} as Record<string, unknown>,
         output_variable_path: null,
         size: ui.size,
     };
@@ -343,7 +388,7 @@ function buildEndNode(en: EndNode, idx: number): EndNodeModel {
         data: { output_map: en.output_map ?? {} },
         position: ui.position,
         ports: null,
-        parentId: null,
+
         color: ui.color,
         icon: ui.icon,
         input_map: {},
@@ -352,21 +397,21 @@ function buildEndNode(en: EndNode, idx: number): EndNodeModel {
     };
 }
 
-function buildNoteNode(nn: NoteNode, idx: number): NoteNodeModel {
+function buildGraphNote(nn: GraphNote, idx: number): GraphNoteModel {
     const ui = readUIMetadata(nn.metadata, NodeType.NOTE, idx);
     return {
         id: uuidv4(),
         backendId: nn.id,
         category: 'web',
         type: NodeType.NOTE,
-        node_name: nn.node_name,
+        node_name: nn.node_name ?? `Note (#${idx + 1})`,
         data: {
             content: nn.content,
-            backgroundColor: nn.metadata?.['backgroundColor'] ?? undefined,
+            backgroundColor: nn.metadata?.['backgroundColor'] as string | undefined,
         },
         position: ui.position,
         ports: null,
-        parentId: null,
+
         color: ui.color,
         icon: ui.icon,
         input_map: {},
@@ -389,11 +434,11 @@ function buildDecisionTableNode(dn: GetDecisionTableNodeRequest, idx: number): D
                 // These will be post-processed to resolve backend IDs → UUIDs
                 default_next_node: null,
                 next_error_node: null,
-                condition_groups: dn.condition_groups.map(g => ({
+                condition_groups: dn.condition_groups.map((g) => ({
                     group_name: g.group_name,
                     group_type: g.group_type as 'simple' | 'complex',
                     expression: g.expression,
-                    conditions: g.conditions.map(c => ({
+                    conditions: g.conditions.map((c) => ({
                         condition_name: c.condition_name,
                         condition: c.condition,
                     })),
@@ -406,10 +451,10 @@ function buildDecisionTableNode(dn: GetDecisionTableNodeRequest, idx: number): D
         },
         position: ui.position,
         ports: null,
-        parentId: null,
+
         color: ui.color,
         icon: ui.icon,
-        input_map: {} as Record<string, any>,
+        input_map: {} as Record<string, unknown>,
         output_variable_path: null,
         size: ui.size,
     };
@@ -437,7 +482,7 @@ function buildConditionalEdgeNode(ce: ConditionalEdge, idx: number): EdgeNodeMod
         },
         position: ui.position,
         ports: null,
-        parentId: null,
+
         color: ui.color,
         icon: ui.icon,
         input_map: ce.input_map ?? {},
@@ -452,36 +497,65 @@ function buildConditionalEdgeNode(ce: ConditionalEdge, idx: number): EdgeNodeMod
 
 function getOutputPortRole(nodeType: NodeType): string {
     switch (nodeType) {
-        case NodeType.START: return 'start-start';
-        case NodeType.PROJECT: return 'project-out';
-        case NodeType.PYTHON: return 'python-out';
-        case NodeType.LLM: return 'llm-out-right';
-        case NodeType.EDGE: return 'edge-out';
-        case NodeType.TABLE: return 'decision-default';
-        case NodeType.FILE_EXTRACTOR: return 'file-extractor-out';
-        case NodeType.AUDIO_TO_TEXT: return 'audio-to-text-out';
-        case NodeType.SUBGRAPH: return 'subgraph-out';
-        case NodeType.WEBHOOK_TRIGGER: return 'webhook-trigger-out';
-        case NodeType.TELEGRAM_TRIGGER: return 'telegram-trigger-out';
-        case NodeType.END: return 'end-out';
-        default: return 'output';
+        case NodeType.START:
+            return 'start-start';
+        case NodeType.PROJECT:
+            return 'project-out';
+        case NodeType.PYTHON:
+            return 'python-out';
+        case NodeType.LLM:
+            return 'llm-out-right';
+        case NodeType.EDGE:
+            return 'edge-out';
+        case NodeType.TABLE:
+            return 'decision-default';
+        case NodeType.FILE_EXTRACTOR:
+            return 'file-extractor-out';
+        case NodeType.AUDIO_TO_TEXT:
+            return 'audio-to-text-out';
+        case NodeType.SUBGRAPH:
+            return 'subgraph-out';
+        case NodeType.WEBHOOK_TRIGGER:
+            return 'webhook-trigger-out';
+        case NodeType.TELEGRAM_TRIGGER:
+            return 'telegram-trigger-out';
+        case NodeType.END:
+            return 'end-out';
+        case NodeType.CODE_AGENT:
+            return 'code-agent-out';
+        default:
+            return 'output';
     }
 }
 
 function getInputPortRole(nodeType: NodeType): string {
     switch (nodeType) {
-        case NodeType.PROJECT: return 'project-in';
-        case NodeType.PYTHON: return 'python-in';
-        case NodeType.LLM: return 'llm-out-left';
-        case NodeType.EDGE: return 'edge-in';
-        case NodeType.TABLE: return 'table-in';
-        case NodeType.FILE_EXTRACTOR: return 'file-extractor-in';
-        case NodeType.AUDIO_TO_TEXT: return 'audio-to-text-in';
-        case NodeType.SUBGRAPH: return 'subgraph-in';
-        case NodeType.WEBHOOK_TRIGGER: return 'webhook-trigger-in';
-        case NodeType.TELEGRAM_TRIGGER: return 'telegram-trigger-in';
-        case NodeType.END: return 'end-in';
-        default: return 'input';
+        case NodeType.PROJECT:
+            return 'project-in';
+        case NodeType.PYTHON:
+            return 'python-in';
+        case NodeType.LLM:
+            return 'llm-out-left';
+        case NodeType.EDGE:
+            return 'edge-in';
+        case NodeType.TABLE:
+            return 'table-in';
+        case NodeType.FILE_EXTRACTOR:
+            return 'file-extractor-in';
+        case NodeType.AUDIO_TO_TEXT:
+            return 'audio-to-text-in';
+        case NodeType.SUBGRAPH:
+            return 'subgraph-in';
+        case NodeType.WEBHOOK_TRIGGER:
+            return 'webhook-trigger-in';
+        case NodeType.TELEGRAM_TRIGGER:
+            return 'telegram-trigger-in';
+        case NodeType.END:
+            return 'end-in';
+        case NodeType.CODE_AGENT:
+            return 'code-agent-in';
+        default:
+            return 'input';
     }
 }
 
@@ -512,12 +586,14 @@ function buildEdgeConnections(
         const sourcePortRole = getOutputPortRole(sourceNode.type);
         const targetPortRole = getInputPortRole(targetNode.type);
 
-        connections.push(makeConnection(
-            sourceUuid,
-            targetUuid,
-            `${sourceUuid}_${sourcePortRole}` as CustomPortId,
-            `${targetUuid}_${targetPortRole}` as CustomPortId,
-        ));
+        connections.push(
+            makeConnection(
+                sourceUuid,
+                targetUuid,
+                `${sourceUuid}_${sourcePortRole}` as CustomPortId,
+                `${targetUuid}_${targetPortRole}` as CustomPortId
+            )
+        );
     }
     return connections;
 }
@@ -552,34 +628,37 @@ function buildConditionalEdgeConnections(
                 } else {
                     sourcePortId = `${sourceUuid}_${getOutputPortRole(sourceNode.type)}` as CustomPortId;
                 }
-                connections.push(makeConnection(
-                    sourceUuid,
-                    edgeNode.id,
-                    sourcePortId,
-                    `${edgeNode.id}_edge-in` as CustomPortId,
-                ));
+                connections.push(
+                    makeConnection(sourceUuid, edgeNode.id, sourcePortId, `${edgeNode.id}_edge-in` as CustomPortId)
+                );
             }
         } else if (ce.source_node_id != null) {
-            console.warn(`[CE-connections] CE backendId=${ce.id}: source_node_id=${ce.source_node_id} not found in backendIdToUuid`);
+            console.warn(
+                `[CE-connections] CE backendId=${ce.id}: source_node_id=${ce.source_node_id} not found in backendIdToUuid`
+            );
         }
 
         // edgeNode → target (using then_node_id from metadata)
-        const thenNodeId = (ce.metadata as any)?.['then_node_id'];
+        const thenNodeId = (ce.metadata as { then_node_id?: number | null } | undefined)?.then_node_id ?? null;
         if (thenNodeId != null) {
             const targetUuid = backendIdToUuid.get(thenNodeId);
             if (targetUuid) {
                 const targetNode = nodeByBackendId.get(thenNodeId);
                 if (targetNode) {
                     const targetPortRole = getInputPortRole(targetNode.type);
-                    connections.push(makeConnection(
-                        edgeNode.id,
-                        targetUuid,
-                        `${edgeNode.id}_edge-out` as CustomPortId,
-                        `${targetUuid}_${targetPortRole}` as CustomPortId,
-                    ));
+                    connections.push(
+                        makeConnection(
+                            edgeNode.id,
+                            targetUuid,
+                            `${edgeNode.id}_edge-out` as CustomPortId,
+                            `${targetUuid}_${targetPortRole}` as CustomPortId
+                        )
+                    );
                 }
             } else {
-                console.warn(`[CE-connections] CE backendId=${ce.id}: then_node_id=${thenNodeId} not found in backendIdToUuid`);
+                console.warn(
+                    `[CE-connections] CE backendId=${ce.id}: then_node_id=${thenNodeId} not found in backendIdToUuid`
+                );
             }
         }
     }
@@ -597,7 +676,7 @@ function resolveDTPortForTarget(dtNode: DecisionTableNodeModel, targetUuid: stri
     if (table.default_next_node === targetUuid) return 'decision-default';
     if (table.next_error_node === targetUuid) return 'decision-error';
 
-    for (const group of (table.condition_groups ?? [])) {
+    for (const group of table.condition_groups ?? []) {
         if (group.next_node === targetUuid) {
             const normalized = group.group_name.toLowerCase().replace(/\s+/g, '-');
             return `decision-out-${normalized}`;
@@ -628,7 +707,9 @@ function buildDecisionTableConnections(
             continue;
         }
 
-        console.log(`[DT-connections] DT "${backendDt.node_name}" (backendId=${backendDt.id}): default_next_node_id=${backendDt.default_next_node_id}, next_error_node_id=${backendDt.next_error_node_id}, groups=${backendDt.condition_groups?.length ?? 0}`);
+        console.log(
+            `[DT-connections] DT "${backendDt.node_name}" (backendId=${backendDt.id}): default_next_node_id=${backendDt.default_next_node_id}, next_error_node_id=${backendDt.next_error_node_id}, groups=${backendDt.condition_groups?.length ?? 0}`
+        );
 
         for (const group of backendDt.condition_groups) {
             if (group.next_node_id != null) {
@@ -637,19 +718,25 @@ function buildDecisionTableConnections(
                     const targetNode = nodeByBackendId.get(group.next_node_id);
                     if (targetNode) {
                         if (targetNode.type === NodeType.EDGE) {
-                            console.log(`[DT-connections] Group "${group.group_name}" → EDGE node skipped (handled by CE connections)`);
+                            console.log(
+                                `[DT-connections] Group "${group.group_name}" → EDGE node skipped (handled by CE connections)`
+                            );
                         } else {
                             const normalizedGroupName = group.group_name.toLowerCase().replace(/\s+/g, '-');
-                            connections.push(makeConnection(
-                                dtNode.id,
-                                targetUuid,
-                                `${dtNode.id}_decision-out-${normalizedGroupName}` as CustomPortId,
-                                `${targetUuid}_${getInputPortRole(targetNode.type)}` as CustomPortId,
-                            ));
+                            connections.push(
+                                makeConnection(
+                                    dtNode.id,
+                                    targetUuid,
+                                    `${dtNode.id}_decision-out-${normalizedGroupName}` as CustomPortId,
+                                    `${targetUuid}_${getInputPortRole(targetNode.type)}` as CustomPortId
+                                )
+                            );
                         }
                     }
                 } else {
-                    console.warn(`[DT-connections] Group "${group.group_name}": next_node_id=${group.next_node_id} not found in backendIdToUuid`);
+                    console.warn(
+                        `[DT-connections] Group "${group.group_name}": next_node_id=${group.next_node_id} not found in backendIdToUuid`
+                    );
                 }
             }
         }
@@ -663,17 +750,23 @@ function buildDecisionTableConnections(
                     if (targetNode.type === NodeType.EDGE) {
                         console.log(`[DT-connections] Default → EDGE node skipped (handled by CE connections)`);
                     } else {
-                        console.log(`[DT-connections] Default → ${targetNode.node_name} (type=${targetNode.type}, backendId=${targetNode.backendId})`);
-                        connections.push(makeConnection(
-                            dtNode.id,
-                            targetUuid,
-                            `${dtNode.id}_decision-default` as CustomPortId,
-                            `${targetUuid}_${getInputPortRole(targetNode.type)}` as CustomPortId,
-                        ));
+                        console.log(
+                            `[DT-connections] Default → ${targetNode.node_name} (type=${targetNode.type}, backendId=${targetNode.backendId})`
+                        );
+                        connections.push(
+                            makeConnection(
+                                dtNode.id,
+                                targetUuid,
+                                `${dtNode.id}_decision-default` as CustomPortId,
+                                `${targetUuid}_${getInputPortRole(targetNode.type)}` as CustomPortId
+                            )
+                        );
                     }
                 }
             } else {
-                console.warn(`[DT-connections] default_next_node_id=${backendDt.default_next_node_id} not found in backendIdToUuid (map size=${backendIdToUuid.size})`);
+                console.warn(
+                    `[DT-connections] default_next_node_id=${backendDt.default_next_node_id} not found in backendIdToUuid (map size=${backendIdToUuid.size})`
+                );
             }
         }
 
@@ -685,16 +778,20 @@ function buildDecisionTableConnections(
                     if (targetNode.type === NodeType.EDGE) {
                         console.log(`[DT-connections] Error → EDGE node skipped (handled by CE connections)`);
                     } else {
-                        connections.push(makeConnection(
-                            dtNode.id,
-                            targetUuid,
-                            `${dtNode.id}_decision-error` as CustomPortId,
-                            `${targetUuid}_${getInputPortRole(targetNode.type)}` as CustomPortId,
-                        ));
+                        connections.push(
+                            makeConnection(
+                                dtNode.id,
+                                targetUuid,
+                                `${dtNode.id}_decision-error` as CustomPortId,
+                                `${targetUuid}_${getInputPortRole(targetNode.type)}` as CustomPortId
+                            )
+                        );
                     }
                 }
             } else {
-                console.warn(`[DT-connections] next_error_node_id=${backendDt.next_error_node_id} not found in backendIdToUuid`);
+                console.warn(
+                    `[DT-connections] next_error_node_id=${backendDt.next_error_node_id} not found in backendIdToUuid`
+                );
             }
         }
     }
@@ -714,25 +811,24 @@ function resolveDecisionTableNodeRefs(
 ): void {
     for (let i = 0; i < decisionTableNodes.length; i++) {
         const dtNode = decisionTableNodes[i];
-        const backendDt = backendDecisionTables.find(d => d.id === dtNode.backendId);
+        const backendDt = backendDecisionTables.find((d) => d.id === dtNode.backendId);
         if (!backendDt) continue;
 
         const table = dtNode.data.table;
 
-        table.default_next_node = backendDt.default_next_node_id != null
-            ? (backendIdToUuid.get(backendDt.default_next_node_id) ?? null)
-            : null;
-        table.next_error_node = backendDt.next_error_node_id != null
-            ? (backendIdToUuid.get(backendDt.next_error_node_id) ?? null)
-            : null;
+        table.default_next_node =
+            backendDt.default_next_node_id != null
+                ? (backendIdToUuid.get(backendDt.default_next_node_id) ?? null)
+                : null;
+        table.next_error_node =
+            backendDt.next_error_node_id != null ? (backendIdToUuid.get(backendDt.next_error_node_id) ?? null) : null;
 
         for (let j = 0; j < table.condition_groups.length; j++) {
             const group = table.condition_groups[j];
             const backendGroup = backendDt.condition_groups[j];
             if (backendGroup) {
-                group.next_node = backendGroup.next_node_id != null
-                    ? (backendIdToUuid.get(backendGroup.next_node_id) ?? null)
-                    : null;
+                group.next_node =
+                    backendGroup.next_node_id != null ? (backendIdToUuid.get(backendGroup.next_node_id) ?? null) : null;
             }
         }
     }
@@ -755,7 +851,7 @@ function resolveConditionalEdgeNodeRefs(
         const sourceNode = nodeByBackendId.get(ce.source_node_id);
         edgeNode.data.source = sourceNode?.node_name ?? null;
 
-        const thenNodeId = (ce.metadata as any)?.['then_node_id'];
+        const thenNodeId = (ce.metadata as { then_node_id?: number | null } | undefined)?.then_node_id ?? null;
         if (thenNodeId != null) {
             const targetNode = nodeByBackendId.get(thenNodeId);
             edgeNode.data.then = targetNode?.node_name ?? null;
@@ -771,19 +867,22 @@ export function buildFlowModelFromGraph(graph: GraphDto): FlowModel {
     let idx = 0;
 
     // ── 1. Build all nodes from backend lists ────────────────────────────
-    const startNodes = (graph.start_node_list ?? []).map(sn => buildStartNode(sn, idx++));
-    const crewNodes = (graph.crew_node_list ?? []).map(cn => buildCrewNode(cn, idx++));
-    const pythonNodes = (graph.python_node_list ?? []).map(pn => buildPythonNode(pn, idx++));
-    const llmNodes = (graph.llm_node_list ?? []).map(ln => buildLLMNode(ln, idx++));
-    const fileExtractorNodes = (graph.file_extractor_node_list ?? []).map(n => buildFileExtractorNode(n, idx++));
-    const audioToTextNodes = (graph.audio_transcription_node_list ?? []).map(n => buildAudioToTextNode(n, idx++));
-    const subGraphNodes = (graph.subgraph_node_list ?? []).map(sn => buildSubGraphNode(sn, idx++));
-    const noteNodes = (graph.note_node_list ?? []).map(nn => buildNoteNode(nn, idx++));
-    const webhookTriggerNodes = (graph.webhook_trigger_node_list ?? []).map(wn => buildWebhookTriggerNode(wn, idx++));
-    const telegramTriggerNodes = (graph.telegram_trigger_node_list ?? []).map(tn => buildTelegramTriggerNode(tn, idx++));
-    const endNodes = (graph.end_node_list ?? []).map(en => buildEndNode(en, idx++));
-    const decisionTableNodes = (graph.decision_table_node_list ?? []).map(dn => buildDecisionTableNode(dn, idx++));
-    const conditionalEdgeNodes = (graph.conditional_edge_list ?? []).map(ce => buildConditionalEdgeNode(ce, idx++));
+    const startNodes = (graph.start_node_list ?? []).map((sn) => buildStartNode(sn, idx++));
+    const crewNodes = (graph.crew_node_list ?? []).map((cn) => buildCrewNode(cn, idx++));
+    const pythonNodes = (graph.python_node_list ?? []).map((pn) => buildPythonNode(pn, idx++));
+    const llmNodes = (graph.llm_node_list ?? []).map((ln) => buildLLMNode(ln, idx++));
+    const fileExtractorNodes = (graph.file_extractor_node_list ?? []).map((n) => buildFileExtractorNode(n, idx++));
+    const audioToTextNodes = (graph.audio_transcription_node_list ?? []).map((n) => buildAudioToTextNode(n, idx++));
+    const subGraphNodes = (graph.subgraph_node_list ?? []).map((sn) => buildSubGraphNode(sn, idx++));
+    const noteNodes = (graph.graph_note_list ?? []).map((nn) => buildGraphNote(nn, idx++));
+    const webhookTriggerNodes = (graph.webhook_trigger_node_list ?? []).map((wn) => buildWebhookTriggerNode(wn, idx++));
+    const telegramTriggerNodes = (graph.telegram_trigger_node_list ?? []).map((tn) =>
+        buildTelegramTriggerNode(tn, idx++)
+    );
+    const endNodes = (graph.end_node_list ?? []).map((en) => buildEndNode(en, idx++));
+    const codeAgentNodes = (graph.code_agent_node_list ?? []).map((ca) => buildCodeAgentNode(ca, idx++));
+    const decisionTableNodes = (graph.decision_table_node_list ?? []).map((dn) => buildDecisionTableNode(dn, idx++));
+    const conditionalEdgeNodes = (graph.conditional_edge_list ?? []).map((ce) => buildConditionalEdgeNode(ce, idx++));
 
     // ── 2. Combine all nodes ─────────────────────────────────────────────
     const allNodes: NodeModel[] = [
@@ -798,6 +897,7 @@ export function buildFlowModelFromGraph(graph: GraphDto): FlowModel {
         ...webhookTriggerNodes,
         ...telegramTriggerNodes,
         ...endNodes,
+        ...codeAgentNodes,
         ...decisionTableNodes,
         ...conditionalEdgeNodes,
     ];
@@ -811,8 +911,8 @@ export function buildFlowModelFromGraph(graph: GraphDto): FlowModel {
                 const existing = nodeByBackendId.get(n.backendId);
                 console.warn(
                     `[load-graph] backendId collision: id=${n.backendId} claimed by "${n.node_name}" (type=${n.type}) ` +
-                    `but already used by "${existing?.node_name}" (type=${existing?.type}). ` +
-                    `ConditionalEdge IDs are in a separate namespace from global node IDs — this may cause connection issues.`
+                        `but already used by "${existing?.node_name}" (type=${existing?.type}). ` +
+                        `ConditionalEdge IDs are in a separate namespace from global node IDs — this may cause connection issues.`
                 );
             }
             backendIdToUuid.set(n.backendId, n.id);
@@ -822,11 +922,7 @@ export function buildFlowModelFromGraph(graph: GraphDto): FlowModel {
     console.log(`[load-graph] backendIdToUuid map: ${backendIdToUuid.size} entries from ${allNodes.length} nodes`);
 
     // ── 4. Post-process: resolve backend ID refs → UUIDs in decision tables
-    resolveDecisionTableNodeRefs(
-        decisionTableNodes,
-        graph.decision_table_node_list ?? [],
-        backendIdToUuid
-    );
+    resolveDecisionTableNodeRefs(decisionTableNodes, graph.decision_table_node_list ?? [], backendIdToUuid);
 
     // ── 5. Post-process: resolve conditional edge source/then names ──────
     resolveConditionalEdgeNodeRefs(
@@ -837,11 +933,7 @@ export function buildFlowModelFromGraph(graph: GraphDto): FlowModel {
     );
 
     // ── 6. Build connections from backend edge data ──────────────────────
-    const edgeConnections = buildEdgeConnections(
-        graph.edge_list ?? [],
-        backendIdToUuid,
-        nodeByBackendId
-    );
+    const edgeConnections = buildEdgeConnections(graph.edge_list ?? [], backendIdToUuid, nodeByBackendId);
 
     const conditionalEdgeConnections = buildConditionalEdgeConnections(
         graph.conditional_edge_list ?? [],
@@ -865,11 +957,13 @@ export function buildFlowModelFromGraph(graph: GraphDto): FlowModel {
         ...decisionTableConnections,
     ];
 
-    const badConns = allConnections.filter(c => c.sourcePortId.includes('table-out'));
+    const badConns = allConnections.filter((c) => c.sourcePortId.includes('table-out'));
     if (badConns.length) {
         console.error('[load-graph] BUG: connections with table-out port still exist!', badConns);
     }
-    console.log(`[load-graph] Built ${allConnections.length} connections: edges=${edgeConnections.length}, CE=${conditionalEdgeConnections.length}, DT=${decisionTableConnections.length}`);
+    console.log(
+        `[load-graph] Built ${allConnections.length} connections: edges=${edgeConnections.length}, CE=${conditionalEdgeConnections.length}, DT=${decisionTableConnections.length}`
+    );
 
     return {
         nodes: allNodes,

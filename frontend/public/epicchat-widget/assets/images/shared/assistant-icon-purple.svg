@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <!-- Main gradient with purple colors -->
+    <radialGradient id="sphereGradient" cx="40%" cy="30%">
+      <stop offset="0%" stop-color="#9d4edd" stop-opacity="1"/>
+      <stop offset="25%" stop-color="#7b2cbf" stop-opacity="1"/>
+      <stop offset="50%" stop-color="#5a189a" stop-opacity="1"/>
+      <stop offset="75%" stop-color="#3c096c" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#240046" stop-opacity="0.8"/>
+    </radialGradient>
+
+    <!-- Secondary purple-violet gradient -->
+    <radialGradient id="accentGradient" cx="60%" cy="70%">
+      <stop offset="0%" stop-color="#c77dff" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#9d4edd" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#7b2cbf" stop-opacity="0.5"/>
+    </radialGradient>
+
+    <!-- Highlight gradient -->
+    <radialGradient id="highlightGradient" cx="35%" cy="25%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.8"/>
+      <stop offset="30%" stop-color="#ffffff" stop-opacity="0.4"/>
+      <stop offset="60%" stop-color="#e0aaff" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="transparent" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Shadow gradient -->
+    <radialGradient id="shadowGradient" cx="50%" cy="50%">
+      <stop offset="0%" stop-color="transparent" stop-opacity="0"/>
+      <stop offset="70%" stop-color="#000000" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.6"/>
+    </radialGradient>
+
+    <!-- Filter for glow effect -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background circle (shadow) -->
+  <circle cx="100" cy="100" r="95" fill="url(#shadowGradient)"/>
+
+  <!-- Main sphere with purple gradient -->
+  <circle cx="100" cy="100" r="90" fill="url(#sphereGradient)" filter="url(#glow)"/>
+
+  <!-- Accent layer with purple-violet -->
+  <ellipse cx="100" cy="100" rx="85" ry="85" fill="url(#accentGradient)" opacity="0.6"/>
+
+  <!-- Highlight for 3D effect -->
+  <ellipse cx="85" cy="75" rx="40" ry="35" fill="url(#highlightGradient)"/>
+
+  <!-- Additional bright highlight -->
+  <ellipse cx="80" cy="70" rx="25" ry="20" fill="#ffffff" opacity="0.5"/>
+
+  <!-- Subtle inner glow -->
+  <circle cx="100" cy="100" r="70" fill="none" stroke="#c77dff" stroke-width="2" opacity="0.3"/>
+</svg>
+

@@ -1,73 +1,81 @@
 .menu-container {
-  position: relative;
-  z-index: 1;
-  margin-left: 1rem;
+    position: relative;
+    z-index: 1;
+    margin-left: 1rem;
 
-  &.menu-active {
-    z-index: 2;
-  }
+    &.menu-active {
+        z-index: 2;
+    }
 }
 
 .menu-button {
-  position: relative;
+    position: relative;
 
-  z-index: 1;
-  background: transparent;
-  border: none;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  transition: all 0.2s ease;
-  margin-bottom: 2px;
-  &:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-    color: var(--color-text-primary);
-  }
-
-  &.active {
-    background-color: rgba(255, 255, 255, 0.1);
-  }
-
-  &::before {
-    content: "";
-    position: absolute;
-    top: -10px;
-    left: -10px;
-    right: -10px;
-    bottom: -10px;
+    z-index: 1;
     background: transparent;
-    border-radius: 8px;
-    z-index: 0;
-  }
+    border: none;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    margin-bottom: 2px;
+    &:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+        color: var(--color-text-primary);
+    }
+
+    &.active {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    &::before {
+        content: '';
+        position: absolute;
+        top: -10px;
+        left: -10px;
+        right: -10px;
+        bottom: -10px;
+        background: transparent;
+        border-radius: 8px;
+        z-index: 0;
+    }
 }
 
 .context-menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  min-width: 180px;
-  background: var(--color-sidenav-background);
-  border-radius: 8px;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
-  z-index: 1000;
-  padding: 6px;
-  opacity: 0;
-  animation: fadeIn 0.15s ease forwards;
-  transform-origin: top right;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 180px;
+    background: var(--color-sidenav-background);
+    border-radius: 8px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    padding: 6px;
+    opacity: 0;
+    animation: fadeIn 0.15s ease forwards;
+    transform-origin: top right;
+    border: 1px solid var(--color-flow-card-bg);
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.context-menu {
+    ::ng-deep app-flow-menu-item:first-child .menu-item {
+        border-bottom: 1px solid var(--color-flow-card-bg);
+        margin-bottom: 2px;
+    }
 }

@@ -11,7 +11,8 @@ else
   cat <<EOF > $CONFIG_PATH
 {
   "apiUrl": "${API_URL:-http://127.0.0.1/api/}",
-  "realtimeApiUrl": "${REALTIME_API_URL:-http://127.0.0.1/realtime/}"
+  "realtimeApiUrl": "${REALTIME_API_URL:-http://127.0.0.1/realtime/}",
+  "isEpicChatEnabled": ${EPIC_CHAT_ENABLED:-true}
 }
 EOF
   echo "Config generated:"

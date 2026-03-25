@@ -151,3 +151,12 @@
         }
     }
 }
+
+.epic-chat-host {
+    display: contents;
+}
+
+:host ::ng-deep .epic-chat-host .ep-chat-toggle-button,
+:host ::ng-deep .epic-chat-host .ep-chat-click-area {
+    display: none;
+}

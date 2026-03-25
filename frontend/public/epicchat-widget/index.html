@@ -1,0 +1,1203 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"/>
+    <title>Build Your Plan - ConnectPlus</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%237B2CBF' rx='8'/%3E%3Cpath d='M35 30 Q50 50, 50 70 Q50 50, 65 30 M50 30 L50 75' stroke='white' stroke-width='8' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"/>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background: #ffffff;
+        color: #333333;
+        line-height: 1.5;
+      }
+
+      .top-bar {
+        background: #2c2c2c;
+        color: #ffffff;
+        padding: 8px 0;
+        font-size: 12px;
+      }
+
+      .top-bar .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 20px;
+        display: flex;
+        justify-content: center;
+        gap: 24px;
+        flex-wrap: wrap;
+      }
+
+      .top-bar__item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .top-bar__item::before {
+        content: "✓";
+        color: #4caf50;
+        font-weight: bold;
+      }
+
+      .header {
+        background: #ffffff;
+        padding: 16px 0;
+        border-bottom: 1px solid #e0e0e0;
+      }
+
+      .header .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .header__logo {
+        font-size: 22px;
+        font-weight: 800;
+        text-decoration: none;
+        letter-spacing: -0.5px;
+      }
+
+      .header__logo span:first-child {
+        color: #7b2cbf;
+      }
+
+      .header__logo span:last-child {
+        color: #240046;
+      }
+
+      .header__nav {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+      }
+
+      .header__nav a {
+        color: #333333;
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      .header__nav a:hover {
+        color: #7b2cbf;
+      }
+
+      .header__login {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: #f5f5f5;
+        padding: 8px 16px;
+        border-radius: 4px;
+        text-decoration: none;
+        color: #333333;
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      .header__login:hover {
+        background: #e9e9e9;
+      }
+
+      .promo-banner {
+        background: #7b2cbf;
+        color: #ffffff;
+        padding: 50px 0;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .promo-banner .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 20px;
+        display: grid;
+        grid-template-columns: 1fr 320px;
+        gap: 60px;
+        align-items: center;
+      }
+
+      .promo-banner__content h1 {
+        font-size: 72px;
+        font-style: italic;
+        font-weight: 900;
+        margin-bottom: 8px;
+        letter-spacing: -1px;
+        line-height: 1.1;
+      }
+
+      .promo-banner__content h2 {
+        font-size: 60px;
+        font-style: italic;
+        font-weight: 800;
+        margin-bottom: 24px;
+        letter-spacing: -0.8px;
+        line-height: 1.1;
+      }
+
+      .promo-banner__benefits {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .promo-banner__benefits li {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 17px;
+        font-weight: 500;
+      }
+
+      .promo-banner__benefits li::before {
+        content: "✓";
+        font-size: 22px;
+        font-weight: bold;
+      }
+
+      .promo-banner__note {
+        font-size: 13px;
+        margin-top: 16px;
+        opacity: 0.95;
+        font-weight: 400;
+      }
+
+      .promo-banner__card {
+        background: #ffffff;
+        color: #333333;
+        padding: 28px;
+        border-radius: 12px;
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .promo-banner__card::before {
+        content: "";
+        position: absolute;
+        bottom: -30px;
+        right: -30px;
+        width: 140px;
+        height: 100px;
+        background: linear-gradient(135deg, #ffeb3b 0%, #ffc107 50%, #ff9800 100%);
+        border-radius: 16px;
+        opacity: 0.4;
+        transform: rotate(-15deg);
+      }
+
+      .promo-banner__price {
+        font-size: 38px;
+        font-weight: 800;
+        color: #7b2cbf;
+        margin-bottom: 12px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .promo-banner__price-old {
+        font-size: 20px;
+        color: #999999;
+        text-decoration: line-through;
+        margin-left: 12px;
+        font-weight: 500;
+      }
+
+      .promo-banner__data {
+        font-size: 24px;
+        font-weight: 700;
+        margin: 16px 0;
+        color: #333333;
+        position: relative;
+        z-index: 1;
+      }
+
+      .promo-banner__minutes {
+        font-size: 17px;
+        color: #666666;
+        margin-bottom: 16px;
+        font-weight: 500;
+        position: relative;
+        z-index: 1;
+      }
+
+      .main-content {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 40px 20px;
+        display: grid;
+        grid-template-columns: 1fr 380px;
+        gap: 32px;
+      }
+
+      .subscription-form {
+        background: #ffffff;
+      }
+
+      .subscription-form__title {
+        font-size: 48px;
+        font-weight: 800;
+        font-style: italic;
+        margin-bottom: 32px;
+        color: #333333;
+        letter-spacing: -0.5px;
+      }
+
+      .form-section {
+        margin-bottom: 40px;
+      }
+
+      .form-section__header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+
+      .form-section__title {
+        font-size: 32px;
+        font-style: italic;
+        font-weight: 700;
+        color: #333333;
+        letter-spacing: -0.2px;
+      }
+
+      .form-section__link {
+        color: #7b2cbf;
+        text-decoration: none;
+        font-size: 14px;
+      }
+
+      .form-section__link:hover {
+        text-decoration: underline;
+      }
+
+      .form-section__info {
+        background: #f8f9fa;
+        padding: 12px 16px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+        font-size: 14px;
+        color: #666666;
+      }
+
+      .radio-group {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .radio-option {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .radio-option:hover {
+        border-color: #7b2cbf;
+        background: #f5f0ff;
+      }
+
+      .radio-option:focus-within {
+        border-color: #7b2cbf;
+        border-width: 2px;
+        background: #f5f0ff;
+      }
+
+      .radio-option input[type="radio"] {
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+      }
+
+      .radio-option input[type="radio"]:focus {
+        outline: none;
+      }
+
+      .radio-option__label {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .radio-option__text {
+        font-size: 16px;
+        font-weight: 500;
+        color: #333333;
+      }
+
+      .radio-option__badge {
+        background: #7b2cbf;
+        color: #ffffff;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .radio-option__price {
+        font-size: 14px;
+        font-weight: 600;
+        color: #333333;
+      }
+
+      .form-section__note {
+        font-size: 13px;
+        color: #666666;
+        margin-top: 12px;
+      }
+
+      .extras-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+
+      .extra-option {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 16px;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .extra-option:hover {
+        border-color: #7b2cbf;
+        background: #f5f0ff;
+      }
+
+      .extra-option input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        margin-top: 2px;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+
+      .extra-option__content {
+        flex: 1;
+      }
+
+      .extra-option__header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 4px;
+      }
+
+      .extra-option__title {
+        font-size: 15px;
+        font-weight: 600;
+        color: #333333;
+      }
+
+      .extra-option__price {
+        font-size: 14px;
+        font-weight: 600;
+        color: #666666;
+      }
+
+      .extra-option__description {
+        font-size: 13px;
+        color: #666666;
+        line-height: 1.4;
+      }
+
+      .cloud-box {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 16px;
+        background: #7b2cbf;
+        color: #ffffff;
+        border-radius: 8px;
+      }
+
+      .cloud-box__icon {
+        font-size: 32px;
+        flex-shrink: 0;
+      }
+
+      .cloud-box__content {
+        flex: 1;
+      }
+
+      .cloud-box__title {
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+
+      .cloud-box__description {
+        font-size: 13px;
+        opacity: 0.9;
+      }
+
+      .cloud-box__price {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        flex-shrink: 0;
+      }
+
+      .cloud-box__price-old {
+        font-size: 13px;
+        text-decoration: line-through;
+        opacity: 0.8;
+      }
+
+      .cloud-box__price-free {
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .order-summary {
+        background: #f8f9fa;
+        border-radius: 8px;
+        overflow: hidden;
+        height: fit-content;
+        position: sticky;
+        top: 20px;
+      }
+
+      .order-summary__header {
+        background: #7b2cbf;
+        color: #ffffff;
+        padding: 16px 20px;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .order-summary__body {
+        padding: 20px;
+        background: #ffffff;
+      }
+
+      .summary-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 0;
+        border-bottom: 1px solid #e0e0e0;
+      }
+
+      .summary-row:last-child {
+        border-bottom: none;
+      }
+
+      .summary-row__label {
+        font-size: 14px;
+        color: #666666;
+      }
+
+      .summary-row__value {
+        font-size: 16px;
+        font-weight: 600;
+        color: #333333;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .summary-row__value--strikethrough {
+        text-decoration: line-through;
+        color: #999999;
+        font-weight: 400;
+      }
+
+      .summary-row__value--green {
+        color: #4caf50;
+        font-weight: 600;
+      }
+
+      .summary-row__dropdown {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+        opacity: 0.6;
+      }
+
+      .summary-total {
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 2px solid #333333;
+        display: flex;
+        justify-content: space-between;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .summary-total__label {
+        color: #333333;
+      }
+
+      .summary-total__value {
+        color: #333333;
+      }
+
+      .summary-benefits {
+        margin-top: 24px;
+        padding-top: 24px;
+        border-top: 1px solid #e0e0e0;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .summary-benefit {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        font-size: 13px;
+      }
+
+      .summary-benefit__icon {
+        color: #4caf50;
+        font-weight: bold;
+        flex-shrink: 0;
+      }
+
+      .summary-benefit__text {
+        color: #666666;
+        line-height: 1.4;
+      }
+
+      .order-button {
+        width: 100%;
+        background: #7b2cbf;
+        color: #ffffff;
+        border: none;
+        padding: 16px;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-top: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: background 0.2s;
+      }
+
+      .order-button:hover {
+        background: #5a1f99;
+      }
+
+      epic-chat {
+        position: fixed !important;
+        bottom: 30px !important;
+        right: 30px !important;
+        z-index: 1000;
+        width: 42px !important;
+        height: 42px !important;
+      }
+
+      /* User Selection Popup */
+      .user-popup-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+      }
+
+      .user-popup-overlay.active {
+        display: flex;
+      }
+
+      .user-popup {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 32px;
+        max-width: 600px;
+        width: 90%;
+        max-height: 80vh;
+        overflow-y: auto;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+      }
+
+      .user-popup__header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+      }
+
+      .user-popup__title {
+        font-size: 24px;
+        font-weight: 700;
+        color: #333333;
+      }
+
+      .user-popup__close {
+        background: transparent;
+        border: none;
+        font-size: 28px;
+        color: #999999;
+        cursor: pointer;
+        padding: 0;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+        transition: all 0.2s;
+      }
+
+      .user-popup__close:hover {
+        background: #f5f5f5;
+        color: #333333;
+      }
+
+      .user-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .user-item {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 16px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+        background: #ffffff;
+      }
+
+      .user-item:hover {
+        border-color: #7b2cbf;
+        background: #f5f0ff;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(123, 44, 191, 0.15);
+      }
+
+      .user-item--selected {
+        border-color: #7b2cbf;
+        background: #f5f0ff;
+        box-shadow: 0 2px 8px rgba(123, 44, 191, 0.2);
+      }
+
+      .user-item--selected::after {
+        content: "✓ Current";
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background: #7b2cbf;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+
+      .user-item {
+        position: relative;
+      }
+
+      .user-item__avatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #7b2cbf 0%, #9d4edd 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #ffffff;
+        font-size: 20px;
+        font-weight: 600;
+        flex-shrink: 0;
+      }
+
+      .user-item__info {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .user-item__name {
+        font-size: 16px;
+        font-weight: 600;
+        color: #333333;
+        margin-bottom: 4px;
+      }
+
+      .user-item__email {
+        font-size: 14px;
+        color: #666666;
+        margin-bottom: 4px;
+      }
+
+      .user-item__ids {
+        font-size: 12px;
+        color: #999999;
+      }
+
+      @media (max-width: 992px) {
+        .main-content {
+          grid-template-columns: 1fr;
+        }
+
+        .order-summary {
+          position: static;
+        }
+
+        .promo-banner .container {
+          grid-template-columns: 1fr;
+        }
+
+        .promo-banner__card {
+          max-width: 300px;
+          margin: 0 auto;
+        }
+
+        .user-popup {
+          padding: 24px;
+          width: 95%;
+        }
+
+        .user-item {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
+    </style>
+  <link rel="stylesheet" href="styles.css"></head>
+  <body>
+    <!-- unique-user-id="123" -->
+    <!-- file-attachment-disabled="true" -->
+    <!-- default-agent-flow-url="https://epicstaff-mm.hysdev.com/api" -->
+    <epic-chat is-mono-agent="true" default-agent-name="Epic Chat #66" default-agent-description="Assistant agent (example #66)" default-agent-flow-url="https://epicstaff-epicflow.hysdev.com/api" default-agent-flow-id="66" basic-auth-login="epic.api" basic-auth-password="Ternav39=PzJ" chat-position="bottom-left"></epic-chat>
+
+    <div class="top-bar">
+      <div class="container">
+        <div class="top-bar__item">Not sure? 30-day money back guarantee</div>
+        <div class="top-bar__item">Free SIM delivered in 1-2 business days</div>
+        <div class="top-bar__item">Manage your account online or via app</div>
+      </div>
+    </div>
+
+    <header class="header">
+      <div class="container">
+        <a href="#" class="header__logo"> <span>Connect</span> <span>Plus</span> </a>
+        <nav class="header__nav">
+          <a href="#">Plans</a>
+          <a href="#">Why Us</a>
+          <a href="#">Support</a>
+        </nav>
+        <a href="#" class="header__login">
+          <span>🔒</span>
+          <span>Sign In</span>
+        </a>
+      </div>
+    </header>
+
+    <div class="promo-banner">
+      <div class="container">
+        <div class="promo-banner__content">
+          <h1>Spring Sale</h1>
+          <h2>Extra data bonus!</h2>
+          <ul class="promo-banner__benefits">
+            <li>Get 3 months at 40% off</li>
+            <li>Free activation this week</li>
+            <li>Unlimited cloud storage included</li>
+          </ul>
+          <p class="promo-banner__note">*With 24-month contract</p>
+        </div>
+        <div class="promo-banner__card">
+          <div class="promo-banner__price">
+            $8.99/mo
+            <span class="promo-banner__price-old">$14.99</span>
+          </div>
+          <div class="promo-banner__data">25GB + 15GB</div>
+          <div class="promo-banner__minutes">Unlimited talk/text</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <div class="subscription-form">
+        <h1 class="subscription-form__title">Build Your Plan</h1>
+
+        <div class="form-section">
+          <div class="form-section__header">
+            <h2 class="form-section__title">Contract Length</h2>
+            <a href="#" class="form-section__link">Learn more</a>
+            <span>ℹ️</span>
+          </div>
+          <div class="form-section__info">
+            Already a ConnectPlus customer? Sign in to modify or renew your plan
+          </div>
+          <div class="radio-group">
+            <label class="radio-option">
+              <input type="radio" name="contract" value="1"/>
+              <div class="radio-option__label">
+                <span class="radio-option__text">12 months</span>
+              </div>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="contract" value="2" checked=""/>
+              <div class="radio-option__label">
+                <span class="radio-option__text">24 months</span>
+                <span class="radio-option__badge">3 months 40% off</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="form-section__header">
+            <h2 class="form-section__title">Data Package</h2>
+            <a href="#" class="form-section__link">About data packages</a>
+            <span>ℹ️</span>
+          </div>
+          <div class="radio-group">
+            <label class="radio-option">
+              <input type="radio" name="data" value="4"/>
+              <div class="radio-option__label">
+                <span class="radio-option__text">5 GB</span>
+                <span class="radio-option__price">$4.99</span>
+              </div>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="data" value="10"/>
+              <div class="radio-option__label">
+                <span class="radio-option__text">15GB</span>
+                <span class="radio-option__price">$6.99</span>
+              </div>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="data" value="15"/>
+              <div class="radio-option__label">
+                <span class="radio-option__text">25 GB</span>
+                <span class="radio-option__price">$7.99</span>
+              </div>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="data" value="20" checked=""/>
+              <div class="radio-option__label">
+                <span class="radio-option__text">25GB + 15GB Bonus</span>
+                <span class="radio-option__price">$8.99</span>
+              </div>
+            </label>
+          </div>
+          <p class="form-section__note">💵 Network speeds: 150 Mb/s download | 75 Mb/s upload</p>
+        </div>
+
+        <div class="form-section">
+          <div class="form-section__header">
+            <h2 class="form-section__title">ADD-ONS</h2>
+            <a href="#" class="form-section__link">About add-ons</a>
+            <span>ℹ️</span>
+          </div>
+          <div class="extras-list">
+            <label class="extra-option">
+              <input type="checkbox"/>
+              <div class="extra-option__content">
+                <div class="extra-option__header">
+                  <span class="extra-option__title">Data Rollover</span>
+                  <span class="extra-option__price">+ $0.99</span>
+                </div>
+                <p class="extra-option__description">
+                  Carry over unused data to next billing cycle
+                </p>
+              </div>
+            </label>
+            <label class="extra-option">
+              <input type="checkbox"/>
+              <div class="extra-option__content">
+                <div class="extra-option__header">
+                  <span class="extra-option__title">Premium Speed Boost</span>
+                  <span class="extra-option__price">+ $1.99</span>
+                </div>
+                <p class="extra-option__description">
+                  Experience faster speeds, download/upload up to 300Mb/s
+                </p>
+              </div>
+            </label>
+          </div>
+          <div class="cloud-box">
+            <div class="cloud-box__icon">☁️</div>
+            <div class="cloud-box__content">
+              <h3 class="cloud-box__title">Unlimited Cloud Storage</h3>
+              <p class="cloud-box__description">Free with your plan</p>
+            </div>
+            <div class="cloud-box__price">
+              <span class="cloud-box__price-old">$9.99</span>
+              <span class="cloud-box__price-free">Free</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="order-summary">
+        <div class="order-summary__header">Your Selected Plan</div>
+        <div class="order-summary__body">
+          <div class="summary-row">
+            <span class="summary-row__label">Monthly Plan</span>
+            <span class="summary-row__value">
+              $8.99
+              <svg class="summary-row__dropdown" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M8 11L3 6h10z"/>
+              </svg>
+            </span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-row__label">Unlimited cloud storage</span>
+            <span class="summary-row__value">
+              <span class="summary-row__value--strikethrough">$9.99</span>
+              <span class="summary-row__value--green">Free</span>
+            </span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-row__label">One-time Fees</span>
+            <span class="summary-row__value">
+              $0.00
+              <svg class="summary-row__dropdown" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M8 11L3 6h10z"/>
+              </svg>
+            </span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-row__label">First 3 months</span>
+            <span class="summary-row__value">$8.99</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-row__label">Then monthly</span>
+            <span class="summary-row__value">$14.99</span>
+          </div>
+
+          <div class="summary-benefits">
+            <div class="summary-benefit">
+              <span class="summary-benefit__icon">✓</span>
+              <span class="summary-benefit__text">30-day money back guarantee</span>
+            </div>
+            <div class="summary-benefit">
+              <span class="summary-benefit__icon">✓</span>
+              <span class="summary-benefit__text">Keep your number for free</span>
+            </div>
+            <div class="summary-benefit">
+              <span class="summary-benefit__icon">✓</span>
+              <span class="summary-benefit__text">We handle your switch</span>
+            </div>
+            <div class="summary-benefit">
+              <span class="summary-benefit__icon">✓</span>
+              <span class="summary-benefit__text">Unlimited cloud storage included</span>
+            </div>
+            <div class="summary-benefit">
+              <span class="summary-benefit__icon">✓</span>
+              <span class="summary-benefit__text">Secure payment options</span>
+            </div>
+          </div>
+
+          <button class="order-button">
+            <span>🛒</span>
+            <span>Order Now</span>
+          </button>
+        </div>
+      </aside>
+    </div>
+
+    <!-- User Selection Popup -->
+    <div class="user-popup-overlay" id="userPopup">
+      <div class="user-popup">
+        <div class="user-popup__header">
+          <h2 class="user-popup__title">Select User</h2>
+          <button class="user-popup__close" onclick="closeUserPopup()">&times;</button>
+        </div>
+        <div class="user-list" id="userList"></div>
+      </div>
+    </div>
+
+    <script>
+      // Hardcoded users data (matching table column names)
+      const users = [
+        {
+          customerId: "10870",
+          customerNumber: "3160001169",
+          msisdn: "31645477503",
+          fullName: "Aarav Desai",
+          email: "desai42024316@gmail.com",
+          address: "7423SB 6",
+          orderStatus: "Order was activated",
+          msisdnStatus: "Active",
+          wallet: "TRUE",
+          refund: "TRUE",
+        },
+        {
+          customerId: "10869",
+          customerNumber: "3160001168",
+          msisdn: "31645405548",
+          fullName: "Aditya Saxena",
+          email: "saxena67790883@gmail.com",
+          address: "7462EW 9",
+          orderStatus: "Order was activated",
+          msisdnStatus: "Active",
+          wallet: "TRUE",
+          refund: "FALSE",
+        },
+        {
+          customerId: "10868",
+          customerNumber: "3160001167",
+          msisdn: "31645490524",
+          fullName: "Aarohi Singh",
+          email: "singh56874790@gmail.com",
+          address: "7395SB 10",
+          orderStatus: "Order was activated",
+          msisdnStatus: "Active",
+          wallet: "TRUE",
+          refund: "TRUE",
+        },
+        {
+          customerId: "10867",
+          customerNumber: "3160001166",
+          msisdn: "31645441391",
+          fullName: "Kunal Sharma",
+          email: "sharma63198260@gmail.com",
+          address: "7462JT 31",
+          orderStatus: "Order was activated",
+          msisdnStatus: "Active",
+          wallet: "TRUE",
+          refund: "FALSE",
+        },
+        {
+          customerId: "10866",
+          customerNumber: "3160001165",
+          msisdn: "31645447504",
+          fullName: "Uday Sharma",
+          email: "sharma48922792@gmail.com",
+          address: "7491HD 4",
+          orderStatus: "Order was activated",
+          msisdnStatus: "Active",
+          wallet: "TRUE",
+          refund: "TRUE",
+        },
+      ];
+
+      // Get initials from name
+      function getInitials(name) {
+        return name
+          .split(" ")
+          .map((word) => word[0])
+          .join("")
+          .toUpperCase();
+      }
+
+      // Render user list
+      function renderUserList() {
+        const userList = document.getElementById("userList");
+        const currentUserId = window.currentUser ? window.currentUser.customerId : null;
+
+        userList.innerHTML = users
+          .map((user) => {
+            const isSelected = user.customerId === currentUserId;
+            const selectedClass = isSelected ? " user-item--selected" : "";
+            return `
+          <div class="user-item${selectedClass}" onclick="selectUser('${user.customerId}')">
+            <div class="user-item__avatar">${getInitials(user.fullName)}</div>
+            <div class="user-item__info">
+              <div class="user-item__name">${user.fullName}</div>
+              <div class="user-item__email">${user.email}</div>
+              <div class="user-item__ids">ID: ${user.customerId} | Account: ${user.customerNumber} | Phone: ${user.msisdn}</div>
+              <div class="user-item__ids">Address: ${user.address} | Status: ${user.msisdnStatus}</div>
+            </div>
+          </div>
+        `;
+          })
+          .join("");
+      }
+
+      // Open user popup
+      function openUserPopup() {
+        renderUserList();
+        document.getElementById("userPopup").classList.add("active");
+      }
+
+      // Close user popup
+      function closeUserPopup() {
+        document.getElementById("userPopup").classList.remove("active");
+      }
+
+      // Select user and set chat attributes
+      function selectUser(userId) {
+        const user = users.find((u) => u.customerId === userId);
+        if (user) {
+          const chatElement = document.querySelector("epic-chat");
+
+          // Store entire user object as JSON string in a single attribute
+          chatElement.setAttribute("user-data", JSON.stringify(user));
+
+          // Store user data in a global variable for console logging
+          window.currentUser = user;
+
+          console.log("User selected:", user);
+
+          // Update Sign In button to show user name and change icon
+          const loginButton = document.querySelector(".header__login");
+          const loginIcon = loginButton.querySelector("span:first-child");
+          const loginText = loginButton.querySelector("span:last-child");
+
+          if (loginIcon) {
+            loginIcon.textContent = "👤"; // Profile icon instead of lock
+          }
+          if (loginText) {
+            loginText.textContent = user.fullName;
+          }
+
+          closeUserPopup();
+        }
+      }
+
+      // Close popup when clicking outside
+      document.getElementById("userPopup").addEventListener("click", function (e) {
+        if (e.target === this) {
+          closeUserPopup();
+        }
+      });
+
+      // Attach click handler to Sign In button
+      document.addEventListener("DOMContentLoaded", function () {
+        const signInButton = document.querySelector(".header__login");
+        if (signInButton) {
+          signInButton.addEventListener("click", function (e) {
+            e.preventDefault();
+            openUserPopup();
+          });
+        }
+      });
+    </script>
+  <script src="polyfills.js" type="module"></script><script src="main.js" type="module"></script></body>
+</html>

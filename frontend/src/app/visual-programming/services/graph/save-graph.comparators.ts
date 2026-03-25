@@ -8,70 +8,59 @@
  */
 
 import { GetProjectRequest } from '../../../features/projects/models/project.model';
+import { GetAudioToTextNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/audio-to-text.model';
+import { GetCodeAgentNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/code-agent-node.model';
+import { ConditionalEdge } from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
+import { CrewNode } from '../../../pages/flows-page/components/flow-visual-programming/models/crew-node.model';
+import { GetDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/decision-table-node.model';
+import { EndNode } from '../../../pages/flows-page/components/flow-visual-programming/models/end-node.model';
+import { GetFileExtractorNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/file-extractor.model';
+import { GetLLMNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/llm-node.model';
+import { PythonNode } from '../../../pages/flows-page/components/flow-visual-programming/models/python-node.model';
+import { SubGraphNode } from '../../../pages/flows-page/components/flow-visual-programming/models/subgraph-node.model';
+import { GetTelegramTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
+import { GetWebhookTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/webhook-trigger';
 import {
-    CrewNode,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/crew-node.model';
-import {
-    PythonNode,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/python-node.model';
-import {
-    GetLLMNodeRequest,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/llm-node.model';
-import {
-    GetFileExtractorNodeRequest,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/file-extractor.model';
-import {
-    GetAudioToTextNodeRequest,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/audio-to-text.model';
-import {
-    SubGraphNode,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/subgraph-node.model';
-import {
-    GetWebhookTriggerNodeRequest,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/webhook-trigger';
-import {
-    GetTelegramTriggerNodeRequest,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
-import {
-    ConditionalEdge,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
-import {
-    GetDecisionTableNodeRequest,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/decision-table-node.model';
-import {
+    AudioToTextNodeModel,
+    CodeAgentNodeModel,
+    DecisionTableNodeModel,
+    FileExtractorNodeModel,
+    LLMNodeModel,
+    NodeModel,
     ProjectNodeModel,
     PythonNodeModel,
-    LLMNodeModel,
-    FileExtractorNodeModel,
-    AudioToTextNodeModel,
     SubGraphNodeModel,
-    WebhookTriggerNodeModel,
     TelegramTriggerNodeModel,
-    NodeModel,
+    WebhookTriggerNodeModel,
 } from '../../core/models/node.model';
-import { ResolvedConditionalEdge, NodeUIMetadata, getUIMetadataForComparison } from './save-graph.types';
-import { EndNode } from '../../../pages/flows-page/components/flow-visual-programming/models/end-node.model';
 import { EndNodeModel } from '../../core/models/node.model';
+import { getUIMetadataForComparison, NodeUIMetadata, ResolvedConditionalEdge } from './save-graph.types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared UI-metadata comparison helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function getBackendMetadataForComparison(node: { metadata?: any }): NodeUIMetadata {
-    const m = node.metadata ?? {};
+function getBackendMetadataForComparison(node: { metadata?: unknown }): NodeUIMetadata {
+    const m = node.metadata && typeof node.metadata === 'object' ? (node.metadata as Record<string, unknown>) : {};
+
+    const position = m['position'] as { x?: number; y?: number } | undefined;
+    const size = m['size'] as { width?: number; height?: number } | undefined;
+
     return {
-        position: m['position'] ?? { x: 0, y: 0 },
-        color: m['color'] ?? '',
-        icon: m['icon'] ?? '',
-        size: m['size'] ?? { width: 0, height: 0 },
-        parentId: m['parentId'] ?? null,
+        position: { x: position?.x ?? 0, y: position?.y ?? 0 },
+        color: typeof m['color'] === 'string' ? m['color'] : '',
+        icon: typeof m['icon'] === 'string' ? m['icon'] : '',
+        size: {
+            width: size?.width ?? 0,
+            height: size?.height ?? 0,
+        },
     };
 }
 
 /** Resolves a frontend UUID to a backend ID using the node list. */
 function resolveBackendId(uuid: string | null, allNodes: NodeModel[]): number | null {
     if (!uuid) return null;
-    const match = allNodes.find(n => n.id === uuid);
+    const match = allNodes.find((n) => n.id === uuid);
     return match?.backendId ?? null;
 }
 
@@ -85,6 +74,7 @@ export function getCrewNodeForComparisonFromBackend(node: CrewNode) {
         crew_id: node.crew.id,
         input_map: node.input_map,
         output_variable_path: node.output_variable_path,
+        stream_config: node.stream_config ?? {},
         metadata: getBackendMetadataForComparison(node),
     };
 }
@@ -95,6 +85,7 @@ export function getCrewNodeForComparisonFromUI(node: ProjectNodeModel) {
         crew_id: (node.data as GetProjectRequest).id,
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
+        stream_config: node.stream_config ?? {},
         metadata: getUIMetadataForComparison(node),
     };
 }
@@ -111,6 +102,7 @@ export function getPythonNodeForComparisonFromBackend(node: PythonNode) {
         entrypoint: node.python_code.entrypoint,
         input_map: node.input_map,
         output_variable_path: node.output_variable_path,
+        stream_config: node.stream_config ?? {},
         metadata: getBackendMetadataForComparison(node),
     };
 }
@@ -123,6 +115,7 @@ export function getPythonNodeForComparisonFromUI(node: PythonNodeModel) {
         entrypoint: node.data.entrypoint,
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
+        stream_config: node.stream_config ?? {},
         metadata: getUIMetadataForComparison(node),
     };
 }
@@ -276,13 +269,19 @@ export function getTelegramTriggerNodeForComparisonFromUI(node: TelegramTriggerN
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function getConditionalEdgeForComparisonFromBackend(node: ConditionalEdge) {
+    const thenRaw =
+        node.metadata && typeof node.metadata === 'object'
+            ? (node.metadata as Record<string, unknown>)['then_node_id']
+            : undefined;
+    const then_node_id = typeof thenRaw === 'number' ? thenRaw : null;
+
     return {
         source_node_id: node.source_node_id,
         libraries: node.python_code.libraries,
         code: (node.python_code.code || '').trimEnd(),
         entrypoint: node.python_code.entrypoint,
         input_map: node.input_map,
-        then_node_id: (node.metadata as any)?.['then_node_id'] ?? null,
+        then_node_id,
         metadata: getBackendMetadataForComparison(node),
     };
 }
@@ -306,11 +305,11 @@ export function getConditionalEdgeForComparisonFromUI(node: ResolvedConditionalE
 export function getDecisionTableNodeForComparisonFromBackend(node: GetDecisionTableNodeRequest) {
     return {
         node_name: node.node_name,
-        condition_groups: node.condition_groups.map(g => ({
+        condition_groups: node.condition_groups.map((g) => ({
             group_name: g.group_name,
             group_type: g.group_type,
             expression: g.expression,
-            conditions: g.conditions.map(c => ({
+            conditions: g.conditions.map((c) => ({
                 condition_name: c.condition_name,
                 condition: c.condition,
             })),
@@ -324,19 +323,16 @@ export function getDecisionTableNodeForComparisonFromBackend(node: GetDecisionTa
     };
 }
 
-export function getDecisionTableNodeForComparisonFromUI(
-    node: NodeModel,
-    allNodes: NodeModel[]
-) {
-    const tableData = (node as any).data?.table;
-    const groups = ((tableData?.condition_groups ?? []) as any[])
-        .filter(g => g.valid !== false)
+export function getDecisionTableNodeForComparisonFromUI(node: NodeModel, allNodes: NodeModel[]) {
+    const tableData = (node as DecisionTableNodeModel).data.table;
+    const groups = tableData.condition_groups
+        .filter((g) => g.valid !== false)
         .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER))
         .map((g, idx) => ({
             group_name: g.group_name,
-            group_type: g.group_type ?? 'complex',
+            group_type: g.group_type,
             expression: g.expression,
-            conditions: (g.conditions ?? []).map((c: any) => ({
+            conditions: g.conditions.map((c) => ({
                 condition_name: c.condition_name,
                 condition: c.condition,
             })),
@@ -348,9 +344,9 @@ export function getDecisionTableNodeForComparisonFromUI(
     return {
         node_name: node.node_name,
         condition_groups: groups,
-        default_next_node_id: resolveBackendId(tableData?.default_next_node, allNodes),
-        next_error_node_id: resolveBackendId(tableData?.next_error_node, allNodes),
-        metadata: getUIMetadataForComparison(node as any),
+        default_next_node_id: resolveBackendId(tableData.default_next_node, allNodes),
+        next_error_node_id: resolveBackendId(tableData.next_error_node, allNodes),
+        metadata: getUIMetadataForComparison(node),
     };
 }
 
@@ -369,19 +365,19 @@ export function getEndNodeForComparisonFromBackend(node: EndNode) {
 export function getEndNodeForComparisonFromUI(node: EndNodeModel) {
     return {
         node_name: node.node_name,
-        output_map: (node.data as any).output_map ?? { context: 'variables.context' },
+        output_map: node.data.output_map ?? { context: 'variables.context' },
         metadata: getUIMetadataForComparison(node),
     };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// NoteNode
+// GraphNote
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { NoteNode } from '../../../pages/flows-page/components/flow-visual-programming/models/note-node.model';
-import { NoteNodeModel } from '../../core/models/node.model';
+import { GraphNote } from '../../../pages/flows-page/components/flow-visual-programming/models/graph-note.model';
+import { GraphNoteModel } from '../../core/models/node.model';
 
-export function getNoteNodeForComparisonFromBackend(node: NoteNode) {
+export function getGraphNoteForComparisonFromBackend(node: GraphNote) {
     return {
         node_name: node.node_name,
         content: node.content,
@@ -389,7 +385,7 @@ export function getNoteNodeForComparisonFromBackend(node: NoteNode) {
     };
 }
 
-export function getNoteNodeForComparisonFromUI(node: NoteNodeModel) {
+export function getGraphNoteForComparisonFromUI(node: GraphNoteModel) {
     return {
         node_name: node.node_name,
         content: node.data.content,
@@ -397,5 +393,55 @@ export function getNoteNodeForComparisonFromUI(node: NoteNodeModel) {
             ...getUIMetadataForComparison(node),
             backgroundColor: node.data.backgroundColor ?? null,
         },
+    };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CodeAgentNode
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function getCodeAgentNodeForComparisonFromBackend(node: GetCodeAgentNodeRequest) {
+    return {
+        node_name: node.node_name,
+        llm_config: node.llm_config,
+        agent_mode: node.agent_mode,
+        session_id: node.session_id,
+        system_prompt: node.system_prompt,
+        stream_handler_code: node.stream_handler_code,
+        libraries: node.libraries,
+        polling_interval_ms: node.polling_interval_ms,
+        silence_indicator_s: node.silence_indicator_s,
+        indicator_repeat_s: node.indicator_repeat_s,
+        chunk_timeout_s: node.chunk_timeout_s,
+        inactivity_timeout_s: node.inactivity_timeout_s,
+        max_wait_s: node.max_wait_s,
+        input_map: node.input_map,
+        output_variable_path: node.output_variable_path,
+        stream_config: node.stream_config ?? {},
+        output_schema: node.output_schema ?? {},
+        metadata: getBackendMetadataForComparison(node),
+    };
+}
+
+export function getCodeAgentNodeForComparisonFromUI(node: CodeAgentNodeModel) {
+    return {
+        node_name: node.node_name,
+        llm_config: node.data?.llm_config_id ?? null,
+        agent_mode: node.data?.agent_mode ?? 'code_interpreter',
+        session_id: node.data?.session_id ?? '',
+        system_prompt: node.data?.system_prompt ?? '',
+        stream_handler_code: node.data?.stream_handler_code ?? '',
+        libraries: node.data?.libraries ?? [],
+        polling_interval_ms: node.data?.polling_interval_ms ?? 100,
+        silence_indicator_s: node.data?.silence_indicator_s ?? 3,
+        indicator_repeat_s: node.data?.indicator_repeat_s ?? 5,
+        chunk_timeout_s: node.data?.chunk_timeout_s ?? 30,
+        inactivity_timeout_s: node.data?.inactivity_timeout_s ?? 120,
+        max_wait_s: node.data?.max_wait_s ?? 300,
+        input_map: node.input_map,
+        output_variable_path: node.output_variable_path,
+        stream_config: node.stream_config ?? {},
+        output_schema: node.data?.output_schema ?? {},
+        metadata: getUIMetadataForComparison(node),
     };
 }

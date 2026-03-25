@@ -17,7 +17,7 @@ from tables.models.graph_models import (
     GraphOrganization,
     GraphOrganizationUser,
     LLMNode,
-    NoteNode,
+    GraphNote,
     PythonNode,
     StartNode,
     SubGraphNode,
@@ -65,8 +65,8 @@ def copy_end_node(graph: Graph, node: EndNode) -> EndNode:
     )
 
 
-def copy_note_node(graph: Graph, node: NoteNode) -> NoteNode:
-    return NoteNode.objects.create(
+def copy_graph_note(graph: Graph, node: GraphNote) -> GraphNote:
+    return GraphNote.objects.create(
         graph=graph, content=node.content, metadata=node.metadata
     )
 
@@ -191,7 +191,7 @@ def copy_decision_table_node(
 NODE_COPY_HANDLERS: dict[NodeType, tuple[str, Callable]] = {
     NodeType.START_NODE: ("start_node_list", copy_start_node),
     NodeType.END_NODE: ("end_node", copy_end_node),
-    NodeType.NOTE_NODE: ("note_node_list", copy_note_node),
+    NodeType.NOTE_NODE: ("graph_note_list", copy_graph_note),
     NodeType.FILE_EXTRACTOR_NODE: (
         "file_extractor_node_list",
         copy_file_extractor_node,

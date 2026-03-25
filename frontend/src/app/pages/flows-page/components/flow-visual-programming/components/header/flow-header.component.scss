@@ -59,6 +59,13 @@
             line-height: 1.2;
         }
 
+        .graph-name-row {
+            display: flex;
+            align-items: start;
+            gap: 4px;
+            min-width: 0;
+        }
+
         .graph-name {
             font-size: 24px;
             font-weight: 400;
@@ -120,6 +127,7 @@
             }
         }
 
+        .connect-chat-button,
         .get-curl-button {
             background-color: transparent;
             color: var(--accent-color);
@@ -157,6 +165,23 @@
 }
 .graph-name.project-link:hover {
     text-decoration: underline;
+}
+
+.edit-name-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    display: inline-flex;
+    align-items: start;
+    flex-shrink: 0;
+    transition:
+        opacity 0.15s ease,
+        color 0.15s ease;
+
+    &:hover {
+        color: var(--color-ks-text);
+    }
 }
 .unsaved-indicator {
     position: absolute;
