@@ -7,19 +7,19 @@ import {
 } from '@angular/core';
 import { NgClass, NgIf } from '@angular/common';
 import { GetPythonCodeToolRequest } from '../../../../../../features/tools/models/python-code-tool.model';
-import { AppIconComponent } from '../../../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-python-tool-item',
   standalone: true,
-  imports: [NgClass, AppIconComponent],
+  imports: [NgClass, AppSvgIconComponent],
   template: `
     <div
       class="python-tool-item"
       [ngClass]="{ 'selected-tool': isSelected }"
       (click)="onToolToggle()"
     >
-      <app-icon icon="ui/python" size="16px"></app-icon>
+      <app-svg-icon icon="python" size="16px" />
       <span class="tool-name">
         {{ tool.name }}
       </span>

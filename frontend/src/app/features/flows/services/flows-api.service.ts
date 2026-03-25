@@ -5,7 +5,7 @@ import { map } from 'rxjs/operators';
 
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config/config.service';
-import { CreateGraphDtoRequest, GraphDto, UpdateGraphDtoRequest } from '../models/graph.model';
+import { CreateGraphDtoRequest, GetGraphLightRequest, GraphDto, UpdateGraphDtoRequest } from '../models/graph.model';
 
 @Injectable({
     providedIn: 'root',
@@ -28,7 +28,7 @@ export class FlowsApiService {
             .pipe(map((response) => response.results.sort((a, b) => b.id - a.id)));
     }
 
-    getGraphsLight(params?: { label_id?: number; no_label?: boolean }): Observable<GraphDto[]> {
+    getGraphsLight(params?: { label_id?: number; no_label?: boolean }): Observable<GetGraphLightRequest[]> {
         let httpParams = new HttpParams();
         if (params?.label_id !== undefined) {
             httpParams = httpParams.set('label_id', params.label_id.toString());
@@ -37,7 +37,7 @@ export class FlowsApiService {
             httpParams = httpParams.set('no_label', 'true');
         }
         return this.http
-            .get<ApiGetRequest<GraphDto>>(`${this.configService.apiUrl}graph-light/`, { params: httpParams })
+            .get<ApiGetRequest<GetGraphLightRequest>>(`${this.configService.apiUrl}graph-light/`, { params: httpParams })
             .pipe(map((response) => response.results.sort((a, b) => b.id - a.id)));
     }
 

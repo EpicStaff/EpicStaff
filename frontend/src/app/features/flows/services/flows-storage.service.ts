@@ -3,7 +3,7 @@ import { Observable, of } from 'rxjs';
 import { catchError, delay, map, shareReplay, switchMap, tap } from 'rxjs/operators';
 
 import { SearchFilterChange } from '../../../shared/components/filters-list/filters-list.component';
-import { CreateGraphDtoRequest, GraphDto, UpdateGraphDtoRequest } from '../models/graph.model';
+import { CreateGraphDtoRequest, GetGraphLightRequest, GraphDto, UpdateGraphDtoRequest } from '../models/graph.model';
 import { FlowsApiService } from './flows-api.service';
 import { LabelsStorageService } from './labels-storage.service';
 
@@ -17,7 +17,7 @@ export class FlowsStorageService {
     private readonly labelsStorage = inject(LabelsStorageService);
 
     // --- State Signals ---
-    private flowsSignal = signal<GraphDto[]>([]);
+    private flowsSignal = signal<GetGraphLightRequest[]>([]);
     private flowsLoaded = signal<boolean>(false);
     private templatesSignal = signal<GraphDto[]>([]);
     private templatesLoaded = signal<boolean>(false);
@@ -104,7 +104,7 @@ export class FlowsStorageService {
     }
 
     // --- Data Fetching Methods ---
-    public getFlows(forceRefresh = false, labelFilter?: 'all' | 'unlabeled' | number): Observable<GraphDto[]> {
+    public getFlows(forceRefresh = false, labelFilter?: 'all' | 'unlabeled' | number): Observable<GetGraphLightRequest[]> {
         const isFiltered = labelFilter !== undefined && labelFilter !== 'all';
         const params = this.buildLabelParams(labelFilter);
 
@@ -150,7 +150,7 @@ export class FlowsStorageService {
     }
 
     public getFlowById(id: number): Observable<GraphDto | undefined> {
-        const cachedFlow: GraphDto | undefined = this.flowsSignal().find((flow) => flow.id === id);
+        const cachedFlow = this.flowsSignal().find((flow) => flow.id === id) as GraphDto | undefined;
         if (cachedFlow) {
             return of(cachedFlow);
         }

@@ -16,12 +16,12 @@
         <div class="dropdown-panel" (click)="$event.stopPropagation()">
             <div class="labels-section-header">
                 <div class="header-labels-left">
-                    <app-icon icon="ui/label" size="1.125rem" class="section-label-icon"></app-icon>
+                    <app-svg-icon icon="label" size="1.125rem" class="section-label-icon"/>
                     <span>Labels</span>
                 </div>
                 @if (!addingRoot()) {
                     <button type="button" class="add-root-btn" (click)="startAddRoot()">
-                        <app-icon icon="ui/plus" size="0.6rem"></app-icon>
+                        <app-svg-icon icon="plus" size="0.6rem"/>
                         <span>Add label</span>
                     </button>
                 }
@@ -40,10 +40,10 @@
                         autofocus
                     />
                     <button type="button" class="cancel-btn-icon" (click)="cancelAdd()" title="Cancel">
-                        <app-icon icon="ui/x" size="0.85rem"></app-icon>
+                        <app-svg-icon icon="x" size="0.85rem"/>
                     </button>
                     <button type="button" class="confirm-btn" (click)="confirmAdd()" title="Confirm">
-                        <app-icon icon="ui/check" size="0.85rem"></app-icon>
+                        <app-svg-icon icon="check" size="0.85rem"/>
                     </button>
                 </div>
                 @if (addLabelError()) {
@@ -70,12 +70,12 @@
                             [style.visibility]="item.node.children.length > 0 ? 'visible' : 'hidden'"
                             title="{{ isExpanded(item.node.id) ? 'Collapse' : 'Expand' }}"
                         >
-                            <app-icon
-                                icon="ui/expand"
+                            <app-svg-icon
+                                icon="expand"
                                 size="0.6rem"
                                 class="expand-icon"
                                 [class.expanded]="isExpanded(item.node.id)"
-                            ></app-icon>
+                            />
                         </button>
 
                         <input
@@ -94,7 +94,7 @@
                             (click)="$event.stopPropagation(); startAddChild(item.node.id)"
                             title="Add sublabel"
                         >
-                            <app-icon icon="ui/plus" size="0.8rem"></app-icon>
+                            <app-svg-icon icon="plus" size="0.8rem"/>
                         </button>
                     </div>
 
@@ -111,10 +111,10 @@
                                 autofocus
                             />
                             <button type="button" class="cancel-btn-icon" (click)="cancelAdd()" title="Cancel">
-                                <app-icon icon="ui/x" size="0.85rem"></app-icon>
+                                <app-svg-icon icon="x" size="0.85rem"/>
                             </button>
                             <button type="button" class="confirm-btn" (click)="confirmAdd()" title="Confirm">
-                                <app-icon icon="ui/check" size="0.85rem"></app-icon>
+                                <app-svg-icon icon="check" size="0.85rem"/>
                             </button>
                         </div>
                         @if (addLabelError()) {

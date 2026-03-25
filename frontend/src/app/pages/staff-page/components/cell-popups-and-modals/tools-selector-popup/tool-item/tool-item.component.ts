@@ -9,12 +9,12 @@ import { NgClass, NgFor, NgIf } from '@angular/common';
 import { FullToolConfig } from '../../../../../../features/tools/services/full-tool-config.service';
 import { GetToolConfigRequest } from '../../../../../../features/tools/models/tool-config.model';
 import { animate, style, transition, trigger } from '@angular/animations';
-import { AppIconComponent } from '../../../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-tool-item',
   standalone: true,
-  imports: [NgFor, NgIf, NgClass, AppIconComponent],
+  imports: [NgFor, NgIf, NgClass, AppSvgIconComponent],
   template: `
     <div class="tool-item-container">
       <div
@@ -24,7 +24,7 @@ import { AppIconComponent } from '../../../../../../shared/components/app-icon/a
           tool.tool_fields.length > 0 ? toggleToolConfigs() : onToolToggle()
         "
       >
-        <app-icon icon="ui/tools" size="16px"></app-icon>
+        <app-svg-icon icon="tools" size="16px" />
         <div class="tool-name">
           {{ tool.name }}
         </div>

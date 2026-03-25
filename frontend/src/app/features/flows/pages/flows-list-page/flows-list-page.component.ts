@@ -13,26 +13,15 @@ import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/rou
 import { Subject, Subscription } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 
-<<<<<<< HEAD
 import { CreateFlowDialogComponent } from '../../components/create-flow-dialog/create-flow-dialog.component';
-
-import { Dialog } from '@angular/cdk/dialog';
-
+import { ImportExportService } from '../../../../core/services/import-export.service';
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
 import { TabButtonComponent } from '../../../../shared/components/tab-button/tab-button.component';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-=======
-import { ImportExportService } from '../../../../core/services/import-export.service';
-import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
-import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
->>>>>>> main
-import {
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';import {
     FiltersListComponent,
     SearchFilterChange,
 } from '../../../../shared/components/filters-list/filters-list.component';
-import { TabButtonComponent } from '../../../../shared/components/tab-button/tab-button.component';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
-import { CreateFlowDialogComponent } from '../../components/create-flow-dialog/create-flow-dialog.component';
 import { CreateGraphDtoRequest, GraphDto, UpdateGraphDtoRequest } from '../../models/graph.model';
 import { FlowsApiService } from '../../services/flows-api.service';
 import { FlowsStorageService } from '../../services/flows-storage.service';
@@ -51,12 +40,8 @@ import { FlowsLabelSidebarComponent } from './components/flows-label-sidebar/flo
         ButtonComponent,
         TabButtonComponent,
         FormsModule,
-<<<<<<< HEAD
         AppSvgIconComponent,
-=======
-        AppIconComponent,
         FlowsLabelSidebarComponent,
->>>>>>> main
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

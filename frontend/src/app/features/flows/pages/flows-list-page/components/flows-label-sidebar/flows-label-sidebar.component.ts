@@ -13,7 +13,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { AppIconComponent } from '../../../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
     ConfirmationDialogComponent,
     DialogResult,
@@ -29,7 +29,7 @@ interface FlatLabelNode {
 
 @Component({
     selector: 'app-flows-label-sidebar',
-    imports: [CommonModule, FormsModule, DialogModule, AppIconComponent],
+    imports: [CommonModule, FormsModule, DialogModule, AppSvgIconComponent],
     templateUrl: './flows-label-sidebar.component.html',
     styleUrls: ['./flows-label-sidebar.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

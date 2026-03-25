@@ -28,11 +28,11 @@
                     mod="small"
                     (click)="toggleSubflows($event)"
                     >Subflows
-                    <app-icon
-                        icon="ui/chevron-down"
+                    <app-svg-icon
+                        icon="chevron-down"
                         size="16px"
                         [style.transform]="isExpanded() ? 'rotate(180deg)' : ''"
-                    ></app-icon>
+                    />
                 </app-button>
             }
             <app-flow-menu

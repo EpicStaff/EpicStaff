@@ -6,8 +6,6 @@ import {
     ViewChild,
     AfterViewInit,
 } from '@angular/core';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { ICONS } from '../../../shared/constants/icons.constants';
 import { TooltipComponent } from './tooltip/tooltip.component';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -21,7 +19,7 @@ import { environment } from 'src/environments/environment';
 interface NavItem {
     id: string;
     routeLink?: string;
-    icon: string;
+    icon?: string;
     label: string;
     showTooltip: boolean;
     action?: () => void;
@@ -112,14 +110,9 @@ export class LeftSidebarComponent implements AfterViewInit {
     private epicChat?: ElementRef<HTMLElement>;
 
     constructor(
-<<<<<<< HEAD
-        private settingsDialogService: SettingsDialogService
-=======
-        private sanitizer: DomSanitizer,
         public epicChatService: EpicChatService,
         private settingsDialogService: SettingsDialogService,
         private configService: ConfigService
->>>>>>> main
     ) {
         this.isEpicChatEnabled = this.configService.isEpicChatEnabled;
         // COMMIT_COMMENTS: Derive apiBaseUrl from browser origin so the EpicChat widget's
@@ -175,31 +168,10 @@ export class LeftSidebarComponent implements AfterViewInit {
             },
         ];
 
-<<<<<<< HEAD
-        this.bottomNavItems = [
-            {
-                id: 'settings',
-                icon: 'settings',
-                label: 'Settings',
-                showTooltip: false,
-                action: () => this.onSettingsClick(),
-                customClass: 'settings-tooltip',
-            },
-        ];
-=======
         this.bottomNavItems = [];
-        // if (this.isEpicChatEnabled) {
-        //     this.bottomNavItems.push({
-        //         id: 'epic-chat',
-        //         svgIcon: this.sanitizer.bypassSecurityTrustHtml(ICONS.chats),
-        //         label: 'Epic Chat',
-        //         showTooltip: false,
-        //         action: () => this.toggleEpicChat(),
-        //     });
-        // }
         this.bottomNavItems.push({
             id: 'settings',
-            svgIcon: this.sanitizer.bypassSecurityTrustHtml(ICONS.settings),
+            icon: 'settings',
             label: 'Settings',
             showTooltip: false,
             action: () => this.onSettingsClick(),
@@ -214,7 +186,6 @@ export class LeftSidebarComponent implements AfterViewInit {
         if (this.isEpicChatEnabled) {
             setTimeout(() => this.epicChatService.reconnectAgents(), 2000);
         }
->>>>>>> main
     }
 
     private onSettingsClick(): void {

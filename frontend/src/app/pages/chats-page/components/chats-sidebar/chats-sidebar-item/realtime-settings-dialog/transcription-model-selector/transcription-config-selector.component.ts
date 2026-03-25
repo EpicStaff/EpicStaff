@@ -2,12 +2,12 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { EnhancedTranscriptionConfig } from '../../../../../../../features/transcription/models/transcription-config.model';
 import { ClickOutsideDirective } from '../../../../../../../shared/directives/click-outside.directive';
-import { AppIconComponent } from '../../../../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-transcription-config-selector',
   standalone: true,
-  imports: [CommonModule, ClickOutsideDirective, AppIconComponent],
+  imports: [CommonModule, ClickOutsideDirective, AppSvgIconComponent],
   templateUrl: './transcription-config-selector.component.html',
   styleUrls: ['./transcription-config-selector.component.scss'],
 })

@@ -32,7 +32,9 @@
                     [attr.href]="item.routeLink || (item.action ? '#' : null)"
                 >
                     <div class="sidenav-link-icon">
-                        <app-svg-icon [icon]="item.icon" size="1.4rem" />
+                        @if (item.icon) {
+                            <app-svg-icon [icon]="item.icon" size="1.4rem" />
+                        }
                     </div>
                 </a>
                 <app-tooltip
@@ -61,7 +63,9 @@
                     [attr.href]="item.routeLink || (item.action ? '#' : null)"
                 >
                     <div class="sidenav-link-icon">
-                        <app-svg-icon [icon]="item.icon" size="1.4rem" />
+                        @if (item.icon) {
+                            <app-svg-icon [icon]="item.icon" size="1.4rem" />
+                        }
                     </div>
                 </a>
                 <app-tooltip

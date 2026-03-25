@@ -46,14 +46,13 @@
         <span class="config-name"
           >{{ config.custom_name }} ({{ config.model_name }})</span
         >
-        <app-icon
-          icon="ui/x"
+        <app-svg-icon
+          icon="x"
           size="16"
           class="delete-icon"
           (click)="onDeleteConfig($event, config.id)"
           aria-label="Delete configuration"
-        >
-        </app-icon>
+        />
       </div>
 
       <!-- Create new option -->

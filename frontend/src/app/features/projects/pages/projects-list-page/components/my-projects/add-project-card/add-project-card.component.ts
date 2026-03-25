@@ -31,7 +31,7 @@ import { AppSvgIconComponent } from '../../../../../../../shared/components/app-
                 font-size: 1rem;
                 display: flex;
                 flex-direction: column;
-                height: 168px;
+                height: 165px;
                 transition: all 0.2s ease;
                 position: relative;
                 border: 1px dashed #3a3e48;

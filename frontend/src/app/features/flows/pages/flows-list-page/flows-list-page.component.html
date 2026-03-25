@@ -85,11 +85,11 @@
                     [class.active]="showSidebar()"
                     title="Label Branches"
                 >
-                    <app-icon icon="ui/expand-sidebar" size="0.85rem"></app-icon>
+                    <app-svg-icon icon="expand-sidebar" size="0.85rem"/>
                 </button>
                 <div class="breadcrumb-path">
                     <button class="breadcrumb-home" (click)="selectAllLabels()" title="All Flows">
-                        <app-icon icon="ui/home" size="1rem"></app-icon>
+                        <app-svg-icon icon="home" size="1rem"/>
                     </button>
                     @if (activeLabelFilterDisplay() !== 'all') {
                         <span class="breadcrumb-sep">/</span>

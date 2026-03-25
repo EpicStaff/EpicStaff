@@ -38,9 +38,19 @@ export interface SubflowLightDto {
     updated_at?: string;
 }
 
-export interface GraphDto {
+export interface GetGraphLightRequest {
     id: number;
     name: string;
+    description: string;
+    tags?: string[];
+    epicchat_enabled?: boolean;
+    label_ids?: number[];
+    created_at?: string;
+    updated_at?: string;
+    subflows?: SubflowLightDto[];
+}
+
+export interface GraphDto extends GetGraphLightRequest {
     start_node_list: StartNode[];
     crew_node_list: CrewNode[];
     python_node_list: PythonNode[];
@@ -53,28 +63,10 @@ export interface GraphDto {
     end_node_list: EndNode[];
     subgraph_node_list: SubGraphNode[];
     decision_table_node_list: GetDecisionTableNodeRequest[];
-    description: string;
     metadata: FlowModel;
-    tags?: string[];
     audio_transcription_node_list: GetAudioToTextNodeRequest[];
     graph_note_list: GraphNote[];
     code_agent_node_list: GetCodeAgentNodeRequest[];
-    epicchat_enabled?: boolean;
-    label_ids?: number[];
-    created_at?: string;
-    updated_at?: string;
-    subflows?: SubflowLightDto[];
-}
-
-export interface GetGraphLightRequest {
-    id: number;
-    name: string;
-    description: string;
-    tags?: string[];
-    label_ids?: number[];
-    created_at?: string;
-    updated_at?: string;
-    subflows?: SubflowLightDto[];
 }
 
 export interface CreateGraphDtoRequest {

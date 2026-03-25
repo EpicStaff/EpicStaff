@@ -9,14 +9,14 @@ import { FlowRenameDialogComponent } from '../../../../../../features/flows/comp
 import { GraphDto } from '../../../../../../features/flows/models/graph.model';
 import { RunGraphService } from '../../../../../../features/flows/services/run-graph-session.service';
 import { ToastService } from '../../../../../../services/notifications/toast.service';
-import { AppIconComponent } from '../../../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { Spinner2Component } from '../../../../../../shared/components/spinner-type2/spinner.component';
 import { FlowService } from '../../../../../../visual-programming/services/flow.service';
 
 @Component({
     selector: 'app-flow-header',
     standalone: true,
-    imports: [CommonModule, RouterModule, Spinner2Component, AppIconComponent, DialogModule],
+    imports: [CommonModule, RouterModule, Spinner2Component, AppSvgIconComponent, DialogModule],
     templateUrl: './flow-header.component.html',
     styleUrls: ['./flow-header.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

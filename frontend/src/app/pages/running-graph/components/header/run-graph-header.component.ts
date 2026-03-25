@@ -5,7 +5,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatBadgeModule } from '@angular/material/badge';
-import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { StatusBadgeComponent } from '../../../../shared/components/status-badge/status-badge.component';
 import { GraphSessionStatus } from '../../../../features/flows/services/flows-sessions.service';
 import { RunGraphPageService } from '../../services/run-graph-page.service';
@@ -23,7 +23,7 @@ import { GraphDto } from '../../../../features/flows/models/graph.model';
         MatButtonModule,
         MatIconModule,
         MatBadgeModule,
-        AppIconComponent,
+        AppSvgIconComponent,
         StatusBadgeComponent,
         MemoriesSidebarComponent,
     ],
@@ -31,8 +31,8 @@ import { GraphDto } from '../../../../features/flows/models/graph.model';
         <div class="header">
             <div class="breadcrumbs">
                 <div class="flows-prefix" routerLink="/flows">
-                    <app-icon
-                        [icon]="'ui/arrow-left'"
+                    <app-svg-icon
+                        icon="arrow-left"
                         size="20"
                         class="back-arrow"
                     />

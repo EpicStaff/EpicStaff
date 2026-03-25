@@ -78,6 +78,7 @@ import { ConfirmationDialogService } from '../../../../../../shared/components/c
                 grid-template-columns: repeat(auto-fill, minmax(335px, 1fr));
                 gap: 1.5rem;
                 width: 100%;
+                align-items: start;
             }
             .empty-message {
                 grid-column: 1 / -1;
