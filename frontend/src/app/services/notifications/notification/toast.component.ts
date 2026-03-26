@@ -7,6 +7,7 @@ import {
   Input,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { Subscription } from 'rxjs';
 import {
   trigger,
@@ -20,7 +21,7 @@ import { ToastMessage, ToastService, ToastPosition } from '../toast.service';
 @Component({
   selector: 'app-toast',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, AppSvgIconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="toast-container" [ngClass]="position">
@@ -33,7 +34,7 @@ import { ToastMessage, ToastService, ToastPosition } from '../toast.service';
       >
         <div class="toast-content">
           <div>
-            <i [class]="getIconClass(toast.type)"></i>
+            <app-svg-icon [icon]="getIconId(toast.type)" size="20px"></app-svg-icon>
           </div>
           <span class="toast-message">{{ toast.message }}</span>
         </div>
@@ -41,7 +42,7 @@ import { ToastMessage, ToastService, ToastPosition } from '../toast.service';
           class="toast-close-btn"
           (click)="closeToast(toast.id); $event.stopPropagation()"
         >
-          <i class="ti ti-x"></i>
+          <app-svg-icon icon="x" size="16px"></app-svg-icon>
         </button>
       </div>
     </div>
@@ -123,7 +124,7 @@ import { ToastMessage, ToastService, ToastPosition } from '../toast.service';
           display: flex;
           align-items: center;
 
-          i {
+          app-svg-icon {
             margin-right: 16px;
           }
         }
@@ -134,25 +135,25 @@ import { ToastMessage, ToastService, ToastPosition } from '../toast.service';
         }
 
         &.success {
-          i {
+          app-svg-icon {
             color: #4caf50;
           }
         }
 
         &.error {
-          i {
+          app-svg-icon {
             color: #f44336;
           }
         }
 
         &.warning {
-          i {
+          app-svg-icon {
             color: #ff9800;
           }
         }
 
         &.info {
-          i {
+          app-svg-icon {
             color: #2196f3;
           }
         }
@@ -176,7 +177,6 @@ import { ToastMessage, ToastService, ToastPosition } from '../toast.service';
         background: transparent;
         border: none;
         color: #a0a0a0;
-        font-size: 14px;
         cursor: pointer;
         padding: 4px;
         margin-left: 10px;
@@ -312,18 +312,18 @@ export class ToastComponent implements OnInit, OnDestroy {
     this.toastService.remove(id);
   }
 
-  public getIconClass(type: string): string {
+  public getIconId(type: string): string {
     switch (type) {
       case 'success':
-        return 'ti ti-check';
+        return 'check';
       case 'error':
-        return 'ti ti-alert-circle';
+        return 'alert-circle';
       case 'warning':
-        return 'ti ti-alert-triangle';
+        return 'warning';
       case 'info':
-        return 'ti ti-info-circle';
+        return 'info-circle';
       default:
-        return 'ti ti-bell';
+        return 'bell';
     }
   }
 

@@ -17,6 +17,7 @@ import {
 import { ToolConfigService } from '../../../features/tools/services/tool-config.service';
 import { NgIf, NgFor, NgClass } from '@angular/common';
 import { ToolConfigFormComponent } from './tool-config-form/tool-config-form.component';
+import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ConfirmationDialogService } from '../../../shared/components/cofirm-dialog/confimation-dialog.service';
 import { forkJoin, Observable, Subject, Subscription } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
@@ -36,7 +37,7 @@ import { ToastService } from '../../../services/notifications/toast.service';
   styleUrls: ['./tool-configuration-dialog.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
   standalone: true,
-  imports: [NgIf, NgFor, NgClass, ToolConfigFormComponent],
+  imports: [NgIf, NgFor, NgClass, ToolConfigFormComponent, AppSvgIconComponent],
 })
 export class ToolConfigurationDialogComponent implements OnInit, OnDestroy {
   tool: Tool;

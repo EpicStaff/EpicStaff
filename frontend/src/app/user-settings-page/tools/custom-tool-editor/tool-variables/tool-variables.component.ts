@@ -11,14 +11,14 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { ArgsSchema } from '../../../../features/tools/models/python-code-tool.model';
 
 @Component({
   selector: 'app-tool-variables',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppIconComponent, HelpTooltipComponent],
+  imports: [CommonModule, FormsModule, AppSvgIconComponent, HelpTooltipComponent],
   templateUrl: './tool-variables.component.html',
   styleUrls: ['./tool-variables.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -5,12 +5,12 @@
       text="Define the input parameters for your custom tool. Each parameter needs a name and description. Required parameters must be provided when the tool is used."
     ></app-help-tooltip>
     <!-- Plus icon to add a new variable -->
-    <app-icon
-      icon="ui/plus"
+    <app-svg-icon
+      icon="plus"
       size="1rem"
       class="add-icon"
       (click)="onAddVariable(); $event.preventDefault()"
-    ></app-icon>
+    ></app-svg-icon>
   </div>
 
   <!-- Display the variables as a list of editable rows -->
@@ -55,7 +55,7 @@
             (click)="removeVariable(i); $event.preventDefault()"
             *ngIf="variables.length > 1"
           >
-            <app-icon icon="ui/x" size="1rem"></app-icon>
+            <app-svg-icon icon="x" size="1rem"></app-svg-icon>
           </button>
         </div>
       </div>

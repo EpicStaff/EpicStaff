@@ -10,7 +10,7 @@
       (keydown.enter)="onCancel()"
       (keydown.space)="onCancel()"
     >
-      <i class="ti ti-x close-icon"></i>
+      <app-svg-icon icon="x" size="1.25rem" class="close-icon"></app-svg-icon>
     </div>
   </div>
 
@@ -21,7 +21,7 @@
         class="search-input-wrapper"
         [ngClass]="{ 'input-has-content': searchHasContent }"
       >
-        <i class="ti ti-search search-icon"></i>
+        <app-svg-icon icon="search" size="1.125rem" class="search-icon"></app-svg-icon>
         <input
           type="text"
           class="search-input"
@@ -61,7 +61,7 @@
                 (click)="deleteFromList(config, $event)"
                 aria-label="Delete Configuration"
               >
-                <i class="ti ti-trash"></i>
+                <app-svg-icon icon="trash" size="1.125rem"></app-svg-icon>
               </button>
             </div>
           </li>
@@ -70,7 +70,7 @@
 
       <!-- "Create New" button stays at the bottom -->
       <button class="create-config-button" (click)="onCreateNew()">
-        <i class="ti ti-plus"></i>
+        <app-svg-icon icon="plus" size="1.25rem"></app-svg-icon>
         New Form
       </button>
     </div>
@@ -89,7 +89,7 @@
   <!-- Loading Spinner -->
   <div class="loading-container" *ngIf="isLoading">
     <div class="spinner">
-      <i class="ti ti-loader"></i>
+      <app-svg-icon icon="loader" size="2.5rem"></app-svg-icon>
     </div>
     <div class="loading-text">Loading configurations...</div>
   </div>

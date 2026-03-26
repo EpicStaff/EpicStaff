@@ -25,7 +25,7 @@ import { ToolLibrariesComponent } from './tool-libraries/tool-libraries.componen
 import { CodeEditorComponent } from './code-editor/code-editor.component';
 import { CustomToolsService } from '../../../features/tools/services/custom-tools/custom-tools.service';
 import { ToastService } from '../../../services/notifications/toast.service';
-import { AppIconComponent } from '../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../../../shared/components/buttons/button/button.component';
 import { HelpTooltipComponent } from '../../../shared/components/help-tooltip/help-tooltip.component';
 import { JsonEditorComponent } from '../../../shared/components/json-editor/json-editor.component';
@@ -54,7 +54,7 @@ interface DialogData {
         ToolLibrariesComponent,
         CodeEditorComponent,
         DialogModule,
-        AppIconComponent,
+        AppSvgIconComponent,
         ButtonComponent,
         HelpTooltipComponent,
         JsonEditorComponent,
