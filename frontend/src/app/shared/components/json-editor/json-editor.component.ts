@@ -17,12 +17,12 @@ import { FormsModule } from '@angular/forms';
 import { NgIf } from '@angular/common';
 import { MonacoEditorModule } from 'ngx-monaco-editor-v2';
 import { ResizableDirective } from '../../../user-settings-page/tools/custom-tool-editor/directives/resizable.directive';
-import { AppIconComponent } from "../app-icon/app-icon.component";
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { ToastService } from "../../../services/notifications";
 
 @Component({
   selector: 'app-json-editor',
-  imports: [FormsModule, NgIf, MonacoEditorModule, ResizableDirective, AppIconComponent],
+  imports: [FormsModule, NgIf, MonacoEditorModule, ResizableDirective, AppSvgIconComponent],
   templateUrl: './json-editor.component.html',
   styleUrls: ['./json-editor.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,

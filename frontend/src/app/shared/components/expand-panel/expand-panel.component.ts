@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, input, signal } from "@angular/core";
 import { TooltipComponent } from "@shared/components";
 import { expandCollapseAnimation } from "@shared/animations";
-import { NgClass } from "@angular/common";
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-expand-panel',
@@ -10,7 +10,7 @@ import { NgClass } from "@angular/common";
     animations: [expandCollapseAnimation],
     imports: [
         TooltipComponent,
-        NgClass
+        AppSvgIconComponent
     ],
     changeDetection: ChangeDetectionStrategy.OnPush
 })

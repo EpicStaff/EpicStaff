@@ -1,5 +1,5 @@
 import {ChangeDetectionStrategy, Component, input, output, signal} from "@angular/core";
-import {AppIconComponent} from "../app-icon/app-icon.component";
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import {UpperCasePipe} from "@angular/common";
 
 @Component({
@@ -7,7 +7,7 @@ import {UpperCasePipe} from "@angular/common";
     templateUrl: "./drag-drop-area.component.html",
     styleUrls: ["./drag-drop-area.component.scss"],
     imports: [
-        AppIconComponent,
+        AppSvgIconComponent,
         UpperCasePipe
     ],
     changeDetection: ChangeDetectionStrategy.OnPush

@@ -128,10 +128,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-
-    i {
-        font-size: 1rem;
-    }
 }
 
 /* Small animation for dialog opening */
@@ -160,7 +156,6 @@
 .dialog-icon {
     display: flex;
     align-items: center;
-    font-size: 2.2rem;
     color: var(--accent-color);
 }
 

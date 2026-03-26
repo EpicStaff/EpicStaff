@@ -8,7 +8,7 @@ import {
     NgZone,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { AppIconComponent } from '../app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import {
     Overlay,
     OverlayModule,
@@ -22,7 +22,7 @@ import { take, fromEvent, filter } from 'rxjs';
 @Component({
     selector: 'app-help-tooltip',
     standalone: true,
-    imports: [CommonModule, AppIconComponent, OverlayModule],
+    imports: [CommonModule, AppSvgIconComponent, OverlayModule],
     template: `
         <div class="help-tooltip-container">
             <span
@@ -34,7 +34,7 @@ import { take, fromEvent, filter } from 'rxjs';
                 (focus)="showTooltip()"
                 (blur)="hideTooltip()"
             >
-                <app-icon icon="ui/help" [size]="'1.2rem'"></app-icon>
+                <app-svg-icon icon="help" size="1.2rem" />
             </span>
         </div>
     `,

@@ -11,16 +11,16 @@
   type="button"
 >
   @if (type === 'icon') { @if (leftIcon) {
-  <app-icon [icon]="leftIcon!" size="1.1rem" class="btn-icon left" [ngStyle]="leftIconColor ? {'color': leftIconColor } : null" />
+  <app-svg-icon [icon]="leftIcon!" size="1.1rem" class="btn-icon left" [ngStyle]="leftIconColor ? {'color': leftIconColor } : null" />
   } @if (rightIcon) {
-  <app-icon [icon]="rightIcon!" size="1.1rem" class="btn-icon right" [ngStyle]="rightIconColor ? {'color': rightIconColor } : null"/>
+  <app-svg-icon [icon]="rightIcon!" size="1.1rem" class="btn-icon right" [ngStyle]="rightIconColor ? {'color': rightIconColor } : null"/>
   } } @else { @if (leftIcon) {
-  <app-icon [icon]="leftIcon!" size="1.1rem" class="btn-icon left" [ngStyle]="leftIconColor ? {'color': leftIconColor } : null"/>
+  <app-svg-icon [icon]="leftIcon!" size="1.1rem" class="btn-icon left" [ngStyle]="leftIconColor ? {'color': leftIconColor } : null"/>
   }
   <div class="btn-content">
     <ng-content></ng-content>
   </div>
   @if (rightIcon) {
-  <app-icon [icon]="rightIcon!" size="1.1rem" class="btn-icon right" />
+  <app-svg-icon [icon]="rightIcon!" size="1.1rem" class="btn-icon right" />
   } }
 </button>

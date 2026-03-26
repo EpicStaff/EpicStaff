@@ -14,10 +14,10 @@
             [formControl]="inputControl"
         />
 
-        <app-icon
+        <app-svg-icon
             class="listbox__add-btn"
-            [icon]="'ui/plus'"
-            [size]="'1.5rem'"
+            icon="plus"
+            size="1.5rem"
             (click)="onAdd()"
         />
 
@@ -26,10 +26,10 @@
     @for (item of value(); track $index; let i = $index) {
         <div class="listbox__item">
             {{ item }}
-            <app-icon
+            <app-svg-icon
                 class="listbox__remove-btn"
-                [icon]="'ui/close'"
-                [size]="'1.5rem'"
+                icon="close"
+                size="1.5rem"
                 (click)="onRemove(i)"
             />
         </div>

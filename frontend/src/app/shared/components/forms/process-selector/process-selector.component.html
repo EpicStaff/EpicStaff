@@ -4,7 +4,7 @@
     [class.active]="selectedValue === 'sequential'"
     (click)="setProcessType('sequential')"
   >
-    <i class="ti ti-list-numbers option-icon"></i>
+    <app-svg-icon icon="list-numbers" size="1rem" class="option-icon" />
     Sequential
   </div>
   <div
@@ -12,7 +12,7 @@
     [class.active]="selectedValue === 'hierarchical'"
     (click)="setProcessType('hierarchical')"
   >
-    <i class="ti ti-hierarchy option-icon"></i>
+    <app-svg-icon icon="hierarchy" size="1rem" class="option-icon" />
     Hierarchical
   </div>
 </div>

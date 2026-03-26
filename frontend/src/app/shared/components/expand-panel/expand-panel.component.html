@@ -3,10 +3,11 @@
         class="expand-panel__header"
         (click)="expandedState.set(!expandedState())"
     >
-        <i
-            class="ti expand-panel__arrow"
-            [ngClass]="expandedState() ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
-        ></i>
+        <app-svg-icon
+            class="expand-panel__arrow"
+            [icon]="expandedState() ? 'chevron-down' : 'chevron-right'"
+            size="1rem"
+        />
         <app-tooltip
             [required]="required()"
             [tooltipText]="tooltipText()"

@@ -3,11 +3,11 @@
     [ngClass]="'search--mod-' + mod()"
     [style.width]="width()"
 >
-    <app-icon
-        icon="ui/search"
+    <app-svg-icon
+        icon="search"
         class="search__icon"
         size="1.1rem"
-    ></app-icon>
+    />
 
     <input
         type="text"
@@ -24,7 +24,7 @@
             aria-label="Clear"
             (click)="clearSearch()"
         >
-            <app-icon icon="ui/x" size="1.1rem"></app-icon>
+            <app-svg-icon icon="x" size="1.1rem" />
         </button>
     }
 </div>

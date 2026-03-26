@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, forwardRef, input, model } from "@angular/core";
-import { AppIconComponent, CustomInputComponent, TooltipComponent } from "@shared/components";
+import { CustomInputComponent, TooltipComponent } from "@shared/components";
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import {
     ControlValueAccessor,
     FormControl,
@@ -14,7 +15,7 @@ import {
     imports: [
         TooltipComponent,
         CustomInputComponent,
-        AppIconComponent,
+        AppSvgIconComponent,
         ReactiveFormsModule
     ],
     providers: [

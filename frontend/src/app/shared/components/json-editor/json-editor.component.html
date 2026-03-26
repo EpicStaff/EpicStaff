@@ -2,7 +2,7 @@
 <div *ngIf="showHeader" class="editor-header">
   <div class="left-section">
     <span class="editor-title">
-      <i class="ti ti-brackets json-icon"></i>
+      <app-svg-icon icon="brackets" size="1.2rem" class="json-icon" />
       {{ title }}
     </span>
     <span class="validation-message" *ngIf="!jsonIsValid">
@@ -11,17 +11,17 @@
   </div>
     <div class="right-section">
       @if (collapsible) {
-        <app-icon
+        <app-svg-icon
           class="action-icon"
-          [icon]="collapsed ? 'ui/preview' : 'ui/preview-hidden'"
+          [icon]="collapsed ? 'preview' : 'preview-hidden'"
           size="1rem"
           (click)="onToggle()"
         />
       }
       @if (allowCopy) {
-        <app-icon
+        <app-svg-icon
           class="action-icon"
-          [icon]="'ui/fold'"
+          icon="fold"
           size="1rem"
           (click)="onCopy()"
         />

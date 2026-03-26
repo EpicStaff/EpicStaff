@@ -1,9 +1,10 @@
 import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core';
+import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-process-selector',
   standalone: true,
-  imports: [],
+  imports: [AppSvgIconComponent],
   templateUrl: './process-selector.component.html',
   styleUrls: ['./process-selector.component.scss'],
 })

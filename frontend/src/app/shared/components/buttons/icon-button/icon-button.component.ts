@@ -1,10 +1,10 @@
 import { Component, Input, Output, EventEmitter } from '@angular/core';
-import { AppIconComponent } from '../../app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-icon-button',
     standalone: true,
-    imports: [AppIconComponent],
+    imports: [AppSvgIconComponent],
     template: `
         <button
             type="button"
@@ -15,11 +15,10 @@ import { AppIconComponent } from '../../app-icon/app-icon.component';
             [disabled]="disabled"
             [attr.aria-label]="ariaLabel"
         >
-            <app-icon
+            <app-svg-icon
                 [icon]="icon"
                 [size]="iconSize"
-                [ariaLabel]="ariaLabel"
-            ></app-icon>
+            />
         </button>
     `,
     styles: [
@@ -48,7 +47,7 @@ import { AppIconComponent } from '../../app-icon/app-icon.component';
                     opacity: 0.5;
                 }
 
-                app-icon {
+                app-svg-icon {
                     color: white;
                 }
             }

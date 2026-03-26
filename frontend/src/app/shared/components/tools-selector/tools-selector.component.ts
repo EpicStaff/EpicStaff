@@ -20,7 +20,7 @@ import { GetToolConfigRequest } from '../../../features/tools/models/tool-config
 import { McpToolsService } from '../../../features/tools/services/mcp-tools/mcp-tools.service';
 import { GetMcpToolRequest } from '../../../features/tools/models/mcp-tool.model';
 import { IconButtonComponent } from '../buttons/icon-button/icon-button.component';
-import { AppIconComponent } from '../app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-tools-selector',
@@ -30,7 +30,7 @@ import { AppIconComponent } from '../app-icon/app-icon.component';
         FormsModule,
         ReactiveFormsModule,
         IconButtonComponent,
-        AppIconComponent,
+        AppSvgIconComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
@@ -69,11 +69,11 @@ import { AppIconComponent } from '../app-icon/app-icon.component';
                 <!-- Header -->
                 <div class="tools-dialog-header">
                     <div class="header-title">
-                        <app-icon icon="ui/tools" size="0.1rem"></app-icon>
+                        <app-svg-icon icon="tools" size="0.1rem" />
                         <span>Select Tools</span>
                     </div>
                     <app-icon-button
-                        icon="ui/x"
+                        icon="x"
                         ariaLabel="Close dialog"
                         size="1.5rem"
                         (onClick)="closeToolsDialog()"

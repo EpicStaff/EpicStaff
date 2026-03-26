@@ -1,17 +1,17 @@
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-spinner2',
   standalone: true,
-  imports: [CommonModule],
+  imports: [AppSvgIconComponent],
   template: `
     <div
       class="spinner-container"
       [style.width.px]="size"
       [style.height.px]="size"
     >
-      <i class="ti ti-loader spinner" [style.font-size.px]="iconSize"></i>
+      <app-svg-icon icon="loader" [size]="iconSize + 'px'" class="spinner" />
     </div>
   `,
   styles: [

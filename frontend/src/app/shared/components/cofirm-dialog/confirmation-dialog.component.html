@@ -2,14 +2,14 @@
     <div class="dialog-header" [class.has-border]="data.isShownBorder">
         <div class="dialog-title-row">
             <span class="dialog-icon">
-                <i *ngIf="data.type === 'danger'" class="ti ti-alert-triangle"></i>
-                <i *ngIf="data.type === 'warning'" class="ti ti-alert-circle"></i>
-                <i *ngIf="!data.type || data.type === 'info'" class="ti ti-info-circle"></i>
+                <app-svg-icon *ngIf="data.type === 'danger'" icon="warning" size="1.25rem" />
+                <app-svg-icon *ngIf="data.type === 'warning'" icon="alert-circle" size="1.25rem" />
+                <app-svg-icon *ngIf="!data.type || data.type === 'info'" icon="info-circle" size="1.25rem" />
             </span>
             <h2 class="dialog-title">{{ data.title }}</h2>
         </div>
         <app-icon-button
-            icon="ui/x"
+            icon="x"
             size="2rem"
             ariaLabel="Close"
             (click)="onClose()"

@@ -1,18 +1,20 @@
 import { Component, Input } from '@angular/core';
 import { GraphSessionStatus } from '../../../features/flows/services/flows-sessions.service';
-import { NgClass, NgIf } from '@angular/common';
+import { NgIf, NgClass  } from '@angular/common';
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-status-badge',
   standalone: true,
-  imports: [NgClass, NgIf],
+  imports: [NgIf, NgClass, AppSvgIconComponent],
   template: `
     <span class="status-badge" [ngClass]="statusClass">
-      <i
-        *ngIf="sessionStatus !== GraphSessionStatus.EXPIRED"
-        [ngClass]="statusIcon"
+      <app-svg-icon
+        *ngIf="statusIcon"
+        [icon]="statusIcon"
+        size="14px"
         aria-hidden="true"
-      ></i>
+      />
       {{ statusText }}
     </span>
   `,
@@ -28,10 +30,6 @@ import { NgClass, NgIf } from '@angular/common';
         font-size: 0.8rem;
         font-weight: 500;
         gap: 6px;
-
-        i {
-          font-size: 14px;
-        }
       }
       .status-running {
         background-color: rgba(41, 121, 255, 0.15);
@@ -130,15 +128,15 @@ export class StatusBadgeComponent {
     if (!this.sessionStatus) return '';
     switch (this.sessionStatus) {
       case GraphSessionStatus.RUNNING:
-        return 'ti ti-player-play';
+        return 'play';
       case GraphSessionStatus.ERROR:
-        return 'ti ti-alert-triangle';
+        return 'warning';
       case GraphSessionStatus.ENDED:
-        return 'ti ti-check';
+        return 'check';
       case GraphSessionStatus.WAITING_FOR_USER:
-        return 'ti ti-hourglass';
+        return 'hourglass';
       case GraphSessionStatus.PENDING:
-        return 'ti ti-circle-dot';
+        return 'status-pending';
       case GraphSessionStatus.EXPIRED:
         return '';
       case GraphSessionStatus.STOP:
