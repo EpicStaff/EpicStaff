@@ -15,11 +15,12 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { NodeModel } from '../../core/models/node.model';
 import { SearchNodeItemComponent } from './search-node-item/search-node-item.component';
+import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-nodes-search',
   standalone: true,
-  imports: [CommonModule, FormsModule, SearchNodeItemComponent],
+  imports: [CommonModule, FormsModule, SearchNodeItemComponent, AppSvgIconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="nodes-search-container">
@@ -31,7 +32,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
           [attr.title]="isSearchVisible() ? 'Close search' : 'Search nodes'"
           [class.active]="isSearchVisible()"
         >
-          <i class="ti ti-search"></i>
+          <app-svg-icon icon="search"></app-svg-icon>
         </button>
 
         <!-- Search input field (appears to the right of the icon) -->
@@ -50,7 +51,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
             (click)="clearSearch()"
             title="Clear search"
           >
-            <i class="ti ti-x"></i>
+            <app-svg-icon icon="x"></app-svg-icon>
           </button>
         </div>
       </div>

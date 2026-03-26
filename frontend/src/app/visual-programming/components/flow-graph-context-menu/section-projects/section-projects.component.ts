@@ -8,13 +8,14 @@ import {
   ChangeDetectorRef,
 } from '@angular/core';
 import { CommonModule, NgFor } from '@angular/common';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ProjectsStorageService } from '../../../../features/projects/services/projects-storage.service';
 import { GetProjectRequest } from '../../../../features/projects/models/project.model';
 import { NodeType } from '../../../core/enums/node-type';
 
 @Component({
   selector: 'app-flow-projects-context-menu',
-  imports: [CommonModule, NgFor],
+  imports: [CommonModule, NgFor, AppSvgIconComponent],
   standalone: true,
   template: `
     <ul>
@@ -22,7 +23,7 @@ import { NodeType } from '../../../core/enums/node-type';
         *ngFor="let project of filteredProjects"
         (click)="onProjectClicked(project)"
       >
-        <i class="ti ti-folder"></i>
+        <app-svg-icon icon="folder" size="18px"></app-svg-icon>
         <span class="project-name">{{ project.name }}</span>
       </li>
     </ul>
@@ -48,8 +49,7 @@ import { NodeType } from '../../../core/enums/node-type';
         background: #2a2a2a;
         color: #fff;
       }
-      li i {
-        font-size: 18px;
+      li app-svg-icon {
         color: #5672cd;
       }
 

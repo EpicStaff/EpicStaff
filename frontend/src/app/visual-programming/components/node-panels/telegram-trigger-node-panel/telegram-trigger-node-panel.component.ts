@@ -14,9 +14,9 @@ import {
     SelectItem,
     CustomInputComponent,
     ButtonComponent,
-    AppIconComponent,
     JsonEditorComponent,
 } from "@shared/components";
+import { AppSvgIconComponent } from "../../../../shared/components/app-svg-icon/app-svg-icon.component";
 import { startWith } from "rxjs";
 import { NgrokConfigStorageService } from "../../../../features/settings-dialog/services/ngrok-config/ngrok-config-storage.service";
 import { ToastService } from "../../../../services/notifications";
@@ -47,7 +47,7 @@ import { WEBHOOK_NAME_PATTERN } from "../webhook-trigger-node-panel/webhook-trig
         CustomInputComponent,
         ReactiveFormsModule,
         ButtonComponent,
-        AppIconComponent,
+        AppSvgIconComponent,
         MATERIAL_FORMS,
         JsonEditorComponent,
         SelectComponent

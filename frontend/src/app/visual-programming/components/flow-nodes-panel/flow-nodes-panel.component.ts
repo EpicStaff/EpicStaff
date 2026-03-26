@@ -21,13 +21,14 @@ import {
 } from '../../core/models/node.model';
 import { NodeItemComponent } from './node-item/node-item.component';
 import { FFlowModule } from '@foblex/flow';
+import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-flow-nodes-panel',
   templateUrl: './flow-nodes-panel.component.html',
   styleUrls: ['./flow-nodes-panel.component.scss'],
   standalone: true,
-  imports: [CommonModule, FormsModule, NodeItemComponent, FFlowModule],
+  imports: [CommonModule, FormsModule, NodeItemComponent, FFlowModule, AppSvgIconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FlowNodePanelComponent implements OnInit {

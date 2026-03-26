@@ -46,6 +46,7 @@ import { NodePanelShellComponent } from '../components/node-panels/node-panel-sh
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent } from '../components/note-edit-dialog/note-edit-dialog.component';
 import { ProjectDialogComponent } from '../components/project-dialog/project-dialog.component';
+import { AppSvgIconComponent } from '../../shared/components/app-svg-icon/app-svg-icon.component';
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { ShortcutListenerDirective } from '../core/directives/shortcut-listener.directive';
 import { NODE_COLORS, NODE_ICONS } from '../core/enums/node-config';
@@ -89,6 +90,7 @@ import { UndoRedoService } from '../services/undo-redo.service';
         NodesSearchComponent,
         NodePanelShellComponent,
         FlowShortcutsButtonComponent,
+        AppSvgIconComponent,
     ],
 })
 export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {

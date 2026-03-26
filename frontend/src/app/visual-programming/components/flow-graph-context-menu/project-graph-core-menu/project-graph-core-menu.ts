@@ -6,6 +6,7 @@ import {
   EventEmitter,
 } from '@angular/core';
 import { NgFor } from '@angular/common';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { NodeType } from '../../../core/enums/node-type';
 
 interface ProjectGraphBlock {
@@ -35,7 +36,7 @@ interface ProjectGraphBlock {
       >
         <i [class]="block.icon" [style.color]="block.color"></i>
         {{ block.label }}
-        <i class="ti ti-plus plus-icon"></i>
+        <app-svg-icon icon="plus" class="plus-icon" size="18px"></app-svg-icon>
       </li>
     </ul>
   `,
@@ -69,7 +70,6 @@ interface ProjectGraphBlock {
       }
       .plus-icon {
         margin-left: auto;
-        font-size: 18px;
         color: #bbb;
         opacity: 0;
         transition: opacity 0.2s ease, color 0.2s ease;
@@ -81,7 +81,7 @@ interface ProjectGraphBlock {
     `,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgFor],
+  imports: [NgFor, AppSvgIconComponent],
 })
 export class ProjectGraphCoreMenuComponent {
   @Input() public searchTerm: string = '';

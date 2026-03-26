@@ -50,6 +50,7 @@ import { DecisionTableNodeComponent } from '../nodes-components/decision-table-n
 import { GraphNoteComponent } from '../nodes-components/graph-note/graph-note.component';
 import { ResizeHandleComponent } from '../resize-handle/resize-handle.component';
 import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay.component';
+import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-flow-base-node',
@@ -67,6 +68,7 @@ import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay
         GraphNoteComponent,
         FlowNodeVariablesOverlayComponent,
         GoToButtonComponent,
+        AppSvgIconComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {

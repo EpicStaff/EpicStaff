@@ -50,23 +50,22 @@
                     <div class="webhook-section">
                         <div class="webhook-section__label-container">
                             <label>Webhook</label>
-                            <mat-icon
+                            <app-svg-icon
+                                icon="help"
                                 [matTooltip]="'Ngrok tunnel'"
                                 matTooltipPosition="right"
                                 matTooltipClass="custom-tooltip"
                                 class="help-icon"
-                            >
-                                help
-                            </mat-icon>
+                            />
                         </div>
 
                         <div class="webhook-status__container">
                             @switch (webhookStatusDisplay()) {
                                 @case (WebhookStatus.FAIL) {
                                     <div class="webhook-status__main">
-                                        <app-icon
+                                        <app-svg-icon
                                             class="webhook-status__icon--failed"
-                                            icon="ui/x"
+                                            icon="x"
                                             size="1rem"
                                         />
                                         <span>Registration failed</span>
@@ -77,9 +76,9 @@
                                 }
                                 @case (WebhookStatus.SUCCESS) {
                                     <div class="webhook-status__main">
-                                        <app-icon
+                                        <app-svg-icon
                                             class="webhook-status__icon--success"
-                                            icon="ui/check"
+                                            icon="check"
                                             size="1rem"
                                         />
                                         <span>Webhook registered</span>
@@ -127,9 +126,7 @@
                         Mock Data
                     </label>
                     <div class="code-editor-section__info">
-                        <mat-icon class="code-editor-section__info-icon">
-                            help
-                        </mat-icon>
+                        <app-svg-icon icon="help" class="code-editor-section__info-icon" />
                         <a
                             class="code-editor-section__info-link"
                             href="https://core.telegram.org/bots/api#available-types"

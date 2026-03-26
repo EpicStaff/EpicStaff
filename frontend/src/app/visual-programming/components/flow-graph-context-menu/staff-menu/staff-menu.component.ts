@@ -8,6 +8,7 @@ import {
   Output,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { AgentsService } from '../../../../features/staff/services/staff.service';
 import { GetAgentRequest } from '../../../../features/staff/models/agent.model';
 import { NodeType } from '../../../core/enums/node-type';
@@ -15,16 +16,16 @@ import { NodeType } from '../../../core/enums/node-type';
 @Component({
   selector: 'app-staff-menu',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, AppSvgIconComponent],
   template: `
     <ul>
       <li
         *ngFor="let agent of filteredAgents; trackBy: trackByAgentId"
         (click)="onAgentClicked(agent)"
       >
-        <i class="ti ti-robot"></i>
+        <app-svg-icon icon="robot" size="18px"></app-svg-icon>
         <span class="agent-role">{{ agent.role }}</span>
-        <i class="ti ti-plus plus-icon"></i>
+        <app-svg-icon icon="plus" class="plus-icon" size="18px"></app-svg-icon>
       </li>
     </ul>
   `,
@@ -51,8 +52,7 @@ import { NodeType } from '../../../core/enums/node-type';
         background: #2a2a2a;
         color: #fff;
       }
-      li i {
-        font-size: 18px;
+      li app-svg-icon:not(.plus-icon) {
         color: #8e5cd9;
       }
 
@@ -63,7 +63,6 @@ import { NodeType } from '../../../core/enums/node-type';
         text-overflow: ellipsis;
       }
       .plus-icon {
-        font-size: 18px;
         color: #bbb;
         opacity: 0;
         transition: opacity 0.2s ease, color 0.2s ease;

@@ -6,6 +6,7 @@ import {
   Output,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { NODE_COLORS, NODE_ICONS } from '../../../core/enums/node-config';
 import { NodeType } from '../../../core/enums/node-type';
 import {
@@ -23,7 +24,7 @@ import {
 @Component({
   selector: 'app-search-node-item',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, AppSvgIconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div
@@ -45,7 +46,7 @@ import {
         </div>
       </div>
       <div class="show-in-canvas">
-        <i class="ti ti-eye-search"></i>
+        <app-svg-icon icon="eye-search" size="16px"></app-svg-icon>
       </div>
     </div>
   `,
@@ -145,9 +146,6 @@ import {
           height: 28px;
           border-radius: 4px;
 
-          i {
-            font-size: 16px;
-          }
         }
       }
     `,

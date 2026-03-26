@@ -10,6 +10,7 @@ import {
     ChangeDetectionStrategy,
 } from '@angular/core';
 import { NgComponentOutlet } from '@angular/common';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { NodePanel } from '../../../core/models/node-panel.interface';
 import { NodeModel } from '../../../core/models/node.model';
 import { PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
@@ -19,7 +20,7 @@ import { SidePanelService } from '../../../services/side-panel.service';
 @Component({
     standalone: true,
     selector: 'app-node-panel-shell',
-    imports: [NgComponentOutlet],
+    imports: [NgComponentOutlet, AppSvgIconComponent],
     hostDirectives: [
         {
             directive: ShortcutListenerDirective,
@@ -67,7 +68,7 @@ import { SidePanelService } from '../../../services/side-panel.service';
                             aria-label="Close dialog"
                             (click)="onCloseClick()"
                         >
-                            <i class="ti ti-x"></i>
+                            <app-svg-icon icon="x"></app-svg-icon>
                         </button>
                     </div>
                 </div>

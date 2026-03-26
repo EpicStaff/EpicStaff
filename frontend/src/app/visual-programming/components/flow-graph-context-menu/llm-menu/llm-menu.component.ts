@@ -8,6 +8,7 @@ import {
   Output,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { LLM_Config_Service } from '../../../../features/settings-dialog/services/llms/llm-config.service';
 import { GetLlmConfigRequest } from '../../../../features/settings-dialog/models/llms/LLM_config.model';
 import { NodeType } from '../../../core/enums/node-type';
@@ -15,16 +16,16 @@ import { NodeType } from '../../../core/enums/node-type';
 @Component({
   selector: 'app-llm-menu',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, AppSvgIconComponent],
   template: `
     <ul>
       <li
         *ngFor="let config of filteredConfigs; trackBy: trackById"
         (click)="onConfigClicked(config)"
       >
-        <i class="ti ti-brain"></i>
+        <app-svg-icon icon="brain" size="18px"></app-svg-icon>
         <span class="config-name">{{ config.custom_name }}</span>
-        <i class="ti ti-plus plus-icon"></i>
+        <app-svg-icon icon="plus" class="plus-icon" size="18px"></app-svg-icon>
       </li>
     </ul>
   `,
@@ -51,8 +52,7 @@ import { NodeType } from '../../../core/enums/node-type';
         background: #2a2a2a;
         color: #fff;
       }
-      li i {
-        font-size: 18px;
+      li app-svg-icon:not(.plus-icon) {
         color: #e0575b;
       }
 
@@ -63,7 +63,6 @@ import { NodeType } from '../../../core/enums/node-type';
         text-overflow: ellipsis;
       }
       .plus-icon {
-        font-size: 18px;
         color: #bbb;
         opacity: 0;
         transition: opacity 0.2s ease, color 0.2s ease;

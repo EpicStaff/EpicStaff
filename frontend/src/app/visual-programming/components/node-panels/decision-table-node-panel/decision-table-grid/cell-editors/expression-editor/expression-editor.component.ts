@@ -20,11 +20,12 @@ import { EditorToolbarComponent } from './editor-toolbar/editor-toolbar.componen
 import { FlowService } from '../../../../../../services/flow.service';
 import { Overlay, OverlayModule, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
+import { AppSvgIconComponent } from '../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-expression-editor',
     standalone: true,
-    imports: [CommonModule, FormsModule, AutocompleteOverlayComponent, EditorToolbarComponent, OverlayModule],
+    imports: [CommonModule, FormsModule, AutocompleteOverlayComponent, EditorToolbarComponent, OverlayModule, AppSvgIconComponent],
     templateUrl: './expression-editor.component.html',
     styleUrls: ['./expression-editor.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

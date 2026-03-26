@@ -20,6 +20,7 @@ import { ToolsMenuComponent } from './tools-menu/tools-menu.component';
 import { StaffMenuComponent } from './staff-menu/staff-menu.component';
 import { ProjectGraphCoreMenuComponent } from './project-graph-core-menu/project-graph-core-menu';
 import { FlowsMenuComponent } from './flows-menu/flows-menu.component';
+import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 export type MenuType =
   | 'flow-core'
@@ -50,6 +51,7 @@ export type MenuContext = 'flow-graph' | 'project-graph';
     ToolsMenuComponent,
     StaffMenuComponent,
     ProjectGraphCoreMenuComponent,
+    AppSvgIconComponent,
   ],
 })
 export class FlowGraphContextMenuComponent

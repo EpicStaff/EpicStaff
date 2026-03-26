@@ -1,7 +1,7 @@
 <div class="breadcrumbs" (click)="$event.stopPropagation()" (mousedown)="$event.preventDefault()">
     @if (currentPath().length > 0) {
         <span class="back-btn" (click)="onBackClick($event)" (mousedown)="$event.preventDefault()">
-            <i class="ti ti-arrow-left"></i>
+            <app-svg-icon icon="arrow-left"></app-svg-icon>
         </span>
     }
     <span class="crumb" (click)="onCrumbClick($event, -1)" (mousedown)="$event.preventDefault()">{{ rootLabel() }}</span>
@@ -25,14 +25,14 @@
 
             @if (item.type === 'group') {
                 <span class="drill-arrow" (mousedown)="onArrowClick($event, item); $event.preventDefault(); $event.stopPropagation()">
-                    <i class="ti ti-chevron-right"></i>
+                    <app-svg-icon icon="chevron-right"></app-svg-icon>
                 </span>
             }
         </li>
     }
     @if (filteredItems().length === 0) {
         <li class="no-results">
-            <i class="ti ti-info-circle"></i>
+            <app-svg-icon icon="info-circle"></app-svg-icon>
             <span>{{ emptyMessage() }}</span>
         </li>
     }

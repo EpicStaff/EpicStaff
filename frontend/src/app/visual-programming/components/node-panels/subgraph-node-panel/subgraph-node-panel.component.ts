@@ -8,6 +8,7 @@ import { FlowsApiService } from '../../../../features/flows/services/flows-api.s
 import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { GoToButtonComponent } from '../../../../shared/components/go-to-button/go-to-button.component';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { flowUrl } from '../../../../shared/utils/flow-links';
 
 interface InputMapPair {
@@ -18,7 +19,7 @@ interface InputMapPair {
 @Component({
     standalone: true,
     selector: 'app-subgraph-node-panel',
-    imports: [ReactiveFormsModule, CommonModule, CustomInputComponent, InputMapComponent, GoToButtonComponent],
+    imports: [ReactiveFormsModule, CommonModule, CustomInputComponent, InputMapComponent, GoToButtonComponent, AppSvgIconComponent],
     template: `
         <div class="panel-container">
             <div class="panel-content">
@@ -49,7 +50,7 @@ interface InputMapPair {
                     <div class="field">
                         <label>
                             Selected Flow
-                            <i class="ti ti-help-circle tooltip-icon" title="Select the flow that this node will execute"></i>
+                            <app-svg-icon icon="help" class="tooltip-icon" title="Select the flow that this node will execute"></app-svg-icon>
                         </label>
                         <div class="selected-flow-row">
                             <select

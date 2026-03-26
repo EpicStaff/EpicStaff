@@ -9,11 +9,12 @@ import {
 } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { HelpTooltipComponent } from '../../../shared/components/help-tooltip/help-tooltip.component';
+import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-input-map',
     standalone: true,
-    imports: [ReactiveFormsModule, CommonModule, HelpTooltipComponent],
+    imports: [ReactiveFormsModule, CommonModule, HelpTooltipComponent, AppSvgIconComponent],
     viewProviders: [
         {
             provide: ControlContainer,
@@ -54,16 +55,18 @@ import { HelpTooltipComponent } from '../../../shared/components/help-tooltip/he
                                 (keydown.enter)="onEnterKey($event, i)"
                             />
                         </div>
-                        <i
-                            class="ti ti-trash delete-icon"
+                        <app-svg-icon
+                            icon="trash"
+                            size="1rem"
+                            class="delete-icon"
                             (click)="removePair(i)"
-                        ></i>
+                        ></app-svg-icon>
                     </div>
                 </div>
                 }
             </div>
             <button type="button" class="add-pair-btn" (click)="addPair()">
-                <i class="ti ti-plus"></i> Add Input
+                <app-svg-icon icon="plus" size="16px"></app-svg-icon> Add Input
             </button>
         </div>
     `,
@@ -189,8 +192,8 @@ import { HelpTooltipComponent } from '../../../shared/components/help-tooltip/he
                     background: var(--color-action-btn-background-hover);
                 }
 
-                i {
-                    font-size: 16px;
+                app-svg-icon {
+                    flex-shrink: 0;
                 }
             }
         `,

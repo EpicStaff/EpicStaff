@@ -29,13 +29,14 @@ import { ButtonComponent } from '../../../../../shared/components/buttons/button
 
 import { ExpressionEditorComponent } from './cell-editors/expression-editor/expression-editor.component';
 import { ExpressionRendererComponent } from './cell-renderers/expression-renderer/expression-renderer.component';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 @Component({
     selector: 'app-decision-table-grid',
     standalone: true,
-    imports: [AgGridModule, ButtonComponent, ExpressionEditorComponent, ExpressionRendererComponent],
+    imports: [AgGridModule, ButtonComponent, ExpressionEditorComponent, ExpressionRendererComponent, AppSvgIconComponent],
     templateUrl: './decision-table-grid.component.html',
     styleUrls: ['./decision-table-grid.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

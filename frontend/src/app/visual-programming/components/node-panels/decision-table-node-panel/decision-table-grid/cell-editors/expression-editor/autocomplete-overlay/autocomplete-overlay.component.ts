@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ValuePreviewTooltipComponent } from './value-preview-tooltip/value-preview-tooltip.component';
+import { AppSvgIconComponent } from '../../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 export interface AutocompleteItem {
     key: string;
@@ -22,7 +23,7 @@ export interface AutocompleteItem {
 @Component({
     selector: 'app-autocomplete-overlay',
     standalone: true,
-    imports: [CommonModule, ValuePreviewTooltipComponent],
+    imports: [CommonModule, ValuePreviewTooltipComponent, AppSvgIconComponent],
     templateUrl: './autocomplete-overlay.component.html',
     styleUrls: ['./autocomplete-overlay.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

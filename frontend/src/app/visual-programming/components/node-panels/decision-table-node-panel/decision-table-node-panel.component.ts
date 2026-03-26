@@ -22,6 +22,7 @@ import { DecisionTableGridComponent } from './decision-table-grid/decision-table
 import { FlowService } from '../../../services/flow.service';
 import { NodeType } from '../../../core/enums/node-type';
 import { generatePortsForDecisionTableNode } from '../../../core/helpers/helpers';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
     standalone: true,
@@ -31,6 +32,7 @@ import { generatePortsForDecisionTableNode } from '../../../core/helpers/helpers
         CustomInputComponent,
         CommonModule,
         DecisionTableGridComponent,
+        AppSvgIconComponent,
     ],
     templateUrl: './decision-table-node-panel.component.html',
     styleUrls: ['./decision-table-node-panel.component.scss'],

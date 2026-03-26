@@ -1,10 +1,11 @@
 import { Component, ChangeDetectionStrategy, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-conditional-edge-node',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, AppSvgIconComponent],
   template: `
     <svg
       [attr.width]="width"
@@ -24,7 +25,7 @@ import { CommonModule } from '@angular/common';
         [attr.height]="contentHeight"
       >
         <div class="edge-content">
-          <i class="ti ti-route-alt-left"></i>
+          <app-svg-icon icon="route-alt-left" size="25px"></app-svg-icon>
           <span>Conditional Edge</span>
         </div>
       </foreignObject>
@@ -49,9 +50,8 @@ import { CommonModule } from '@angular/common';
         font-size: 16px;
         color: #fff;
 
-        i {
+        app-svg-icon {
           transform: rotate(90deg);
-          font-size: 25px;
           color: var(--edge-node-accent-color);
         }
       }

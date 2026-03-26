@@ -1,5 +1,6 @@
 import { NgFor } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output } from '@angular/core';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 import { NODE_COLORS, NODE_ICONS } from '../../../core/enums/node-config';
 import { NodeType } from '../../../core/enums/node-type';
@@ -25,7 +26,7 @@ interface FlowGraphBlock {
             >
                 <i [class]="block.icon" [style.color]="block.color"></i>
                 {{ block.label }}
-                <i class="ti ti-plus plus-icon"></i>
+                <app-svg-icon icon="plus" class="plus-icon" size="18px"></app-svg-icon>
             </li>
         </ul>
     `,
@@ -60,7 +61,6 @@ interface FlowGraphBlock {
             }
             .plus-icon {
                 margin-left: auto;
-                font-size: 18px;
                 color: #bbb;
                 opacity: 0;
                 transition:
@@ -79,7 +79,7 @@ interface FlowGraphBlock {
         `,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [NgFor],
+    imports: [NgFor, AppSvgIconComponent],
 })
 export class FlowGraphCoreMenuComponent {
     @Input() public searchTerm: string = '';

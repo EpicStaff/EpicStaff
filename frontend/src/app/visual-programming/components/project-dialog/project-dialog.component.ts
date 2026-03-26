@@ -1,20 +1,22 @@
-import { 
-  Component, 
-  inject, 
-  Inject, 
-  ViewChild, 
-  AfterViewInit, 
-  ChangeDetectorRef, 
-  HostListener,
-  OnDestroy 
-} from '@angular/core';
+import { DIALOG_DATA,DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
+import {
+  AfterViewInit,
+  ChangeDetectorRef,
+  Component,
+  HostListener,
+  Inject,
+  inject,
+  OnDestroy,
+  ViewChild,
+} from '@angular/core';
 import { Subscription } from 'rxjs';
-import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { OpenProjectPageComponent } from '../../../open-project-page/open-project-page.component';
 import { SaveWithIndicatorComponent } from 'src/app/shared/components/save-with-indicator/save-with-indicator.component';
-import { UnsavedIndicatorComponent } from 'src/app/shared/components/unsaved-indicator/unsaved-indicator.component';
 import { UnsavedChangesDialogService } from 'src/app/shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
+import { UnsavedIndicatorComponent } from 'src/app/shared/components/unsaved-indicator/unsaved-indicator.component';
+
+import { OpenProjectPageComponent } from '../../../open-project-page/open-project-page.component';
+import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-project-dialog',
@@ -23,13 +25,14 @@ import { UnsavedChangesDialogService } from 'src/app/shared/components/unsaved-c
     CommonModule, 
     OpenProjectPageComponent, 
     SaveWithIndicatorComponent, 
-    UnsavedIndicatorComponent, 
+    UnsavedIndicatorComponent,
+    AppSvgIconComponent,
   ],
   template: `
     <div class="project-dialog-wrapper">
       <div class="dialog-header">
         <div class="icon-and-title">
-          <i class="ti ti-folder"></i>
+          <app-svg-icon icon="folder"></app-svg-icon>
           <span class="title">{{ data.projectName }}</span>
           <app-unsaved-indicator
             [show]="openProjectPage?.hasUnsavedChanges ?? false"
@@ -43,7 +46,7 @@ import { UnsavedChangesDialogService } from 'src/app/shared/components/unsaved-c
           ></app-save-with-indicator>
           <div class="close-action">
             <span class="esc-label">ESC</span>
-            <i class="ti ti-x close-icon" (click)="tryClose()"></i>
+            <app-svg-icon icon="x" class="close-icon" (click)="tryClose()"></app-svg-icon>
           </div>
         </div>
       </div>
@@ -119,7 +122,7 @@ export class ProjectDialogComponent implements AfterViewInit {
   }
 
   @HostListener('window:keydown.escape', ['$event'])
-  onEsc(e: KeyboardEvent): void {
+  onEsc(e: Event): void {
     e.preventDefault();
     e.stopPropagation();
     this.tryClose();

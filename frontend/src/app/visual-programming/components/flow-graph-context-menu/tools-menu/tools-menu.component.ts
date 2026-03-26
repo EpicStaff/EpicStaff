@@ -8,6 +8,7 @@ import {
   Output,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ToolConfigService } from '../../../../features/tools/services/tool-config.service';
 import { ToolConfig } from '../../../../features/tools/models/tool-config.model';
 import { NodeType } from '../../../core/enums/node-type';
@@ -15,14 +16,14 @@ import { NodeType } from '../../../core/enums/node-type';
 @Component({
   selector: 'app-tools-menu',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, AppSvgIconComponent],
   template: `
     <ul>
       <li
         *ngFor="let tool of filteredTools; trackBy: trackByToolId"
         (click)="onToolClicked(tool)"
       >
-        <i class="ti ti-tools"></i>
+        <app-svg-icon icon="tools" size="18px"></app-svg-icon>
         <span class="tool-name">
           {{ tool.name }}
           <span
@@ -33,7 +34,7 @@ import { NodeType } from '../../../core/enums/node-type';
             }"
           ></span>
         </span>
-        <i class="ti ti-plus plus-icon"></i>
+        <app-svg-icon icon="plus" class="plus-icon" size="18px"></app-svg-icon>
       </li>
     </ul>
   `,
@@ -59,8 +60,7 @@ import { NodeType } from '../../../core/enums/node-type';
       li:hover {
         background: #2a2a2a;
       }
-      li i {
-        font-size: 18px;
+      li app-svg-icon:not(.plus-icon) {
         color: #9f6a00;
       }
 
@@ -83,7 +83,6 @@ import { NodeType } from '../../../core/enums/node-type';
         background-color: red;
       }
       .plus-icon {
-        font-size: 18px;
         color: #bbb;
         opacity: 0;
         transition: opacity 0.2s ease, color 0.2s ease;

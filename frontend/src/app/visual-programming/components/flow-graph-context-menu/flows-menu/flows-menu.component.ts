@@ -9,13 +9,14 @@ import {
   inject,
 } from '@angular/core';
 import { CommonModule, NgFor } from '@angular/common';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { GraphDto, GetGraphLightRequest } from '../../../../features/flows/models/graph.model';
 import { NodeType } from '../../../core/enums/node-type';
 
 @Component({
   selector: 'app-flows-menu',
-  imports: [CommonModule, NgFor],
+  imports: [CommonModule, NgFor, AppSvgIconComponent],
   standalone: true,
   template: `
     <ul>
@@ -23,7 +24,7 @@ import { NodeType } from '../../../core/enums/node-type';
         *ngFor="let flow of filteredFlows"
         (click)="onFlowClicked(flow)"
       >
-        <i class="ti ti-hierarchy-2"></i>
+        <app-svg-icon icon="hierarchy" size="18px"></app-svg-icon>
         <span class="flow-name">{{ flow.name }}</span>
       </li>
     </ul>
@@ -49,8 +50,7 @@ import { NodeType } from '../../../core/enums/node-type';
         background: #2a2a2a;
         color: #fff;
       }
-      li i {
-        font-size: 18px;
+      li app-svg-icon {
         color: #00bfa5;
       }
 
