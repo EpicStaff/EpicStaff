@@ -13,7 +13,7 @@ import { ConsoleService } from '../../../../services/console.service';
 import { ChatsService } from '../../../../services/chats.service';
 import { FullAgent } from '../../../../../../features/staff/services/full-agent.service';
 import { HasToolOutputPipe } from './has-tool-output.pipe';
-import { AppSvgIconComponent } from 'src/app/shared/components/app-svg-icon/app-svg-icon.component';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 export interface GroupedMessage {
   role: string | undefined;

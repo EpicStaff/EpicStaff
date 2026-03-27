@@ -12,7 +12,7 @@ import { ConsoleService } from '../../../../services/console.service';
 import { WavRecorderService } from '../../../../services/wav-recorder.service';
 import { MicrophoneSelectorComponent } from './microphone-selector/microphone-selector.component';
 import { VoiceVisualizerComponent } from './voice-visualizer/voice-visualizer.component';
-import { AppSvgIconComponent } from 'src/app/shared/components/app-svg-icon/app-svg-icon.component';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-chat-controls',

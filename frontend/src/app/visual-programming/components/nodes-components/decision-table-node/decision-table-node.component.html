@@ -22,7 +22,7 @@
     
     <div class="decision-table__header">
         <div class="icon-wrapper">
-            <i [class]="node.icon" [style.color]="node.color"></i>
+            <app-svg-icon [icon]="node.icon" [style.color]="node.color" size="1rem"></app-svg-icon>
         </div>
         <div class="title">{{ node.node_name || 'Decision Table' }}</div>
     </div>

@@ -1,7 +1,7 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { CommonModule, NgStyle } from '@angular/common';
 import { Memory } from '../../../models/memory.model';
-import { AppSvgIconComponent } from 'src/app/shared/components/app-svg-icon/app-svg-icon.component';
+import { AppSvgIconComponent } from '../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-memory-item',
@@ -167,7 +167,7 @@ import { AppSvgIconComponent } from 'src/app/shared/components/app-svg-icon/app-
           align-items: center;
           gap: 8px;
 
-          .ti-player-play-filled {
+          .player-play-filled {
             font-size: 10px;
             transition: transform 0.2s ease;
 

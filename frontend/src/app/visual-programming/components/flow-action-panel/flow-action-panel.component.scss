@@ -23,6 +23,7 @@
       cursor: pointer;
       transition: all 0.2s ease;
       outline: none;
+      color: var(--gray-300);
 
       &:hover {
         background-color: var(--gray-750);

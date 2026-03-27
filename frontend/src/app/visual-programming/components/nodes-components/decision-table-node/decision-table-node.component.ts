@@ -13,13 +13,14 @@ import { FormsModule } from '@angular/forms';
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
 import { FFlowModule } from '@foblex/flow';
 import { FlowService } from '../../../services/flow.service';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-decision-table-node',
     templateUrl: './decision-table-node.component.html',
     styleUrls: ['./decision-table-node.component.scss'],
     standalone: true,
-    imports: [CommonModule, FormsModule, ClickOrDragDirective, FFlowModule, NgStyle],
+    imports: [CommonModule, FormsModule, ClickOrDragDirective, FFlowModule, NgStyle, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DecisionTableNodeComponent {

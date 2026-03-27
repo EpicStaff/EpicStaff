@@ -50,7 +50,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
       [fPreviewMatchSize]="false"
     >
       <div class="node-icon" [style.--node-color]="getNodeColor(node.type)">
-        <i [class]="getNodeIcon(node.type)"></i>
+        <app-svg-icon [icon]="getNodeIcon(node.type)" size="16px"></app-svg-icon>
       </div>
       <div class="node-info">
         <div class="node-name">
@@ -72,7 +72,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
       <!-- Placeholder on the original location -->
       <div class="node-item-placeholder" *fExternalItemPlaceholder>
         <div class="node-icon" [style.--node-color]="getNodeColor(node.type)">
-          <i [class]="getNodeIcon(node.type)"></i>
+          <app-svg-icon [icon]="getNodeIcon(node.type)" size="16px"></app-svg-icon>
         </div>
         <div class="node-name">Drop to add</div>
       </div>
@@ -134,11 +134,6 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
           margin-right: 10px;
           color: var(--node-color);
           transition: all 0.2s ease;
-
-          i {
-            font-size: 16px;
-            transition: all 0.2s ease;
-          }
         }
 
         .node-info {
@@ -216,7 +211,7 @@ export class NodeItemComponent {
   }
 
   public getNodeIcon(type: NodeType): string {
-    return this.node.icon || this.nodeIcons[type] || 'ti ti-code';
+    return this.node.icon || this.nodeIcons[type] || 'terminal-2';
   }
 
   public getNodeDisplayName(): string {

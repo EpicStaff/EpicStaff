@@ -70,7 +70,7 @@ function readUIMetadata(
             y: position?.y ?? 100 + Math.floor(fallbackIndex / 5) * 200,
         },
         color: typeof m['color'] === 'string' ? m['color'] : (NODE_COLORS[nodeType] ?? '#685fff'),
-        icon: typeof m['icon'] === 'string' ? m['icon'] : (NODE_ICONS[nodeType] ?? 'ti ti-code'),
+        icon: typeof m['icon'] === 'string' ? m['icon'] : (NODE_ICONS[nodeType] ?? 'terminal-2'),
         size: {
             width: size?.width ?? getDefaultSize(nodeType).width,
             height: size?.height ?? getDefaultSize(nodeType).height,
@@ -302,6 +302,7 @@ function buildSubGraphNode(sn: SubGraphNode, idx: number): SubGraphNodeModel {
     const ui = readUIMetadata(sn.metadata, NodeType.SUBGRAPH, idx);
     const subgraphDetail = sn.subgraph_detail ?? {
         id: sn.subgraph,
+        uuid: '',
         name: sn.node_name,
         description: '',
         tags: [],

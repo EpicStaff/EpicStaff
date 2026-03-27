@@ -1,6 +1,6 @@
 import { Component, input, output, signal, inject, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { AppSvgIconComponent } from 'src/app/shared/components/app-svg-icon/app-svg-icon.component';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { BREAKPOINTS } from 'src/app/core/constants/breakpoints';

@@ -17,7 +17,7 @@ import {
     FormsModule,
     NG_VALUE_ACCESSOR,
 } from '@angular/forms';
-import { AppIconComponent } from '../app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { getProviderIconPath } from '../../../features/settings-dialog/utils/get-provider-icon';
 import { FullEmbeddingConfig } from '../../../features/settings-dialog/services/embeddings/full-embedding.service';
 import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-model-item.component';
@@ -29,7 +29,7 @@ import { DropdownManagerService } from '../../services/dropdown-manager.service'
     imports: [
         CommonModule,
         FormsModule,
-        AppIconComponent,
+        AppSvgIconComponent,
         EmbeddingModelItemComponent,
     ],
     providers: [
@@ -50,13 +50,12 @@ import { DropdownManagerService } from '../../services/dropdown-manager.service'
                     *ngIf="selectedConfig; else placeholderTemplate"
                     class="model-info"
                 >
-                    <app-icon
+                    <app-svg-icon
                         [icon]="getProviderIcon(selectedConfig)"
                         size="20px"
                         [ariaLabel]="selectedConfig.providerDetails?.name || ''"
                         class="provider-icon"
-                    >
-                    </app-icon>
+                    />
                     <div class="model-text">
                         <span class="model-name">{{
                             selectedConfig.modelDetails?.name || 'Unknown Model'
@@ -408,7 +407,7 @@ export class EmbeddingModelSelectorComponent
 
     getProviderIcon(config: FullEmbeddingConfig): string {
         if (!config || !config.providerDetails?.name) {
-            return 'llm-providers-logos/default';
+            return 'provider-default';
         }
         return getProviderIconPath(config.providerDetails.name);
     }

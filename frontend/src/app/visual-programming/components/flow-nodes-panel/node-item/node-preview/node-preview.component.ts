@@ -2,18 +2,19 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { NodeType } from '../../../../core/enums/node-type';
 import { NodeModel } from '../../../../core/models/node.model';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-node-preview',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, AppSvgIconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="node-preview-container">
       <div class="interactive-node-body">
         <div class="header">
           <div class="icon-wrapper">
-            <i [class]="getNodeIcon()"></i>
+            <app-svg-icon [icon]="getNodeIcon()" size="22px" style="color: #666666"></app-svg-icon>
           </div>
           <div class="title">
             {{ node.node_name }}
@@ -58,10 +59,7 @@ import { NodeModel } from '../../../../core/models/node.model';
               align-items: center;
               justify-content: center;
 
-              i {
-                color: #666666; /* Neutral gray color */
-                font-size: 22px;
-              }
+
             }
 
             .title {
@@ -105,9 +103,9 @@ export class NodePreviewComponent {
 
   public getNodeIcon(): string {
     if (!this.node) {
-      return 'ti ti-code';
+      return 'terminal-2';
     }
-    return this.node.icon || 'ti ti-code';
+    return this.node.icon || 'terminal-2';
   }
 
   public hasInputPorts(): boolean {

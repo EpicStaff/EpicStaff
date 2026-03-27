@@ -1,10 +1,11 @@
 import { Component, EventEmitter, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-flow-zoom-controls',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, AppSvgIconComponent],
   templateUrl: './flow-zoom-controls.component.html',
   styleUrls: ['./flow-zoom-controls.component.scss'],
 })
@@ -16,17 +17,17 @@ export class FlowZoomControlsComponent {
   // Zoom controls with their respective tooltips
   readonly zoomControls = [
     {
-      icon: 'ti ti-zoom-in',
+      icon: 'zoom-in',
       tooltip: 'Zoom In',
       action: () => this.zoomIn.emit(),
     },
     {
-      icon: 'ti ti-zoom-out',
+      icon: 'zoom-out',
       tooltip: 'Zoom Out',
       action: () => this.zoomOut.emit(),
     },
     {
-      icon: 'ti ti-zoom-scan',
+      icon: 'zoom-scan',
       tooltip: 'Zoom to Fit',
       action: () => this.zoomToFit.emit(),
     },

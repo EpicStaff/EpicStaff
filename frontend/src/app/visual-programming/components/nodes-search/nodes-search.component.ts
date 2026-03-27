@@ -120,6 +120,7 @@ import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app
         transition: all 0.2s ease;
         outline: none;
         position: relative;
+        color: var(--gray-300);
 
         &:hover {
           background-color: var(--gray-750);

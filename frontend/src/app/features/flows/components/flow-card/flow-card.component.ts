@@ -125,6 +125,7 @@ export class FlowCardComponent {
     public onSubflowActionSelected(action: string, subflow: SubflowLightDto): void {
         const flowLike: GetGraphLightRequest = {
             id: subflow.id,
+            uuid: '',
             name: subflow.name,
             description: subflow.description,
             tags: subflow.tags,
@@ -138,6 +139,7 @@ export class FlowCardComponent {
     public onSubflowClick(subflow: SubflowLightDto): void {
         const flowLike: GetGraphLightRequest = {
             id: subflow.id,
+            uuid: '',
             name: subflow.name,
             description: subflow.description,
             tags: subflow.tags,

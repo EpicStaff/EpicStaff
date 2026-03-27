@@ -549,7 +549,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         // Generate common values
         const newNodeId = uuidv4();
         const nodeColor = NODE_COLORS[event.type] || '#ddd';
-        const nodeIcon = NODE_ICONS[event.type] || 'ti ti-help';
+        const nodeIcon = NODE_ICONS[event.type] || 'help';
         const position = this.fFlowComponent.getPositionInFlow(
             PointExtensions.initialize(this.contextMenuPostion.x, this.contextMenuPostion.y)
         );

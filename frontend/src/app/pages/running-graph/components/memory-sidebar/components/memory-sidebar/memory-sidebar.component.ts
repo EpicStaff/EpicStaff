@@ -2,7 +2,7 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { CommonModule, NgStyle } from '@angular/common';
 import { Memory, MemoryType } from '../../models/memory.model';
 import { MemoryItemComponent } from './memory-item/memory-item.component';
-import { AppSvgIconComponent } from 'src/app/shared/components/app-svg-icon/app-svg-icon.component';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-memories-sidebar',

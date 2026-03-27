@@ -220,6 +220,7 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
         if (selectedFlow) {
             updatedData = {
                 id: selectedFlow.id,
+                uuid: selectedFlow.uuid,
                 name: selectedFlow.name,
                 description: selectedFlow.description,
                 tags: selectedFlow.tags || [],

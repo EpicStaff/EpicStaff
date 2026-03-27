@@ -24,8 +24,10 @@ interface FlowGraphBlock {
                 [style.border-left-color]="block.color"
                 [class.disabled]="isDisabled(block.type)"
             >
-                <i [class]="block.icon" [style.color]="block.color"></i>
-                {{ block.label }}
+                <span class="node-icon" [style.color]="block.color">
+                    <app-svg-icon [icon]="block.icon" size="22px"></app-svg-icon>
+                </span>
+                <span class="node-label">{{ block.label }}</span>
                 <app-svg-icon icon="plus" class="plus-icon" size="18px"></app-svg-icon>
             </li>
         </ul>
@@ -48,16 +50,17 @@ interface FlowGraphBlock {
                 transition: background 0.2s ease;
                 position: relative;
             }
+            .node-icon {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+            }
+            .node-label {
+                color: #fff;
+            }
             li:hover {
                 background: #2a2a2a;
-            }
-            li i {
-                font-size: 16px;
-                color: #bbb; /* Fallback color */
-                transition: color 0.2s ease;
-            }
-            li:hover i {
-                color: inher;
             }
             .plus-icon {
                 margin-left: auto;

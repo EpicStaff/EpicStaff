@@ -39,10 +39,11 @@ import { SidePanelService } from '../../../services/side-panel.service';
         >
             <header class="dialog-header">
                 <div class="icon-and-title">
-                    <i
-                        [class]="node()!.icon"
+                    <app-svg-icon
+                        [icon]="node()!.icon"
                         [style.color]="node()!.color || '#685fff'"
-                    ></i>
+                        size="1.5rem"
+                    ></app-svg-icon>
                     <span class="title">{{ nodeNameToDisplay() }}</span>
                 </div>
                 <div class="header-actions">
@@ -52,13 +53,10 @@ import { SidePanelService } from '../../../services/side-panel.service';
                         aria-label="Toggle panel size"
                         (click)="toggleExpanded()"
                     >
-                        <i
-                            [class]="
-                                isExpanded()
-                                    ? 'ti ti-arrows-minimize'
-                                    : 'ti ti-arrows-maximize'
-                            "
-                        ></i>
+                        <app-svg-icon
+                            [icon]="isExpanded() ? 'arrows-minimize' : 'arrows-maximize'"
+                            size="1.25rem"
+                        ></app-svg-icon>
                     </button>
                     }
                     <div class="close-action">

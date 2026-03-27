@@ -7,22 +7,21 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FullLLMConfig } from '../../../../features/settings-dialog/services/llms/full-llm-config.service';
-import { AppIconComponent } from '../../app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
 import { getProviderIconPath } from '../../../../features/settings-dialog/utils/get-provider-icon';
 
 @Component({
   selector: 'app-llm-model-item',
   standalone: true,
-  imports: [CommonModule, AppIconComponent],
+  imports: [CommonModule, AppSvgIconComponent],
   template: `
     <div class="model-item" [class.selected]="isSelected" (click)="onSelect()">
-      <app-icon
+      <app-svg-icon
         [icon]="getProviderIcon()"
         size="20px"
         [ariaLabel]="config.providerDetails?.name || ''"
         class="provider-icon"
-      >
-      </app-icon>
+      />
       <div class="model-text">
         <span class="model-name">{{
           config.modelDetails?.name || 'Unknown Model'
@@ -94,7 +93,7 @@ export class LlmModelItemComponent {
 
   getProviderIcon(): string {
     if (!this.config || !this.config.providerDetails?.name) {
-      return 'llm-providers-logos/default';
+      return 'provider-default';
     }
     return getProviderIconPath(this.config.providerDetails.name);
   }

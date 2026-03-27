@@ -98,6 +98,7 @@ export class FlowsMenuComponent implements OnInit {
   public onFlowClicked(flow: GraphDto): void {
     const lightData: GetGraphLightRequest = {
       id: flow.id,
+      uuid: flow.uuid,
       name: flow.name,
       description: flow.description,
       tags: flow.tags || [],

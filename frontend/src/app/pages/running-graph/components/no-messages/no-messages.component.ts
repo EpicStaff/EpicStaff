@@ -1,7 +1,7 @@
 // no-messages.component.ts
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { AppSvgIconComponent } from 'src/app/shared/components/app-svg-icon/app-svg-icon.component';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-no-messages',

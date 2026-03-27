@@ -34,7 +34,7 @@ interface ProjectGraphBlock {
         (click)="onBlockClicked(block.type)"
         [style.border-left-color]="block.color"
       >
-        <i [class]="block.icon" [style.color]="block.color"></i>
+        <app-svg-icon [icon]="block.icon" [style.color]="block.color" size="16px"></app-svg-icon>
         {{ block.label }}
         <app-svg-icon icon="plus" class="plus-icon" size="18px"></app-svg-icon>
       </li>
@@ -59,14 +59,6 @@ interface ProjectGraphBlock {
       }
       li:hover {
         background: #2a2a2a;
-      }
-      li i {
-        font-size: 16px;
-        color: #bbb;
-        transition: color 0.2s ease;
-      }
-      li:hover i {
-        color: inherit; /* Keep the color assigned from the template */
       }
       .plus-icon {
         margin-left: auto;
@@ -101,44 +93,44 @@ export class ProjectGraphCoreMenuComponent {
   public blocks: ProjectGraphBlock[] = [
     {
       label: 'Task',
-      icon: 'ti ti-list',
+      icon: 'list',
       type: NodeType.TASK,
       color: '#30a46c',
     },
     // { label: 'Group', icon: 'ti ti-users', type: 'group', color: '#2a6bbf' },
     {
       label: 'Prompt Node',
-      icon: 'ti ti-message',
+      icon: 'message',
       type: 'PROMPT_NODE',
       color: '#a855f7',
     },
     {
       label: 'Knowledge Node',
-      icon: 'ti ti-book',
+      icon: 'book',
       type: 'KNOWLEDGE_NODE',
       color: '#facc15',
     },
     {
       label: 'Variables Node',
-      icon: 'ti ti-variable',
+      icon: 'variable',
       type: 'VARIABLES_NODE',
       color: '#f97316',
     },
     {
       label: 'Memory Node',
-      icon: 'ti ti-brain',
+      icon: 'brain',
       type: 'MEMORY_NODE',
       color: '#e11d48',
     },
     {
       label: 'Function Node',
-      icon: 'ti ti-function',
+      icon: 'function',
       type: 'FUNCTION_NODE',
       color: '#3b82f6',
     },
     {
       label: 'Custom Trigger Node',
-      icon: 'ti ti-bolt',
+      icon: 'bolt',
       type: 'CUSTOM_TRIGGER_NODE',
       color: '#9333ea',
     },
