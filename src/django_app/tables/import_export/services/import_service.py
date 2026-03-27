@@ -13,7 +13,9 @@ class ImportService:
     def __init__(self, registry: EntityRegistry):
         self.registry = registry
 
-    def import_data(self, export_data: dict, main_entity: str):
+    def import_data(
+        self, export_data: dict, main_entity: str, preserve_uuids: bool = False
+    ):
         id_mapper = IDMapper()
 
         with transaction.atomic():
@@ -32,6 +34,7 @@ class ImportService:
                             strategy,
                             id_mapper,
                             entity_type == main_entity,
+                            preserve_uuids=preserve_uuids,
                         )
                 else:
                     for entity_data in entities:
@@ -59,10 +62,10 @@ class ImportService:
         return sorted_keys
 
     def _import_single_entity(
-        self, entity_data, entity_type, strategy, id_mapper, is_main
+        self, entity_data, entity_type, strategy, id_mapper, is_main, **kwargs
     ):
         old_id = entity_data["id"]
-        instance = strategy.import_entity(entity_data, id_mapper, is_main)
+        instance = strategy.import_entity(entity_data, id_mapper, is_main, **kwargs)
         id_mapper.map(entity_type, old_id, instance.id)
 
     def _resolve_graph_order(self, graphs: List[dict]) -> List[dict]:

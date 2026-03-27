@@ -17,9 +17,10 @@ export class ImportExportService {
         return this.configService.apiUrl + 'graphs/';
     }
 
-    importFlow(file: File): Observable<any> {
+    importFlow(file: File, preserveUuids: boolean = false): Observable<any> {
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('preserve_uuids', String(preserveUuids));
 
         return this.http.post<any>(`${this.apiUrl}import/`, formData);
     }

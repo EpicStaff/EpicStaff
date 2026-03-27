@@ -1,0 +1,108 @@
+.dialog-container {
+    background: var(--color-sidenav-background);
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 12px;
+    width: 420px;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.dialog-header {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--color-divider-subtle);
+}
+
+.dialog-title {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.dialog-content {
+    padding: 1.25rem 1.5rem;
+}
+
+.option-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    background: var(--color-input-background);
+    border: 1px solid var(--color-input-border);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+}
+
+.option-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.help-icon {
+    color: var(--color-text-secondary);
+    cursor: help;
+    opacity: 0.6;
+    transition: opacity 0.15s ease;
+
+    &:hover {
+        opacity: 1;
+    }
+}
+
+.toggle-group {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    background: var(--color-background-body);
+    border-radius: 6px;
+    padding: 3px;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.toggle-slider {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: calc(50% - 3px);
+    height: calc(100% - 6px);
+    background: var(--accent-color);
+    border-radius: 4px;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+
+    &.right {
+        transform: translateX(100%);
+    }
+}
+
+.toggle-btn {
+    position: relative;
+    z-index: 1;
+    padding: 0.25rem 0.875rem;
+    border: none;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: color 0.2s ease;
+    user-select: none;
+    text-align: center;
+
+    &.text-active {
+        color: #fff;
+    }
+}
+
+.dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--color-divider-subtle);
+}

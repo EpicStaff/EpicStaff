@@ -1,33 +1,51 @@
-# Use base image with Python 3.12.10
-FROM python:3.12.10
+# --- Stage 1: Builder ---
+FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS builder
 
-# Set working dir
-WORKDIR /app/src/sandbox
+ENV POETRY_VIRTUALENVS_IN_PROJECT=true \
+    POETRY_NO_INTERACTION=1 \
+    POETRY_CACHE_DIR=/tmp/poetry_cache \
+    POETRY_REQUESTS_TIMEOUT=100 \
+    PIP_DISABLE_PIP_VERSION_CHECK=on \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-# Set Poetry env variables
-ENV PYTHONPATH=/app
+WORKDIR /app/src
 
-# Run update and clean installation garbage
-RUN apt-get update && \
-    apt-get install -y ffmpeg && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install basic Python dependencies 
-RUN pip install --upgrade --no-cache-dir pip setuptools wheel poetry
+# Install updated pip, setuptools, wheel and poetry
+RUN pip install --upgrade pip setuptools wheel poetry
 
-# Install python poetry libraries
-COPY ./sandbox/pyproject.toml ./sandbox/poetry.lock .
-RUN poetry config virtualenvs.create false && \ 
-    poetry lock && \
-    poetry install --no-root && \
-    rm -rf /root/.cache
+# Enable installing via setuptools for legacy packages
+ENV PEP517_BUILD_BACKEND=setuptools.build_meta
 
-# Copy sandbox code module
-COPY ./sandbox .
+# Copy lockfiles first (better layer caching)
+COPY ./sandbox/pyproject.toml ./sandbox/poetry.lock ./
 
-# Copy shared module
+# Install dependencies inside project .venv
+RUN poetry install --no-ansi --no-root
+
+# Copy application source
+COPY ./sandbox /app/src/sandbox
 COPY ./shared /app/src/shared
+
+# --- Stage 2: Runtime ---
+FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS runtime
+
+RUN apt-get update && apt-get install -y ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy built app from builder
+COPY --from=builder /app /app
+
+# Add virtualenv to PATH
+ENV PATH="/app/src/.venv/bin:$PATH" \
+    PYTHONPATH=/app \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app/src/sandbox
 
 # Run sandbox module
 CMD ["python", "main.py"]

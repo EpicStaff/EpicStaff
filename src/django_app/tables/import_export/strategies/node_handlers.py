@@ -13,11 +13,13 @@ from tables.models.graph_models import GraphNote
 from tables.import_export.enums import NodeType, EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
+from tables.models.graph_models import CodeAgentNode
 from tables.import_export.serializers.graph import (
     StartNodeImportSerializer,
     CrewNodeImportSerializer,
     PythonNodeImportSerializer,
     LLMNodeImportSerializer,
+    CodeAgentNodeImportSerializer,
     WebhookTriggerNodeImportSerializer,
     FileExtractorNodeImportSerializer,
     AudioTranscriptionNodeImportSerializer,
@@ -136,6 +138,19 @@ def import_telegram_trigger_node(
     return telegram_trigger_node
 
 
+def import_code_agent_node(
+    graph: Graph, node_data: dict, id_mapper: IDMapper
+) -> CodeAgentNode:
+    llm_config_id = node_data.pop("llm_config", None)
+
+    new_llm_config_id = id_mapper.get_or_none(EntityType.LLM_CONFIG, llm_config_id)
+    node_data["llm_config"] = new_llm_config_id
+
+    serializer = CodeAgentNodeImportSerializer(data={**node_data, "graph": graph.id})
+    serializer.is_valid(raise_exception=True)
+    return serializer.save()
+
+
 def import_subgraph_node(
     graph: Graph, node_data: dict, id_mapper: IDMapper
 ) -> SubGraphNode:
@@ -203,5 +218,10 @@ NODE_HANDLERS = {
     NodeType.NOTE_NODE: {
         "serializer": GraphNoteImportSerializer,
         "relation": "graph_note_list",
+    },
+    NodeType.CODE_AGENT_NODE: {
+        "serializer": CodeAgentNodeImportSerializer,
+        "relation": "code_agent_node_list",
+        "import_hook": import_code_agent_node,
     },
 }

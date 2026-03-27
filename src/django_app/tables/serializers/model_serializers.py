@@ -1468,6 +1468,7 @@ class SessionSerializer(serializers.ModelSerializer):
             "finished_at",
             "graph",
             "graph_schema",
+            "parent_session",
         ]
 
 
@@ -1481,6 +1482,7 @@ class SessionLightSerializer(serializers.ModelSerializer):
             "status_updated_at",
             "created_at",
             "finished_at",
+            "parent_session",
         )
 
 
@@ -1761,6 +1763,7 @@ class GraphSerializer(serializers.ModelSerializer):
         model = Graph
         fields = [
             "id",
+            "uuid",
             "name",
             "metadata",
             "description",

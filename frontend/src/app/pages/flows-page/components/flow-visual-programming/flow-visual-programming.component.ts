@@ -424,12 +424,16 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     public handleGetCurl(): void {
-        const flowId = this.graph?.id;
+        const flowUuid = this.graph?.uuid;
         const startNodeInitialState = this.flowService.startNodeInitialState();
         const apiUrl = this.configService.apiUrl;
 
-        if (flowId && startNodeInitialState) {
-            const curlCommand = this.generateCurlCommand(flowId, startNodeInitialState, apiUrl);
+        if (flowUuid && startNodeInitialState) {
+            const curlCommand = this.generateCurlCommand(
+                flowUuid,
+                startNodeInitialState,
+                apiUrl
+            );
             this.copyToClipboard(curlCommand);
             this.toastService.success('CURL command copied to clipboard!');
         } else {
@@ -437,11 +441,15 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         }
     }
 
-    private generateCurlCommand(flowId: number, variables: Record<string, unknown>, apiUrl: string): string {
+    private generateCurlCommand(
+        flowUuid: string,
+        variables: Record<string, unknown>,
+        apiUrl: string
+    ): string {
         const variablesJson = JSON.stringify(variables, null, 2);
         const payload = JSON.stringify(
             {
-                graph_id: flowId.toString(),
+                graph_uuid: flowUuid,
                 variables: variables,
             },
             null,

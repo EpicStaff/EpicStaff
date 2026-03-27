@@ -44,7 +44,7 @@ class ViewSetImportExportService:
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
 
-    def import_entity(self, file, model_class):
+    def import_entity(self, file, model_class, preserve_uuids: bool = False):
         try:
             data = json.load(file)
         except json.JSONDecodeError:
@@ -56,7 +56,9 @@ class ViewSetImportExportService:
                 f"Provided wrong entity. Got: {main_entity}. Expected: {self.entity_type}"
             )
 
-        id_mapper = self.import_service.import_data(data, self.entity_type)
+        id_mapper = self.import_service.import_data(
+            data, self.entity_type, preserve_uuids=preserve_uuids
+        )
         new_id = id_mapper.get_new_ids(self.entity_type)[0]
         instance = model_class.objects.get(id=new_id)
 

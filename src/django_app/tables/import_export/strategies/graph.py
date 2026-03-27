@@ -1,3 +1,4 @@
+import uuid
 from copy import deepcopy
 
 from tables.models import Graph, Crew
@@ -39,6 +40,9 @@ class GraphStrategy(EntityImportExportStrategy):
         deps[EntityType.GRAPH] = set(
             instance.subgraph_node_list.values_list("subgraph_id", flat=True)
         )
+        deps[EntityType.LLM_CONFIG] = set(
+            instance.code_agent_node_list.values_list("llm_config_id", flat=True)
+        )
         return deps
 
     def export_entity(self, instance: Graph) -> dict:
@@ -46,7 +50,8 @@ class GraphStrategy(EntityImportExportStrategy):
         data["nodes"] = self._export_nodes(instance)
         return data
 
-    def create_entity(self, data: dict, id_mapper: IDMapper) -> Graph:
+    def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> Graph:
+        preserve_uuids = kwargs.get("preserve_uuids", False)
         import_data = data.copy()
         import_data["metadata"] = self._update_metadata(
             import_data["metadata"], id_mapper
@@ -58,6 +63,11 @@ class GraphStrategy(EntityImportExportStrategy):
                 base_name=data["name"],
                 existing_names=existing_names,
             )
+
+        imported_uuid = import_data.pop("uuid", None)
+        if preserve_uuids and imported_uuid:
+            Graph.objects.filter(uuid=imported_uuid).update(uuid=uuid.uuid4())
+            import_data["uuid"] = imported_uuid
 
         nodes_data = import_data.pop("nodes", [])
         edges_data = import_data.pop("edge_list", [])

@@ -1,30 +1,44 @@
-# Use base image with python 3.12-slim
-FROM python:3.12-slim
+# --- Stage 1: Builder ---
+FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS builder
 
-# Set work dir
-WORKDIR /app/src/webhook
+ENV POETRY_VIRTUALENVS_IN_PROJECT=true \
+    POETRY_NO_INTERACTION=1 \
+    POETRY_CACHE_DIR=/tmp/poetry_cache \
+    POETRY_REQUESTS_TIMEOUT=100 \
+    PIP_DISABLE_PIP_VERSION_CHECK=on \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-# Install poetry package
+WORKDIR /app/src
+
+# Install poetry
 RUN pip install poetry
 
-# Set Python env variables
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \ 
-    POETRY_NO_INTERACTION=1 \
-    PYTHONPATH=/app
+# Copy lockfiles first (better layer caching)
+COPY ./webhook/pyproject.toml ./webhook/poetry.lock ./
 
-# Install other poetry dependencies
-COPY ./webhook/poetry.lock ./webhook/pyproject.toml .
-RUN poetry config virtualenvs.create false && \
-    poetry install --no-root --no-interaction && \
-    rm -rf /root/.cache
+# Install dependencies inside project .venv
+RUN poetry install --no-ansi --no-root
 
-# Copy module code and shared module
-COPY ./webhook .
+# Copy application source
+COPY ./webhook /app/src/webhook
 COPY ./shared /app/src/shared
 
-# Expose port 8000
+
+# --- Stage 2: Runtime ---
+FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS runtime
+
+# Copy built app from builder
+COPY --from=builder /app /app
+
+# Add virtualenv to PATH
+ENV PATH="/app/src/.venv/bin:$PATH" \
+    PYTHONPATH=/app \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app/src/webhook
+
 EXPOSE 8000
 
-# Run the module
 CMD ["python", "run.py"]

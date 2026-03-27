@@ -295,3 +295,9 @@ class UnknownRagTypeException(RagException):
     def __init__(self, rag_type):
         self.rag_type = rag_type
         super().__init__(f"Unknown RAG type: '{rag_type}'")
+
+
+class BulkSaveValidationError(CustomAPIExeption):
+    def __init__(self, errors: dict):
+        self.errors = errors
+        super().__init__(str(errors))

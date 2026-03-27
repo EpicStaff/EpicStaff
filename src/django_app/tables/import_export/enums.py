@@ -41,3 +41,4 @@ class NodeType(str, Enum):
     SUBGRAPH_NODE = "SubgraphNode"
     END_NODE = "EndNode"
     NOTE_NODE = "GraphNote"
+    CODE_AGENT_NODE = "CodeAgentNode"

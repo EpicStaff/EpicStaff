@@ -48,6 +48,7 @@ class Graph(TimestampMixin, models.Model):
     tags = models.ManyToManyField(to="GraphTag", blank=True, default=[])
     labels = models.ManyToManyField(Label, blank=True, related_name="flows")
 
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True)
     name = models.CharField(max_length=255, blank=False, unique=True)
     description = models.TextField(blank=True)
     metadata = models.JSONField(default=dict)

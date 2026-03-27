@@ -7,7 +7,7 @@ WORKDIR /home/user/root/app
 COPY package*.json ./
 
 # Install dependencies (this layer will be cached if package files don't change)
-RUN npm install --force && npm cache clean --force
+RUN npm install --force || npm install --force && npm cache clean --force
 
 # Copy the rest of the application code
 COPY . .

@@ -20,6 +20,8 @@ class GraphMessage:
 class SubGraphStartMessageData:
     state: dict
     input: object
+    subgraph_id: int
+    subgraph_execution_id: str
     message_type: str = "subgraph_start"
 
 
@@ -27,6 +29,7 @@ class SubGraphStartMessageData:
 class SubGraphFinishMessageData:
     state: dict
     output: object
+    subgraph_execution_id: str
     message_type: str = "subgraph_finish"
 
 

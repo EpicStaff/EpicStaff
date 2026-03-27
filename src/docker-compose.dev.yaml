@@ -2,7 +2,7 @@
 
 services:
   django_app:
-    command: sh -lc "
+    command: /bin/bash -c "
       python manage.py check_db_init &&
       python manage.py migrate &&
       python manage.py fix_sequences &&

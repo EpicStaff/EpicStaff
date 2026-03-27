@@ -3,11 +3,9 @@ $envFile = "../debug.env"
 if (Test-Path $envFile) {
     Write-Output "Loading variables from $envFile"
     Get-Content $envFile | ForEach-Object {
-        # Игнорируем пустые строки и комментарии
         if ($_ -and $_ -notmatch '^#') {
             $name, $value = $_ -split '=', 2
             if ($name -and $value) {
-                # Устанавливаем переменную окружения для текущей сессии
                 [System.Environment]::SetEnvironmentVariable($name.Trim(), $value.Trim())
             }
         }
@@ -15,6 +13,11 @@ if (Test-Path $envFile) {
 } else {
     Write-Output "Warning: $envFile not found."
 }
+
+#makes `from src.shared.models import ...` work
+$srcPath = Resolve-Path "../../"
+$env:PYTHONPATH = "$srcPath;$($env:PYTHONPATH)"
+Write-Output "PYTHONPATH set to: $env:PYTHONPATH"
 
 $PORT = if ($env:DJANGO_PORT) { $env:DJANGO_PORT } else { "8000" }
 

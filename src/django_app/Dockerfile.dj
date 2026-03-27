@@ -1,11 +1,21 @@
-# Use a base image with Python 3.12.10
-FROM python:3.12.10
+# --- Stage 1: Builder ---
+FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS builder
 
-# Set the working directory in the Docker image
-WORKDIR /app/src/django_app
+ENV POETRY_VIRTUALENVS_IN_PROJECT=true \
+    POETRY_NO_INTERACTION=1 \
+    POETRY_CACHE_DIR=/tmp/poetry_cache \
+    POETRY_REQUESTS_TIMEOUT=100 \
+    PIP_DISABLE_PIP_VERSION_CHECK=on \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-# Set Poetry env variables
-ENV PYTHONPATH=/app
+WORKDIR /app/src
+
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    gcc \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install updated pip, setuptools, wheel and poetry
 RUN pip install --upgrade pip setuptools wheel poetry
@@ -13,14 +23,32 @@ RUN pip install --upgrade pip setuptools wheel poetry
 # Enable installing via setuptools for legacy packages
 ENV PEP517_BUILD_BACKEND=setuptools.build_meta
 
-# Configure poetry to not create a virtual environment, install dependencies and delete cache
-COPY django_app/pyproject.toml django_app/poetry.lock .
-RUN poetry config virtualenvs.create false && \
-    poetry install --no-root && \ 
-    rm -rf /root/.cache
+# Copy lockfiles first (better layer caching)
+COPY ./django_app/pyproject.toml ./django_app/poetry.lock ./
 
-#Coping file to workdir
-COPY ./django_app .
+# Install dependencies inside project .venv
+RUN poetry install --no-ansi --no-root
+
+# Copy application source
+COPY ./django_app /app/src/django_app
 COPY ./shared /app/src/shared
+
+# --- Stage 2: Runtime ---
+FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS runtime
+
+# libpq-dev are required for psycopg2 https://www.psycopg.org/docs/install.html
+RUN apt-get update && apt-get install -y libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy built app from builder
+COPY --from=builder /app /app
+
+# Add virtualenv to PATH
+ENV PATH="/app/src/.venv/bin:$PATH" \
+    PYTHONPATH=/app \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app/src/django_app
 
 RUN chmod +x ./entrypoint.sh

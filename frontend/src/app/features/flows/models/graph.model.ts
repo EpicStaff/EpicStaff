@@ -40,6 +40,7 @@ export interface SubflowLightDto {
 
 export interface GetGraphLightRequest {
     id: number;
+    uuid: string;
     name: string;
     description: string;
     tags?: string[];

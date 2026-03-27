@@ -9,12 +9,20 @@ from tables.models.python_models import PythonCodeToolConfig
 
 
 class RunSessionSerializer(serializers.Serializer):
-    graph_id = serializers.IntegerField(required=True)
+    graph_id = serializers.IntegerField(required=False)
+    graph_uuid = serializers.UUIDField(required=False)
     variables = serializers.JSONField(required=False)
     files = serializers.DictField(
         child=serializers.CharField(), required=False, allow_null=True, default=dict
     )
     username = serializers.CharField(required=False)
+
+    def validate(self, attrs):
+        if not attrs.get("graph_id") and not attrs.get("graph_uuid"):
+            raise serializers.ValidationError(
+                "Either 'graph_id' or 'graph_uuid' must be provided."
+            )
+        return attrs
 
 
 class GetUpdatesSerializer(serializers.Serializer):
@@ -200,5 +208,6 @@ class BulkExportSerializer(serializers.Serializer):
     )
 
 
-class FileImportSerializer(serializers.Serializer):
+class ImportRequestSerializer(serializers.Serializer):
     file = serializers.FileField()
+    preserve_uuids = serializers.BooleanField(default=False, required=False)
