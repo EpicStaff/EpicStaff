@@ -2,6 +2,7 @@ import { Component, Input, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MarkdownModule } from 'ngx-markdown';
 import { NgxJsonViewerModule } from 'ngx-json-viewer';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
   GraphMessage,
   TaskMessageData,
@@ -12,24 +13,17 @@ import { expandCollapseAnimation } from '../../../../../../shared/animations/ani
 @Component({
   selector: 'app-task-message',
   standalone: true,
-  imports: [CommonModule, MarkdownModule, NgxJsonViewerModule],
+  imports: [CommonModule, MarkdownModule, NgxJsonViewerModule, AppSvgIconComponent],
   animations: [expandCollapseAnimation],
   template: `
     <div class="agent-flow-container">
       <!-- Task Message Header with Toggle -->
       <div class="agent-header" (click)="toggleMessage()">
         <div class="play-arrow">
-          <i
-            class="ti"
-            [ngClass]="
-              isMessageExpanded
-                ? 'ti-caret-down-filled'
-                : 'ti-caret-right-filled'
-            "
-          ></i>
+          <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
         </div>
         <div class="icon-container">
-          <i class="ti ti-list-check"></i>
+          <app-svg-icon icon="list-check" size="1rem" />
         </div>
         <h3>
           Task <span class="task-name">{{ getTaskName() }}</span> is done
@@ -45,14 +39,7 @@ import { expandCollapseAnimation } from '../../../../../../shared/animations/ani
           <!-- Task Details Section -->
           <div class="details-container" *ngIf="hasDetails()">
             <div class="section-heading" (click)="toggleSection('details')">
-              <i
-                class="ti"
-                [ngClass]="
-                  isDetailsExpanded
-                    ? 'ti-caret-down-filled'
-                    : 'ti-caret-right-filled'
-                "
-              ></i>
+              <app-svg-icon [icon]="isDetailsExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
               Task Details
             </div>
             <div
@@ -93,14 +80,7 @@ import { expandCollapseAnimation } from '../../../../../../shared/animations/ani
           <!-- Result Section -->
           <div class="raw-container" *ngIf="hasRawData()">
             <div class="section-heading" (click)="toggleSection('raw')">
-              <i
-                class="ti"
-                [ngClass]="
-                  isRawExpanded
-                    ? 'ti-caret-down-filled'
-                    : 'ti-caret-right-filled'
-                "
-              ></i>
+              <app-svg-icon [icon]="isRawExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
               Result
             </div>
             <div

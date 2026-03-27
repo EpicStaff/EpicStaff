@@ -42,10 +42,7 @@
               class="tool-arguments-header"
               (click)="toggleArgumentsVisibility(item.id)"
             >
-              <i
-                class="ti ti-player-play-filled"
-                [ngClass]="{ expanded: isArgumentsExpanded(item.id) }"
-              ></i>
+              <app-svg-icon icon="player-play-filled" size="1rem" />
               <span>Arguments</span>
             </div>
             <div
@@ -69,10 +66,7 @@
             class="tool-response-header"
             (click)="toggleResponseVisibility(item.id)"
           >
-            <i
-              class="ti ti-player-play-filled"
-              [ngClass]="{ expanded: isResponseExpanded(item.id) }"
-            ></i>
+            <app-svg-icon icon="player-play-filled" size="1rem" />
             <span>Output</span>
           </div>
           <div

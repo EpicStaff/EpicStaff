@@ -3,28 +3,22 @@ import { CommonModule } from '@angular/common';
 import { GraphMessage } from '../../../../models/graph-session-message.model';
 import { NgxJsonViewerModule } from 'ngx-json-viewer';
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-start-message',
   standalone: true,
-  imports: [CommonModule, NgxJsonViewerModule],
+  imports: [CommonModule, NgxJsonViewerModule, AppSvgIconComponent],
   encapsulation: ViewEncapsulation.Emulated,
   animations: [expandCollapseAnimation],
   template: `
     <div class="start-container">
       <div class="start-header" (click)="toggleMessage()">
         <div class="play-arrow" *ngIf="hasInputs()">
-          <i
-            class="ti"
-            [ngClass]="
-              isMessageExpanded
-                ? 'ti-caret-down-filled'
-                : 'ti-caret-right-filled'
-            "
-          ></i>
+          <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
         </div>
         <div class="icon-container">
-          <i class="ti ti-flag"></i>
+          <app-svg-icon icon="flag" size="1rem" />
         </div>
         <h3>
           <span class="node-name">{{ message.name }}</span> started
@@ -40,14 +34,7 @@ import { expandCollapseAnimation } from '../../../../../../shared/animations/ani
           <!-- Input Parameters Section -->
           <div class="input-container" *ngIf="hasInputs()">
             <div class="section-heading" (click)="toggleInputs($event)">
-              <i
-                class="ti"
-                [ngClass]="
-                  isInputsExpanded
-                    ? 'ti-caret-down-filled'
-                    : 'ti-caret-right-filled'
-                "
-              ></i>
+              <app-svg-icon [icon]="isInputsExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
               Input Parameters
             </div>
             <div

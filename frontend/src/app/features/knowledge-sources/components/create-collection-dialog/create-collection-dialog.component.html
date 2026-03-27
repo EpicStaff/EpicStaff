@@ -14,7 +14,7 @@
         <div class="dialog__actions">
             <app-button
                 type="outline-primary"
-                [leftIcon]="'ui/arrow-left'"
+                [leftIcon]="'arrow-left'"
                 [disabled]="!this.currentStepIndex()"
                 (click)="prevStep()"
             >
@@ -22,7 +22,7 @@
             </app-button>
             <app-button
                 type="primary"
-                [rightIcon]="currentStepIndex() < 2 ? 'ui/arrow-right' : ''"
+                [rightIcon]="currentStepIndex() < 2 ? 'arrow-right' : ''"
                 [disabled]="nextStepDisabled()"
                 (click)="nextStep()"
             >

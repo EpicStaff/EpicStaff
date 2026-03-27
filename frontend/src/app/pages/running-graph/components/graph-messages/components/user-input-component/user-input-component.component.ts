@@ -1,11 +1,12 @@
 import { Component, Output, EventEmitter, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-wait-for-user-input',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, AppSvgIconComponent],
   template: `
     <div class="wait-for-user-container">
       <div class="options-row">
@@ -16,7 +17,7 @@ import { FormsModule } from '@angular/forms';
             [disabled]="isSubmitting"
             title="Mark as Done"
           >
-            <i class="ti ti-check"></i>Mark as Done
+            <app-svg-icon icon="check" size="1rem" />Mark as Done
           </button>
           <div class="feedback-message">
             Please provide a feedback for the agent
@@ -30,7 +31,7 @@ import { FormsModule } from '@angular/forms';
           title="Send"
         >
           <ng-container *ngIf="!isSubmitting">
-            <i class="ti ti-send"></i>Send
+            <app-svg-icon icon="send" size="1rem" />Send
           </ng-container>
           <div *ngIf="isSubmitting" class="spinner"></div>
         </button>

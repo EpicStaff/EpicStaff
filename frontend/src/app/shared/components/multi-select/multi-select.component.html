@@ -2,7 +2,7 @@
     <div #triggerBtn class="multi-select__btn" (click)="toggle()">
         {{ label() }}
         @if (icon()) {
-            <app-icon
+            <app-svg-icon
                 class="multi-select__icon"
                 [class.multi-select__icon--active]="selectedValues().length"
                 size="1rem"

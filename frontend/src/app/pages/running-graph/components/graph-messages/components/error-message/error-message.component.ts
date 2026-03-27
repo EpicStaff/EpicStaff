@@ -2,27 +2,21 @@ import { Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { GraphMessage } from '../../../../models/graph-session-message.model';
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-error-message',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, AppSvgIconComponent],
   animations: [expandCollapseAnimation],
   template: `
     <div class="error-container">
       <div class="error-header" (click)="toggleMessage()">
         <div class="play-arrow">
-          <i
-            class="ti"
-            [ngClass]="
-              isMessageExpanded
-                ? 'ti-caret-down-filled'
-                : 'ti-caret-right-filled'
-            "
-          ></i>
+          <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
         </div>
         <div class="icon-container">
-          <i class="ti ti-alert-circle"></i>
+          <app-svg-icon icon="alert-circle" size="1rem" />
         </div>
         <h3>Error</h3>
       </div>
@@ -36,14 +30,7 @@ import { expandCollapseAnimation } from '../../../../../../shared/animations/ani
           <!-- Error Details Section -->
           <div class="error-section">
             <div class="section-heading" (click)="toggleErrorSection($event)">
-              <i
-                class="ti"
-                [ngClass]="
-                  isErrorExpanded
-                    ? 'ti-caret-down-filled'
-                    : 'ti-caret-right-filled'
-                "
-              ></i>
+              <app-svg-icon [icon]="isErrorExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
               Error Details
             </div>
             <div
@@ -69,14 +56,7 @@ import { expandCollapseAnimation } from '../../../../../../shared/animations/ani
           <!-- Optional Data Subsection -->
           <div class="error-data-container" *ngIf="hasErrorData()">
             <div class="section-heading" (click)="toggleDataSection($event)">
-              <i
-                class="ti"
-                [ngClass]="
-                  isDataExpanded
-                    ? 'ti-caret-down-filled'
-                    : 'ti-caret-right-filled'
-                "
-              ></i>
+              <app-svg-icon [icon]="isDataExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
               Data
             </div>
             <div

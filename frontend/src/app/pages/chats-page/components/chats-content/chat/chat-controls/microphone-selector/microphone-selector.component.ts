@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WavRecorderService } from '../../../../../services/wav-recorder.service';
+import { AppSvgIconComponent } from '../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 const STORAGE_KEY_DEVICE_ID = 'selected_microphone_id';
 
@@ -17,7 +18,7 @@ const STORAGE_KEY_DEVICE_ID = 'selected_microphone_id';
   templateUrl: './microphone-selector.component.html',
   styleUrls: ['./microphone-selector.component.scss'],
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, AppSvgIconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MicrophoneSelectorComponent implements OnInit {

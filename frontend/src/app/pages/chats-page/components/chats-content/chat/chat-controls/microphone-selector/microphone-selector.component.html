@@ -7,7 +7,7 @@
   >
     <!-- Loading spinner when not initialized -->
     <div class="spinner" *ngIf="!isInitialized">
-      <i class="ti ti-loader ti-spin"></i>
+      <app-svg-icon icon="loader" size="1rem" class="ti-spin" />
     </div>
 
     <!-- No microphones found message -->
@@ -26,7 +26,7 @@
       [class.open]="showDevicesList"
       *ngIf="isInitialized && hasDevices"
     >
-      <i class="ti ti-chevron-down"></i>
+      <app-svg-icon icon="chevron-down" size="1rem" />
     </span>
   </button>
 
@@ -41,7 +41,7 @@
       (click)="selectDevice(device.deviceId)"
       [class.selected]="selectedDeviceId === device.deviceId"
     >
-      <i class="ti ti-check" *ngIf="selectedDeviceId === device.deviceId"></i>
+      <app-svg-icon icon="check" size="1rem" *ngIf="selectedDeviceId === device.deviceId" />
       <span>{{ device.label || "Unnamed device" }}</span>
     </div>
   </div>

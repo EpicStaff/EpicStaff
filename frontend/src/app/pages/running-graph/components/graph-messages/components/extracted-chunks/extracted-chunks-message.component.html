@@ -1,15 +1,10 @@
 <div class="extracted-chunks-container" *ngIf="data">
     <div class="header" (click)="toggle()">
         <div class="play-arrow">
-            <i
-                class="ti"
-                [ngClass]="
-              isExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'
-            "
-            ></i>
+            <app-svg-icon [icon]="isExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
         </div>
         <div class="icon-container">
-            <i class="ti ti-database"></i>
+            <app-svg-icon icon="database" size="1rem" />
         </div>
         <div class="title">
             <h3>Knowledge Retrieval</h3>

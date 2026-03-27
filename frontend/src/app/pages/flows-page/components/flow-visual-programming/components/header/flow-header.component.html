@@ -11,7 +11,7 @@
                     {{ graphName ?? 'Loading...' }}
                     @if (hasUnsavedChanges) {
                         <span class="unsaved-indicator" title="Unsaved changes">
-                            <i class="ti ti-circle"></i>
+                            <app-svg-icon icon="circle" size="1.25rem" />
                             <span class="unsaved-text">Unsaved changes</span>
                         </span>
                     }
@@ -23,7 +23,7 @@
         </h2>
     </div>
     <div class="header-actions">
-        <button class="sessions-button" (click)="onViewSessions()"><i class="ti ti-history"></i> Sessions</button>
+        <button class="sessions-button" (click)="onViewSessions()"><app-svg-icon icon="history" size="1.25rem" /> Sessions</button>
         <button class="get-curl-button" (click)="onGetCurl()">Get CURL</button>
         @if (isEpicChatEnabled) {
             <button class="connect-chat-button" (click)="onConnectChat()">Connect chat</button>
@@ -32,7 +32,7 @@
             @if (isSaving) {
                 <app-spinner2 [size]="16"></app-spinner2>
             } @else {
-                <i class="ti ti-device-floppy"></i>
+                <app-svg-icon icon="floppy" size="1.25rem" />
             }
             Save
         </button>
@@ -40,7 +40,7 @@
             @if (isRunning) {
                 <app-spinner2 [size]="16"></app-spinner2>
             } @else {
-                <i class="ti ti-player-play-filled"></i>
+                <app-svg-icon icon="player-play-filled" size="1.25rem" />
             }
             Run
         </button>

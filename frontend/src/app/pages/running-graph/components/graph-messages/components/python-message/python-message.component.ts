@@ -15,28 +15,22 @@ import {
 } from '../../../../models/graph-session-message.model';
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { FormatExecutionDataPipe } from '../../../../../../shared/pipes/format-execution-data.pipe';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-python-message',
     standalone: true,
-    imports: [CommonModule, NgxJsonViewerModule, FormatExecutionDataPipe],
+    imports: [CommonModule, NgxJsonViewerModule, FormatExecutionDataPipe, AppSvgIconComponent],
     animations: [expandCollapseAnimation],
     template: `
         <div class="python-flow-container">
             <!-- Python Message Header with Toggle -->
             <div class="python-header" (click)="toggleMessage()">
                 <div class="play-arrow">
-                    <i
-                        class="ti"
-                        [ngClass]="
-                            isMessageExpanded
-                                ? 'ti-caret-down-filled'
-                                : 'ti-caret-right-filled'
-                        "
-                    ></i>
+                    <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
                 </div>
                 <div class="icon-container">
-                    <i class="ti ti-brand-python"></i>
+                    <app-svg-icon icon="brand-python" size="1rem" />
                 </div>
                 <h3>Python Code Execution</h3>
             </div>
@@ -53,14 +47,7 @@ import { FormatExecutionDataPipe } from '../../../../../../shared/pipes/format-e
                             class="section-heading"
                             (click)="toggleSection('code')"
                         >
-                            <i
-                                class="ti"
-                                [ngClass]="
-                                    isCodeExpanded
-                                        ? 'ti-caret-down-filled'
-                                        : 'ti-caret-right-filled'
-                                "
-                            ></i>
+                            <app-svg-icon [icon]="isCodeExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
                             Python Code
                         </div>
                         <div
@@ -83,14 +70,7 @@ import { FormatExecutionDataPipe } from '../../../../../../shared/pipes/format-e
                             class="section-heading"
                             (click)="toggleSection('input')"
                         >
-                            <i
-                                class="ti"
-                                [ngClass]="
-                                    isInputExpanded
-                                        ? 'ti-caret-down-filled'
-                                        : 'ti-caret-right-filled'
-                                "
-                            ></i>
+                            <app-svg-icon [icon]="isInputExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
                             Input
                         </div>
                         <div
@@ -123,14 +103,7 @@ import { FormatExecutionDataPipe } from '../../../../../../shared/pipes/format-e
                             class="section-heading"
                             (click)="toggleSection('output')"
                         >
-                            <i
-                                class="ti"
-                                [ngClass]="
-                                    isOutputExpanded
-                                        ? 'ti-caret-down-filled'
-                                        : 'ti-caret-right-filled'
-                                "
-                            ></i>
+                            <app-svg-icon [icon]="isOutputExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
                             Output
                         </div>
                         <div
@@ -170,14 +143,7 @@ import { FormatExecutionDataPipe } from '../../../../../../shared/pipes/format-e
                             class="section-heading"
                             (click)="toggleSection('error')"
                         >
-                            <i
-                                class="ti"
-                                [ngClass]="
-                                    isErrorExpanded
-                                        ? 'ti-caret-down-filled'
-                                        : 'ti-caret-right-filled'
-                                "
-                            ></i>
+                            <app-svg-icon [icon]="isErrorExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
                             Error
                         </div>
                         <div
@@ -200,14 +166,7 @@ import { FormatExecutionDataPipe } from '../../../../../../shared/pipes/format-e
                             class="section-heading"
                             (click)="toggleSection('rawData')"
                         >
-                            <i
-                                class="ti"
-                                [ngClass]="
-                                    isRawDataExpanded
-                                        ? 'ti-caret-down-filled'
-                                        : 'ti-caret-right-filled'
-                                "
-                            ></i>
+                            <app-svg-icon [icon]="isRawDataExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
                             Raw Execution Data
                         </div>
                         <div

@@ -1,5 +1,6 @@
 import { Component, input, output, signal, inject, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { AppSvgIconComponent } from 'src/app/shared/components/app-svg-icon/app-svg-icon.component';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { BREAKPOINTS } from 'src/app/core/constants/breakpoints';
@@ -21,7 +22,7 @@ export interface ShortcutSection {
 @Component({
   selector: 'app-shortcuts-modal',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, AppSvgIconComponent],
   templateUrl: './shortcuts-modal.component.html',
   styleUrl: './shortcuts-modal.component.scss',
 })
@@ -30,7 +31,7 @@ export class ShortcutsModalComponent {
   pos = input<{ top: number; left: number } | null>(null);
 
   title = input<string>('');
-  iconSrc = input<string | null>(null);
+  icon = input<string | null>(null);
   showClose = input<boolean>(true);
   sections = input<ShortcutSection[]>([]);
 

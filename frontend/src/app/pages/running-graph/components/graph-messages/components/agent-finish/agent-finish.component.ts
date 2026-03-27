@@ -2,6 +2,7 @@ import { Component, Input, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MarkdownModule } from 'ngx-markdown';
 import { NgxJsonViewerModule } from 'ngx-json-viewer';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
   AgentFinishMessageData,
   GraphMessage,
@@ -13,24 +14,17 @@ import { GetAgentRequest } from '../../../../../../features/staff/models/agent.m
 @Component({
   selector: 'app-agent-finish-message',
   standalone: true,
-  imports: [CommonModule, MarkdownModule, NgxJsonViewerModule],
+  imports: [CommonModule, MarkdownModule, NgxJsonViewerModule, AppSvgIconComponent],
   animations: [expandCollapseAnimation],
   template: `
     <div class="agent-flow-container">
       <!-- Agent Message Header with Toggle -->
       <div class="agent-header" (click)="toggleMessage()">
         <div class="play-arrow">
-          <i
-            class="ti"
-            [ngClass]="
-              isMessageExpanded
-                ? 'ti-caret-down-filled'
-                : 'ti-caret-right-filled'
-            "
-          ></i>
+          <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
         </div>
         <div class="icon-container">
-          <i class="ti ti-robot"></i>
+          <app-svg-icon icon="robot" size="1rem" />
         </div>
         <h3>
           Agent <span class="agent-name">{{ getAgentName() }}</span> finished
@@ -50,14 +44,7 @@ import { GetAgentRequest } from '../../../../../../features/staff/models/agent.m
             *ngIf="agentFinishMessageData?.thought"
           >
             <div class="section-heading" (click)="toggleSection('thought')">
-              <i
-                class="ti"
-                [ngClass]="
-                  isThoughtExpanded
-                    ? 'ti-caret-down-filled'
-                    : 'ti-caret-right-filled'
-                "
-              ></i>
+              <app-svg-icon [icon]="isThoughtExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
               Thought
             </div>
             <div

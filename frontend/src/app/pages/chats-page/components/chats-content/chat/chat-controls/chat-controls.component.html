@@ -12,7 +12,7 @@
       (keydown.enter)="$event.preventDefault(); sendMessage()"
     ></textarea>
     <button class="send-btn" (click)="sendMessage()">
-      <i class="ti ti-send"></i>
+      <app-svg-icon icon="send" size="1.25rem" />
     </button>
   </div>
 
@@ -23,8 +23,8 @@
       (click)="onStartSpeaking()"
       [disabled]="!canStartSpeaking()"
     >
-      <i class="ti ti-microphone" *ngIf="!isConnecting()"></i>
-      <i class="ti ti-loader ti-spin" *ngIf="isConnecting()"></i>
+      <app-svg-icon icon="microphone" size="1.25rem" *ngIf="!isConnecting()" />
+      <app-svg-icon icon="loader" size="1.25rem" class="ti-spin" *ngIf="isConnecting()" />
       {{ isConnecting() ? "Connecting..." : "Start Speaking" }}
     </button>
     <app-microphone-selector></app-microphone-selector>
@@ -44,7 +44,7 @@
         [class.active]="isKeyboardMode()"
         (click)="toggleInputMode()"
       >
-        <i class="ti ti-keyboard"></i>
+        <app-svg-icon icon="keyboard" size="1.25rem" />
       </button>
 
       <!-- Pause/Resume microphone button -->
@@ -53,7 +53,7 @@
         [class.active]="isMicrophoneMuted()"
         (click)="toggleRecording()"
       >
-        <i class="ti ti-microphone-off"></i>
+        <app-svg-icon icon="microphone-off" size="1.25rem" />
       </button>
 
       <!-- Divider -->
@@ -61,7 +61,7 @@
 
       <!-- End conversation button -->
       <button class="control-btn end-btn" (click)="stopConversation()">
-        <i class="ti ti-x"></i>
+        <app-svg-icon icon="x" size="1.25rem" />
       </button>
     </div>
   </div>

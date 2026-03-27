@@ -4,11 +4,12 @@ import {
   GraphMessage,
   UpdateSessionStatusMessageData,
 } from '../../../../models/graph-session-message.model';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-status-update-message',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, AppSvgIconComponent],
   template: `
     <div class="status-update-message">
       <div class="status-info">
@@ -17,7 +18,7 @@ import {
       </div>
       <div class="status-data" *ngIf="hasStatusData()">
         <div class="status-data-label">
-          <i class="ti ti-info-circle"></i> Status Data:
+          <app-svg-icon icon="info-circle" size="1rem" /> Status Data:
         </div>
         <pre class="status-data-content">{{ statusData | json }}</pre>
       </div>

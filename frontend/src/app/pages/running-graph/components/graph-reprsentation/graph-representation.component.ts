@@ -6,6 +6,7 @@ import {
   ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { AppSvgIconComponent } from 'src/app/shared/components/app-svg-icon/app-svg-icon.component';
 
 import {
   GraphMessage,
@@ -25,7 +26,7 @@ interface NodeStatus {
 @Component({
   selector: 'app-flow-representation',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, AppSvgIconComponent],
   template: `
     <div class="flow-container">
       <div class="flow-content">
@@ -37,10 +38,7 @@ interface NodeStatus {
             >
               <div class="node-name">{{ item.node.node_name }}</div>
               <div class="status-badge" [ngClass]="getStatusClass(item.status)">
-                <i
-                  [ngClass]="getStatusIcon(item.status)"
-                  aria-hidden="true"
-                ></i>
+                <app-svg-icon *ngIf="getStatusIcon(item.status)" [icon]="getStatusIcon(item.status)" size="1rem" />
                 {{ getStatusText(item.status) }}
               </div>
             </li>
@@ -338,15 +336,15 @@ export class FlowRepresentationComponent implements OnChanges {
   getStatusIcon(status: NodeStatus['status']): string {
     switch (status) {
       case 'complete':
-        return 'ti ti-check';
+        return 'check';
       case 'in_progress':
-        return 'ti ti-player-play';
+        return 'player-play';
       case 'error':
-        return 'ti ti-alert-triangle';
+        return 'alert-triangle';
       case 'waiting':
-        return 'ti ti-hourglass';
+        return 'hourglass';
       case 'not_started':
-        return 'ti ti-circle-dot';
+        return 'circle-dot';
       default:
         return '';
     }

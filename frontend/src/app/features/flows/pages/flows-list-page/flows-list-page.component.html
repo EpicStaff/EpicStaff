@@ -19,12 +19,12 @@
                         Export {{ selectedFlowIds().length }} flows
                     </app-button>
                 } @else {
-                    <app-button type="ghost" [leftIcon]="'ui/download'" (click)="onImportClick()"> Import </app-button>
-                    <app-button type="ghost" [leftIcon]="'ui/upload'" (click)="onExportClick()"> Export </app-button>
+                    <app-button type="ghost" [leftIcon]="'download'" (click)="onImportClick()"> Import </app-button>
+                    <app-button type="ghost" [leftIcon]="'upload'" (click)="onExportClick()"> Export </app-button>
                     <app-button
                         type="primary"
                         class="btn-primary create-btn"
-                        [leftIcon]="'ui/plus'"
+                        [leftIcon]="'plus'"
                         (click)="openCreateFlowDialog()"
                     >
                         Create flow

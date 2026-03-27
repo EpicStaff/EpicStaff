@@ -8,6 +8,7 @@ import {
   MessageType,
 } from '../../../../models/graph-session-message.model';
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 interface ThinkingStep {
   text: string;
@@ -18,24 +19,17 @@ interface ThinkingStep {
 @Component({
   selector: 'app-code-agent-stream-message',
   standalone: true,
-  imports: [CommonModule, MarkdownModule],
+  imports: [CommonModule, MarkdownModule, AppSvgIconComponent],
   animations: [expandCollapseAnimation],
   template: `
     <div class="code-agent-container" [class.in-progress]="!isFinal()">
       <!-- Header -->
       <div class="code-agent-header" (click)="toggleMessage()">
         <div class="play-arrow">
-          <i
-            class="ti"
-            [ngClass]="
-              isExpanded
-                ? 'ti-caret-down-filled'
-                : 'ti-caret-right-filled'
-            "
-          ></i>
+          <app-svg-icon [icon]="isExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
         </div>
         <div class="icon-container" [class.working]="!isFinal()">
-          <i class="ti" [ngClass]="isFinal() ? 'ti-terminal-2' : 'ti-loader'"></i>
+          <app-svg-icon [icon]="isFinal() ? 'terminal-2' : 'loader'" size="1rem" />
         </div>
         <div class="header-text">
           <span class="node-name">{{ message.name }}</span>
@@ -57,14 +51,7 @@ interface ThinkingStep {
             *ngFor="let step of thinkingSteps; let i = index"
           >
             <div class="step-header" (click)="toggleStep(i)">
-              <i
-                class="ti"
-                [ngClass]="
-                  expandedSteps[i]
-                    ? 'ti-caret-down-filled'
-                    : 'ti-caret-right-filled'
-                "
-              ></i>
+              <app-svg-icon [icon]="expandedSteps[i] ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
               <span class="step-summary">{{ getStepSummary(step, i) }}</span>
             </div>
 
@@ -78,7 +65,7 @@ interface ThinkingStep {
                   *ngFor="let tc of step.toolCalls"
                 >
                   <div class="tool-call-name">
-                    <i class="ti ti-tool"></i>
+                    <app-svg-icon icon="tool" size="1rem" />
                     {{ tc.name }}
                   </div>
                   <div class="tool-call-input" *ngIf="tc.input">

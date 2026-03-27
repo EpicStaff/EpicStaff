@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { Dialog } from '@angular/cdk/dialog';
 import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
 import { MatBadgeModule } from '@angular/material/badge';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { StatusBadgeComponent } from '../../../../shared/components/status-badge/status-badge.component';
@@ -21,7 +20,6 @@ import { GraphDto } from '../../../../features/flows/models/graph.model';
         CommonModule,
         RouterModule,
         MatButtonModule,
-        MatIconModule,
         MatBadgeModule,
         AppSvgIconComponent,
         StatusBadgeComponent,

@@ -15,6 +15,7 @@ import {
   NG_VALUE_ACCESSOR,
 } from '@angular/forms';
 import { ClickOutsideDirective } from '../../../../../shared/directives/click-outside.directive';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { FullLLMConfig } from '../../../../../features/settings-dialog/services/llms/full-llm-config.service';
 
 @Component({
@@ -25,6 +26,7 @@ import { FullLLMConfig } from '../../../../../features/settings-dialog/services/
     FormsModule,
     ReactiveFormsModule,
     ClickOutsideDirective,
+    AppSvgIconComponent,
   ],
   templateUrl: './llm-selector.component.html',
   styleUrls: ['./llm-selector.component.scss'],

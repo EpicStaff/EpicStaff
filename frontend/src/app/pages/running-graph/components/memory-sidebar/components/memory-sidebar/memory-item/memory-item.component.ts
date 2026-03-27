@@ -1,11 +1,12 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { CommonModule, NgStyle } from '@angular/common';
 import { Memory } from '../../../models/memory.model';
+import { AppSvgIconComponent } from 'src/app/shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-memory-item',
   standalone: true,
-  imports: [CommonModule, NgStyle],
+  imports: [CommonModule, NgStyle, AppSvgIconComponent],
   template: `
     <div class="memory-item">
       <div class="memory-header">
@@ -15,7 +16,7 @@ import { Memory } from '../../../models/memory.model';
             memory.payload.created_at | date : 'short'
           }}</span>
           <button class="delete-button" (click)="onDelete()">
-            <i class="ti ti-x"></i>
+            <app-svg-icon icon="x" size="1rem" />
           </button>
         </div>
       </div>
@@ -32,10 +33,7 @@ import { Memory } from '../../../models/memory.model';
       @if (memory.payload.type !== 'user') {
       <button class="details-toggle" (click)="toggleDetails(memory.id)">
         <div class="toggle-left">
-          <i
-            class="ti ti-player-play-filled"
-            [ngClass]="{ expanded: isExpanded(memory.id) }"
-          ></i>
+          <app-svg-icon icon="player-play-filled" size="1rem" [ngClass]="{ expanded: isExpanded(memory.id) }" />
           <span>Details</span>
         </div>
       </button>

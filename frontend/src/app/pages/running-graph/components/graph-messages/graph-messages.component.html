@@ -87,7 +87,7 @@
                                 (click)="scrollBreadcrumbs(breadcrumbsScroller, 'left')"
                                 *ngIf="rootView.hasBreadcrumbOverflow"
                             >
-                                <i class="ti ti-chevron-left"></i>
+                                <app-svg-icon icon="chevron-left" size="1rem" />
                             </button>
                             <div
                                 class="breadcrumbs-search"
@@ -99,7 +99,7 @@
                                     aria-label="Search subflow"
                                     (click)="toggleBreadcrumbSearch(rootView.rootKey)"
                                 >
-                                    <i class="ti ti-search search-icon"></i>
+                                    <app-svg-icon icon="search" size="1rem" class="search-icon" />
                                 </button>
                                 <input
                                     type="text"
@@ -151,11 +151,11 @@
                                     class="breadcrumb-separator icon-container"
                                     *ngIf="!isLast"
                                 >
-                                    <i class="ti ti-chevron-right"></i>
+                                    <app-svg-icon icon="chevron-right" size="1rem" />
                                 </span>
                             </span>
                             <div class="icon-container">
-                                <i class="ti ti-corner-right-down"></i>
+                                <app-svg-icon icon="corner-right-down" size="1rem" />
                             </div>
                         </div>
                         <div
@@ -168,7 +168,7 @@
                                 aria-label="Scroll breadcrumbs right"
                                 (click)="scrollBreadcrumbs(breadcrumbsScroller, 'right')"
                             >
-                                <i class="ti ti-chevron-right"></i>
+                                <app-svg-icon icon="chevron-right" size="1rem" />
                             </button>
                         </div>
                     </div>

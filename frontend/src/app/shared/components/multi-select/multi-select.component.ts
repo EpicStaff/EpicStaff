@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { TemplatePortal } from '@angular/cdk/portal';
 
-import {AppIconComponent} from "../app-icon/app-icon.component";
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import {CheckboxComponent} from "../checkbox/checkbox.component";
 import {ButtonComponent} from "../buttons";
 import {Overlay, OverlayPositionBuilder, OverlayRef} from "@angular/cdk/overlay";
@@ -25,7 +25,7 @@ interface GroupedItems {
     selector: 'app-multi-select',
     standalone: true,
     imports: [
-        AppIconComponent,
+        AppSvgIconComponent,
         CheckboxComponent,
         ButtonComponent
     ],

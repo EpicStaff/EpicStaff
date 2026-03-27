@@ -8,11 +8,11 @@
 >
     <ul>
         <li (click)="onAddEmptyAgentAbove()">
-            <i class="ti ti-row-insert-top icon"></i>
+            <app-svg-icon icon="row-insert-top" size="1rem" />
             <span>Add Empty Row Above</span>
         </li>
         <li (click)="onAddEmptyAgentBelow()">
-            <i class="ti ti-row-insert-bottom icon"></i>
+            <app-svg-icon icon="row-insert-bottom" size="1rem" />
             <span>Add Empty Row Below</span>
         </li>
         <!-- <li class="divider"></li>
@@ -30,7 +30,7 @@
         </li> -->
         <li class="divider"></li>
         <li (click)="onDelete()" class="delete-option">
-            <i class="ti ti-trash icon"></i>
+            <app-svg-icon icon="trash" size="1rem" />
             <span>Delete Row({{ parent }})</span>
         </li>
     </ul>

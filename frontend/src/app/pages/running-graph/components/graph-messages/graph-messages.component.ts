@@ -59,6 +59,7 @@ import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { ExtractedChunksMessageComponent } from './components/extracted-chunks/extracted-chunks-message.component';
 import { WarningMessagesComponent } from '../warning-messages/warning-messages.component';
 import { CodeAgentStreamMessageComponent } from './components/code-agent-stream-message/code-agent-stream-message.component';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 interface MessageContext {
   key: string;
@@ -118,6 +119,7 @@ interface RootDrilldownView {
     SubgraphStartMessageComponent,
     SubgraphFinishMessageComponent,
     CodeAgentStreamMessageComponent,
+    AppSvgIconComponent,
   ],
   templateUrl: './graph-messages.component.html',
   styleUrls: ['./graph-messages.component.scss'],

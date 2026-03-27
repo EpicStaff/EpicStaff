@@ -54,7 +54,7 @@
         <!-- No results message -->
         <li class="no-results" *ngIf="filteredLLMs.length === 0">
           <div class="empty-state">
-            <i class="ti ti-search-off"></i>
+            <app-svg-icon icon="search-off" size="1.5rem" />
             <p>No matching LLM configurations found</p>
           </div>
         </li>
@@ -85,7 +85,7 @@
         <!-- No results message -->
         <li class="no-results" *ngIf="filteredRealtimeModels.length === 0">
           <div class="empty-state">
-            <i class="ti ti-search-off"></i>
+            <app-svg-icon icon="search-off" size="1.5rem" />
             <p>No matching Realtime configurations found</p>
           </div>
         </li>

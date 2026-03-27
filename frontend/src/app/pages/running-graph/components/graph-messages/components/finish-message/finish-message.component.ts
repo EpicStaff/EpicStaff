@@ -2,6 +2,7 @@ import { Component, Input, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { NgxJsonViewerModule } from 'ngx-json-viewer';
 import { MarkdownModule } from 'ngx-markdown';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
   GraphMessage,
   FinishMessageData,
@@ -13,24 +14,17 @@ import { GetProjectRequest } from '../../../../../../features/projects/models/pr
 @Component({
   selector: 'app-finish-message',
   standalone: true,
-  imports: [CommonModule, NgxJsonViewerModule, MarkdownModule],
+  imports: [CommonModule, NgxJsonViewerModule, MarkdownModule, AppSvgIconComponent],
   animations: [expandCollapseAnimation],
   template: `
     <div class="finish-container">
       <!-- Finish Message Header with Toggle -->
       <div class="finish-header" (click)="toggleMessage()">
         <div class="play-arrow">
-          <i
-            class="ti"
-            [ngClass]="
-              isMessageExpanded
-                ? 'ti-caret-down-filled'
-                : 'ti-caret-right-filled'
-            "
-          ></i>
+          <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
         </div>
         <div class="icon-container">
-          <i class="ti ti-flag-filled"></i>
+          <app-svg-icon icon="flag-filled" size="1rem" />
         </div>
         <h3>
           <span class="project-name" *ngIf="project && project.name">{{
@@ -50,14 +44,7 @@ import { GetProjectRequest } from '../../../../../../features/projects/models/pr
           <!-- Variables Section -->
           <div class="variables-container" *ngIf="hasVariables()">
             <div class="section-heading" (click)="toggleSection('variables')">
-              <i
-                class="ti"
-                [ngClass]="
-                  isVariablesExpanded
-                    ? 'ti-caret-down-filled'
-                    : 'ti-caret-right-filled'
-                "
-              ></i>
+              <app-svg-icon [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
               Variables
             </div>
             <div
@@ -76,14 +63,7 @@ import { GetProjectRequest } from '../../../../../../features/projects/models/pr
           <!-- Final Output Section -->
           <div class="output-container">
             <div class="section-heading" (click)="toggleSection('output')">
-              <i
-                class="ti"
-                [ngClass]="
-                  isOutputExpanded
-                    ? 'ti-caret-down-filled'
-                    : 'ti-caret-right-filled'
-                "
-              ></i>
+              <app-svg-icon [icon]="isOutputExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
               Final Output
             </div>
 

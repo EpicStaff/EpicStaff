@@ -12,6 +12,7 @@ import { ConsoleService } from '../../../../services/console.service';
 import { WavRecorderService } from '../../../../services/wav-recorder.service';
 import { MicrophoneSelectorComponent } from './microphone-selector/microphone-selector.component';
 import { VoiceVisualizerComponent } from './voice-visualizer/voice-visualizer.component';
+import { AppSvgIconComponent } from 'src/app/shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-chat-controls',
@@ -21,6 +22,7 @@ import { VoiceVisualizerComponent } from './voice-visualizer/voice-visualizer.co
     FormsModule,
     MicrophoneSelectorComponent,
     VoiceVisualizerComponent,
+    AppSvgIconComponent,
   ],
   templateUrl: './chat-controls.component.html',
   styleUrls: ['./chat-controls.component.scss'],

@@ -1,23 +1,21 @@
 import { Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { expandCollapseAnimation } from '../../../../shared/animations/animations-expand-collapse';
+import { AppSvgIconComponent } from 'src/app/shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-warning-messages',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, AppSvgIconComponent],
   animations: [expandCollapseAnimation],
   template: `
     <div class="warning-container" *ngIf="messages && messages.length > 0">
       <div class="warning-header" (click)="toggleExpand()">
         <div class="play-arrow">
-          <i
-            class="ti"
-            [ngClass]="isExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
-          ></i>
+          <app-svg-icon [icon]="isExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
         </div>
         <div class="icon-container">
-          <i class="ti ti-alert-triangle"></i>
+          <app-svg-icon icon="alert-triangle" size="1rem" />
         </div>
         <h3>Warnings</h3>
         <span class="warning-count">({{ messages.length }})</span>

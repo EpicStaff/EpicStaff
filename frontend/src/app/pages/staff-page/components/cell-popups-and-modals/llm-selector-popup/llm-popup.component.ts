@@ -16,6 +16,7 @@ import {
 } from '@angular/core';
 import { NgClass, NgFor, NgIf } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { Subject, forkJoin } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { FullLLMConfigService } from '../../../../../features/settings-dialog/services/llms/full-llm-config.service';
@@ -26,7 +27,7 @@ import { MergedConfig } from '../../../../../features/staff/services/full-agent.
 @Component({
   selector: 'app-llm-popup',
   standalone: true,
-  imports: [NgFor, FormsModule, NgIf, NgClass, LlmItemComponent],
+  imports: [NgFor, FormsModule, NgIf, NgClass, LlmItemComponent, AppSvgIconComponent],
   templateUrl: './llm-popup.component.html',
   styleUrls: ['./llm-popup.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,

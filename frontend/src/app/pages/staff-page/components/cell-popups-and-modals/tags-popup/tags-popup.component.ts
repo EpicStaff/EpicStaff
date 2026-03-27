@@ -8,11 +8,12 @@ import {
 } from '@angular/core';
 import { NgClass, NgFor, NgIf } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-tags-popup',
   standalone: true,
-  imports: [NgFor, FormsModule, NgClass],
+  imports: [NgFor, FormsModule, NgClass, AppSvgIconComponent],
   template: `
     <div class="tags-popup" (click)="$event.stopPropagation()">
       <div class="header">
@@ -49,7 +50,7 @@ import { FormsModule } from '@angular/forms';
               (click)="addTag()"
               aria-label="Add tag"
             >
-              <i class="ti ti-plus"></i>
+              <app-svg-icon icon="plus" size="1rem" />
             </button>
           </div>
         </div>

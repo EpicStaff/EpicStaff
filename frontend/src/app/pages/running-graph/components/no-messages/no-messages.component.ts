@@ -1,15 +1,16 @@
 // no-messages.component.ts
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { AppSvgIconComponent } from 'src/app/shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-no-messages',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, AppSvgIconComponent],
   template: `
     <div class="no-messages">
       <div class="no-messages-content">
-        <i class="ti ti-message-circle-off"></i>
+        <app-svg-icon icon="message-circle-off" size="1.5rem" />
         <p>No messages available for this session.</p>
       </div>
     </div>

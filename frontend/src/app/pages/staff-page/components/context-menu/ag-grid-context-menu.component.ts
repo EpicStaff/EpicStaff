@@ -1,10 +1,11 @@
 import { NgStyle } from '@angular/common';
 import { Component, Input, Output, EventEmitter } from '@angular/core';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-ag-grid-context-menu',
   standalone: true,
-  imports: [NgStyle],
+  imports: [NgStyle, AppSvgIconComponent],
   templateUrl: './ag-grid-context-menu.component.html',
   styleUrls: ['./ag-grid-context-menu.component.scss'],
 })

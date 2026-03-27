@@ -9,28 +9,22 @@ import { CommonModule } from '@angular/common';
 import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../models/graph-session-message.model';
 import { NgxJsonViewerModule } from 'ngx-json-viewer';
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
   selector: 'app-subgraph-start-message',
   standalone: true,
-  imports: [CommonModule, NgxJsonViewerModule],
+  imports: [CommonModule, NgxJsonViewerModule, AppSvgIconComponent],
   encapsulation: ViewEncapsulation.Emulated,
   animations: [expandCollapseAnimation],
   template: `
     <div class="subgraph-start-container">
       <div class="subgraph-start-header" (click)="toggleMessage()">
         <div class="play-arrow" *ngIf="hasContent()">
-          <i
-            class="ti"
-            [ngClass]="
-              isMessageExpanded
-                ? 'ti-caret-down-filled'
-                : 'ti-caret-right-filled'
-            "
-          ></i>
+          <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
         </div>
         <div class="icon-container">
-          <i class="ti ti-hierarchy-2"></i>
+          <app-svg-icon icon="hierarchy-2" size="1rem" />
         </div>
         <h3>
           <span class="node-name">{{ message.name  }}</span> subgraph started {{subgraphName}}
@@ -44,10 +38,7 @@ import { expandCollapseAnimation } from '../../../../../../shared/animations/ani
         [class.show-nested-btn--open]="isNestedMessagesOpen"
       >
         <div class="play-nested-arrow" [class.play-nested-arrow--open]="isNestedMessagesOpen">
-          <i
-            class="ti ti-caret-right-filled nested-toggle-arrow"
-          >
-        </i>
+          <app-svg-icon icon="caret-right-filled" size="1rem" />
         </div>
         <svg
           class="view-nested-icon"
@@ -78,14 +69,7 @@ import { expandCollapseAnimation } from '../../../../../../shared/animations/ani
           <!-- Input Parameters Section -->
           <div class="input-container" *ngIf="hasInput()">
             <div class="section-heading" (click)="toggleInputs($event)">
-              <i
-                class="ti"
-                [ngClass]="
-                  isInputsExpanded
-                    ? 'ti-caret-down-filled'
-                    : 'ti-caret-right-filled'
-                "
-              ></i>
+              <app-svg-icon [icon]="isInputsExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
               Input Parameters
             </div>
             <div
@@ -104,14 +88,7 @@ import { expandCollapseAnimation } from '../../../../../../shared/animations/ani
           <!-- Variables Section -->
           <div class="variables-container" *ngIf="hasVariables()">
             <div class="section-heading" (click)="toggleVariables($event)">
-              <i
-                class="ti"
-                [ngClass]="
-                  isVariablesExpanded
-                    ? 'ti-caret-down-filled'
-                    : 'ti-caret-right-filled'
-                "
-              ></i>
+              <app-svg-icon [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
               Variables
             </div>
             <div

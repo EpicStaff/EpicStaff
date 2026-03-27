@@ -1,6 +1,7 @@
 import { Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MarkdownModule } from 'ngx-markdown';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
   GraphMessage,
   LLMMessageData,
@@ -10,24 +11,17 @@ import { expandCollapseAnimation } from '../../../../../../shared/animations/ani
 @Component({
   selector: 'app-llm-message',
   standalone: true,
-  imports: [CommonModule, MarkdownModule],
+  imports: [CommonModule, MarkdownModule, AppSvgIconComponent],
   animations: [expandCollapseAnimation],
   template: `
     <div class="llm-flow-container">
       <!-- LLM Message Header with Toggle -->
       <div class="llm-header" (click)="toggleMessage()">
         <div class="play-arrow">
-          <i
-            class="ti"
-            [ngClass]="
-              isMessageExpanded
-                ? 'ti-caret-down-filled'
-                : 'ti-caret-right-filled'
-            "
-          ></i>
+          <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
         </div>
         <div class="icon-container">
-          <i class="ti ti-message-circle"></i>
+          <app-svg-icon icon="message-circle" size="1rem" />
         </div>
         <h3>LLM Response</h3>
       </div>
@@ -41,14 +35,7 @@ import { expandCollapseAnimation } from '../../../../../../shared/animations/ani
           <!-- Response Subsection -->
           <div class="llm-section">
             <div class="section-heading" (click)="toggleResponseSection()">
-              <i
-                class="ti"
-                [ngClass]="
-                  isResponseExpanded
-                    ? 'ti-caret-down-filled'
-                    : 'ti-caret-right-filled'
-                "
-              ></i>
+              <app-svg-icon [icon]="isResponseExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
               Response
             </div>
             <div
