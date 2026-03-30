@@ -2,7 +2,7 @@ import {Injectable} from "@angular/core";
 import {Observable, throwError} from "rxjs";
 import {HttpClient} from "@angular/common/http";
 import {shareReplay, catchError} from "rxjs/operators";
-import {GetTunnelResponse, RegisterTelegramTriggerRequest} from "../models/webhook.model";
+import {GetTunnelResponse } from "../models/webhook.model";
 import {ConfigService} from "../../../../../services/config/config.service";
 
 @Injectable({

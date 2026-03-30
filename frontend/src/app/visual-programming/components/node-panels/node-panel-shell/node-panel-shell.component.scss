@@ -111,7 +111,7 @@ header {
 main {
     flex: 1;
     overflow-y: auto;
-    overflow: visible;
+    min-height: 0;
 }
 
 /* Shake Animation */

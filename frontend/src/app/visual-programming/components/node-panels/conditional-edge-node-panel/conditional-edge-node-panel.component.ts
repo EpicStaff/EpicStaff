@@ -224,10 +224,10 @@ interface InputMapPair {
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 8px;
                 overflow: hidden;
-                flex: 1;
+                flex-shrink: 0;
                 display: flex;
                 flex-direction: column;
-                position: relative;               
+                position: relative;
             }
         `,
     ],

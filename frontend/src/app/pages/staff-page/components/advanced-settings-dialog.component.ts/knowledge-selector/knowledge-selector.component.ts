@@ -9,7 +9,6 @@ import {
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { ClickOutsideDirective } from '../../../../../shared/directives/click-outside.directive';
-import { GetSourceCollectionRequest } from '../../../../../pages/knowledge-sources/models/source-collection.model';
 
 @Component({
   selector: 'app-knowledge-selector',
@@ -25,7 +24,7 @@ import { GetSourceCollectionRequest } from '../../../../../pages/knowledge-sourc
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class KnowledgeSelectorComponent {
-  @Input() collections: GetSourceCollectionRequest[] = [];
+  @Input() collections: Array<{ collection_id: number; collection_name: string }> = [];
   @Input() selectedCollectionId: number | null = null;
   @Input() label: string = 'Knowledge Source';
   @Input() disabled: boolean = false;

@@ -1,5 +1,5 @@
-import { AgentMessage } from './agent-message.model';
-import { GetAgentRequest } from './agent.model';
+import { AgentMessage } from 'src/app/pages/running-graph/models/agent-message.model';
+import { GetAgentRequest } from 'src/app/features/staff/models/agent.model';
 import { TaskMessage } from './task-message.model';
 import { UserMessage } from './user-message.model';
 

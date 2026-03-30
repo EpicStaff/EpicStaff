@@ -159,6 +159,7 @@
 
     .collapsed & {
         height: 300px;
+        flex-shrink: 0;
         border-radius: 8px;
     }
 

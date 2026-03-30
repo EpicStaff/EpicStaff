@@ -365,6 +365,7 @@ interface InputMapPair {
 
                 .collapsed & {
                     height: 300px;
+                    flex-shrink: 0;
                 }
 
                 .form-layout.expanded:not(.code-editor-fullwidth) & {
