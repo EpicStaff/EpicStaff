@@ -1,5 +1,5 @@
 <!-- graph-messages.component.html -->
-<div class="messages-container">
+<div class="messages-container" #messagesContainer (scroll)="onMessagesScroll()">
     <!-- Connection status indicator -->
     <div
         class="connection-status"
@@ -298,4 +298,14 @@
         *ngIf="statusWaitForUser"
         (messageSubmitted)="onUserMessageSubmitted($event)"
     ></app-wait-for-user-input>
+
+    @if (showScrollToTop) {
+        <button
+            class="scroll-to-top-btn"
+            (click)="scrollToTop()"
+            aria-label="Scroll to top"
+        >
+            <i class="ti ti-arrow-up"></i>
+        </button>
+    }
 </div>

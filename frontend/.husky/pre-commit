@@ -1,3 +1,8 @@
+# Skip linting during merge commits to avoid reformatting files from upstream
+if [ -f "$(git rev-parse --git-dir)/MERGE_HEAD" ]; then
+  exit 0
+fi
+
 if [ -f frontend/node_modules/.bin/lint-staged ]; then
   cd frontend && node_modules/.bin/lint-staged
 fi

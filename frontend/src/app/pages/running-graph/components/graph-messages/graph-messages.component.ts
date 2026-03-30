@@ -11,6 +11,7 @@ import {
   Output,
   EventEmitter,
   HostListener,
+  ViewChild,
   ViewChildren,
   ElementRef,
   QueryList,
@@ -195,8 +196,13 @@ export class GraphMessagesComponent
 
   private destroy$ = new Subject<void>();
 
+  @ViewChild('messagesContainer')
+  private messagesContainer!: ElementRef<HTMLElement>;
+
   @ViewChildren('breadcrumbsScroller')
   private breadcrumbScrollers!: QueryList<ElementRef<HTMLElement>>;
+
+  public showScrollToTop = false;
 
   constructor(
     public sseService: RunSessionSSEService,
@@ -263,6 +269,19 @@ export class GraphMessagesComponent
     this.breadcrumbScrollers.changes
       .pipe(takeUntil(this.destroy$))
       .subscribe(() => this.scheduleBreadcrumbOverflowRefresh());
+  }
+
+  public onMessagesScroll(): void {
+    const el = this.messagesContainer?.nativeElement;
+    if (!el) return;
+    this.showScrollToTop = el.scrollTop > 150;
+    this.cdr.markForCheck();
+  }
+
+  public scrollToTop(): void {
+    const el = this.messagesContainer?.nativeElement;
+    if (!el) return;
+    el.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   public ngOnDestroy(): void {

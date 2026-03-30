@@ -1,8 +1,91 @@
 :host {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
 }
+
 .body {
-  flex: 1;
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+
+    app-flow-graph {
+        flex: 1;
+        min-width: 0;
+    }
+}
+
+.drag-handle {
+    width: 3px;
+    cursor: col-resize;
+    background: transparent;
+    position: relative;
+    flex-shrink: 0;
+    z-index: 10;
+
+    &::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: transparent;
+        z-index: 1;
+        pointer-events: none;
+        transition: background-color 0.15s ease;
+    }
+
+    &:hover::after,
+    &.dragging::after {
+        background-color: #675fff;
+    }
+
+    &.collapsed {
+        cursor: default;
+    }
+}
+
+.collapse-toggle {
+    position: absolute;
+    top: 50%;
+    left: 100%;
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+    transform: translate(-100%, -50%);
+    width: 28px;
+    height: 66px;
+    border: 3px solid #3d3d3e;
+    border-right: 1px solid #3d3d3e;
+    background: #2c2c2e;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    z-index: -1;
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease;
+
+    &:hover {
+        border-color: var(--accent-color, #675fff2a);
+        // border-color: var(--accent-color, #685fff);
+
+    }
+
+    &__icon {
+        font-size: 10px;
+        color: rgba(255, 255, 255, 0.6);
+        line-height: 1;
+    }
+}
+
+app-flow-messages-panel {
+    flex-shrink: 0;
+    height: 100%;
+    overflow: hidden;
+    border-left: 1px solid #3d3d3e;
+    box-sizing: border-box;
 }

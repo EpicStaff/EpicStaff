@@ -21,6 +21,7 @@
             [nodesMode]="'flow-graph'"
             [currentFlowId]="graph.id"
             [initialNodeId]="initialNodeId"
+            [initialNodeId]="initialNodeId"
             (save)="handleSaveFlow(true).subscribe()"
             (openShortcuts)="openShortcutsModal($event)"
         ></app-flow-graph>
@@ -32,6 +33,29 @@
             [sections]="shortcutSections"
             (closed)="closeShortcutsModal()"
         ></app-shortcuts-modal>
+        @if (isPanelOpen || !isPanelOpen) {
+            <div
+                class="drag-handle"
+                [class.dragging]="isDragging"
+                [class.collapsed]="isPanelCollapsed"
+                (mousedown)="onDragStart($event)"
+            >
+                <button class="collapse-toggle" (mousedown)="$event.stopPropagation()" (click)="togglePanelCollapsed()">
+                    <span class="collapse-toggle__icon">
+                        {{ isPanelCollapsed ? '◀' : '▶' }}
+                    </span>
+                </button>
+            </div>
+            @if (!isPanelCollapsed) {
+                <app-flow-messages-panel
+                    [style.width.px]="panelWidthPx"
+                    [graphId]="graph.id"
+                    [sessionId]="currentSessionId"
+                    (close)="closeMessagesPanel()"
+                    (sessionSelected)="onSessionSelected($event)"
+                ></app-flow-messages-panel>
+            }
+        }
     </div>
 } @else {
     <app-spinner [text]="'Loading flow...'" [accentColor]="'#6562f5'" [isOverlay]="false"></app-spinner>

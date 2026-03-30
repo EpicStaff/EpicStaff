@@ -3,11 +3,7 @@
         <!-- Header -->
         <div class="dialog-header">
             <h2 class="title">
-                {{
-                    selectedTool
-                        ? "Update " + selectedTool.name
-                        : "Create Custom Tool"
-                }}
+                {{ selectedTool ? 'Update ' + selectedTool.name : 'Create Custom Tool' }}
             </h2>
             <button class="close-btn" type="button" (click)="close()">
                 <app-svg-icon icon="x" size="1.2rem"></app-svg-icon>
@@ -37,21 +33,13 @@
                             />
                             <div
                                 class="error-message"
-                                *ngIf="
-                                    form.get('toolName')?.dirty &&
-                                    form.get('toolName')?.hasError('required')
-                                "
+                                *ngIf="form.get('toolName')?.dirty && form.get('toolName')?.hasError('required')"
                             >
                                 Tool name is required.
                             </div>
                             <div
                                 class="error-message"
-                                *ngIf="
-                                    form.get('toolName')?.dirty &&
-                                    form
-                                        .get('toolName')
-                                        ?.hasError('nonUniqueName')
-                                "
+                                *ngIf="form.get('toolName')?.dirty && form.get('toolName')?.hasError('nonUniqueName')"
                             >
                                 Tool name must be unique.
                             </div>
@@ -76,9 +64,7 @@
                                 class="error-message"
                                 *ngIf="
                                     form.get('toolDescription')?.dirty &&
-                                    form
-                                        .get('toolDescription')
-                                        ?.hasError('required')
+                                    form.get('toolDescription')?.hasError('required')
                                 "
                             >
                                 Description is required.
@@ -98,9 +84,7 @@
                             <app-json-editor
                                 [jsonData]="inputsJsonConfig()"
                                 (jsonChange)="inputsJsonConfig.set($event)"
-                                (validationChange)="
-                                    onInputsJsonValidChange($event)
-                                "
+                                (validationChange)="onInputsJsonValidChange($event)"
                                 [fullHeight]="false"
                                 [editorHeight]="200"
                             ></app-json-editor>
@@ -109,9 +93,7 @@
 
                     <!-- Libraries Section -->
                     <div class="form-section">
-                        <app-tool-libraries
-                            [libraries]="selectedTool?.python_code?.libraries"
-                        ></app-tool-libraries>
+                        <app-tool-libraries [libraries]="selectedTool?.python_code?.libraries"></app-tool-libraries>
                     </div>
                 </div>
 
@@ -128,14 +110,8 @@
         <!-- Footer -->
         <div class="dialog-footer">
             <app-button type="secondary" (click)="close()">Close</app-button>
-            <app-button
-                type="primary"
-                [disabled]="
-                    form.invalid || editorHasError || !isInputsJsonValid()
-                "
-                (click)="createTool()"
-            >
-                {{ selectedTool ? "Update" : "Create" }}
+            <app-button type="primary" [disabled]="form.invalid || !isInputsJsonValid()" (click)="createTool()">
+                {{ selectedTool ? 'Update' : 'Create' }}
             </app-button>
         </div>
     </form>

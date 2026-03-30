@@ -39,7 +39,6 @@
         padding: 1.5rem;
         padding-top: 5px;
         max-height: calc(90vh - 200px);
-
     }
 
     &__field {
@@ -58,6 +57,10 @@
         display: flex;
         gap: 2rem;
         position: relative;
+
+        ::ng-deep .mdc-label {
+            color: var(--color-text-secondary, #888);
+        }
     }
 
     &__coming-soon-title {

@@ -1,6 +1,6 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { map, Observable } from 'rxjs';
+import { map, Observable, Subject } from 'rxjs';
 import { ConfigService } from '../../../services/config/config.service';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { WarningMessages } from '../../../pages/running-graph/models/warning-messages.model';
@@ -70,6 +70,9 @@ export const defaultSessionStatusesCounts = (): SessionStatusesCounts => ({
   providedIn: 'root',
 })
 export class GraphSessionService {
+  private readonly _sessionsChanged$ = new Subject<void>();
+  public readonly sessionsChanged$ = this._sessionsChanged$.asObservable();
+
   constructor(private http: HttpClient, private configService: ConfigService) {}
 
   private get apiUrl(): string {
@@ -155,11 +158,15 @@ export class GraphSessionService {
   }
 
   deleteSessionById(sessionId: number): Observable<void> {
-    return this.http.delete<void>(`${this.apiUrl}${sessionId}/`);
+    return this.http.delete<void>(`${this.apiUrl}${sessionId}/`).pipe(
+      map(() => { this._sessionsChanged$.next(); })
+    );
   }
 
   bulkDeleteSessions(ids: number[]): Observable<void> {
-    return this.http.post<void>(`${this.apiUrl}bulk_delete/`, { ids });
+    return this.http.post<void>(`${this.apiUrl}bulk_delete/`, { ids }).pipe(
+      map(() => { this._sessionsChanged$.next(); })
+    );
   }
 
   stopSessionById(sessionId: number): Observable<void> {

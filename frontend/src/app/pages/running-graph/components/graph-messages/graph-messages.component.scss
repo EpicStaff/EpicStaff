@@ -466,6 +466,39 @@ letter-spacing: 0;
     .loading-indicator {
         margin-top: 2rem;
     }
+
+    .scroll-to-top-btn {
+        position: sticky;
+        bottom: 16px;
+        align-self: flex-end;
+        margin-right: 16px;
+        width: 36px;
+        height: 36px;
+        flex-shrink: 0;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background-color: #2c2c2e;
+        color: var(--color-ks-transparent-text-60);;
+        font-size: 16px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        transition: background-color 0.2s, transform 0.2s;
+
+        &:hover {
+            color: var(--color-text-primary);
+        }
+
+        &:active,
+        &[aria-pressed='true'] {
+            background-color: #685fff;
+            color: var(--color-text-primary);
+            border-color: #685fff;
+        }
+    }
 }
 
 .animate-user-input {
