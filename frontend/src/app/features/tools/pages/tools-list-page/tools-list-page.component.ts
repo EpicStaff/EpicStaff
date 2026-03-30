@@ -1,138 +1,122 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  ChangeDetectorRef,
-} from '@angular/core';
-import {
-  RouterOutlet,
-  RouterLink,
-  RouterLinkActive,
-  Router,
-} from '@angular/router';
 import { Dialog } from '@angular/cdk/dialog';
-import { TabButtonComponent } from '../../../../shared/components/tab-button/tab-button.component';
-import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
-import { CustomToolDialogComponent } from '../../../../user-settings-page/tools/custom-tool-editor/custom-tool-dialog.component';
-import { CustomToolsService } from '../../services/custom-tools/custom-tools.service';
-import { GetPythonCodeToolRequest } from '../../models/python-code-tool.model';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+
+import { ButtonComponent, TabButtonComponent } from '@shared/components';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { CustomToolDialogComponent } from '../../../../user-settings-page/tools/custom-tool-editor/custom-tool-dialog.component';
 import { McpToolDialogComponent } from '../../components/mcp-tool-dialog/mcp-tool-dialog.component';
 import { GetMcpToolRequest } from '../../models/mcp-tool.model';
+import { GetPythonCodeToolRequest } from '../../models/python-code-tool.model';
+import { CustomToolsService } from '../../services/custom-tools/custom-tools.service';
 import { ToolsEventsService } from '../../services/tools-events.service';
 import { ToolsSearchService } from '../../services/tools-search.service';
 
 @Component({
-  selector: 'app-tools-list-page',
-  standalone: true,
-  imports: [
-    RouterOutlet,
-    RouterLink,
-    RouterLinkActive,
-    TabButtonComponent,
-    ButtonComponent,
-    FormsModule,
-    AppSvgIconComponent,
-  ],
-  templateUrl: './tools-list-page.component.html',
-  styleUrls: ['./tools-list-page.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-tools-list-page',
+    standalone: true,
+    imports: [
+        RouterOutlet,
+        RouterLink,
+        RouterLinkActive,
+        TabButtonComponent,
+        ButtonComponent,
+        FormsModule,
+        AppSvgIconComponent,
+    ],
+    templateUrl: './tools-list-page.component.html',
+    styleUrls: ['./tools-list-page.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ToolsListPageComponent {
-  public tabs = [
-    // { label: 'Built-in', link: 'built-in' },
-    { label: 'Custom', link: 'custom' },
-    { label: 'MCP', link: 'mcp' },
-  ];
+    public tabs = [
+        // { label: 'Built-in', link: 'built-in' },
+        { label: 'Custom', link: 'custom' },
+        { label: 'MCP', link: 'mcp' },
+    ];
 
-  public searchTerm: string = '';
+    public searchTerm: string = '';
 
-  constructor(
-    private readonly cdkDialog: Dialog,
-    private readonly cdr: ChangeDetectorRef,
-    private readonly router: Router,
-    private readonly customToolsService: CustomToolsService,
-    private readonly toolsEventsService: ToolsEventsService,
-    private readonly toolsSearchService: ToolsSearchService
-  ) {}
+    constructor(
+        private readonly cdkDialog: Dialog,
+        private readonly cdr: ChangeDetectorRef,
+        private readonly router: Router,
+        private readonly customToolsService: CustomToolsService,
+        private readonly toolsEventsService: ToolsEventsService,
+        private readonly toolsSearchService: ToolsSearchService
+    ) {}
 
-  public get isCustomTabActive(): boolean {
-    return this.router.url.includes('/custom');
-  }
-
-  public get isMcpTabActive(): boolean {
-    return this.router.url.includes('/mcp');
-  }
-
-  public get createButtonLabel(): string {
-    if (this.isMcpTabActive) {
-      return 'Add MCP tool';
+    public get isCustomTabActive(): boolean {
+        return this.router.url.includes('/custom');
     }
-    return 'Create custom tool';
-  }
 
-  public get createButtonIcon(): string {
-    return 'plus';
-  }
-
-  public onSearchTermChange(term: string): void {
-    this.searchTerm = term;
-    this.toolsSearchService.setSearchTerm(term);
-  }
-
-  public clearSearch(): void {
-    this.searchTerm = '';
-    this.toolsSearchService.clearSearch();
-  }
-
-  public onCreateToolClick(): void {
-    if (this.isMcpTabActive) {
-      this.openMcpToolDialog();
-    } else {
-      this.openCustomToolDialog();
+    public get isMcpTabActive(): boolean {
+        return this.router.url.includes('/mcp');
     }
-  }
 
-  public openCustomToolDialog(): void {
-    // Load tools fresh for the dialog
-    this.customToolsService.getPythonCodeTools().subscribe(tools => {
-      const dialogRef = this.cdkDialog.open<GetPythonCodeToolRequest>(CustomToolDialogComponent, {
-        data: { pythonTools: tools },
-      });
-
-      dialogRef.closed.subscribe((result) => {
-        if (result) {
-          console.log('New custom tool created:', result);
-          // Emit event to notify custom tools component
-          this.toolsEventsService.emitCustomToolCreated(result);
-          // Navigate to custom tools tab after creating a tool
-          this.router.navigate(['/tools/custom']);
-          this.cdr.markForCheck();
+    public get createButtonLabel(): string {
+        if (this.isMcpTabActive) {
+            return 'Add MCP tool';
         }
-      });
-    });
-  }
+        return 'Create custom tool';
+    }
 
-  public openMcpToolDialog(): void {
-    const dialogRef = this.cdkDialog.open<GetMcpToolRequest>(
-      McpToolDialogComponent,
-      {
-        data: {},
-        maxWidth: '95vw',
-        maxHeight: '90vh',
-        autoFocus: true,
-      }
-    );
+    public get createButtonIcon(): string {
+        return 'plus';
+    }
 
-    dialogRef.closed.subscribe((result) => {
-      if (result) {
-        console.log('New MCP tool created:', result);
-        // Emit event to notify MCP tools component
-        this.toolsEventsService.emitMcpToolCreated(result);
-        // Navigate to MCP tools tab after creating a tool
-        this.router.navigate(['/tools/mcp']);
-        this.cdr.markForCheck();
-      }
-    });
-  }
+    public onSearchTermChange(term: string): void {
+        this.searchTerm = term;
+        this.toolsSearchService.setSearchTerm(term);
+    }
+
+    public clearSearch(): void {
+        this.searchTerm = '';
+        this.toolsSearchService.clearSearch();
+    }
+
+    public onCreateToolClick(): void {
+        if (this.isMcpTabActive) {
+            this.openMcpToolDialog();
+        } else {
+            this.openCustomToolDialog();
+        }
+    }
+
+    public openCustomToolDialog(): void {
+        this.customToolsService.getPythonCodeTools().subscribe((tools) => {
+            const dialogRef = this.cdkDialog.open<GetPythonCodeToolRequest>(CustomToolDialogComponent, {
+                data: { pythonTools: tools },
+                disableClose: true,
+            });
+
+            dialogRef.closed.subscribe((result) => {
+                if (result) {
+                    console.log('New custom tool created:', result);
+                    this.toolsEventsService.emitCustomToolCreated(result);
+                    this.router.navigate(['/tools/custom']);
+                    this.cdr.markForCheck();
+                }
+            });
+        });
+    }
+
+    public openMcpToolDialog(): void {
+        const dialogRef = this.cdkDialog.open<GetMcpToolRequest>(McpToolDialogComponent, {
+            data: {},
+            maxWidth: '95vw',
+            maxHeight: '90vh',
+            autoFocus: true,
+        });
+
+        dialogRef.closed.subscribe((result) => {
+            if (result) {
+                console.log('New MCP tool created:', result);
+                this.toolsEventsService.emitMcpToolCreated(result);
+                this.router.navigate(['/tools/mcp']);
+                this.cdr.markForCheck();
+            }
+        });
+    }
 }

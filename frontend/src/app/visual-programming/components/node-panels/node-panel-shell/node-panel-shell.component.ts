@@ -39,11 +39,7 @@ import { SidePanelService } from '../../../services/side-panel.service';
         >
             <header class="dialog-header">
                 <div class="icon-and-title">
-                    <app-svg-icon
-                        [icon]="node()!.icon"
-                        [style.color]="node()!.color || '#685fff'"
-                        size="1.5rem"
-                    ></app-svg-icon>
+                    <i [class]="node()!.icon" [style.color]="node()!.color || '#685fff'"></i>
                     <span class="title">{{ nodeNameToDisplay() }}</span>
                 </div>
                 <div class="header-actions">

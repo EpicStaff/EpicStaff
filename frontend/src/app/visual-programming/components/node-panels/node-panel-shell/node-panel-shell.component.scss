@@ -34,8 +34,10 @@ header {
         align-items: center;
         min-width: 0;
 
-        app-svg-icon {
-            margin-right: 1.5rem;
+        i {
+            font-size: 1.25rem;
+            margin-right: 0.5rem;
+            flex-shrink: 0;
         }
 
         .title {

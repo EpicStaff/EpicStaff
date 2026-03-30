@@ -1,3 +1,5 @@
+import { Clipboard, ClipboardModule } from '@angular/cdk/clipboard';
+import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -7,30 +9,23 @@ import {
     input,
     signal,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
-import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { startWith } from 'rxjs';
+
+import { WebhookStatus } from '../../../../pages/flows-page/components/flow-visual-programming/models/webhook.model';
+import { WebhookService } from '../../../../pages/flows-page/components/flow-visual-programming/services/webhook.service';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
-import { CommonModule } from '@angular/common';
-import { WebhookService } from '../../../../pages/flows-page/components/flow-visual-programming/services/webhook.service';
-import { Clipboard, ClipboardModule } from '@angular/cdk/clipboard';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { startWith } from 'rxjs';
-import { WebhookStatus } from '../../../../pages/flows-page/components/flow-visual-programming/models/webhook.model';
+import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
+import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 
 const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
 
 @Component({
     standalone: true,
     selector: 'app-webhook-trigger-node-panel',
-    imports: [
-        ReactiveFormsModule,
-        CustomInputComponent,
-        CodeEditorComponent,
-        CommonModule,
-        ClipboardModule,
-    ],
+    imports: [ReactiveFormsModule, CustomInputComponent, CodeEditorComponent, CommonModule, ClipboardModule],
     template: `
         <div class="panel-container">
             <div class="panel-content">
@@ -61,10 +56,7 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
                             ></app-custom-input>
                             <div class="webhook-url-display">
                                 @if (webhookUrlDisplay; as url) {
-                                    <span
-                                        class="webhook-url-text"
-                                        [style.color]="activeColor"
-                                    >
+                                    <span class="webhook-url-text" [style.color]="activeColor">
                                         {{ url }}
                                     </span>
                                     <button
@@ -74,10 +66,7 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
                                         [disabled]="!url"
                                         aria-label="Copy webhook URL"
                                     >
-                                        <span
-                                            class="copy-icon"
-                                            aria-hidden="true"
-                                        ></span>
+                                        <span class="copy-icon" aria-hidden="true"></span>
                                         <span>Copy</span>
                                     </button>
                                 } @else {
@@ -86,9 +75,7 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
                                             {{ tunnelErrorMessage }}
                                         </div>
                                     } @else {
-                                        <div class="webhook-url-placeholder">
-                                            Fetching tunnel URL...
-                                        </div>
+                                        <div class="webhook-url-placeholder">Fetching tunnel URL...</div>
                                     }
                                 }
                             </div>
@@ -107,9 +94,7 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
                                     class="toggle-icon-button"
                                     (click)="toggleCodeEditorFullWidth()"
                                     [attr.aria-label]="
-                                        isCodeEditorFullWidth()
-                                            ? 'Collapse code editor'
-                                            : 'Expand code editor'
+                                        isCodeEditorFullWidth() ? 'Collapse code editor' : 'Expand code editor'
                                     "
                                 >
                                     <svg
@@ -118,11 +103,7 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
                                         viewBox="0 0 9 22"
                                         fill="none"
                                         xmlns="http://www.w3.org/2000/svg"
-                                        [style.transform]="
-                                            isCodeEditorFullWidth()
-                                                ? 'scaleX(1)'
-                                                : 'scaleX(-1)'
-                                        "
+                                        [style.transform]="isCodeEditorFullWidth() ? 'scaleX(1)' : 'scaleX(-1)'"
                                     >
                                         <path
                                             d="M7.16602 21.0001L1.16602 11.0001L7.16602 1.00012"
@@ -135,12 +116,8 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
                                 <div class="code-editor-section">
                                     <app-code-editor
                                         [pythonCode]="pythonCode"
-                                        (pythonCodeChange)="
-                                            onPythonCodeChange($event)
-                                        "
-                                        (errorChange)="
-                                            onCodeErrorChange($event)
-                                        "
+                                        (pythonCodeChange)="onPythonCodeChange($event)"
+                                        (errorChange)="onCodeErrorChange($event)"
                                     ></app-code-editor>
                                 </div>
                             </div>
@@ -148,9 +125,7 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
                             <div class="code-editor-section">
                                 <app-code-editor
                                     [pythonCode]="pythonCode"
-                                    (pythonCodeChange)="
-                                        onPythonCodeChange($event)
-                                    "
+                                    (pythonCodeChange)="onPythonCodeChange($event)"
                                     (errorChange)="onCodeErrorChange($event)"
                                 ></app-code-editor>
                             </div>
@@ -305,8 +280,7 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
             }
 
             .code-editor-section {
-                border: 1px solid
-                    var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
+                border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
                 overflow: hidden;
                 display: flex;
                 flex-direction: column;
@@ -435,40 +409,27 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     constructor(
         private webhookService: WebhookService,
         private cdr: ChangeDetectorRef,
-        private clipboard: Clipboard,
+        private clipboard: Clipboard
     ) {
         super();
         this.webhookService.getTunnel().subscribe({
             next: (response) => {
-                if (
-                    response?.status === WebhookStatus.SUCCESS &&
-                    response.tunnel_url
-                ) {
+                if (response?.status === WebhookStatus.SUCCESS && response.tunnel_url) {
                     this.tunnelUrl = response.tunnel_url;
-                    this.webhookUrlBase = this.normalizeWebhookBase(
-                        response.tunnel_url,
-                    );
+                    this.webhookUrlBase = this.normalizeWebhookBase(response.tunnel_url);
                     this.tunnelErrorMessage = '';
-                    this.updateWebhookUrlDisplay(
-                        this.form?.get('webhookName')?.value,
-                    );
+                    this.updateWebhookUrlDisplay(this.form?.get('webhookName')?.value);
                 } else {
-                    this.tunnelErrorMessage =
-                        'set your tunnel in .env configurations';
+                    this.tunnelErrorMessage = 'set your tunnel in .env configurations';
                     this.webhookUrlBase = '';
-                    this.updateWebhookUrlDisplay(
-                        this.form?.get('webhookName')?.value,
-                    );
+                    this.updateWebhookUrlDisplay(this.form?.get('webhookName')?.value);
                 }
                 this.cdr.markForCheck();
             },
             error: () => {
-                this.tunnelErrorMessage =
-                    'set your tunnel in .env configurations';
+                this.tunnelErrorMessage = 'set your tunnel in .env configurations';
                 this.webhookUrlBase = '';
-                this.updateWebhookUrlDisplay(
-                    this.form?.get('webhookName')?.value,
-                );
+                this.updateWebhookUrlDisplay(this.form?.get('webhookName')?.value);
                 this.cdr.markForCheck();
             },
         });
@@ -489,21 +450,14 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     initializeForm(): FormGroup {
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
-            libraries: [
-                this.node().data.python_code.libraries?.join(', ') || '',
-            ],
+            libraries: [this.node().data.python_code.libraries?.join(', ') || ''],
             webhookName: [
-                this.extractWebhookName(
-                    this.node().data.webhook_trigger_path || '',
-                ),
+                this.extractWebhookName(this.node().data.webhook_trigger?.path || ''),
                 [Validators.pattern(WEBHOOK_NAME_PATTERN)],
             ],
         });
         form.get('webhookName')
-            ?.valueChanges.pipe(
-                startWith(form.get('webhookName')?.value ?? ''),
-                takeUntilDestroyed(this.destroyRef),
-            )
+            ?.valueChanges.pipe(startWith(form.get('webhookName')?.value ?? ''), takeUntilDestroyed(this.destroyRef))
             .subscribe((value: string | null) => {
                 this.updateWebhookUrlDisplay(value ?? '');
                 this.cdr.markForCheck();
@@ -528,9 +482,10 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
             output_variable_path: null,
             data: {
                 ...this.node().data,
-                webhook_trigger_path: (
-                    this.form.value.webhookName || ''
-                ).trim(),
+                webhook_trigger: {
+                    path: (this.form.value.webhookName || '').trim(),
+                    ngrok_webhook_config: this.node().data.webhook_trigger?.ngrok_webhook_config ?? null,
+                },
                 python_code: {
                     name: this.node().data.python_code.name || 'Python Code',
                     code: this.pythonCode,
@@ -545,9 +500,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
         if (!tunnelUrl) {
             return '';
         }
-        const sanitized = tunnelUrl.endsWith('/')
-            ? tunnelUrl.slice(0, -1)
-            : tunnelUrl;
+        const sanitized = tunnelUrl.endsWith('/') ? tunnelUrl.slice(0, -1) : tunnelUrl;
         return `${sanitized}/webhooks/`;
     }
 

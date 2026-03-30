@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { DialogRef } from '@angular/cdk/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
-import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 export interface ImportFlowOptions {
     preserveUuids: boolean;
@@ -11,7 +11,7 @@ export interface ImportFlowOptions {
 
 @Component({
     selector: 'app-import-flow-options-dialog',
-    imports: [CommonModule, ButtonComponent, AppIconComponent, MatTooltipModule],
+    imports: [CommonModule, ButtonComponent, AppSvgIconComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './import-flow-options-dialog.html',
     styleUrl: 'import-flow-options-dialog.scss',

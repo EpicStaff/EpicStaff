@@ -6,8 +6,8 @@
             </span>
         </span>
 
-        <app-button [type]="collections().length ? 'primary' : 'outline-primary'" (click)="onCreateCollection.emit()">
-            + Add
+        <app-button [type]="collections().length ? 'primary' : 'outline-primary'" [leftIcon]="'plus'" (click)="onCreateCollection.emit()">
+            Add
         </app-button>
     </div>
 

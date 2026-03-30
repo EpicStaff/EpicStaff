@@ -20,7 +20,6 @@ import {
   distinctUntilChanged,
   switchMap,
 } from 'rxjs/operators';
-import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { IconButtonComponent } from '../../../../shared/components/buttons/icon-button/icon-button.component';
 import { ToastService } from '../../../../services/notifications/toast.service';
@@ -36,7 +35,6 @@ const LINT_DEBOUNCE_MS = 400;
     FormsModule,
     NgIf,
     MonacoEditorModule,
-    AppIconComponent,
     AppSvgIconComponent,
     IconButtonComponent,
   ],

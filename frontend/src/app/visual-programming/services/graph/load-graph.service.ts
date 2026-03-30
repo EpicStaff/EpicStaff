@@ -70,7 +70,7 @@ function readUIMetadata(
             y: position?.y ?? 100 + Math.floor(fallbackIndex / 5) * 200,
         },
         color: typeof m['color'] === 'string' ? m['color'] : (NODE_COLORS[nodeType] ?? '#685fff'),
-        icon: typeof m['icon'] === 'string' ? m['icon'] : (NODE_ICONS[nodeType] ?? 'terminal-2'),
+        icon: typeof m['icon'] === 'string' ? m['icon'] : (NODE_ICONS[nodeType] ?? 'ti ti-code'),
         size: {
             width: size?.width ?? getDefaultSize(nodeType).width,
             height: size?.height ?? getDefaultSize(nodeType).height,

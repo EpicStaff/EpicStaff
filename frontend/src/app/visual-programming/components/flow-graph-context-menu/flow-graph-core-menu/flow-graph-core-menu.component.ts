@@ -25,7 +25,7 @@ interface FlowGraphBlock {
                 [class.disabled]="isDisabled(block.type)"
             >
                 <span class="node-icon" [style.color]="block.color">
-                    <app-svg-icon [icon]="block.icon" size="22px"></app-svg-icon>
+                    <i [class]="block.icon" style="font-size: 22px"></i>
                 </span>
                 <span class="node-label">{{ block.label }}</span>
                 <app-svg-icon icon="plus" class="plus-icon" size="18px"></app-svg-icon>

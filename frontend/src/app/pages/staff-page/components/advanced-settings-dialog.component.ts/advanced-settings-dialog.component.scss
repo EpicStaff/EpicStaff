@@ -35,7 +35,7 @@
         align-items: center;
         min-width: 0;
 
-        i {
+        i, app-svg-icon {
             font-size: 1.5rem;
             margin-right: 1rem;
             color: var(--accent-color);

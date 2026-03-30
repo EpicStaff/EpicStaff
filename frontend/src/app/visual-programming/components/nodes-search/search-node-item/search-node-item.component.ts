@@ -33,7 +33,7 @@ import {
       (dblclick)="onNodeDoubleClick($event)"
     >
       <div class="node-icon" [style.--node-color]="getNodeColor(node.type)">
-        <app-svg-icon [icon]="getNodeIcon(node.type)" size="16px"></app-svg-icon>
+        <i [class]="getNodeIcon(node.type)"></i>
       </div>
       <div class="node-info">
         <div class="node-name">
@@ -162,7 +162,7 @@ export class SearchNodeItemComponent {
   }
 
   public getNodeIcon(type: NodeType): string {
-    return this.node.icon || this.nodeIcons[type] || 'terminal-2';
+    return this.node.icon || this.nodeIcons[type] || 'ti ti-code';
   }
 
   public getNodeDisplayName(): string {
