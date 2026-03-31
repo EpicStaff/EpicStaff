@@ -1,27 +1,17 @@
-import {
-    ChangeDetectionStrategy,
-    Component,
-    input,
-    signal,
-} from '@angular/core';
-import {
-    ReactiveFormsModule,
-    FormGroup,
-    Validators,
-    FormArray,
-    FormBuilder,
-} from '@angular/forms';
-import { PythonNodeModel } from '../../../core/models/node.model';
-import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
-import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
-import { InputMapComponent } from '../../input-map/input-map.component';
-import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { CommonModule } from '@angular/common';
-import { SidePanelService } from '../../../services/side-panel.service';
+import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AbstractControl, FormArray, FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+
 import { expandCollapseAnimation } from '../../../../shared/animations/animations-expand-collapse';
+import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
+import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
+import { PythonNodeModel } from '../../../core/models/node.model';
+import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { SidePanelService } from '../../../services/side-panel.service';
+import { InputMapComponent } from '../../input-map/input-map.component';
 
 interface InputMapPair {
     key: string;
@@ -31,13 +21,7 @@ interface InputMapPair {
 @Component({
     standalone: true,
     selector: 'app-python-node-panel',
-    imports: [
-        ReactiveFormsModule,
-        CustomInputComponent,
-        InputMapComponent,
-        CodeEditorComponent,
-        CommonModule,
-    ],
+    imports: [ReactiveFormsModule, CustomInputComponent, InputMapComponent, CodeEditorComponent, CommonModule],
     animations: [expandCollapseAnimation],
     template: `
         <div class="panel-container">
@@ -45,12 +29,7 @@ interface InputMapPair {
                 <form [formGroup]="form" class="form-container">
                     @if (isExpanded()) {
                         <!-- Expanded Mode: Two Column Layout or Full Width -->
-                        <div
-                            class="form-layout expanded"
-                            [class.code-editor-fullwidth]="
-                                isCodeEditorFullWidth()
-                            "
-                        >
+                        <div class="form-layout expanded" [class.code-editor-fullwidth]="isCodeEditorFullWidth()">
                             <!-- Left Column - Form Fields -->
                             @if (!isCodeEditorFullWidth()) {
                                 <div class="form-fields">
@@ -61,16 +40,12 @@ interface InputMapPair {
                                         formControlName="node_name"
                                         placeholder="Enter node name"
                                         [activeColor]="activeColor"
-                                        [errorMessage]="
-                                            getNodeNameErrorMessage()
-                                        "
+                                        [errorMessage]="getNodeNameErrorMessage()"
                                     ></app-custom-input>
 
                                     <!-- Input Map Key-Value Pairs -->
                                     <div class="input-map">
-                                        <app-input-map
-                                            [activeColor]="activeColor"
-                                        ></app-input-map>
+                                        <app-input-map [activeColor]="activeColor"></app-input-map>
                                     </div>
 
                                     <!-- Output Variable Path -->
@@ -91,7 +66,7 @@ interface InputMapPair {
                                         [activeColor]="activeColor"
                                     ></app-custom-input>
 
-                                    <div class="stream-config-section" formGroupName="stream_config">
+                                    <!-- <div class="stream-config-section" formGroupName="stream_config">
                                         <span class="section-label">Streaming to EpicChat</span>
                                         <div class="checkbox-list">
                                             <label class="checkbox-item">
@@ -99,7 +74,7 @@ interface InputMapPair {
                                                 <span>Execution status</span>
                                             </label>
                                         </div>
-                                    </div>
+                                    </div> -->
                                 </div>
                             }
 
@@ -110,9 +85,7 @@ interface InputMapPair {
                                     class="toggle-icon-button"
                                     (click)="toggleCodeEditorFullWidth()"
                                     [attr.aria-label]="
-                                        isCodeEditorFullWidth()
-                                            ? 'Collapse code editor'
-                                            : 'Expand code editor'
+                                        isCodeEditorFullWidth() ? 'Collapse code editor' : 'Expand code editor'
                                     "
                                 >
                                     <svg
@@ -121,11 +94,7 @@ interface InputMapPair {
                                         viewBox="0 0 9 22"
                                         fill="none"
                                         xmlns="http://www.w3.org/2000/svg"
-                                        [style.transform]="
-                                            isCodeEditorFullWidth()
-                                                ? 'scaleX(1)'
-                                                : 'scaleX(-1)'
-                                        "
+                                        [style.transform]="isCodeEditorFullWidth() ? 'scaleX(1)' : 'scaleX(-1)'"
                                     >
                                         <path
                                             d="M7.16602 21.0001L1.16602 11.0001L7.16602 1.00012"
@@ -139,9 +108,7 @@ interface InputMapPair {
                                 <app-code-editor
                                     class="code-editor-section"
                                     [pythonCode]="pythonCode"
-                                    (pythonCodeChange)="
-                                        onPythonCodeChange($event)
-                                    "
+                                    (pythonCodeChange)="onPythonCodeChange($event)"
                                     (errorChange)="onCodeErrorChange($event)"
                                 ></app-code-editor>
                             </div>
@@ -161,9 +128,7 @@ interface InputMapPair {
 
                             <!-- Input Map Key-Value Pairs -->
                             <div class="input-map">
-                                <app-input-map
-                                    [activeColor]="activeColor"
-                                ></app-input-map>
+                                <app-input-map [activeColor]="activeColor"></app-input-map>
                             </div>
 
                             <!-- Output Variable Path -->
@@ -184,7 +149,7 @@ interface InputMapPair {
                                 [activeColor]="activeColor"
                             ></app-custom-input>
 
-                            <div class="stream-config-section" formGroupName="stream_config">
+                            <!-- <div class="stream-config-section" formGroupName="stream_config">
                                 <span class="section-label">Streaming to EpicChat</span>
                                 <div class="checkbox-list">
                                     <label class="checkbox-item">
@@ -192,15 +157,13 @@ interface InputMapPair {
                                         <span>Execution status</span>
                                     </label>
                                 </div>
-                            </div>
+                            </div> -->
 
                             <!-- Code Editor Section -->
                             <div class="code-editor-section">
                                 <app-code-editor
                                     [pythonCode]="pythonCode"
-                                    (pythonCodeChange)="
-                                        onPythonCodeChange($event)
-                                    "
+                                    (pythonCodeChange)="onPythonCodeChange($event)"
                                     (errorChange)="onCodeErrorChange($event)"
                                 ></app-code-editor>
                             </div>
@@ -347,12 +310,11 @@ interface InputMapPair {
             }
 
             .code-editor-section {
-                border: 1px solid
-                    var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
+                border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
                 border-radius: 0 8px 8px 0;
                 overflow: visible;
                 display: flex;
-                flex-direction: column;               
+                flex-direction: column;
 
                 .expanded & {
                     flex: 1;
@@ -436,11 +398,9 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
     constructor(private readonly sidePanelService: SidePanelService) {
         super();
-        this.pythonCodeChange$
-            .pipe(debounceTime(300), takeUntilDestroyed())
-            .subscribe(() => {
-                this.sidePanelService.triggerAutosave();
-            });
+        this.pythonCodeChange$.pipe(debounceTime(300), takeUntilDestroyed()).subscribe(() => {
+            this.sidePanelService.triggerAutosave();
+        });
     }
 
     get activeColor(): string {
@@ -510,16 +470,13 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     private initializeInputMap(form: FormGroup): void {
         const inputMapArray = form.get('input_map') as FormArray;
 
-        if (
-            this.node().input_map &&
-            Object.keys(this.node().input_map).length > 0
-        ) {
+        if (this.node().input_map && Object.keys(this.node().input_map).length > 0) {
             Object.entries(this.node().input_map).forEach(([key, value]) => {
                 inputMapArray.push(
                     this.fb.group({
                         key: [key, Validators.required],
                         value: [value, Validators.required],
-                    }),
+                    })
                 );
             });
         } else {
@@ -527,20 +484,20 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 this.fb.group({
                     key: [''],
                     value: ['variables.'],
-                }),
+                })
             );
         }
     }
 
-    private getValidInputPairs(): any[] {
+    private getValidInputPairs(): AbstractControl[] {
         return this.inputMapPairs.controls.filter((control) => {
             const value = control.value;
             return value.key?.trim() !== '' || value.value?.trim() !== '';
         });
     }
 
-    private createInputMapFromPairs(pairs: any[]): Record<string, string> {
-        return pairs.reduce((acc: Record<string, string>, curr: any) => {
+    private createInputMapFromPairs(pairs: AbstractControl[]): Record<string, string> {
+        return pairs.reduce((acc: Record<string, string>, curr: AbstractControl) => {
             const pair = curr.value as InputMapPair;
             if (pair.key?.trim()) {
                 acc[pair.key.trim()] = pair.value;
