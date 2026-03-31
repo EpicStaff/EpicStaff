@@ -369,16 +369,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                             metadata,
                         });
                     }),
-                    switchMap((startNodeResult) => {
-                        if (startNodeResult?.id != null) {
-                            const sn = flowState.nodes.find((n) => n.type === NodeType.START);
-                            if (sn) sn.backendId = startNodeResult.id;
-
-                            const snInService = this.flowService.nodes()?.find((n) => n.type === NodeType.START);
-                            if (snInService) snInService.backendId = startNodeResult.id;
-                        }
-                        return this.graphUpdateService.saveGraph(flowState, this.graph);
-                    }),
+                    switchMap(() => this.graphUpdateService.saveGraph(flowState, this.graph)),
                     tap((result) => {
                         this.graph = result.graph;
                         this.patchBackendIds(result.createdMappings);

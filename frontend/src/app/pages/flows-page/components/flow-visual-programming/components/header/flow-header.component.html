@@ -25,9 +25,9 @@
     <div class="header-actions">
         <button class="sessions-button" (click)="onViewSessions()"><i class="ti ti-history"></i> Sessions</button>
         <button class="get-curl-button" (click)="onGetCurl()">Get CURL</button>
-        <!-- @if (isEpicChatEnabled) {
+        @if (isEpicChatEnabled) {
             <button class="connect-chat-button" (click)="onConnectChat()">Connect chat</button>
-        } -->
+        }
         <button class="save-button" [disabled]="isSaving || isRunning" (click)="onSave()">
             @if (isSaving) {
                 <app-spinner2 [size]="16"></app-spinner2>

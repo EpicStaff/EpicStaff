@@ -147,12 +147,12 @@ export class FlowGraphCoreMenuComponent {
             icon: NODE_ICONS[NodeType.TELEGRAM_TRIGGER],
             color: NODE_COLORS[NodeType.TELEGRAM_TRIGGER],
         },
-        // {
-        //     label: 'Code Agent',
-        //     type: NodeType.CODE_AGENT,
-        //     icon: NODE_ICONS[NodeType.CODE_AGENT],
-        //     color: NODE_COLORS[NodeType.CODE_AGENT],
-        // },
+        {
+            label: 'Code Agent',
+            type: NodeType.CODE_AGENT,
+            icon: NODE_ICONS[NodeType.CODE_AGENT],
+            color: NODE_COLORS[NodeType.CODE_AGENT],
+        },
     ];
 
     public get filteredBlocks(): FlowGraphBlock[] {
@@ -227,22 +227,41 @@ export class FlowGraphCoreMenuComponent {
             };
         } else if (type === NodeType.END) {
             data = null; // End node data is unknown as specified
+        } else if (type === NodeType.CODE_AGENT) {
+            data = {
+                agent_mode: 'build',
+                session_id: 'variables.chat_id',
+                system_prompt: '',
+                stream_handler_code: `# ── Code Agent Stream Handler ──────────────────────────────────
+# Define any of these functions to hook into the agent lifecycle.
+# Each receives a 'context' dict containing all input_map fields
+# plus 'session_id' and 'node_name'.
+# Return a dict from any handler to persist state across calls
+# (e.g. store a message ID in on_stream_start, read it in on_complete).
+
+# def on_stream_start(context):
+#     \"\"\"Called once before the prompt is sent to OpenCode.\"\"\"
+#     pass
+
+# def on_chunk(text, context):
+#     \"\"\"Called each time the agent's reasoning or tool output updates.
+#     'text' contains the accumulated thinking/tool-call text so far.\"\"\"
+#     pass
+
+# def on_complete(full_reply, context):
+#     \"\"\"Called when the agent finishes (or is stopped).
+#     'full_reply' contains the agent's final response text.\"\"\"
+#     pass
+`,
+                libraries: [],
+                polling_interval_ms: 1000,
+                silence_indicator_s: 3,
+                indicator_repeat_s: 5,
+                chunk_timeout_s: 30,
+                inactivity_timeout_s: 120,
+                max_wait_s: 300,
+            };
         }
-        // else if (type === NodeType.CODE_AGENT) {
-        //     data = {
-        //         agent_mode: 'build',
-        //         session_id: 'variables.chat_id',
-        //         system_prompt: '',
-        //         stream_handler_code: `...`,
-        //         libraries: [],
-        //         polling_interval_ms: 1000,
-        //         silence_indicator_s: 3,
-        //         indicator_repeat_s: 5,
-        //         chunk_timeout_s: 30,
-        //         inactivity_timeout_s: 120,
-        //         max_wait_s: 300,
-        //     };
-        // }
 
         this.nodeSelected.emit({ type, data });
     }
