@@ -1,52 +1,47 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { animate, state, style, transition, trigger } from '@angular/animations';
+import { Dialog } from '@angular/cdk/dialog';
+import { CommonModule } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
-    input,
+    DestroyRef,
+    HostListener,
+    Input,
     OnDestroy,
     OnInit,
     signal,
     Type,
-    Input,
-    HostListener, 
     ViewChild,
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { HttpErrorResponse } from '@angular/common/http';
-import { HeaderComponent } from './header/header.component';
-import { DetailsContentComponent } from './details-content/details-content.component';
-import { VariablesContentComponent } from './variables-content/variables-content.component';
-import { AgentsSectionComponent } from './agents-section/agents-section.component';
-import { TasksSectionComponent } from './tasks-section/tasks-section.component';
-import { SettingsSectionComponent } from './settings-section/settings-section.component';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { ProjectsStorageService } from '../features/projects/services/projects-storage.service';
-import { forkJoin, Subscription, of, Observable, from  } from 'rxjs';
-import { catchError, map, finalize, switchMap, tap, concatMap, toArray  } from 'rxjs/operators';
-import { TasksService } from '../features/tasks/services/tasks.service';
+import { ActivatedRoute } from '@angular/router';
+import { AppSvgIconComponent } from '../shared/components/app-svg-icon/app-svg-icon.component';
+import { EMPTY, filter, forkJoin, from, Observable, of, Subscription } from 'rxjs';
+import { catchError, concatMap, finalize, map, switchMap, tap, toArray } from 'rxjs/operators';
+
+import { CanComponentDeactivate } from '../core/guards/unsaved-changes.guard';
 import { GetProjectRequest } from '../features/projects/models/project.model';
-import { Dialog } from '@angular/cdk/dialog';
-import { FullTask } from '../features/tasks/models/full-task.model';
-import { FullAgentService, FullAgent } from '../features/staff/services/full-agent.service';
+import { ProjectsStorageService } from '../features/projects/services/projects-storage.service';
+import { CreateAgentRequest } from '../features/staff/models/agent.model';
+import { FullAgent, FullAgentService } from '../features/staff/services/full-agent.service';
+import { AgentsService } from '../features/staff/services/staff.service';
+import { TasksService } from '../features/tasks/services/tasks.service';
+import { ToastService } from '../services/notifications/toast.service';
+import { CreateAgentFormComponent } from '../shared/components/create-agent-form-dialog/create-agent-form-dialog.component';
+import { SpinnerComponent } from '../shared/components/spinner/spinner.component';
+import { UnsavedChangesDialogService } from '../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
+import { AgentsSectionComponent } from './agents-section/agents-section.component';
+import { DetailsContentComponent } from './details-content/details-content.component';
+import { HeaderComponent } from './header/header.component';
 import { FullTaskService } from './services/full-task.service';
 import { ProjectStateService } from './services/project-state.service';
-import {
-    trigger,
-    state,
-    style,
-    animate,
-    transition,
-} from '@angular/animations';
-import { ToastService } from '../services/notifications/toast.service';
-import { SpinnerComponent } from '../shared/components/spinner/spinner.component';
-import { FlowGraphComponent } from '../visual-programming/flow-graph/flow-graph.component';
-import { ActivatedRoute } from '@angular/router';
-import { CreateAgentFormComponent } from '../shared/components/create-agent-form-dialog/create-agent-form-dialog.component';
+import { SettingsSectionComponent } from './settings-section/settings-section.component';
+import { TasksSectionComponent } from './tasks-section/tasks-section.component';
 import { TaskPendingEvent } from './tasks-section/tasks-table/tasks-table.component';
-import { UnsavedChangesDialogService } from '../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
-import { CanComponentDeactivate } from '../core/guards/unsaved-changes.guard';
-import { AgentsService } from '../features/staff/services/staff.service';
-import { AppSvgIconComponent } from '../shared/components/app-svg-icon/app-svg-icon.component';
 
 // Improved animations that work properly with content visibility
 export const expandCollapseAnimation = trigger('expandCollapse', [
@@ -66,12 +61,8 @@ export const expandCollapseAnimation = trigger('expandCollapse', [
             visibility: 'visible',
         })
     ),
-    transition('expanded => collapsed', [
-        animate('225ms cubic-bezier(0.4, 0.0, 0.2, 1)'),
-    ]),
-    transition('collapsed => expanded', [
-        animate('225ms cubic-bezier(0.4, 0.0, 0.2, 1)'),
-    ]),
+    transition('expanded => collapsed', [animate('225ms cubic-bezier(0.4, 0.0, 0.2, 1)')]),
+    transition('collapsed => expanded', [animate('225ms cubic-bezier(0.4, 0.0, 0.2, 1)')]),
 ]);
 
 // Interface for section configuration
@@ -97,7 +88,6 @@ interface FlowModel {
 
 @Component({
     selector: 'app-open-project-page',
-    standalone: true,
     templateUrl: './open-project-page.component.html',
     styleUrl: './open-project-page.component.scss',
     imports: [
@@ -117,7 +107,7 @@ interface FlowModel {
     changeDetection: ChangeDetectionStrategy.OnPush,
     providers: [ProjectStateService],
 })
-export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponentDeactivate  {
+export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponentDeactivate {
     @Input() showHeader: boolean = true;
     @Input() inputProjectId?: string | number;
     @ViewChild(TasksSectionComponent) private tasksSection?: TasksSectionComponent;
@@ -160,6 +150,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         private dialog: Dialog,
         private agentsService: AgentsService,
         private unsavedChangesDialog: UnsavedChangesDialogService,
+        private destroyRef: DestroyRef
     ) {}
 
     ngOnInit() {
@@ -258,21 +249,12 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         const loadStartTime = Date.now();
         this.isLoading.set(true);
 
-        console.log(
-            'loadData - Starting to load project with ID:',
-            this.projectId
-        );
+        console.log('loadData - Starting to load project with ID:', this.projectId);
 
-        const projectRequest = this.projectsService.getProjectById(
-            +this.projectId
-        );
+        const projectRequest = this.projectsService.getProjectById(+this.projectId);
 
-        const tasksRequest = this.fullTaskService.getFullTasksByProject(
-            +this.projectId
-        );
-        const agentsRequest = this.fullAgentService.getFullAgentsByProject(
-            +this.projectId
-        );
+        const tasksRequest = this.fullTaskService.getFullTasksByProject(+this.projectId);
+        const agentsRequest = this.fullAgentService.getFullAgentsByProject(+this.projectId);
 
         const combinedRequest = forkJoin({
             project: projectRequest,
@@ -289,9 +271,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                         const remainingTime = Math.max(0, 500 - loadTime);
 
                         setTimeout(() => {
-                            console.log(
-                                'loadData - Finalizing, setting isLoading to false'
-                            );
+                            console.log('loadData - Finalizing, setting isLoading to false');
                             this.isLoading.set(false);
                             if (this.project) {
                                 this.setupSections();
@@ -320,24 +300,14 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                         this.projectStateService.updateAgents(agents);
 
                         this.baselineAgentsById = new Map(
-                            (agents ?? []).map((a: any) => [
-                                Number(a.id),
-                                structuredClone(a),
-                            ])
+                            (agents ?? []).map((a: any) => [Number(a.id), structuredClone(a)])
                         );
 
                         this.cdr.markForCheck();
                     },
                     error: (err) => {
-                        console.error(
-                            'loadData - Failed to fetch project data',
-                            err
-                        );
-                        console.error(
-                            'Error details:',
-                            err.message,
-                            err.status
-                        );
+                        console.error('loadData - Failed to fetch project data', err);
+                        console.error('Error details:', err.message, err.status);
                         this.toastService.error('Failed to load project data');
                         this.isLoading.set(false);
                         this.cdr.markForCheck();
@@ -366,7 +336,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         if (sectionId === 'agents') {
             console.log('Add agent clicked');
 
-            const dialogRef = this.dialog.open<FullAgent>(
+            const dialogRef = this.dialog.open<{ kind: 'create' | 'update'; payload: CreateAgentRequest }>(
                 CreateAgentFormComponent,
                 {
                     data: {
@@ -376,14 +346,23 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                 }
             );
 
-            dialogRef.closed.subscribe((newAgent) => {
-                if (newAgent) {
-                    this.projectStateService.addAgent(newAgent);
-
-                    this.setupSections();
-                    this.cdr.markForCheck();
-                }
-            });
+            dialogRef.closed
+                .pipe(
+                    takeUntilDestroyed(this.destroyRef),
+                    filter(
+                        (result): result is { kind: 'create'; payload: CreateAgentRequest } =>
+                            !!result && result.kind === 'create'
+                    ),
+                    switchMap((result) =>
+                        this.agentsService.createAgent(result.payload).pipe(
+                            catchError(() => {
+                                this.toastService.error('Failed to create agent');
+                                return EMPTY;
+                            })
+                        )
+                    )
+                )
+                .subscribe();
         } else if (sectionId === 'tasks') {
             console.log('Add task clicked');
         }
@@ -398,12 +377,9 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         if (formValue.cache !== undefined) updateData.cache = formValue.cache;
         if (formValue.process !== undefined) updateData.process = formValue.process;
         if (formValue.max_rpm !== undefined) updateData.max_rpm = formValue.max_rpm;
-        if (formValue.manager_llm_config !== undefined)
-            updateData.manager_llm_config = formValue.manager_llm_config;
-        if (formValue.memory_llm_config !== undefined)
-            updateData.memory_llm_config = formValue.memory_llm_config;
-        if (formValue.embedding_config !== undefined)
-            updateData.embedding_config = formValue.embedding_config;
+        if (formValue.manager_llm_config !== undefined) updateData.manager_llm_config = formValue.manager_llm_config;
+        if (formValue.memory_llm_config !== undefined) updateData.memory_llm_config = formValue.memory_llm_config;
+        if (formValue.embedding_config !== undefined) updateData.embedding_config = formValue.embedding_config;
         if ((formValue as any).default_temperature !== undefined)
             (updateData as any).default_temperature = (formValue as any).default_temperature;
 
@@ -411,14 +387,9 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
             ...(this.pendingProjectUpdate ?? {}),
         };
 
-        for (const [key, nextRaw] of Object.entries(updateData) as Array<
-            [keyof GetProjectRequest, any]
-        >) {
+        for (const [key, nextRaw] of Object.entries(updateData) as Array<[keyof GetProjectRequest, any]>) {
             const next = this.normalizeSettingValue(key, nextRaw);
-            const cur = this.normalizeSettingValue(
-                key,
-                (this.project as any)[key]
-            );
+            const cur = this.normalizeSettingValue(key, (this.project as any)[key]);
 
             const isSame = this.jsonEqual(next, cur);
 
@@ -429,46 +400,38 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
             }
         }
 
-        this.pendingProjectUpdate =
-            Object.keys(nextPending).length > 0 ? nextPending : null;
+        this.pendingProjectUpdate = Object.keys(nextPending).length > 0 ? nextPending : null;
 
         this.recomputeUnsaved();
     }
 
     private updateProjectSettings(updateData: Partial<GetProjectRequest>) {
+        this.projectsService.patchUpdateProject(this.project.id, updateData).subscribe({
+            next: (updatedProject) => {
+                this.project = updatedProject;
+                this.projectStateService.setProject(updatedProject);
 
-        this.projectsService
-            .patchUpdateProject(this.project.id, updateData)
-            .subscribe({
-                next: (updatedProject) => {
-                    this.project = updatedProject;
-                    this.projectStateService.setProject(updatedProject);
+                // Update cache
+                this.projectsService.updateProjectInCache(updatedProject);
 
-                    // Update cache
-                    this.projectsService.updateProjectInCache(updatedProject);
+                this.cdr.markForCheck();
+                this.toastService.success('Project settings updated successfully');
+            },
+            error: (error) => {
+                console.error('Error updating project settings:', error);
 
-                    this.cdr.markForCheck();
-                    this.toastService.success(
-                        'Project settings updated successfully'
-                    );
-                },
-                error: (error) => {
-                    console.error('Error updating project settings:', error);
+                let errorMessage = 'Failed to update project settings';
+                if (error.error && error.error.message) {
+                    errorMessage = error.error.message;
+                } else if (error.error && typeof error.error === 'string') {
+                    errorMessage = error.error;
+                } else if (error.message) {
+                    errorMessage = error.message;
+                }
 
-                    let errorMessage = 'Failed to update project settings';
-                    if (error.error && error.error.message) {
-                        errorMessage = error.error.message;
-                    } else if (error.error && typeof error.error === 'string') {
-                        errorMessage = error.error;
-                    } else if (error.message) {
-                        errorMessage = error.message;
-                    }
-
-                    this.toastService.error(
-                        `Error updating project: ${errorMessage}`
-                    );
-                },
-            });
+                this.toastService.error(`Error updating project: ${errorMessage}`);
+            },
+        });
     }
 
     ngOnDestroy() {
@@ -499,8 +462,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         });
 
         const isSame =
-            next.description === current.description &&
-            JSON.stringify(next.tags) === JSON.stringify(current.tags);
+            next.description === current.description && JSON.stringify(next.tags) === JSON.stringify(current.tags);
 
         if (isSame) {
             this.pendingProjectUpdate = null;
@@ -533,7 +495,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         if (this.tasksSection && !this.tasksSection.validateBeforeSave()) {
             this.toastService.warning('Please fill in all required fields.');
             return;
-        }   
+        }
 
         this.sanitizePendingTaskContexts();
 
@@ -546,76 +508,58 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
 
         const flushAgents$ =
             agentUpdates.length > 0
-                ? forkJoin(agentUpdates.map(a => this.agentsService.updateAgent(a as any)))
+                ? forkJoin(agentUpdates.map((a) => this.agentsService.updateAgent(a as any)))
                 : of([]);
 
         const deleteEvents = taskUpdates.filter((ev) => ev.kind === 'delete');
         const createEvents = taskUpdates.filter((ev) => ev.kind === 'create');
         const updateEvents = taskUpdates.filter((ev) => ev.kind === 'update');
         const deletedIds = new Set(
-            deleteEvents
-                .map((ev) => Number(ev.payload?.id))
-                .filter((id) => Number.isFinite(id))
+            deleteEvents.map((ev) => Number(ev.payload?.id)).filter((id) => Number.isFinite(id))
         );
 
         const delete$ =
             deleteEvents.length > 0
                 ? forkJoin(
-                    deleteEvents.map((ev) =>
-                        this.tasksService.deleteTask(ev.payload.id).pipe(
-                            map((res) => ({ ev, res })),
-                            catchError((error) => {
-                                if (
-                                    error instanceof HttpErrorResponse &&
-                                    error.status === 404
-                                ) {
-                                    return of({ ev, res: null });
-                                }
-                                throw error;
-                            })
-                        )
-                    )
-                )
+                      deleteEvents.map((ev) =>
+                          this.tasksService.deleteTask(ev.payload.id).pipe(
+                              map((res) => ({ ev, res })),
+                              catchError((error) => {
+                                  if (error instanceof HttpErrorResponse && error.status === 404) {
+                                      return of({ ev, res: null });
+                                  }
+                                  throw error;
+                              })
+                          )
+                      )
+                  )
                 : of([]);
 
         const create$ =
             createEvents.length > 0
                 ? forkJoin(
-                    createEvents.map((ev) =>
-                        this.tasksService
-                            .createTask(
-                                this.sanitizeTaskPayloadByDeletedIds(
-                                    ev.payload,
-                                    deletedIds
-                                )
-                            )
-                            .pipe(map((res) => ({ ev, res })))
-                    )
-                )
+                      createEvents.map((ev) =>
+                          this.tasksService
+                              .createTask(this.sanitizeTaskPayloadByDeletedIds(ev.payload, deletedIds))
+                              .pipe(map((res) => ({ ev, res })))
+                      )
+                  )
                 : of([]);
 
         const update$ =
             updateEvents.length > 0
                 ? forkJoin(
-                    updateEvents.map((ev) =>
-                        this.tasksService
-                            .updateTask(
-                                this.sanitizeTaskPayloadByDeletedIds(
-                                    ev.payload,
-                                    deletedIds
-                                )
-                            )
-                            .pipe(map((res) => ({ ev, res })))
-                    )
-                )
+                      updateEvents.map((ev) =>
+                          this.tasksService
+                              .updateTask(this.sanitizeTaskPayloadByDeletedIds(ev.payload, deletedIds))
+                              .pipe(map((res) => ({ ev, res })))
+                      )
+                  )
                 : of([]);
 
         const shouldRunReorder = taskUpdates.some(
-            (ev) =>
-                ev.kind === 'create' ||
-                ev.kind === 'delete' ||
-                ev.kind === 'reorder'
-            );
+            (ev) => ev.kind === 'create' || ev.kind === 'delete' || ev.kind === 'reorder'
+        );
 
         const flushTasks$ = delete$.pipe(
             switchMap(() => create$),
@@ -649,91 +593,88 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                     .filter((x) => !deletedIds.has(Number(x.id)))
                     .sort((a, b) => a.order - b.order);
 
-                    if (reorderPayload.length === 0) {
-                        return of([]);
+                if (reorderPayload.length === 0) {
+                    return of([]);
+                }
+
+                return this.patchTaskOrderSequentially(reorderPayload);
+            })
+        );
+
+        flushAgents$
+            .pipe(
+                tap(() => {
+                    for (const a of agentUpdates) {
+                        const id = Number((a as any).id);
+                        if (Number.isFinite(id)) {
+                            this.baselineAgentsById.set(id, structuredClone(a as any));
+                        }
+                    }
+                    this.pendingAgentUpdates.clear();
+                    this.recomputeUnsaved();
+                }),
+                switchMap(() => flushTasks$),
+                tap((results: any[]) => {
+                    for (const item of results) {
+                        const ev = item?.ev;
+                        const res = item?.res;
+
+                        if (ev?.kind === 'create' && res?.id != null) {
+                            this.tasksSection?.applyCreatedTask(ev.rowKey, res);
+                        }
                     }
 
-                    return this.patchTaskOrderSequentially(reorderPayload);
+                    this.pendingTaskUpdates.clear();
+                    this.tasksSection?.clearLocalDirtyAfterSave();
+                    this.tasksLocalDirty = false;
+                    this.recomputeUnsaved();
+                }),
+                switchMap(() => {
+                    if (!appliedUpdate) return of(null);
+                    return this.projectsService.patchUpdateProject(this.project!.id, appliedUpdate);
+                }),
+                finalize(() => {
+                    this.isSaving = false;
+                    this.cdr.markForCheck();
                 })
-            );
+            )
+            .subscribe({
+                next: (updatedProject: any) => {
+                    if (appliedUpdate) {
+                        const serverPatch = updatedProject ?? {};
+                        this.project = { ...this.project!, ...appliedUpdate, ...serverPatch };
+                        this.projectStateService.setProject(this.project);
+                        this.projectsService.updateProjectInCache(this.project);
+                        this.suppressNextSettingsEmit = true;
+                        this.setupSections();
+                        queueMicrotask(() => (this.suppressNextSettingsEmit = false));
+                    }
 
-            flushAgents$
-                .pipe(
-                    tap(() => {
-                        for (const a of agentUpdates) {
-                            const id = Number((a as any).id);
-                            if (Number.isFinite(id)) {
-                                this.baselineAgentsById.set(id, structuredClone(a as any));
-                            }
-                        }
-                        this.pendingAgentUpdates.clear();
-                        this.recomputeUnsaved();
-                    }),
-                    switchMap(() => flushTasks$),
-                    tap((results: any[]) => {
-                        for (const item of results) {
-                            const ev = item?.ev;
-                            const res = item?.res;
-
-                            if (ev?.kind === 'create' && res?.id != null) {
-                                this.tasksSection?.applyCreatedTask(ev.rowKey, res);
-                            }
-                        }
-
-                        this.pendingTaskUpdates.clear();
-                        this.tasksSection?.clearLocalDirtyAfterSave();
-                        this.tasksLocalDirty = false;
-                        this.recomputeUnsaved();
-                    }),
-                    switchMap(() => {
-                        if (!appliedUpdate) return of(null);
-                        return this.projectsService.patchUpdateProject(this.project!.id, appliedUpdate);
-                    }),
-                    finalize(() => {
-                        this.isSaving = false;
-                        this.cdr.markForCheck();
-                    })
-                )
-                .subscribe({
-                    next: (updatedProject: any) => {
-                        if (appliedUpdate) {
-                            const serverPatch = updatedProject ?? {};
-                            this.project = { ...this.project!, ...appliedUpdate, ...serverPatch };
-                            this.projectStateService.setProject(this.project);
-                            this.projectsService.updateProjectInCache(this.project);
-                            this.suppressNextSettingsEmit = true;
-                            this.setupSections();
-                            queueMicrotask(() => (this.suppressNextSettingsEmit = false));
-                        }
-
-                        this.pendingProjectUpdate = null;
-                        this.recomputeUnsaved();
-                        this.toastService.success('Project updated successfully');
-                    },
-                    error: (error: unknown) => {
-                        const msg =
-                            (error as any)?.error?.message ??
-                                (appliedUpdate
-                                    ? 'Failed to update project'
-                                    : agentUpdates.length > 0 || taskUpdates.length > 0
-                                        ? 'Failed to save changes'
-                                        : 'Failed to save');
-                        console.error(error);
-                        this.toastService.error(msg);
-                        this.cdr.markForCheck();
-                    },
-                }); 
-        }
+                    this.pendingProjectUpdate = null;
+                    this.recomputeUnsaved();
+                    this.toastService.success('Project updated successfully');
+                },
+                error: (error: unknown) => {
+                    const msg =
+                        (error as any)?.error?.message ??
+                        (appliedUpdate
+                            ? 'Failed to update project'
+                            : agentUpdates.length > 0 || taskUpdates.length > 0
+                              ? 'Failed to save changes'
+                              : 'Failed to save');
+                    console.error(error);
+                    this.toastService.error(msg);
+                    this.cdr.markForCheck();
+                },
+            });
+    }
 
     public get detailsTagsAsStrings(): string[] {
         const tags = (this.project as any)?.tags ?? [];
         return Array.isArray(tags) ? tags.map(String) : [];
     }
 
-    private normalizeSettingValue(
-        key: keyof GetProjectRequest,
-        value: any
-    ): any {
+    private normalizeSettingValue(key: keyof GetProjectRequest, value: any): any {
         if (value === undefined) return undefined;
         return value;
     }
@@ -755,8 +696,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
             draft.agents = nextIds;
         }
 
-        this.pendingProjectUpdate =
-            Object.keys(draft).length > 0 ? draft : null;
+        this.pendingProjectUpdate = Object.keys(draft).length > 0 ? draft : null;
 
         this.recomputeUnsaved();
     }
@@ -807,9 +747,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                             ...pendingEv,
                             payload: {
                                 ...pendingEv.payload,
-                                task_context_list: ctxList.filter(
-                                    (id: unknown) => Number(id) !== deletedId
-                                ),
+                                task_context_list: ctxList.filter((id: unknown) => Number(id) !== deletedId),
                             },
                         });
                     }
@@ -833,13 +771,13 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
 
         if (this.tasksSection && !this.tasksSection.validateBeforeSave()) {
             this.toastService.warning('Please fill in all required fields.');
-        return of(false);
-    }
+            return of(false);
+        }
 
         this.sanitizePendingTaskContexts();
         const appliedUpdate = this.pendingProjectUpdate;
         const agentUpdates = Array.from(this.pendingAgentUpdates.values());
-        const taskUpdates = Array.from(this.pendingTaskUpdates.values()).filter(ev => ev.payload != null);
+        const taskUpdates = Array.from(this.pendingTaskUpdates.values()).filter((ev) => ev.payload != null);
 
         if (!appliedUpdate && agentUpdates.length === 0 && taskUpdates.length === 0) {
             return of(true);
@@ -857,69 +795,51 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         const createEvents = taskUpdates.filter((ev) => ev.kind === 'create');
         const updateEvents = taskUpdates.filter((ev) => ev.kind === 'update');
         const deletedIds = new Set(
-            deleteEvents
-                .map((ev) => Number(ev.payload?.id))
-                .filter((id) => Number.isFinite(id))
+            deleteEvents.map((ev) => Number(ev.payload?.id)).filter((id) => Number.isFinite(id))
         );
 
         const delete$ =
             deleteEvents.length > 0
                 ? forkJoin(
-                    deleteEvents.map((ev) =>
-                        this.tasksService.deleteTask(ev.payload.id).pipe(
-                            map((res) => ({ ev, res })),
-                            catchError((error) => {
-                                if (
-                                    error instanceof HttpErrorResponse &&
-                                    error.status === 404
-                                ) {
-                                    return of({ ev, res: null });
-                                }
-                                throw error;
-                            })
-                        )
-                    )
-                )
+                      deleteEvents.map((ev) =>
+                          this.tasksService.deleteTask(ev.payload.id).pipe(
+                              map((res) => ({ ev, res })),
+                              catchError((error) => {
+                                  if (error instanceof HttpErrorResponse && error.status === 404) {
+                                      return of({ ev, res: null });
+                                  }
+                                  throw error;
+                              })
+                          )
+                      )
+                  )
                 : of([]);
 
         const create$ =
             createEvents.length > 0
                 ? forkJoin(
-                    createEvents.map((ev) =>
-                        this.tasksService
-                            .createTask(
-                                this.sanitizeTaskPayloadByDeletedIds(
-                                    ev.payload,
-                                    deletedIds
-                                )
-                            )
-                            .pipe(map((res) => ({ ev, res })))
-                    )
-                )
+                      createEvents.map((ev) =>
+                          this.tasksService
+                              .createTask(this.sanitizeTaskPayloadByDeletedIds(ev.payload, deletedIds))
+                              .pipe(map((res) => ({ ev, res })))
+                      )
+                  )
                 : of([]);
 
         const update$ =
             updateEvents.length > 0
                 ? forkJoin(
-                    updateEvents.map((ev) =>
-                        this.tasksService
-                            .updateTask(
-                                this.sanitizeTaskPayloadByDeletedIds(
-                                    ev.payload,
-                                    deletedIds
-                                )
-                            )
-                            .pipe(map((res) => ({ ev, res })))
-                    )
-                )
+                      updateEvents.map((ev) =>
+                          this.tasksService
+                              .updateTask(this.sanitizeTaskPayloadByDeletedIds(ev.payload, deletedIds))
+                              .pipe(map((res) => ({ ev, res })))
+                      )
+                  )
                 : of([]);
 
         const shouldRunReorder = taskUpdates.some(
-            (ev) =>
-                ev.kind === 'create' ||
-                ev.kind === 'delete' ||
-                ev.kind === 'reorder'
-            );
+            (ev) => ev.kind === 'create' || ev.kind === 'delete' || ev.kind === 'reorder'
+        );
 
         const flushTasks$ = delete$.pipe(
             switchMap(() => create$),
@@ -953,13 +873,13 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                     .filter((x) => !deletedIds.has(Number(x.id)))
                     .sort((a, b) => a.order - b.order);
 
-                    if (reorderPayload.length === 0) {
-                        return of([]);
-                    }
+                if (reorderPayload.length === 0) {
+                    return of([]);
+                }
 
-                    return this.patchTaskOrderSequentially(reorderPayload);
-                })
-            );
+                return this.patchTaskOrderSequentially(reorderPayload);
+            })
+        );
 
         return flushAgents$.pipe(
             tap(() => this.pendingAgentUpdates.clear()),
@@ -997,9 +917,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
             }),
             catchError((error) => {
                 console.error(error);
-                const msg =
-                    (error as any)?.error?.message ??
-                    'Failed to save changes';
+                const msg = (error as any)?.error?.message ?? 'Failed to save changes';
                 this.toastService.error(msg);
                 return of(false);
             }),
@@ -1073,9 +991,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                 continue;
             }
 
-            const sanitized = ctxList.filter(
-                (id: unknown) => !deletedIds.has(Number(id))
-            );
+            const sanitized = ctxList.filter((id: unknown) => !deletedIds.has(Number(id)));
 
             if (sanitized.length === ctxList.length) {
                 continue;
@@ -1091,25 +1007,18 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         }
     }
 
-    private sanitizeTaskPayloadByDeletedIds(
-        payload: any,
-        deletedIds: Set<number>
-    ): any {
+    private sanitizeTaskPayloadByDeletedIds(payload: any, deletedIds: Set<number>): any {
         if (!payload) return payload;
 
         return {
             ...payload,
             task_context_list: Array.isArray(payload.task_context_list)
-                ? payload.task_context_list.filter(
-                    (id: unknown) => !deletedIds.has(Number(id))
-                )
+                ? payload.task_context_list.filter((id: unknown) => !deletedIds.has(Number(id)))
                 : payload.task_context_list,
         };
     }
 
-    private patchTaskOrderSequentially(
-        reorderPayload: Array<{ id: number; order: number }>
-    ): Observable<any[]> {
+    private patchTaskOrderSequentially(reorderPayload: Array<{ id: number; order: number }>): Observable<any[]> {
         if (reorderPayload.length === 0) {
             return of([]);
         }
@@ -1118,14 +1027,12 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
 
         return from(sorted).pipe(
             concatMap((item) =>
-                this.tasksService.patchTaskOrder(item.id, item.order).pipe(
-                    map((res) => ({ item, res }))
-                )
+                this.tasksService.patchTaskOrder(item.id, item.order).pipe(map((res) => ({ item, res })))
             ),
             toArray()
         );
     }
-    
+
     private tasksLocalDirty = false;
     private agentsLocalDirty = false;
 
@@ -1167,10 +1074,10 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
             if (v && typeof v === 'object') {
                 const out: any = {};
                 for (const k of Object.keys(v).sort()) out[k] = walk(v[k]);
-                    return out;
+                return out;
             }
             if (typeof v === 'number') return Number(v.toFixed(6));
-                return v;
+            return v;
         };
         return walk(a);
     }

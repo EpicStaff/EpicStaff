@@ -18,10 +18,10 @@ import { expandCollapseAnimation } from '../../../../../../shared/animations/ani
       <!-- LLM Message Header with Toggle -->
       <div class="llm-header" (click)="toggleMessage()">
         <div class="play-arrow">
-          <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+          <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
         </div>
         <div class="icon-container">
-          <app-svg-icon icon="message-circle" size="1rem" />
+          <app-svg-icon icon="message-circle" size="1.25rem" />
         </div>
         <h3>LLM Response</h3>
       </div>
@@ -35,7 +35,7 @@ import { expandCollapseAnimation } from '../../../../../../shared/animations/ani
           <!-- Response Subsection -->
           <div class="llm-section">
             <div class="section-heading" (click)="toggleResponseSection()">
-              <app-svg-icon [icon]="isResponseExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+              <app-svg-icon [icon]="isResponseExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
               Response
             </div>
             <div
@@ -82,12 +82,10 @@ import { expandCollapseAnimation } from '../../../../../../shared/animations/ani
         margin-right: 16px;
         display: flex;
         align-items: center;
-      }
 
-      .play-arrow i {
-        color: #36cfc9;
-        font-size: 1.1rem;
-        transition: transform 0.3s ease;
+        app-svg-icon {
+          color: #36cfc9;
+        }
       }
 
       .icon-container {
@@ -100,11 +98,10 @@ import { expandCollapseAnimation } from '../../../../../../shared/animations/ani
         justify-content: center;
         margin-right: 20px;
         flex-shrink: 0;
-      }
 
-      .icon-container i {
-        color: var(--gray-900);
-        font-size: 1.25rem;
+        app-svg-icon {
+          color: var(--gray-900);
+        }
       }
 
       h3 {
@@ -136,12 +133,10 @@ import { expandCollapseAnimation } from '../../../../../../shared/animations/ani
         align-items: center;
       }
 
-      .section-heading i {
+      .section-heading app-svg-icon {
         margin-right: 8px;
         color: #36cfc9;
-        font-size: 1.1rem;
         margin-left: -3px;
-        transition: transform 0.3s ease;
       }
 
       .collapsible-content {

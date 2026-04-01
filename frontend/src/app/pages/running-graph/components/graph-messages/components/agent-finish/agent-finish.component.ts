@@ -21,10 +21,10 @@ import { GetAgentRequest } from '../../../../../../features/staff/models/agent.m
       <!-- Agent Message Header with Toggle -->
       <div class="agent-header" (click)="toggleMessage()">
         <div class="play-arrow">
-          <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+          <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
         </div>
         <div class="icon-container">
-          <app-svg-icon icon="robot" size="1rem" />
+          <app-svg-icon icon="robot" size="1.25rem" />
         </div>
         <h3>
           Agent <span class="agent-name">{{ getAgentName() }}</span> finished
@@ -44,7 +44,7 @@ import { GetAgentRequest } from '../../../../../../features/staff/models/agent.m
             *ngIf="agentFinishMessageData?.thought"
           >
             <div class="section-heading" (click)="toggleSection('thought')">
-              <app-svg-icon [icon]="isThoughtExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+              <app-svg-icon [icon]="isThoughtExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
               Thought
             </div>
             <div
@@ -110,12 +110,10 @@ import { GetAgentRequest } from '../../../../../../features/staff/models/agent.m
         margin-right: 16px;
         display: flex;
         align-items: center;
-      }
 
-      .play-arrow i {
-        color: #8e5cd9;
-        font-size: 1.1rem;
-        transition: transform 0.3s ease;
+        app-svg-icon {
+          color: #8e5cd9;
+        }
       }
 
       .icon-container {
@@ -128,11 +126,10 @@ import { GetAgentRequest } from '../../../../../../features/staff/models/agent.m
         justify-content: center;
         margin-right: 20px;
         flex-shrink: 0;
-      }
 
-      .icon-container i {
-        color: var(--gray-900);
-        font-size: 1.25rem;
+        app-svg-icon {
+          color: var(--gray-900);
+        }
       }
 
       h3 {
@@ -178,12 +175,10 @@ import { GetAgentRequest } from '../../../../../../features/staff/models/agent.m
         align-items: center;
       }
 
-      .section-heading i {
+      .section-heading app-svg-icon {
         margin-right: 8px;
         color: #8e5cd9;
-        font-size: 1.1rem;
         margin-left: -3px;
-        transition: transform 0.3s ease;
       }
 
       .thought-bubble {

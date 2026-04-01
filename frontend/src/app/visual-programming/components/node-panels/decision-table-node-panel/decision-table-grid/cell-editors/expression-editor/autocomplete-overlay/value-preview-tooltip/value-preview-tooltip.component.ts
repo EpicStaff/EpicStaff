@@ -1,5 +1,7 @@
-import { Component, input, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import type { editor as MonacoEditor } from 'monaco-editor';
+
 import { JsonEditorComponent } from '../../../../../../../../../shared/components/json-editor/json-editor.component';
 
 @Component({
@@ -11,9 +13,9 @@ import { JsonEditorComponent } from '../../../../../../../../../shared/component
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ValuePreviewTooltipComponent {
-    public value = input.required<any>();
+    public value = input.required<unknown>();
 
-    public editorOptions = {
+    public editorOptions: MonacoEditor.IStandaloneEditorConstructionOptions = {
         theme: 'vs-dark',
         language: 'json',
         automaticLayout: true,
@@ -26,7 +28,7 @@ export class ValuePreviewTooltipComponent {
         domReadOnly: true,
         contextmenu: false,
         fontFamily: "'JetBrains Mono', monospace",
-        fontSize: 12
+        fontSize: 12,
     };
 
     public getType(): string {
@@ -56,4 +58,3 @@ export class ValuePreviewTooltipComponent {
         return String(val);
     }
 }
-

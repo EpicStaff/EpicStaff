@@ -16,10 +16,10 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
       <!-- Agent Message Header with Toggle -->
       <div class="agent-header" (click)="toggleMessage()">
         <div class="play-arrow">
-          <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+          <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
         </div>
         <div class="icon-container">
-          <app-svg-icon icon="robot" size="1rem" />
+          <app-svg-icon icon="robot" size="1.25rem" />
         </div>
         <div class="header-text">
           Agent <span class="agent-name">{{ getAgentName() }}</span> used tool
@@ -36,7 +36,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
           <!-- Thought Section -->
           <div class="thought-container" *ngIf="hasThought()">
             <div class="section-heading" (click)="toggleSection('thought')">
-              <app-svg-icon [icon]="isThoughtExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+              <app-svg-icon [icon]="isThoughtExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
               Thought
             </div>
             <div
@@ -54,7 +54,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
           <!-- Tool Section -->
           <div class="tool-container" *ngIf="hasTool()">
             <div class="section-heading" (click)="toggleSection('tool')">
-              <app-svg-icon [icon]="isToolExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+              <app-svg-icon [icon]="isToolExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
               Tool
             </div>
             <div
@@ -83,7 +83,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
           <!-- Tool Output Section at same level as Thought and Tool -->
           <div class="result-container" *ngIf="getResult()">
             <div class="section-heading" (click)="toggleSection('result')">
-              <app-svg-icon [icon]="isResultExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+              <app-svg-icon [icon]="isResultExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
               Tool Output
             </div>
             <div
@@ -136,10 +136,8 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
       display: flex;
       align-items: center;
 
-      i {
+      app-svg-icon {
         color: #8e5cd9;
-        font-size: 1.1rem;
-        transition: transform 0.3s ease;
       }
     }
 
@@ -154,9 +152,8 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
       margin-right: 20px;
       flex-shrink: 0;
 
-      i {
+      app-svg-icon {
         color: var(--gray-900);
-        font-size: 1.25rem;
       }
     }
 
@@ -208,12 +205,10 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
       display: flex;
       align-items: center;
 
-      i {
+      app-svg-icon {
         margin-right: 8px;
         color: #8e5cd9;
-        font-size: 1.1rem;
         margin-left: -3px;
-        transition: transform 0.3s ease;
       }
     }
 

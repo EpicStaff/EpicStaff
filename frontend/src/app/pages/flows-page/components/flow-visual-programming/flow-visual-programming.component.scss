@@ -76,9 +76,8 @@
     }
 
     &__icon {
-        font-size: 10px;
+        display: inline-flex;
         color: rgba(255, 255, 255, 0.6);
-        line-height: 1;
     }
 }
 

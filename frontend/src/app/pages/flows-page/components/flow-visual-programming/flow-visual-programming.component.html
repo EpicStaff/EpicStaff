@@ -42,7 +42,7 @@
             >
                 <button class="collapse-toggle" (mousedown)="$event.stopPropagation()" (click)="togglePanelCollapsed()">
                     <span class="collapse-toggle__icon">
-                        {{ isPanelCollapsed ? '◀' : '▶' }}
+                        <app-svg-icon [icon]="isPanelCollapsed ? 'chevron-left' : 'chevron-right'" size="1rem"></app-svg-icon>
                     </span>
                 </button>
             </div>

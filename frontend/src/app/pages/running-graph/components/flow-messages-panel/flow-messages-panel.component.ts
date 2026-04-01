@@ -25,7 +25,7 @@ import {
     GraphSessionStatus,
 } from '../../../../features/flows/services/flows-sessions.service';
 import { GraphMessagesComponent } from '../graph-messages/graph-messages.component';
-import { AppIconComponent } from '@shared/components';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-flow-messages-panel',
@@ -38,7 +38,7 @@ import { AppIconComponent } from '@shared/components';
         MatButtonModule,
         MatTooltipModule,
         GraphMessagesComponent,
-        AppIconComponent,
+        AppSvgIconComponent,
     ],
     templateUrl: './flow-messages-panel.component.html',
     styleUrls: ['./flow-messages-panel.component.scss'],

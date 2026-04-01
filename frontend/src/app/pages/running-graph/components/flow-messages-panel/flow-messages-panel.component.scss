@@ -3,7 +3,9 @@
     flex-direction: column;
     height: 100%;
     background: var(--color-ks-line, #2c2c2e);
-    min-width: 370px;
+    width: 489px;
+    min-width: 489px;
+    flex-shrink: 0;
 }
 
 .panel-header {
@@ -21,15 +23,26 @@
         align-items: center;
         gap: 10px;
         flex: 1;
+        min-width: 0;
     }
 
     .text {
+        min-width: 0;
+        margin: 0;
         font-weight: 500;
         font-size: 14px;
-        letter-spacing: -3%;
+        line-height: 1.2;
+        letter-spacing: -0.03em;
     }
 
     .btn-switch-session {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        min-width: 28px;
+        min-height: 28px;
         border: 1px solid var(--color-ks-hover-row);
         transition:
             border-color 0.2s ease,
@@ -37,7 +50,7 @@
             color 0.2s ease;
         background-color: transparent;
         border-radius: 4px;
-        padding: 4px;
+        padding: 0;
         color: var(--color-ks-transparent-text-60);
         cursor: pointer;
 
@@ -61,21 +74,50 @@
             cursor: not-allowed;
             opacity: 0.5;
         }
+
+        app-svg-icon {
+            display: block;
+            flex-shrink: 0;
+        }
     }
 
     .icon-arrow {
         transform: rotate(90deg);
     }
 
+    .icon,
+    .icon-arrow {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .icon {
+        color: var(--accent-color);
+    }
+
+    .icon app-svg-icon,
+    .icon-arrow app-svg-icon {
+        display: block;
+        flex-shrink: 0;
+    }
+
     .btn-go-to-arrow {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        min-width: 28px;
+        min-height: 28px;
         border: 1px solid #685fff;
         transition:
             border-color 0.2s ease,
             background-color 0.2s ease,
             color 0.2s ease;
-        background-color: transparent;
         border-radius: 4px;
-        padding: 4px;
+        padding: 0;
         cursor: pointer;
         background-color: #685fff;
         color: var(--color-text-primary);
@@ -91,6 +133,11 @@
             background-color: transparent;
             color: #685fff;
             border-color: #685fff;
+        }
+
+        app-svg-icon {
+            display: block;
+            flex-shrink: 0;
         }
 
         .arrow-up-custom {
@@ -139,7 +186,7 @@
         min-width: 0;
     }
 
-    app-icon {
+    app-svg-icon {
         flex-shrink: 0;
     }
 }
@@ -282,7 +329,7 @@
         vertical-align: middle;
         cursor: default;
 
-        i {
+        app-svg-icon {
             font-size: 10px;
         }
     }

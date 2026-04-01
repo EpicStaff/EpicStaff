@@ -104,10 +104,8 @@ import { GetProjectRequest } from '../../../../../../features/projects/models/pr
           display: flex;
           align-items: center;
 
-          i {
+          app-svg-icon {
             color: #5672cd;
-            font-size: 1.1rem;
-            transition: transform 0.3s ease;
           }
         }
 
@@ -122,9 +120,8 @@ import { GetProjectRequest } from '../../../../../../features/projects/models/pr
           margin-right: 20px;
           flex-shrink: 0;
 
-          i {
+          app-svg-icon {
             color: var(--gray-900);
-            font-size: 1.25rem;
           }
         }
 
@@ -165,12 +162,10 @@ import { GetProjectRequest } from '../../../../../../features/projects/models/pr
         display: flex;
         align-items: center;
 
-        i {
+        app-svg-icon {
           margin-right: 8px;
           color: #5672cd;
-          font-size: 1.1rem;
           margin-left: -3px;
-          transition: transform 0.3s ease;
         }
       }
 

@@ -15,7 +15,6 @@
             [size]="currentGridSize"
             [cardState]="cardState"
             (removeAgent)="onRemoveStaffAgent($event)"
-            (editAgent)="onEditAgent($event)"
         >
         </app-staff-agent-card>
     </div>
@@ -24,5 +23,5 @@
         #gridControls
         (currentSizeChange)="onGridSizeChanged($event)"
         (staffAgentAdded)="onAddStaffAgent($event)"
-        ></app-grid-controls>
+    ></app-grid-controls>
 </div>

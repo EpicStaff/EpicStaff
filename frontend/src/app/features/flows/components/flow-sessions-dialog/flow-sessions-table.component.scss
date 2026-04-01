@@ -260,6 +260,12 @@ table {
     align-items: center;
     justify-content: center;
     padding: 0;
+    color: rgba(255, 255, 255, 0.45);
+    transition: color 0.18s;
+
+    &:hover {
+        color: rgba(255, 255, 255, 0.85);
+    }
 }
 
 .no-sessions-message {

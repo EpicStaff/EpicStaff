@@ -95,10 +95,8 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
         display: flex;
         align-items: center;
 
-        i {
+        app-svg-icon {
           color: #ff6b6b;
-          font-size: 1.1rem;
-          transition: transform 0.3s ease;
         }
       }
 
@@ -113,9 +111,8 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
         margin-right: 20px;
         flex-shrink: 0;
 
-        i {
+        app-svg-icon {
           color: var(--gray-900);
-          font-size: 1.25rem;
         }
       }
 
@@ -154,12 +151,10 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
         display: flex;
         align-items: center;
 
-        i {
+        app-svg-icon {
           margin-right: 8px;
           color: #ff6b6b;
-          font-size: 1.1rem;
           margin-left: -3px;
-          transition: transform 0.3s ease;
         }
       }
 

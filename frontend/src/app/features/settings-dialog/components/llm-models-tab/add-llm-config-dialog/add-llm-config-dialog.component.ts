@@ -1,35 +1,36 @@
+import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
-    DestroyRef,
-    OnInit,
-    inject,
-    signal,
     computed,
+    DestroyRef,
     effect,
+    inject,
+    OnInit,
+    signal,
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, Validators } from '@angular/forms';
-import { Dialog, DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormArray, FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { finalize } from 'rxjs/operators';
-
-import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
-import { SliderWithStepperComponent } from '../../../../../shared/components/slider-with-stepper/slider-with-stepper.component';
-import { NumberStepperComponent } from '../../../../../shared/components/number-stepper/number-stepper.component';
-import { JsonEditorComponent } from '../../../../../shared/components/json-editor/json-editor.component';
 import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
 import { HelpTooltipComponent } from '../../../../../shared/components/help-tooltip/help-tooltip.component';
-
+import { JsonEditorComponent } from '../../../../../shared/components/json-editor/json-editor.component';
+import { NumberStepperComponent } from '../../../../../shared/components/number-stepper/number-stepper.component';
+import { SliderWithStepperComponent } from '../../../../../shared/components/slider-with-stepper/slider-with-stepper.component';
 import { LLM_Provider, ModelTypes } from '../../../models/llm-provider.model';
 import { LLM_Model } from '../../../models/llms/LLM.model';
 import { CreateLLMConfigRequest, GetLlmConfigRequest } from '../../../models/llms/LLM_config.model';
 import { LLM_Providers_Service } from '../../../services/llm-providers.service';
-import { LLM_Models_Service } from '../../../services/llms/llm-models.service';
 import { LLM_Config_Service } from '../../../services/llms/llm-config.service';
-import { ModelSelectorModalComponent, ModelSelectorResult } from '../model-selector-modal/model-selector-modal.component';
+import { LLM_Models_Service } from '../../../services/llms/llm-models.service';
 import { getProviderIconPath } from '../../../utils/get-provider-icon';
+import {
+    ModelSelectorModalComponent,
+    ModelSelectorResult,
+} from '../model-selector-modal/model-selector-modal.component';
 
 const LLM_FORM_DEFAULTS = {
     temperature: 0.7,
@@ -80,7 +81,7 @@ export class AddLlmConfigDialogComponent implements OnInit {
         topP: [LLM_FORM_DEFAULTS.topP, [Validators.min(0.1)]],
         presencePenalty: [LLM_FORM_DEFAULTS.presencePenalty],
         frequencyPenalty: [LLM_FORM_DEFAULTS.frequencyPenalty],
-        maxTokens: [LLM_FORM_DEFAULTS.maxTokens, [Validators.required, Validators.min(1)]],
+        maxTokens: [LLM_FORM_DEFAULTS.maxTokens, [Validators.required, Validators.min(500)]],
         timeout: [LLM_FORM_DEFAULTS.timeout, [Validators.required, Validators.min(1)]],
         seed: [LLM_FORM_DEFAULTS.seed, [Validators.min(-2147483648), Validators.max(2147483647)]],
         headers: this.fb.array([this.createHeaderGroup()]),
@@ -111,9 +112,7 @@ export class AddLlmConfigDialogComponent implements OnInit {
 
     isEditMode = computed(() => !!this.dialogData?.editConfig);
 
-    dialogTitle = computed(() =>
-        this.isEditMode() ? 'Edit LLM Configuration' : 'Add LLM Configuration'
-    );
+    dialogTitle = computed(() => (this.isEditMode() ? 'Edit LLM Configuration' : 'Add LLM Configuration'));
 
     submitButtonText = computed(() => {
         if (this.isSubmitting()) {
@@ -126,9 +125,9 @@ export class AddLlmConfigDialogComponent implements OnInit {
         const valid = this.formValid();
         const hasProvider = this.selectedProviderId() !== null;
         const hasModel = this.selectedModelId() !== null;
-        
+
         const finalResult = valid && hasProvider && hasModel;
-        
+
         return finalResult;
     });
 
@@ -150,11 +149,9 @@ export class AddLlmConfigDialogComponent implements OnInit {
 
         this.subscribeToHeadersChanges();
 
-        this.form.valueChanges
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe(() => {
-                this.formValid.set(this.form.valid);
-            });
+        this.form.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.formValid.set(this.form.valid);
+        });
 
         this.formValid.set(this.form.valid);
     }
@@ -178,7 +175,7 @@ export class AddLlmConfigDialogComponent implements OnInit {
             disableClose: true,
         });
 
-    dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
+        dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
             if (result) {
                 const { provider, model } = result as ModelSelectorResult;
                 this.selectedProvider.set(provider);
@@ -195,27 +192,24 @@ export class AddLlmConfigDialogComponent implements OnInit {
     }
 
     private populateFormFromConfig(config: GetLlmConfigRequest): void {
-        const temperature = typeof config.temperature === 'number'
-            ? config.temperature
-            : LLM_FORM_DEFAULTS.temperature;
-        const topP = typeof config.top_p === 'number' && config.top_p >= 0.1
-            ? config.top_p
-            : LLM_FORM_DEFAULTS.topP;
-        const presencePenalty = typeof config.presence_penalty === 'number'
-            ? config.presence_penalty
-            : LLM_FORM_DEFAULTS.presencePenalty;
-        const frequencyPenalty = typeof config.frequency_penalty === 'number'
-            ? config.frequency_penalty
-            : LLM_FORM_DEFAULTS.frequencyPenalty;
-        const maxTokens = typeof config.max_tokens === 'number' && config.max_tokens >= 1
-            ? config.max_tokens
-            : LLM_FORM_DEFAULTS.maxTokens;
-        const timeout = typeof config.timeout === 'number' && config.timeout >= 1
-            ? config.timeout
-            : LLM_FORM_DEFAULTS.timeout;
-        const seed = typeof config.seed === 'number' && config.seed >= -2147483648 && config.seed <= 2147483647
-            ? config.seed
-            : LLM_FORM_DEFAULTS.seed;
+        const temperature = typeof config.temperature === 'number' ? config.temperature : LLM_FORM_DEFAULTS.temperature;
+        const topP = typeof config.top_p === 'number' && config.top_p >= 0.1 ? config.top_p : LLM_FORM_DEFAULTS.topP;
+        const presencePenalty =
+            typeof config.presence_penalty === 'number' ? config.presence_penalty : LLM_FORM_DEFAULTS.presencePenalty;
+        const frequencyPenalty =
+            typeof config.frequency_penalty === 'number'
+                ? config.frequency_penalty
+                : LLM_FORM_DEFAULTS.frequencyPenalty;
+        const maxTokens =
+            typeof config.max_tokens === 'number' && config.max_tokens >= 500
+                ? config.max_tokens
+                : LLM_FORM_DEFAULTS.maxTokens;
+        const timeout =
+            typeof config.timeout === 'number' && config.timeout >= 1 ? config.timeout : LLM_FORM_DEFAULTS.timeout;
+        const seed =
+            typeof config.seed === 'number' && config.seed >= -2147483648 && config.seed <= 2147483647
+                ? config.seed
+                : LLM_FORM_DEFAULTS.seed;
 
         this.form.patchValue({
             customName: config.custom_name,
@@ -232,15 +226,14 @@ export class AddLlmConfigDialogComponent implements OnInit {
         this.selectedModelId.set(config.model);
 
         this.logitBiasText.set(JSON.stringify(config.logit_bias ?? {}, null, 2));
-        
-        // Rebuild headers form array
+
         const headersToSet = config.headers || {};
         this.isUpdatingHeadersFromUI = true;
         this.rebuildHeadersFormArray(headersToSet);
         this.headers.set(headersToSet);
         this.headersText.set(JSON.stringify(headersToSet, null, 2));
         this.cdr.detectChanges();
-        
+
         setTimeout(() => {
             this.isUpdatingHeadersFromUI = false;
         }, 200);
@@ -248,28 +241,46 @@ export class AddLlmConfigDialogComponent implements OnInit {
 
     private rebuildHeadersFormArray(headersObj: Record<string, string>): void {
         const entries = Object.entries(headersObj);
-        const controls: FormGroup[] = entries.map(([key, value]) => 
-            this.fb.group({ key: [key], value: [value] })
-        );
-        
+        const controls: FormGroup[] = entries.map(([key, value]) => this.fb.group({ key: [key], value: [value] }));
+
         controls.push(this.createHeaderGroup());
-        
+
         const newArray = this.fb.array(controls);
         this.form.setControl('headers', newArray);
-        
+
         this.subscribeToHeadersChanges();
-        
+    }
+
+    private patchHeadersFormArray(headersObj: Record<string, string>): void {
+        const entries = Object.entries(headersObj);
+        const targetTotalRows = entries.length + 1;
+
+        entries.forEach(([key, value], i) => {
+            if (i < this.headersArray.length) {
+                this.headersArray.at(i).patchValue({ key, value }, { emitEvent: false });
+            } else {
+                this.headersArray.push(this.fb.group({ key: [key], value: [value] }), { emitEvent: false });
+            }
+        });
+
+        while (this.headersArray.length < targetTotalRows) {
+            this.headersArray.push(this.createHeaderGroup(), { emitEvent: false });
+        }
+
+        while (this.headersArray.length > targetTotalRows) {
+            this.headersArray.removeAt(this.headersArray.length - 1, { emitEvent: false });
+        }
+
+        this.headersArray.at(this.headersArray.length - 1).patchValue({ key: '', value: '' }, { emitEvent: false });
     }
 
     private subscribeToHeadersChanges(): void {
-        this.headersArray.valueChanges
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe(() => {
-                if (this.isUpdatingHeadersFromUI) {
-                    return;
-                }
-                this.syncHeadersToJson();
-            });
+        this.headersArray.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            if (this.isUpdatingHeadersFromUI) {
+                return;
+            }
+            this.syncHeadersToJson();
+        });
     }
 
     private loadProvidersAndEditConfig(): void {
@@ -302,7 +313,7 @@ export class AddLlmConfigDialogComponent implements OnInit {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (model) => {
-                    const provider = providers.find(p => p.id === model.llm_provider);
+                    const provider = providers.find((p) => p.id === model.llm_provider);
                     if (provider) {
                         this.selectedProvider.set(provider);
                         this.selectedProviderId.set(provider.id);
@@ -317,7 +328,7 @@ export class AddLlmConfigDialogComponent implements OnInit {
     }
 
     toggleApiKeyVisibility(): void {
-        this.showApiKey.update(v => !v);
+        this.showApiKey.update((v) => !v);
     }
 
     addHeaderEntry(): void {
@@ -326,7 +337,7 @@ export class AddLlmConfigDialogComponent implements OnInit {
 
     removeHeaderEntry(index: number): void {
         this.headersArray.removeAt(index);
-        
+
         if (this.headersArray.length === 0) {
             this.headersArray.push(this.createHeaderGroup());
         }
@@ -337,12 +348,12 @@ export class AddLlmConfigDialogComponent implements OnInit {
         this.headersArray.controls.forEach((control) => {
             const key = control.get('key')?.value?.trim();
             const value = control.get('value')?.value;
-            
+
             if (key) {
                 headersObj[key] = value || '';
             }
         });
-        
+
         this.headers.set(headersObj);
         this.headersText.set(JSON.stringify(headersObj, null, 2));
     }
@@ -356,10 +367,9 @@ export class AddLlmConfigDialogComponent implements OnInit {
             const parsed = JSON.parse(json || '{}');
             if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
                 const hasKeys = Object.keys(parsed).length > 0;
-                return hasKeys ? parsed as T : null;
+                return hasKeys ? (parsed as T) : null;
             }
-        } catch {
-        }
+        } catch {}
         return null;
     }
 
@@ -379,13 +389,12 @@ export class AddLlmConfigDialogComponent implements OnInit {
 
                 this.headers.set(normalized);
                 this.isUpdatingHeadersFromUI = true;
-                this.rebuildHeadersFormArray(normalized);
+                this.patchHeadersFormArray(normalized);
                 setTimeout(() => {
                     this.isUpdatingHeadersFromUI = false;
                 }, 0);
             }
-        } catch {
-        }
+        } catch {}
     }
 
     onSubmit(): void {
@@ -400,11 +409,10 @@ export class AddLlmConfigDialogComponent implements OnInit {
         const headersObj = this.parseJsonObject<Record<string, string>>(this.headersText()) ?? this.headers();
         const headers = Object.keys(headersObj).length > 0 ? headersObj : undefined;
 
-        const seedValue = formValue.seed !== null && 
-            formValue.seed >= -2147483648 && 
-            formValue.seed <= 2147483647 
-            ? formValue.seed 
-            : null;
+        const seedValue =
+            formValue.seed !== null && formValue.seed >= -2147483648 && formValue.seed <= 2147483647
+                ? formValue.seed
+                : null;
 
         const configData: CreateLLMConfigRequest = {
             model: this.selectedModelId()!,
@@ -422,12 +430,12 @@ export class AddLlmConfigDialogComponent implements OnInit {
             is_visible: true,
             headers,
         };
-        
+
         const request$ = this.isEditMode()
             ? this.configService.updateConfig({
-                ...configData,
-                id: this.dialogData!.editConfig!.id,
-            })
+                  ...configData,
+                  id: this.dialogData!.editConfig!.id,
+              })
             : this.configService.createConfig(configData);
 
         request$

@@ -21,10 +21,10 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
     <div class="subgraph-start-container">
       <div class="subgraph-start-header" (click)="toggleMessage()">
         <div class="play-arrow" *ngIf="hasContent()">
-          <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+          <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
         </div>
         <div class="icon-container">
-          <app-svg-icon icon="hierarchy-2" size="1rem" />
+          <app-svg-icon icon="hierarchy-2" size="1.25rem" />
         </div>
         <h3>
           <span class="node-name">{{ message.name  }}</span> subgraph started {{subgraphName}}
@@ -69,7 +69,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
           <!-- Input Parameters Section -->
           <div class="input-container" *ngIf="hasInput()">
             <div class="section-heading" (click)="toggleInputs($event)">
-              <app-svg-icon [icon]="isInputsExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+              <app-svg-icon [icon]="isInputsExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
               Input Parameters
             </div>
             <div
@@ -88,7 +88,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
           <!-- Variables Section -->
           <div class="variables-container" *ngIf="hasVariables()">
             <div class="section-heading" (click)="toggleVariables($event)">
-              <app-svg-icon [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+              <app-svg-icon [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
               Variables
             </div>
             <div
@@ -200,12 +200,10 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
         margin-right: 16px;
         display: flex;
         align-items: center;
-      }
 
-      .play-arrow i {
-        color: #00bfa5;
-        font-size: 1.1rem;
-        transition: transform 0.3s ease;
+        app-svg-icon {
+          color: #00bfa5;
+        }
       }
 
       .icon-container {
@@ -218,11 +216,10 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
         justify-content: center;
         margin-right: 20px;
         flex-shrink: 0;
-      }
 
-      .icon-container i {
-        color: var(--gray-900);
-        font-size: 1.25rem;
+        app-svg-icon {
+          color: var(--gray-900);
+        }
       }
 
       h3 {
@@ -266,12 +263,10 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
         align-items: center;
       }
 
-      .section-heading i {
+      .section-heading app-svg-icon {
         margin-right: 8px;
         color: #00bfa5;
-        font-size: 1.1rem;
         margin-left: -3px;
-        transition: transform 0.3s ease;
       }
 
       .input-container,

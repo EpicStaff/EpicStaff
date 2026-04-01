@@ -33,7 +33,7 @@ import { ToastMessage, ToastService, ToastPosition } from '../toast.service';
         (click)="closeToast(toast.id)"
       >
         <div class="toast-content">
-          <div>
+          <div class="toast-icon-wrapper">
             <app-svg-icon [icon]="getIconId(toast.type)" size="20px"></app-svg-icon>
           </div>
           <span class="toast-message">{{ toast.message }}</span>
@@ -124,7 +124,10 @@ import { ToastMessage, ToastService, ToastPosition } from '../toast.service';
           display: flex;
           align-items: center;
 
-          app-svg-icon {
+          .toast-icon-wrapper {
+            display: inline-flex;
+            align-items: center;
+            flex-shrink: 0;
             margin-right: 16px;
           }
         }
@@ -323,7 +326,7 @@ export class ToastComponent implements OnInit, OnDestroy {
       case 'info':
         return 'info-circle';
       default:
-        return 'bell';
+        return 'info-circle';
     }
   }
 

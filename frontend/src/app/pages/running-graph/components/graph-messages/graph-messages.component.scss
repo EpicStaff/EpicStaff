@@ -52,10 +52,8 @@
                 width: 16px;
                 height: 16px;
 
-                i {
-                    font-size: 14px;
-
-                    &.ti-spin {
+                app-svg-icon {
+                    &.spin {
                         animation: spin 1s linear infinite;
                     }
                 }

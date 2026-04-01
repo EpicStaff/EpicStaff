@@ -27,10 +27,10 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
             <!-- Python Message Header with Toggle -->
             <div class="python-header" (click)="toggleMessage()">
                 <div class="play-arrow">
-                    <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+                    <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
                 </div>
                 <div class="icon-container">
-                    <app-svg-icon icon="brand-python" size="1rem" />
+                    <app-svg-icon icon="brand-python" size="1.25rem" />
                 </div>
                 <h3>Python Code Execution</h3>
             </div>
@@ -47,7 +47,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                             class="section-heading"
                             (click)="toggleSection('code')"
                         >
-                            <app-svg-icon [icon]="isCodeExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+                            <app-svg-icon [icon]="isCodeExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
                             Python Code
                         </div>
                         <div
@@ -70,7 +70,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                             class="section-heading"
                             (click)="toggleSection('input')"
                         >
-                            <app-svg-icon [icon]="isInputExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+                            <app-svg-icon [icon]="isInputExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
                             Input
                         </div>
                         <div
@@ -103,7 +103,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                             class="section-heading"
                             (click)="toggleSection('output')"
                         >
-                            <app-svg-icon [icon]="isOutputExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+                            <app-svg-icon [icon]="isOutputExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
                             Output
                         </div>
                         <div
@@ -143,7 +143,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                             class="section-heading"
                             (click)="toggleSection('error')"
                         >
-                            <app-svg-icon [icon]="isErrorExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+                            <app-svg-icon [icon]="isErrorExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
                             Error
                         </div>
                         <div
@@ -166,7 +166,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                             class="section-heading"
                             (click)="toggleSection('rawData')"
                         >
-                            <app-svg-icon [icon]="isRawDataExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+                            <app-svg-icon [icon]="isRawDataExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
                             Raw Execution Data
                         </div>
                         <div
@@ -213,12 +213,10 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                 margin-right: 16px;
                 display: flex;
                 align-items: center;
-            }
 
-            .play-arrow i {
-                color: #ffcf3f;
-                font-size: 1.1rem;
-                transition: transform 0.3s ease;
+                app-svg-icon {
+                    color: #ffcf3f;
+                }
             }
 
             .icon-container {
@@ -231,11 +229,10 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                 justify-content: center;
                 margin-right: 20px;
                 flex-shrink: 0;
-            }
 
-            .icon-container i {
-                color: var(--gray-900);
-                font-size: 1.25rem;
+                app-svg-icon {
+                    color: var(--gray-900);
+                }
             }
 
             h3 {
@@ -275,12 +272,10 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                 align-items: center;
             }
 
-            .section-heading i {
+            .section-heading app-svg-icon {
                 margin-right: 8px;
                 color: #ffcf3f;
-                font-size: 1.1rem;
                 margin-left: -3px;
-                transition: transform 0.3s ease;
             }
 
             .code-wrapper,

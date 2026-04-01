@@ -10,15 +10,11 @@
     >
         <div class="status-indicator" [class]="connectionStatus">
             <span class="status-icon">
-                <i
-                    class="ti"
-                    [class.ti-loader]="connectionStatus === 'reconnecting'"
-                    [class.ti-alert-triangle]="
-                        connectionStatus === 'disconnected'
-                    "
-                    [class.ti-spin]="connectionStatus === 'reconnecting'"
-                >
-                </i>
+                <app-svg-icon
+                    [icon]="connectionStatus === 'reconnecting' ? 'loader' : 'alert-triangle'"
+                    size="14px"
+                    [class.spin]="connectionStatus === 'reconnecting'"
+                ></app-svg-icon>
             </span>
             <span class="status-text">
                 <ng-container [ngSwitch]="connectionStatus">
@@ -87,7 +83,7 @@
                                 (click)="scrollBreadcrumbs(breadcrumbsScroller, 'left')"
                                 *ngIf="rootView.hasBreadcrumbOverflow"
                             >
-                                <app-svg-icon icon="chevron-left" size="1rem" />
+                                <app-svg-icon icon="chevron-left" size="23px" />
                             </button>
                             <div
                                 class="breadcrumbs-search"
@@ -99,7 +95,7 @@
                                     aria-label="Search subflow"
                                     (click)="toggleBreadcrumbSearch(rootView.rootKey)"
                                 >
-                                    <app-svg-icon icon="search" size="1rem" class="search-icon" />
+                                    <app-svg-icon icon="search" size="19px" class="search-icon" />
                                 </button>
                                 <input
                                     type="text"
@@ -151,11 +147,11 @@
                                     class="breadcrumb-separator icon-container"
                                     *ngIf="!isLast"
                                 >
-                                    <app-svg-icon icon="chevron-right" size="1rem" />
+                                    <app-svg-icon icon="chevron-right" size="23px" />
                                 </span>
                             </span>
                             <div class="icon-container">
-                                <app-svg-icon icon="corner-right-down" size="1rem" />
+                                <app-svg-icon icon="corner-right-down" size="23px" />
                             </div>
                         </div>
                         <div
@@ -168,7 +164,7 @@
                                 aria-label="Scroll breadcrumbs right"
                                 (click)="scrollBreadcrumbs(breadcrumbsScroller, 'right')"
                             >
-                                <app-svg-icon icon="chevron-right" size="1rem" />
+                                <app-svg-icon icon="chevron-right" size="23px" />
                             </button>
                         </div>
                     </div>
@@ -305,7 +301,7 @@
             (click)="scrollToTop()"
             aria-label="Scroll to top"
         >
-            <i class="ti ti-arrow-up"></i>
+            <app-svg-icon icon="arrow-up" size="1rem"></app-svg-icon>
         </button>
     }
 </div>
