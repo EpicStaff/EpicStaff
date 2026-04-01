@@ -24,10 +24,16 @@ class BaseProviderModelStrategy(EntityImportExportStrategy):
     model_class = None
     serializer_class = None
     tag_entity = None
-    provider_filter_field = "provider__name"
+    provider_field = "provider"
 
     def get_instance(self, entity_id: int):
         return self.model_class.objects.filter(id=entity_id).first()
+
+    def get_preview_data(self, instance) -> dict:
+        return {
+            "id": instance.id,
+            "name": f"{getattr(instance, self.provider_field).name}/{instance.name}",
+        }
 
     def extract_dependencies_from_instance(self, instance):
         deps = {}
@@ -62,11 +68,12 @@ class BaseProviderModelStrategy(EntityImportExportStrategy):
         tags = data_copy.pop("tags", None)
 
         filters, null_filters = create_filters(data_copy)
+        provider_filter_field = f"{self.provider_field}__name"
 
         return self.model_class.objects.filter(
             **filters,
             **null_filters,
-            **{self.provider_filter_field: provider_name},
+            **{provider_filter_field: provider_name},
         ).first()
 
     def _get_tags(self, data: dict, id_mapper: IDMapper) -> list[int]:
@@ -84,7 +91,7 @@ class LLMModelStrategy(BaseProviderModelStrategy):
     tag_entity = EntityType.LLM_MODEL_TAG
     model_class = LLMModel
     serializer_class = LLMModelImportSerializer
-    provider_filter_field = "llm_provider__name"
+    provider_field = "llm_provider"
 
 
 class EmbeddingModelStrategy(BaseProviderModelStrategy):
@@ -92,7 +99,7 @@ class EmbeddingModelStrategy(BaseProviderModelStrategy):
     tag_entity = EntityType.EMBEDDING_MODEL_TAG
     model_class = EmbeddingModel
     serializer_class = EmbeddingModelImportSerializer
-    provider_filter_field = "embedding_provider__name"
+    provider_field = "embedding_provider"
 
 
 class RealtimeModelStrategy(BaseProviderModelStrategy):

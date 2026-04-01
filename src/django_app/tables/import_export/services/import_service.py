@@ -46,7 +46,7 @@ class ImportService:
                             entity_type == main_entity,
                         )
 
-        return id_mapper
+        return id_mapper, self.registry
 
     def _resolve_import_order(self, export_data: dict) -> List[str]:
         """
@@ -65,8 +65,15 @@ class ImportService:
         self, entity_data, entity_type, strategy, id_mapper, is_main, **kwargs
     ):
         old_id = entity_data["id"]
+
+        existing = None
+        if not is_main:
+            existing = strategy.find_existing(entity_data, id_mapper)
+
+        was_created = existing is None
+
         instance = strategy.import_entity(entity_data, id_mapper, is_main, **kwargs)
-        id_mapper.map(entity_type, old_id, instance.id)
+        id_mapper.map(entity_type, old_id, instance.id, was_created)
 
     def _resolve_graph_order(self, graphs: List[dict]) -> List[dict]:
         """

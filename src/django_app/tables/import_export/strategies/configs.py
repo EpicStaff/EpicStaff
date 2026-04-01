@@ -48,6 +48,9 @@ class BaseConfigStrategy(EntityImportExportStrategy):
     def get_instance(self, entity_id: int):
         return self.config_model.objects.filter(id=entity_id).first()
 
+    def get_preview_data(self, instance) -> dict:
+        return {"id": instance.id, "name": instance.custom_name}
+
     def extract_dependencies_from_instance(self, instance):
         return {self.model_entity_type: [getattr(instance, self.model_fk_field).id]}
 

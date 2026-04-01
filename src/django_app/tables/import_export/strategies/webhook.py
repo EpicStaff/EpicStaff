@@ -13,6 +13,9 @@ class WebhookTriggerStrategy(EntityImportExportStrategy):
     def get_instance(self, entity_id: int) -> WebhookTrigger | None:
         return WebhookTrigger.objects.filter(id=entity_id).first()
 
+    def get_preview_data(self, instance: WebhookTrigger) -> dict:
+        return {"id": instance.id, "name": instance.path}
+
     def extract_dependencies_from_instance(self, instance):
         return {}
 
