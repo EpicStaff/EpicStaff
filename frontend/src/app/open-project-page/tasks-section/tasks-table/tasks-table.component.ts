@@ -1025,7 +1025,6 @@ export class TasksTableComponent implements OnChanges {
             columns: [colId],
         });
 
-        if (!allValid) return;
         this.upsertPendingForExistingTask(event.data as TableFullTask);
         this.cdr.markForCheck();
     }
@@ -2139,6 +2138,17 @@ export class TasksTableComponent implements OnChanges {
                 }
             }
         }
+
+        for (const row of this.rowData) {
+            const id = String(row?.id ?? '');
+            if (this.isTempRowId(id)) continue;
+            if (!this.localPendingKeys.has(id)) continue;
+            const rowWithWarnings = row as TableFullTask & Record<string, unknown>;
+            if (this.requiredTaskFields.some(f => Boolean(rowWithWarnings[`${f}Warning`]))) {
+                ok = false;
+            }
+        }
+
         return ok;
     }
 
@@ -2384,5 +2394,9 @@ export class TasksTableComponent implements OnChanges {
 
     public getCurrentRows(): any[] {
         return [...this.rowData];
+    }
+
+    public stopEditing(): void {
+        this.gridApi?.stopEditing();
     }
 }

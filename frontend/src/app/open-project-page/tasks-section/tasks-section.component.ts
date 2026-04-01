@@ -106,4 +106,8 @@ export class TasksSectionComponent implements OnInit, OnDestroy {
   public getCurrentRows(): any[] {
     return this.table?.getCurrentRows?.() ?? [];
   }
+
+  public stopEditing(): void {
+    this.table?.stopEditing();
+  }
 }

@@ -2297,6 +2297,10 @@ export class AgentsTableComponent {
         return true;
     }
 
+    public stopEditing(): void {
+        this.gridApi?.stopEditing();
+    }
+
     private requiredErrorsRows = new Set<string>();
 
     private lastFocusedRowIndex: number | null = null;

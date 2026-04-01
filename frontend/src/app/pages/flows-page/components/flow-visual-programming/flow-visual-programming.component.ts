@@ -505,6 +505,16 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         }
     }
 
+    @HostListener('document:keydown', ['$event'])
+    public handleCtrlS(event: KeyboardEvent): void {
+        if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+            event.preventDefault();
+            if (this.hasUnsavedChanges()) {
+                this.handleSaveFlow(true).subscribe();
+            }
+        }
+    }
+
     public hasUnsavedChanges(): boolean {
         const currentState = this.flowService.getFlowState();
 

@@ -144,6 +144,15 @@ export class StaffPageComponent implements CanComponentDeactivate {
     
 
 
+    @HostListener('document:keydown', ['$event'])
+    public handleCtrlS(event: KeyboardEvent): void {
+        if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+            event.preventDefault();
+            this.agentsTable?.stopEditing();
+            this.onSave();
+        }
+    }
+
     @HostListener('window:beforeunload', ['$event'])
     public onBeforeUnload(event: BeforeUnloadEvent): void {
         if (!this.hasUnsavedChanges) return;
