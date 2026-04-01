@@ -1,6 +1,7 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, HostListener,Inject, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, HostListener, Inject, OnInit } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 
 import { GraphNoteModel } from '../../core/models/node.model';
@@ -153,13 +154,23 @@ export class NoteEditDialogComponent implements OnInit {
     constructor(
         public dialogRef: DialogRef<{ content: string }>,
         @Inject(DIALOG_DATA) public data: { node: GraphNoteModel },
-        private cdr: ChangeDetectorRef
+        private cdr: ChangeDetectorRef,
+        private destroyRef: DestroyRef
     ) {}
 
     ngOnInit(): void {
         // Initialize with the current note content
         this.noteContent = this.data.node.data.content || '';
         this.cdr.detectChanges();
+
+        this.dialogRef.keydownEvents
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((event: KeyboardEvent) => {
+                if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                    event.preventDefault();
+                    this.close();
+                }
+            });
     }
 
     close(): void {

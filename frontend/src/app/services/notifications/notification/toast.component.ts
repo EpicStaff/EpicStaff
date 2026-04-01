@@ -5,8 +5,10 @@ import {
   ChangeDetectorRef,
   ChangeDetectionStrategy,
   Input,
+  ElementRef,
+  Inject,
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { CommonModule, DOCUMENT } from '@angular/common';
 import { Subscription } from 'rxjs';
 import {
   trigger,
@@ -48,6 +50,11 @@ import { ToastMessage, ToastService, ToastPosition } from '../toast.service';
   `,
   styles: [
     `
+      :host {
+        position: relative;
+        z-index: 10001;
+      }
+
       .toast-container {
         position: fixed;
         z-index: 9999;
@@ -288,10 +295,14 @@ export class ToastComponent implements OnInit, OnDestroy {
 
   constructor(
     private toastService: ToastService,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private el: ElementRef,
+    @Inject(DOCUMENT) private document: Document
   ) {}
 
   ngOnInit(): void {
+    this.document.body.appendChild(this.el.nativeElement);
+
     this.subscription.add(
       this.toastService.toasts$.subscribe((toasts) => {
         this.toasts = toasts.filter(
@@ -328,6 +339,9 @@ export class ToastComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.el.nativeElement.parentNode) {
+      this.el.nativeElement.parentNode.removeChild(this.el.nativeElement);
+    }
     this.subscription.unsubscribe();
   }
 }
