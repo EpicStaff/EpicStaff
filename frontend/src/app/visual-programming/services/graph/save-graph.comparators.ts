@@ -54,6 +54,7 @@ function getBackendMetadataForComparison(node: { metadata?: unknown }): NodeUIMe
             width: size?.width ?? 0,
             height: size?.height ?? 0,
         },
+        nodeNumber: typeof m['nodeNumber'] === 'number' ? m['nodeNumber'] : undefined,
     };
 }
 

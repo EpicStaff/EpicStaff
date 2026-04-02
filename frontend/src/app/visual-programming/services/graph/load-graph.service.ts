@@ -58,11 +58,20 @@ import { NodeUIMetadata } from './save-graph.types';
 function readUIMetadata(
     metadata: Record<string, unknown> | undefined | null,
     nodeType: NodeType,
-    fallbackIndex: number
+    fallbackIndex: number,
+    nodeName?: string
 ): NodeUIMetadata {
     const m = metadata ?? {};
     const position = m['position'] as { x?: number; y?: number } | undefined;
     const size = m['size'] as { width?: number; height?: number } | undefined;
+
+    let nodeNumber: number | undefined;
+    if (typeof m['nodeNumber'] === 'number') {
+        nodeNumber = m['nodeNumber'];
+    } else if (nodeName) {
+        const match = nodeName.match(/#(\d+)\s*$/);
+        if (match) nodeNumber = parseInt(match[1], 10);
+    }
 
     return {
         position: {
@@ -75,6 +84,7 @@ function readUIMetadata(
             width: size?.width ?? getDefaultSize(nodeType).width,
             height: size?.height ?? getDefaultSize(nodeType).height,
         },
+        nodeNumber,
     };
 }
 
@@ -127,6 +137,7 @@ function buildStartNode(sn: StartNode, idx: number): StartNodeModel {
         category: 'web',
         type: NodeType.START,
         node_name: '__start__',
+        nodeNumber: ui.nodeNumber,
         data: { initialState: sn.variables ?? {} },
         position: ui.position,
         ports: null,
@@ -140,13 +151,14 @@ function buildStartNode(sn: StartNode, idx: number): StartNodeModel {
 }
 
 function buildCrewNode(cn: CrewNode, idx: number): ProjectNodeModel {
-    const ui = readUIMetadata(cn.metadata, NodeType.PROJECT, idx);
+    const ui = readUIMetadata(cn.metadata, NodeType.PROJECT, idx, cn.node_name);
     return {
         id: uuidv4(),
         backendId: cn.id,
         category: 'web',
         type: NodeType.PROJECT,
         node_name: cn.node_name,
+        nodeNumber: ui.nodeNumber,
         data: cn.crew,
         position: ui.position,
         ports: null,
@@ -161,13 +173,14 @@ function buildCrewNode(cn: CrewNode, idx: number): ProjectNodeModel {
 }
 
 function buildPythonNode(pn: PythonNode, idx: number): PythonNodeModel {
-    const ui = readUIMetadata(pn.metadata, NodeType.PYTHON, idx);
+    const ui = readUIMetadata(pn.metadata, NodeType.PYTHON, idx, pn.node_name);
     return {
         id: uuidv4(),
         backendId: pn.id,
         category: 'web',
         type: NodeType.PYTHON,
         node_name: pn.node_name,
+        nodeNumber: ui.nodeNumber,
         data: {
             name: pn.node_name,
             libraries: pn.python_code.libraries,
@@ -187,13 +200,14 @@ function buildPythonNode(pn: PythonNode, idx: number): PythonNodeModel {
 }
 
 function buildCodeAgentNode(ca: GetCodeAgentNodeRequest, idx: number): CodeAgentNodeModel {
-    const ui = readUIMetadata(ca.metadata, NodeType.CODE_AGENT, idx);
+    const ui = readUIMetadata(ca.metadata, NodeType.CODE_AGENT, idx, ca.node_name);
     return {
         id: uuidv4(),
         backendId: ca.id,
         category: 'web',
         type: NodeType.CODE_AGENT,
         node_name: ca.node_name,
+        nodeNumber: ui.nodeNumber,
         data: {
             llm_config_id: ca.llm_config,
             agent_mode: ca.agent_mode ?? 'build',
@@ -222,7 +236,7 @@ function buildCodeAgentNode(ca: GetCodeAgentNodeRequest, idx: number): CodeAgent
 }
 
 function buildLLMNode(ln: GetLLMNodeRequest, idx: number): LLMNodeModel {
-    const ui = readUIMetadata(ln.metadata, NodeType.LLM, idx);
+    const ui = readUIMetadata(ln.metadata, NodeType.LLM, idx, ln.node_name);
     const configDetail = ln.llm_config_detail ?? {
         id: ln.llm_config,
         custom_name: ln.node_name,
@@ -246,6 +260,7 @@ function buildLLMNode(ln: GetLLMNodeRequest, idx: number): LLMNodeModel {
         category: 'web',
         type: NodeType.LLM,
         node_name: ln.node_name,
+        nodeNumber: ui.nodeNumber,
         data: configDetail,
         position: ui.position,
         ports: null,
@@ -259,13 +274,14 @@ function buildLLMNode(ln: GetLLMNodeRequest, idx: number): LLMNodeModel {
 }
 
 function buildFileExtractorNode(n: GetFileExtractorNodeRequest, idx: number): FileExtractorNodeModel {
-    const ui = readUIMetadata(n.metadata, NodeType.FILE_EXTRACTOR, idx);
+    const ui = readUIMetadata(n.metadata, NodeType.FILE_EXTRACTOR, idx, n.node_name);
     return {
         id: uuidv4(),
         backendId: n.id,
         category: 'web',
         type: NodeType.FILE_EXTRACTOR,
         node_name: n.node_name,
+        nodeNumber: ui.nodeNumber,
         data: undefined,
         position: ui.position,
         ports: null,
@@ -279,13 +295,14 @@ function buildFileExtractorNode(n: GetFileExtractorNodeRequest, idx: number): Fi
 }
 
 function buildAudioToTextNode(n: GetAudioToTextNodeRequest, idx: number): AudioToTextNodeModel {
-    const ui = readUIMetadata(n.metadata, NodeType.AUDIO_TO_TEXT, idx);
+    const ui = readUIMetadata(n.metadata, NodeType.AUDIO_TO_TEXT, idx, n.node_name);
     return {
         id: uuidv4(),
         backendId: n.id,
         category: 'web',
         type: NodeType.AUDIO_TO_TEXT,
         node_name: n.node_name,
+        nodeNumber: ui.nodeNumber,
         data: undefined,
         position: ui.position,
         ports: null,
@@ -299,7 +316,7 @@ function buildAudioToTextNode(n: GetAudioToTextNodeRequest, idx: number): AudioT
 }
 
 function buildSubGraphNode(sn: SubGraphNode, idx: number): SubGraphNodeModel {
-    const ui = readUIMetadata(sn.metadata, NodeType.SUBGRAPH, idx);
+    const ui = readUIMetadata(sn.metadata, NodeType.SUBGRAPH, idx, sn.node_name);
     const subgraphDetail = sn.subgraph_detail ?? {
         id: sn.subgraph,
         name: sn.node_name,
@@ -312,6 +329,7 @@ function buildSubGraphNode(sn: SubGraphNode, idx: number): SubGraphNodeModel {
         category: 'web',
         type: NodeType.SUBGRAPH,
         node_name: sn.node_name,
+        nodeNumber: ui.nodeNumber,
         data: subgraphDetail,
         position: ui.position,
         ports: null,
@@ -326,13 +344,14 @@ function buildSubGraphNode(sn: SubGraphNode, idx: number): SubGraphNodeModel {
 }
 
 function buildWebhookTriggerNode(wn: GetWebhookTriggerNodeRequest, idx: number): WebhookTriggerNodeModel {
-    const ui = readUIMetadata(wn.metadata, NodeType.WEBHOOK_TRIGGER, idx);
+    const ui = readUIMetadata(wn.metadata, NodeType.WEBHOOK_TRIGGER, idx, wn.node_name);
     return {
         id: uuidv4(),
         backendId: wn.id,
         category: 'web',
         type: NodeType.WEBHOOK_TRIGGER,
         node_name: wn.node_name,
+        nodeNumber: ui.nodeNumber,
         data: {
             webhook_trigger: wn.webhook_trigger,
             python_code: {
@@ -354,13 +373,14 @@ function buildWebhookTriggerNode(wn: GetWebhookTriggerNodeRequest, idx: number):
 }
 
 function buildTelegramTriggerNode(tn: GetTelegramTriggerNodeRequest, idx: number): TelegramTriggerNodeModel {
-    const ui = readUIMetadata(tn.metadata, NodeType.TELEGRAM_TRIGGER, idx);
+    const ui = readUIMetadata(tn.metadata, NodeType.TELEGRAM_TRIGGER, idx, tn.node_name);
     return {
         id: uuidv4(),
         backendId: tn.id,
         category: 'web',
         type: NodeType.TELEGRAM_TRIGGER,
         node_name: tn.node_name,
+        nodeNumber: ui.nodeNumber,
         data: {
             telegram_bot_api_key: tn.telegram_bot_api_key,
             webhook_trigger: tn.webhook_trigger,
@@ -385,6 +405,7 @@ function buildEndNode(en: EndNode, idx: number): EndNodeModel {
         category: 'web',
         type: NodeType.END,
         node_name: en.node_name ?? '__end_node__',
+        nodeNumber: ui.nodeNumber,
         data: { output_map: en.output_map ?? {} },
         position: ui.position,
         ports: null,
@@ -421,13 +442,14 @@ function buildGraphNote(nn: GraphNote, idx: number): GraphNoteModel {
 }
 
 function buildDecisionTableNode(dn: GetDecisionTableNodeRequest, idx: number): DecisionTableNodeModel {
-    const ui = readUIMetadata(dn.metadata, NodeType.TABLE, idx);
+    const ui = readUIMetadata(dn.metadata, NodeType.TABLE, idx, dn.node_name);
     return {
         id: uuidv4(),
         backendId: dn.id,
         category: 'web',
         type: NodeType.TABLE,
         node_name: dn.node_name,
+        nodeNumber: ui.nodeNumber,
         data: {
             name: dn.node_name,
             table: {
@@ -469,6 +491,7 @@ function buildConditionalEdgeNode(ce: ConditionalEdge, idx: number): EdgeNodeMod
         category: 'web',
         type: NodeType.EDGE,
         node_name: nodeName,
+        nodeNumber: ui.nodeNumber,
         data: {
             source: null,
             then: null,
