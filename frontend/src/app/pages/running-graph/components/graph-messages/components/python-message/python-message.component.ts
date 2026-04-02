@@ -1,20 +1,10 @@
-import { Component, Input, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Component, Input, OnInit } from '@angular/core';
 import { NgxJsonViewerModule } from 'ngx-json-viewer';
-import {
-    trigger,
-    state,
-    style,
-    animate,
-    transition,
-} from '@angular/animations';
-import {
-    GraphMessage,
-    MessageType,
-    PythonMessageData,
-} from '../../../../models/graph-session-message.model';
+
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { FormatExecutionDataPipe } from '../../../../../../shared/pipes/format-execution-data.pipe';
+import { GraphMessage, MessageType, PythonMessageData } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-python-message',
@@ -26,14 +16,7 @@ import { FormatExecutionDataPipe } from '../../../../../../shared/pipes/format-e
             <!-- Python Message Header with Toggle -->
             <div class="python-header" (click)="toggleMessage()">
                 <div class="play-arrow">
-                    <i
-                        class="ti"
-                        [ngClass]="
-                            isMessageExpanded
-                                ? 'ti-caret-down-filled'
-                                : 'ti-caret-right-filled'
-                        "
-                    ></i>
+                    <i class="ti" [ngClass]="isMessageExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"></i>
                 </div>
                 <div class="icon-container">
                     <i class="ti ti-brand-python"></i>
@@ -42,33 +25,18 @@ import { FormatExecutionDataPipe } from '../../../../../../shared/pipes/format-e
             </div>
 
             <!-- Collapsible Python Content -->
-            <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
-            >
+            <div class="collapsible-content" [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'">
                 <div class="python-content">
                     <!-- Code Section -->
                     <div class="code-container" *ngIf="hasCode()">
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('code')"
-                        >
+                        <div class="section-heading" (click)="toggleSection('code')">
                             <i
                                 class="ti"
-                                [ngClass]="
-                                    isCodeExpanded
-                                        ? 'ti-caret-down-filled'
-                                        : 'ti-caret-right-filled'
-                                "
+                                [ngClass]="isCodeExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
                             ></i>
                             Python Code
                         </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="
-                                isCodeExpanded ? 'expanded' : 'collapsed'
-                            "
-                        >
+                        <div class="collapsible-content" [@expandCollapse]="isCodeExpanded ? 'expanded' : 'collapsed'">
                             <div class="code-wrapper">
                                 <div class="result-content">
                                     <pre>{{ getCode() }}</pre>
@@ -79,39 +47,22 @@ import { FormatExecutionDataPipe } from '../../../../../../shared/pipes/format-e
 
                     <!-- Input Section -->
                     <div class="input-container" *ngIf="hasInput()">
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('input')"
-                        >
+                        <div class="section-heading" (click)="toggleSection('input')">
                             <i
                                 class="ti"
-                                [ngClass]="
-                                    isInputExpanded
-                                        ? 'ti-caret-down-filled'
-                                        : 'ti-caret-right-filled'
-                                "
+                                [ngClass]="isInputExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
                             ></i>
                             Input
                         </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="
-                                isInputExpanded ? 'expanded' : 'collapsed'
-                            "
-                        >
+                        <div class="collapsible-content" [@expandCollapse]="isInputExpanded ? 'expanded' : 'collapsed'">
                             <div class="input-wrapper">
                                 <div class="result-content">
                                     <ngx-json-viewer
-                                        *ngIf="
-                                            getParsedInput() &&
-                                            isValidJson(getInput())
-                                        "
+                                        *ngIf="getParsedInput() && isValidJson(getInput())"
                                         [json]="getParsedInput()"
                                         [expanded]="false"
                                     ></ngx-json-viewer>
-                                    <pre *ngIf="!isValidJson(getInput())">{{
-                                        getInput()
-                                    }}</pre>
+                                    <pre *ngIf="!isValidJson(getInput())">{{ getInput() }}</pre>
                                 </div>
                             </div>
                         </div>
@@ -119,46 +70,32 @@ import { FormatExecutionDataPipe } from '../../../../../../shared/pipes/format-e
 
                     <!-- Output Section -->
                     <div class="output-container" *ngIf="hasOutput()">
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('output')"
-                        >
+                        <div class="section-heading" (click)="toggleSection('output')">
                             <i
                                 class="ti"
-                                [ngClass]="
-                                    isOutputExpanded
-                                        ? 'ti-caret-down-filled'
-                                        : 'ti-caret-right-filled'
-                                "
+                                [ngClass]="isOutputExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
                             ></i>
                             Output
                         </div>
                         <div
                             class="collapsible-content"
-                            [@expandCollapse]="
-                                isOutputExpanded ? 'expanded' : 'collapsed'
-                            "
+                            [@expandCollapse]="isOutputExpanded ? 'expanded' : 'collapsed'"
                         >
                             <div class="output-wrapper">
                                 <div
                                     class="result-content"
                                     [ngClass]="{
-                                        collapsed:
-                                            isCollapsed && shouldShowToggle(),
+                                        collapsed: isCollapsed && shouldShowToggle(),
                                     }"
                                 >
                                     <pre>{{ getOutput() }}</pre>
                                 </div>
                                 <button
-                                    *ngIf="
-                                        shouldShowToggle() && isOutputExpanded
-                                    "
+                                    *ngIf="shouldShowToggle() && isOutputExpanded"
                                     class="toggle-button"
                                     (click)="toggleCollapse()"
                                 >
-                                    {{
-                                        isCollapsed ? 'Show more' : 'Show less'
-                                    }}
+                                    {{ isCollapsed ? 'Show more' : 'Show less' }}
                                 </button>
                             </div>
                         </div>
@@ -166,26 +103,14 @@ import { FormatExecutionDataPipe } from '../../../../../../shared/pipes/format-e
 
                     <!-- Error Section -->
                     <div class="error-container" *ngIf="hasError()">
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('error')"
-                        >
+                        <div class="section-heading" (click)="toggleSection('error')">
                             <i
                                 class="ti"
-                                [ngClass]="
-                                    isErrorExpanded
-                                        ? 'ti-caret-down-filled'
-                                        : 'ti-caret-right-filled'
-                                "
+                                [ngClass]="isErrorExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
                             ></i>
                             Error
                         </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="
-                                isErrorExpanded ? 'expanded' : 'collapsed'
-                            "
-                        >
+                        <div class="collapsible-content" [@expandCollapse]="isErrorExpanded ? 'expanded' : 'collapsed'">
                             <div class="error-wrapper">
                                 <div class="result-content error-content">
                                     <pre>{{ getError() }}</pre>
@@ -196,33 +121,21 @@ import { FormatExecutionDataPipe } from '../../../../../../shared/pipes/format-e
 
                     <!-- Raw Data Section -->
                     <div class="raw-data-container">
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('rawData')"
-                        >
+                        <div class="section-heading" (click)="toggleSection('rawData')">
                             <i
                                 class="ti"
-                                [ngClass]="
-                                    isRawDataExpanded
-                                        ? 'ti-caret-down-filled'
-                                        : 'ti-caret-right-filled'
-                                "
+                                [ngClass]="isRawDataExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"
                             ></i>
                             Raw Execution Data
                         </div>
                         <div
                             class="collapsible-content"
-                            [@expandCollapse]="
-                                isRawDataExpanded ? 'expanded' : 'collapsed'
-                            "
+                            [@expandCollapse]="isRawDataExpanded ? 'expanded' : 'collapsed'"
                         >
                             <div class="raw-data-wrapper">
                                 <div class="raw-data-content">
                                     <ngx-json-viewer
-                                        [json]="
-                                            getExecutionData()
-                                                | formatExecutionData
-                                        "
+                                        [json]="getExecutionData() | formatExecutionData"
                                         [expanded]="false"
                                     ></ngx-json-viewer>
                                 </div>
@@ -401,7 +314,7 @@ export class PythonMessageComponent implements OnInit {
     isErrorExpanded = true;
     isRawDataExpanded = false; // Collapsed by default since it's less important
     isCollapsed = true;
-    parsedInput: any = null;
+    parsedInput: unknown = null;
 
     ngOnInit() {
         if (this.hasInput()) {
@@ -416,9 +329,7 @@ export class PythonMessageComponent implements OnInit {
         }
     }
 
-    toggleSection(
-        section: 'code' | 'input' | 'output' | 'error' | 'rawData',
-    ): void {
+    toggleSection(section: 'code' | 'input' | 'output' | 'error' | 'rawData'): void {
         if (section === 'code') {
             this.isCodeExpanded = !this.isCodeExpanded;
         } else if (section === 'input') {
@@ -432,15 +343,12 @@ export class PythonMessageComponent implements OnInit {
         }
     }
 
-    getExecutionData(): Record<string, any> {
+    getExecutionData(): Record<string, unknown> {
         if (!this.message.message_data) return {};
 
         // Type guard to check if message_data is PythonMessageData
         if (this.message.message_data.message_type === MessageType.PYTHON) {
-            return (
-                (this.message.message_data as PythonMessageData)
-                    .python_code_execution_data || {}
-            );
+            return (this.message.message_data as PythonMessageData).python_code_execution_data || {};
         }
 
         return {};
@@ -453,7 +361,7 @@ export class PythonMessageComponent implements OnInit {
 
     getCode(): string {
         const data = this.getExecutionData();
-        return data['code'] || '';
+        return typeof data['code'] === 'string' ? data['code'] : '';
     }
 
     hasInput(): boolean {
@@ -463,20 +371,15 @@ export class PythonMessageComponent implements OnInit {
 
     getInput(): string {
         const data = this.getExecutionData();
-        return typeof data['input'] === 'string'
-            ? data['input']
-            : JSON.stringify(data['input'], null, 2);
+        return typeof data['input'] === 'string' ? data['input'] : JSON.stringify(data['input'], null, 2);
     }
 
     tryParseJson(): void {
         if (this.hasInput()) {
             try {
                 const data = this.getExecutionData();
-                this.parsedInput =
-                    typeof data['input'] === 'string'
-                        ? JSON.parse(data['input'])
-                        : data['input'];
-            } catch (e) {
+                this.parsedInput = typeof data['input'] === 'string' ? JSON.parse(data['input']) : data['input'];
+            } catch {
                 this.parsedInput = null;
             }
         }
@@ -486,7 +389,7 @@ export class PythonMessageComponent implements OnInit {
         try {
             JSON.parse(str);
             return true;
-        } catch (e) {
+        } catch {
             return false;
         }
     }
@@ -502,7 +405,7 @@ export class PythonMessageComponent implements OnInit {
         try {
             const parsed = JSON.parse(jsonString);
             return JSON.stringify(parsed, null, 2);
-        } catch (e) {
+        } catch {
             return jsonString;
         }
     }
@@ -514,7 +417,7 @@ export class PythonMessageComponent implements OnInit {
 
     getOutput(): string {
         const data = this.getExecutionData();
-        return data['output'] || '';
+        return typeof data['output'] === 'string' ? data['output'] : '';
     }
 
     hasError(): boolean {
@@ -524,7 +427,7 @@ export class PythonMessageComponent implements OnInit {
 
     getError(): string {
         const data = this.getExecutionData();
-        return data['error'] || '';
+        return typeof data['error'] === 'string' ? data['error'] : '';
     }
 
     toggleCollapse(): void {

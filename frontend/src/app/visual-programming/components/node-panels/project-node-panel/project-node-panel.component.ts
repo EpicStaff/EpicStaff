@@ -1,22 +1,11 @@
-import {
-    ChangeDetectionStrategy,
-    Component,
-    effect,
-    signal,
-} from '@angular/core';
-import {
-    ReactiveFormsModule,
-    FormGroup,
-    Validators,
-    FormArray,
-    FormBuilder,
-} from '@angular/forms';
+import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+
+import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { ProjectNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
-import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
-import { CommonModule } from '@angular/common';
-import { output } from '@angular/core';
 
 interface InputMapPair {
     key: string;
@@ -26,12 +15,7 @@ interface InputMapPair {
 @Component({
     standalone: true,
     selector: 'app-project-node-panel',
-    imports: [
-        ReactiveFormsModule,
-        CustomInputComponent,
-        InputMapComponent,
-        CommonModule,
-    ],
+    imports: [ReactiveFormsModule, CustomInputComponent, InputMapComponent, CommonModule],
     template: `
         <div class="panel-container">
             <div class="panel-content">
@@ -46,9 +30,7 @@ interface InputMapPair {
                     ></app-custom-input>
 
                     <div class="input-map">
-                        <app-input-map
-                            [activeColor]="activeColor"
-                        ></app-input-map>
+                        <app-input-map [activeColor]="activeColor"></app-input-map>
                     </div>
 
                     <app-custom-input
@@ -63,23 +45,43 @@ interface InputMapPair {
                         <span class="section-label">Streaming to EpicChat</span>
                         <div class="checkbox-list">
                             <label class="checkbox-item">
-                                <input type="checkbox" formControlName="agent_activity" [style.accent-color]="activeColor" />
+                                <input
+                                    type="checkbox"
+                                    formControlName="agent_activity"
+                                    [style.accent-color]="activeColor"
+                                />
                                 <span>Agent activity</span>
                             </label>
                             <label class="checkbox-item">
-                                <input type="checkbox" formControlName="task_progress" [style.accent-color]="activeColor" />
+                                <input
+                                    type="checkbox"
+                                    formControlName="task_progress"
+                                    [style.accent-color]="activeColor"
+                                />
                                 <span>Task progress</span>
                             </label>
                             <label class="checkbox-item">
-                                <input type="checkbox" formControlName="agent_reasoning" [style.accent-color]="activeColor" />
+                                <input
+                                    type="checkbox"
+                                    formControlName="agent_reasoning"
+                                    [style.accent-color]="activeColor"
+                                />
                                 <span>Agent reasoning</span>
                             </label>
                             <label class="checkbox-item">
-                                <input type="checkbox" formControlName="tool_calls" [style.accent-color]="activeColor" />
+                                <input
+                                    type="checkbox"
+                                    formControlName="tool_calls"
+                                    [style.accent-color]="activeColor"
+                                />
                                 <span>Tool calls</span>
                             </label>
                             <label class="checkbox-item">
-                                <input type="checkbox" formControlName="final_reply" [style.accent-color]="activeColor" />
+                                <input
+                                    type="checkbox"
+                                    formControlName="final_reply"
+                                    [style.accent-color]="activeColor"
+                                />
                                 <span>Final reply</span>
                             </label>
                         </div>
@@ -206,10 +208,7 @@ export class ProjectNodePanelComponent extends BaseSidePanel<ProjectNodeModel> {
     private initializeInputMap(form: FormGroup): void {
         const inputMapArray = form.get('input_map') as FormArray;
 
-        if (
-            this.node().input_map &&
-            Object.keys(this.node().input_map).length > 0
-        ) {
+        if (this.node().input_map && Object.keys(this.node().input_map).length > 0) {
             Object.entries(this.node().input_map).forEach(([key, value]) => {
                 inputMapArray.push(
                     this.fb.group({
@@ -228,15 +227,15 @@ export class ProjectNodePanelComponent extends BaseSidePanel<ProjectNodeModel> {
         }
     }
 
-    private getValidInputPairs(): any[] {
+    private getValidInputPairs(): AbstractControl[] {
         return this.inputMapPairs.controls.filter((control) => {
-            const value = control.value;
+            const value = control.value as InputMapPair;
             return value.key?.trim() !== '' || value.value?.trim() !== '';
         });
     }
 
-    private createInputMapFromPairs(pairs: any[]): Record<string, string> {
-        return pairs.reduce((acc: Record<string, string>, curr: any) => {
+    private createInputMapFromPairs(pairs: AbstractControl[]): Record<string, string> {
+        return pairs.reduce((acc: Record<string, string>, curr: AbstractControl) => {
             const pair = curr.value as InputMapPair;
             if (pair.key?.trim()) {
                 acc[pair.key.trim()] = pair.value;

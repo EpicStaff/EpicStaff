@@ -1,36 +1,36 @@
 .built-in-tools {
-  display: flex;
-  flex-direction: column;
+    display: flex;
+    flex-direction: column;
 }
 
 .category-filters {
-  display: flex;
-  gap: 1.5rem;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-  row-gap: 0.5rem;
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
 }
 
 .tools-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(335px, 1fr));
-  gap: 1.5rem;
-  width: 100%;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(clamp(10vw, 100%, 335px), 1fr));
+    gap: 1.5rem;
+    width: 100%;
 }
 
 .empty-message {
-  grid-column: 1 / -1;
-  text-align: center;
-  padding: 2rem;
-  color: var(--color-text-secondary);
-  font-size: 1.1rem;
-  background: var(--color-sidenav-background);
-  border-radius: 8px;
-  margin-top: 1rem;
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 2rem;
+    color: var(--color-text-secondary);
+    font-size: 1.1rem;
+    background: var(--color-sidenav-background);
+    border-radius: 8px;
+    margin-top: 1rem;
 }
 
 .error {
-  color: #d32f2f;
-  font-size: 1.1rem;
-  margin-top: 2rem;
+    color: #d32f2f;
+    font-size: 1.1rem;
+    margin-top: 2rem;
 }

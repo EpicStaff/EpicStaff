@@ -135,7 +135,7 @@
 
                 // Vertical connector line (tree branch)
                 &::before {
-                    content: "";
+                    content: '';
                     position: absolute;
                     left: 0.75rem;
                     top: -0.5rem;
@@ -196,7 +196,7 @@
                     background-color: rgba(0, 191, 165, 0.015);
 
                     &::before {
-                        content: "";
+                        content: '';
                         position: absolute;
                         left: 0.75rem;
                         top: 50%;
@@ -215,7 +215,7 @@
                     background-color: rgba(0, 191, 165, 0.03);
 
                     &::before {
-                        content: "";
+                        content: '';
                         position: absolute;
                         left: 1.25rem;
                         top: 50%;
@@ -234,7 +234,7 @@
                     background-color: rgba(0, 191, 165, 0.045);
 
                     &::before {
-                        content: "";
+                        content: '';
                         position: absolute;
                         left: 1.75rem;
                         top: 50%;
@@ -253,7 +253,7 @@
                     background-color: rgba(0, 191, 165, 0.06);
 
                     &::before {
-                        content: "";
+                        content: '';
                         position: absolute;
                         left: 2.25rem;
                         top: 50%;
@@ -312,7 +312,9 @@
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: background-color 0.2s ease, color 0.2s ease;
+            transition:
+                background-color 0.2s ease,
+                color 0.2s ease;
         }
 
         .breadcrumbs-arrow:hover {
@@ -327,17 +329,17 @@
             height: 40px;
             width: 40px;
             border-radius: 8px;
-            border: 1px solid #00AC98;
+            border: 1px solid #00ac98;
             background-color: rgba(255, 255, 255, 0.04);
             color: var(--gray-300);
             overflow: hidden;
             transition: width 0.25s ease;
-        font-weight: 400;
-font-style: normal;
-font-size: 12px;
-line-height: 1;
-letter-spacing: 0;
-          }
+            font-weight: 400;
+            font-style: normal;
+            font-size: 12px;
+            line-height: 1;
+            letter-spacing: 0;
+        }
 
         .breadcrumbs-search.is-expanded {
             width: 190px;
@@ -348,7 +350,7 @@ letter-spacing: 0;
             height: 40px;
             border: none;
             background: transparent;
-            color: #00AC98;
+            color: #00ac98;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -360,8 +362,8 @@ letter-spacing: 0;
             color: var(--gray-100);
         }
 
-        .search-icon{
-          font-size: 19px;
+        .search-icon {
+            font-size: 19px;
         }
 
         .breadcrumbs-search-input {
@@ -373,7 +375,9 @@ letter-spacing: 0;
             min-width: 140px;
             opacity: 0;
             transform: translateX(-4px);
-            transition: opacity 0.2s ease, transform 0.2s ease;
+            transition:
+                opacity 0.2s ease,
+                transform 0.2s ease;
         }
 
         .breadcrumbs-search.is-expanded .breadcrumbs-search-input {
@@ -478,7 +482,7 @@ letter-spacing: 0;
         border-radius: 6px;
         border: 1px solid rgba(255, 255, 255, 0.1);
         background-color: #2c2c2e;
-        color: var(--color-ks-transparent-text-60);;
+        color: var(--color-ks-transparent-text-60);
         font-size: 16px;
         cursor: pointer;
         display: flex;
@@ -486,7 +490,9 @@ letter-spacing: 0;
         justify-content: center;
         z-index: 10;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-        transition: background-color 0.2s, transform 0.2s;
+        transition:
+            background-color 0.2s,
+            transform 0.2s;
 
         &:hover {
             color: var(--color-text-primary);

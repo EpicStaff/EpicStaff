@@ -1,20 +1,17 @@
-import { ChangeDetectionStrategy, Component } from "@angular/core";
-import { StrategyForm } from "../strategy-config-form.abstract";
-import { FormGroup, ReactiveFormsModule, Validators } from "@angular/forms";
-import { InputNumberComponent } from "@shared/components";
-import { MATERIAL_FORMS } from "@shared/material-forms";
-import { CsvStrategyModel } from "../../../../../models/strategy.model";
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { InputNumberComponent } from '@shared/components';
+import { MATERIAL_FORMS } from '@shared/material-forms';
+
+import { CsvStrategyModel } from '../../../../../models/strategy.model';
+import { StrategyForm } from '../strategy-config-form.abstract';
 
 @Component({
     selector: 'app-csv-form',
     templateUrl: './csv-form.component.html',
     styleUrls: ['../../document-config.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [
-        InputNumberComponent,
-        MATERIAL_FORMS,
-        ReactiveFormsModule
-    ]
+    imports: [InputNumberComponent, MATERIAL_FORMS, ReactiveFormsModule],
 })
 export class CsvFormComponent extends StrategyForm<CsvStrategyModel> {
     initializeForm(config: CsvStrategyModel): FormGroup {
@@ -23,7 +20,7 @@ export class CsvFormComponent extends StrategyForm<CsvStrategyModel> {
             additionalParams: this.fb.group({
                 rows_in_chunk: [config.rows_in_chunk || 0],
                 headers_level: [config.headers_level || 0],
-            })
+            }),
         });
     }
 }

@@ -254,7 +254,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 const expectedPortCount = 1 + validGroups.length + 2;
 
                 if (node.ports.length !== expectedPortCount) {
-                    node.ports = generatePortsForDecisionTableNode(node.id, conditionGroups, true, true);
+                    node.ports = generatePortsForDecisionTableNode(node.id, conditionGroups);
                 }
             }
             return node;
@@ -266,14 +266,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public onInitialized(): void {
         // this.fCanvasComponent.fitToScreen(new Point(140, 140), false);
         this.isLoaded.set(true);
-        console.log('Flow graph initialized.', this.isLoaded());
     }
     public updateMouseTrackerPosition(event: { x: number; y: number }) {
         this.mouseCursorPosition = event;
     }
     public onReassignConnection(event: FReassignConnectionEvent): void {
-        console.log('Reassigning connection:', event);
-
         // Validate that we have the necessary information
         if (!event.newTargetId && !event.newSourceId) {
             console.warn('No new target or source provided for reassignment');
@@ -320,15 +317,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         // Remove the old connection and add the new one
         this.flowService.removeConnection(event.connectionId);
         this.flowService.addConnection(updatedConnection);
-
-        console.log('Connection reassigned successfully:', {
-            oldConnectionId: event.connectionId,
-            newConnectionId: updatedConnection.id,
-            oldSource: existingConnection.sourcePortId,
-            newSource: newSourcePortId,
-            oldTarget: existingConnection.targetPortId,
-            newTarget: newTargetPortId,
-        });
 
         this.toastService.success('Connection reassigned successfully', 3000, 'bottom-right');
     }
@@ -395,7 +383,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         // Assume fFlowComponent.getSelection() returns a FSelectionChangeEvent
 
         const selections: FSelectionChangeEvent = this.fFlowComponent.getSelection();
-        console.log('copying', selections);
         this.clipboardService.copy(selections);
     }
     // Triggered on paste
@@ -457,7 +444,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             return;
         }
 
-        console.log('component triggered undo');
         this.undoRedoService.onUndo();
     }
 
@@ -480,8 +466,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             console.warn('No items selected to delete.');
             return;
         }
-
-        console.log('Deleting selected items:', selections);
 
         // Save state for undo
         this.undoRedoService.stateChanged();
@@ -524,15 +508,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public onContextMenu(event: MouseEvent): void {
         event.preventDefault();
 
-        console.log(this.mouseCursorPosition);
-
         this.contextMenuPostion = event;
 
         this.showContextMenu.set(true);
     }
     public onCloseContextMenu(): void {
-        console.log('closing');
-
         this.showContextMenu.set(false);
     }
     public onAddNodeFromContextMenu(event: { type: NodeType; data?: unknown }): void {
@@ -559,12 +539,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 height: 150,
             };
         } else if (event.type === NodeType.TABLE) {
-            const tableData = (
-                event.data as {
-                    table?: { condition_groups?: unknown[] };
-                }
-            )?.table;
-            const conditionGroups = tableData?.condition_groups ?? [];
             nodeSize = {
                 width: 330,
                 height: this.getDecisionTableVisualHeight({
@@ -761,7 +735,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public onNodeSizeChanged(event: { width: number; height: number }, node: NodeModel): void {
         this.undoRedoService.stateChanged();
-        console.log('Node size changed:', event, node);
 
         const updatedNode = {
             ...node,
@@ -779,8 +752,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private isDragging = false;
 
     public onDragStarted(event: FDragStartedEvent): void {
-        console.log('Drag started:', event);
-
         // Set the drag flag
         this.isDragging = true;
 
@@ -794,8 +765,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             });
         }
 
-        console.log('Dragging elements:', Array.from(this.draggingElements));
-
         // Save state for undo
         this.undoRedoService.stateChanged();
     }
@@ -804,8 +773,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
      * Handles the end of a drag operation
      */
     public onDragEnded(): void {
-        console.log('Drag ended');
-
         for (const id of this.draggedNodeIds) {
             const currentNodes = this.flowService.nodes();
             const current = currentNodes.find((n) => n.id === id);
@@ -830,9 +797,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onNodePositionChanged(newPos: IPoint, node: NodeModel): void {
-        console.log('Node position changed for node:', node.id);
-        console.log(this.fFlowComponent.getNodesBoundingBox());
-
         this.draggedNodeIds.add(node.id);
 
         // If we're not in a tracked drag operation, save state
@@ -873,7 +837,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public toggleShowVariables(): void {
         this.showVariables.set(!this.showVariables());
-        console.log('Show Variables:', this.showVariables());
     }
 
     public onDomainClick(): void {
@@ -899,8 +862,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onProjectExpandToggled(project: ProjectNodeModel): void {
-        console.log('Project expanded:', project.data.id);
-
         const dialogRef = this.dialog.open(ProjectDialogComponent, {
             width: '90vw',
             height: '90vh',

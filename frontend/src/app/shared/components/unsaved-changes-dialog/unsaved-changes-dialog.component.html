@@ -18,14 +18,10 @@
 
     <div class="dialog-actions">
         <button type="button" class="button cancel-button" (click)="onCancel()">
-            {{ data.cancelText || "Cancel" }}
+            {{ data.cancelText || 'Cancel' }}
         </button>
         <div class="right-buttons">
-            <button
-                type="button"
-                class="button dont-save-button"
-                (click)="onDontSave()"
-            >
+            <button type="button" class="button dont-save-button" (click)="onDontSave()">
                 {{ data.dontSaveText || "Don't Save" }}
             </button>
             <button
@@ -35,7 +31,7 @@
                 (click)="onSave()"
                 [disabled]="isSaving"
             >
-                <span *ngIf="!isSaving">{{ data.saveText || "Save" }}</span>
+                <span *ngIf="!isSaving">{{ data.saveText || 'Save' }}</span>
                 <span *ngIf="isSaving" class="loading-content">
                     <i class="ti ti-loader-2 ti-spin"></i>
                 </span>

@@ -1,14 +1,5 @@
-import {
-  Directive,
-  EventEmitter,
-  Inject,
-  NgZone,
-  OnDestroy,
-  OnInit,
-  Output,
-} from '@angular/core';
 import { DOCUMENT } from '@angular/common';
-
+import { Directive, EventEmitter, Inject, NgZone, OnDestroy, OnInit, Output } from '@angular/core';
 
 @Directive({
     selector: '[appMouseTracker]',

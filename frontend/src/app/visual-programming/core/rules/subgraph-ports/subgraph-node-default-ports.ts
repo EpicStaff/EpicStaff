@@ -46,4 +46,3 @@ export const DEFAULT_SUBGRAPH_NODE_PORTS: BasePort[] = [
         color: '#00bfa5',
     },
 ];
-

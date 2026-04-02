@@ -1,208 +1,230 @@
 .chat-controls {
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  flex-shrink: 0;
-  padding: 0rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  width: auto;
-  padding: 0.5rem;
-  background-color: var(--gray-900);
-  border-radius: 12px;
-  margin-bottom: 1.5rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-  border: 1px solid var(--gray-800);
-  transition: all 0.3s ease;
-
-  .text-input-container {
-    width: 100%;
-    position: relative;
-    margin-bottom: 0.5rem;
-    background-color: var(--gray-800);
-    border-radius: 8px;
-    padding: 0.5rem;
-    margin-inline: 0.5rem;
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    flex-shrink: 0;
+    padding: 0rem;
     display: flex;
-    align-items: center;
-    border: 1px solid var(--gray-750);
-
-    .message-input {
-      flex: 1;
-      background-color: transparent;
-      border: none;
-      color: var(--white);
-      resize: none;
-      padding: 0.5rem;
-      max-height: 120px;
-      min-height: 40px;
-      overflow-y: auto;
-      font-size: 14px;
-      line-height: 1.5;
-
-      &:focus {
-        outline: none;
-      }
-
-      &::placeholder {
-        color: var(--gray-400);
-      }
-    }
-
-    .send-btn {
-      background-color: transparent;
-      border: none;
-      color: var(--accent-color, #685fff);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      padding: 0.5rem;
-      margin-right: 0.25rem;
-      height: 40px;
-      width: 40px;
-      border-radius: 50%;
-      transition: all 0.2s ease;
-
-      &:hover {
-        background-color: rgba(104, 95, 255, 0.1);
-      }
-
-      i {
-        font-size: 18px;
-      }
-    }
-  }
-
-  .controls-container {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    flex-direction: column;
     justify-content: center;
-    width: 100%;
-
-    &.active-recording {
-      justify-content: space-between;
-    }
-  }
-
-  .start-speaking-btn {
-    display: flex;
     align-items: center;
-    gap: 0.5rem;
-    background-color: var(--accent-color, #685fff);
-    color: var(--white);
-    border: none;
-    border-radius: 8px;
-    padding: 0.6rem 1.2rem;
-    font-weight: 500;
-    font-size: 14px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    height: 40px;
     width: auto;
-
-    &:hover:not(:disabled) {
-      background-color: rgba(104, 95, 255, 0.8);
-    }
-
-    &:disabled {
-      opacity: 0.7;
-    }
-
-    i {
-      font-size: 18px;
-    }
-  }
-
-  .recording-controls {
-    display: flex;
-    align-items: center;
-    background-color: var(--gray-800);
-    border-radius: 8px;
-    padding: 4px;
-    gap: 4px;
-    height: 41px;
-    border: 1px solid var(--gray-750);
-
-    .control-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background-color: transparent;
-      color: var(--gray-300);
-      border: none;
-      border-radius: 6px;
-      width: 32px;
-      height: 32px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-
-      i {
-        font-size: 18px;
-        width: 18px;
-        height: 18px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      &:hover {
-        background-color: var(--gray-700);
-        color: var(--white);
-      }
-
-      &.active {
-        background-color: rgba(104, 95, 255, 0.2);
-        color: var(--accent-color, #685fff);
-      }
-
-      &.end-btn {
-        &:hover {
-          background-color: rgba(220, 53, 69, 0.2);
-          color: #dc3545;
-        }
-      }
-
-      &.generate-btn {
-        width: auto;
-        border-radius: 6px;
-        padding: 0 12px 0 10px;
-        display: flex;
-        align-items: center;
-
-        i {
-          margin-right: 6px;
-        }
-      }
-    }
-
-    .control-divider {
-      width: 1px;
-      height: 24px;
-      background-color: var(--gray-700);
-      margin: 0 2px;
-    }
-  }
-}
-
-@media (max-width: 576px) {
-  .chat-controls {
-    min-width: 320px;
     padding: 0.5rem;
+    background-color: var(--gray-900);
+    border-radius: 12px;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--gray-800);
+    max-width: calc(100% - 1rem);
+    transition: all 0.3s ease;
 
-    .start-speaking-btn {
-      font-size: 13px;
-      padding: 0.5rem 1rem;
+    .text-input-container {
+        width: 100%;
+        position: relative;
+        margin-bottom: 0.5rem;
+        background-color: var(--gray-800);
+        border-radius: 8px;
+        padding: 0.5rem;
+        margin-inline: 0.5rem;
+        display: flex;
+        align-items: center;
+        border: 1px solid var(--gray-750);
+
+        .message-input {
+            flex: 1;
+            background-color: transparent;
+            border: none;
+            color: var(--white);
+            resize: none;
+            padding: 0.5rem;
+            max-height: 120px;
+            min-height: 40px;
+            overflow-y: auto;
+            font-size: 14px;
+            line-height: 1.5;
+
+            &:focus {
+                outline: none;
+            }
+
+            &::placeholder {
+                color: var(--gray-400);
+            }
+        }
+
+        .send-btn {
+            background-color: transparent;
+            border: none;
+            color: var(--accent-color, #685fff);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            padding: 0.5rem;
+            margin-right: 0.25rem;
+            height: 40px;
+            width: 40px;
+            border-radius: 50%;
+            transition: all 0.2s ease;
+
+            &:hover {
+                background-color: rgba(104, 95, 255, 0.1);
+            }
+
+            i {
+                font-size: 18px;
+            }
+        }
     }
 
     .controls-container {
-      &.active-recording {
+        display: flex;
+        align-items: center;
         gap: 0.5rem;
-      }
+        justify-content: center;
+        width: 100%;
+
+        &.active-recording {
+            justify-content: space-between;
+        }
     }
-  }
+
+    .start-speaking-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        background-color: var(--accent-color, #685fff);
+        color: var(--white);
+        border: none;
+        border-radius: 8px;
+        padding: 0.6rem 1.2rem;
+        font-weight: 500;
+        font-size: 14px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        height: 40px;
+        width: auto;
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+
+        &:hover:not(:disabled) {
+            background-color: rgba(104, 95, 255, 0.8);
+        }
+
+        &:disabled {
+            opacity: 0.7;
+        }
+
+        i {
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .start-speaking-btn__label {
+            min-width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        &.start-speaking-btn--only-icon {
+            padding-left: 0.6rem;
+            padding-right: 0.6rem;
+
+            .start-speaking-btn__label {
+                display: none;
+            }
+        }
+    }
+
+    .recording-controls {
+        display: flex;
+        align-items: center;
+        background-color: var(--gray-800);
+        border-radius: 8px;
+        padding: 4px;
+        gap: 4px;
+        height: 41px;
+        border: 1px solid var(--gray-750);
+
+        .control-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: transparent;
+            color: var(--gray-300);
+            border: none;
+            border-radius: 6px;
+            width: 32px;
+            height: 32px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+
+            i {
+                font-size: 18px;
+                width: 18px;
+                height: 18px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            &:hover {
+                background-color: var(--gray-700);
+                color: var(--white);
+            }
+
+            &.active {
+                background-color: rgba(104, 95, 255, 0.2);
+                color: var(--accent-color, #685fff);
+            }
+
+            &.end-btn {
+                &:hover {
+                    background-color: rgba(220, 53, 69, 0.2);
+                    color: #dc3545;
+                }
+            }
+
+            &.generate-btn {
+                width: auto;
+                border-radius: 6px;
+                padding: 0 12px 0 10px;
+                display: flex;
+                align-items: center;
+
+                i {
+                    margin-right: 6px;
+                }
+            }
+        }
+
+        .control-divider {
+            width: 1px;
+            height: 24px;
+            background-color: var(--gray-700);
+            margin: 0 2px;
+        }
+    }
+}
+
+@media (max-width: 576px) {
+    .chat-controls {
+        min-width: 320px;
+        padding: 0.5rem;
+
+        .start-speaking-btn {
+            font-size: 13px;
+            padding: 0.5rem 1rem;
+        }
+
+        .controls-container {
+            &.active-recording {
+                gap: 0.5rem;
+            }
+        }
+    }
 }

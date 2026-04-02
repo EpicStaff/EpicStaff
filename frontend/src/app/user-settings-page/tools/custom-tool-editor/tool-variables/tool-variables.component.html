@@ -1,64 +1,57 @@
 <div class="tool-variables">
-  <div class="header">
-    <h3>Inputs Description</h3>
-    <app-help-tooltip
-      text="Define the input parameters for your custom tool. Each parameter needs a name and description. Required parameters must be provided when the tool is used."
-    ></app-help-tooltip>
-    <!-- Plus icon to add a new variable -->
-    <app-icon
-      icon="ui/plus"
-      size="1rem"
-      class="add-icon"
-      (click)="onAddVariable(); $event.preventDefault()"
-    ></app-icon>
-  </div>
-
-  <!-- Display the variables as a list of editable rows -->
-  <div class="variables-list">
-    <div
-      *ngFor="let variable of variables; let i = index"
-      class="variable-item"
-    >
-      <div class="variable-inputs">
-        <div class="input-row">
-          <input
-            #nameInput
-            type="text"
-            placeholder="Input name"
-            [(ngModel)]="variable.name"
-            class="variable-input name-input"
-            (keydown.enter)="onKeyUpEnter(i); $event.preventDefault()"
-          />
-
-          <label class="required-checkbox">
-            <input
-              type="checkbox"
-              [checked]="variable.required"
-              (change)="toggleRequired(i)"
-            />
-            <span class="checkbox-label">Required</span>
-          </label>
-        </div>
-
-        <div class="input-row">
-          <input
-            type="text"
-            placeholder="Input Description"
-            [(ngModel)]="variable.description"
-            class="variable-input desc-input"
-            (keydown.enter)="onKeyUpEnter(i); $event.preventDefault()"
-          />
-
-          <!-- Allow deletion if there's more than one row -->
-          <button
-            class="delete-variable-btn"
-            (click)="removeVariable(i); $event.preventDefault()"
-            *ngIf="variables.length > 1"
-          >
-            <app-icon icon="ui/x" size="1rem"></app-icon>
-          </button>
-        </div>
-      </div>
+    <div class="header">
+        <h3>Inputs Description</h3>
+        <app-help-tooltip
+            text="Define the input parameters for your custom tool. Each parameter needs a name and description. Required parameters must be provided when the tool is used."
+        ></app-help-tooltip>
+        <!-- Plus icon to add a new variable -->
+        <app-icon
+            icon="ui/plus"
+            size="1rem"
+            class="add-icon"
+            (click)="onAddVariable(); $event.preventDefault()"
+        ></app-icon>
     </div>
-  </div>
+
+    <!-- Display the variables as a list of editable rows -->
+    <div class="variables-list">
+        @for (variable of variables; track variable; let i = $index) {
+            <div class="variable-item">
+                <div class="variable-inputs">
+                    <div class="input-row">
+                        <input
+                            #nameInput
+                            type="text"
+                            placeholder="Input name"
+                            [(ngModel)]="variable.name"
+                            class="variable-input name-input"
+                            (keydown.enter)="onKeyUpEnter(i); $event.preventDefault()"
+                        />
+
+                        <label class="required-checkbox">
+                            <input type="checkbox" [checked]="variable.required" (change)="toggleRequired(i)" />
+                            <span class="checkbox-label">Required</span>
+                        </label>
+                    </div>
+
+                    <div class="input-row">
+                        <input
+                            type="text"
+                            placeholder="Input Description"
+                            [(ngModel)]="variable.description"
+                            class="variable-input desc-input"
+                            (keydown.enter)="onKeyUpEnter(i); $event.preventDefault()"
+                        />
+
+                        <!-- Allow deletion if there's more than one row -->
+                        @if (variables.length > 1) {
+                            <button class="delete-variable-btn" (click)="removeVariable(i); $event.preventDefault()">
+                                <app-icon icon="ui/x" size="1rem"></app-icon>
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
 </div>

@@ -1,18 +1,14 @@
 <div class="process-selector">
-  <div
-    class="process-option"
-    [class.active]="selectedValue === 'sequential'"
-    (click)="setProcessType('sequential')"
-  >
-    <i class="ti ti-list-numbers option-icon"></i>
-    Sequential
-  </div>
-  <div
-    class="process-option"
-    [class.active]="selectedValue === 'hierarchical'"
-    (click)="setProcessType('hierarchical')"
-  >
-    <i class="ti ti-hierarchy option-icon"></i>
-    Hierarchical
-  </div>
+    <div class="process-option" [class.active]="selectedValue === 'sequential'" (click)="setProcessType('sequential')">
+        <i class="ti ti-list-numbers option-icon"></i>
+        Sequential
+    </div>
+    <div
+        class="process-option"
+        [class.active]="selectedValue === 'hierarchical'"
+        (click)="setProcessType('hierarchical')"
+    >
+        <i class="ti ti-hierarchy option-icon"></i>
+        Hierarchical
+    </div>
 </div>

@@ -2,113 +2,115 @@
 
 // Main container with height constraints
 .dropdown-container {
-  position: relative;
-  width: 100%;
-  background-color: var(--gray-800);
-  border: 1px solid var(--gray-700);
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
-  margin: 1rem 0;
-  padding: 1rem;
-  z-index: 50;
-  max-height: 70vh; // Max height constraint
-  min-height: 300px; // Minimum height
-  overflow-y: auto; // Enable scrolling if content exceeds max height
+    position: relative;
+    width: 100%;
+    background-color: var(--gray-800);
+    border: 1px solid var(--gray-700);
+    border-radius: 0.5rem;
+    box-shadow:
+        0 4px 6px rgba(0, 0, 0, 0.1),
+        0 2px 4px rgba(0, 0, 0, 0.06);
+    margin: 1rem 0;
+    padding: 1rem;
+    z-index: 50;
+    max-height: 70vh; // Max height constraint
+    min-height: 300px; // Minimum height
+    overflow-y: auto; // Enable scrolling if content exceeds max height
 }
 
 // Grid layout for agent cards
 .agent-grid {
-  display: grid;
+    display: grid;
 
-  gap: 1rem;
-  width: 100%;
-  position: relative;
+    gap: 1rem;
+    width: 100%;
+    position: relative;
 }
 
 /* Loading Animation */
 .loading-container {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  min-height: 200px; // Match min-height of container
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  background-color: var(--gray-800);
-  z-index: 10;
-  border-radius: 0.5rem;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    min-height: 200px; // Match min-height of container
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background-color: var(--gray-800);
+    z-index: 10;
+    border-radius: 0.5rem;
 }
 
 .loading-spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid rgba(255, 255, 255, 0.1);
-  border-radius: 50%;
-  border-top-color: var(--blue-500);
-  animation: spin 1s ease-in-out infinite;
-  margin-bottom: 1rem;
+    width: 50px;
+    height: 50px;
+    border: 4px solid rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    border-top-color: var(--blue-500);
+    animation: spin 1s ease-in-out infinite;
+    margin-bottom: 1rem;
 }
 
 .loading-text {
-  color: var(--gray-300);
-  font-size: 0.875rem;
+    color: var(--gray-300);
+    font-size: 0.875rem;
 }
 
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* Empty State */
 .empty-state {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  padding: 2rem;
-  text-align: center;
-  min-height: 160px; // Ensure empty state has reasonable height
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem;
+    text-align: center;
+    min-height: 160px; // Ensure empty state has reasonable height
 }
 
 .empty-state i {
-  font-size: 2rem;
-  color: var(--gray-400);
-  margin-bottom: 1rem;
+    font-size: 2rem;
+    color: var(--gray-400);
+    margin-bottom: 1rem;
 }
 
 .empty-state p {
-  color: var(--gray-300);
-  font-size: 1rem;
+    color: var(--gray-300);
+    font-size: 1rem;
 }
 
 // Responsive adjustments based on host size
-:host([size="small"]) {
-  .agent-grid {
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  }
+:host([size='small']) {
+    .agent-grid {
+        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    }
 
-  .dropdown-container {
-    max-height: 60vh;
-  }
+    .dropdown-container {
+        max-height: 60vh;
+    }
 }
 
-:host([size="medium"]) {
-  .agent-grid {
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  }
+:host([size='medium']) {
+    .agent-grid {
+        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    }
 }
 
-:host([size="large"]) {
-  .agent-grid {
-    grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
-  }
+:host([size='large']) {
+    .agent-grid {
+        grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
+    }
 
-  .dropdown-container {
-    max-height: 80vh;
-  }
+    .dropdown-container {
+        max-height: 80vh;
+    }
 }

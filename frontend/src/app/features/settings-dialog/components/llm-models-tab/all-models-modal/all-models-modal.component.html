@@ -2,17 +2,10 @@
     <!-- Header -->
     <div class="all-models__header">
         <div class="all-models__header-info">
-            <app-icon
-                [icon]="getProviderIcon(provider().name)"
-                size="1.25rem"
-            />
+            <app-icon [icon]="getProviderIcon(provider().name)" size="1.25rem" />
             <h3 class="all-models__title">{{ provider().name | uppercase }} Models</h3>
         </div>
-        <button
-            type="button"
-            class="all-models__close-btn"
-            (click)="onClose()"
-        >
+        <button type="button" class="all-models__close-btn" (click)="onClose()">
             <app-icon icon="ui/x" size="0.875rem" />
         </button>
     </div>
@@ -69,4 +62,3 @@
         <p class="all-models__count">{{ visibleCount() }} model(s) visible</p>
     </div>
 </div>
-

@@ -1,13 +1,10 @@
-import { Injectable, signal, computed, inject } from '@angular/core';
-import { Observable, of, tap, catchError, map, delay } from 'rxjs';
+import { computed, inject, Injectable, signal } from '@angular/core';
+import { catchError, delay, map, Observable, of, tap } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
-import {
-    GetProjectRequest,
-    CreateProjectRequest,
-    UpdateProjectRequest,
-} from '../models/project.model';
-import { ProjectsApiService } from './projects-api.service';
+
 import { SearchFilterChange } from '../../../shared/components/filters-list/filters-list.component';
+import { CreateProjectRequest, GetProjectRequest, UpdateProjectRequest } from '../models/project.model';
+import { ProjectsApiService } from './projects-api.service';
 
 @Injectable({
     providedIn: 'root',
@@ -36,19 +33,11 @@ export class ProjectsStorageService {
         if (filter) {
             // Filter by search term
             if (filter.searchTerm) {
-                filtered = filtered.filter((p) =>
-                    p.name
-                        .toLowerCase()
-                        .includes(filter.searchTerm.toLowerCase())
-                );
+                filtered = filtered.filter((p) => p.name.toLowerCase().includes(filter.searchTerm.toLowerCase()));
             }
             // Filter by selected tags
             if (filter.selectedTagIds && filter.selectedTagIds.length > 0) {
-                filtered = filtered.filter((p) =>
-                    filter.selectedTagIds!.some((tagId) =>
-                        p.tags.includes(tagId)
-                    )
-                );
+                filtered = filtered.filter((p) => filter.selectedTagIds!.some((tagId) => p.tags.includes(tagId)));
             }
         }
         // Always sort by id descending
@@ -61,9 +50,7 @@ export class ProjectsStorageService {
         if (!filter) return templates;
         let filtered = templates;
         if (filter.searchTerm) {
-            filtered = filtered.filter((t) =>
-                t.name.toLowerCase().includes(filter.searchTerm.toLowerCase())
-            );
+            filtered = filtered.filter((t) => t.name.toLowerCase().includes(filter.searchTerm.toLowerCase()));
         }
         // Add more filter/sort logic here as needed
         return filtered;
@@ -96,15 +83,13 @@ export class ProjectsStorageService {
         }
 
         // Compare searchTerm and selectedTagIds
-        const searchTermChanged =
-            currentFilter.searchTerm !== filter.searchTerm;
+        const searchTermChanged = currentFilter.searchTerm !== filter.searchTerm;
         const tagsChanged =
             (!currentFilter.selectedTagIds && filter.selectedTagIds) ||
             (currentFilter.selectedTagIds && !filter.selectedTagIds) ||
             (currentFilter.selectedTagIds &&
                 filter.selectedTagIds &&
-                JSON.stringify(currentFilter.selectedTagIds.sort()) !==
-                    JSON.stringify(filter.selectedTagIds.sort()));
+                JSON.stringify(currentFilter.selectedTagIds.sort()) !== JSON.stringify(filter.selectedTagIds.sort()));
 
         // Only update if there's a change
         if (searchTermChanged || tagsChanged) {
@@ -143,11 +128,11 @@ export class ProjectsStorageService {
             delay(500),
             map((templates) =>
                 templates.map(
-                    (template: any) =>
+                    (template: GetProjectRequest) =>
                         ({
                             ...template,
                             tags: template.tags ? [] : [], // Convert string[] to number[] (empty for templates)
-                        } as GetProjectRequest)
+                        }) as GetProjectRequest
                 )
             ),
             tap((templates) => {
@@ -158,34 +143,17 @@ export class ProjectsStorageService {
     }
 
     getProjectById(id: number): Observable<GetProjectRequest | undefined> {
-        console.log('🎯 getProjectById called for ID:', id);
-
-        const cachedProject = this.projectsSignal().find(
-            (project) => project.id === id
-        );
+        const cachedProject = this.projectsSignal().find((project) => project.id === id);
 
         if (cachedProject) {
-            console.log('🎯 Found cached project:', cachedProject);
-            console.log('🎯 Cached project memory:', cachedProject.memory);
             return of(cachedProject);
         }
 
-        console.log('🎯 No cached project found, fetching from API');
-        return this.projectsApiService.getProjectById(id).pipe(
-            tap((project) => {
-                if (project) {
-                    console.log('🎯 API returned project:', project);
-                    console.log('🎯 API project memory:', project.memory);
-                }
-            }),
-            catchError(() => of(undefined))
-        );
+        return this.projectsApiService.getProjectById(id).pipe(catchError(() => of(undefined)));
     }
 
     // --- Data Manipulation Methods (CRUD Operations) ---
-    createProject(
-        project: CreateProjectRequest
-    ): Observable<GetProjectRequest> {
+    createProject(project: CreateProjectRequest): Observable<GetProjectRequest> {
         return this.projectsApiService.createProject(project).pipe(
             tap((newProject: GetProjectRequest) => {
                 this.addProjectToCache(newProject);
@@ -193,39 +161,27 @@ export class ProjectsStorageService {
         );
     }
 
-    updateProject(
-        project: UpdateProjectRequest
-    ): Observable<GetProjectRequest> {
+    updateProject(project: UpdateProjectRequest): Observable<GetProjectRequest> {
         return this.projectsApiService.updateProject(project).pipe(
             tap((updatedProject) => {
                 const currentProjects = this.projectsSignal();
-                const index = currentProjects.findIndex(
-                    (p) => p.id === project.id
-                );
+                const index = currentProjects.findIndex((p) => p.id === project.id);
                 if (index !== -1) {
                     const updatedProjects = [...currentProjects];
-                    updatedProjects[index] =
-                        updatedProject as GetProjectRequest;
+                    updatedProjects[index] = updatedProject as GetProjectRequest;
                     this.projectsSignal.set(updatedProjects);
                 }
             })
         );
     }
 
-    patchUpdateProject(
-        id: number,
-        updateData: Partial<GetProjectRequest>
-    ): Observable<GetProjectRequest> {
-        console.log('💫 patchUpdateProject called with:', { id, updateData });
-
+    patchUpdateProject(id: number, updateData: Partial<GetProjectRequest>): Observable<GetProjectRequest> {
         return this.projectsApiService.patchUpdateProject(id, updateData).pipe(
             tap((updatedProject) => {
                 const currentProjects = this.projectsSignal();
                 const index = currentProjects.findIndex((p) => p.id === id);
 
                 if (index !== -1) {
-                    const oldProject = currentProjects[index];
-
                     const updatedProjectsList = [...currentProjects];
                     updatedProjectsList[index] = {
                         ...updatedProjectsList[index],
@@ -233,10 +189,6 @@ export class ProjectsStorageService {
                     } as GetProjectRequest;
 
                     this.projectsSignal.set(updatedProjectsList);
-
-                    const verifyTapUpdate = this.projectsSignal().find(
-                        (p) => p.id === id
-                    );
                 }
             })
         );
@@ -246,9 +198,7 @@ export class ProjectsStorageService {
         return this.projectsApiService.deleteProject(id).pipe(
             tap(() => {
                 const currentProjects = this.projectsSignal();
-                const updatedProjects = currentProjects.filter(
-                    (p) => p.id !== id
-                );
+                const updatedProjects = currentProjects.filter((p) => p.id !== id);
                 this.projectsSignal.set(updatedProjects);
             })
         );
@@ -272,25 +222,15 @@ export class ProjectsStorageService {
     public updateProjectInCache(updatedProject: GetProjectRequest) {
         const currentProjects = this.projectsSignal();
 
-        const index = currentProjects.findIndex(
-            (p) => p.id === updatedProject.id
-        );
+        const index = currentProjects.findIndex((p) => p.id === updatedProject.id);
 
         if (index !== -1) {
-            const oldProject = currentProjects[index];
-
             const updatedProjects = [...currentProjects];
             // Create a new object reference to ensure change detection works
             updatedProjects[index] = { ...updatedProject };
 
             this.projectsSignal.set(updatedProjects);
-
-            // Verify the update
-            const verifyUpdate = this.projectsSignal().find(
-                (p) => p.id === updatedProject.id
-            );
         } else {
-            console.log('🚀 Project not found in cache, adding it');
             // If project not found, add it
             this.addProjectToCache(updatedProject);
         }

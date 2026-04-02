@@ -3,7 +3,6 @@ import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } 
 
 import { DisplayedTelegramField } from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
 import { ToastService } from '../../../services/notifications/toast.service';
-import { AppIconComponent } from '../../../shared/components/app-icon/app-icon.component';
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { JsonEditorComponent } from '../../../shared/components/json-editor/json-editor.component';
 import { SearchComponent } from '../../../shared/components/search/search.component';
@@ -21,7 +20,6 @@ export interface TableItem extends DisplayedTelegramField {
     templateUrl: './telegram-trigger-editing-dialog.component.html',
     styleUrls: ['./telegram-trigger-editing-dialog.component.scss'],
     imports: [
-        AppIconComponent,
         AppSvgIconComponent,
         SearchComponent,
         TelegramTriggerFieldsTableComponent,
@@ -41,7 +39,10 @@ export class TelegramTriggerEditingDialogComponent implements OnInit {
     checkedItems = computed<DisplayedTelegramField[]>(() => {
         return this.tableItems()
             .filter((i) => i.checked)
-            .map(({ checked, ...rest }) => rest);
+            .map(({ checked: _checked, ...rest }) => {
+                void _checked;
+                return rest;
+            });
     });
 
     hasInvalidItems = computed(() => {

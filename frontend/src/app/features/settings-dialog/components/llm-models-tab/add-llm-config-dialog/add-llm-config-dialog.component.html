@@ -1,22 +1,17 @@
 <div class="llm-dialog">
     <div class="llm-dialog__header">
         <h2 class="llm-dialog__title">{{ dialogTitle() }}</h2>
-        <button
-            type="button"
-            class="llm-dialog__close-btn"
-            (click)="onCancel()"
-            [disabled]="isSubmitting()"
-        >
+        <button type="button" class="llm-dialog__close-btn" (click)="onCancel()" [disabled]="isSubmitting()">
             <app-icon icon="ui/x" size="1rem" />
         </button>
     </div>
 
     <div class="llm-dialog__content">
-            @if (errorMessage()) {
+        @if (errorMessage()) {
             <div class="llm-dialog__error">
-                    <p>{{ errorMessage() }}</p>
-                </div>
-            }
+                <p>{{ errorMessage() }}</p>
+            </div>
+        }
 
         <form [formGroup]="form">
             <section class="llm-dialog__section">
@@ -28,16 +23,9 @@
                         <span class="llm-dialog__label-required">*</span>
                         <app-help-tooltip text="Select the LLM provider and model" />
                     </label>
-                    <button
-                        type="button"
-                        class="llm-dialog__model-selector"
-                        (click)="openModelSelector()"
-                    >
+                    <button type="button" class="llm-dialog__model-selector" (click)="openModelSelector()">
                         @if (selectedProvider()) {
-                            <app-icon
-                                [icon]="getProviderIcon(selectedProvider()!.name)"
-                                size="1.25rem"
-                            />
+                            <app-icon [icon]="getProviderIcon(selectedProvider()!.name)" size="1.25rem" />
                         }
                         @if (selectedModel() && selectedProvider()) {
                             <span class="llm-dialog__model-selector-text">
@@ -67,15 +55,8 @@
                             placeholder="Enter provider's API key"
                             formControlName="apiKey"
                         />
-                        <button
-                            type="button"
-                            class="llm-dialog__input-action"
-                            (click)="toggleApiKeyVisibility()"
-                        >
-                            <app-icon
-                                [icon]="showApiKey() ? 'ui/eye-off' : 'ui/eye'"
-                                size="1.25rem"
-                            />
+                        <button type="button" class="llm-dialog__input-action" (click)="toggleApiKeyVisibility()">
+                            <app-icon [icon]="showApiKey() ? 'ui/eye-off' : 'ui/eye'" size="1.25rem" />
                         </button>
                     </div>
                 </div>
@@ -92,7 +73,7 @@
                         placeholder="Enter a custom name"
                         formControlName="customName"
                     />
-            </div>
+                </div>
 
                 <div class="llm-dialog__section-divider"></div>
             </section>
@@ -152,7 +133,7 @@
                             />
                         </div>
                     </div>
-            </div>
+                </div>
 
                 <div class="llm-dialog__section-divider"></div>
             </section>
@@ -199,7 +180,7 @@
                     [decimals]="1"
                     formControlName="frequencyPenalty"
                 />
-                
+
                 <div class="llm-dialog__section-divider"></div>
             </section>
 
@@ -270,22 +251,12 @@
                 </div>
             </section>
         </form>
-            </div>
+    </div>
 
     <div class="llm-dialog__footer">
-        <app-button
-            type="outline-primary"
-            (click)="onCancel()"
-            [disabled]="isSubmitting()"
-        >
-            Cancel
-        </app-button>
-                <app-button
-                    type="primary"
-                    (click)="onSubmit()"
-            [disabled]="!isFormValid() || isSubmitting()"
-                >
+        <app-button type="outline-primary" (click)="onCancel()" [disabled]="isSubmitting()"> Cancel </app-button>
+        <app-button type="primary" (click)="onSubmit()" [disabled]="!isFormValid() || isSubmitting()">
             {{ submitButtonText() }}
-                </app-button>
+        </app-button>
     </div>
 </div>

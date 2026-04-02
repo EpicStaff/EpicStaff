@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Observable, of, switchMap } from 'rxjs';
+
 import { CanComponentDeactivate } from '../../../core/guards/unsaved-changes.guard';
 
 interface FlowRefreshTarget extends CanComponentDeactivate {
@@ -57,4 +58,3 @@ export class FlowUnsavedStateService {
         window.location.reload();
     }
 }
-

@@ -3,14 +3,14 @@
 }
 
 /* Chrome, Edge, Safari */
-input[type="number"]::-webkit-inner-spin-button,
-input[type="number"]::-webkit-outer-spin-button {
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
     -webkit-appearance: none;
     margin: 0;
 }
 
 /* Firefox */
-input[type="number"] {
+input[type='number'] {
     -moz-appearance: textfield;
 }
 
@@ -91,5 +91,4 @@ input[type="number"] {
         padding: 0.625rem 0.5rem;
         font-size: 0.625rem;
     }
-
 }

@@ -1,4 +1,4 @@
-import { GraphNoteModel, NodeModel, ProjectNodeModel, PythonNodeModel, SubGraphNodeModel } from '../models/node.model';
+import { NodeModel, PythonNodeModel, SubGraphNodeModel } from '../models/node.model';
 import { NodeType } from './node-type';
 
 export function getNodeTitle(node: NodeModel): string {

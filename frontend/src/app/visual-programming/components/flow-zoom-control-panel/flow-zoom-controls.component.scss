@@ -1,54 +1,54 @@
 .flow-zoom-controls {
-  position: absolute;
-  bottom: 16px;
-  left: 16px;
-  display: flex;
-  z-index: 10;
-
-  .zoom-button {
-    width: 38px;
-    height: 38px;
-    min-width: 38px; /* Prevent shrinking */
-    padding: 8px;
-    background-color: var(--gray-800);
-    border: 1px solid var(--gray-750);
-    border-radius: 6px;
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    outline: none;
-    margin: 0 4px;
+    z-index: 10;
 
-    &:first-child {
-      margin-left: 0;
-    }
+    .zoom-button {
+        width: 38px;
+        height: 38px;
+        min-width: 38px; /* Prevent shrinking */
+        padding: 8px;
+        background-color: var(--gray-800);
+        border: 1px solid var(--gray-750);
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        outline: none;
+        margin: 0 4px;
 
-    &:last-child {
-      margin-right: 0;
-    }
+        &:first-child {
+            margin-left: 0;
+        }
 
-    &:hover {
-      background-color: var(--gray-750);
-    }
+        &:last-child {
+            margin-right: 0;
+        }
 
-    &:active {
-      transform: scale(0.95);
-    }
+        &:hover {
+            background-color: var(--gray-750);
+        }
 
-    i {
-      font-size: 18px;
-      color: var(--gray-300);
+        &:active {
+            transform: scale(0.95);
+        }
+
+        i {
+            font-size: 18px;
+            color: var(--gray-300);
+        }
     }
-  }
 }
 
 // Responsive positioning for smaller screens
 @media (max-width: 768px) {
-  .flow-zoom-controls {
-    left: auto;
-    right: 16px;
-    bottom: 72px; // Position above the action panel on small screens
-  }
+    .flow-zoom-controls {
+        left: auto;
+        right: 16px;
+        bottom: 72px; // Position above the action panel on small screens
+    }
 }

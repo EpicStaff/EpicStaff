@@ -19,301 +19,301 @@ $gray-950: #0d0d0d;
 
 // Host component styles
 :host {
-  display: flex;
-  flex-direction: column;
-  flex-grow: 1;
-  padding: 1.5rem;
-  padding-right: 0;
-  padding-left: 1.4rem;
-  padding-bottom: 0;
-  background-color: $gray-900;
-  min-height: 0;
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    padding: 1.5rem;
+    padding-right: 0;
+    padding-left: 1.4rem;
+    padding-bottom: 0;
+    background-color: $gray-900;
+    min-height: 0;
 }
 
 // Form container
 .config-form {
-  display: flex;
-  flex-direction: column;
-  flex-grow: 1;
-  height: 100%;
-  background-color: $gray-900;
-  min-height: 0;
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    height: 100%;
+    background-color: $gray-900;
+    min-height: 0;
 
-  // Turn off all browser autocomplete styling
-  input:-webkit-autofill,
-  input:-webkit-autofill:hover,
-  input:-webkit-autofill:focus,
-  select:-webkit-autofill,
-  select:-webkit-autofill:hover,
-  select:-webkit-autofill:focus {
-    -webkit-box-shadow: 0 0 0px 1000px $gray-800 inset;
-    -webkit-text-fill-color: $gray-200;
-    transition: background-color 5000s ease-in-out 0s;
-  }
+    // Turn off all browser autocomplete styling
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus,
+    select:-webkit-autofill,
+    select:-webkit-autofill:hover,
+    select:-webkit-autofill:focus {
+        -webkit-box-shadow: 0 0 0px 1000px $gray-800 inset;
+        -webkit-text-fill-color: $gray-200;
+        transition: background-color 5000s ease-in-out 0s;
+    }
 }
 
 // Scrollable content area
 .form-content-wrapper {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  padding-right: 1rem;
-  overflow-x: hidden;
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: $gray-850;
-    border-radius: 3px;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background-color: $gray-700;
-    border-radius: 3px;
-
-    &:hover {
-      background-color: $gray-600;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding-right: 1rem;
+    overflow-x: hidden;
+    &::-webkit-scrollbar {
+        width: 6px;
     }
-  }
+
+    &::-webkit-scrollbar-track {
+        background: $gray-850;
+        border-radius: 3px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+        background-color: $gray-700;
+        border-radius: 3px;
+
+        &:hover {
+            background-color: $gray-600;
+        }
+    }
 }
 
 .form-content {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
 }
 
 // Form field groups
 .form-group {
-  display: flex;
-  flex-direction: column;
-  background-color: $gray-850;
-  padding: 1.25rem;
-  padding-bottom: 2.5rem; // Extra space for error messages
-  border-radius: 8px;
-  border: 1px solid $gray-800;
-  transition: all 0.2s ease;
-  position: relative;
-  margin-bottom: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    background-color: $gray-850;
+    padding: 1.25rem;
+    padding-bottom: 2.5rem; // Extra space for error messages
+    border-radius: 8px;
+    border: 1px solid $gray-800;
+    transition: all 0.2s ease;
+    position: relative;
+    margin-bottom: 0.75rem;
 
-  &:focus-within {
-    border-color: $gray-600;
-    box-shadow: 0 0 0 1px rgba($gray-600, 0.5);
-  }
+    &:focus-within {
+        border-color: $gray-600;
+        box-shadow: 0 0 0 1px rgba($gray-600, 0.5);
+    }
 }
 
 // Form labels
 label,
 .field-label {
-  font-weight: 500;
-  margin-bottom: 0.75rem;
-  color: $gray-300;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.9375rem;
+    font-weight: 500;
+    margin-bottom: 0.75rem;
+    color: $gray-300;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9375rem;
 }
 
 .required-asterisk {
-  color: $gray-500;
-  font-weight: bold;
+    color: $gray-500;
+    font-weight: bold;
 }
 
 .info-icon {
-  position: relative; // Needed for the tooltip positioning
-  font-style: normal;
-  font-weight: bold;
-  cursor: help;
-  color: $gray-500;
-  border: 1px solid $gray-600;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.25rem;
-  height: 1.25rem;
-  font-size: 0.75rem;
-  line-height: 1;
-  text-align: center;
+    position: relative; // Needed for the tooltip positioning
+    font-style: normal;
+    font-weight: bold;
+    cursor: help;
+    color: $gray-500;
+    border: 1px solid $gray-600;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    font-size: 0.75rem;
+    line-height: 1;
+    text-align: center;
 
-  &:hover {
-    color: $gray-300;
-    background-color: $gray-700;
-  }
+    &:hover {
+        color: $gray-300;
+        background-color: $gray-700;
+    }
 }
 
 // Form inputs
-input[type="text"],
-input[type="number"],
+input[type='text'],
+input[type='number'],
 select,
 textarea {
-  padding: 0.75rem;
-  font-size: 0.9375rem;
-  border: 1px solid $gray-700;
-  border-radius: 6px;
-  background-color: $gray-800;
-  color: $gray-200;
-  transition: all 0.2s ease;
+    padding: 0.75rem;
+    font-size: 0.9375rem;
+    border: 1px solid $gray-700;
+    border-radius: 6px;
+    background-color: $gray-800;
+    color: $gray-200;
+    transition: all 0.2s ease;
 
-  &:focus {
-    border-color: $gray-600;
-    outline: none;
-    color: $white;
-  }
+    &:focus {
+        border-color: $gray-600;
+        outline: none;
+        color: $white;
+    }
 
-  &::placeholder {
-    color: $gray-600;
-  }
+    &::placeholder {
+        color: $gray-600;
+    }
 }
 
 // Select styling
 select {
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%239b9b9b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 0.75rem center;
-  background-size: 1rem;
-  padding-right: 2.5rem;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%239b9b9b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1rem;
+    padding-right: 2.5rem;
 }
 
 // Textarea styling
 textarea {
-  min-height: 100px;
-  resize: vertical;
+    min-height: 100px;
+    resize: vertical;
 }
 
 // Checkbox group
 .checkbox-group {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  margin-top: 0.5rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
 
-  input[type="checkbox"] {
-    margin-top: 0.15rem;
-    width: 1.125rem;
-    height: 1.125rem;
-    accent-color: $gray-600;
-    cursor: pointer;
-  }
+    input[type='checkbox'] {
+        margin-top: 0.15rem;
+        width: 1.125rem;
+        height: 1.125rem;
+        accent-color: $gray-600;
+        cursor: pointer;
+    }
 
-  label {
-    margin: 0;
-    color: $gray-300;
-    font-weight: normal;
-    font-size: 0.9375rem;
-    line-height: 1.4;
-  }
+    label {
+        margin: 0;
+        color: $gray-300;
+        font-weight: normal;
+        font-size: 0.9375rem;
+        line-height: 1.4;
+    }
 }
 
 // Error messages
 .error-container {
-  position: relative;
-  min-height: 0;
-  margin-top: 0;
+    position: relative;
+    min-height: 0;
+    margin-top: 0;
 }
 
 .error-message {
-  position: absolute;
-  bottom: -2.25rem;
-  left: 0;
-  color: $gray-400;
-  font-size: 0.75rem;
-  padding: 0.25rem 0;
-  width: 100%;
-  opacity: 0.85;
-  display: none; // Hidden by default
+    position: absolute;
+    bottom: -2.25rem;
+    left: 0;
+    color: $gray-400;
+    font-size: 0.75rem;
+    padding: 0.25rem 0;
+    width: 100%;
+    opacity: 0.85;
+    display: none; // Hidden by default
 }
 
 // Show error messages only when conditions are met
 input.ng-invalid.ng-dirty.ng-touched,
 select.ng-invalid.ng-dirty.ng-touched,
 textarea.ng-invalid.ng-dirty.ng-touched {
-  border-color: $gray-600;
+    border-color: $gray-600;
 
-  & + .error-container .error-message,
-  & ~ .error-container .error-message {
-    display: block;
-  }
+    & + .error-container .error-message,
+    & ~ .error-container .error-message {
+        display: block;
+    }
 }
 
 // Form action buttons
 .form-actions {
-  flex-shrink: 0;
-  display: flex;
-  justify-content: flex-end;
-  gap: 1rem;
-  margin-top: 0.1rem;
-  padding: 1rem;
-  border-top: 1px solid $gray-800;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-top: 0.1rem;
+    padding: 1rem;
+    border-top: 1px solid $gray-800;
 
-  button {
-    padding: 0.75rem 1.5rem;
-    font-size: 0.9375rem;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    font-weight: 500;
-  }
-
-  .submit-button {
-    background-color: $gray-600;
-    background-color: #685fff;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-
-    &:hover {
-      background-color: $gray-700;
+    button {
+        padding: 0.75rem 1.5rem;
+        font-size: 0.9375rem;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-weight: 500;
     }
 
-    &:active {
-      background-color: #685fff;
+    .submit-button {
+        background-color: $gray-600;
+        background-color: #685fff;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+
+        &:hover {
+            background-color: $gray-700;
+        }
+
+        &:active {
+            background-color: #685fff;
+        }
+
+        &:disabled {
+            background-color: $gray-750;
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     }
 
-    &:disabled {
-      background-color: $gray-750;
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-  }
+    .cancel-button {
+        background-color: transparent;
+        color: $gray-300;
+        border: 1px solid $gray-700;
 
-  .cancel-button {
-    background-color: transparent;
-    color: $gray-300;
-    border: 1px solid $gray-700;
+        &:hover {
+            background-color: $gray-850;
+            border-color: $gray-600;
+        }
 
-    &:hover {
-      background-color: $gray-850;
-      border-color: $gray-600;
+        &:active {
+            background-color: $gray-800;
+        }
     }
-
-    &:active {
-      background-color: $gray-800;
-    }
-  }
 }
 
 // Label with tooltip
 .label-with-tooltip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  flex-wrap: nowrap;
-
-  label {
-    margin-bottom: 0;
-    margin-right: 4px;
     display: flex;
     align-items: center;
-    white-space: nowrap;
-  }
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: nowrap;
 
-  app-help-tooltip {
-    display: flex;
-    align-items: center;
-  }
+    label {
+        margin-bottom: 0;
+        margin-right: 4px;
+        display: flex;
+        align-items: center;
+        white-space: nowrap;
+    }
+
+    app-help-tooltip {
+        display: flex;
+        align-items: center;
+    }
 }

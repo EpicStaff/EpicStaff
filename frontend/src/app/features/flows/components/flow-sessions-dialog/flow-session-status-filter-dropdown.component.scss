@@ -1,101 +1,105 @@
 .status-filter-dropdown-custom {
-  position: relative;
-  display: inline-block;
-  min-width: 220px;
+    position: relative;
+    display: inline-block;
+    min-width: 220px;
 }
 
 .dropdown-toggle {
-  min-width: 220px;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  justify-content: space-between;
-  padding: 6px 14px;
-  border: 1px solid var(--color-divider-regular, #333);
-  border-radius: 6px;
-  background: var(--color-background-body, #23232a);
-  color: var(--color-text-primary, #fff);
-  font-size: 1em;
-  cursor: pointer;
-  outline: none;
-  transition: border 0.18s, background 0.18s;
+    min-width: 220px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: space-between;
+    padding: 6px 14px;
+    border: 1px solid var(--color-divider-regular, #333);
+    border-radius: 6px;
+    background: var(--color-background-body, #23232a);
+    color: var(--color-text-primary, #fff);
+    font-size: 1em;
+    cursor: pointer;
+    outline: none;
+    transition:
+        border 0.18s,
+        background 0.18s;
 }
 .dropdown-toggle:focus,
 .dropdown-toggle:hover {
-  border-color: var(--accent-color);
-  background: #23232a;
+    border-color: var(--accent-color);
+    background: #23232a;
 }
 .selected-icons {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
 }
 .icon-multi {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: 6px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: 6px;
 }
 .dropdown-arrow-wrapper {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
+    margin-left: auto;
+    display: flex;
+    align-items: center;
 }
 .dropdown-arrow {
-  pointer-events: none;
+    pointer-events: none;
 }
 
 .dropdown-menu {
-  position: absolute;
-  left: 0;
-  top: 110%;
-  z-index: 10;
-  min-width: 220px;
-  background: var(--color-background-body, #23232a);
-  border: 1px solid var(--color-divider-regular, #333);
-  border-radius: 8px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
-  margin-top: 4px;
-  padding: 4px 0;
-  list-style: none;
-  max-height: 260px;
-  overflow-y: auto;
+    position: absolute;
+    left: 0;
+    top: 110%;
+    z-index: 10;
+    min-width: 220px;
+    background: var(--color-background-body, #23232a);
+    border: 1px solid var(--color-divider-regular, #333);
+    border-radius: 8px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+    margin-top: 4px;
+    padding: 4px 0;
+    list-style: none;
+    max-height: 260px;
+    overflow-y: auto;
 }
 .dropdown-menu li {
-  padding: 6px 18px 6px 14px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  font-size: 1em;
-  color: var(--color-text-primary, #fff);
-  transition: background 0.15s, color 0.15s;
-  position: relative;
+    padding: 6px 18px 6px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 1em;
+    color: var(--color-text-primary, #fff);
+    transition:
+        background 0.15s,
+        color 0.15s;
+    position: relative;
 }
 .dropdown-menu li.selected {
-  background: rgba(94, 158, 255, 0.1);
+    background: rgba(94, 158, 255, 0.1);
 }
 .dropdown-menu li:hover {
-  background: rgba(94, 158, 255, 0.18);
+    background: rgba(94, 158, 255, 0.18);
 }
 .dropdown-menu i {
-  font-size: 1.1em;
-  min-width: 18px;
-  text-align: center;
-  margin-right: 0.5rem;
+    font-size: 1.1em;
+    min-width: 18px;
+    text-align: center;
+    margin-right: 0.5rem;
 }
 .checkmark {
-  color: var(--accent-color, #5e9eff);
-  font-size: 0.95em;
-  margin-left: auto;
-  font-weight: bold;
-  line-height: 1;
-  padding: 0;
-  margin-top: 0;
-  margin-bottom: 0;
-  display: flex;
-  align-items: center;
-  height: 18px;
+    color: var(--accent-color, #5e9eff);
+    font-size: 0.95em;
+    margin-left: auto;
+    font-weight: bold;
+    line-height: 1;
+    padding: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    display: flex;
+    align-items: center;
+    height: 18px;
 }

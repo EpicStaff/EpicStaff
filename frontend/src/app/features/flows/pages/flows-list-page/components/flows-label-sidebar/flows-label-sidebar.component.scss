@@ -1,8 +1,7 @@
 :host {
     display: flex;
     flex-direction: column;
-    width: 422px;
-    min-width: 280px;
+    width: 30%;
     height: 100%;
     background-color: var(--color-background-body);
     border-right: 1px solid var(--color-divider-subtle);
@@ -21,12 +20,17 @@
     height: 40px;
     border-bottom: 1px solid var(--color-divider-subtle);
     flex-shrink: 0;
+    min-width: 0;
 
     .sidebar-title {
         font-size: 0.85rem;
         font-weight: 500;
         color: var(--color-text-secondary);
         letter-spacing: 0.05em;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .close-btn {

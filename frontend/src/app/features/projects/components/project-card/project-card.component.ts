@@ -1,35 +1,29 @@
+import { NgFor, NgIf, NgStyle } from '@angular/common';
 import {
-    Component,
-    Input,
     ChangeDetectionStrategy,
-    Output,
+    ChangeDetectorRef,
+    Component,
+    computed,
     EventEmitter,
     inject,
-    computed,
-    OnInit,
+    Input,
     OnChanges,
-    SimpleChanges,
+    OnInit,
+    Output,
     signal,
-    ChangeDetectorRef,
+    SimpleChanges,
 } from '@angular/core';
-import { GetProjectRequest } from '../../models/project.model';
-import { NgClass, NgIf, NgFor, NgStyle } from '@angular/common';
-import { TagComponent } from './tag.component';
-import { ProjectMenuComponent } from './project-menu/project-menu.component';
-import { ProjectTagsStorageService } from '../../services/project-tags-storage.service';
+
 import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
+import { GetProjectRequest } from '../../models/project.model';
+import { ProjectTagsStorageService } from '../../services/project-tags-storage.service';
+import { ProjectMenuComponent } from './project-menu/project-menu.component';
+import { TagComponent } from './tag.component';
 
 @Component({
     selector: 'app-project-card',
     standalone: true,
-    imports: [
-        NgIf,
-        NgFor,
-        NgStyle,
-        TagComponent,
-        ProjectMenuComponent,
-        AppIconComponent,
-    ],
+    imports: [NgIf, NgFor, NgStyle, TagComponent, ProjectMenuComponent, AppIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './project-card.component.html',
     styleUrls: ['./project-card.component.scss'],
@@ -41,9 +35,7 @@ export class ProjectCardComponent implements OnInit, OnChanges {
         action: string;
         project: GetProjectRequest;
     }>();
-    private readonly projectTagsStorageService = inject(
-        ProjectTagsStorageService
-    );
+    private readonly projectTagsStorageService = inject(ProjectTagsStorageService);
     private readonly cdr = inject(ChangeDetectorRef);
 
     private readonly projectSignal = signal<GetProjectRequest | null>(null);
@@ -76,9 +68,7 @@ export class ProjectCardComponent implements OnInit, OnChanges {
     public readonly projectTags = computed(() => {
         const project = this.projectSignal();
         if (project && project.tags && project.tags.length > 0) {
-            const tagNames = this.projectTagsStorageService.getTagNames(
-                project.tags
-            );
+            const tagNames = this.projectTagsStorageService.getTagNames(project.tags);
 
             return tagNames;
         }

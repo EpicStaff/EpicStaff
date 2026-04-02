@@ -1,14 +1,7 @@
-import {
-    Component,
-    Input,
-    ChangeDetectionStrategy,
-    ElementRef,
-    OnDestroy,
-    OnInit,
-} from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { Overlay, OverlayRef, OverlayModule } from '@angular/cdk/overlay';
+import { Overlay, OverlayModule, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal, PortalModule } from '@angular/cdk/portal';
+import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, ElementRef, Input, OnDestroy, OnInit } from '@angular/core';
 
 @Component({
     selector: 'app-tooltip-content',
@@ -52,7 +45,10 @@ export class TooltipComponent implements OnInit, OnDestroy {
     private _visible: boolean = false;
     private overlayRef: OverlayRef | null = null;
 
-    constructor(private overlay: Overlay, private elementRef: ElementRef) {}
+    constructor(
+        private overlay: Overlay,
+        private elementRef: ElementRef
+    ) {}
 
     ngOnInit(): void {
         // Create the overlay config

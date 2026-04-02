@@ -1,22 +1,7 @@
-import {
-    Component,
-    Input,
-    OnInit,
-    ChangeDetectionStrategy,
-    ChangeDetectorRef,
-} from '@angular/core';
+import { animate, state, style, transition, trigger } from '@angular/animations';
 import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import {
-    trigger,
-    state,
-    style,
-    animate,
-    transition,
-} from '@angular/animations';
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { RealtimeModelConfigsService } from '../../../../features/settings-dialog/services/realtime-llms/real-time-model-config.service';
-import { ConsoleService } from '../../services/console.service';
 
 @Component({
     selector: 'app-chats-header',

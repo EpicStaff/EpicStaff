@@ -1,175 +1,175 @@
 .icon-picker-container {
-  position: relative;
-  display: flex;
-  align-items: center;
+    position: relative;
+    display: flex;
+    align-items: center;
 }
 
 .icon-selector {
-  min-width: 25px;
-  height: 25px;
-  border-radius: 6px;
-  background-color: var(--gray-750);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
+    min-width: 25px;
+    height: 25px;
+    border-radius: 6px;
+    background-color: var(--gray-750);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
 }
 
 .icon-selector:hover {
-  background-color: var(--gray-700);
+    background-color: var(--gray-700);
 }
 
 .selected-icon {
-  font-size: 1.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  ::ng-deep app-icon {
+    font-size: 1.25rem;
     display: flex;
     align-items: center;
     justify-content: center;
 
-    svg {
-      fill: var(--gray-400);
+    ::ng-deep app-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        svg {
+            fill: var(--gray-400);
+        }
     }
-  }
 }
 
 .selected-icon i {
-  font-size: 1.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--gray-400);
+    font-size: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--gray-400);
 }
 
 /* Centering the initial smile icon */
 .icon-placeholder {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  ::ng-deep app-icon {
+    width: 100%;
+    height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
 
-    svg {
-      fill: var(--gray-400);
+    ::ng-deep app-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        svg {
+            fill: var(--gray-400);
+        }
     }
-  }
 }
 
 .icon-placeholder i {
-  font-size: 1.125rem;
-  color: var(--gray-400);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+    font-size: 1.125rem;
+    color: var(--gray-400);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 /* Icon Picker Popup */
 .icon-picker-popup {
-  position: absolute;
-  top: calc(100% + 10px);
-  left: calc(0% - 5px);
-  width: 280px;
-  max-height: 250px; /* Added max height */
-  overflow-y: auto; /* Enable vertical scroll if needed */
-  background-color: var(--gray-850);
-  border: 1px solid var(--gray-700);
-  border-radius: 8px;
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-  z-index: 10;
+    position: absolute;
+    top: calc(100% + 10px);
+    left: calc(0% - 5px);
+    width: 280px;
+    max-height: 250px; /* Added max height */
+    overflow-y: auto; /* Enable vertical scroll if needed */
+    background-color: var(--gray-850);
+    border: 1px solid var(--gray-700);
+    border-radius: 8px;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+    z-index: 10;
 }
 
 .icons-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
-  padding: 10px;
-  max-height: 200px;
-  overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    padding: 10px;
+    max-height: 200px;
+    overflow-y: auto;
 }
 
 .icon-item {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  cursor: pointer;
-
-  span {
-    font-size: 1.25rem;
-  }
-
-  ::ng-deep app-icon {
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
+    border-radius: 4px;
+    cursor: pointer;
 
-    svg {
-      fill: var(--gray-400);
-      transition: fill 0.2s ease;
+    span {
+        font-size: 1.25rem;
     }
-  }
 
-  &.selected {
-    background-color: var(--primary-100);
+    ::ng-deep app-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
 
-    ::ng-deep app-icon svg {
-      fill: var(--primary-600);
+        svg {
+            fill: var(--gray-400);
+            transition: fill 0.2s ease;
+        }
     }
-  }
+
+    &.selected {
+        background-color: var(--primary-100);
+
+        ::ng-deep app-icon svg {
+            fill: var(--primary-600);
+        }
+    }
 }
 
 .icon-item i {
-  font-size: 1.25rem;
-  color: var(--gray-400);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+    font-size: 1.25rem;
+    color: var(--gray-400);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .icon-item:hover {
-  background-color: var(--gray-750);
+    background-color: var(--gray-750);
 
-  ::ng-deep app-icon svg {
-    fill: var(--gray-100);
-  }
+    ::ng-deep app-icon svg {
+        fill: var(--gray-100);
+    }
 }
 
 .icon-item:hover i {
-  color: var(--gray-100);
+    color: var(--gray-100);
 }
 
 .icon-picker-footer {
-  display: flex;
-  justify-content: flex-end;
-  padding: 8px;
-  border-top: 1px solid var(--gray-800);
+    display: flex;
+    justify-content: flex-end;
+    padding: 8px;
+    border-top: 1px solid var(--gray-800);
 }
 
 .icon-picker-footer button {
-  background: none;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.875rem;
-  color: var(--gray-300);
+    background: none;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: var(--gray-300);
 }
 
 .icon-picker-footer button:hover {
-  background-color: var(--gray-750);
+    background-color: var(--gray-750);
 }
 
 .icon-picker-footer button:first-child {
-  margin-right: 8px;
+    margin-right: 8px;
 }

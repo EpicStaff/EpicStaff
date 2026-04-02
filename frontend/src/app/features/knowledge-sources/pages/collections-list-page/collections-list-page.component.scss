@@ -15,6 +15,7 @@
         padding: 1.75rem 3.75rem;
         background-color: var(--color-background-body);
         border-bottom: 1px solid var(--color-divider-subtle);
+        min-width: 0;
     }
 
     &__title {
@@ -22,6 +23,9 @@
         font-size: 1.5rem;
         font-weight: bold;
         color: var(--color-text-primary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     &__body {
@@ -40,13 +44,16 @@
     }
 
     &__sidebar {
-        width: 510px;
+        width: 30%;
         height: 100%;
         border-right: 1px solid var(--color-divider-subtle);
+        flex-shrink: 0;
+        min-width: 0;
     }
 
     &__content {
-        width: calc(100% - 510px);
+        flex: 1;
+        min-width: 0;
         height: 100%;
     }
 }

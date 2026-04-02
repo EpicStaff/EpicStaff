@@ -1,10 +1,10 @@
-import {ChangeDetectionStrategy, Component, forwardRef, input, model, output} from "@angular/core";
-import {ControlValueAccessor, NG_VALUE_ACCESSOR} from "@angular/forms";
+import { ChangeDetectionStrategy, Component, forwardRef, input, model, output } from '@angular/core';
+import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 
 @Component({
-    selector: "app-checkbox",
-    templateUrl: "./checkbox.component.html",
-    styleUrls: ["./checkbox.component.scss"],
+    selector: 'app-checkbox',
+    templateUrl: './checkbox.component.html',
+    styleUrls: ['./checkbox.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
     providers: [
         {
@@ -24,7 +24,7 @@ export class CheckboxComponent implements ControlValueAccessor {
 
     variant = input<'default' | 'mainColor'>('default');
 
-    private onChange = (_: boolean) => {};
+    private onChange: (value: boolean) => void = () => {};
     private onTouched = () => {};
 
     toggleCheckbox(event: Event): void {
@@ -48,5 +48,7 @@ export class CheckboxComponent implements ControlValueAccessor {
         this.onTouched = fn;
     }
 
-    setDisabledState(isDisabled: boolean): void {}
+    setDisabledState(isDisabled: boolean): void {
+        void isDisabled;
+    }
 }

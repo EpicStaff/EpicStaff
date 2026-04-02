@@ -2,10 +2,7 @@
     <div class="dialog__header">
         {{ data.action === 'create' ? 'Add Ngrok Configuration' : 'Update Ngrok Configuration' }}
     </div>
-    <form
-        class="dialog__form"
-        [formGroup]="form"
-    >
+    <form class="dialog__form" [formGroup]="form">
         <div *ngIf="errorMessage()" class="dialog__error-message">
             <p>{{ errorMessage() }}</p>
         </div>
@@ -17,7 +14,7 @@
                 placeholder="Enter configuration name"
                 tooltipText="Configuration name"
             />
-            <app-validation-errors [control]="form.get('name')!"/>
+            <app-validation-errors [control]="form.get('name')!" />
         </div>
 
         <div>
@@ -29,7 +26,7 @@
                 tooltipText="Auth Token from: https://dashboard.ngrok.com/get-started/your-authtoken"
                 placeholder="e.g. 39HouLFMClthJIAw5a••••••••••••••"
             />
-            <app-validation-errors [control]="form.get('auth_token')!"/>
+            <app-validation-errors [control]="form.get('auth_token')!" />
         </div>
 
         <app-select
@@ -48,17 +45,8 @@
         />
     </form>
     <div class="dialog__actions">
-        <app-button
-            type="outline-primary"
-            (click)="onCancel()"
-        >
-            Cancel
-        </app-button>
-        <app-button
-            type="primary"
-            (click)="onSubmit()"
-            [disabled]="form.invalid || isSubmitting()"
-        >
+        <app-button type="outline-primary" (click)="onCancel()"> Cancel </app-button>
+        <app-button type="primary" (click)="onSubmit()" [disabled]="form.invalid || isSubmitting()">
             @if (isSubmitting()) {
                 {{ data.action === 'create' ? 'Creating...' : 'Updating...' }}
             } @else {
@@ -67,5 +55,3 @@
         </app-button>
     </div>
 </div>
-
-

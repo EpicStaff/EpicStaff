@@ -4,7 +4,12 @@ export class RealtimeAPI extends RealtimeEventHandler {
      * @param {{url?: string, apiKey?: string, dangerouslyAllowAPIKeyInBrowser?: boolean, debug?: boolean}} [settings]
      * @returns {RealtimeAPI}
      */
-    constructor({ url, apiKey, dangerouslyAllowAPIKeyInBrowser, debug }?: {
+    constructor({
+        url,
+        apiKey,
+        dangerouslyAllowAPIKeyInBrowser,
+        debug,
+    }?: {
         url?: string;
         apiKey?: string;
         dangerouslyAllowAPIKeyInBrowser?: boolean;
@@ -14,7 +19,7 @@ export class RealtimeAPI extends RealtimeEventHandler {
     url: string;
     apiKey: string;
     debug: boolean;
-    ws: any;
+    ws: unknown;
     /**
      * Tells us whether or not the WebSocket is connected
      * @returns {boolean}
@@ -25,15 +30,13 @@ export class RealtimeAPI extends RealtimeEventHandler {
      * @param  {...any} args
      * @returns {true}
      */
-    log(...args: any[]): true;
+    log(...args: unknown[]): true;
     /**
      * Connects to Realtime API Websocket Server
      * @param {{model?: string}} [settings]
      * @returns {Promise<true>}
      */
-    connect({ model }?: {
-        model?: string;
-    }): Promise<true>;
+    connect({ model }?: { model?: string }): Promise<true>;
     /**
      * Disconnects from Realtime API server
      * @param {WebSocket} [ws]
@@ -46,16 +49,19 @@ export class RealtimeAPI extends RealtimeEventHandler {
      * @param {{[key: string]: any}} event
      * @returns {true}
      */
-    receive(eventName: string, event: {
-        [key: string]: any;
-    }): true;
+    receive(
+        eventName: string,
+        event: {
+            [key: string]: unknown;
+        }
+    ): true;
     /**
      * Sends an event to WebSocket and dispatches as "client.{eventName}" and "client.*" events
      * @param {string} eventName
      * @param {{[key: string]: any}} event
      * @returns {true}
      */
-    send(eventName: string, data: any): true;
+    send(eventName: string, data: unknown): true;
 }
 import { RealtimeEventHandler } from './event_handler.js';
 //# sourceMappingURL=api.d.ts.map

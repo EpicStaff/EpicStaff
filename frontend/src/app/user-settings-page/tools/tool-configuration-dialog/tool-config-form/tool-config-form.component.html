@@ -1,146 +1,126 @@
 <!-- Angular Form with Simplified Structure -->
-<form
-  [formGroup]="form"
-  (ngSubmit)="onSubmit()"
-  class="config-form"
-  autocomplete="off"
->
-  <div class="form-content-wrapper">
-    <div class="form-content">
-      <!-- Name Field -->
-      <div class="form-group">
-        <div class="label-with-tooltip">
-          <label for="name">
-            Configuration Name
-            <span class="required-asterisk">*</span>
-          </label>
-          <app-help-tooltip
-            position="right"
-            [text]="'A unique name for this tool configuration.'"
-          ></app-help-tooltip>
+<form [formGroup]="form" (ngSubmit)="onSubmit()" class="config-form" autocomplete="off">
+    <div class="form-content-wrapper">
+        <div class="form-content">
+            <!-- Name Field -->
+            <div class="form-group">
+                <div class="label-with-tooltip">
+                    <label for="name">
+                        Configuration Name
+                        <span class="required-asterisk">*</span>
+                    </label>
+                    <app-help-tooltip
+                        position="right"
+                        [text]="'A unique name for this tool configuration.'"
+                    ></app-help-tooltip>
+                </div>
+                <input id="name" formControlName="name" type="text" aria-required="true" autocomplete="off" />
+                <!-- Error Message Container -->
+                <div class="error-container">
+                    <div
+                        class="error-message"
+                        *ngIf="
+                            form.controls['name'].invalid &&
+                            form.controls['name'].dirty &&
+                            form.controls['name'].touched
+                        "
+                    >
+                        Name is required and must be at least 3 characters.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dynamic Fields -->
+            <div class="form-group" *ngFor="let field of tool.tool_fields" [ngSwitch]="field.data_type">
+                <div class="label-with-tooltip">
+                    <label [for]="field.name" class="field-label">
+                        {{ field.name }}
+                        <span class="required-asterisk" *ngIf="field.required">*</span>
+                    </label>
+                    <app-help-tooltip position="right" [text]="field.description"></app-help-tooltip>
+                </div>
+
+                <!-- LLM Config Selector -->
+                <app-llm-model-selector
+                    *ngSwitchCase="'llm_config'"
+                    [formControlName]="field.name"
+                    [placeholder]="'Select LLM model'"
+                    [llmConfigs]="llmConfigs"
+                ></app-llm-model-selector>
+
+                <!-- Embedding Config Selector -->
+                <app-embedding-model-selector
+                    *ngSwitchCase="'embedding_config'"
+                    [formControlName]="field.name"
+                    [placeholder]="'Select embedding model'"
+                    [embeddingConfigs]="embeddingConfigs"
+                ></app-embedding-model-selector>
+
+                <input
+                    *ngSwitchCase="'string'"
+                    [id]="field.name"
+                    [formControlName]="field.name"
+                    type="text"
+                    [attr.aria-required]="field.required ? 'true' : 'false'"
+                    autocomplete="off"
+                />
+
+                <textarea
+                    *ngSwitchCase="'any'"
+                    [id]="field.name"
+                    [formControlName]="field.name"
+                    rows="4"
+                    [attr.aria-required]="field.required ? 'true' : 'false'"
+                ></textarea>
+
+                <div *ngSwitchCase="'boolean'" class="checkbox-group">
+                    <input
+                        [id]="field.name"
+                        [formControlName]="field.name"
+                        type="checkbox"
+                        [attr.aria-required]="field.required ? 'true' : 'false'"
+                    />
+                </div>
+
+                <input
+                    *ngSwitchCase="'integer'"
+                    [id]="field.name"
+                    [formControlName]="field.name"
+                    type="number"
+                    [attr.aria-required]="field.required ? 'true' : 'false'"
+                    autocomplete="off"
+                />
+
+                <div *ngSwitchDefault>Unhandled data type: {{ field.data_type }}</div>
+
+                <!-- Simplified Error Container -->
+                <div class="error-container">
+                    <div
+                        class="error-message"
+                        *ngIf="
+                            form.controls[field.name].invalid &&
+                            form.controls[field.name].dirty &&
+                            form.controls[field.name].touched
+                        "
+                    >
+                        <!-- Check for required error -->
+                        <span *ngIf="form.controls[field.name].hasError('required')">
+                            {{ field.name }} is required.
+                        </span>
+                        <!-- Check for integer validation error -->
+                        <span *ngIf="form.controls[field.name].hasError('notInteger')">
+                            {{ field.name }} must be a valid integer.
+                        </span>
+                    </div>
+                </div>
+            </div>
         </div>
-        <input
-          id="name"
-          formControlName="name"
-          type="text"
-          aria-required="true"
-          autocomplete="off"
-        />
-        <!-- Error Message Container -->
-        <div class="error-container">
-          <div
-            class="error-message"
-            *ngIf="
-              form.controls['name'].invalid &&
-              form.controls['name'].dirty &&
-              form.controls['name'].touched
-            "
-          >
-            Name is required and must be at least 3 characters.
-          </div>
-        </div>
-      </div>
-
-      <!-- Dynamic Fields -->
-      <div
-        class="form-group"
-        *ngFor="let field of tool.tool_fields"
-        [ngSwitch]="field.data_type"
-      >
-        <div class="label-with-tooltip">
-          <label [for]="field.name" class="field-label">
-            {{ field.name }}
-            <span class="required-asterisk" *ngIf="field.required">*</span>
-          </label>
-          <app-help-tooltip
-            position="right"
-            [text]="field.description"
-          ></app-help-tooltip>
-        </div>
-
-        <!-- LLM Config Selector -->
-        <app-llm-model-selector
-          *ngSwitchCase="'llm_config'"
-          [formControlName]="field.name"
-          [placeholder]="'Select LLM model'"
-          [llmConfigs]="llmConfigs"
-        ></app-llm-model-selector>
-
-        <!-- Embedding Config Selector -->
-        <app-embedding-model-selector
-          *ngSwitchCase="'embedding_config'"
-          [formControlName]="field.name"
-          [placeholder]="'Select embedding model'"
-          [embeddingConfigs]="embeddingConfigs"
-        ></app-embedding-model-selector>
-
-        <input
-          *ngSwitchCase="'string'"
-          [id]="field.name"
-          [formControlName]="field.name"
-          type="text"
-          [attr.aria-required]="field.required ? 'true' : 'false'"
-          autocomplete="off"
-        />
-
-        <textarea
-          *ngSwitchCase="'any'"
-          [id]="field.name"
-          [formControlName]="field.name"
-          rows="4"
-          [attr.aria-required]="field.required ? 'true' : 'false'"
-        ></textarea>
-
-        <div *ngSwitchCase="'boolean'" class="checkbox-group">
-          <input
-            [id]="field.name"
-            [formControlName]="field.name"
-            type="checkbox"
-            [attr.aria-required]="field.required ? 'true' : 'false'"
-          />
-        </div>
-
-        <input
-          *ngSwitchCase="'integer'"
-          [id]="field.name"
-          [formControlName]="field.name"
-          type="number"
-          [attr.aria-required]="field.required ? 'true' : 'false'"
-          autocomplete="off"
-        />
-
-        <div *ngSwitchDefault>Unhandled data type: {{ field.data_type }}</div>
-
-        <!-- Simplified Error Container -->
-        <div class="error-container">
-          <div
-            class="error-message"
-            *ngIf="
-              form.controls[field.name].invalid &&
-              form.controls[field.name].dirty &&
-              form.controls[field.name].touched
-            "
-          >
-            <!-- Check for required error -->
-            <span *ngIf="form.controls[field.name].hasError('required')">
-              {{ field.name }} is required.
-            </span>
-            <!-- Check for integer validation error -->
-            <span *ngIf="form.controls[field.name].hasError('notInteger')">
-              {{ field.name }} must be a valid integer.
-            </span>
-          </div>
-        </div>
-      </div>
     </div>
-  </div>
 
-  <div class="form-actions">
-    <button type="button" (click)="onCancel()" class="cancel-button">
-      Cancel
-    </button>
-    <button type="submit" [disabled]="form.invalid" class="submit-button">
-      {{ selectedConfig ? "Save" : "Create" }}
-    </button>
-  </div>
+    <div class="form-actions">
+        <button type="button" (click)="onCancel()" class="cancel-button">Cancel</button>
+        <button type="submit" [disabled]="form.invalid" class="submit-button">
+            {{ selectedConfig ? 'Save' : 'Create' }}
+        </button>
+    </div>
 </form>

@@ -1,57 +1,40 @@
 <div class="sessions-section">
-  <div class="section-header">
-
-    <div class="filters">
-      <button 
-        [class.active]="selectedFilter === 'all'"
-        (click)="setFilter('all')">
-        All
-      </button>
-      <button 
-        [class.active]="selectedFilter === 'active'"
-        (click)="setFilter('active')">
-        Active
-      </button>
-      <button 
-        [class.active]="selectedFilter === 'finished'"
-        (click)="setFilter('finished')">
-        Finished
-      </button>
-      <button 
-        [class.active]="selectedFilter === 'error'"
-        (click)="setFilter('error')">
-        Error
-      </button>
-    </div>
-  </div>
-
-  <div class="sessions-list">
-    <div class="session-item" *ngFor="let session of filteredSessions" [class]="session.status">
-      <div class="session-info">
-        <div class="session-id">Session #{{session.id}}</div>
-        <div class="session-times">
-          <span class="time-label">Started:</span>
-          <span class="time-value">{{formatDate(session.startTime)}}</span>
-          <ng-container *ngIf="session.endTime">
-            <span class="time-label">Finished:</span>
-            <span class="time-value">{{formatDate(session.endTime)}}</span>
-          </ng-container>
+    <div class="section-header">
+        <div class="filters">
+            <button [class.active]="selectedFilter === 'all'" (click)="setFilter('all')">All</button>
+            <button [class.active]="selectedFilter === 'active'" (click)="setFilter('active')">Active</button>
+            <button [class.active]="selectedFilter === 'finished'" (click)="setFilter('finished')">Finished</button>
+            <button [class.active]="selectedFilter === 'error'" (click)="setFilter('error')">Error</button>
         </div>
-        <div class="session-status">
-          <span class="status-indicator"></span>
-          {{session.status}}
-        </div>
-      </div>
-      <div class="session-actions">
-        <button mat-button *ngIf="session.status === 'active'" (click)="stopSession(session.id)">
-          <mat-icon>stop</mat-icon>
-          Stop
-        </button>
-        <button mat-button (click)="viewSession(session.id)">
-          <mat-icon>visibility</mat-icon>
-          View
-        </button>
-      </div>
     </div>
-  </div>
+
+    <div class="sessions-list">
+        <div class="session-item" *ngFor="let session of filteredSessions" [class]="session.status">
+            <div class="session-info">
+                <div class="session-id">Session #{{ session.id }}</div>
+                <div class="session-times">
+                    <span class="time-label">Started:</span>
+                    <span class="time-value">{{ formatDate(session.startTime) }}</span>
+                    <ng-container *ngIf="session.endTime">
+                        <span class="time-label">Finished:</span>
+                        <span class="time-value">{{ formatDate(session.endTime) }}</span>
+                    </ng-container>
+                </div>
+                <div class="session-status">
+                    <span class="status-indicator"></span>
+                    {{ session.status }}
+                </div>
+            </div>
+            <div class="session-actions">
+                <button mat-button *ngIf="session.status === 'active'" (click)="stopSession(session.id)">
+                    <mat-icon>stop</mat-icon>
+                    Stop
+                </button>
+                <button mat-button (click)="viewSession(session.id)">
+                    <mat-icon>visibility</mat-icon>
+                    View
+                </button>
+            </div>
+        </div>
+    </div>
 </div>

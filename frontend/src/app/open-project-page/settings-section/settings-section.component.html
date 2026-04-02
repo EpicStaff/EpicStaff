@@ -16,24 +16,14 @@
                             text="Enable memory to allow agents to remember previous interactions and context throughout the project execution."
                         ></app-help-tooltip>
                     </div>
-                    <div class="setting-description">
-                        Enable or disable memory for this project
-                    </div>
+                    <div class="setting-description">Enable or disable memory for this project</div>
                 </div>
                 <div class="setting-value">
                     <div class="toggle-wrapper">
-                        <div
-                            class="toggle-option"
-                            [class.active]="memory()"
-                            (click)="!memory() && toggleMemory()"
-                        >
+                        <div class="toggle-option" [class.active]="memory()" (click)="!memory() && toggleMemory()">
                             Enabled
                         </div>
-                        <div
-                            class="toggle-option"
-                            [class.active]="!memory()"
-                            (click)="memory() && toggleMemory()"
-                        >
+                        <div class="toggle-option" [class.active]="!memory()" (click)="memory() && toggleMemory()">
                             Disabled
                         </div>
                     </div>
@@ -49,24 +39,14 @@
                             text="Enable cache to store and reuse results from previous API calls."
                         ></app-help-tooltip>
                     </div>
-                    <div class="setting-description">
-                        Enable or disable cache for this project
-                    </div>
+                    <div class="setting-description">Enable or disable cache for this project</div>
                 </div>
                 <div class="setting-value">
                     <div class="toggle-wrapper">
-                        <div
-                            class="toggle-option"
-                            [class.active]="cache()"
-                            (click)="!cache() && toggleCache()"
-                        >
+                        <div class="toggle-option" [class.active]="cache()" (click)="!cache() && toggleCache()">
                             Enabled
                         </div>
-                        <div
-                            class="toggle-option"
-                            [class.active]="!cache()"
-                            (click)="cache() && toggleCache()"
-                        >
+                        <div class="toggle-option" [class.active]="!cache()" (click)="cache() && toggleCache()">
                             Disabled
                         </div>
                     </div>
@@ -82,25 +62,18 @@
                             text="Sequential process runs tasks in order one after another. Hierarchical process allows for more complex workflows with manager-worker relationships."
                         ></app-help-tooltip>
                     </div>
-                    <div class="setting-description">
-                        Choose between sequential or hierarchical process
-                    </div>
+                    <div class="setting-description">Choose between sequential or hierarchical process</div>
                 </div>
                 <div class="setting-value">
                     <div class="toggle-wrapper disabled">
                         <div
                             class="toggle-option"
                             [class.active]="process() === 'sequential'"
-                            (click)="
-                                process() !== 'sequential' && toggleProcess()
-                            "
+                            (click)="process() !== 'sequential' && toggleProcess()"
                         >
                             Sequential
                         </div>
-                        <div
-                            class="toggle-option disabled-option"
-                            [class.active]="process() === 'hierarchical'"
-                        >
+                        <div class="toggle-option disabled-option" [class.active]="process() === 'hierarchical'">
                             Hierarchical
                             <span class="coming-soon-label">Coming Soon</span>
                         </div>
@@ -161,9 +134,7 @@
                             text="Sets the maximum number of requests per minute to the language model APIs. Helps control costs and prevent rate limiting issues."
                         ></app-help-tooltip>
                     </div>
-                    <div class="setting-description">
-                        Maximum requests per minute
-                    </div>
+                    <div class="setting-description">Maximum requests per minute</div>
                 </div>
                 <div class="setting-value">
                     <div class="slider-container">
@@ -205,19 +176,14 @@
                             text="Select the language model that will be used for memory operations, including storing and retrieving context from previous interactions."
                         ></app-help-tooltip>
                     </div>
-                    <div class="setting-description">
-                        Select the LLM for memory operations
-                    </div>
+                    <div class="setting-description">Select the LLM for memory operations</div>
                 </div>
                 <div class="setting-value">
                     <app-llm-model-selector
                         [llmConfigs]="fullLLMConfigs()"
                         [placeholder]="'Select memory LLM model'"
                         [ngModel]="memory_llm_config()"
-                        (ngModelChange)="
-                            memory_llm_config.set($event);
-                            onMemoryLLMConfigChange()
-                        "
+                        (ngModelChange)="memory_llm_config.set($event); onMemoryLLMConfigChange()"
                     ></app-llm-model-selector>
                     <i
                         *ngIf="memory_llm_config() === null"
@@ -236,19 +202,14 @@
                             text="Choose the embedding model to be used for memory operations, semantic search, and context understanding within your project's memory system."
                         ></app-help-tooltip>
                     </div>
-                    <div class="setting-description">
-                        Select the embedding model for memory
-                    </div>
+                    <div class="setting-description">Select the embedding model for memory</div>
                 </div>
                 <div class="setting-value">
                     <app-embedding-model-selector
                         [embeddingConfigs]="fullEmbeddingConfigs()"
                         [placeholder]="'Select memory embedding model'"
                         [ngModel]="embedding_config()"
-                        (ngModelChange)="
-                            embedding_config.set($event);
-                            onEmbeddingConfigChange()
-                        "
+                        (ngModelChange)="embedding_config.set($event); onEmbeddingConfigChange()"
                     ></app-embedding-model-selector>
                     <i
                         *ngIf="embedding_config() === null"
@@ -261,10 +222,7 @@
     </div>
 
     <!-- Hierarchical Settings Group (conditionally displayed) -->
-    <div
-        class="settings-group hierarchical-group"
-        *ngIf="process() === 'hierarchical'"
-    >
+    <div class="settings-group hierarchical-group" *ngIf="process() === 'hierarchical'">
         <div class="group-header">
             <h3>Hierarchical Process Settings</h3>
             <p>Advanced settings available in hierarchical process mode</p>
@@ -280,18 +238,14 @@
                             text="Select the default language model that will be used as the manager in hierarchical processes. This model will coordinate the work of other agents."
                         ></app-help-tooltip>
                     </div>
-                    <div class="setting-description">
-                        Select the default language model
-                    </div>
+                    <div class="setting-description">Select the default language model</div>
                 </div>
                 <div class="setting-value">
                     <app-llm-model-selector
                         [llmConfigs]="fullLLMConfigs()"
                         [placeholder]="'Select LLM model'"
                         [ngModel]="manager_llm_config()"
-                        (ngModelChange)="
-                            manager_llm_config.set($event); onLLMConfigChange()
-                        "
+                        (ngModelChange)="manager_llm_config.set($event); onLLMConfigChange()"
                     ></app-llm-model-selector>
                     <i
                         *ngIf="manager_llm_config() === null"
@@ -310,15 +264,11 @@
                             text="Controls the creativity level of the manager agent. Lower values yield more deterministic, precise responses. Higher values produce more creative, varied outputs."
                         ></app-help-tooltip>
                     </div>
-                    <div class="setting-description">
-                        Adjust between precise and creative manager responses
-                    </div>
+                    <div class="setting-description">Adjust between precise and creative manager responses</div>
                 </div>
                 <div class="setting-value">
                     <div class="slider-container">
-                        <span class="slider-value"
-                            >{{ temperaturePercent }}%</span
-                        >
+                        <span class="slider-value">{{ temperaturePercent }}%</span>
                         <input
                             id="temperature"
                             [ngModel]="temperaturePercent"

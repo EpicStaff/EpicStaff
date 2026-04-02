@@ -1,25 +1,26 @@
 <div class="custom-tools">
-  @if (!isLoaded()) {
-  <app-loading-spinner
-    size="md"
-    message="Loading custom tools..."
-  ></app-loading-spinner>
-  } @else { @if (error()) {
-  <div class="error">{{ error() }}</div>
-  <button type="button" (click)="ngOnInit()">Retry</button>
-  } @else {
-  <div class="custom-tools-grid">
-    @if (tools().length === 0) {
-    <div class="empty-message">
-      <p>No custom tools found.</p>
-    </div>
-    } @else { @for (tool of tools(); track tool.id) {
-    <app-custom-tool-card
-      [tool]="tool"
-      (configure)="onConfigure($event)"
-      (delete)="onDelete($event)"
-    ></app-custom-tool-card>
-    } }
-  </div>
-  } }
+    @if (!isLoaded()) {
+        <app-loading-spinner size="md" message="Loading custom tools..."></app-loading-spinner>
+    } @else {
+        @if (error()) {
+            <div class="error">{{ error() }}</div>
+            <button type="button" (click)="ngOnInit()">Retry</button>
+        } @else {
+            <div class="custom-tools-grid">
+                @if (tools().length === 0) {
+                    <div class="empty-message">
+                        <p>No custom tools found.</p>
+                    </div>
+                } @else {
+                    @for (tool of tools(); track tool.id) {
+                        <app-custom-tool-card
+                            [tool]="tool"
+                            (configure)="onConfigure($event)"
+                            (delete)="onDelete($event)"
+                        ></app-custom-tool-card>
+                    }
+                }
+            </div>
+        }
+    }
 </div>

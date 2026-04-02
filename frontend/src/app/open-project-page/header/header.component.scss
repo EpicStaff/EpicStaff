@@ -1,85 +1,85 @@
 // header.component.scss
 .header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 5rem;
-  width: 100%;
-  padding: 0 3rem;
-  background-color: transparent; // No background color
-
-  // Left side with title
-  .title-section {
     display: flex;
     align-items: center;
-    gap: 1.5rem;
+    justify-content: space-between;
+    height: 5rem;
+    width: 100%;
+    padding: 0 3rem;
+    background-color: transparent; // No background color
 
-    .title {
-      font-size: 24px;
-      font-weight: 400;
-      line-height: 1;
-      margin: 0;
-      display: flex;
-      align-items: center;
-      white-space: nowrap;
-
-      .project-prefix {
-        color: rgba(255, 255, 255, 0.6);
-        cursor: pointer;
-        transition: all 0.2s ease;
+    // Left side with title
+    .title-section {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        position: relative;
+        gap: 1.5rem;
 
-        .back-arrow {
-          margin-top: 3px;
-          opacity: 1;
-          transform: translateX(0);
-          transition: all 0.3s ease;
+        .title {
+            font-size: 24px;
+            font-weight: 400;
+            line-height: 1;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            white-space: nowrap;
+
+            .project-prefix {
+                color: rgba(255, 255, 255, 0.6);
+                cursor: pointer;
+                transition: all 0.2s ease;
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                position: relative;
+
+                .back-arrow {
+                    margin-top: 3px;
+                    opacity: 1;
+                    transform: translateX(0);
+                    transition: all 0.3s ease;
+                }
+
+                span {
+                    line-height: 1;
+                }
+            }
+
+            .separator {
+                color: rgba(255, 255, 255, 0.4);
+                margin: 0 0.5rem;
+            }
+
+            .project-name {
+                display: flex;
+                gap: 0.25rem;
+                align-items: flex-start;
+                color: var(--color-text-primary, #d9d9de);
+                max-width: 500px;
+
+                &__text {
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    min-width: 0;
+                }
+
+                &__edit {
+                    transition: all 0.2s ease;
+                    cursor: pointer;
+                    color: rgba(255, 255, 255, 0.6);
+
+                    &:hover {
+                        color: #ffffff;
+                    }
+                }
+            }
         }
-
-        span {
-          line-height: 1;
-        }
-      }
-
-      .separator {
-        color: rgba(255, 255, 255, 0.4);
-        margin: 0 0.5rem;
-      }
-
-      .project-name {
-        display: flex;
-        gap: 0.25rem;
-        align-items: flex-start;
-        color: var(--color-text-primary, #d9d9de);
-        max-width: 500px;
-
-        &__text {
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          min-width: 0;
-        }
-
-        &__edit {
-          transition: all 0.2s ease;
-          cursor: pointer;
-          color: rgba(255, 255, 255, 0.6);
-
-          &:hover {
-            color: #ffffff;
-          }
-        }
-      }
     }
-  }
 
-  // Right side action buttons
-  .action-buttons {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-  }
+    // Right side action buttons
+    .action-buttons {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
 }

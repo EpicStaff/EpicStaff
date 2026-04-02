@@ -9,7 +9,9 @@
     border-radius: 16px;
     cursor: pointer;
     overflow: visible;
-    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+    transition:
+        border-color 0.18s ease,
+        box-shadow 0.18s ease;
 
     .input-port-wrapper {
         position: absolute;

@@ -93,4 +93,5 @@ export const FLOW_SHORTCUT_SECTIONS: ShortcutSection[] = [
             { id: 'confirm', label: 'Confirm', keys: ['Enter'] },
             // { id: 'new-line', label: 'New line', keys: ['Shift', 'arrows'] },
         ],
-    }];
+    },
+];

@@ -1,9 +1,10 @@
-import {Injectable} from "@angular/core";
-import {Observable, throwError} from "rxjs";
-import {HttpClient} from "@angular/common/http";
-import {shareReplay, catchError} from "rxjs/operators";
-import {GetTunnelResponse } from "../models/webhook.model";
-import {ConfigService} from "../../../../../services/config/config.service";
+import { HttpClient } from '@angular/common/http';
+import { Injectable } from '@angular/core';
+import { Observable, throwError } from 'rxjs';
+import { catchError, shareReplay } from 'rxjs/operators';
+
+import { ConfigService } from '../../../../../services/config/config.service';
+import { GetTunnelResponse } from '../models/webhook.model';
 
 @Injectable({
     providedIn: 'root',
@@ -11,7 +12,10 @@ import {ConfigService} from "../../../../../services/config/config.service";
 export class WebhookService {
     private tunnel$?: Observable<GetTunnelResponse>;
 
-    constructor(private http: HttpClient, private configService: ConfigService) { }
+    constructor(
+        private http: HttpClient,
+        private configService: ConfigService
+    ) {}
 
     private get apiUrlRegisterTelegramTrigger(): string {
         return this.configService.apiUrl + 'register-telegram-trigger/';
@@ -20,7 +24,7 @@ export class WebhookService {
     getTunnel(): Observable<GetTunnelResponse> {
         if (!this.tunnel$) {
             this.tunnel$ = this.getTunnelFromApi().pipe(
-                catchError(err => {
+                catchError((err) => {
                     this.tunnel$ = undefined;
                     return throwError(() => err);
                 }),

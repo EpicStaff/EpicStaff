@@ -1,42 +1,38 @@
-<div 
-  #agGridWrap
-  class="wrapper"
-  [class.agents-table-wrap--saving]="isSaving"
->
-  <app-spinner
-    *ngIf="isLoading()"
-    [text]="'Agents coming...'"
-    [size]="48"
-    [accentColor]="'#6562f5'"
-    [borderColor]="'rgba(101, 98, 245, 0.3)'"
-  ></app-spinner>
+<div #agGridWrap class="wrapper" [class.agents-table-wrap--saving]="isSaving">
+    <app-spinner
+        *ngIf="isLoading()"
+        [text]="'Agents coming...'"
+        [size]="48"
+        [accentColor]="'#6562f5'"
+        [borderColor]="'rgba(101, 98, 245, 0.3)'"
+    ></app-spinner>
 
-  <ag-grid-angular
-    [class.hidden-grid]="isLoading()"
-    appPreventContextMenu
-    class="ag-grid-staff"
-    style="flex: 1; width: 100%; min-height: 0"
-    [gridOptions]="gridOptions"
-    [rowData]="rowData"
-    [columnDefs]="columnDefs"
-    [defaultColDef]="defaultColDef"
-    [rowDragManaged]="true"
-    (gridReady)="onGridReady($event)"
-    (cellContextMenu)="onCellContextMenu($event)"
-  >
-  </ag-grid-angular>
+    <ag-grid-angular
+        [class.hidden-grid]="isLoading()"
+        appPreventContextMenu
+        class="ag-grid-staff"
+        style="flex: 1; width: 100%; min-height: 0"
+        [gridOptions]="gridOptions"
+        [rowData]="rowData"
+        [columnDefs]="columnDefs"
+        [defaultColDef]="defaultColDef"
+        [rowDragManaged]="true"
+        (gridReady)="onGridReady($event)"
+        (cellContextMenu)="onCellContextMenu($event)"
+    >
+    </ag-grid-angular>
 </div>
 
 <app-ag-grid-context-menu
-  clickOutside
-  (clickOutside)="closeContextMenu()"
-  [visible]="!isSaving && contextMenuVisible()"
-  [left]="menuLeft"
-  [top]="menuTop"
-  (delete)="handleDelete()"
-  (copy)="handleCopy()"
-  (pasteBelow)="handlePasteBelow()"
-  (pasteAbove)="handlePasteAbove()"
-  (addEmptyAgentBelow)="handleAddEmptyAgentBelow()"
-  (addEmptyAgentAbove)="handleAddEmptyAgentAbove()"
+    appClickOutside
+    (appClickOutside)="closeContextMenu()"
+    [visible]="!isSaving && contextMenuVisible()"
+    [left]="menuLeft"
+    [top]="menuTop"
+    (delete)="handleDelete()"
+    (copy)="handleCopy()"
+    (pasteBelow)="handlePasteBelow()"
+    (pasteAbove)="handlePasteAbove()"
+    (addEmptyAgentBelow)="handleAddEmptyAgentBelow()"
+    (addEmptyAgentAbove)="handleAddEmptyAgentAbove()"
 ></app-ag-grid-context-menu>

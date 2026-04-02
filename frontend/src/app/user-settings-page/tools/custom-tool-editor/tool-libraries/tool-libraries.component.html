@@ -1,44 +1,38 @@
 <div class="tool-libraries">
-  <!-- Header (styled similar to the variables header) -->
-  <div class="header">
-    <h3>Libraries</h3>
-    <app-help-tooltip
-      text="Add Python libraries that your tool needs to import. These libraries must be available in the Python environment where the tool will run."
-    ></app-help-tooltip>
-  </div>
-
-  <!-- Wrapper for the input group and the list -->
-  <div class="libraries-wrapper">
-    <!-- Input group: input field and add button -->
-
-    <!-- List of added libraries displayed as "chips" -->
-    <div class="libraries-list">
-      <div class="library-item" *ngFor="let lib of libraries; let i = index">
-        <!-- `title` attribute shows the full name on hover -->
-        <span class="library-name" [title]="lib">{{ lib }}</span>
-        <button
-          class="delete-library-btn"
-          (click)="removeLibrary(i); $event.preventDefault()"
-        >
-          <app-icon icon="ui/x" size="1rem"></app-icon>
-        </button>
-      </div>
-
-      <div class="input-group">
-        <input
-          type="text"
-          placeholder="Enter library name..."
-          [(ngModel)]="libraryInput"
-          (keydown.enter)="addLibrary(); $event.preventDefault()"
-          class="library-input"
-        />
-        <button
-          class="add-library-btn"
-          (click)="addLibrary(); $event.preventDefault()"
-        >
-          <app-icon icon="ui/plus" size="1rem"></app-icon>
-        </button>
-      </div>
+    <!-- Header (styled similar to the variables header) -->
+    <div class="header">
+        <h3>Libraries</h3>
+        <app-help-tooltip
+            text="Add Python libraries that your tool needs to import. These libraries must be available in the Python environment where the tool will run."
+        ></app-help-tooltip>
     </div>
-  </div>
+
+    <!-- Wrapper for the input group and the list -->
+    <div class="libraries-wrapper">
+        <!-- Input group: input field and add button -->
+
+        <!-- List of added libraries displayed as "chips" -->
+        <div class="libraries-list">
+            <div class="library-item" *ngFor="let lib of libraries; let i = index">
+                <!-- `title` attribute shows the full name on hover -->
+                <span class="library-name" [title]="lib">{{ lib }}</span>
+                <button class="delete-library-btn" (click)="removeLibrary(i); $event.preventDefault()">
+                    <app-icon icon="ui/x" size="1rem"></app-icon>
+                </button>
+            </div>
+
+            <div class="input-group">
+                <input
+                    type="text"
+                    placeholder="Enter library name..."
+                    [(ngModel)]="libraryInput"
+                    (keydown.enter)="addLibrary(); $event.preventDefault()"
+                    class="library-input"
+                />
+                <button class="add-library-btn" (click)="addLibrary(); $event.preventDefault()">
+                    <app-icon icon="ui/plus" size="1rem"></app-icon>
+                </button>
+            </div>
+        </div>
+    </div>
 </div>

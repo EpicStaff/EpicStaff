@@ -1,29 +1,29 @@
 :host {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  width: 100%;
-  margin: 0 AUTO;
-  min-height: 0; /* Important for nested flexbox */
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    margin: 0 AUTO;
+    min-height: 0; /* Important for nested flexbox */
 }
 
 .chat-container {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0; /* Critical for nested flex containers */
-  border-radius: 8px;
-  overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0; /* Critical for nested flex containers */
+    border-radius: 8px;
+    overflow: hidden;
 }
 
 .empty-state {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  flex: 1;
-  color: var(--gray-500);
-  font-style: italic;
-  background-color: var(--gray-850);
-  border-radius: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex: 1;
+    color: var(--gray-500);
+    font-style: italic;
+    background-color: var(--gray-850);
+    border-radius: 8px;
 }

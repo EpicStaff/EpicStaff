@@ -1,54 +1,46 @@
 <div class="tab-content">
-  <div class="tab-header">
-    <div>
-      <h3 class="title">LLM Models</h3>
-      <p class="subtitle">
-        Configure large language models for text generation and AI assistants.
-      </p>
+    <div class="tab-header">
+        <div>
+            <h3 class="title">LLM Models</h3>
+            <p class="subtitle">Configure large language models for text generation and AI assistants.</p>
+        </div>
+        <app-button type="primary" leftIcon="ui/plus" (click)="createNewConfig()">Add</app-button>
     </div>
-    <app-button type="primary" leftIcon="ui/plus" (click)="createNewConfig()"
-      >Add</app-button
-    >
-  </div>
 
-  <div class="llm-configs-list">
-    <!-- Loading state -->
-    @if (status() === 'loading') {
-    <div class="loading-state">
-      <p>Loading LLM configurations...</p>
+    <div class="llm-configs-list">
+        <!-- Loading state -->
+        @if (status() === 'loading') {
+            <div class="loading-state">
+                <p>Loading LLM configurations...</p>
+            </div>
+        }
+
+        <!-- Error state -->
+        @else if (status() === 'error') {
+            <div class="error-state">
+                <p>{{ errorMessage() }}</p>
+                <app-button type="secondary" leftIcon="ui/refresh" (click)="refreshData()"> Retry </app-button>
+            </div>
+        }
+
+        <!-- Empty state -->
+        @else if (llmConfigs().length === 0) {
+            <div class="empty-state">
+                <p>No embedding configurations found. Add one to get started.</p>
+            </div>
+        }
+
+        <!-- Loaded with data -->
+        @else {
+            @for (config of llmConfigs(); track config.id) {
+                <app-llm-config-item
+                    [config]="config"
+                    (favoriteToggled)="onFavoriteToggled()"
+                    (enabledToggled)="onEnabledToggled($event)"
+                    (configureClicked)="onConfigureClicked($event)"
+                    (deleteClicked)="onDeleteClicked($event)"
+                ></app-llm-config-item>
+            }
+        }
     </div>
-    }
-
-    <!-- Error state -->
-    @else if (status() === 'error') {
-    <div class="error-state">
-      <p>{{ errorMessage() }}</p>
-      <app-button
-        type="secondary"
-        leftIcon="ui/refresh"
-        (click)="refreshData()"
-      >
-        Retry
-      </app-button>
-    </div>
-    }
-
-    <!-- Empty state -->
-    @else if (llmConfigs().length === 0) {
-    <div class="empty-state">
-      <p>No embedding configurations found. Add one to get started.</p>
-    </div>
-    }
-
-    <!-- Loaded with data -->
-    @else { @for (config of llmConfigs(); track config.id) {
-    <app-llm-config-item
-      [config]="config"
-      (favoriteToggled)="onFavoriteToggled($event)"
-      (enabledToggled)="onEnabledToggled($event)"
-      (configureClicked)="onConfigureClicked($event)"
-      (deleteClicked)="onDeleteClicked($event)"
-    ></app-llm-config-item>
-    } }
-  </div>
 </div>

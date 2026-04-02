@@ -2,107 +2,107 @@
 // Port Wrapper & Circle Mixins
 // ====================
 @mixin port-wrapper-default {
-  position: absolute;
-  width: 24px;
-  height: 24px;
-  z-index: 2;
-  cursor: pointer;
-
-  &:not(.no-hover):hover .port-circle {
-    transform: translate(-50%, -50%) scale(1.5);
-    background-color: var(--project-node-accent-color);
-
-    .plus-icon {
-      opacity: 1;
-      margin: 0 !important;
-    }
-  }
-
-  .port-label {
     position: absolute;
-    font-size: 12px;
-    color: #a3a3a3;
-    background: #1818187e;
-    white-space: nowrap;
-    pointer-events: none;
-    opacity: 0;
-  }
+    width: 24px;
+    height: 24px;
+    z-index: 2;
+    cursor: pointer;
+
+    &:not(.no-hover):hover .port-circle {
+        transform: translate(-50%, -50%) scale(1.5);
+        background-color: var(--project-node-accent-color);
+
+        .plus-icon {
+            opacity: 1;
+            margin: 0 !important;
+        }
+    }
+
+    .port-label {
+        position: absolute;
+        font-size: 12px;
+        color: #a3a3a3;
+        background: #1818187e;
+        white-space: nowrap;
+        pointer-events: none;
+        opacity: 0;
+    }
 }
 
 @mixin port-circle-default {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid;
-  transition: transform 0.1s ease-in-out;
-  transform-origin: center center;
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid;
+    transition: transform 0.1s ease-in-out;
+    transform-origin: center center;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 
-  .plus-icon {
-    font-size: 8px;
-    opacity: 0;
-    transition: opacity 0.2s;
-    pointer-events: none;
-  }
+    .plus-icon {
+        font-size: 8px;
+        opacity: 0;
+        transition: opacity 0.2s;
+        pointer-events: none;
+    }
 }
 
 // ====================
 // Default Port Position Mixins
 // ====================
 @mixin port-position-left-default {
-  left: -10px;
-  top: 50%;
-  transform: translateY(-50%);
-
-  .port-label {
-    right: calc(100% + 6px);
+    left: -10px;
     top: 50%;
     transform: translateY(-50%);
-  }
+
+    .port-label {
+        right: calc(100% + 6px);
+        top: 50%;
+        transform: translateY(-50%);
+    }
 }
 
 @mixin port-position-right-default {
-  right: -10px;
-  top: 50%;
-  transform: translateY(-50%);
-
-  .port-label {
-    left: calc(100% + 6px);
+    right: -10px;
     top: 50%;
     transform: translateY(-50%);
-  }
+
+    .port-label {
+        left: calc(100% + 6px);
+        top: 50%;
+        transform: translateY(-50%);
+    }
 }
 
 @mixin port-position-top-default {
-  top: -11px;
-  left: 50%;
-  transform: translateX(-50%);
-
-  .port-label {
-    bottom: 100%;
+    top: -11px;
     left: 50%;
     transform: translateX(-50%);
-    margin-bottom: 4px;
-  }
+
+    .port-label {
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        margin-bottom: 4px;
+    }
 }
 
 @mixin port-position-bottom-default {
-  bottom: -10px;
-  left: 50%;
-  transform: translateX(-50%);
-
-  .port-label {
-    top: 100%;
+    bottom: -10px;
     left: 50%;
     transform: translateX(-50%);
-    margin-top: 4px;
-  }
+
+    .port-label {
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        margin-top: 4px;
+    }
 }
 
 // ====================
@@ -111,28 +111,28 @@
 
 // For ports on the top side of agent nodes, use the port-index classes
 @mixin agent-port-top-indexes {
-  &.port-index-0 {
-    left: calc(10%) !important;
-  }
-  &.port-index-1 {
-    left: calc(36%) !important;
-  }
-  &.port-index-2 {
-    left: calc(64%) !important;
-  }
-  &.port-index-3 {
-    left: calc(90%) !important;
-  }
+    &.port-index-0 {
+        left: calc(10%) !important;
+    }
+    &.port-index-1 {
+        left: calc(36%) !important;
+    }
+    &.port-index-2 {
+        left: calc(64%) !important;
+    }
+    &.port-index-3 {
+        left: calc(90%) !important;
+    }
 }
 
 // For bottom-positioned ports in agent nodes
 @mixin agent-port-bottom-indexes {
-  &.port-index-5 {
-    left: 35% !important;
-  }
-  &.port-index-6 {
-    left: 75% !important;
-  }
+    &.port-index-5 {
+        left: 35% !important;
+    }
+    &.port-index-6 {
+        left: 75% !important;
+    }
 }
 
 // For left-positioned ports in agent nodes
@@ -147,97 +147,97 @@
 // ====================
 
 @mixin task-port-top-indexes {
-  &.port-index-1 {
-    left: 25% !important;
-  }
-  &.port-index-2 {
-    left: 75% !important;
-  }
+    &.port-index-1 {
+        left: 25% !important;
+    }
+    &.port-index-2 {
+        left: 75% !important;
+    }
 }
 @mixin task-port-right-indexes {
-  &.port-index-3 {
-    top: 25%;
-  }
-  &.port-index-4 {
-    top: 75%;
-  }
+    &.port-index-3 {
+        top: 25%;
+    }
+    &.port-index-4 {
+        top: 75%;
+    }
 }
 
 @mixin task-port-bottom-indexes {
-  &.port-index-5 {
-    left: 25%;
-  }
-  &.port-index-6 {
-    left: 75%;
-  }
+    &.port-index-5 {
+        left: 25%;
+    }
+    &.port-index-6 {
+        left: 75%;
+    }
 }
 @mixin task-port-left-indexes {
-  &.port-index-7 {
-    top: 25%;
-  }
-  &.port-index-0 {
-    top: 75%;
-  }
+    &.port-index-7 {
+        top: 25%;
+    }
+    &.port-index-0 {
+        top: 75%;
+    }
 }
 
 @mixin table-port-left-indexes {
-  top: 30px;
+    top: 30px;
 }
 
 @mixin table-port-right-indexes {
-  $header-height: 60px;
-  $row-height: 46px;
-  
-  top: calc(#{$header-height} + #{$row-height} * (var(--port-index, 0) + 0.5)) !important;
+    $header-height: 60px;
+    $row-height: 46px;
+
+    top: calc(#{$header-height} + #{$row-height} * (var(--port-index, 0) + 0.5)) !important;
 }
 
 @mixin project-port-top-indexes {
-  &.port-index-0 {
-    left: 75% !important;
-  }
+    &.port-index-0 {
+        left: 75% !important;
+    }
 }
 @mixin python-port-top-indexes {
-  &.port-index-0 {
-    left: 75% !important;
-  }
+    &.port-index-0 {
+        left: 75% !important;
+    }
 }
 // ====================
 // Expand/Collapse Toggle Mixins
 // ====================
 @mixin icon-button-default($position) {
-  position: absolute;
-  #{$position}: -32px;
-  top: -35px;
-  background: rgba(20, 20, 20, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 50%;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  opacity: 0;
-  transition: transform 0.2s ease-in-out;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.2);
-  }
-
-  i {
-    font-size: 18px;
-    width: 18px;
-    height: 18px;
-    color: #dbdbdb;
-  }
-
-  &::before {
-    content: "";
     position: absolute;
-    width: 70px;
-    height: 60px;
-    #{$position}: -20px;
-    top: -20px;
-    background: none;
-  }
+    #{$position}: -32px;
+    top: -35px;
+    background: rgba(20, 20, 20, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: transform 0.2s ease-in-out;
+
+    &:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+
+    i {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+        color: #dbdbdb;
+    }
+
+    &::before {
+        content: '';
+        position: absolute;
+        width: 70px;
+        height: 60px;
+        #{$position}: -20px;
+        top: -20px;
+        background: none;
+    }
 }

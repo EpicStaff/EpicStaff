@@ -1,5 +1,5 @@
+import { NgClass, NgStyle } from '@angular/common';
 import { Component, input } from '@angular/core';
-import {NgClass, NgStyle} from '@angular/common';
 
 @Component({
     selector: 'app-stepper',

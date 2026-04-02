@@ -1,138 +1,138 @@
 .tool-libraries {
-  border-radius: 6px;
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.9);
+    border-radius: 6px;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.9);
 
-  .header {
-    display: flex;
-    align-items: center;
-    margin-bottom: 12px;
-    gap: 0.5rem;
-
-    h3 {
-      margin: 0;
-      padding: 0;
-      font-size: 14px;
-      color: rgba(255, 255, 255, 0.7);
-      font-weight: 400;
-      line-height: 1;
-    }
-  }
-
-  .libraries-wrapper {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-
-    .libraries-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-
-      .library-item {
+    .header {
         display: flex;
         align-items: center;
-        background-color: rgba(30, 30, 30, 0.6);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 6px;
-        padding: 8px 12px;
-        transition: all 0.2s ease;
-        max-width: 100%;
-        flex: 0 1 auto;
-        min-width: 0;
+        margin-bottom: 12px;
+        gap: 0.5rem;
 
-        &:hover {
-          background-color: rgba(50, 50, 50, 0.6);
-          border-color: rgba(255, 255, 255, 0.2);
-        }
-
-        .library-name {
-          flex: 1;
-          min-width: 0;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          margin-right: 8px;
-        }
-
-        .delete-library-btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: transparent;
-          border: none;
-          cursor: pointer;
-          color: rgba(255, 255, 255, 0.5);
-          font-size: 14px;
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          transition: all 0.2s ease;
-          padding: 0;
-
-          &:hover {
-            color: #ff4d4f;
-            background-color: rgba(255, 77, 79, 0.1);
-          }
-
-          i {
+        h3 {
+            margin: 0;
+            padding: 0;
             font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+            font-weight: 400;
             line-height: 1;
-          }
         }
-      }
-
-      .input-group {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        height: 38px; /* Set consistent height for the group */
-
-        .library-input {
-          height: 38px;
-          padding: 0 12px;
-          background-color: rgba(30, 30, 30, 0.6);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 6px;
-          color: white;
-          font-size: 14px;
-          transition: border-color 0.2s ease;
-          outline: none;
-
-          &::placeholder {
-            color: rgba(255, 255, 255, 0.4);
-          }
-
-          &:focus {
-            border-color: #685fff;
-          }
-        }
-
-        .add-library-btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          height: 38px;
-          width: 38px;
-          background-color: rgba(30, 30, 30, 0.6);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 6px;
-          cursor: pointer;
-          color: #685fff;
-          transition: all 0.2s ease;
-
-          i {
-            font-size: 16px;
-            line-height: 1;
-          }
-
-          &:hover {
-            background-color: rgba(104, 95, 255, 0.1);
-            border-color: #685fff;
-          }
-        }
-      }
     }
-  }
+
+    .libraries-wrapper {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+
+        .libraries-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+
+            .library-item {
+                display: flex;
+                align-items: center;
+                background-color: rgba(30, 30, 30, 0.6);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 6px;
+                padding: 8px 12px;
+                transition: all 0.2s ease;
+                max-width: 100%;
+                flex: 0 1 auto;
+                min-width: 0;
+
+                &:hover {
+                    background-color: rgba(50, 50, 50, 0.6);
+                    border-color: rgba(255, 255, 255, 0.2);
+                }
+
+                .library-name {
+                    flex: 1;
+                    min-width: 0;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    margin-right: 8px;
+                }
+
+                .delete-library-btn {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: transparent;
+                    border: none;
+                    cursor: pointer;
+                    color: rgba(255, 255, 255, 0.5);
+                    font-size: 14px;
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 50%;
+                    transition: all 0.2s ease;
+                    padding: 0;
+
+                    &:hover {
+                        color: #ff4d4f;
+                        background-color: rgba(255, 77, 79, 0.1);
+                    }
+
+                    i {
+                        font-size: 14px;
+                        line-height: 1;
+                    }
+                }
+            }
+
+            .input-group {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                height: 38px; /* Set consistent height for the group */
+
+                .library-input {
+                    height: 38px;
+                    padding: 0 12px;
+                    background-color: rgba(30, 30, 30, 0.6);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 6px;
+                    color: white;
+                    font-size: 14px;
+                    transition: border-color 0.2s ease;
+                    outline: none;
+
+                    &::placeholder {
+                        color: rgba(255, 255, 255, 0.4);
+                    }
+
+                    &:focus {
+                        border-color: #685fff;
+                    }
+                }
+
+                .add-library-btn {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    height: 38px;
+                    width: 38px;
+                    background-color: rgba(30, 30, 30, 0.6);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 6px;
+                    cursor: pointer;
+                    color: #685fff;
+                    transition: all 0.2s ease;
+
+                    i {
+                        font-size: 16px;
+                        line-height: 1;
+                    }
+
+                    &:hover {
+                        background-color: rgba(104, 95, 255, 0.1);
+                        border-color: #685fff;
+                    }
+                }
+            }
+        }
+    }
 }

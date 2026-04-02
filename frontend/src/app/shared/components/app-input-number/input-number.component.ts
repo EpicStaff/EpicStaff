@@ -1,25 +1,15 @@
-import {
-    Component,
-    ChangeDetectionStrategy,
-    input,
-    output,
-    model,
-    signal, computed, forwardRef,
-} from '@angular/core';
-import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from "@angular/forms";
-import { NgClass } from "@angular/common";
-import { TooltipComponent } from "../tooltip/tooltip.component";
+import { NgClass } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, forwardRef, input, model, output, signal } from '@angular/core';
+import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+
+import { TooltipComponent } from '../tooltip/tooltip.component';
 
 @Component({
     selector: 'app-input-number',
     templateUrl: './input-number.component.html',
     styleUrls: ['./input-number.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [
-        FormsModule,
-        NgClass,
-        TooltipComponent
-    ],
+    imports: [FormsModule, NgClass, TooltipComponent],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -108,9 +98,7 @@ export class InputNumberComponent implements ControlValueAccessor {
     }
 
     onKeyDown(event: KeyboardEvent) {
-        const allowedKeys = [
-            'Backspace', 'Tab', 'ArrowLeft', 'ArrowRight', 'Delete', 'Home', 'End'
-        ];
+        const allowedKeys = ['Backspace', 'Tab', 'ArrowLeft', 'ArrowRight', 'Delete', 'Home', 'End'];
         if (allowedKeys.includes(event.key)) return;
 
         if (!/^\d$/.test(event.key)) {

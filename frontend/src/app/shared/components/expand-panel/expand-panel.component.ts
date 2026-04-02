@@ -1,18 +1,15 @@
-import { ChangeDetectionStrategy, Component, input, signal } from "@angular/core";
-import { TooltipComponent } from "@shared/components";
-import { expandCollapseAnimation } from "@shared/animations";
-import { NgClass } from "@angular/common";
+import { NgClass } from '@angular/common';
+import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
+import { expandCollapseAnimation } from '@shared/animations';
+import { TooltipComponent } from '@shared/components';
 
 @Component({
     selector: 'app-expand-panel',
     templateUrl: './expand-panel.component.html',
     styleUrls: ['./expand-panel.component.scss'],
     animations: [expandCollapseAnimation],
-    imports: [
-        TooltipComponent,
-        NgClass
-    ],
-    changeDetection: ChangeDetectionStrategy.OnPush
+    imports: [TooltipComponent, NgClass],
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ExpandPanelComponent {
     icon = input<string>('help_outline');

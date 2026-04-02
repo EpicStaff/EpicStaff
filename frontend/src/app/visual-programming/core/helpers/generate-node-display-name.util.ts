@@ -108,34 +108,23 @@ export function generateMultipleNodeDisplayNames(
     nodesToCreate: Array<{ type: NodeType; data: unknown }>,
     currentNodes: NodeModel[]
 ): string[] {
-    console.log('=== GENERATE MULTIPLE NODE DISPLAY NAMES DEBUG ===');
-    console.log('Input nodesToCreate:', nodesToCreate);
-    console.log(
-        'Input currentNodes:',
-        currentNodes.map((n) => ({ id: n.id, type: n.type, name: n.node_name }))
-    );
-
     // Get all existing node names to avoid duplicates
     const existingNames = new Set(currentNodes.map((n) => n.node_name));
-    console.log('Existing node names:', Array.from(existingNames));
 
     // Count existing nodes by type
     const existingCounts = new Map<NodeType, number>();
     currentNodes.forEach((node) => {
         existingCounts.set(node.type, (existingCounts.get(node.type) || 0) + 1);
     });
-    console.log('Existing counts by type:', Object.fromEntries(existingCounts));
 
     // Count nodes being created by type
     const creatingCounts = new Map<NodeType, number>();
     nodesToCreate.forEach((node) => {
         creatingCounts.set(node.type, (creatingCounts.get(node.type) || 0) + 1);
     });
-    console.log('Creating counts by type:', Object.fromEntries(creatingCounts));
 
     // Generate names for each node
     const displayNames: string[] = [];
-    const tempCounts = new Map<NodeType, number>();
     const generatedNames = new Set<string>(); // Track names generated in this batch
 
     nodesToCreate.forEach((node, index) => {
@@ -165,11 +154,7 @@ export function generateMultipleNodeDisplayNames(
         // Add to generated names set
         generatedNames.add(displayName);
         displayNames[index] = displayName;
-
-        console.log(`Generated name for node ${index}: "${displayName}"`);
     });
 
-    console.log('Final display names:', displayNames);
-    console.log('=== END GENERATE MULTIPLE NODE DISPLAY NAMES DEBUG ===');
     return displayNames;
 }

@@ -1,12 +1,8 @@
-import { Injectable, signal, computed, inject } from '@angular/core';
-import {
-    AbstractControl,
-    AsyncValidatorFn,
-    ValidationErrors,
-} from '@angular/forms';
-import { Observable, of, map, catchError } from 'rxjs';
+import { computed, inject, Injectable } from '@angular/core';
+import { AbstractControl, AsyncValidatorFn, ValidationErrors } from '@angular/forms';
+import { Observable, of } from 'rxjs';
+
 import { FlowService } from './flow.service';
-import { NodeModel } from '../core/models/node.model';
 
 export interface UniqueNameValidationResult {
     isValid: boolean;
@@ -44,9 +40,7 @@ export class UniqueNodeNameValidatorService {
      * @returns AsyncValidatorFn
      */
     public createUniqueNameValidator(currentNodeId?: string): AsyncValidatorFn {
-        return (
-            control: AbstractControl
-        ): Observable<ValidationErrors | null> => {
+        return (control: AbstractControl): Observable<ValidationErrors | null> => {
             const nodeName = control.value;
 
             if (!nodeName || typeof nodeName !== 'string') {
@@ -61,9 +55,7 @@ export class UniqueNodeNameValidatorService {
 
             // Check for uniqueness
             const allNames = this.allNamesSignal();
-            const isDuplicate = allNames.some(
-                (item) => item.name === trimmedName && item.id !== currentNodeId
-            );
+            const isDuplicate = allNames.some((item) => item.name === trimmedName && item.id !== currentNodeId);
 
             if (isDuplicate) {
                 return of({
@@ -98,9 +90,7 @@ export class UniqueNodeNameValidatorService {
 
             // Check for uniqueness
             const allNames = this.allNamesSignal();
-            const isDuplicate = allNames.some(
-                (item) => item.name === trimmedName && item.id !== currentNodeId
-            );
+            const isDuplicate = allNames.some((item) => item.name === trimmedName && item.id !== currentNodeId);
 
             if (isDuplicate) {
                 return {
@@ -128,9 +118,7 @@ export class UniqueNodeNameValidatorService {
         const trimmedName = name.trim();
         const allNames = this.allNamesSignal();
 
-        return !allNames.some(
-            (item) => item.name === trimmedName && item.id !== excludeId
-        );
+        return !allNames.some((item) => item.name === trimmedName && item.id !== excludeId);
     }
 
     /**
@@ -157,8 +145,7 @@ export class UniqueNodeNameValidatorService {
     ): Record<string, { isValid: boolean; message?: string }> {
         const allNames = this.allNamesSignal();
         const excludeIdSet = new Set(excludeIds);
-        const results: Record<string, { isValid: boolean; message?: string }> =
-            {};
+        const results: Record<string, { isValid: boolean; message?: string }> = {};
 
         nodeNames.forEach((name, index) => {
             const trimmedName = name?.trim();
@@ -172,10 +159,7 @@ export class UniqueNodeNameValidatorService {
             }
 
             // Check for uniqueness
-            const isDuplicate = allNames.some(
-                (item) =>
-                    item.name === trimmedName && !excludeIdSet.has(item.id)
-            );
+            const isDuplicate = allNames.some((item) => item.name === trimmedName && !excludeIdSet.has(item.id));
 
             if (isDuplicate) {
                 results[index] = {

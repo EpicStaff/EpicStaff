@@ -1,38 +1,36 @@
+import { Dialog, DialogModule } from '@angular/cdk/dialog';
+import { CommonModule } from '@angular/common';
 import {
-    Component,
-    OnInit,
-    OnDestroy,
     ChangeDetectionStrategy,
     ChangeDetectorRef,
-    Input, 
-    Output, 
+    Component,
     EventEmitter,
+    Input,
+    OnDestroy,
+    OnInit,
+    Output,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { RouterModule } from '@angular/router';
-import { Dialog, DialogModule } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
-import { RunGraphService } from '../../features/flows/services/run-graph-session.service';
-import { map, takeUntil } from 'rxjs/operators';
-import { EditTitleDialogComponent } from './edit-name-dialog/edit-title-dialog.component';
-import { ProjectStateService } from '../services/project-state.service';
-import { ToastService } from '../../services/notifications/toast.service';
 import { Subject } from 'rxjs';
-import {
-    GetProjectRequest,
-    ProjectProcess,
-} from '../../features/projects/models/project.model';
+import { takeUntil } from 'rxjs/operators';
+import { v4 as uuidv4 } from 'uuid';
+
+import { FlowsApiService } from '../../features/flows/services/flows-api.service';
+import { RunGraphService } from '../../features/flows/services/run-graph-session.service';
+import { GetProjectRequest, ProjectProcess } from '../../features/projects/models/project.model';
+import { ToastService } from '../../services/notifications/toast.service';
 import { AppIconComponent } from '../../shared/components/app-icon/app-icon.component';
 import { ButtonComponent } from '../../shared/components/buttons/button/button.component';
-import { v4 as uuidv4 } from 'uuid';
-import { NodeType } from '../../visual-programming/core/enums/node-type';
-import { NODE_COLORS } from '../../visual-programming/core/enums/node-config';
-import { NODE_ICONS } from '../../visual-programming/core/enums/node-config';
-import { FlowsApiService } from '../../features/flows/services/flows-api.service';
 import { ConfirmationDialogService } from '../../shared/components/cofirm-dialog/confimation-dialog.service';
 import { SaveWithIndicatorComponent } from '../../shared/components/save-with-indicator/save-with-indicator.component';
 import { UnsavedIndicatorComponent } from '../../shared/components/unsaved-indicator/unsaved-indicator.component';
+import { NODE_COLORS } from '../../visual-programming/core/enums/node-config';
+import { NODE_ICONS } from '../../visual-programming/core/enums/node-config';
+import { NodeType } from '../../visual-programming/core/enums/node-type';
+import { ProjectStateService } from '../services/project-state.service';
+import { EditTitleDialogComponent } from './edit-name-dialog/edit-title-dialog.component';
 
 @Component({
     selector: 'app-header',
@@ -72,13 +70,11 @@ export class HeaderComponent implements OnInit, OnDestroy {
     ) {}
 
     ngOnInit(): void {
-        this.projectStateService.project$
-            .pipe(takeUntil(this.destroy$))
-            .subscribe((project) => {
-                this.project = project;
+        this.projectStateService.project$.pipe(takeUntil(this.destroy$)).subscribe((project) => {
+            this.project = project;
 
-                this.cdr.markForCheck();
-            });
+            this.cdr.markForCheck();
+        });
     }
 
     ngOnDestroy(): void {
@@ -117,27 +113,17 @@ export class HeaderComponent implements OnInit, OnDestroy {
 
     setProcessType(type: 'sequential' | 'hierarchical'): void {
         if (this.project?.process !== type && this.project?.id) {
-            this.projectStateService
-                .updateProjectField(
-                    this.project.id,
-                    'process',
-                    type as ProjectProcess
-                )
-                .subscribe({
-                    next: (updatedProject) => {
-                        this.project = updatedProject;
-                        this.cdr.markForCheck();
-                        this.toastService.success(
-                            'Process type updated successfully'
-                        );
-                    },
-                    error: (error) => {
-                        console.error('Error updating process type:', error);
-                        this.toastService.error(
-                            'Failed to update process type'
-                        );
-                    },
-                });
+            this.projectStateService.updateProjectField(this.project.id, 'process', type as ProjectProcess).subscribe({
+                next: (updatedProject) => {
+                    this.project = updatedProject;
+                    this.cdr.markForCheck();
+                    this.toastService.success('Process type updated successfully');
+                },
+                error: (error) => {
+                    console.error('Error updating process type:', error);
+                    this.toastService.error('Failed to update process type');
+                },
+            });
         }
     }
 
@@ -157,19 +143,15 @@ export class HeaderComponent implements OnInit, OnDestroy {
     }
 
     private updateProjectTitle(projectId: number, newTitle: string): void {
-        this.projectStateService
-            .updateProjectField(projectId, 'name', newTitle)
-            .subscribe({
-                next: () => {
-                    this.toastService.success(
-                        'Project name updated successfully'
-                    );
-                },
-                error: (error) => {
-                    console.error('Error updating project title:', error);
-                    this.toastService.error('Failed to update project name');
-                },
-            });
+        this.projectStateService.updateProjectField(projectId, 'name', newTitle).subscribe({
+            next: () => {
+                this.toastService.success('Project name updated successfully');
+            },
+            error: (error) => {
+                console.error('Error updating project title:', error);
+                this.toastService.error('Failed to update project name');
+            },
+        });
     }
 
     onCreateFlowWithProject() {
@@ -214,7 +196,7 @@ export class HeaderComponent implements OnInit, OnDestroy {
                             metadata,
                             tags: [],
                         })
-                        .subscribe((response: any) => {
+                        .subscribe((response: { id: string | number }) => {
                             this.router.navigate(['/flows', response.id]);
                         });
                 }

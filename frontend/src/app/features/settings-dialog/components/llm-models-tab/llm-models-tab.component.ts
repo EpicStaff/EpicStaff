@@ -1,24 +1,17 @@
-import {
-    ChangeDetectionStrategy,
-    Component,
-    OnInit,
-    signal,
-    inject,
-} from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { Dialog } from '@angular/cdk/dialog';
-import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
+import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
-import { LlmConfigItemComponent } from './llm-config-item/llm-config-item.component';
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
-import { AddLlmConfigDialogComponent, AddLlmConfigDialogData } from './add-llm-config-dialog/add-llm-config-dialog.component';
-import {
-    FullLLMConfigService,
-    FullLLMConfig,
-} from '../../services/llms/full-llm-config.service';
-import { LLM_Config_Service } from '../../services/llms/llm-config.service';
 import { UpdateLLMConfigRequest } from '../../models/llms/LLM_config.model';
+import { FullLLMConfig, FullLLMConfigService } from '../../services/llms/full-llm-config.service';
+import { LLM_Config_Service } from '../../services/llms/llm-config.service';
+import {
+    AddLlmConfigDialogComponent,
+    AddLlmConfigDialogData,
+} from './add-llm-config-dialog/add-llm-config-dialog.component';
+import { LlmConfigItemComponent } from './llm-config-item/llm-config-item.component';
 
 @Component({
     selector: 'app-llm-models-tab',
@@ -72,22 +65,18 @@ export class LlmModelsTabComponent implements OnInit {
             },
             error: (err) => {
                 console.error('Failed to load LLM configurations:', err);
-                this.errorMessage.set(
-                    'Failed to load configurations. Please try again.'
-                );
+                this.errorMessage.set('Failed to load configurations. Please try again.');
                 this.status.set(LoadingState.ERROR);
             },
         });
     }
 
-    public onFavoriteToggled(event: { id: string | number; value: boolean }) {
+    public onFavoriteToggled(): void {
         // Placeholder for favorite toggle logic
     }
 
     public onEnabledToggled(event: { id: string | number; value: boolean }) {
-        const config: FullLLMConfig | undefined = this.llmConfigs().find(
-            (c) => c.id === event.id
-        );
+        const config: FullLLMConfig | undefined = this.llmConfigs().find((c) => c.id === event.id);
         if (!config) return;
         const updateReq: UpdateLLMConfigRequest = {
             id: config.id,
@@ -101,11 +90,7 @@ export class LlmModelsTabComponent implements OnInit {
             next: (updated) => {
                 // Update local array
                 this.llmConfigs.set(
-                    this.llmConfigs().map((c) =>
-                        c.id === updated.id
-                            ? { ...c, is_visible: updated.is_visible }
-                            : c
-                    )
+                    this.llmConfigs().map((c) => (c.id === updated.id ? { ...c, is_visible: updated.is_visible } : c))
                 );
             },
             error: (err) => {
@@ -153,9 +138,7 @@ export class LlmModelsTabComponent implements OnInit {
     public onDeleteClicked(id: string | number) {
         this.llmConfigService.deleteConfig(Number(id)).subscribe({
             next: () => {
-                this.llmConfigs.set(
-                    this.llmConfigs().filter((c) => c.id !== id)
-                );
+                this.llmConfigs.set(this.llmConfigs().filter((c) => c.id !== id));
             },
             error: (err) => {
                 console.error('Failed to delete config:', err);

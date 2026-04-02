@@ -5,8 +5,7 @@ export const EP_CHAT_COMMANDS = {
     AGENTS_SYNC: 'agents.sync',
 } as const;
 
-export type EpChatAction =
-    (typeof EP_CHAT_COMMANDS)[keyof typeof EP_CHAT_COMMANDS];
+export type EpChatAction = (typeof EP_CHAT_COMMANDS)[keyof typeof EP_CHAT_COMMANDS];
 
 export const EP_CHAT_EVENT_TYPES = {
     CHAT_CLOSED: 'chat.closed',
@@ -18,8 +17,7 @@ export const EP_CHAT_EVENT_TYPES = {
     AGENT_DISCONNECTED: 'agent.disconnected',
 } as const;
 
-export type EpChatEventType =
-    (typeof EP_CHAT_EVENT_TYPES)[keyof typeof EP_CHAT_EVENT_TYPES];
+export type EpChatEventType = (typeof EP_CHAT_EVENT_TYPES)[keyof typeof EP_CHAT_EVENT_TYPES];
 
 export interface EpicChatCreateAgentPayload {
     name: string;
@@ -34,10 +32,7 @@ export interface EpicChatSyncAgentsPayload {
     agents: EpicChatCreateAgentPayload[];
 }
 
-export type EpChatCommandPayload =
-    | EpicChatCreateAgentPayload
-    | EpicChatSyncAgentsPayload
-    | Record<string, unknown>;
+export type EpChatCommandPayload = EpicChatCreateAgentPayload | EpicChatSyncAgentsPayload | Record<string, unknown>;
 
 export interface EpChatCommand {
     requestId: string;

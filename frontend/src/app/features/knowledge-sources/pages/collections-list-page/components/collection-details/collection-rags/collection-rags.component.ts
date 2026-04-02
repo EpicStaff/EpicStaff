@@ -1,27 +1,22 @@
-import {ChangeDetectionStrategy, Component, DestroyRef, inject, input} from "@angular/core";
-import {AppIconComponent} from "@shared/components";
-import {Dialog} from "@angular/cdk/dialog";
-import {
-    NaiveRagConfigurationDialog
-} from "../../../../../components/naive-rag-configuration-dialog/naive-rag-configuration-dialog.component";
-import {CreateCollectionDtoResponse} from "../../../../../models/collection.model";
-import {
-    CreateCollectionDialogComponent
-} from "../../../../../components/create-collection-dialog/create-collection-dialog.component";
-import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
-import {CollectionsStorageService} from "../../../../../services/collections-storage.service";
-import {catchError, switchMap} from "rxjs/operators";
-import {ToastService} from "../../../../../../../services/notifications";
-import {throwError} from "rxjs";
+import { Dialog } from '@angular/cdk/dialog';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, input } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AppIconComponent } from '@shared/components';
+import { throwError } from 'rxjs';
+import { catchError, switchMap } from 'rxjs/operators';
+
+import { ToastService } from '../../../../../../../services/notifications';
+import { CreateCollectionDialogComponent } from '../../../../../components/create-collection-dialog/create-collection-dialog.component';
+import { NaiveRagConfigurationDialog } from '../../../../../components/naive-rag-configuration-dialog/naive-rag-configuration-dialog.component';
+import { CreateCollectionDtoResponse } from '../../../../../models/collection.model';
+import { CollectionsStorageService } from '../../../../../services/collections-storage.service';
 
 @Component({
     selector: 'app-collection-details-rags',
     templateUrl: 'collection-rags.component.html',
     styleUrls: ['./collection-rags.component.scss'],
-    imports: [
-        AppIconComponent
-    ],
-    changeDetection: ChangeDetectionStrategy.OnPush
+    imports: [AppIconComponent],
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CollectionRagsComponent {
     private dialog = inject(Dialog);
@@ -37,7 +32,7 @@ export class CollectionRagsComponent {
             return;
         }
 
-        const naiveRag = this.collection().rag_configurations.find(i => i.rag_type === 'naive');
+        const naiveRag = this.collection().rag_configurations.find((i) => i.rag_type === 'naive');
 
         if (!naiveRag) return;
 
@@ -46,16 +41,12 @@ export class CollectionRagsComponent {
             height: 'calc(100vh - 2rem)',
             data: {
                 collection: this.collection(),
-                ragId: naiveRag.rag_id
+                ragId: naiveRag.rag_id,
             },
-            disableClose: true
+            disableClose: true,
         });
 
-        dialog.closed
-            .pipe(
-                takeUntilDestroyed(this.destroyRef),
-            )
-            .subscribe()
+        dialog.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
     private openCollectionModal(): void {
@@ -63,18 +54,18 @@ export class CollectionRagsComponent {
             width: 'calc(100vw - 2rem)',
             height: 'calc(100vh - 2rem)',
             data: this.collection().collection_id,
-            disableClose: true
+            disableClose: true,
         });
 
         dialog.closed
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 switchMap(() => {
-                    return this.collectionsStorageService.getFullCollection(this.collection().collection_id, true)
+                    return this.collectionsStorageService.getFullCollection(this.collection().collection_id, true);
                 }),
                 catchError((error) => {
-                    this.toastService.error('Failed to get collection data')
-                    return throwError(() => error)
+                    this.toastService.error('Failed to get collection data');
+                    return throwError(() => error);
                 })
             )
             .subscribe();

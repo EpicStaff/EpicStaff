@@ -1,18 +1,8 @@
-import { NaiveRagChunkStrategy } from "../enums/naive-rag-chunk-strategy";
+import { NaiveRagChunkStrategy } from '../enums/naive-rag-chunk-strategy';
 
-export type DocumentChunkingProcessStatus =
-    | 'completed'
-    | 'canceled'
-    | 'failed'
-    | 'timeout';
+export type DocumentChunkingProcessStatus = 'completed' | 'canceled' | 'failed' | 'timeout';
 
-export type DocumentStatus =
-    | 'new'
-    | 'chunking'
-    | 'chunked'
-    | 'indexing'
-    | 'completed'
-    | 'failed';
+export type DocumentStatus = 'new' | 'chunking' | 'chunked' | 'indexing' | 'completed' | 'failed';
 
 export type DocumentWithChunksStatus =
     | 'new'

@@ -1,9 +1,5 @@
-import {
-    Component,
-    ChangeDetectionStrategy,
-    Output,
-    EventEmitter,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Output } from '@angular/core';
+
 import { AppIconComponent } from '../../../../../../../shared/components/app-icon/app-icon.component';
 
 @Component({
@@ -40,7 +36,8 @@ import { AppIconComponent } from '../../../../../../../shared/components/app-ico
 
             .add-project-card:hover {
                 border-color: var(--accent-color);
-                box-shadow: 0 12px 20px rgba(0, 0, 0, 0.18),
+                box-shadow:
+                    0 12px 20px rgba(0, 0, 0, 0.18),
                     0 3px 6px rgba(0, 0, 0, 0.1);
             }
 

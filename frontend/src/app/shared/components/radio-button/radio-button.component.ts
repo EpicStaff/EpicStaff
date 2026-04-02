@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, forwardRef, input, model, output } from "@angular/core";
-import { ControlValueAccessor, NG_VALUE_ACCESSOR } from "@angular/forms";
-import { NgClass } from "@angular/common";
-import { TooltipComponent } from "../tooltip/tooltip.component";
+import { NgClass } from '@angular/common';
+import { ChangeDetectionStrategy, Component, forwardRef, input, model, output } from '@angular/core';
+import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+
+import { TooltipComponent } from '../tooltip/tooltip.component';
 
 export interface SegmentedOption<T = unknown> {
     label: string;
@@ -19,11 +20,8 @@ export interface SegmentedOption<T = unknown> {
             multi: true,
         },
     ],
-    imports: [
-        NgClass,
-        TooltipComponent
-    ],
-    changeDetection: ChangeDetectionStrategy.OnPush
+    imports: [NgClass, TooltipComponent],
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RadioButtonComponent<T> implements ControlValueAccessor {
     icon = input<string>('help_outline');
@@ -53,7 +51,9 @@ export class RadioButtonComponent<T> implements ControlValueAccessor {
         this.onTouched = fn;
     }
 
-    setDisabledState(isDisabled: boolean): void {}
+    setDisabledState(isDisabled: boolean): void {
+        void isDisabled;
+    }
 
     select(option: SegmentedOption<T>) {
         if (this.disabled()) return;

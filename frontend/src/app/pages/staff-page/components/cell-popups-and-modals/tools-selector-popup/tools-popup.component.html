@@ -1,157 +1,148 @@
 <!-- Tools Selection Popup -->
 <div class="tools-popup-container">
-  <!-- Header -->
+    <!-- Header -->
 
-  <div class="header">
-    <div class="list-header">
-      <input
-        #searchInput
-        type="text"
-        [(ngModel)]="searchTerm"
-        placeholder="Search tools..."
-      />
-      <!-- Commented out filter button as requested -->
-      <!-- <button class="filter-button"><i class="ti ti-filter"></i> Filter</button> -->
+    <div class="header">
+        <div class="list-header">
+            <input #searchInput type="text" [(ngModel)]="searchTerm" placeholder="Search tools..." />
+            <!-- Commented out filter button as requested -->
+            <!-- <button class="filter-button"><i class="ti ti-filter"></i> Filter</button> -->
+        </div>
+
+        <div class="menu-header">
+            <button [class.active]="selectedMenu === 'custom'" (click)="toggleToolType('custom')">Custom Tools</button>
+            <button [class.active]="selectedMenu === 'mcp'" (click)="toggleToolType('mcp')">MCP Tools</button>
+        </div>
     </div>
 
-    <div class="menu-header">
-      <button [class.active]="selectedMenu === 'custom'" (click)="toggleToolType('custom')">
-        Custom Tools
-      </button>
-      <button [class.active]="selectedMenu === 'mcp'" (click)="toggleToolType('mcp')">
-        MCP Tools
-      </button>
+    <!-- Body -->
+    <div class="body">
+        <!-- Built-in Tools -->
+        <!--    <div class="tools-list" *ngIf="selectedMenu === 'builtin'">-->
+        <!--      &lt;!&ndash; Loading Spinner &ndash;&gt;-->
+        <!--      <div *ngIf="loading" class="loading-spinner">-->
+        <!--        <div class="dots">-->
+        <!--          <div class="dot"></div>-->
+        <!--          <div class="dot"></div>-->
+        <!--          <div class="dot"></div>-->
+        <!--        </div>-->
+        <!--      </div>-->
+
+        <!--      &lt;!&ndash; No tools message &ndash;&gt;-->
+        <!--      <div class="no-tools" *ngIf="!loading && tools.length === 0">-->
+        <!--        <p>No built-in tools available</p>-->
+        <!--      </div>-->
+
+        <!--      &lt;!&ndash; Using Tool Item Component for each tool &ndash;&gt;-->
+        <!--      <app-tool-item-->
+        <!--        *ngFor="let tool of filteredTools"-->
+        <!--        [tool]="tool"-->
+        <!--        [isSelected]="isToolSelected(tool)"-->
+        <!--        [isExpanded]="expandedToolConfigs.has(tool.id)"-->
+        <!--        [selectedConfigIds]="selectedToolConfigs"-->
+        <!--        (toolToggled)="onCheckboxToggle($event)"-->
+        <!--        (configToggled)="onConfigToggle($event)"-->
+        <!--        (toolConfigsToggled)="toggleToolConfigs($event)"-->
+        <!--      >-->
+        <!--      </app-tool-item>-->
+        <!--    </div>-->
+
+        <!-- Python/Custom Tools -->
+        <div class="python-tools" *ngIf="selectedMenu === 'custom'">
+            <!-- Loading Spinner -->
+            <div *ngIf="loading" class="loading-spinner">
+                <div class="dots">
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                </div>
+            </div>
+
+            <!-- No python tools message -->
+            <div class="no-tools" *ngIf="!loading && pythonTools.length === 0">
+                <p>No custom tools available</p>
+                <app-button
+                    type="primary"
+                    class="btn-primary create-btn"
+                    [leftIcon]="'ui/plus'"
+                    (click)="openCustomToolDialog()"
+                >
+                    Create custom tool
+                </app-button>
+            </div>
+
+            <!-- Using Python Tool Item Component for each tool -->
+            <div class="tools-list" *ngIf="!loading && pythonTools.length > 0">
+                <app-python-tool-item
+                    *ngFor="let pTool of filteredPythonTools"
+                    [tool]="pTool"
+                    [isSelected]="selectedPythonTools.has(pTool.id)"
+                    (toolToggled)="onPythonToolToggle($event)"
+                >
+                </app-python-tool-item>
+                <div class="add-tool-button-container">
+                    <app-button
+                        type="primary"
+                        class="btn-primary add-tool-btn"
+                        [leftIcon]="'ui/plus'"
+                        (click)="openCustomToolDialog()"
+                    >
+                        Create custom tool
+                    </app-button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MCP Tools -->
+        <div class="mcp-tools" *ngIf="selectedMenu === 'mcp'">
+            <!-- Loading Spinner -->
+            <div *ngIf="loading" class="loading-spinner">
+                <div class="dots">
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                </div>
+            </div>
+
+            <!-- No MCP tools message -->
+            <div class="no-tools" *ngIf="!loading && mcpTools.length === 0">
+                <p>No MCP tools available</p>
+                <app-button
+                    type="primary"
+                    class="btn-primary create-btn"
+                    [leftIcon]="'ui/plus'"
+                    (click)="openMcpToolDialog()"
+                >
+                    Add MCP Tool
+                </app-button>
+            </div>
+
+            <!-- Using MCP Tool Item Component for each tool -->
+            <div class="tools-list" *ngIf="!loading && mcpTools.length > 0">
+                <app-mcp-tool-item
+                    *ngFor="let mcpTool of filteredMcpTools"
+                    [tool]="mcpTool"
+                    [isSelected]="selectedMcpTools.has(mcpTool.id)"
+                    (toolToggled)="onMcpToolToggle($event)"
+                >
+                </app-mcp-tool-item>
+                <div class="add-tool-button-container">
+                    <app-button
+                        type="primary"
+                        class="btn-primary add-tool-btn"
+                        [leftIcon]="'ui/plus'"
+                        (click)="openMcpToolDialog()"
+                    >
+                        Add MCP Tool
+                    </app-button>
+                </div>
+            </div>
+        </div>
     </div>
-  </div>
 
-  <!-- Body -->
-  <div class="body">
-    <!-- Built-in Tools -->
-<!--    <div class="tools-list" *ngIf="selectedMenu === 'builtin'">-->
-<!--      &lt;!&ndash; Loading Spinner &ndash;&gt;-->
-<!--      <div *ngIf="loading" class="loading-spinner">-->
-<!--        <div class="dots">-->
-<!--          <div class="dot"></div>-->
-<!--          <div class="dot"></div>-->
-<!--          <div class="dot"></div>-->
-<!--        </div>-->
-<!--      </div>-->
-
-<!--      &lt;!&ndash; No tools message &ndash;&gt;-->
-<!--      <div class="no-tools" *ngIf="!loading && tools.length === 0">-->
-<!--        <p>No built-in tools available</p>-->
-<!--      </div>-->
-
-<!--      &lt;!&ndash; Using Tool Item Component for each tool &ndash;&gt;-->
-<!--      <app-tool-item-->
-<!--        *ngFor="let tool of filteredTools"-->
-<!--        [tool]="tool"-->
-<!--        [isSelected]="isToolSelected(tool)"-->
-<!--        [isExpanded]="expandedToolConfigs.has(tool.id)"-->
-<!--        [selectedConfigIds]="selectedToolConfigs"-->
-<!--        (toolToggled)="onCheckboxToggle($event)"-->
-<!--        (configToggled)="onConfigToggle($event)"-->
-<!--        (toolConfigsToggled)="toggleToolConfigs($event)"-->
-<!--      >-->
-<!--      </app-tool-item>-->
-<!--    </div>-->
-
-    <!-- Python/Custom Tools -->
-    <div class="python-tools" *ngIf="selectedMenu === 'custom'">
-      <!-- Loading Spinner -->
-      <div *ngIf="loading" class="loading-spinner">
-        <div class="dots">
-          <div class="dot"></div>
-          <div class="dot"></div>
-          <div class="dot"></div>
-        </div>
-      </div>
-
-      <!-- No python tools message -->
-      <div class="no-tools" *ngIf="!loading && pythonTools.length === 0">
-        <p>No custom tools available</p>
-         <app-button
-          type="primary"
-          class="btn-primary create-btn"
-          [leftIcon]="'ui/plus'"
-          (click)="openCustomToolDialog()"
-        >
-          Create custom tool
-        </app-button>
-      </div>
-
-      <!-- Using Python Tool Item Component for each tool -->
-      <div class="tools-list" *ngIf="!loading && pythonTools.length > 0">
-        <app-python-tool-item
-          *ngFor="let pTool of filteredPythonTools"
-          [tool]="pTool"
-          [isSelected]="selectedPythonTools.has(pTool.id)"
-          (toolToggled)="onPythonToolToggle($event)"
-        >
-        </app-python-tool-item>
-        <div class="add-tool-button-container">
-          <app-button
-            type="primary"
-            class="btn-primary add-tool-btn"
-            [leftIcon]="'ui/plus'"
-            (click)="openCustomToolDialog()"
-          >
-            Create custom tool
-          </app-button>
-        </div>
-      </div>
+    <!-- Footer -->
+    <div class="footer">
+        <button class="cancel-button" (click)="onCancel()">Cancel</button>
+        <button class="save-btn" (click)="save()">Save Selection</button>
     </div>
-
-    <!-- MCP Tools -->
-    <div class="mcp-tools" *ngIf="selectedMenu === 'mcp'">
-      <!-- Loading Spinner -->
-      <div *ngIf="loading" class="loading-spinner">
-        <div class="dots">
-          <div class="dot"></div>
-          <div class="dot"></div>
-          <div class="dot"></div>
-        </div>
-      </div>
-
-      <!-- No MCP tools message -->
-      <div class="no-tools" *ngIf="!loading && mcpTools.length === 0">
-        <p>No MCP tools available</p>
-        <app-button
-          type="primary"
-          class="btn-primary create-btn"
-          [leftIcon]="'ui/plus'"
-          (click)="openMcpToolDialog()"
-        >
-          Add MCP Tool
-        </app-button>
-      </div>
-
-      <!-- Using MCP Tool Item Component for each tool -->
-      <div class="tools-list" *ngIf="!loading && mcpTools.length > 0">
-        <app-mcp-tool-item
-          *ngFor="let mcpTool of filteredMcpTools"
-          [tool]="mcpTool"
-          [isSelected]="selectedMcpTools.has(mcpTool.id)"
-          (toolToggled)="onMcpToolToggle($event)"
-        >
-        </app-mcp-tool-item>
-        <div class="add-tool-button-container">
-          <app-button
-            type="primary"
-            class="btn-primary add-tool-btn"
-            [leftIcon]="'ui/plus'"
-            (click)="openMcpToolDialog()"
-          >
-            Add MCP Tool
-          </app-button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Footer -->
-  <div class="footer">
-    <button class="cancel-button" (click)="onCancel()">Cancel</button>
-    <button class="save-btn" (click)="save()">Save Selection</button>
-  </div>
 </div>

@@ -1,40 +1,36 @@
+import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { Overlay, OverlayModule, OverlayRef } from '@angular/cdk/overlay';
+import { ComponentPortal } from '@angular/cdk/portal';
+import { CommonModule } from '@angular/common';
 import {
     Component,
+    computed,
     DestroyRef,
     Inject,
-    ViewEncapsulation,
-    OnDestroy,
-    ViewContainerRef,
     inject,
+    OnDestroy,
     signal,
-    computed,
+    ViewContainerRef,
+    ViewEncapsulation,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { CommonModule } from '@angular/common';
-import { JsonEditorComponent } from '../../../shared/components/json-editor/json-editor.component';
-import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { Overlay, OverlayRef, OverlayModule } from '@angular/cdk/overlay';
-import { ComponentPortal } from '@angular/cdk/portal';
-import {
-    AutocompleteOverlayComponent,
-    AutocompleteItem,
-} from '../node-panels/decision-table-node-panel/decision-table-grid/cell-editors/expression-editor/autocomplete-overlay/autocomplete-overlay.component';
-import {
-    parseTree,
-    parse as parseJsonc,
-    findNodeAtOffset,
-    Node as JsonNode,
-} from 'jsonc-parser';
-import {
-    validatePersistentVariables,
-    extractPathsFromArray,
-    hasValidationErrors,
-    formatValidationMessages,
-    EMPTY_VALIDATION_RESULT,
-    type PersistentVariablesValidationResult,
-} from '../../services/persistent-variables.validator';
+import { findNodeAtOffset, Node as JsonNode, parse as parseJsonc, parseTree } from 'jsonc-parser';
 
-declare const monaco: any;
+import { JsonEditorComponent } from '../../../shared/components/json-editor/json-editor.component';
+import {
+    EMPTY_VALIDATION_RESULT,
+    extractPathsFromArray,
+    formatValidationMessages,
+    hasValidationErrors,
+    type PersistentVariablesValidationResult,
+    validatePersistentVariables,
+} from '../../services/persistent-variables.validator';
+import {
+    AutocompleteItem,
+    AutocompleteOverlayComponent,
+} from '../node-panels/decision-table-node-panel/decision-table-grid/cell-editors/expression-editor/autocomplete-overlay/autocomplete-overlay.component';
+
+declare const monaco: typeof import('monaco-editor');
 
 export interface DomainDialogData {
     initialData: Record<string, unknown>;
@@ -66,17 +62,14 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
 
             <div class="dialog-content">
                 <div class="helper-text">
-                    Here you can define your domain variables that will be
-                    available throughout your workflow execution.
+                    Here you can define your domain variables that will be available throughout your workflow execution.
                 </div>
 
                 <div class="autocomplete-hint">
                     <i class="ti ti-bulb"></i>
                     <span>
-                        Place your cursor inside <code>user</code> or
-                        <code>organization</code> arrays and press
-                        <kbd>Ctrl+Space</kbd> to pick variables from
-                        <code>context</code>.
+                        Place your cursor inside <code>user</code> or <code>organization</code> arrays and press
+                        <kbd>Ctrl+Space</kbd> to pick variables from <code>context</code>.
                     </span>
                 </div>
 
@@ -268,28 +261,35 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
 export class DomainDialogComponent implements OnDestroy {
     public initialStateJson: string = '{}';
     public isJsonValid: boolean = true;
-    public validationResult = signal<PersistentVariablesValidationResult>(
-        EMPTY_VALIDATION_RESULT
-    );
+    public validationResult = signal<PersistentVariablesValidationResult>(EMPTY_VALIDATION_RESULT);
 
-    public hasPathErrors = computed(() =>
-        hasValidationErrors(this.validationResult())
-    );
-    public pathErrorMessages = computed(() =>
-        formatValidationMessages(this.validationResult())
-    );
+    public hasPathErrors = computed(() => hasValidationErrors(this.validationResult()));
+    public pathErrorMessages = computed(() => formatValidationMessages(this.validationResult()));
 
-    private monacoEditor: any = null;
+    private monacoEditor: import('monaco-editor').editor.IStandaloneCodeEditor | null = null;
     private overlayService = inject(Overlay);
     private viewContainerRef = inject(ViewContainerRef);
     private overlayRef: OverlayRef | null = null;
     private autocompleteInstance: AutocompleteOverlayComponent | null = null;
     private currentPath: string[] = [];
     private currentTargetArray: 'user' | 'organization' | null = null;
-    private contextObject: any = null;
-    private keyDownDisposable: any = null;
-    private cursorDisposable: any = null;
+    private contextObject: Record<string, unknown> | null = null;
+    private keyDownDisposable: import('monaco-editor').IDisposable | null = null;
+    private cursorDisposable: import('monaco-editor').IDisposable | null = null;
     private destroyRef = inject(DestroyRef);
+
+    private getEditorContext(): {
+        editor: import('monaco-editor').editor.IStandaloneCodeEditor;
+        model: import('monaco-editor').editor.ITextModel;
+        position: import('monaco-editor').Position;
+    } | null {
+        const editor = this.monacoEditor;
+        if (!editor) return null;
+        const model = editor.getModel();
+        const position = editor.getPosition();
+        if (!model || !position) return null;
+        return { editor, model, position };
+    }
 
     constructor(
         private dialogRef: DialogRef<Record<string, unknown> | null>,
@@ -297,19 +297,15 @@ export class DomainDialogComponent implements OnDestroy {
     ) {
         this.initializeJsonEditor();
 
-        this.dialogRef.backdropClick
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe(() => this.close());
+        this.dialogRef.backdropClick.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.close());
 
-        this.dialogRef.keydownEvents
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((e: KeyboardEvent) => {
-                if (e.key === 'Escape') {
-                    if (this.overlayRef?.hasAttached()) return;
-                    e.preventDefault();
-                    this.close();
-                }
-            });
+        this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                if (this.overlayRef?.hasAttached()) return;
+                e.preventDefault();
+                this.close();
+            }
+        });
     }
 
     ngOnDestroy(): void {
@@ -321,9 +317,7 @@ export class DomainDialogComponent implements OnDestroy {
     // --- JSON Editor setup ---
 
     private initializeJsonEditor(): void {
-        const initial = this.data?.initialData as
-            | Record<string, unknown>
-            | undefined;
+        const initial = this.data?.initialData as Record<string, unknown> | undefined;
         const isEmptyObject =
             initial && typeof initial === 'object' && !Array.isArray(initial)
                 ? Object.keys(initial).length === 0
@@ -333,12 +327,8 @@ export class DomainDialogComponent implements OnDestroy {
             try {
                 this.initialStateJson = JSON.stringify(initial, null, 2);
                 this.isJsonValid = true;
-            } catch (e) {
-                this.initialStateJson = JSON.stringify(
-                    DEFAULT_INITIAL_STATE,
-                    null,
-                    2
-                );
+            } catch {
+                this.initialStateJson = JSON.stringify(DEFAULT_INITIAL_STATE, null, 2);
                 this.isJsonValid = false;
             }
         } else {
@@ -389,7 +379,7 @@ export class DomainDialogComponent implements OnDestroy {
 
     // --- Monaco editor & autocomplete setup ---
 
-    public onEditorReady(editor: any): void {
+    public onEditorReady(editor: import('monaco-editor').editor.IStandaloneCodeEditor): void {
         this.monacoEditor = editor;
         this.setupAutocomplete();
     }
@@ -397,12 +387,9 @@ export class DomainDialogComponent implements OnDestroy {
     private setupAutocomplete(): void {
         if (!this.monacoEditor) return;
 
-        this.monacoEditor.addCommand(
-            monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space,
-            () => this.handleCtrlSpace()
-        );
+        this.monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space, () => this.handleCtrlSpace());
 
-        this.keyDownDisposable = this.monacoEditor.onKeyDown((e: any) => {
+        this.keyDownDisposable = this.monacoEditor.onKeyDown((e: import('monaco-editor').IKeyboardEvent) => {
             if (!this.overlayRef?.hasAttached() || !this.autocompleteInstance) return;
 
             const key = e.browserEvent.key;
@@ -441,11 +428,10 @@ export class DomainDialogComponent implements OnDestroy {
 
         this.cursorDisposable = this.monacoEditor.onDidChangeCursorPosition(() => {
             if (!this.overlayRef?.hasAttached()) return;
-
-            const model = this.monacoEditor.getModel();
-            const position = this.monacoEditor.getPosition();
-            const offset = model.getOffsetAt(position);
-            const text = model.getValue();
+            const ctx = this.getEditorContext();
+            if (!ctx) return;
+            const offset = ctx.model.getOffsetAt(ctx.position);
+            const text = ctx.model.getValue();
 
             if (!this.isCursorInTargetArray(text, offset)) {
                 this.closeOverlay();
@@ -461,17 +447,21 @@ export class DomainDialogComponent implements OnDestroy {
             return;
         }
 
-        const model = this.monacoEditor.getModel();
-        const position = this.monacoEditor.getPosition();
-        const offset = model.getOffsetAt(position);
-        const text = model.getValue();
+        const ctx = this.getEditorContext();
+        if (!ctx) return;
+        const offset = ctx.model.getOffsetAt(ctx.position);
+        const text = ctx.model.getValue();
 
         const targetArray = this.getCursorTargetArray(text, offset);
         if (targetArray) {
             this.currentTargetArray = targetArray;
             const contextObj = this.extractContextObject(text);
-            if (contextObj && typeof contextObj === 'object' && Object.keys(contextObj).length > 0) {
-                this.contextObject = contextObj;
+            if (
+                contextObj &&
+                typeof contextObj === 'object' &&
+                Object.keys(contextObj as Record<string, unknown>).length > 0
+            ) {
+                this.contextObject = contextObj as Record<string, unknown>;
                 this.currentPath = [];
                 this.openOverlay();
             } else {
@@ -483,7 +473,7 @@ export class DomainDialogComponent implements OnDestroy {
             }
         } else {
             this.currentTargetArray = null;
-            this.monacoEditor.trigger('keyboard', 'editor.action.triggerSuggest', {});
+            ctx.editor.trigger('keyboard', 'editor.action.triggerSuggest', {});
         }
     }
 
@@ -491,10 +481,7 @@ export class DomainDialogComponent implements OnDestroy {
 
     private readonly parseOptions = { allowTrailingComma: true } as const;
 
-    private getCursorTargetArray(
-        text: string,
-        offset: number
-    ): 'user' | 'organization' | null {
+    private getCursorTargetArray(text: string, offset: number): 'user' | 'organization' | null {
         const root = parseTree(text, [], this.parseOptions);
         if (!root) return null;
 
@@ -505,32 +492,19 @@ export class DomainDialogComponent implements OnDestroy {
         while (current) {
             if (current.type === 'array' && current.parent) {
                 const prop = current.parent;
-                if (
-                    prop.type === 'property' &&
-                    prop.children &&
-                    prop.children.length > 0
-                ) {
+                if (prop.type === 'property' && prop.children && prop.children.length > 0) {
                     const keyNode = prop.children[0];
                     if (keyNode.type === 'string') {
                         const arrName = keyNode.value;
-                        if (
-                            arrName === 'user' ||
-                            arrName === 'organization'
-                        ) {
+                        if (arrName === 'user' || arrName === 'organization') {
                             const grandParent = prop.parent;
-                            if (
-                                grandParent?.type === 'object' &&
-                                grandParent.parent
-                            ) {
+                            if (grandParent?.type === 'object' && grandParent.parent) {
                                 const pvProp = grandParent.parent;
                                 if (
                                     pvProp.type === 'property' &&
-                                    pvProp.children?.[0]?.value ===
-                                        'persistent_variables'
+                                    pvProp.children?.[0]?.value === 'persistent_variables'
                                 ) {
-                                    return arrName as
-                                        | 'user'
-                                        | 'organization';
+                                    return arrName as 'user' | 'organization';
                                 }
                             }
                         }
@@ -558,7 +532,7 @@ export class DomainDialogComponent implements OnDestroy {
         }
     }
 
-    private extractContextObject(text: string): any {
+    private extractContextObject(text: string): unknown {
         const parsed = this.parseJsonLenient(text);
         const variables = parsed?.['variables'] as Record<string, unknown> | undefined;
         return variables && typeof variables === 'object' ? variables['context'] : null;
@@ -571,11 +545,8 @@ export class DomainDialogComponent implements OnDestroy {
             if (!parsed) return new Set();
             const pv = parsed['persistent_variables'];
             if (!pv || typeof pv !== 'object') return new Set();
-            const oppositeKey =
-                this.currentTargetArray === 'user' ? 'organization' : 'user';
-            return extractPathsFromArray(
-                (pv as Record<string, unknown>)[oppositeKey]
-            );
+            const oppositeKey = this.currentTargetArray === 'user' ? 'organization' : 'user';
+            return extractPathsFromArray((pv as Record<string, unknown>)[oppositeKey]);
         } catch {
             return new Set();
         }
@@ -588,9 +559,7 @@ export class DomainDialogComponent implements OnDestroy {
             if (!parsed) return new Set();
             const pv = parsed['persistent_variables'];
             if (!pv || typeof pv !== 'object') return new Set();
-            return extractPathsFromArray(
-                (pv as Record<string, unknown>)[this.currentTargetArray]
-            );
+            return extractPathsFromArray((pv as Record<string, unknown>)[this.currentTargetArray]);
         } catch {
             return new Set();
         }
@@ -601,10 +570,15 @@ export class DomainDialogComponent implements OnDestroy {
     private buildAutocompleteItems(): AutocompleteItem[] {
         if (!this.contextObject) return [];
 
-        let current: any = this.contextObject;
+        let current: Record<string, unknown> | null = this.contextObject;
         for (const key of this.currentPath) {
             if (current && typeof current === 'object') {
-                current = current[key];
+                const next = current[key];
+                if (next && typeof next === 'object' && !Array.isArray(next)) {
+                    current = next as Record<string, unknown>;
+                } else {
+                    return [];
+                }
             } else {
                 return [];
             }
@@ -615,23 +589,18 @@ export class DomainDialogComponent implements OnDestroy {
         const oppositePaths = this.getPathsFromOppositeArray();
         const currentArrayPaths = this.getPathsFromCurrentArray();
 
-        return Object.keys(current)
+        const obj = current;
+        return Object.keys(obj)
             .map((key) => ({
                 key,
                 path: [...this.currentPath, key].join('.'),
-                type:
-                    typeof current[key] === 'object' && current[key] !== null
-                        ? ('group' as const)
-                        : ('value' as const),
-                value: current[key],
+                type: typeof obj[key] === 'object' && obj[key] !== null ? ('group' as const) : ('value' as const),
+                value: obj[key],
             }))
             .filter((item) => {
                 if (item.type === 'value') {
                     const fullPath = `context.${item.path}`;
-                    return (
-                        !oppositePaths.has(fullPath) &&
-                        !currentArrayPaths.has(fullPath)
-                    );
+                    return !oppositePaths.has(fullPath) && !currentArrayPaths.has(fullPath);
                 }
                 return true;
             });
@@ -644,9 +613,11 @@ export class DomainDialogComponent implements OnDestroy {
             this.closeOverlay();
         }
 
-        const position = this.monacoEditor.getPosition();
-        const scrolledPos = this.monacoEditor.getScrolledVisiblePosition(position);
-        const editorDom = this.monacoEditor.getDomNode();
+        const ctx = this.getEditorContext();
+        if (!ctx) return;
+        const scrolledPos = ctx.editor.getScrolledVisiblePosition(ctx.position);
+        const editorDom = ctx.editor.getDomNode();
+        if (!scrolledPos || !editorDom) return;
 
         const positionStrategy = this.overlayService
             .position()
@@ -678,10 +649,7 @@ export class DomainDialogComponent implements OnDestroy {
             hasBackdrop: false,
         });
 
-        const portal = new ComponentPortal(
-            AutocompleteOverlayComponent,
-            this.viewContainerRef
-        );
+        const portal = new ComponentPortal(AutocompleteOverlayComponent, this.viewContainerRef);
         const componentRef = this.overlayRef.attach(portal);
         this.autocompleteInstance = componentRef.instance;
 
@@ -689,28 +657,16 @@ export class DomainDialogComponent implements OnDestroy {
         overlayEl.addEventListener('mousedown', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            setTimeout(() => this.monacoEditor.focus());
+            setTimeout(() => this.monacoEditor?.focus());
         });
 
-        this.autocompleteInstance.itemSelected.subscribe((item: AutocompleteItem) =>
-            this.onItemSelect(item)
-        );
+        this.autocompleteInstance.itemSelected.subscribe((item: AutocompleteItem) => this.onItemSelect(item));
         this.autocompleteInstance.navigateUp.subscribe(() => this.onNavigateUp());
-        this.autocompleteInstance.navigateDown.subscribe(
-            (item: AutocompleteItem) => this.onNavigateDown(item)
-        );
-        this.autocompleteInstance.navigateToPath.subscribe((index: number) =>
-            this.onNavigateToPath(index)
-        );
+        this.autocompleteInstance.navigateDown.subscribe((item: AutocompleteItem) => this.onNavigateDown(item));
+        this.autocompleteInstance.navigateToPath.subscribe((index: number) => this.onNavigateToPath(index));
 
         const items = this.buildAutocompleteItems();
-        this.autocompleteInstance.updateData(
-            items,
-            this.currentPath,
-            '',
-            'context',
-            emptyMessage,
-        );
+        this.autocompleteInstance.updateData(items, this.currentPath, '', 'context', emptyMessage);
     }
 
     private closeOverlay(): void {
@@ -724,10 +680,10 @@ export class DomainDialogComponent implements OnDestroy {
     // --- Item selection & insertion ---
 
     private onItemSelect(item: AutocompleteItem): void {
-        const model = this.monacoEditor.getModel();
-        const position = this.monacoEditor.getPosition();
-        const offset = model.getOffsetAt(position);
-        const text = model.getValue();
+        const ctx = this.getEditorContext();
+        if (!ctx) return;
+        const offset = ctx.model.getOffsetAt(ctx.position);
+        const text = ctx.model.getValue();
 
         const insertValue = `context.${item.path}`;
 
@@ -736,32 +692,23 @@ export class DomainDialogComponent implements OnDestroy {
         const stringNode = this.findEnclosingStringNode(nodeAtCursor);
 
         if (stringNode) {
-            const startPos = model.getPositionAt(stringNode.offset + 1);
-            const endPos = model.getPositionAt(
-                stringNode.offset + stringNode.length - 1
-            );
-            this.monacoEditor.executeEdits('autocomplete', [
+            const startPos = ctx.model.getPositionAt(stringNode.offset + 1);
+            const endPos = ctx.model.getPositionAt(stringNode.offset + stringNode.length - 1);
+            ctx.editor.executeEdits('autocomplete', [
                 {
-                    range: new monaco.Range(
-                        startPos.lineNumber,
-                        startPos.column,
-                        endPos.lineNumber,
-                        endPos.column
-                    ),
+                    range: new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column),
                     text: insertValue,
                 },
             ]);
         } else {
-            const prefix = this.needsCommaBeforeInsert(text, offset)
-                ? ', '
-                : '';
-            this.monacoEditor.executeEdits('autocomplete', [
+            const prefix = this.needsCommaBeforeInsert(text, offset) ? ', ' : '';
+            ctx.editor.executeEdits('autocomplete', [
                 {
                     range: new monaco.Range(
-                        position.lineNumber,
-                        position.column,
-                        position.lineNumber,
-                        position.column
+                        ctx.position.lineNumber,
+                        ctx.position.column,
+                        ctx.position.lineNumber,
+                        ctx.position.column
                     ),
                     text: `${prefix}"${insertValue}"`,
                 },
@@ -769,7 +716,7 @@ export class DomainDialogComponent implements OnDestroy {
         }
 
         this.closeOverlay();
-        this.monacoEditor.focus();
+        this.monacoEditor?.focus();
     }
 
     /** True if the character immediately before offset is end of a value (we need comma before new element). */
@@ -782,9 +729,7 @@ export class DomainDialogComponent implements OnDestroy {
         return last === '"' || last === ']' || last === '}' || /\d/.test(last);
     }
 
-    private findEnclosingStringNode(
-        node: JsonNode | undefined
-    ): JsonNode | null {
+    private findEnclosingStringNode(node: JsonNode | undefined): JsonNode | null {
         let current = node;
         while (current) {
             if (current.type === 'string') return current;

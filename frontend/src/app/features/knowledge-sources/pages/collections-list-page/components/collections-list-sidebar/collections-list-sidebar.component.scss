@@ -2,19 +2,24 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    padding: 1.5rem 0 1.5rem 3.75rem;
+    padding: 1.5rem;
+    container-type: inline-size;
 
     &__header {
-        padding-right: 2rem;
         display: flex;
         justify-content: space-between;
         align-items: center;
+        min-width: 0;
     }
 
     &__header-label {
         font-weight: bold;
         color: var(--color-ks-text);
-        font-size: 1.25rem
+        font-size: 1.25rem;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     &__header-count {
@@ -23,20 +28,21 @@
     }
 
     &__actions {
-        padding-right: 2rem;
         margin-top: 1.5rem;
-        height: 2.2rem;
         display: flex;
-        justify-content: space-between;
+        gap: 0.5rem;
+        min-width: 0;
     }
 
     &__search {
-        width: 65%;
+        flex: 2 1 0;
+        min-width: 0;
     }
 
     &__select {
         height: 100%;
-        width: 33%;
+        flex: 1 1 0;
+        min-width: 0;
     }
 
     &__items {
@@ -46,7 +52,6 @@
         overflow: auto;
         row-gap: 1rem;
         margin-top: 1rem;
-        margin-right: 0.8rem;
     }
 
     &__item {
@@ -57,6 +62,25 @@
     &__empty {
         margin: 0.5rem 0 1rem 0;
         font-size: 1.125rem;
-        color: var(--color-ks-text)
+        color: var(--color-ks-text);
+    }
+}
+
+::ng-deep .collections-sidebar__header > app-button {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 45%;
+}
+
+@container (max-width: 200px) {
+    .collections-sidebar__actions {
+        flex-wrap: wrap;
+        height: auto;
+    }
+
+    .collections-sidebar__search,
+    .collections-sidebar__select {
+        flex: 1 1 100%;
+        width: 100%;
     }
 }

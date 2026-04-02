@@ -1,27 +1,23 @@
 <div class="chats">
-  <app-page-header
-    headerTitle="Chats"
-    [showCreate]="false"
-    [showFavoriteToggle]="false"
-    [showSearch]="false"
-    [showFilter]="false"
-    [showSort]="false"
-  ></app-page-header>
+    <app-page-header
+        headerTitle="Chats"
+        [showCreate]="false"
+        [showFavoriteToggle]="false"
+        [showSearch]="false"
+        [showFilter]="false"
+        [showSort]="false"
+    ></app-page-header>
 
-  <main class="chats__body">
-    <ng-container *ngIf="isLoading()">
-      <div class="chats__loading-container">
-        <app-spinner
-          [text]="'Loading chats...'"
-          [accentColor]="'#6562f5'"
-          [isOverlay]="false"
-        ></app-spinner>
-      </div>
-    </ng-container>
+    <main class="chats__body">
+        <ng-container *ngIf="isLoading()">
+            <div class="chats__loading-container">
+                <app-spinner [text]="'Loading chats...'" [accentColor]="'#6562f5'" [isOverlay]="false"></app-spinner>
+            </div>
+        </ng-container>
 
-    <ng-container *ngIf="!isLoading()">
-      <app-chats-sidebar [agents]="agentsList()"></app-chats-sidebar>
-      <app-chats-content></app-chats-content>
-    </ng-container>
-  </main>
+        <ng-container *ngIf="!isLoading()">
+            <app-chats-sidebar [agents]="agentsList()"></app-chats-sidebar>
+            <app-chats-content></app-chats-content>
+        </ng-container>
+    </main>
 </div>

@@ -1,26 +1,59 @@
 <button
-  [ngClass]="[
-    'btn',
-    'btn-' + type,
-    leftIcon ? 'btn--icon-left-' + mod : '',
-    rightIcon ? 'btn--icon-right-' + mod: '',
-    'btn--mod-' + mod,
-  ]"
-  [disabled]="disabled()"
-  [attr.aria-label]="ariaLabel"
-  type="button"
+    [appCollapseOnOverflow]="collapseEnabled"
+    [collapseOnOverflowTarget]="'.btn-content'"
+    [collapseOnOverflowClass]="'btn--only-icon'"
+    [collapseOnOverflowCheckExternalClip]="true"
+    (collapseOnOverflowChange)="onCollapseChange($event)"
+    [ngClass]="[
+        'btn',
+        'btn-' + type,
+        leftIcon ? 'btn--icon-left-' + mod : '',
+        rightIcon ? 'btn--icon-right-' + mod : '',
+        shouldCollapseToIcon ? 'btn--only-icon' : '',
+        'btn--mod-' + mod,
+    ]"
+    [disabled]="disabled()"
+    [attr.aria-label]="ariaLabel"
+    type="button"
 >
-  @if (type === 'icon') { @if (leftIcon) {
-  <app-icon [icon]="leftIcon!" size="1.1rem" class="btn-icon left" [ngStyle]="leftIconColor ? {'color': leftIconColor } : null" />
-  } @if (rightIcon) {
-  <app-icon [icon]="rightIcon!" size="1.1rem" class="btn-icon right" [ngStyle]="rightIconColor ? {'color': rightIconColor } : null"/>
-  } } @else { @if (leftIcon) {
-  <app-icon [icon]="leftIcon!" size="1.1rem" class="btn-icon left" [ngStyle]="leftIconColor ? {'color': leftIconColor } : null"/>
-  }
-  <div class="btn-content">
-    <ng-content></ng-content>
-  </div>
-  @if (rightIcon) {
-  <app-icon [icon]="rightIcon!" size="1.1rem" class="btn-icon right" />
-  } }
+    @if (type === 'icon') {
+        @if (leftIcon) {
+            <app-icon
+                [icon]="leftIcon!"
+                size="1.1rem"
+                class="btn-icon left"
+                [ngStyle]="leftIconColor ? { color: leftIconColor } : null"
+            />
+        }
+        @if (rightIcon) {
+            <app-icon
+                [icon]="rightIcon!"
+                size="1.1rem"
+                class="btn-icon right"
+                [ngStyle]="rightIconColor ? { color: rightIconColor } : null"
+            />
+        }
+    } @else {
+        @if (showLeftIcon) {
+            <app-icon
+                [icon]="leftIcon!"
+                size="1.1rem"
+                class="btn-icon left"
+                [ngStyle]="leftIconColor ? { color: leftIconColor } : null"
+            />
+        }
+
+        <div class="btn-content">
+            <ng-content></ng-content>
+        </div>
+
+        @if (showRightIcon) {
+            <app-icon
+                [icon]="rightIcon!"
+                size="1.1rem"
+                class="btn-icon right"
+                [ngStyle]="rightIconColor ? { color: rightIconColor } : null"
+            />
+        }
+    }
 </button>

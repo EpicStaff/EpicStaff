@@ -1,22 +1,16 @@
-import {ChangeDetectionStrategy, Component, computed, input, model, output, Signal, signal} from "@angular/core";
-import {ButtonComponent, SearchComponent, SelectComponent} from "@shared/components";
-import {FormsModule, ReactiveFormsModule} from "@angular/forms";
-import {GetCollectionRequest} from "../../../../models/collection.model";
-import {CollectionComponent} from "./collection/collection.component";
+import { ChangeDetectionStrategy, Component, computed, input, model, output, signal } from '@angular/core';
+import { FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { ButtonComponent, SearchComponent, SelectComponent } from '@shared/components';
+
+import { GetCollectionRequest } from '../../../../models/collection.model';
+import { CollectionComponent } from './collection/collection.component';
 
 @Component({
     selector: 'app-collections-list-sidebar',
     templateUrl: './collections-list-sidebar.component.html',
     styleUrls: ['./collections-list-sidebar.component.scss'],
-    imports: [
-        ButtonComponent,
-        ReactiveFormsModule,
-        FormsModule,
-        CollectionComponent,
-        SearchComponent,
-        SelectComponent,
-    ],
-    changeDetection: ChangeDetectionStrategy.OnPush
+    imports: [ButtonComponent, ReactiveFormsModule, FormsModule, CollectionComponent, SearchComponent, SelectComponent],
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CollectionsListItemSidebarComponent {
     searchTerm = signal<string>('');

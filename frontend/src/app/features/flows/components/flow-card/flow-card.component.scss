@@ -93,7 +93,6 @@
             justify-content: flex-end;
             gap: 8px;
             flex-shrink: 0;
-            width: 160px;
             align-self: stretch;
 
             app-button {
@@ -145,8 +144,9 @@
             font-size: 12px;
             white-space: nowrap;
             flex-shrink: 0;
-            width: 160px;
             text-align: right;
+            max-width: 100%;
+            overflow: hidden;
 
             .date-part {
                 color: rgba(217, 217, 222, 0.85);
@@ -264,6 +264,8 @@
                     white-space: nowrap;
                     flex-shrink: 0;
                     text-align: right;
+                    max-width: 100%;
+                    overflow: hidden;
 
                     .date-part {
                         color: rgba(217, 217, 222, 0.8);

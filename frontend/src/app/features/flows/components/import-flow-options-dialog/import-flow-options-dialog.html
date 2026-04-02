@@ -14,28 +14,10 @@
                     matTooltipPosition="above"
                 ></app-icon>
             </span>
-            <div
-                class="toggle-group"
-                (click)="preserveUuids.set(!preserveUuids())"
-            >
-                <div
-                    class="toggle-slider"
-                    [class.right]="preserveUuids()"
-                ></div>
-                <button
-                    type="button"
-                    class="toggle-btn"
-                    [class.text-active]="!preserveUuids()"
-                >
-                    No
-                </button>
-                <button
-                    type="button"
-                    class="toggle-btn"
-                    [class.text-active]="preserveUuids()"
-                >
-                    Yes
-                </button>
+            <div class="toggle-group" (click)="preserveUuids.set(!preserveUuids())">
+                <div class="toggle-slider" [class.right]="preserveUuids()"></div>
+                <button type="button" class="toggle-btn" [class.text-active]="!preserveUuids()">No</button>
+                <button type="button" class="toggle-btn" [class.text-active]="preserveUuids()">Yes</button>
             </div>
         </div>
     </div>

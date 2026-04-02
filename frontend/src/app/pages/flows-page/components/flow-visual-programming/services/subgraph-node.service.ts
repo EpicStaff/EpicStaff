@@ -1,12 +1,9 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
-import {
-    SubGraphNode,
-    CreateSubGraphNodeRequest,
-    UpdateSubGraphNodeRequest,
-} from '../models/subgraph-node.model';
+
 import { ConfigService } from '../../../../../services/config/config.service';
+import { CreateSubGraphNodeRequest, SubGraphNode, UpdateSubGraphNodeRequest } from '../models/subgraph-node.model';
 
 @Injectable({
     providedIn: 'root',
@@ -29,27 +26,19 @@ export class SubGraphNodeService {
         });
     }
 
-    createSubGraphNode(
-        request: CreateSubGraphNodeRequest
-    ): Observable<SubGraphNode> {
+    createSubGraphNode(request: CreateSubGraphNodeRequest): Observable<SubGraphNode> {
         return this.http.post<SubGraphNode>(this.apiUrl, request, {
             headers: this.headers,
         });
     }
 
-    partialUpdateSubGraphNode(
-        id: number,
-        request: UpdateSubGraphNodeRequest
-    ): Observable<SubGraphNode> {
+    partialUpdateSubGraphNode(id: number, request: UpdateSubGraphNodeRequest): Observable<SubGraphNode> {
         return this.http.patch<SubGraphNode>(`${this.apiUrl}${id}/`, request, {
             headers: this.headers,
         });
     }
 
-    updateSubGraphNode(
-        id: number,
-        request: CreateSubGraphNodeRequest
-    ): Observable<SubGraphNode> {
+    updateSubGraphNode(id: number, request: CreateSubGraphNodeRequest): Observable<SubGraphNode> {
         return this.http.put<SubGraphNode>(`${this.apiUrl}${id}/`, request, {
             headers: this.headers,
         });
@@ -61,4 +50,3 @@ export class SubGraphNodeService {
         });
     }
 }
-

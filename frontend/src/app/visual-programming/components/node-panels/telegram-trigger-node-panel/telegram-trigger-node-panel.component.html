@@ -1,10 +1,6 @@
 <div class="panel-container">
     <div class="panel-content">
-        <form
-            [formGroup]="form"
-            class="form-container"
-            [class.form-container--expanded]="isExpanded()"
-        >
+        <form [formGroup]="form" class="form-container" [class.form-container--expanded]="isExpanded()">
             <div class="form-layout">
                 <div class="form-data">
                     <div class="form-fields">
@@ -43,7 +39,7 @@
                             tooltipText="Select the ngrok config. Full URL is shown below."
                             formControlName="ngrok_webhook_config"
                             [items]="ngrokConfigSelectItems()"
-                            (changed)="ngrokConfigId.set($event)"
+                            (changed)="onNgrokConfigChanged($event)"
                         />
                     </div>
 
@@ -64,24 +60,14 @@
                             @switch (webhookStatusDisplay()) {
                                 @case (WebhookStatus.FAIL) {
                                     <div class="webhook-status__main">
-                                        <app-icon
-                                            class="webhook-status__icon--failed"
-                                            icon="ui/x"
-                                            size="1rem"
-                                        />
+                                        <app-icon class="webhook-status__icon--failed" icon="ui/x" size="1rem" />
                                         <span>Registration failed</span>
                                     </div>
-                                    <span class="webhook-status__error-message">
-                                    Webhook service is not running
-                                </span>
+                                    <span class="webhook-status__error-message"> Webhook service is not running </span>
                                 }
                                 @case (WebhookStatus.SUCCESS) {
                                     <div class="webhook-status__main">
-                                        <app-icon
-                                            class="webhook-status__icon--success"
-                                            icon="ui/check"
-                                            size="1rem"
-                                        />
+                                        <app-icon class="webhook-status__icon--success" icon="ui/check" size="1rem" />
                                         <span>Webhook registered</span>
                                     </div>
                                 }
@@ -93,48 +79,38 @@
                         <label class="output-fields__label">
                             Fields for output in results
 
-                            <span class="output-fields__count">
-                            {{ selectedFields().length }} selected
-                        </span>
+                            <span class="output-fields__count"> {{ selectedFields().length }} selected </span>
                         </label>
                         <div class="output-fields__container">
                             <div class="output-fields__items">
                                 @for (item of selectedFields(); track $index) {
                                     <div class="output-fields__item">
-                                    <span>
-                                        {{ item.field_name }}
-                                    </span>
+                                        <span>
+                                            {{ item.field_name }}
+                                        </span>
                                         <span class="output-fields__item-tip">
-                                        {{ item.field_type }}
-                                    </span>
+                                            {{ item.field_type }}
+                                        </span>
                                     </div>
                                 } @empty {
-                                   <span>No fields selected</span>
+                                    <span>No fields selected</span>
                                 }
                             </div>
-                            <app-button
-                                type="primary"
-                                (click)="onEditing()"
-                            >
-                                Editing
-                            </app-button>
+                            <app-button type="primary" (click)="onEditing()"> Editing </app-button>
                         </div>
                     </div>
                 </div>
 
                 <div class="code-editor-section">
-                    <label>
-                        Mock Data
-                    </label>
+                    <label> Mock Data </label>
                     <div class="code-editor-section__info">
-                        <mat-icon class="code-editor-section__info-icon">
-                            help
-                        </mat-icon>
+                        <mat-icon class="code-editor-section__info-icon"> help </mat-icon>
                         <a
                             class="code-editor-section__info-link"
                             href="https://core.telegram.org/bots/api#available-types"
                             target="_blank"
-                        >Click here</a>
+                            >Click here</a
+                        >
                         to get more information about field models
                     </div>
                     <div class="json-wrapper">

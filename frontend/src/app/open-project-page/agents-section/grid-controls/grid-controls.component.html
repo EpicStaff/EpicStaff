@@ -1,81 +1,74 @@
 <div class="grid-controls">
-  <!-- Search and controls section -->
-  <div class="control-section">
-    <!-- Search input with container -->
-    <div
-      class="search-container"
-      [class.has-content]="searchTerm.trim().length > 0"
-    >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="20"
-        height="20"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-        viewBox="0 0 24 24"
-      >
-        <circle cx="11" cy="11" r="8"></circle>
-        <line x1="16" y1="16" x2="21.5" y2="21.5"></line>
-      </svg>
-      <input
-        type="text"
-        class="search-input"
-        placeholder="Search agents..."
-        [(ngModel)]="searchTerm"
-        (focus)="onSearchFocus()"
-        (input)="onSearchChange(searchTerm)"
-      />
-      <!-- Close button that appears when dropdown is shown -->
-      @if (showDropdown) {
-      <button
-        class="close-button"
-        (click)="onCloseDropdown()"
-        aria-label="Clear search and close dropdown"
-      >
-        <span class="close-label">Clear search</span>
-        <i class="ti ti-x"></i>
-      </button>
-      }
-    </div>
+    <!-- Search and controls section -->
+    <div class="control-section">
+        <!-- Search input with container -->
+        <div class="search-container" [class.has-content]="searchTerm.trim().length > 0">
+            <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                viewBox="0 0 24 24"
+            >
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="16" y1="16" x2="21.5" y2="21.5"></line>
+            </svg>
+            <input
+                type="text"
+                class="search-input"
+                placeholder="Search agents..."
+                [(ngModel)]="searchTerm"
+                (focus)="onSearchFocus()"
+                (input)="onSearchChange(searchTerm)"
+            />
+            <!-- Close button that appears when dropdown is shown -->
+            @if (showDropdown) {
+                <button class="close-button" (click)="onCloseDropdown()" aria-label="Clear search and close dropdown">
+                    <span class="close-label">Clear search</span>
+                    <i class="ti ti-x"></i>
+                </button>
+            }
+        </div>
 
-    <!-- Filter button component -->
-    <!-- <app-project-filter-button
+        <!-- Filter button component -->
+        <!-- <app-project-filter-button
       (filterEvent)="onFilter()"
     ></app-project-filter-button> -->
 
-    <!-- Sort button component -->
-    <!-- <app-project-sort-button (sortEvent)="onSort()"></app-project-sort-button> -->
+        <!-- Sort button component -->
+        <!-- <app-project-sort-button (sortEvent)="onSort()"></app-project-sort-button> -->
 
-    <!-- Favorite button component -->
-    <!-- <app-project-favorite-button
+        <!-- Favorite button component -->
+        <!-- <app-project-favorite-button
       [active]="isFavoriteActive"
       (favoriteToggle)="onFavoriteToggle()"
     ></app-project-favorite-button> -->
-  </div>
-
-  <!-- Size switcher as a simple slider without labels -->
-  <div class="size-slider">
-    <span class="slider-label">View:</span>
-    <div class="slider-track">
-      <input
-        type="range"
-        min="0"
-        max="2"
-        [value]="sizeOptions.indexOf(currentSize)"
-        (input)="onSizeSliderChange($event)"
-        class="slider-input"
-      />
     </div>
-  </div>
 
-  <!-- Search dropdown -->
-  @if (showDropdown) {
-  <app-search-dropdown
-    class="dropdown-container"
-    [currentSize]="currentSize"
-    [searchTerm]="searchTerm"
-    (staffAgentAdded)="onStaffAgentAdded($event)"
-  ></app-search-dropdown>
-  }
+    <!-- Size switcher as a simple slider without labels -->
+    <div class="size-slider">
+        <span class="slider-label">View:</span>
+        <div class="slider-track">
+            <input
+                type="range"
+                min="0"
+                max="2"
+                [value]="sizeOptions.indexOf(currentSize)"
+                (input)="onSizeSliderChange($event)"
+                class="slider-input"
+            />
+        </div>
+    </div>
+
+    <!-- Search dropdown -->
+    @if (showDropdown) {
+        <app-search-dropdown
+            class="dropdown-container"
+            [currentSize]="currentSize"
+            [searchTerm]="searchTerm"
+            (staffAgentAdded)="onStaffAgentAdded($event)"
+        ></app-search-dropdown>
+    }
 </div>

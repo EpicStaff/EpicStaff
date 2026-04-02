@@ -15,70 +15,73 @@
 export class RealtimeConversation {
     defaultFrequency: number;
     EventProcessors: {
-        'conversation.item.created': (event: any) => {
-            item: any;
-            delta: any;
+        'conversation.item.created': (event: unknown) => {
+            item: unknown;
+            delta: unknown;
         };
-        'conversation.item.truncated': (event: any) => {
-            item: any;
-            delta: any;
+        'conversation.item.truncated': (event: unknown) => {
+            item: unknown;
+            delta: unknown;
         };
-        'conversation.item.deleted': (event: any) => {
-            item: any;
-            delta: any;
+        'conversation.item.deleted': (event: unknown) => {
+            item: unknown;
+            delta: unknown;
         };
-        'conversation.item.input_audio_transcription.completed': (event: any) => {
-            item: any;
+        'conversation.item.input_audio_transcription.completed': (event: unknown) => {
+            item: unknown;
             delta: {
-                transcript: any;
+                transcript: unknown;
             };
         };
-        'input_audio_buffer.speech_started': (event: any) => {
-            item: any;
-            delta: any;
+        'input_audio_buffer.speech_started': (event: unknown) => {
+            item: unknown;
+            delta: unknown;
         };
-        'input_audio_buffer.speech_stopped': (event: any, inputAudioBuffer: any) => {
-            item: any;
-            delta: any;
+        'input_audio_buffer.speech_stopped': (
+            event: unknown,
+            inputAudioBuffer: unknown
+        ) => {
+            item: unknown;
+            delta: unknown;
         };
-        'response.created': (event: any) => {
-            item: any;
-            delta: any;
+        'response.created': (event: unknown) => {
+            item: unknown;
+            delta: unknown;
         };
-        'response.output_item.added': (event: any) => {
-            item: any;
-            delta: any;
+        'response.output_item.added': (event: unknown) => {
+            item: unknown;
+            delta: unknown;
         };
-        'response.output_item.done': (event: any) => {
-            item: any;
-            delta: any;
+        'response.output_item.done': (event: unknown) => {
+            item: unknown;
+            delta: unknown;
         };
-        'response.content_part.added': (event: any) => {
-            item: any;
-            delta: any;
+        'response.content_part.added': (event: unknown) => {
+            item: unknown;
+            delta: unknown;
         };
-        'response.audio_transcript.delta': (event: any) => {
-            item: any;
+        'response.audio_transcript.delta': (event: unknown) => {
+            item: unknown;
             delta: {
-                transcript: any;
+                transcript: unknown;
             };
         };
-        'response.audio.delta': (event: any) => {
-            item: any;
+        'response.audio.delta': (event: unknown) => {
+            item: unknown;
             delta: {
                 audio: Int16Array;
             };
         };
-        'response.text.delta': (event: any) => {
-            item: any;
+        'response.text.delta': (event: unknown) => {
+            item: unknown;
             delta: {
-                text: any;
+                text: unknown;
             };
         };
-        'response.function_call_arguments.delta': (event: any) => {
-            item: any;
+        'response.function_call_arguments.delta': (event: unknown) => {
+            item: unknown;
             delta: {
-                arguments: any;
+                arguments: unknown;
             };
         };
     };
@@ -89,9 +92,9 @@ export class RealtimeConversation {
      */
     clear(): true;
     itemLookup: {};
-    items: any[];
+    items: unknown[];
     responseLookup: {};
-    responses: any[];
+    responses: unknown[];
     queuedSpeechItems: {};
     queuedTranscriptItems: {};
     /**
@@ -106,18 +109,18 @@ export class RealtimeConversation {
      * @param  {...any} args
      * @returns {item: import('./client.js').ItemType | null, delta: ItemContentDeltaType | null}
      */
-    processEvent(event: any, ...args: any[]): item;
+    processEvent(event: unknown, ...args: unknown[]): item;
     /**
      * Retrieves a item by id
      * @param {string} id
      * @returns {import('./client.js').ItemType}
      */
-    getItem(id: string): import("./client.js").ItemType;
+    getItem(id: string): import('./client.js').ItemType;
     /**
      * Retrieves all items in the conversation
      * @returns {import('./client.js').ItemType[]}
      */
-    getItems(): import("./client.js").ItemType[];
+    getItems(): import('./client.js').ItemType[];
 }
 /**
  * Contains text and audio information about a item

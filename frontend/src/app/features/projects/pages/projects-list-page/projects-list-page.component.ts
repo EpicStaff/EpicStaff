@@ -1,25 +1,17 @@
-import { Component, ChangeDetectionStrategy, OnDestroy } from '@angular/core';
-import {
-    RouterOutlet,
-    RouterLink,
-    RouterLinkActive,
-    Router,
-} from '@angular/router';
-// import { SearchComponent } from '../../../../shared/components/search/search.component'; // Likely unused now
-import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
-import { TabButtonComponent } from '../../../../shared/components/tab-button/tab-button.component';
-// import { ButtonVariant } from '../../../../core/enums/button-variants.enum'; // Likely unused now
-// import { NgClass } from '@angular/common'; // Likely unused now
 import { Dialog } from '@angular/cdk/dialog';
-import { CreateProjectComponent } from '../../components/create-project-form-dialog/create-project.component';
-import { ProjectsStorageService } from '../../services/projects-storage.service';
-import { GetProjectRequest } from '../../models/project.model';
-import { SearchFilterChange } from '../../../../shared/components/filters-list/filters-list.component';
-
+import { ChangeDetectionStrategy, Component, OnDestroy } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { Subject, Subscription } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
-import { FormsModule } from '@angular/forms';
+
 import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
+import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
+import { TabButtonComponent } from '../../../../shared/components/tab-button/tab-button.component';
+import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/directives/hide-inline-subtitle-on-overflow.directive';
+import { CreateProjectComponent } from '../../components/create-project-form-dialog/create-project.component';
+import { GetProjectRequest } from '../../models/project.model';
+import { ProjectsStorageService } from '../../services/projects-storage.service';
 
 @Component({
     selector: 'app-projects-list-page',
@@ -33,9 +25,9 @@ import { AppIconComponent } from '../../../../shared/components/app-icon/app-ico
         RouterLinkActive,
         ButtonComponent,
         TabButtonComponent,
-
         FormsModule,
         AppIconComponent,
+        HideInlineSubtitleOnOverflowDirective,
     ],
 })
 export class ProjectsListPageComponent implements OnDestroy {
@@ -54,11 +46,9 @@ export class ProjectsListPageComponent implements OnDestroy {
         private dialog: Dialog,
         private projectsService: ProjectsStorageService
     ) {
-        this.subscription = this.searchTerms
-            .pipe(debounceTime(300), distinctUntilChanged())
-            .subscribe((term) => {
-                this.updateFilter(term);
-            });
+        this.subscription = this.searchTerms.pipe(debounceTime(300), distinctUntilChanged()).subscribe((term) => {
+            this.updateFilter(term);
+        });
     }
 
     ngOnDestroy(): void {
@@ -90,8 +80,7 @@ export class ProjectsListPageComponent implements OnDestroy {
     private updateFilter(searchTerm: string): void {
         const filter = {
             searchTerm,
-            selectedTagIds:
-                this.projectsService.getCurrentFilter()?.selectedTagIds || [],
+            selectedTagIds: this.projectsService.getCurrentFilter()?.selectedTagIds || [],
         };
         this.projectsService.setFilter(filter);
     }
@@ -105,14 +94,11 @@ export class ProjectsListPageComponent implements OnDestroy {
     // }
 
     public openCreateProjectDialog(): void {
-        const dialogRef = this.dialog.open<GetProjectRequest | undefined>(
-            CreateProjectComponent,
-            {
-                maxWidth: '95vw',
-                maxHeight: '90vh',
-                autoFocus: true,
-            }
-        );
+        const dialogRef = this.dialog.open<GetProjectRequest | undefined>(CreateProjectComponent, {
+            maxWidth: '95vw',
+            maxHeight: '90vh',
+            autoFocus: true,
+        });
         dialogRef.closed.subscribe((result: GetProjectRequest | undefined) => {
             if (result) {
                 this.router.navigate(['/projects', result.id]);

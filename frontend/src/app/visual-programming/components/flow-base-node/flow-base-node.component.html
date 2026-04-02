@@ -62,7 +62,7 @@
     }
 }
 <ng-template #interactiveNode>
-    <div class="interactive-node-body" clickOrDrag (actualClick)="onEditClick()">
+    <div class="interactive-node-body" appClickOrDrag (actualClick)="onEditClick()">
         <!-- Header Section -->
         <div class="header" *ngIf="node.type !== NodeType.TABLE">
             <div class="icon-wrapper">
@@ -87,7 +87,7 @@
 </ng-template>
 @switch (node.type) {
     @case (NodeType.EDGE) {
-        <app-conditional-edge-node clickOrDrag (actualClick)="onEditClick()"></app-conditional-edge-node>
+        <app-conditional-edge-node appClickOrDrag (actualClick)="onEditClick()"></app-conditional-edge-node>
     }
     @case (NodeType.NOTE) {
         <app-graph-note [node]="noteNode!"></app-graph-note>

@@ -1,4 +1,4 @@
-import { DIALOG_DATA, DialogModule,DialogRef } from '@angular/cdk/dialog';
+import { DIALOG_DATA, DialogModule, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import { Component, Inject } from '@angular/core';
 

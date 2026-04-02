@@ -148,7 +148,8 @@ export class GraphUpdateService {
         return ops.length ? forkJoin(ops) : of([]);
     }
 
-    private buildGraphMetadata(_flowState: FlowModel): Partial<FlowModel> {
+    private buildGraphMetadata(flowState: FlowModel): Partial<FlowModel> {
+        void flowState;
         return { nodes: [], connections: [] };
     }
 

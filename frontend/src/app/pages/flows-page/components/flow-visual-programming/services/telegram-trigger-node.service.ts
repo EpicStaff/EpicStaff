@@ -1,12 +1,10 @@
-import {HttpClient, HttpHeaders} from "@angular/common/http";
-import {ConfigService} from "../../../../../services/config/config.service";
-import {ApiGetRequest} from "../../../../../core/models/api-request.model";
-import {map, Observable} from "rxjs";
-import {
-    CreateTelegramTriggerNodeRequest,
-    GetTelegramTriggerNodeRequest
-} from "../models/telegram-trigger.model";
-import {Injectable} from "@angular/core";
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { Injectable } from '@angular/core';
+import { map, Observable } from 'rxjs';
+
+import { ApiGetRequest } from '../../../../../core/models/api-request.model';
+import { ConfigService } from '../../../../../services/config/config.service';
+import { CreateTelegramTriggerNodeRequest, GetTelegramTriggerNodeRequest } from '../models/telegram-trigger.model';
 
 @Injectable({
     providedIn: 'root',
@@ -16,7 +14,10 @@ export class TelegramTriggerNodeService {
         'Content-Type': 'application/json',
     });
 
-    constructor(private http: HttpClient, private configService: ConfigService) { }
+    constructor(
+        private http: HttpClient,
+        private configService: ConfigService
+    ) {}
 
     private get apiUrlTriggerFields(): string {
         return this.configService.apiUrl + 'telegram-trigger-available-fields/';
@@ -31,12 +32,11 @@ export class TelegramTriggerNodeService {
     }
 
     getTelegramTriggerNodes(): Observable<GetTelegramTriggerNodeRequest[]> {
-        return this.http.get<ApiGetRequest<GetTelegramTriggerNodeRequest>>(this.apiUrlNode)
-            .pipe(
-                map((response) => {
-                    return response.results.sort((a, b) => b.id - a.id);
-                })
-            );
+        return this.http.get<ApiGetRequest<GetTelegramTriggerNodeRequest>>(this.apiUrlNode).pipe(
+            map((response) => {
+                return response.results.sort((a, b) => b.id - a.id);
+            })
+        );
     }
 
     createTelegramTriggerNode(request: CreateTelegramTriggerNodeRequest): Observable<GetTelegramTriggerNodeRequest> {
@@ -49,13 +49,9 @@ export class TelegramTriggerNodeService {
         id: number,
         request: CreateTelegramTriggerNodeRequest
     ): Observable<GetTelegramTriggerNodeRequest> {
-        return this.http.put<GetTelegramTriggerNodeRequest>(
-            `${this.apiUrlNode}${id}/`,
-            request,
-            {
-                headers: this.headers,
-            }
-        );
+        return this.http.put<GetTelegramTriggerNodeRequest>(`${this.apiUrlNode}${id}/`, request, {
+            headers: this.headers,
+        });
     }
 
     deleteTelegramTriggerNode(id: number): Observable<void> {

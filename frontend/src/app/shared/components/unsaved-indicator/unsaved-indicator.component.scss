@@ -1,17 +1,17 @@
 .unsaved-indicator {
-  display: inline-flex;
-  align-items: center;
-  margin-left: 0.75rem;
-  color: #685fff;
-  font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    margin-left: 0.75rem;
+    color: #685fff;
+    font-size: 14px;
 
-  i {
-    font-size: 10px;
-    margin-right: 6px;
-  }
+    i {
+        font-size: 10px;
+        margin-right: 6px;
+    }
 
-  .unsaved-text {
-    font-size: 12px;
-    font-weight: 500;
-  }
+    .unsaved-text {
+        font-size: 12px;
+        font-weight: 500;
+    }
 }

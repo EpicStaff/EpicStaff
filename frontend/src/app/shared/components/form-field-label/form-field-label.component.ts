@@ -1,9 +1,6 @@
-import {
-    Component,
-    input,
-    ChangeDetectionStrategy,
-} from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+
 import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 
 @Component({

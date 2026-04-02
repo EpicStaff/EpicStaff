@@ -1,160 +1,160 @@
 .sessions-section {
-  padding: 20px;
-  height: 100%;
-  background: transparent;
+    padding: 20px;
+    height: 100%;
+    background: transparent;
 
-  .section-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 24px;
-
-    h2 {
-      color: #ebebeb;
-      font-size: 18px;
-      font-weight: 500;
-      margin: 0;
-    }
-
-    .filters {
-      display: flex;
-      gap: 8px;
-      background: rgba(20, 20, 20, 0.8);
-      padding: 4px;
-      border-radius: 6px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-
-      button {
-        background: transparent;
-        border: none;
-        color: #999;
-        padding: 6px 12px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 14px;
-        transition: all 0.2s ease;
-
-        &:hover {
-          background: rgba(255, 255, 255, 0.05);
-        }
-
-        &.active {
-          background: rgba(154, 115, 175, 0.2);
-          color: #ebebeb;
-        }
-      }
-    }
-  }
-
-  .sessions-list {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    background: #0a090a;
-
-    .session-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: #0e0c0e;
-      padding: 16px;
-      transition: all 0.2s ease;
-
-      &:hover {
-        background: #161416;
-      }
-
-      &.active {
-        border-left: 3px solid #161416;
-      }
-
-      &.finished {
-        border-left: 3px solid #161416;
-      }
-
-      &.error {
-        border-left: 3px solid #161416;
-      }
-
-      .session-info {
+    .section-header {
         display: flex;
-        gap: 24px;
+        justify-content: space-between;
         align-items: center;
+        margin-bottom: 24px;
 
-        .session-id {
-          color: #ebebeb;
-          font-weight: 500;
-          min-width: 100px;
-        }
-
-        .session-times {
-          display: flex;
-          gap: 16px;
-          color: #cccccc;
-
-          .time-label {
-            color: #999;
-          }
-
-          .time-value {
+        h2 {
             color: #ebebeb;
-          }
-        }
-
-        .session-status {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          color: #cccccc;
-          text-transform: capitalize;
-
-          .status-indicator {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-          }
-        }
-      }
-
-      &.active .status-indicator {
-        background: #4CAF50;
-      }
-
-      &.finished .status-indicator {
-        background: #2196F3;
-      }
-
-      &.error .status-indicator {
-        background: #f44336;
-      }
-
-      .session-actions {
-        display: flex;
-        gap: 8px;
-
-        button {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          color: #ebebeb;
-          padding: 6px 12px;
-          border-radius: 4px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-
-          mat-icon {
             font-size: 18px;
-            width: 18px;
-            height: 18px;
-          }
-
-          &:hover {
-            background: rgba(255, 255, 255, 0.1);
-          }
+            font-weight: 500;
+            margin: 0;
         }
-      }
+
+        .filters {
+            display: flex;
+            gap: 8px;
+            background: rgba(20, 20, 20, 0.8);
+            padding: 4px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+
+            button {
+                background: transparent;
+                border: none;
+                color: #999;
+                padding: 6px 12px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+                transition: all 0.2s ease;
+
+                &:hover {
+                    background: rgba(255, 255, 255, 0.05);
+                }
+
+                &.active {
+                    background: rgba(154, 115, 175, 0.2);
+                    color: #ebebeb;
+                }
+            }
+        }
     }
-  }
+
+    .sessions-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        background: #0a090a;
+
+        .session-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #0e0c0e;
+            padding: 16px;
+            transition: all 0.2s ease;
+
+            &:hover {
+                background: #161416;
+            }
+
+            &.active {
+                border-left: 3px solid #161416;
+            }
+
+            &.finished {
+                border-left: 3px solid #161416;
+            }
+
+            &.error {
+                border-left: 3px solid #161416;
+            }
+
+            .session-info {
+                display: flex;
+                gap: 24px;
+                align-items: center;
+
+                .session-id {
+                    color: #ebebeb;
+                    font-weight: 500;
+                    min-width: 100px;
+                }
+
+                .session-times {
+                    display: flex;
+                    gap: 16px;
+                    color: #cccccc;
+
+                    .time-label {
+                        color: #999;
+                    }
+
+                    .time-value {
+                        color: #ebebeb;
+                    }
+                }
+
+                .session-status {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    color: #cccccc;
+                    text-transform: capitalize;
+
+                    .status-indicator {
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 50%;
+                    }
+                }
+            }
+
+            &.active .status-indicator {
+                background: #4caf50;
+            }
+
+            &.finished .status-indicator {
+                background: #2196f3;
+            }
+
+            &.error .status-indicator {
+                background: #f44336;
+            }
+
+            .session-actions {
+                display: flex;
+                gap: 8px;
+
+                button {
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                    background: rgba(255, 255, 255, 0.05);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    color: #ebebeb;
+                    padding: 6px 12px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+
+                    mat-icon {
+                        font-size: 18px;
+                        width: 18px;
+                        height: 18px;
+                    }
+
+                    &:hover {
+                        background: rgba(255, 255, 255, 0.1);
+                    }
+                }
+            }
+        }
+    }
 }

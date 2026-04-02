@@ -1,16 +1,9 @@
 <div class="table__wrapper">
     <!-- HEADER ROW -->
-    <div
-        class="table__row table__header"
-        [style]="{'margin-bottom': showBulkRow() ? '0.25rem' : '0.5rem'}"
-    >
+    <div class="table__row table__header" [style]="{ 'margin-bottom': showBulkRow() ? '0.25rem' : '0.5rem' }">
         <!-- 1. Checkbox -->
         <div class="table__col">
-            <app-checkbox
-                [checked]="allChecked()"
-                [indeterminate]="indeterminate()"
-                (changed)="toggleAll()"
-            />
+            <app-checkbox [checked]="allChecked()" [indeterminate]="indeterminate()" (changed)="toggleAll()" />
         </div>
 
         <!-- 2. Files (sortable dropdown) -->
@@ -20,7 +13,7 @@
                 label="FILES"
                 searchPlaceholder="Search headers..."
                 [items]="fileTypeSelectItems"
-                (selectionChange)="fileTypeFilter.set($event)"
+                (selectionChange)="onFileTypeFilterChange($event)"
             />
         </div>
 
@@ -31,23 +24,18 @@
                 label="CHUNK STRATEGY"
                 searchPlaceholder="Search headers..."
                 [items]="chunkStrategySelectItems"
-                (selectionChange)="chunkStrategyFilter.set($event)"
+                (selectionChange)="onChunkStrategyFilterChange($event)"
             />
         </div>
 
         <!-- 4. Chunk Size -->
-        <div class="table__col table__col--center">
-            CHUNK SIZE
-        </div>
+        <div class="table__col table__col--center">CHUNK SIZE</div>
 
         <!-- 5. Overlap -->
-        <div class="table__col table__col--center">
-            OVERLAP
-        </div>
+        <div class="table__col table__col--center">OVERLAP</div>
 
         <!-- 6. Empty space -->
-        <div class="table__col">
-        </div>
+        <div class="table__col"></div>
     </div>
 
     <!-- BULK EDIT ROW  -->
@@ -58,42 +46,24 @@
 
             <!-- strategy select -->
             <div class="table__col">
-                <app-select
-                    mod="small"
-                    [items]="chunkStrategySelectItems"
-                    [(selectedValue)]="bulkChunkStrategy"
-                />
+                <app-select mod="small" [items]="chunkStrategySelectItems" [(selectedValue)]="bulkChunkStrategy" />
             </div>
 
             @if (bulkChunkStrategy() === 'csv') {
                 <!-- chunk size -->
-                <div class="table__col table__col--unavailable">
-                    Unavailable
-                </div>
+                <div class="table__col table__col--unavailable">Unavailable</div>
 
                 <!-- overlap -->
-                <div class="table__col table__col--unavailable">
-                    Unavailable
-                </div>
+                <div class="table__col table__col--unavailable">Unavailable</div>
             } @else {
                 <!-- chunk size -->
                 <div class="table__col">
-                    <app-input-number
-                        mod="small"
-                        [min]="20"
-                        [max]="8000"
-                        [(value)]="bulkChunkSize"
-                    />
+                    <app-input-number mod="small" [min]="20" [max]="8000" [(value)]="bulkChunkSize" />
                 </div>
 
                 <!-- overlap -->
                 <div class="table__col">
-                    <app-input-number
-                        mod="small"
-                        [min]="0"
-                        [max]="1000"
-                        [(value)]="bulkChunkOverlap"
-                    />
+                    <app-input-number mod="small" [min]="0" [max]="1000" [(value)]="bulkChunkOverlap" />
                 </div>
             }
 
@@ -121,34 +91,22 @@
                     [class.table__row-wrapper--dark]="odd"
                     [class.table__row-wrapper--selected]="d.naive_rag_document_id === selectedRagDocId()"
                 >
-                    <li
-                        class="table__row"
-                    >
+                    <li class="table__row">
                         <!-- checkbox -->
                         <div class="table__col">
-                            <app-checkbox
-                                [checked]="d.checked"
-                                (changed)="toggleDocument(d)"
-                            />
+                            <app-checkbox [checked]="d.checked" (changed)="toggleDocument(d)" />
                         </div>
 
                         <!-- filename -->
-                        <div
-                            class="table__col table__col-file"
-                            (click)="selectedRagDocId.set(d.naive_rag_document_id)"
-                        >
+                        <div class="table__col table__col-file" (click)="selectedRagDocId.set(d.naive_rag_document_id)">
                             <span>{{ i + 1 }}</span>
-                            <app-icon
-                                class="table__file-icon"
-                                icon="ui/document"
-                                size="0.75rem"
-                            />
+                            <app-icon class="table__file-icon" icon="ui/document" size="0.75rem" />
                             <span class="table__file-name">
-                            {{ parseFullFileName(d.file_name).name }}
-                        </span>
+                                {{ parseFullFileName(d.file_name).name }}
+                            </span>
                             <span>
-                            {{ parseFullFileName(d.file_name).type }}
-                        </span>
+                                {{ parseFullFileName(d.file_name).type }}
+                            </span>
                         </div>
 
                         <!-- strategy select -->
@@ -158,20 +116,16 @@
                                 [items]="chunkStrategySelectItems"
                                 [(selectedValue)]="d.chunk_strategy"
                                 [invalid]="!!d.errors?.chunk_strategy"
-                                (changed)="onDocFieldChange(d, 'chunk_strategy', $event)"
+                                (changed)="onChunkStrategyChange(d, $event)"
                             />
                         </div>
 
                         @if (d.chunk_strategy === 'csv') {
                             <!-- chunk size -->
-                            <div class="table__col table__col--unavailable">
-                                Unavailable
-                            </div>
+                            <div class="table__col table__col--unavailable">Unavailable</div>
 
                             <!-- overlap -->
-                            <div class="table__col table__col--unavailable">
-                                Unavailable
-                            </div>
+                            <div class="table__col table__col--unavailable">Unavailable</div>
                         } @else {
                             <!-- chunk size -->
                             <div class="table__col">
@@ -211,9 +165,7 @@
                         </div>
                     </li>
                     @for (error of d.errors | keyvalue; track error.key) {
-                        <label class="table__row-error">
-                            Update failed: {{ error.value?.reason }}
-                        </label>
+                        <label class="table__row-error"> Update failed: {{ error.value?.reason }} </label>
                     }
                 </div>
             }

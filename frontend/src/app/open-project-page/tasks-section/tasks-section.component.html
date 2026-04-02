@@ -1,11 +1,11 @@
 <div class="tasks-section">
-  <app-tasks-table
-    [project]="project"
-    [tasks]="tasks"
-    [agents]="agents"
-    [isSaving]="isSaving"
-    (taskPending)="onTaskPending($event)"
-    (dirtyChange)="onDirtyChange($event)"
-    (autoSaveRequested)="autoSaveRequested.emit()"
-  ></app-tasks-table>
+    <app-tasks-table
+        [project]="project"
+        [tasks]="tasks"
+        [agents]="agents"
+        [isSaving]="isSaving"
+        (taskPending)="onTaskPending($event)"
+        (dirtyChange)="onDirtyChange($event)"
+        (autoSaveRequested)="autoSaveRequested.emit()"
+    ></app-tasks-table>
 </div>

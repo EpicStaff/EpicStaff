@@ -4,6 +4,7 @@ const angularEslintPlugin = require('@angular-eslint/eslint-plugin');
 const simpleImportSort = require('eslint-plugin-simple-import-sort');
 
 module.exports = tseslint.config({
+  ignores: ['**/node_modules/**', '**/dist/**'],
   files: ['**/*.ts'],
   languageOptions: {
     parser: tseslint.parser,
@@ -15,6 +16,7 @@ module.exports = tseslint.config({
   },
   rules: {
     '@typescript-eslint/no-explicit-any': 'error',
+    '@typescript-eslint/no-unused-vars': 'error',
     'simple-import-sort/imports': 'error',
     'simple-import-sort/exports': 'error',
     '@angular-eslint/component-selector': ['error', { type: 'element', prefix: 'app', style: 'kebab-case' }],

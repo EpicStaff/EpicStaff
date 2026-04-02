@@ -1,33 +1,26 @@
 <app-drag-drop-area (filesDropped)="filesUploaded.emit($event)">
     <div class="list">
         <div class="list__title">
-            <span>Selected Files: <span class="list__title--count">({{documents().length}})</span></span>
+            <span
+                >Selected Files: <span class="list__title--count">({{ documents().length }})</span></span
+            >
             @if (hasInvalidFiles()) {
                 <div class="list__file-error list__file-error--medium">File validation errors</div>
             }
-            <app-button type="outline-primary" (click)="fileInput.click()">
-                + Add More Files
+            <app-button type="outline-primary" [leftIcon]="'ui/plus'" (click)="fileInput.click()">
+                Add More Files
             </app-button>
 
-            <input
-                #fileInput
-                type="file"
-                multiple
-                style="display: none"
-                (change)="onFileSelect($event)"
-            />
+            <input #fileInput type="file" multiple style="display: none" (change)="onFileSelect($event)" />
         </div>
 
         <div class="list__files-wrapper">
-            <app-list
-                width="574px"
-                [items]="documents()"
-            >
+            <app-list width="574px" [items]="documents()">
                 <ng-template let-item let-i="index">
                     <app-list-row class="list__file">
                         <div class="list__name-column">
                             <span class="list__file-index">{{ i + 1 }}</span>
-                            <app-icon icon="ui/document" size="0.75rem"/>
+                            <app-icon icon="ui/document" size="0.75rem" />
                             <span class="list__file-name">{{ item.file_name }}</span>
                             <div
                                 [class.list__file-error]="!item.isValidSize || !item.isValidType"
@@ -58,4 +51,3 @@
         </div>
     </div>
 </app-drag-drop-area>
-

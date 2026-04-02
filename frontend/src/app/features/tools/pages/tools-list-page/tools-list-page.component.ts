@@ -2,8 +2,11 @@ import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { AppIconComponent, ButtonComponent, TabButtonComponent } from '@shared/components';
 
+import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
+import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
+import { TabButtonComponent } from '../../../../shared/components/tab-button/tab-button.component';
+import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/directives/hide-inline-subtitle-on-overflow.directive';
 import { CustomToolDialogComponent } from '../../../../user-settings-page/tools/custom-tool-editor/custom-tool-dialog.component';
 import { McpToolDialogComponent } from '../../components/mcp-tool-dialog/mcp-tool-dialog.component';
 import { GetMcpToolRequest } from '../../models/mcp-tool.model';
@@ -22,6 +25,7 @@ import { ToolsSearchService } from '../../services/tools-search.service';
         ButtonComponent,
         FormsModule,
         AppIconComponent,
+        HideInlineSubtitleOnOverflowDirective,
     ],
     templateUrl: './tools-list-page.component.html',
     styleUrls: ['./tools-list-page.component.scss'],
@@ -92,7 +96,6 @@ export class ToolsListPageComponent {
 
             dialogRef.closed.subscribe((result) => {
                 if (result) {
-                    console.log('New custom tool created:', result);
                     // Emit event to notify custom tools component
                     this.toolsEventsService.emitCustomToolCreated(result);
                     // Navigate to custom tools tab after creating a tool
@@ -113,7 +116,6 @@ export class ToolsListPageComponent {
 
         dialogRef.closed.subscribe((result) => {
             if (result) {
-                console.log('New MCP tool created:', result);
                 // Emit event to notify MCP tools component
                 this.toolsEventsService.emitMcpToolCreated(result);
                 // Navigate to MCP tools tab after creating a tool

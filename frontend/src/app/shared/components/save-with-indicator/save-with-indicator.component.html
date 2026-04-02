@@ -1,8 +1,19 @@
-<button class="save-button" [disabled]="disabled" (click)="onSave()">
+<button
+    [appCollapseOnOverflow]="true"
+    [collapseOnOverflowTarget]="'.save-button__label'"
+    [collapseOnOverflowClass]="'save-button--only-icon'"
+    [collapseOnOverflowCheckExternalClip]="true"
+    (collapseOnOverflowChange)="onCollapseChange($event)"
+    class="save-button"
+    [class.save-button--only-icon]="collapseLabel"
+    [disabled]="disabled"
+    [attr.aria-label]="label"
+    (click)="onSave()"
+>
     @if (isSaving) {
         <app-spinner2 [size]="16"></app-spinner2>
     } @else {
         <i class="ti ti-device-floppy"></i>
     }
-    {{ label }}
+    <span class="save-button__label">{{ label }}</span>
 </button>

@@ -1,3 +1,3 @@
 export interface EnvironmentKeysResponse {
-  data: { [key: string]: string };
+    data: { [key: string]: string };
 }

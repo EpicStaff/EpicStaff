@@ -1,171 +1,171 @@
 .dialog-container {
-  background-color: #1e1e1e;
-  border-radius: 12px;
-  padding: 24px;
-  color: rgba(255, 255, 255, 0.9);
-  min-width: 400px;
+    background-color: #1e1e1e;
+    border-radius: 12px;
+    padding: 24px;
+    color: rgba(255, 255, 255, 0.9);
+    min-width: 400px;
 
-  .dialog-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-
-    .dialog-title {
-      margin: 0;
-      font-size: 18px;
-      font-weight: 600;
-    }
-
-    .close-button {
-      background: none;
-      border: none;
-      color: rgba(255, 255, 255, 0.6);
-      cursor: pointer;
-      padding: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 4px;
-      margin-left: 10px;
-
-      &:hover {
-        background-color: rgba(255, 255, 255, 0.1);
-        color: rgba(255, 255, 255, 0.9);
-      }
-    }
-  }
-
-  .dialog-content {
-    margin-bottom: 24px;
-  }
-
-  .form-group {
-    margin-bottom: 16px;
-
-    label {
-      display: block;
-      margin-bottom: 8px;
-      font-size: 14px;
-      color: rgba(255, 255, 255, 0.7);
-    }
-
-    .text-input {
-      width: 100%;
-      padding: 10px 12px;
-      background-color: rgba(30, 30, 30, 0.6);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 6px;
-      color: white;
-      font-size: 14px;
-      transition: border-color 0.2s ease;
-
-      &:focus {
-        outline: none;
-        border-color: #685fff;
-      }
-    }
-
-    .custom-select {
-      position: relative;
-
-      .select-input {
-        width: 100%;
-        padding: 10px 12px;
-        background-color: rgba(30, 30, 30, 0.6);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 6px;
-        color: white;
-        font-size: 14px;
-        appearance: none;
-        transition: border-color 0.2s ease;
-
-        &:focus {
-          outline: none;
-          border-color: #685fff;
-        }
-      }
-
-      .select-arrow {
-        position: absolute;
-        right: 12px;
-        top: 50%;
-        transform: translateY(-50%);
-        pointer-events: none;
-        color: rgba(255, 255, 255, 0.6);
-      }
-    }
-
-    .input-with-icon {
-      position: relative;
-
-      .text-input {
-        padding-right: 40px;
-      }
-
-      .eye-button {
-        position: absolute;
-        right: 10px;
-        top: 50%;
-        transform: translateY(-50%);
-        background: none;
-        border: none;
-        color: rgba(255, 255, 255, 0.6);
-        cursor: pointer;
-        padding: 4px;
+    .dialog-header {
         display: flex;
+        justify-content: space-between;
         align-items: center;
-        justify-content: center;
+        margin-bottom: 20px;
 
-        &:hover {
-          color: rgba(255, 255, 255, 0.9);
+        .dialog-title {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 600;
         }
-      }
+
+        .close-button {
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.6);
+            cursor: pointer;
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            margin-left: 10px;
+
+            &:hover {
+                background-color: rgba(255, 255, 255, 0.1);
+                color: rgba(255, 255, 255, 0.9);
+            }
+        }
     }
 
-    .error-message {
-      font-size: 12px;
-      color: #ff4d4f;
-      margin-top: 4px;
+    .dialog-content {
+        margin-bottom: 24px;
     }
-  }
 
-  .dialog-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
+    .form-group {
+        margin-bottom: 16px;
 
-    .button {
-      padding: 8px 16px;
-      border-radius: 6px;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background-color 0.2s ease;
-      border: none;
-
-      &.secondary {
-        background-color: rgba(255, 255, 255, 0.1);
-        color: rgba(255, 255, 255, 0.9);
-
-        &:hover {
-          background-color: rgba(255, 255, 255, 0.15);
-        }
-      }
-
-      &.primary {
-        background-color: #685fff;
-        color: white;
-
-        &:hover {
-          background-color: #7a70ff;
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
         }
 
-        &:disabled {
-          background-color: rgba(104, 95, 255, 0.5);
-          cursor: not-allowed;
+        .text-input {
+            width: 100%;
+            padding: 10px 12px;
+            background-color: rgba(30, 30, 30, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            color: white;
+            font-size: 14px;
+            transition: border-color 0.2s ease;
+
+            &:focus {
+                outline: none;
+                border-color: #685fff;
+            }
         }
-      }
+
+        .custom-select {
+            position: relative;
+
+            .select-input {
+                width: 100%;
+                padding: 10px 12px;
+                background-color: rgba(30, 30, 30, 0.6);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 6px;
+                color: white;
+                font-size: 14px;
+                appearance: none;
+                transition: border-color 0.2s ease;
+
+                &:focus {
+                    outline: none;
+                    border-color: #685fff;
+                }
+            }
+
+            .select-arrow {
+                position: absolute;
+                right: 12px;
+                top: 50%;
+                transform: translateY(-50%);
+                pointer-events: none;
+                color: rgba(255, 255, 255, 0.6);
+            }
+        }
+
+        .input-with-icon {
+            position: relative;
+
+            .text-input {
+                padding-right: 40px;
+            }
+
+            .eye-button {
+                position: absolute;
+                right: 10px;
+                top: 50%;
+                transform: translateY(-50%);
+                background: none;
+                border: none;
+                color: rgba(255, 255, 255, 0.6);
+                cursor: pointer;
+                padding: 4px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+
+                &:hover {
+                    color: rgba(255, 255, 255, 0.9);
+                }
+            }
+        }
+
+        .error-message {
+            font-size: 12px;
+            color: #ff4d4f;
+            margin-top: 4px;
+        }
     }
-  }
+
+    .dialog-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+
+        .button {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            border: none;
+
+            &.secondary {
+                background-color: rgba(255, 255, 255, 0.1);
+                color: rgba(255, 255, 255, 0.9);
+
+                &:hover {
+                    background-color: rgba(255, 255, 255, 0.15);
+                }
+            }
+
+            &.primary {
+                background-color: #685fff;
+                color: white;
+
+                &:hover {
+                    background-color: #7a70ff;
+                }
+
+                &:disabled {
+                    background-color: rgba(104, 95, 255, 0.5);
+                    cursor: not-allowed;
+                }
+            }
+        }
+    }
 }

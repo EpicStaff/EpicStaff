@@ -81,7 +81,7 @@
 
     &--active {
         &::before {
-            content: "";
+            content: '';
             display: block;
             position: absolute;
             background-color: var(--color-text-primary);

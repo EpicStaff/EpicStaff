@@ -6,9 +6,6 @@
         }
     </label>
     @if (tooltipText()) {
-        <app-help-tooltip
-            [text]="tooltipText()"
-            position="right"
-        ></app-help-tooltip>
+        <app-help-tooltip [text]="tooltipText()" position="right"></app-help-tooltip>
     }
 </div>

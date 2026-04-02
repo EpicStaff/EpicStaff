@@ -2,17 +2,9 @@
     <div class="tab__header">
         <div>
             <h3 class="tab__title">Ngrok Configuration Parameters</h3>
-            <p class="tab__subtitle">
-                Configure and manage settings through the Ngrok tunnel.
-            </p>
+            <p class="tab__subtitle">Configure and manage settings through the Ngrok tunnel.</p>
         </div>
-        <app-button
-            type="primary"
-            leftIcon="ui/plus"
-            (click)="onAddConfig()"
-        >
-            Add
-        </app-button>
+        <app-button type="primary" leftIcon="ui/plus" (click)="onAddConfig()"> Add </app-button>
     </div>
 
     <div class="tab__ngrok-config-list">
@@ -23,13 +15,7 @@
         } @else if (status() === 'error') {
             <div class="tab__loading-state tab__loading-state--error">
                 <p>{{ errorMessage() }}</p>
-                <app-button
-                    type="secondary"
-                    leftIcon="ui/refresh"
-                    (click)="refreshData()"
-                >
-                    Retry
-                </app-button>
+                <app-button type="secondary" leftIcon="ui/refresh" (click)="refreshData()"> Retry </app-button>
             </div>
         } @else if (ngrokConfigs().length === 0) {
             <div class="tab__loading-state">

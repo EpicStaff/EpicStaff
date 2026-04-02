@@ -1,41 +1,41 @@
 .flow-action-panel {
-  position: absolute;
-  bottom: 1rem;
-  left: 1rem;
-  display: flex;
-  z-index: 10;
-
-  .action-buttons {
+    position: absolute;
+    bottom: 1rem;
+    left: 1rem;
     display: flex;
-    gap: 8px;
+    z-index: 10;
 
-    .action-button {
-      width: 38px;
-      height: 38px;
-      min-width: 38px;
-      padding: 8px;
-      background-color: var(--gray-800);
-      border: 1px solid var(--gray-750);
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      outline: none;
+    .action-buttons {
+        display: flex;
+        gap: 8px;
 
-      &:hover {
-        background-color: var(--gray-750);
-      }
+        .action-button {
+            width: 38px;
+            height: 38px;
+            min-width: 38px;
+            padding: 8px;
+            background-color: var(--gray-800);
+            border: 1px solid var(--gray-750);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            outline: none;
 
-      &:active {
-        transform: scale(0.95);
-      }
+            &:hover {
+                background-color: var(--gray-750);
+            }
 
-      i {
-        font-size: 18px;
-        color: var(--gray-300);
-      }
+            &:active {
+                transform: scale(0.95);
+            }
+
+            i {
+                font-size: 18px;
+                color: var(--gray-300);
+            }
+        }
     }
-  }
 }

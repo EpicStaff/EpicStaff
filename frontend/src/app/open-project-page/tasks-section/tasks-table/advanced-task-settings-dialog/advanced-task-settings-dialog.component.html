@@ -1,29 +1,11 @@
 <div class="dialog-container">
     <!-- Header Section -->
     <div class="header">
-        <h2 class="dialog-title">
-            Advanced Settings for {{ taskData.taskName || "New Task" }}
-        </h2>
+        <h2 class="dialog-title">Advanced Settings for {{ taskData.taskName || 'New Task' }}</h2>
         <button class="close-button" (click)="requestClose()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                <line
-                    x1="18"
-                    y1="6"
-                    x2="6"
-                    y2="18"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                />
-                <line
-                    x1="6"
-                    y1="6"
-                    x2="18"
-                    y2="18"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                />
+                <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
             </svg>
         </button>
     </div>
@@ -57,10 +39,7 @@ Note: If properties is empty, the output model will be set to null."
                             text="Toggle this to enable or disable the output model. When disabled, the output model will be set to null."
                         ></app-help-tooltip>
                     </div>
-                    <mat-slide-toggle
-                        [ngModel]="useOutputModel()"
-                        (ngModelChange)="useOutputModel.set($event)"
-                    >
+                    <mat-slide-toggle [ngModel]="useOutputModel()" (ngModelChange)="useOutputModel.set($event)">
                     </mat-slide-toggle>
                 </div>
             </div>
@@ -76,9 +55,7 @@ Note: If properties is empty, the output model will be set to null."
                         [editorHeight]="400"
                     ></app-json-editor>
                 </div>
-                <button class="reset-button" (click)="resetToDefault()">
-                    Reset to Default
-                </button>
+                <button class="reset-button" (click)="resetToDefault()">Reset to Default</button>
             </div>
         </div>
 
@@ -99,9 +76,7 @@ Note: If properties is empty, the output model will be set to null."
                         [ngClass]="{ selected: isTaskSelected(task.id) }"
                         (click)="toggleTaskSelection(task.id)"
                     >
-                        <span class="task-order">{{
-                            formatOrder(task.order)
-                        }}</span>
+                        <span class="task-order">{{ formatOrder(task.order) }}</span>
                         <span class="task-name">{{ task.name }}</span>
                         <div class="task-meta">
                             <span class="task-id">ID: {{ task.id }}</span>
@@ -113,19 +88,11 @@ Note: If properties is empty, the output model will be set to null."
                                     (change)="toggleTaskSelection(task.id)"
                                     class="transparent-checkbox"
                                 />
-                                <span
-                                    class="checkmark"
-                                    *ngIf="isTaskSelected(task.id)"
-                                ></span>
+                                <span class="checkmark" *ngIf="isTaskSelected(task.id)"></span>
                             </span>
                         </div>
                     </div>
-                    <div
-                        *ngIf="availableTasks.length === 0"
-                        class="empty-state"
-                    >
-                        No task contexts available
-                    </div>
+                    <div *ngIf="availableTasks.length === 0" class="empty-state">No task contexts available</div>
                 </div>
             </div>
         </div>

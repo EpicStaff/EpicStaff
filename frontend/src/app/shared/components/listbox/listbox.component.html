@@ -1,37 +1,18 @@
 @if (label()) {
-    <app-tooltip
-        [required]="required()"
-        [tooltipText]="tooltipText()"
-        [label]="label()"
-        [icon]="icon()"
-    />
+    <app-tooltip [required]="required()" [tooltipText]="tooltipText()" [label]="label()" [icon]="icon()" />
 }
 
 <div class="listbox">
     <div class="listbox__input-container">
-        <app-custom-input
-            [placeholder]="inputPlaceholder()"
-            [formControl]="inputControl"
-        />
+        <app-custom-input [placeholder]="inputPlaceholder()" [formControl]="inputControl" />
 
-        <app-icon
-            class="listbox__add-btn"
-            [icon]="'ui/plus'"
-            [size]="'1.5rem'"
-            (click)="onAdd()"
-        />
-
+        <app-icon class="listbox__add-btn" [icon]="'ui/plus'" [size]="'1.5rem'" (click)="onAdd()" />
     </div>
 
     @for (item of value(); track $index; let i = $index) {
         <div class="listbox__item">
             {{ item }}
-            <app-icon
-                class="listbox__remove-btn"
-                [icon]="'ui/close'"
-                [size]="'1.5rem'"
-                (click)="onRemove(i)"
-            />
+            <app-icon class="listbox__remove-btn" [icon]="'ui/close'" [size]="'1.5rem'" (click)="onRemove(i)" />
         </div>
     }
 </div>

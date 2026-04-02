@@ -1,11 +1,12 @@
-import {inject, Injectable} from "@angular/core";
-import {HttpClient, HttpHeaders} from "@angular/common/http";
-import {ConfigService} from "../../../services/config/config.service";
-import {Observable} from "rxjs";
-import {DeleteDocumentResponse, UploadDocumentResponse} from "../models/document.model";
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { inject, Injectable } from '@angular/core';
+import { Observable } from 'rxjs';
+
+import { ConfigService } from '../../../services/config/config.service';
+import { DeleteDocumentResponse, UploadDocumentResponse } from '../models/document.model';
 
 @Injectable({
-    providedIn: 'root'
+    providedIn: 'root',
 })
 export class DocumentsApiService {
     private http = inject(HttpClient);
@@ -22,11 +23,14 @@ export class DocumentsApiService {
     uploadDocuments(collectionId: number, files: File[]): Observable<UploadDocumentResponse> {
         const formData = new FormData();
 
-        files.forEach(file => {
+        files.forEach((file) => {
             formData.append('files', file);
         });
 
-        return this.http.post<UploadDocumentResponse>(`${this.apiUrl}/source-collection/${collectionId}/upload/`, formData);
+        return this.http.post<UploadDocumentResponse>(
+            `${this.apiUrl}/source-collection/${collectionId}/upload/`,
+            formData
+        );
     }
 
     deleteDocumentById(id: number): Observable<DeleteDocumentResponse> {

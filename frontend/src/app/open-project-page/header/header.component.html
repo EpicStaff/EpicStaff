@@ -1,44 +1,39 @@
 <!-- Updated header.component.html -->
 <div class="header">
-  <div class="title-section">
-    <div class="title" *ngIf="project">
-      <div class="project-prefix" routerLink="/projects">
-        <app-icon [icon]="'ui/arrow-left'" size="20" class="back-arrow" />
-        <span>Projects</span>
-      </div>
-      <span class="separator"> / </span>
-      <div class="project-name" >
-        <span class="project-name__text">
-          {{ project.name }}
-        </span>
+    <div class="title-section">
+        <div class="title" *ngIf="project">
+            <div class="project-prefix" routerLink="/projects">
+                <app-icon [icon]="'ui/arrow-left'" size="20" class="back-arrow" />
+                <span>Projects</span>
+            </div>
+            <span class="separator"> / </span>
+            <div class="project-name">
+                <span class="project-name__text">
+                    {{ project.name }}
+                </span>
 
-        <app-icon
-          icon="ui/edit"
-          size="1rem"
-          class="project-name__edit"
-          (click)="openEditTitleDialog()"
-        />
-      </div>
+                <app-icon icon="ui/edit" size="1rem" class="project-name__edit" (click)="openEditTitleDialog()" />
+            </div>
+        </div>
+        <app-unsaved-indicator [show]="hasUnsavedChanges"></app-unsaved-indicator>
     </div>
-    <app-unsaved-indicator [show]="hasUnsavedChanges"></app-unsaved-indicator>
-  </div>
 
-  <div class="action-buttons">
-    <app-save-with-indicator
-      [label]="'Save'"
-      [hasUnsavedChanges]="hasUnsavedChanges"
-      [isSaving]="isSaving"
-      [disabled]="!project || isSaving || !hasUnsavedChanges"
-      (save)="onSaveClick()"
-    ></app-save-with-indicator>
-    <app-button
-      type="secondary"
-      [leftIcon]="'ui/plus'"
-      class="create-flow-btn"
-      (click)="onCreateFlowWithProject()"
-      [disabled]="!project"
-    >
-      Create flow from this project
-    </app-button>
-  </div>
+    <div class="action-buttons">
+        <app-save-with-indicator
+            [label]="'Save'"
+            [hasUnsavedChanges]="hasUnsavedChanges"
+            [isSaving]="isSaving"
+            [disabled]="!project || isSaving || !hasUnsavedChanges"
+            (save)="onSaveClick()"
+        ></app-save-with-indicator>
+        <app-button
+            type="secondary"
+            [leftIcon]="'ui/plus'"
+            class="create-flow-btn"
+            (click)="onCreateFlowWithProject()"
+            [disabled]="!project"
+        >
+            Create flow from this project
+        </app-button>
+    </div>
 </div>

@@ -1,30 +1,29 @@
+import { KeyValuePipe } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
-    computed, effect,
+    computed,
+    effect,
     inject,
     input,
     model,
     output,
-    signal
-} from "@angular/core";
-import { KeyValuePipe } from "@angular/common";
-import { NaiveRagDocumentConfig, UpdateNaiveRagDocumentDtoRequest } from "../../../models/naive-rag-document.model";
-import { NaiveRagDocumentsStorageService } from "../../../services/naive-rag-documents-storage.service";
+    signal,
+} from '@angular/core';
 import {
-    DocFieldChange,
-    TableDocument,
-} from "./configuration-table.interface";
-import {
-    SelectComponent,
-    SelectItem,
-    MultiSelectComponent,
     AppIconComponent,
     ButtonComponent,
+    CheckboxComponent,
     InputNumberComponent,
-    CheckboxComponent
-} from "@shared/components";
-import { CHUNK_STRATEGIES_SELECT_ITEMS, FILE_TYPES } from "../../../constants/constants";
+    MultiSelectComponent,
+    SelectComponent,
+    SelectItem,
+} from '@shared/components';
+
+import { CHUNK_STRATEGIES_SELECT_ITEMS, FILE_TYPES } from '../../../constants/constants';
+import { NaiveRagDocumentConfig, UpdateNaiveRagDocumentDtoRequest } from '../../../models/naive-rag-document.model';
+import { NaiveRagDocumentsStorageService } from '../../../services/naive-rag-documents-storage.service';
+import { DocFieldChange, TableDocument } from './configuration-table.interface';
 
 @Component({
     selector: 'app-configuration-table',
@@ -39,10 +38,10 @@ import { CHUNK_STRATEGIES_SELECT_ITEMS, FILE_TYPES } from "../../../constants/co
         MultiSelectComponent,
         KeyValuePipe,
     ],
-    changeDetection: ChangeDetectionStrategy.OnPush
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ConfigurationTableComponent {
-    fileTypeSelectItems: SelectItem[] = FILE_TYPES.map(t => ({ name: t, value: t }));
+    fileTypeSelectItems: SelectItem[] = FILE_TYPES.map((t) => ({ name: t, value: t }));
     chunkStrategySelectItems: SelectItem[] = CHUNK_STRATEGIES_SELECT_ITEMS;
 
     private documentsStorageService = inject(NaiveRagDocumentsStorageService);
@@ -56,21 +55,22 @@ export class ConfigurationTableComponent {
     docsCheckChange = output<number[]>();
     docFieldChange = output<DocFieldChange>();
     applyBulkUpdate = output<UpdateNaiveRagDocumentDtoRequest>();
-    onTuneChunk = output<{ragDocumentId: number, allDocumentIds: number[]}>();
+    onTuneChunk = output<{ ragDocumentId: number; allDocumentIds: number[] }>();
 
     bulkChunkStrategy = signal<string | null>(null);
     bulkChunkSize = signal<number | null>(null);
     bulkChunkOverlap = signal<number | null>(null);
-    fileTypeFilter = signal<any[]>([]);
-    chunkStrategyFilter = signal<any[]>([]);
+    fileTypeFilter = signal<string[]>([]);
+    chunkStrategyFilter = signal<string[]>([]);
 
     allChecked = computed(() => {
         const arr = this.filteredDocuments();
-        return arr.length > 0 && arr.every(r => r.checked);
+        return arr.length > 0 && arr.every((r) => r.checked);
     });
-    checkedDocumentIds = computed(() => this.filteredDocuments()
-        .filter(d => d.checked)
-        .map(d => d.naive_rag_document_id)
+    checkedDocumentIds = computed(() =>
+        this.filteredDocuments()
+            .filter((d) => d.checked)
+            .map((d) => d.naive_rag_document_id)
     );
     indeterminate = computed(() => !!this.checkedDocumentIds().length && !this.allChecked());
 
@@ -95,8 +95,21 @@ export class ConfigurationTableComponent {
             documentId: document.naive_rag_document_id,
             documentName: document.file_name,
             field,
-            value
+            value,
         });
+    }
+
+    onFileTypeFilterChange(value: unknown[]): void {
+        this.fileTypeFilter.set(value.filter((v): v is string => typeof v === 'string'));
+    }
+
+    onChunkStrategyFilterChange(value: unknown[]): void {
+        this.chunkStrategyFilter.set(value.filter((v): v is string => typeof v === 'string'));
+    }
+
+    onChunkStrategyChange(document: TableDocument, value: unknown): void {
+        if (typeof value !== 'string') return;
+        this.onDocFieldChange(document, 'chunk_strategy', value);
     }
 
     toggleAll() {
@@ -108,37 +121,37 @@ export class ConfigurationTableComponent {
         this.documentsStorageService.toggleDocument(item.naive_rag_document_id);
     }
 
-    parseFullFileName(fullName: string): { name: string, type: string } {
+    parseFullFileName(fullName: string): { name: string; type: string } {
         const parts = fullName.split('.');
         const type = parts.pop()!;
 
         return {
             name: parts.join('.'),
-            type: '.' + type
+            type: '.' + type,
         };
     }
 
     tuneChunk(ragDocumentId: number) {
-        const allDocumentIds = this.filteredDocuments().map(d => d.naive_rag_document_id);
+        const allDocumentIds = this.filteredDocuments().map((d) => d.naive_rag_document_id);
         this.onTuneChunk.emit({ ragDocumentId, allDocumentIds });
     }
 
     onApplyBulkEdit() {
         const dto = {
             ...(this.bulkChunkStrategy() && {
-                chunk_strategy: this.bulkChunkStrategy()
+                chunk_strategy: this.bulkChunkStrategy(),
             }),
 
             ...(this.bulkChunkSize() !== null && {
-                chunk_size: this.bulkChunkSize()
+                chunk_size: this.bulkChunkSize(),
             }),
 
             ...(this.bulkChunkOverlap() !== null && {
-                chunk_overlap: this.bulkChunkOverlap()
+                chunk_overlap: this.bulkChunkOverlap(),
             }),
         } as UpdateNaiveRagDocumentDtoRequest;
 
-        this.applyBulkUpdate.emit(dto)
+        this.applyBulkUpdate.emit(dto);
     }
 
     // ================= FILTER LOGIC START =================
@@ -146,7 +159,7 @@ export class ConfigurationTableComponent {
     private applyFileNameFilter(data: TableDocument[]): TableDocument[] {
         const term = this.searchTerm();
 
-        return data.filter(d => {
+        return data.filter((d) => {
             return d.file_name.toLowerCase().includes(term.toLowerCase());
         });
     }
@@ -155,7 +168,7 @@ export class ConfigurationTableComponent {
         const filesFilter = this.fileTypeFilter();
         if (!filesFilter.length) return data;
 
-        return data.filter(d => {
+        return data.filter((d) => {
             const ext = d.file_name.split('.').pop()?.toLowerCase();
             return ext && filesFilter.includes(ext);
         });
@@ -165,7 +178,7 @@ export class ConfigurationTableComponent {
         const strategyFilter = this.chunkStrategyFilter();
         if (!strategyFilter.length) return data;
 
-        return data.filter(d => strategyFilter.includes(d.chunk_strategy));
+        return data.filter((d) => strategyFilter.includes(d.chunk_strategy));
     }
 
     // ================= FILTER LOGIC END =================

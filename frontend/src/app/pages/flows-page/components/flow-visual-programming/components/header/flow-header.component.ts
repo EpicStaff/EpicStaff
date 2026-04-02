@@ -7,11 +7,8 @@ import { Router } from '@angular/router';
 
 import { FlowRenameDialogComponent } from '../../../../../../features/flows/components/flow-rename-dialog/flow-rename-dialog.component';
 import { GraphDto } from '../../../../../../features/flows/models/graph.model';
-import { RunGraphService } from '../../../../../../features/flows/services/run-graph-session.service';
-import { ToastService } from '../../../../../../services/notifications/toast.service';
 import { AppIconComponent } from '../../../../../../shared/components/app-icon/app-icon.component';
 import { Spinner2Component } from '../../../../../../shared/components/spinner-type2/spinner.component';
-import { FlowService } from '../../../../../../visual-programming/services/flow.service';
 
 @Component({
     selector: 'app-flow-header',

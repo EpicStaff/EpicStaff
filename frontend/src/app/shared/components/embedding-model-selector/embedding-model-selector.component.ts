@@ -1,37 +1,32 @@
-import {
-    Component,
-    OnInit,
-    OnDestroy,
-    Input,
-    Output,
-    EventEmitter,
-    forwardRef,
-    ChangeDetectionStrategy,
-    ChangeDetectorRef,
-    OnChanges,
-    SimpleChanges,
-} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
-    ControlValueAccessor,
-    FormsModule,
-    NG_VALUE_ACCESSOR,
-} from '@angular/forms';
-import { AppIconComponent } from '../app-icon/app-icon.component';
-import { getProviderIconPath } from '../../../features/settings-dialog/utils/get-provider-icon';
+    ChangeDetectionStrategy,
+    ChangeDetectorRef,
+    Component,
+    DestroyRef,
+    EventEmitter,
+    forwardRef,
+    inject,
+    Input,
+    OnChanges,
+    OnDestroy,
+    OnInit,
+    Output,
+    SimpleChanges,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+
 import { FullEmbeddingConfig } from '../../../features/settings-dialog/services/embeddings/full-embedding.service';
-import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-model-item.component';
+import { getProviderIconPath } from '../../../features/settings-dialog/utils/get-provider-icon';
 import { DropdownManagerService } from '../../services/dropdown-manager.service';
+import { AppIconComponent } from '../app-icon/app-icon.component';
+import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-model-item.component';
 
 @Component({
     selector: 'app-embedding-model-selector',
     standalone: true,
-    imports: [
-        CommonModule,
-        FormsModule,
-        AppIconComponent,
-        EmbeddingModelItemComponent,
-    ],
+    imports: [CommonModule, FormsModule, AppIconComponent, EmbeddingModelItemComponent],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -41,15 +36,8 @@ import { DropdownManagerService } from '../../services/dropdown-manager.service'
     ],
     template: `
         <div class="embedding-selector-container">
-            <div
-                class="selected-model"
-                [class.placeholder]="!selectedConfig"
-                (click)="toggleDropdown($event)"
-            >
-                <div
-                    *ngIf="selectedConfig; else placeholderTemplate"
-                    class="model-info"
-                >
+            <div class="selected-model" [class.placeholder]="!selectedConfig" (click)="toggleDropdown($event)">
+                <div *ngIf="selectedConfig; else placeholderTemplate" class="model-info">
                     <app-icon
                         [icon]="getProviderIcon(selectedConfig)"
                         size="20px"
@@ -58,13 +46,8 @@ import { DropdownManagerService } from '../../services/dropdown-manager.service'
                     >
                     </app-icon>
                     <div class="model-text">
-                        <span class="model-name">{{
-                            selectedConfig.modelDetails?.name || 'Unknown Model'
-                        }}</span>
-                        <span
-                            *ngIf="selectedConfig.custom_name"
-                            class="custom-name"
-                        >
+                        <span class="model-name">{{ selectedConfig.modelDetails?.name || 'Unknown Model' }}</span>
+                        <span *ngIf="selectedConfig.custom_name" class="custom-name">
                             ({{ selectedConfig.custom_name }})
                         </span>
                     </div>
@@ -73,13 +56,7 @@ import { DropdownManagerService } from '../../services/dropdown-manager.service'
                     <div class="placeholder-text">{{ placeholder }}</div>
                 </ng-template>
                 <div class="dropdown-icon">
-                    <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                    >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path
                             d="M6 9L12 15L18 9"
                             stroke="currentColor"
@@ -92,11 +69,7 @@ import { DropdownManagerService } from '../../services/dropdown-manager.service'
             </div>
 
             <!-- Dropdown Menu -->
-            <div
-                class="dropdown-menu"
-                [class.dropdown-top]="dropdownPosition === 'top'"
-                *ngIf="isDropdownOpen"
-            >
+            <div class="dropdown-menu" [class.dropdown-top]="dropdownPosition === 'top'" *ngIf="isDropdownOpen">
                 <!-- Search Input -->
                 <div class="search-container">
                     <input
@@ -110,20 +83,16 @@ import { DropdownManagerService } from '../../services/dropdown-manager.service'
 
                 <!-- Models List -->
                 <div class="models-list">
-                    <div
-                        *ngIf="filteredConfigs.length === 0"
-                        class="no-results"
-                    >
-                        No matching models found
-                    </div>
+                    <div *ngIf="filteredConfigs.length === 0" class="no-results">No matching models found</div>
 
-                    <app-embedding-model-item
-                        *ngFor="let config of filteredConfigs"
-                        [config]="config"
-                        [isSelected]="selectedConfigId === config.id"
-                        (selected)="selectConfig($event)"
-                    >
-                    </app-embedding-model-item>
+                    @for (config of filteredConfigs; track config.id) {
+                        <app-embedding-model-item
+                            [config]="config"
+                            [isSelected]="selectedConfigId === config.id"
+                            (selected)="selectConfig($event)"
+                        >
+                        </app-embedding-model-item>
+                    }
                 </div>
             </div>
         </div>
@@ -266,9 +235,7 @@ import { DropdownManagerService } from '../../services/dropdown-manager.service'
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class EmbeddingModelSelectorComponent
-    implements OnInit, OnDestroy, OnChanges, ControlValueAccessor
-{
+export class EmbeddingModelSelectorComponent implements OnInit, OnDestroy, OnChanges, ControlValueAccessor {
     @Input() placeholder: string = 'Select embedding model';
     @Input() embeddingConfigs: FullEmbeddingConfig[] = [];
 
@@ -285,15 +252,14 @@ export class EmbeddingModelSelectorComponent
     // ControlValueAccessor implementation
     private onChange: (value: number | null) => void = () => {};
     private onTouched: () => void = () => {};
+    private destroyRef = inject(DestroyRef);
 
     constructor(
         private cdr: ChangeDetectorRef,
         private dropdownManager: DropdownManagerService
     ) {
         // Generate unique ID for this dropdown instance
-        this.dropdownId = `embedding-selector-${Math.random()
-            .toString(36)
-            .substr(2, 9)}`;
+        this.dropdownId = `embedding-selector-${Math.random().toString(36).substr(2, 9)}`;
     }
 
     ngOnInit(): void {
@@ -301,7 +267,7 @@ export class EmbeddingModelSelectorComponent
         this.updateSelectedConfig();
 
         // Subscribe to dropdown manager to close this dropdown when another opens
-        this.dropdownManager.activeDropdown$.subscribe((activeId) => {
+        this.dropdownManager.activeDropdown$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((activeId) => {
             if (activeId !== this.dropdownId && this.isDropdownOpen) {
                 this.closeDropdown();
             }
@@ -316,7 +282,13 @@ export class EmbeddingModelSelectorComponent
         }
     }
 
-    ngOnDestroy(): void {}
+    ngOnDestroy(): void {
+        document.removeEventListener('click', this.closeDropdownOnClickOutside);
+        if (this.isDropdownOpen) {
+            this.dropdownManager.closeDropdown(this.dropdownId);
+            this.isDropdownOpen = false;
+        }
+    }
 
     toggleDropdown(event?: MouseEvent): void {
         if (event) {
@@ -340,10 +312,7 @@ export class EmbeddingModelSelectorComponent
 
         // Add a one-time click listener to close when clicking outside
         setTimeout(() => {
-            document.addEventListener(
-                'click',
-                this.closeDropdownOnClickOutside
-            );
+            document.addEventListener('click', this.closeDropdownOnClickOutside);
         }, 100);
 
         this.cdr.markForCheck();
@@ -351,16 +320,11 @@ export class EmbeddingModelSelectorComponent
 
     closeDropdownOnClickOutside = (event: MouseEvent): void => {
         const target = event.target as HTMLElement;
-        const selectorEl = document.querySelector(
-            '.embedding-selector-container'
-        );
+        const selectorEl = document.querySelector('.embedding-selector-container');
 
         if (selectorEl && !selectorEl.contains(target)) {
             this.closeDropdown();
-            document.removeEventListener(
-                'click',
-                this.closeDropdownOnClickOutside
-            );
+            document.removeEventListener('click', this.closeDropdownOnClickOutside);
         }
     };
 
@@ -380,11 +344,9 @@ export class EmbeddingModelSelectorComponent
         } else {
             const searchTermLower = this.searchTerm.toLowerCase();
             this.filteredConfigs = this.embeddingConfigs.filter((config) => {
-                const modelName =
-                    config.modelDetails?.name?.toLowerCase() || '';
+                const modelName = config.modelDetails?.name?.toLowerCase() || '';
                 const customName = config.custom_name?.toLowerCase() || '';
-                const providerName =
-                    config.providerDetails?.name?.toLowerCase() || '';
+                const providerName = config.providerDetails?.name?.toLowerCase() || '';
 
                 return (
                     modelName.includes(searchTermLower) ||
@@ -415,17 +377,10 @@ export class EmbeddingModelSelectorComponent
 
     // ControlValueAccessor implementation
     writeValue(value: number | null): void {
-        console.log('writeValue called with value:', value);
         this.selectedConfigId = value;
 
         if (value !== null && this.embeddingConfigs.length > 0) {
-            this.selectedConfig =
-                this.embeddingConfigs.find((config) => config.id === value) ||
-                null;
-            console.log(
-                'writeValue - Found matching config:',
-                this.selectedConfig
-            );
+            this.selectedConfig = this.embeddingConfigs.find((config) => config.id === value) || null;
         } else {
             this.selectedConfig = null;
         }
@@ -442,25 +397,19 @@ export class EmbeddingModelSelectorComponent
     }
 
     setDisabledState(isDisabled: boolean): void {
-        // Implement if needed
+        void isDisabled;
     }
 
     // Add this helper method to update the selected config
     private updateSelectedConfig(): void {
         if (this.selectedConfigId && this.embeddingConfigs.length > 0) {
-            this.selectedConfig =
-                this.embeddingConfigs.find(
-                    (config) => config.id === this.selectedConfigId
-                ) || null;
+            this.selectedConfig = this.embeddingConfigs.find((config) => config.id === this.selectedConfigId) || null;
 
-            if (this.selectedConfig) {
-                console.log('Found selected config:', this.selectedConfig);
-            } else {
-                console.log(
-                    'No matching config found for ID:',
-                    this.selectedConfigId
-                );
-            }
+            // if (this.selectedConfig) {
+            //     console.log('Found selected config:', this.selectedConfig);
+            // } else {
+            //     console.log('No matching config found for ID:', this.selectedConfigId);
+            // }
 
             this.cdr.markForCheck();
         }
@@ -469,9 +418,7 @@ export class EmbeddingModelSelectorComponent
     // Check available space and position dropdown accordingly
     private checkDropdownPosition(): void {
         setTimeout(() => {
-            const container = document.querySelector(
-                '.embedding-selector-container'
-            ) as HTMLElement;
+            const container = document.querySelector('.embedding-selector-container') as HTMLElement;
             if (!container) return;
 
             const rect = container.getBoundingClientRect();

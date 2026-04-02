@@ -1,36 +1,20 @@
-import { Dialog } from "@angular/cdk/dialog";
-import {
-    ChangeDetectionStrategy,
-    Component,
-    computed,
-    DestroyRef,
-    inject,
-    input,
-    OnInit,
-    signal
-} from "@angular/core";
-import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
-import { FormsModule } from "@angular/forms";
-import {
-    AppIconComponent,
-    ButtonComponent,
-    ConfirmationDialogService,
-    SearchComponent,
-} from "@shared/components";
-import { EMPTY, groupBy, mergeMap, of, Subject } from "rxjs";
-import { catchError, debounceTime, switchMap } from "rxjs/operators";
+import { Dialog } from '@angular/cdk/dialog';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, OnInit, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormsModule } from '@angular/forms';
+import { AppIconComponent, ButtonComponent, ConfirmationDialogService, SearchComponent } from '@shared/components';
+import { EMPTY, groupBy, mergeMap, of, Subject } from 'rxjs';
+import { catchError, debounceTime, switchMap } from 'rxjs/operators';
 
-import { ToastService } from "../../../../services/notifications";
-import { CreateCollectionDtoResponse } from "../../models/collection.model";
-import { UpdateNaiveRagDocumentDtoRequest, } from "../../models/naive-rag-document.model";
-import { NaiveRagDocumentsStorageService } from "../../services/naive-rag-documents-storage.service";
-import { NaiveRagService } from "../../services/naive-rag.service";
-import { DocumentChunksSectionComponent } from "../document-chunks-section/document-chunks-section.component";
-import {
-    EditFileParametersDialogComponent
-} from "../edit-file-parameters-dialog/edit-file-parameters-dialog.component";
-import { ConfigurationTableComponent } from "./configuration-table/configuration-table.component";
-import { DocFieldChange, } from "./configuration-table/configuration-table.interface";
+import { ToastService } from '../../../../services/notifications';
+import { CreateCollectionDtoResponse } from '../../models/collection.model';
+import { UpdateNaiveRagDocumentDtoRequest } from '../../models/naive-rag-document.model';
+import { NaiveRagService } from '../../services/naive-rag.service';
+import { NaiveRagDocumentsStorageService } from '../../services/naive-rag-documents-storage.service';
+import { DocumentChunksSectionComponent } from '../document-chunks-section/document-chunks-section.component';
+import { EditFileParametersDialogComponent } from '../edit-file-parameters-dialog/edit-file-parameters-dialog.component';
+import { ConfigurationTableComponent } from './configuration-table/configuration-table.component';
+import { DocFieldChange } from './configuration-table/configuration-table.interface';
 
 @Component({
     selector: 'app-rag-configuration',
@@ -44,7 +28,7 @@ import { DocFieldChange, } from "./configuration-table/configuration-table.inter
         ButtonComponent,
         DocumentChunksSectionComponent,
     ],
-    changeDetection: ChangeDetectionStrategy.OnPush
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RagConfigurationComponent implements OnInit {
     private confirmationDialogService = inject(ConfirmationDialogService);
@@ -69,32 +53,38 @@ export class RagConfigurationComponent implements OnInit {
 
     ngOnInit() {
         const id = this.naiveRagId();
-        this.documentsStorageService.fetchDocumentConfigs(id)
+        this.documentsStorageService
+            .fetchDocumentConfigs(id)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: () => {
-                },
+                next: () => {},
                 error: (e) => {
                     this.toastService.error('Failed to fetch documents');
-                    console.log(e);
-                }
+                    console.error(e);
+                },
             });
 
-        this.docFieldChange$.pipe(
-            groupBy(change => change.documentId),
-            mergeMap(group$ => group$.pipe(
-                debounceTime(300),
-                switchMap(change => this.documentsStorageService.updateDocumentField(id, change)
-                    .pipe(
-                        catchError((err) => {
-                            const [error] = err.error?.errors;
+        this.docFieldChange$
+            .pipe(
+                groupBy((change) => change.documentId),
+                mergeMap((group$) =>
+                    group$.pipe(
+                        debounceTime(300),
+                        switchMap((change) =>
+                            this.documentsStorageService.updateDocumentField(id, change).pipe(
+                                catchError((err) => {
+                                    const [error] = err.error?.errors;
 
-                            this.toastService.error(`Update failed: ${error.reason}`);
-                            return EMPTY;
-                        }))),
-            )),
-            takeUntilDestroyed(this.destroyRef)
-        ).subscribe(() => this.toastService.success('Document updated'));
+                                    this.toastService.error(`Update failed: ${error.reason}`);
+                                    return EMPTY;
+                                })
+                            )
+                        )
+                    )
+                ),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe(() => this.toastService.success('Document updated'));
     }
 
     onDocFieldChange(change: DocFieldChange) {
@@ -104,23 +94,24 @@ export class RagConfigurationComponent implements OnInit {
     initDocuments() {
         const id = this.naiveRagId();
 
-        this.naiveRagService.initializeDocuments(id)
+        this.naiveRagService
+            .initializeDocuments(id)
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
-                switchMap(response => {
+                switchMap((response) => {
                     if (response && response.configs_created > 0) {
                         return this.documentsStorageService.fetchDocumentConfigs(id);
                     } else {
                         return EMPTY;
                     }
-                }),
+                })
             )
             .subscribe({
                 next: () => {},
                 error: (e) => {
                     this.toastService.error('Failed to fetch documents');
                     console.log(e);
-                }
+                },
             });
     }
 
@@ -129,11 +120,12 @@ export class RagConfigurationComponent implements OnInit {
         if (!config_ids.length) return;
         const id = this.naiveRagId();
 
-        this.documentsStorageService.bulkEditDocConfigs(id, config_ids, dto)
+        this.documentsStorageService
+            .bulkEditDocConfigs(id, config_ids, dto)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (res) => this.toastService.success(res.message),
-                error: (e) => console.log(e)
+                error: (e) => console.error(e),
             });
     }
 
@@ -141,13 +133,14 @@ export class RagConfigurationComponent implements OnInit {
         const config_ids = this.filteredAndCheckedDocIds();
         if (!config_ids.length) return;
 
-        this.confirmationDialogService.confirm({
-            title: 'Confirm Deletion',
-            message: `Are you sure you want to delete selected file(s)? <br> You can return them by clicking the 'Re-include Files' button.`,
-            confirmText: 'Delete',
-            cancelText: 'Cancel',
-            type: 'info',
-        })
+        this.confirmationDialogService
+            .confirm({
+                title: 'Confirm Deletion',
+                message: `Are you sure you want to delete selected file(s)? <br> You can return them by clicking the 'Re-include Files' button.`,
+                confirmText: 'Delete',
+                cancelText: 'Cancel',
+                type: 'info',
+            })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 if (result === true) {
@@ -170,11 +163,11 @@ export class RagConfigurationComponent implements OnInit {
             )
             .subscribe({
                 next: (res) => this.toastService.success(res.message),
-                error: (e) => console.log(e),
+                error: (e) => console.error(e),
             });
     }
 
-    openTuneChunkModal({ragDocumentId, allDocumentIds}: {ragDocumentId: number, allDocumentIds: number[]}) {
+    openTuneChunkModal({ ragDocumentId, allDocumentIds }: { ragDocumentId: number; allDocumentIds: number[] }) {
         this.tuneChunkOpened.set(true);
         const dialogRef = this.dialog.open(EditFileParametersDialogComponent, {
             width: 'calc(100vw - 2rem)',
@@ -184,10 +177,9 @@ export class RagConfigurationComponent implements OnInit {
                 ragDocumentId,
                 allDocumentIds,
             },
-            disableClose: true
+            disableClose: true,
         });
 
-        dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe(() => this.tuneChunkOpened.set(false))
+        dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.tuneChunkOpened.set(false));
     }
 }

@@ -1,26 +1,22 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, model, OnInit, signal } from "@angular/core";
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, model, OnInit, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { SelectComponent, SelectItem } from '@shared/components';
+import { MATERIAL_FORMS } from '@shared/material-forms';
+import { map } from 'rxjs/operators';
 
-import { RagTypeComponent } from "./rag-type/rag-type.component";
-import { RAG_TYPES } from "../../../../constants/constants";
-import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
-import { EmbeddingConfigsService } from "../../../../../settings-dialog/services/embeddings/embedding_configs.service";
-import { EmbeddingConfig } from "../../../../../settings-dialog/models/embeddings/embedding-config.model";
-import { SelectComponent, SelectItem } from "@shared/components";
-import { map } from "rxjs/operators";
-import { RagType } from "../../../../models/naive-rag.model";
-import { ToastService } from "../../../../../../services/notifications";
-import { MATERIAL_FORMS } from "@shared/material-forms";
+import { ToastService } from '../../../../../../services/notifications';
+import { EmbeddingConfig } from '../../../../../settings-dialog/models/embeddings/embedding-config.model';
+import { EmbeddingConfigsService } from '../../../../../settings-dialog/services/embeddings/embedding_configs.service';
+import { RAG_TYPES } from '../../../../constants/constants';
+import { RagType } from '../../../../models/naive-rag.model';
+import { RagTypeComponent } from './rag-type/rag-type.component';
 
 @Component({
-    selector: "app-step-select-rag",
-    templateUrl: "./step-select-rag.component.html",
-    styleUrls: ["./step-select-rag.component.scss"],
-    imports: [
-        RagTypeComponent,
-        SelectComponent,
-        MATERIAL_FORMS
-    ],
-    changeDetection: ChangeDetectionStrategy.OnPush
+    selector: 'app-step-select-rag',
+    templateUrl: './step-select-rag.component.html',
+    styleUrls: ['./step-select-rag.component.scss'],
+    imports: [RagTypeComponent, SelectComponent, MATERIAL_FORMS],
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class StepSelectRagComponent implements OnInit {
     selectedRag = model<RagType | null>(null);
@@ -28,19 +24,20 @@ export class StepSelectRagComponent implements OnInit {
 
     selectedEmbedder = model<number | null>(null);
 
-    private destroyRef = inject(DestroyRef)
+    private destroyRef = inject(DestroyRef);
     private embeddingConfigService = inject(EmbeddingConfigsService);
     private toastService = inject(ToastService);
 
     ngOnInit() {
-        this.embeddingConfigService.getEmbeddingConfigs()
+        this.embeddingConfigService
+            .getEmbeddingConfigs()
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 map((configs) => {
                     return configs.map((embedConfig: EmbeddingConfig) => ({
                         name: embedConfig.custom_name,
                         value: embedConfig.id,
-                    }))
+                    }));
                 })
             )
             .subscribe({

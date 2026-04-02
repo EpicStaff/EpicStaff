@@ -12,30 +12,25 @@
                 <div class="shortcuts__header">
                     <div class="shortcuts__header-left">
                         @if (iconSrc()) {
-                            <img
-                                class="shortcuts__header-icon"
-                                [src]="iconSrc()!"
-                                alt=""
-                                aria-hidden="true"
-                            />
+                            <img class="shortcuts__header-icon" [src]="iconSrc()!" alt="" aria-hidden="true" />
                         }
-                    <div class="shortcuts__header-title">{{ title() }}</div>
-                </div>
+                        <div class="shortcuts__header-title">{{ title() }}</div>
+                    </div>
 
-                <div class="shortcuts__header-right">
-                    <button
-                        type="button"
-                        class="shortcuts__size-btn"
-                        (click)="toggleSize()"
-                        [disabled]="isMediaLocked()"
-                        [attr.aria-label]="size() === 'wide' ? 'Minimize' : 'Expand'"
-                        [attr.title]="size() === 'wide' ? 'Minimize' : 'Expand'"
-                    >
-                        <i
-                            class="ti"
-                            [ngClass]="size() === 'wide' ? 'ti-arrows-minimize' : 'ti-arrows-maximize'"
-                        ></i>
-                    </button>
+                    <div class="shortcuts__header-right">
+                        <button
+                            type="button"
+                            class="shortcuts__size-btn"
+                            (click)="toggleSize()"
+                            [disabled]="isMediaLocked()"
+                            [attr.aria-label]="size() === 'wide' ? 'Minimize' : 'Expand'"
+                            [attr.title]="size() === 'wide' ? 'Minimize' : 'Expand'"
+                        >
+                            <i
+                                class="ti"
+                                [ngClass]="size() === 'wide' ? 'ti-arrows-minimize' : 'ti-arrows-maximize'"
+                            ></i>
+                        </button>
 
                         @if (showClose()) {
                             <button

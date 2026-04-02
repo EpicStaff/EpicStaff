@@ -1,42 +1,37 @@
 <!-- <div class="wrapper"> -->
-@if(isLoaded){
-
-<div 
-  #agGridWrap
-  class="ag-grid-wrap"
-  [class.tasks-table-wrap--saving]="isSaving"
->
-<ag-grid-angular
-  appPreventContextMenu
-  class="ag-grid-staff"
-  style="width: 100%; min-height: 0"
-  [gridOptions]="gridOptions"
-  [rowData]="rowData"
-  [columnDefs]="columnDefs"
-  [defaultColDef]="defaultColDef"
-  [rowDragManaged]="true"
-  (gridReady)="onGridReady($event)"
-  (cellContextMenu)="onCellContextMenu($event)"
-  [domLayout]="'autoHeight'"
->
-</ag-grid-angular>
-</div>
+@if (isLoaded) {
+    <div #agGridWrap class="ag-grid-wrap" [class.tasks-table-wrap--saving]="isSaving">
+        <ag-grid-angular
+            appPreventContextMenu
+            class="ag-grid-staff"
+            style="width: 100%; min-height: 0"
+            [gridOptions]="gridOptions"
+            [rowData]="rowData"
+            [columnDefs]="columnDefs"
+            [defaultColDef]="defaultColDef"
+            [rowDragManaged]="true"
+            (gridReady)="onGridReady($event)"
+            (cellContextMenu)="onCellContextMenu($event)"
+            [domLayout]="'autoHeight'"
+        >
+        </ag-grid-angular>
+    </div>
 }
 <!-- </div> -->
 <!-- Conditionally render the Tag Editor Dialog -->
 
 <!-- Custom Context Menu -->
 <app-ag-grid-context-menu
-  clickOutside
-  (clickOutside)="closeContextMenu()"
-  [visible]="!isSaving && contextMenuVisible()"
-  [left]="menuLeft"
-  [top]="menuTop"
-  (delete)="handleDelete()"
-  (copy)="handleCopy()"
-  (pasteBelow)="handlePasteBelow()"
-  (pasteAbove)="handlePasteAbove()"
-  (addEmptyAgentBelow)="handleAddEmptyTaskBelow()"
-  (addEmptyAgentAbove)="handleAddEmptyTaskAbove()"
-  [parent]="'Task'"
+    appClickOutside
+    (appClickOutside)="closeContextMenu()"
+    [visible]="!isSaving && contextMenuVisible()"
+    [left]="menuLeft"
+    [top]="menuTop"
+    (delete)="handleDelete()"
+    (copy)="handleCopy()"
+    (pasteBelow)="handlePasteBelow()"
+    (pasteAbove)="handlePasteAbove()"
+    (addEmptyAgentBelow)="handleAddEmptyTaskBelow()"
+    (addEmptyAgentAbove)="handleAddEmptyTaskAbove()"
+    [parent]="'Task'"
 ></app-ag-grid-context-menu>

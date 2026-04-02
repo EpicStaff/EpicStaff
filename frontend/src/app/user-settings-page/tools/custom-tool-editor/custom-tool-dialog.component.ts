@@ -222,7 +222,7 @@ export class CustomToolDialogComponent implements OnInit, AfterViewInit {
                 properties: parsedInputs.properties || {},
                 required: parsedInputs.required || [],
             };
-        } catch (e) {
+        } catch {
             this.toastService.error('Invalid inputs JSON format');
             return;
         }
@@ -263,7 +263,6 @@ export class CustomToolDialogComponent implements OnInit, AfterViewInit {
                 .subscribe({
                     next: (result: GetPythonCodeToolRequest) => {
                         this.isSaving = false;
-                        console.log('Tool updated successfully:', result);
                         this.toastService.success(`Custom Tool updated successfully!`);
                         this.dialogRef.close(result);
                     },
@@ -281,7 +280,6 @@ export class CustomToolDialogComponent implements OnInit, AfterViewInit {
                 .subscribe({
                     next: (result: GetPythonCodeToolRequest) => {
                         this.isSaving = false;
-                        console.log('Tool created successfully in dialog:', result);
                         this.toastService.success(`Custom Tool created successfully!`);
                         this.dialogRef.close(result);
                     },

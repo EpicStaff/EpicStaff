@@ -1,11 +1,8 @@
-import {
-    Component,
-    ChangeDetectionStrategy,
-    model, input,
-} from '@angular/core';
-import {CommonModule} from '@angular/common';
-import {AppIconComponent} from '../app-icon/app-icon.component';
-import {FormsModule} from "@angular/forms";
+import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, input, model } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+
+import { AppIconComponent } from '../app-icon/app-icon.component';
 
 @Component({
     selector: 'app-search',

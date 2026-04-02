@@ -27,7 +27,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1.5rem;    
+    gap: 1.5rem;
     border-radius: 8px;
     padding: 0.75rem 1rem;
 }
@@ -89,7 +89,9 @@
     color: var(--color-text-secondary);
     font-size: 0.8rem;
     cursor: pointer;
-    transition: color 0.2s ease, border-color 0.2s ease;
+    transition:
+        color 0.2s ease,
+        border-color 0.2s ease;
     user-select: none;
     text-align: center;
 

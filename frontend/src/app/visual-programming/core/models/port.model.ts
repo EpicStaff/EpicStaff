@@ -1,14 +1,14 @@
 export interface BasePort {
-  port_type: 'input' | 'output' | 'input-output';
-  role: string;
-  multiple: boolean;
-  label: string;
-  allowedConnections: string[];
-  position: 'left' | 'right' | 'top' | 'bottom';
-  color?: string;
+    port_type: 'input' | 'output' | 'input-output';
+    role: string;
+    multiple: boolean;
+    label: string;
+    allowedConnections: string[];
+    position: 'left' | 'right' | 'top' | 'bottom';
+    color?: string;
 }
 export interface ViewPort extends BasePort {
-  id: CustomPortId;
+    id: CustomPortId;
 }
 
 //nodeid_port-role

@@ -7,25 +7,24 @@ export interface SubGraphNode {
     subgraph: number;
     /** Nested light graph object (populated by backend serializer). */
     subgraph_detail?: GetGraphLightRequest;
-    input_map: Record<string, any>;
+    input_map: Record<string, unknown>;
     output_variable_path: string | null;
-    metadata: Record<string, any>;
+    metadata: Record<string, unknown>;
 }
 
 export interface CreateSubGraphNodeRequest {
     node_name: string;
     graph: number;
     subgraph: number;
-    input_map: Record<string, any>;
+    input_map: Record<string, unknown>;
     output_variable_path: string | null;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
 }
 
 export interface UpdateSubGraphNodeRequest {
     node_name?: string;
     graph?: number;
     subgraph?: number;
-    input_map?: Record<string, any>;
+    input_map?: Record<string, unknown>;
     output_variable_path?: string | null;
 }
-

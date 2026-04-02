@@ -1,13 +1,10 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { map, Observable } from 'rxjs';
-import {
-    CreateTaskRequest,
-    GetTaskRequest,
-    UpdateTaskRequest,
-} from '../models/task.model';
+
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config/config.service';
+import { CreateTaskRequest, GetTaskRequest, UpdateTaskRequest } from '../models/task.model';
 
 @Injectable({
     providedIn: 'root',
@@ -26,16 +23,12 @@ export class TasksService {
 
     getTasks(): Observable<GetTaskRequest[]> {
         const url = `${this.apiUrl}?limit=1000`;
-        return this.http
-            .get<ApiGetRequest<GetTaskRequest>>(url)
-            .pipe(map((response) => response.results));
+        return this.http.get<ApiGetRequest<GetTaskRequest>>(url).pipe(map((response) => response.results));
     }
 
     getTasksByProjectId(projectId: string): Observable<GetTaskRequest[]> {
         const url = `${this.apiUrl}?crew=${projectId}`;
-        return this.http
-            .get<ApiGetRequest<GetTaskRequest>>(url)
-            .pipe(map((response) => response.results));
+        return this.http.get<ApiGetRequest<GetTaskRequest>>(url).pipe(map((response) => response.results));
     }
 
     // GET task by ID
@@ -50,13 +43,9 @@ export class TasksService {
     }
 
     updateTask(task: UpdateTaskRequest): Observable<GetTaskRequest> {
-        return this.http.put<GetTaskRequest>(
-            `${this.apiUrl}${task.id}/`,
-            task,
-            {
-                headers: this.headers,
-            }
-        );
+        return this.http.put<GetTaskRequest>(`${this.apiUrl}${task.id}/`, task, {
+            headers: this.headers,
+        });
     }
 
     // PATCH method to update task order

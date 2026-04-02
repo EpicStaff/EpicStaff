@@ -1,17 +1,11 @@
-import {
-    Component,
-    Input,
-    Output,
-    EventEmitter,
-    ChangeDetectionStrategy,
-    inject,
-} from '@angular/core';
 import { CommonModule, NgStyle } from '@angular/common';
-import { DecisionTableNodeModel } from '../../../core/models/node.model';
-import { ConditionGroup } from '../../../core/models/decision-table.model';
+import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
 import { FFlowModule } from '@foblex/flow';
+
+import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
+import { ConditionGroup } from '../../../core/models/decision-table.model';
+import { DecisionTableNodeModel } from '../../../core/models/node.model';
 import { FlowService } from '../../../services/flow.service';
 
 @Component({
@@ -32,11 +26,7 @@ export class DecisionTableNodeComponent {
         const allGroups = this.node.data.table?.condition_groups ?? [];
         return allGroups
             .filter((group) => group.valid !== false)
-            .sort(
-                (a, b) =>
-                    (a.order ?? Number.MAX_SAFE_INTEGER) -
-                    (b.order ?? Number.MAX_SAFE_INTEGER)
-            );
+            .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
     }
 
     get defaultNextNode() {
@@ -47,9 +37,7 @@ export class DecisionTableNodeComponent {
         const idOrName = this.defaultNextNode;
         if (!idOrName) return null;
         const nodes = this.flowService.nodes();
-        const node = nodes.find(
-            (n) => n.id === idOrName || n.node_name === idOrName
-        );
+        const node = nodes.find((n) => n.id === idOrName || n.node_name === idOrName);
         return node ? node.node_name : idOrName;
     }
 
@@ -61,9 +49,7 @@ export class DecisionTableNodeComponent {
         const idOrName = this.nextErrorNode;
         if (!idOrName) return null;
         const nodes = this.flowService.nodes();
-        const node = nodes.find(
-            (n) => n.id === idOrName || n.node_name === idOrName
-        );
+        const node = nodes.find((n) => n.id === idOrName || n.node_name === idOrName);
         return node ? node.node_name : idOrName;
     }
 
