@@ -1,4 +1,4 @@
-import { computed,Injectable, signal } from '@angular/core';
+import { computed, Injectable, signal } from '@angular/core';
 import { IPoint, IRect } from '@foblex/2d';
 import { Observable, of } from 'rxjs';
 import { delay, map } from 'rxjs/operators';
@@ -6,7 +6,7 @@ import { delay, map } from 'rxjs/operators';
 import { NodeType } from '../core/enums/node-type';
 import { generatePortsForDecisionTableNode } from '../core/helpers/helpers';
 import { ConnectionModel } from '../core/models/connection.model';
-import { ConditionGroup,DecisionTableNode } from '../core/models/decision-table.model';
+import { ConditionGroup, DecisionTableNode } from '../core/models/decision-table.model';
 import { FlowModel } from '../core/models/flow.model';
 import { DecisionTableNodeModel, NodeModel, StartNodeModel } from '../core/models/node.model';
 import { CustomPortId, ViewPort } from '../core/models/port.model';
@@ -24,6 +24,8 @@ export class FlowService {
         nodes: [],
         connections: [],
     });
+
+    private _nextNodeNumber = 1;
 
     public readonly nodes = computed(() => this.flowSignal().nodes);
     public readonly connections = computed(() => this.flowSignal().connections);
@@ -68,6 +70,19 @@ export class FlowService {
 
     public setFlow(flow: FlowModel) {
         this.flowSignal.set(flow);
+        // Re-seed the counter above the highest existing nodeNumber
+        let max = 0;
+        for (const n of flow.nodes) {
+            if (n.nodeNumber != null && n.nodeNumber > max) {
+                max = n.nodeNumber;
+            }
+        }
+        this._nextNodeNumber = max + 1;
+    }
+
+    /** Returns the next node number and increments the counter. */
+    public getNextNodeNumber(): number {
+        return this._nextNodeNumber++;
     }
 
     public addNode(node: NodeModel) {
