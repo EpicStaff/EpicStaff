@@ -626,6 +626,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             ports,
             type: event.type as NodeModel['type'],
             node_name: newNodeName,
+            nodeNumber,
             data: nodeData,
             color: nodeColor,
             icon: nodeIcon,
