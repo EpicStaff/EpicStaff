@@ -1,18 +1,14 @@
 <div class="filters-list-row">
-  @if (showTags) {
-  <div class="filter-buttons">
-    <app-button
-      type="secondary"
-      [leftIcon]="'ui/tags-outline'"
-      [rightIcon]="'ui/chevron-down'"
-    >
-      Tags
-    </app-button>
-  </div>
-  }
-<!--  <app-search-->
-<!--    [value]="searchTerm"-->
-<!--    (valueChange)="onSearchValueChange($event)"-->
-<!--    [placeholder]="searchPlaceholder"-->
-<!--  ></app-search>-->
+    @if (showTags) {
+        <div class="filter-buttons">
+            <app-button type="secondary" [leftIcon]="'ui/tags-outline'" [rightIcon]="'ui/chevron-down'">
+                Tags
+            </app-button>
+        </div>
+    }
+    <!--  <app-search-->
+    <!--    [value]="searchTerm"-->
+    <!--    (valueChange)="onSearchValueChange($event)"-->
+    <!--    [placeholder]="searchPlaceholder"-->
+    <!--  ></app-search>-->
 </div>

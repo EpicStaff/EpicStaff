@@ -91,7 +91,7 @@ table {
         padding: 12px 8px;
     }
 
-    td[colspan="7"] {
+    td[colspan='7'] {
         border-bottom: none;
     }
 
@@ -124,7 +124,7 @@ table {
         display: table-row;
     }
 
-    td[colspan="7"] {
+    td[colspan='7'] {
         padding: 40px;
         vertical-align: middle;
     }
@@ -159,7 +159,9 @@ table {
     font-size: 0.95em;
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.18s, color 0.18s;
+    transition:
+        background 0.18s,
+        color 0.18s;
     white-space: nowrap;
     flex-shrink: 0;
     min-width: 70px;
@@ -185,7 +187,9 @@ table {
     font-size: 0.95em;
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.18s, color 0.18s;
+    transition:
+        background 0.18s,
+        color 0.18s;
 }
 .delete-btn:hover {
     background: #b32b36 !important;
@@ -241,7 +245,9 @@ table {
     font-size: 0.95em;
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.18s, color 0.18s;
+    transition:
+        background 0.18s,
+        color 0.18s;
     white-space: nowrap;
     flex-shrink: 0;
     min-width: 70px;

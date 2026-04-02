@@ -1,17 +1,18 @@
-import { DIALOG_DATA, DialogRef } from "@angular/cdk/dialog";
-import { NgIf } from "@angular/common";
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from "@angular/core";
-import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from "@angular/forms";
+import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { NgIf } from '@angular/common';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
     ButtonComponent,
     CustomInputComponent,
     SelectComponent,
     SelectItem,
-    ValidationErrorsComponent
-} from "@shared/components";
-import { CreateNgrokConfigRequest, GetNgrokConfigResponse } from "../../../models/ngrok-config.model";
-import { NgrokConfigStorageService } from "../../../services/ngrok-config/ngrok-config-storage.service";
+    ValidationErrorsComponent,
+} from '@shared/components';
+
+import { CreateNgrokConfigRequest, GetNgrokConfigResponse } from '../../../models/ngrok-config.model';
+import { NgrokConfigStorageService } from '../../../services/ngrok-config/ngrok-config-storage.service';
 
 @Component({
     selector: 'app-create-ngrok-config-dialog',
@@ -23,16 +24,16 @@ import { NgrokConfigStorageService } from "../../../services/ngrok-config/ngrok-
         SelectComponent,
         ButtonComponent,
         ValidationErrorsComponent,
-        NgIf
+        NgIf,
     ],
-    changeDetection: ChangeDetectionStrategy.OnPush
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AddNgrokConfigDialogComponent implements OnInit {
     private fb = inject(FormBuilder);
     private dialogRef = inject(DialogRef);
     private ngrokStorageService = inject(NgrokConfigStorageService);
     private destroyRef = inject(DestroyRef);
-    data: { config: GetNgrokConfigResponse | null, action: 'create' | 'update' } = inject(DIALOG_DATA);
+    data: { config: GetNgrokConfigResponse | null; action: 'create' | 'update' } = inject(DIALOG_DATA);
 
     public isSubmitting = signal<boolean>(false);
     public errorMessage = signal<string | null>(null);
@@ -54,7 +55,7 @@ export class AddNgrokConfigDialogComponent implements OnInit {
     ];
 
     ngOnInit() {
-        this.initForm()
+        this.initForm();
     }
 
     private initForm(): void {
@@ -63,7 +64,7 @@ export class AddNgrokConfigDialogComponent implements OnInit {
             auth_token: [this.data.config?.auth_token || '', Validators.required],
             region: [this.data.config?.region || 'eu'],
             domain: [this.data.config?.domain || ''],
-        })
+        });
     }
 
     onSubmit(): void {
@@ -84,31 +85,26 @@ export class AddNgrokConfigDialogComponent implements OnInit {
     }
 
     private createNgrokConfig(value: CreateNgrokConfigRequest): void {
-        this.ngrokStorageService.createConfig(value)
+        this.ngrokStorageService
+            .createConfig(value)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: () => this.dialogRef.close(),
-                error: (e) => {
-                    this.errorMessage.set(
-                        'Failed to create configuration. Please try again.'
-                    );
+                error: () => {
+                    this.errorMessage.set('Failed to create configuration. Please try again.');
                     this.isSubmitting.set(false);
                 },
             });
     }
 
-    private updateNgrokConfig(
-        id: number,
-        value: CreateNgrokConfigRequest
-    ): void {
-        this.ngrokStorageService.updateConfigById(id, value)
+    private updateNgrokConfig(id: number, value: CreateNgrokConfigRequest): void {
+        this.ngrokStorageService
+            .updateConfigById(id, value)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: () => this.dialogRef.close(),
-                error: (e) => {
-                    this.errorMessage.set(
-                        'Failed to update configuration. Please try again.'
-                    );
+                error: () => {
+                    this.errorMessage.set('Failed to update configuration. Please try again.');
                     this.isSubmitting.set(false);
                 },
             });

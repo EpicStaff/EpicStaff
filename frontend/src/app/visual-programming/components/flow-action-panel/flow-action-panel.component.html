@@ -1,13 +1,9 @@
 <div class="flow-action-panel">
-  <div class="action-buttons">
-    @for (action of actionIcons; track action.icon) {
-    <button
-      class="action-button"
-      [attr.title]="action.tooltip"
-      (click)="handleAction(action.action)"
-    >
-      <i class="{{ action.icon }}"></i>
-    </button>
-    }
-  </div>
+    <div class="action-buttons">
+        @for (action of actionIcons; track action.icon) {
+            <button class="action-button" [attr.title]="action.tooltip" (click)="handleAction(action.action)">
+                <i class="{{ action.icon }}"></i>
+            </button>
+        }
+    </div>
 </div>

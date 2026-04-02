@@ -1,112 +1,105 @@
 <div class="panel-content">
-  <div class="variables-container">
-    <!-- Existing variables -->
-    <div
-      class="variable-card"
-      *ngFor="let variable of getVariables(); let i = index"
-      [class.editing]="editingIndex === i"
-      [class.duplicate]="variable.name === duplicateVariableName"
-    >
-      <div class="variable-content" *ngIf="editingIndex !== i">
-        <div class="variable-item">
-          <span class="variable-name">{{ variable.name }}</span>
-          <span class="chain-separator">→</span>
-          <span class="variable-value" [class.no-value]="!variable.value">
-            {{ variable.value || "(empty)" }}
-          </span>
+    <div class="variables-container">
+        <!-- Existing variables -->
+        <div
+            class="variable-card"
+            *ngFor="let variable of getVariables(); let i = index"
+            [class.editing]="editingIndex === i"
+            [class.duplicate]="variable.name === duplicateVariableName"
+        >
+            <div class="variable-content" *ngIf="editingIndex !== i">
+                <div class="variable-item">
+                    <span class="variable-name">{{ variable.name }}</span>
+                    <span class="chain-separator">→</span>
+                    <span class="variable-value" [class.no-value]="!variable.value">
+                        {{ variable.value || '(empty)' }}
+                    </span>
+                </div>
+            </div>
+
+            <div class="variable-edit-form" *ngIf="editingIndex === i">
+                <input
+                    type="text"
+                    class="variable-input name-input"
+                    [(ngModel)]="editingVariable.name"
+                    [class.invalid]="isDuplicateName(editingVariable.name, i)"
+                    (keydown.enter)="onSaveEdit()"
+                />
+                <span class="chain-separator">→</span>
+                <input
+                    type="text"
+                    class="variable-input value-input"
+                    [(ngModel)]="editingVariable.value"
+                    placeholder="(optional)"
+                    (keydown.enter)="onSaveEdit()"
+                />
+            </div>
+
+            <div class="variable-actions">
+                <button
+                    class="action-button edit-button"
+                    *ngIf="editingIndex !== i"
+                    (click)="onEditVariable(i)"
+                    aria-label="Edit variable"
+                    title="Edit variable"
+                >
+                    <i class="ti ti-edit"></i>
+                </button>
+                <button
+                    class="action-button save-button"
+                    *ngIf="editingIndex === i"
+                    (click)="onSaveEdit()"
+                    aria-label="Save changes"
+                    title="Save changes"
+                >
+                    <i class="ti ti-check"></i>
+                </button>
+                <button
+                    class="action-button cancel-button"
+                    *ngIf="editingIndex === i"
+                    (click)="onCancelEdit()"
+                    aria-label="Cancel editing"
+                    title="Cancel editing"
+                >
+                    <i class="ti ti-x"></i>
+                </button>
+                <button
+                    class="action-button remove-button"
+                    *ngIf="editingIndex !== i"
+                    (click)="onRemoveVariable(variable)"
+                    aria-label="Remove variable"
+                    title="Remove variable"
+                >
+                    <i class="ti ti-trash"></i>
+                </button>
+            </div>
         </div>
-      </div>
 
-      <div class="variable-edit-form" *ngIf="editingIndex === i">
-        <input
-          type="text"
-          class="variable-input name-input"
-          [(ngModel)]="editingVariable.name"
-          [class.invalid]="isDuplicateName(editingVariable.name, i)"
-          (keydown.enter)="onSaveEdit()"
-        />
-        <span class="chain-separator">→</span>
-        <input
-          type="text"
-          class="variable-input value-input"
-          [(ngModel)]="editingVariable.value"
-          placeholder="(optional)"
-          (keydown.enter)="onSaveEdit()"
-        />
-      </div>
-
-      <div class="variable-actions">
-        <button
-          class="action-button edit-button"
-          *ngIf="editingIndex !== i"
-          (click)="onEditVariable(i)"
-          aria-label="Edit variable"
-          title="Edit variable"
-        >
-          <i class="ti ti-edit"></i>
-        </button>
-        <button
-          class="action-button save-button"
-          *ngIf="editingIndex === i"
-          (click)="onSaveEdit()"
-          aria-label="Save changes"
-          title="Save changes"
-        >
-          <i class="ti ti-check"></i>
-        </button>
-        <button
-          class="action-button cancel-button"
-          *ngIf="editingIndex === i"
-          (click)="onCancelEdit()"
-          aria-label="Cancel editing"
-          title="Cancel editing"
-        >
-          <i class="ti ti-x"></i>
-        </button>
-        <button
-          class="action-button remove-button"
-          *ngIf="editingIndex !== i"
-          (click)="onRemoveVariable(variable)"
-          aria-label="Remove variable"
-          title="Remove variable"
-        >
-          <i class="ti ti-trash"></i>
-        </button>
-      </div>
+        <!-- Add variable form -->
+        <div class="add-variable-form" [class.submitted]="submitted" [class.invalid]="submitted && !newVariable.name">
+            <div class="variable-item">
+                <input
+                    #nameInput
+                    type="text"
+                    class="variable-input name-input"
+                    placeholder="Name"
+                    [(ngModel)]="newVariable.name"
+                    [class.invalid]="(submitted && !newVariable.name) || isDuplicateName(newVariable.name)"
+                    (keydown.enter)="onAddVariable()"
+                />
+                <span class="chain-separator">→</span>
+                <input
+                    type="text"
+                    class="variable-input value-input"
+                    placeholder="Value (optional)"
+                    [(ngModel)]="newVariable.value"
+                    (keydown.enter)="onAddVariable()"
+                />
+            </div>
+            <button class="add-variable-button" (click)="onAddVariable()">
+                <i class="ti ti-plus"></i>
+                Add
+            </button>
+        </div>
     </div>
-
-    <!-- Add variable form -->
-    <div
-      class="add-variable-form"
-      [class.submitted]="submitted"
-      [class.invalid]="submitted && !newVariable.name"
-    >
-      <div class="variable-item">
-        <input
-          #nameInput
-          type="text"
-          class="variable-input name-input"
-          placeholder="Name"
-          [(ngModel)]="newVariable.name"
-          [class.invalid]="
-            (submitted && !newVariable.name) ||
-            isDuplicateName(newVariable.name)
-          "
-          (keydown.enter)="onAddVariable()"
-        />
-        <span class="chain-separator">→</span>
-        <input
-          type="text"
-          class="variable-input value-input"
-          placeholder="Value (optional)"
-          [(ngModel)]="newVariable.value"
-          (keydown.enter)="onAddVariable()"
-        />
-      </div>
-      <button class="add-variable-button" (click)="onAddVariable()">
-        <i class="ti ti-plus"></i>
-        Add
-      </button>
-    </div>
-  </div>
 </div>

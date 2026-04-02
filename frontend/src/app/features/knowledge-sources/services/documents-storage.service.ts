@@ -1,10 +1,11 @@
-import {inject, Injectable, signal} from "@angular/core";
-import {CollectionDocument, DeleteDocumentResponse, UploadDocumentResponse} from "../models/document.model";
-import {DocumentsApiService} from "./documents-api.service";
-import {catchError, map, tap} from "rxjs/operators";
-import {Observable, of} from "rxjs";
-import {CollectionsApiService} from "./collections-api.service";
-import {ToastService} from "../../../services/notifications/toast.service";
+import { inject, Injectable, signal } from '@angular/core';
+import { Observable, of } from 'rxjs';
+import { catchError, map, tap } from 'rxjs/operators';
+
+import { ToastService } from '../../../services/notifications/toast.service';
+import { CollectionDocument, DeleteDocumentResponse, UploadDocumentResponse } from '../models/document.model';
+import { CollectionsApiService } from './collections-api.service';
+import { DocumentsApiService } from './documents-api.service';
 
 @Injectable({
     providedIn: 'root',
@@ -28,22 +29,22 @@ export class DocumentsStorageService {
             }),
             catchError(() => {
                 this.toastService.error('Failed to upload documents');
-                return of()
+                return of();
             })
         );
     }
 
     getDocumentsByCollectionId(collectionId: number): Observable<CollectionDocument[]> {
-        const cached = this.documentsSignal().filter(d => d.source_collection === collectionId);
+        const cached = this.documentsSignal().filter((d) => d.source_collection === collectionId);
         if (!cached.length) {
             return this.collectionsApiService.getDocumentsByCollectionId(collectionId).pipe(
-                map(({documents}) => {
-                    return documents.map(doc => ({
+                map(({ documents }) => {
+                    return documents.map((doc) => ({
                         ...doc,
-                        source_collection: collectionId
-                    }))
+                        source_collection: collectionId,
+                    }));
                 }),
-                tap(docs => this.addDocumentsToCache(docs))
+                tap((docs) => this.addDocumentsToCache(docs))
             );
         }
 
@@ -57,17 +58,17 @@ export class DocumentsStorageService {
                 this.deleteDocumentFromCache(id);
             }),
             catchError(() => {
-                this.toastService.error('Failed to delete document')
-                return of()
+                this.toastService.error('Failed to delete document');
+                return of();
             })
-        )
+        );
     }
 
     private addDocumentsToCache(documents: CollectionDocument[]) {
-        this.documentsSignal.update(currentDocs => {
-            const existingIds = new Set(currentDocs.map(d => d.document_id));
+        this.documentsSignal.update((currentDocs) => {
+            const existingIds = new Set(currentDocs.map((d) => d.document_id));
 
-            const newDocs = documents.filter(d => !existingIds.has(d.document_id));
+            const newDocs = documents.filter((d) => !existingIds.has(d.document_id));
 
             return [...currentDocs, ...newDocs];
         });
@@ -75,9 +76,7 @@ export class DocumentsStorageService {
 
     private deleteDocumentFromCache(id: number) {
         const currentDocuments = this.documentsSignal();
-        const updatedDocuments = currentDocuments.filter(
-            (d) => d.document_id !== id
-        );
+        const updatedDocuments = currentDocuments.filter((d) => d.document_id !== id);
         this.documentsSignal.set(updatedDocuments);
     }
 }

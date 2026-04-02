@@ -36699,7 +36699,7 @@ var MarkdownModule = _MarkdownModule;
 var CHAT_CONSTANTS = {
   DEFAULT_WIDTH: "500px",
   DEFAULT_HEIGHT: "70vh",
-  MIN_WIDTH: 360,
+  MIN_WIDTH: 200,
   MIN_HEIGHT: 300,
   DEFAULT_POSITION: {
     top: "28vh",
@@ -94941,7 +94941,7 @@ function ThinkingExpanderComponent_Conditional_0_Conditional_5_Template(rf, ctx)
     const ctx_r1 = \u0275\u0275nextContext(2);
     \u0275\u0275textInterpolate1(" ", ctx_r1.latestSummary, " ");
     \u0275\u0275advance(2);
-    \u0275\u0275textInterpolate1("(", ctx_r1.elapsedSeconds, "s)");
+    \u0275\u0275textInterpolate1("(", ctx_r1.elapsedLabel, ")");
   }
 }
 function ThinkingExpanderComponent_Conditional_0_Conditional_6_Template(rf, ctx) {
@@ -94950,7 +94950,7 @@ function ThinkingExpanderComponent_Conditional_0_Conditional_6_Template(rf, ctx)
   }
   if (rf & 2) {
     const ctx_r1 = \u0275\u0275nextContext(2);
-    \u0275\u0275textInterpolate1(" Thought for ", ctx_r1.elapsedSeconds, "s ");
+    \u0275\u0275textInterpolate1(" Thought for ", ctx_r1.elapsedLabel, " ");
   }
 }
 function ThinkingExpanderComponent_Conditional_0_Conditional_7_For_2_Conditional_6_Template(rf, ctx) {
@@ -95061,6 +95061,9 @@ var _ThinkingExpanderComponent = class _ThinkingExpanderComponent {
   get latestSummary() {
     return this.getSummary(this.latestEntry);
   }
+  get elapsedLabel() {
+    return this.elapsedSeconds < 1 ? "<1s" : `${this.elapsedSeconds}s`;
+  }
   toggleExpanded() {
     this.expanded = !this.expanded;
     if (!this.expanded) {
@@ -95151,7 +95154,7 @@ var ThinkingExpanderComponent = _ThinkingExpanderComponent;
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(ThinkingExpanderComponent, [{
     type: Component,
-    args: [{ selector: "ep-thinking-expander", standalone: true, imports: [CommonModule, IconComponent], changeDetection: ChangeDetectionStrategy.OnPush, template: '@if (hasEntries) {\n  <div class="ep-thinking" [class.ep-thinking--expanded]="expanded">\n    <button type="button" class="ep-thinking__header" (click)="toggleExpanded()">\n      <span class="ep-thinking__chevron" [class.ep-thinking__chevron--expanded]="expanded">\n        <ep-icon name="triangle-right" [size]="8"></ep-icon>\n      </span>\n      <span class="ep-thinking__summary">\n        @if (isActive) {\n          {{ latestSummary }}\n          <span class="ep-thinking__timer">({{ elapsedSeconds }}s)</span>\n        } @else {\n          Thought for {{ elapsedSeconds }}s\n        }\n      </span>\n    </button>\n\n    @if (expanded) {\n      <div class="ep-thinking__history">\n        @for (entry of entries; track $index) {\n          <div class="ep-thinking__item">\n            <button type="button" class="ep-thinking__item-header" (click)="toggleItem($index)">\n              <span\n                class="ep-thinking__chevron-small"\n                [class.ep-thinking__chevron-small--expanded]="isItemExpanded($index)"\n              >\n                <ep-icon name="triangle-right" [size]="8"></ep-icon>\n              </span>\n              <span class="ep-thinking__item-summary">\n                {{ summary(entry) }}\n              </span>\n            </button>\n\n            @if (isItemExpanded($index)) {\n              <div class="ep-thinking__item-body">\n                {{ entry }}\n              </div>\n            }\n          </div>\n        }\n      </div>\n    }\n  </div>\n}\n', styles: ["/* src/app/components/thinking-expander/thinking-expander.component.scss */\n.ep-thinking {\n  border: 1px solid var(--ep-color-border);\n  border-radius: 6px;\n  background: var(--ep-color-surface-alt);\n  padding: 8px;\n  max-width: 100%;\n  overflow: hidden;\n}\n.ep-thinking__header {\n  display: flex;\n  align-items: center;\n  justify-content: flex-start;\n  gap: 6px;\n  width: 100%;\n  border: 0;\n  background: transparent;\n  padding: 0;\n  cursor: pointer;\n  color: var(--ep-color-text);\n  font-size: 12px;\n  line-height: 1.4;\n}\n.ep-thinking__chevron {\n  width: 8px;\n  height: 8px;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  flex-shrink: 0;\n  transition: transform 0.15s ease;\n}\n.ep-thinking__chevron--expanded {\n  transform: rotate(90deg);\n}\n.ep-thinking__summary {\n  flex: 1;\n  text-align: left;\n  font-size: 12px;\n  line-height: 1.5;\n  color: var(--ep-color-text);\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n.ep-thinking__timer {\n  margin-left: 4px;\n  font-size: 12px;\n  color: var(--ep-color-text);\n}\n.ep-thinking__history {\n  margin-top: 8px;\n  padding-top: 8px;\n  border-top: 1px dashed var(--ep-color-border);\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n  margin-left: 18px;\n  max-height: 220px;\n  overflow-y: auto;\n}\n.ep-thinking__item {\n  display: flex;\n  flex-direction: column;\n  gap: 4px;\n}\n.ep-thinking__item-header {\n  display: flex;\n  align-items: center;\n  gap: 4px;\n  width: 100%;\n  border: 0;\n  background: transparent;\n  padding: 0;\n  cursor: pointer;\n  font-size: 12px;\n  color: var(--ep-color-text);\n  text-align: left;\n}\n.ep-thinking__chevron-small {\n  width: 8px;\n  height: 8px;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  flex-shrink: 0;\n  transition: transform 0.15s ease;\n}\n.ep-thinking__chevron-small--expanded {\n  transform: rotate(90deg);\n}\n.ep-thinking__item-summary {\n  flex: 1;\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n.ep-thinking__item-body {\n  font-size: 12px;\n  line-height: 1.45;\n  color: var(--ep-color-text);\n  white-space: pre-wrap;\n  word-break: break-word;\n  margin-left: 18px;\n}\n/*# sourceMappingURL=thinking-expander.component.css.map */\n"] }]
+    args: [{ selector: "ep-thinking-expander", standalone: true, imports: [CommonModule, IconComponent], changeDetection: ChangeDetectionStrategy.OnPush, template: '@if (hasEntries) {\n  <div class="ep-thinking" [class.ep-thinking--expanded]="expanded">\n    <button type="button" class="ep-thinking__header" (click)="toggleExpanded()">\n      <span class="ep-thinking__chevron" [class.ep-thinking__chevron--expanded]="expanded">\n        <ep-icon name="triangle-right" [size]="8"></ep-icon>\n      </span>\n      <span class="ep-thinking__summary">\n        @if (isActive) {\n          {{ latestSummary }}\n          <span class="ep-thinking__timer">({{ elapsedLabel }})</span>\n        } @else {\n          Thought for {{ elapsedLabel }}\n        }\n      </span>\n    </button>\n\n    @if (expanded) {\n      <div class="ep-thinking__history">\n        @for (entry of entries; track $index) {\n          <div class="ep-thinking__item">\n            <button type="button" class="ep-thinking__item-header" (click)="toggleItem($index)">\n              <span\n                class="ep-thinking__chevron-small"\n                [class.ep-thinking__chevron-small--expanded]="isItemExpanded($index)"\n              >\n                <ep-icon name="triangle-right" [size]="8"></ep-icon>\n              </span>\n              <span class="ep-thinking__item-summary">\n                {{ summary(entry) }}\n              </span>\n            </button>\n\n            @if (isItemExpanded($index)) {\n              <div class="ep-thinking__item-body">\n                {{ entry }}\n              </div>\n            }\n          </div>\n        }\n      </div>\n    }\n  </div>\n}\n', styles: ["/* src/app/components/thinking-expander/thinking-expander.component.scss */\n.ep-thinking {\n  border: 1px solid var(--ep-color-border);\n  border-radius: 6px;\n  background: var(--ep-color-surface-alt);\n  padding: 8px;\n  max-width: 100%;\n  overflow: hidden;\n}\n.ep-thinking__header {\n  display: flex;\n  align-items: center;\n  justify-content: flex-start;\n  gap: 6px;\n  width: 100%;\n  border: 0;\n  background: transparent;\n  padding: 0;\n  cursor: pointer;\n  color: var(--ep-color-text);\n  font-size: 12px;\n  line-height: 1.4;\n}\n.ep-thinking__chevron {\n  width: 8px;\n  height: 8px;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  flex-shrink: 0;\n  transition: transform 0.15s ease;\n}\n.ep-thinking__chevron--expanded {\n  transform: rotate(90deg);\n}\n.ep-thinking__summary {\n  flex: 1;\n  text-align: left;\n  font-size: 12px;\n  line-height: 1.5;\n  color: var(--ep-color-text);\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n.ep-thinking__timer {\n  margin-left: 4px;\n  font-size: 12px;\n  color: var(--ep-color-text);\n}\n.ep-thinking__history {\n  margin-top: 8px;\n  padding-top: 8px;\n  border-top: 1px dashed var(--ep-color-border);\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n  margin-left: 18px;\n  max-height: 220px;\n  overflow-y: auto;\n}\n.ep-thinking__item {\n  display: flex;\n  flex-direction: column;\n  gap: 4px;\n}\n.ep-thinking__item-header {\n  display: flex;\n  align-items: center;\n  gap: 4px;\n  width: 100%;\n  border: 0;\n  background: transparent;\n  padding: 0;\n  cursor: pointer;\n  font-size: 12px;\n  color: var(--ep-color-text);\n  text-align: left;\n}\n.ep-thinking__chevron-small {\n  width: 8px;\n  height: 8px;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  flex-shrink: 0;\n  transition: transform 0.15s ease;\n}\n.ep-thinking__chevron-small--expanded {\n  transform: rotate(90deg);\n}\n.ep-thinking__item-summary {\n  flex: 1;\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n.ep-thinking__item-body {\n  font-size: 12px;\n  line-height: 1.45;\n  color: var(--ep-color-text);\n  white-space: pre-wrap;\n  word-break: break-word;\n  margin-left: 18px;\n}\n/*# sourceMappingURL=thinking-expander.component.css.map */\n"] }]
   }], null, { entries: [{
     type: Input
   }], isActive: [{
@@ -95793,7 +95796,719 @@ _MessageItemComponent.\u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ 
   ButtonComponent,
   ThinkingExpanderComponent,
   IconComponent
-], styles: ['@charset "UTF-8";\n\n\n\n.ep-message[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  gap: 8px;\n  padding: 0 20px;\n  position: relative;\n  margin-bottom: 16px;\n}\n.ep-message[_ngcontent-%COMP%]:hover   .ep-message__time[_ngcontent-%COMP%] {\n  opacity: 1;\n  transform: translateY(0);\n}\n.ep-message[_ngcontent-%COMP%]   .ep-message__date-divider[_ngcontent-%COMP%] {\n  width: fit-content;\n  margin: 0 auto;\n  padding: 4px 12px;\n}\n.ep-message__content[_ngcontent-%COMP%] {\n  position: relative;\n  display: inline-flex;\n  flex-direction: column;\n  gap: 8px;\n  width: 100%;\n  align-self: flex-start;\n}\n.ep-message__date-divider[_ngcontent-%COMP%] {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  width: 100%;\n  margin: 0 auto 8px auto;\n  font-size: 11px;\n  text-align: center;\n  color: var(--ep-color-text-muted);\n  padding: 4px 0;\n  align-self: center;\n}\n.ep-message__date-divider[_ngcontent-%COMP%]::before, \n.ep-message__date-divider[_ngcontent-%COMP%]::after {\n  content: "";\n  flex: 1;\n  height: 1px;\n  background: var(--ep-color-border);\n}\n.ep-message__text[_ngcontent-%COMP%] {\n  display: block;\n  padding: 6px 12px;\n  overflow: hidden;\n  overflow-wrap: break-word;\n  word-wrap: break-word;\n  line-height: 20px;\n  font-size: 14px;\n  font-weight: 400;\n  color: var(--ep-color-text);\n  max-width: 100%;\n  box-sizing: border-box;\n}\n.ep-message__text[_ngcontent-%COMP%]     markdown {\n  display: block;\n}\n.ep-message__text[_ngcontent-%COMP%]     p, \n.ep-message__text[_ngcontent-%COMP%]   p[_ngcontent-%COMP%] {\n  margin: 0 0 8px 0;\n  line-height: 20px;\n}\n.ep-message__text[_ngcontent-%COMP%]     p:last-child, \n.ep-message__text[_ngcontent-%COMP%]   p[_ngcontent-%COMP%]:last-child {\n  margin-bottom: 0;\n}\n.ep-message__text[_ngcontent-%COMP%]     strong, \n.ep-message__text[_ngcontent-%COMP%]     b, \n.ep-message__text[_ngcontent-%COMP%]   strong[_ngcontent-%COMP%], \n.ep-message__text[_ngcontent-%COMP%]   b[_ngcontent-%COMP%] {\n  font-weight: 600;\n  color: var(--ep-color-text);\n}\n.ep-message__text[_ngcontent-%COMP%]     em, \n.ep-message__text[_ngcontent-%COMP%]     i, \n.ep-message__text[_ngcontent-%COMP%]   em[_ngcontent-%COMP%], \n.ep-message__text[_ngcontent-%COMP%]   i[_ngcontent-%COMP%] {\n  font-style: italic;\n}\n.ep-message__text[_ngcontent-%COMP%]     a, \n.ep-message__text[_ngcontent-%COMP%]   a[_ngcontent-%COMP%] {\n  color: var(--ep-color-accent);\n  text-decoration: none;\n  transition: text-decoration 0.2s;\n}\n.ep-message__text[_ngcontent-%COMP%]     a:hover, \n.ep-message__text[_ngcontent-%COMP%]   a[_ngcontent-%COMP%]:hover {\n  text-decoration: underline;\n}\n.ep-message__text[_ngcontent-%COMP%]     ul, \n.ep-message__text[_ngcontent-%COMP%]     ol, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%], \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%] {\n  margin: 8px 0;\n  padding-left: 0;\n  list-style: none;\n  line-height: 20px;\n  box-sizing: border-box;\n}\n.ep-message__text[_ngcontent-%COMP%]     ul:first-child, \n.ep-message__text[_ngcontent-%COMP%]     ol:first-child, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]:first-child, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]:first-child {\n  margin-top: 0;\n}\n.ep-message__text[_ngcontent-%COMP%]     ul:last-child, \n.ep-message__text[_ngcontent-%COMP%]     ol:last-child, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]:last-child, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]:last-child {\n  margin-bottom: 0;\n}\n.ep-message__text[_ngcontent-%COMP%]     ul   li, \n.ep-message__text[_ngcontent-%COMP%]     ul li, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%] {\n  position: relative;\n  padding-left: 20px;\n  margin: 4px 0;\n  line-height: 20px;\n  box-sizing: border-box;\n}\n.ep-message__text[_ngcontent-%COMP%]     ul   li::before, \n.ep-message__text[_ngcontent-%COMP%]     ul li::before, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li::before, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]::before {\n  content: "\\2022";\n  position: absolute;\n  left: 0;\n  color: var(--ep-color-text);\n  font-weight: 600;\n}\n.ep-message__text[_ngcontent-%COMP%]     ul   li   p, \n.ep-message__text[_ngcontent-%COMP%]     ul   li p, \n.ep-message__text[_ngcontent-%COMP%]     ul li   p, \n.ep-message__text[_ngcontent-%COMP%]     ul li p, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   p, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li p, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     p, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   p[_ngcontent-%COMP%] {\n  margin: 0;\n}\n.ep-message__text[_ngcontent-%COMP%]     ul   li   ul, \n.ep-message__text[_ngcontent-%COMP%]     ul   li ul, \n.ep-message__text[_ngcontent-%COMP%]     ul li   ul, \n.ep-message__text[_ngcontent-%COMP%]     ul li ul, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   ul, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li ul, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ul, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%] {\n  margin: 4px 0 4px 0;\n  padding-left: 0;\n}\n.ep-message__text[_ngcontent-%COMP%]     ul   li   ul   li, \n.ep-message__text[_ngcontent-%COMP%]     ul   li   ul li, \n.ep-message__text[_ngcontent-%COMP%]     ul   li ul   li, \n.ep-message__text[_ngcontent-%COMP%]     ul   li ul li, \n.ep-message__text[_ngcontent-%COMP%]     ul li   ul   li, \n.ep-message__text[_ngcontent-%COMP%]     ul li   ul li, \n.ep-message__text[_ngcontent-%COMP%]     ul li ul   li, \n.ep-message__text[_ngcontent-%COMP%]     ul li ul li, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   ul   li, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   ul li, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li ul   li, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li ul li, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ul   li, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ul li, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%] {\n  padding-left: 24px;\n}\n.ep-message__text[_ngcontent-%COMP%]     ul   li   ul   li::before, \n.ep-message__text[_ngcontent-%COMP%]     ul   li   ul li::before, \n.ep-message__text[_ngcontent-%COMP%]     ul   li ul   li::before, \n.ep-message__text[_ngcontent-%COMP%]     ul   li ul li::before, \n.ep-message__text[_ngcontent-%COMP%]     ul li   ul   li::before, \n.ep-message__text[_ngcontent-%COMP%]     ul li   ul li::before, \n.ep-message__text[_ngcontent-%COMP%]     ul li ul   li::before, \n.ep-message__text[_ngcontent-%COMP%]     ul li ul li::before, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   ul   li::before, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   ul li::before, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li ul   li::before, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li ul li::before, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ul   li::before, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ul li::before, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li::before, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]::before {\n  content: "\\25e6";\n  left: 4px;\n}\n.ep-message__text[_ngcontent-%COMP%]     ul   li   ul   ul li, \n.ep-message__text[_ngcontent-%COMP%]     ul   li   ul ul li, \n.ep-message__text[_ngcontent-%COMP%]     ul   li ul   ul li, \n.ep-message__text[_ngcontent-%COMP%]     ul   li ul ul li, \n.ep-message__text[_ngcontent-%COMP%]     ul li   ul   ul li, \n.ep-message__text[_ngcontent-%COMP%]     ul li   ul ul li, \n.ep-message__text[_ngcontent-%COMP%]     ul li ul   ul li, \n.ep-message__text[_ngcontent-%COMP%]     ul li ul ul li, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   ul   ul li, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   ul ul li, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li ul   ul li, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li ul ul li, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ul   ul li, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ul ul li, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     ul li, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%] {\n  padding-left: 28px;\n}\n.ep-message__text[_ngcontent-%COMP%]     ul   li   ul   ul li::before, \n.ep-message__text[_ngcontent-%COMP%]     ul   li   ul ul li::before, \n.ep-message__text[_ngcontent-%COMP%]     ul   li ul   ul li::before, \n.ep-message__text[_ngcontent-%COMP%]     ul   li ul ul li::before, \n.ep-message__text[_ngcontent-%COMP%]     ul li   ul   ul li::before, \n.ep-message__text[_ngcontent-%COMP%]     ul li   ul ul li::before, \n.ep-message__text[_ngcontent-%COMP%]     ul li ul   ul li::before, \n.ep-message__text[_ngcontent-%COMP%]     ul li ul ul li::before, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   ul   ul li::before, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   ul ul li::before, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li ul   ul li::before, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li ul ul li::before, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ul   ul li::before, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ul ul li::before, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     ul li::before, \n.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]::before {\n  content: "\\25aa";\n  left: 8px;\n}\n.ep-message__text[_ngcontent-%COMP%]     ol, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%] {\n  counter-reset: list-counter;\n}\n.ep-message__text[_ngcontent-%COMP%]     ol   li, \n.ep-message__text[_ngcontent-%COMP%]     ol li, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%] {\n  position: relative;\n  padding-left: 24px;\n  margin: 4px 0;\n  line-height: 20px;\n  counter-increment: list-counter;\n  box-sizing: border-box;\n}\n.ep-message__text[_ngcontent-%COMP%]     ol   li::before, \n.ep-message__text[_ngcontent-%COMP%]     ol li::before, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li::before, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]::before {\n  content: counter(list-counter) ".";\n  position: absolute;\n  left: 0;\n  color: var(--ep-color-text);\n  font-weight: 500;\n}\n.ep-message__text[_ngcontent-%COMP%]     ol   li   p, \n.ep-message__text[_ngcontent-%COMP%]     ol   li p, \n.ep-message__text[_ngcontent-%COMP%]     ol li   p, \n.ep-message__text[_ngcontent-%COMP%]     ol li p, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li   p, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li p, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     p, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   p[_ngcontent-%COMP%] {\n  margin: 0;\n}\n.ep-message__text[_ngcontent-%COMP%]     ol   li   ol, \n.ep-message__text[_ngcontent-%COMP%]     ol   li ol, \n.ep-message__text[_ngcontent-%COMP%]     ol li   ol, \n.ep-message__text[_ngcontent-%COMP%]     ol li ol, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li   ol, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li ol, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ol, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%] {\n  margin: 4px 0 4px 0;\n  padding-left: 0;\n  counter-reset: list-counter;\n}\n.ep-message__text[_ngcontent-%COMP%]     ol   li   ol li, \n.ep-message__text[_ngcontent-%COMP%]     ol   li ol li, \n.ep-message__text[_ngcontent-%COMP%]     ol li   ol li, \n.ep-message__text[_ngcontent-%COMP%]     ol li ol li, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li   ol li, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li ol li, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ol li, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%] {\n  padding-left: 28px;\n}\n.ep-message__text[_ngcontent-%COMP%]     ol   li   ol li::before, \n.ep-message__text[_ngcontent-%COMP%]     ol   li ol li::before, \n.ep-message__text[_ngcontent-%COMP%]     ol li   ol li::before, \n.ep-message__text[_ngcontent-%COMP%]     ol li ol li::before, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li   ol li::before, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li ol li::before, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ol li::before, \n.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]::before {\n  left: 4px;\n}\n.ep-message__text[_ngcontent-%COMP%]     code, \n.ep-message__text[_ngcontent-%COMP%]   code[_ngcontent-%COMP%] {\n  background: var(--ep-color-surface-alt);\n  padding: 2px 4px;\n  border-radius: 3px;\n  font-family:\n    "Consolas",\n    "Courier New",\n    monospace;\n  font-size: 13px;\n}\n.ep-message__text[_ngcontent-%COMP%]     .ep-md-code {\n  margin: 8px 0;\n  border: 1px solid color-mix(in srgb, var(--ep-color-border) 70%, transparent);\n  border-radius: 8px;\n  background: color-mix(in srgb, var(--ep-color-surface-alt) 70%, transparent);\n  overflow: hidden;\n}\n.ep-message__text[_ngcontent-%COMP%]     .ep-md-code__header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 12px;\n  min-height: 32px;\n  padding: 0 10px;\n  border-bottom: 1px solid color-mix(in srgb, var(--ep-color-border) 70%, transparent);\n  background: color-mix(in srgb, var(--ep-color-surface) 50%, transparent);\n}\n.ep-message__text[_ngcontent-%COMP%]     .ep-md-code__lang {\n  font-size: 11px;\n  font-weight: 600;\n  letter-spacing: 0.05em;\n  text-transform: uppercase;\n  color: var(--ep-color-text-muted);\n  line-height: 1;\n}\n.ep-message__text[_ngcontent-%COMP%]     .ep-md-code__copy {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 20px;\n  height: 20px;\n  padding: 0;\n  border: 1px solid transparent;\n  border-radius: 4px;\n  background: transparent;\n  color: var(--ep-color-text-muted);\n  cursor: pointer;\n  transition:\n    color 0.15s,\n    border-color 0.15s,\n    background-color 0.15s;\n}\n.ep-message__text[_ngcontent-%COMP%]     .ep-md-code__copy:hover:not(:disabled) {\n  color: var(--ep-color-text);\n  border-color: var(--ep-color-accent);\n  background: var(--ep-color-accent-soft);\n}\n.ep-message__text[_ngcontent-%COMP%]     .ep-md-code__copy:disabled {\n  opacity: 0.75;\n  cursor: default;\n}\n.ep-message__text[_ngcontent-%COMP%]     .ep-md-code pre {\n  margin: 0;\n  border: 0;\n  border-radius: 0;\n  background: transparent;\n  padding: 10px 12px;\n  overflow-x: auto;\n}\n.ep-message__text[_ngcontent-%COMP%]     .ep-md-code code {\n  display: block;\n  background: none;\n  border-radius: 0;\n  padding: 0;\n  color: var(--ep-color-text);\n  font-size: 12.5px;\n  line-height: 18px;\n  white-space: pre;\n  overflow-wrap: normal;\n}\n.ep-message__text[_ngcontent-%COMP%]     .ep-md-code--plain code {\n  color: var(--ep-color-text-muted);\n}\n.ep-message__text[_ngcontent-%COMP%]     pre, \n.ep-message__text[_ngcontent-%COMP%]   pre[_ngcontent-%COMP%] {\n  background: var(--ep-color-surface-alt);\n  padding: 8px 12px;\n  border-radius: 4px;\n  overflow-x: auto;\n  margin: 8px 0;\n}\n.ep-message__text[_ngcontent-%COMP%]     pre code, \n.ep-message__text[_ngcontent-%COMP%]   pre[_ngcontent-%COMP%]   code[_ngcontent-%COMP%] {\n  background: none;\n  padding: 0;\n}\n.ep-message__text[_ngcontent-%COMP%]   h1[_ngcontent-%COMP%], \n.ep-message__text[_ngcontent-%COMP%]   h2[_ngcontent-%COMP%], \n.ep-message__text[_ngcontent-%COMP%]   h3[_ngcontent-%COMP%], \n.ep-message__text[_ngcontent-%COMP%]   h4[_ngcontent-%COMP%], \n.ep-message__text[_ngcontent-%COMP%]   h5[_ngcontent-%COMP%], \n.ep-message__text[_ngcontent-%COMP%]   h6[_ngcontent-%COMP%] {\n  margin: 12px 0 8px 0;\n  font-weight: 600;\n  line-height: 1.4;\n}\n.ep-message__text[_ngcontent-%COMP%]   h1[_ngcontent-%COMP%]:first-child, \n.ep-message__text[_ngcontent-%COMP%]   h2[_ngcontent-%COMP%]:first-child, \n.ep-message__text[_ngcontent-%COMP%]   h3[_ngcontent-%COMP%]:first-child, \n.ep-message__text[_ngcontent-%COMP%]   h4[_ngcontent-%COMP%]:first-child, \n.ep-message__text[_ngcontent-%COMP%]   h5[_ngcontent-%COMP%]:first-child, \n.ep-message__text[_ngcontent-%COMP%]   h6[_ngcontent-%COMP%]:first-child {\n  margin-top: 0;\n}\n.ep-message__text[_ngcontent-%COMP%]   h1[_ngcontent-%COMP%] {\n  font-size: 20px;\n}\n.ep-message__text[_ngcontent-%COMP%]   h2[_ngcontent-%COMP%] {\n  font-size: 18px;\n}\n.ep-message__text[_ngcontent-%COMP%]   h3[_ngcontent-%COMP%] {\n  font-size: 16px;\n}\n.ep-message__text[_ngcontent-%COMP%]   h4[_ngcontent-%COMP%], \n.ep-message__text[_ngcontent-%COMP%]   h5[_ngcontent-%COMP%], \n.ep-message__text[_ngcontent-%COMP%]   h6[_ngcontent-%COMP%] {\n  font-size: 14px;\n}\n.ep-message__text[_ngcontent-%COMP%]   hr[_ngcontent-%COMP%] {\n  border: none;\n  border-top: 1px solid var(--ep-color-border);\n  margin: 12px 0;\n}\n.ep-message__text[_ngcontent-%COMP%]   blockquote[_ngcontent-%COMP%] {\n  border-left: 3px solid var(--ep-color-border);\n  padding-left: 12px;\n  margin: 8px 0;\n  color: var(--ep-color-text-muted);\n  font-style: italic;\n}\n.ep-message__text[_ngcontent-%COMP%]   img[_ngcontent-%COMP%] {\n  max-width: 100%;\n  height: auto;\n  border-radius: 4px;\n  margin: 8px 0;\n}\n.ep-message[_ngcontent-%COMP%]:not(.ep-message--user)   .ep-message__text[_ngcontent-%COMP%] {\n  background: var(--ep-chat-bg-answer);\n  border-radius: 0 4px 4px 4px;\n  width: fit-content;\n  max-width: 100%;\n}\n.ep-message--user[_ngcontent-%COMP%] {\n  align-items: flex-end;\n}\n.ep-message--user[_ngcontent-%COMP%]   .ep-message__content[_ngcontent-%COMP%] {\n  align-items: flex-end;\n  align-self: flex-end;\n}\n.ep-message--user[_ngcontent-%COMP%]   .ep-message__text[_ngcontent-%COMP%] {\n  background: var(--ep-chat-bg-question);\n  border-radius: 4px;\n  margin-left: 30px;\n  width: fit-content;\n  max-width: calc(100% - 20px);\n  color: var(--ep-chat-text-question);\n}\n.ep-message--user[_ngcontent-%COMP%]   .ep-message__text[_ngcontent-%COMP%]     strong, \n.ep-message--user[_ngcontent-%COMP%]   .ep-message__text[_ngcontent-%COMP%]     b, \n.ep-message--user[_ngcontent-%COMP%]   .ep-message__text[_ngcontent-%COMP%]   strong[_ngcontent-%COMP%], \n.ep-message--user[_ngcontent-%COMP%]   .ep-message__text[_ngcontent-%COMP%]   b[_ngcontent-%COMP%], \n.ep-message--user[_ngcontent-%COMP%]   .ep-message__text[_ngcontent-%COMP%]     ul li::before, \n.ep-message--user[_ngcontent-%COMP%]   .ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]::before, \n.ep-message--user[_ngcontent-%COMP%]   .ep-message__text[_ngcontent-%COMP%]     ol li::before, \n.ep-message--user[_ngcontent-%COMP%]   .ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]::before {\n  color: inherit;\n}\n.ep-message--user[_ngcontent-%COMP%]   .ep-message__time[_ngcontent-%COMP%] {\n  left: auto;\n  right: 0;\n  text-align: right;\n}\n.ep-message__attached-files[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  gap: 4px;\n  margin-top: 4px;\n}\n.ep-message__attached-file[_ngcontent-%COMP%] {\n  font-size: 12px;\n  color: var(--ep-color-text-muted);\n  padding: 4px 8px;\n  background: var(--ep-color-surface-alt);\n  border-radius: 4px;\n  display: inline-block;\n}\n.ep-message__thinking[_ngcontent-%COMP%] {\n  font-size: 13px;\n  color: var(--ep-color-text-muted);\n  font-style: italic;\n  padding: 4px 0;\n}\n.ep-message__links[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n  margin-top: 8px;\n}\n.ep-message__link[_ngcontent-%COMP%] {\n  display: inline-flex;\n  align-items: center;\n  gap: 8px;\n  width: fit-content;\n  min-height: 28px;\n  padding: 4px 10px;\n  border: 1px solid var(--ep-color-accent);\n  border-radius: 4px;\n  background: transparent;\n  font-size: 13px;\n  line-height: 18px;\n  text-align: left;\n  color: var(--ep-color-accent);\n  text-decoration: none;\n  cursor: pointer;\n  transition:\n    background-color 0.15s,\n    border-color 0.15s,\n    color 0.15s;\n}\n.ep-message__link-text[_ngcontent-%COMP%] {\n  color: inherit;\n}\n.ep-message__link-icon[_ngcontent-%COMP%] {\n  width: 8px;\n  height: 8px;\n  flex-shrink: 0;\n  color: inherit;\n}\n.ep-message__link[_ngcontent-%COMP%]:hover:not(.ep-message__link--disabled) {\n  background: var(--ep-color-accent-soft);\n  border-color: var(--ep-color-accent);\n  color: var(--ep-color-accent);\n}\n.ep-message__link.ep-message__link--disabled[_ngcontent-%COMP%] {\n  border-color: var(--ep-color-border);\n  color: var(--ep-color-text-muted);\n  background: transparent;\n  opacity: 0.5;\n  cursor: not-allowed;\n  pointer-events: none;\n}\n.ep-message__actions[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  gap: 8px;\n  margin-top: 8px;\n}\n.ep-message__actions-row[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: row;\n  flex-wrap: wrap;\n  gap: 8px;\n  justify-content: flex-end;\n}\n.ep-message__time[_ngcontent-%COMP%] {\n  position: absolute;\n  top: -16px;\n  left: 0;\n  font-size: 11px;\n  line-height: 1;\n  color: var(--ep-color-text-muted);\n  opacity: 0.6;\n  white-space: nowrap;\n  min-width: fit-content;\n}\n.ep-message__suggestions-panel[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  width: 100%;\n  max-width: 100%;\n  margin-top: 4px;\n  border: 1px solid color-mix(in srgb, var(--ep-color-text) 8%, transparent);\n  border-radius: 4px;\n  background: transparent;\n  overflow: hidden;\n}\n.ep-message__suggestions-panel-header[_ngcontent-%COMP%] {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 12px;\n  min-height: 47px;\n  padding: 0 14px;\n  border-bottom: 1px solid color-mix(in srgb, var(--ep-color-text) 8%, transparent);\n}\n.ep-message__suggestions-panel-title[_ngcontent-%COMP%] {\n  font-size: 14px;\n  font-weight: 400;\n  color: var(--ep-color-text);\n  line-height: 20px;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n.ep-message__suggestions-panel-close[_ngcontent-%COMP%] {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  flex-shrink: 0;\n  width: 24px;\n  height: 24px;\n  background: none;\n  border: none;\n  padding: 0;\n  cursor: pointer;\n  color: var(--ep-color-text-muted);\n  opacity: 0.6;\n  transition: opacity 0.15s, color 0.15s;\n}\n.ep-message__suggestions-panel-close[_ngcontent-%COMP%]:hover {\n  opacity: 1;\n  color: var(--ep-color-text);\n}\n.ep-message__suggestions-panel-close[_ngcontent-%COMP%]   svg[_ngcontent-%COMP%] {\n  width: 10px;\n  height: 10px;\n}\n.ep-message__suggestions-panel-list[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  width: 100%;\n}\n.ep-message__suggestions-panel-item[_ngcontent-%COMP%] {\n  display: flex;\n  align-items: center;\n  width: 100%;\n  min-height: 49px;\n  padding: 7px 14px;\n  font-size: 14px;\n  line-height: 20px;\n  text-align: left;\n  color: var(--ep-color-text-muted);\n  background: transparent;\n  border: none;\n  border-top: 1px solid color-mix(in srgb, var(--ep-color-text) 8%, transparent);\n  cursor: pointer;\n  transition: background-color 0.15s, color 0.15s;\n}\n.ep-message__suggestions-panel-item[_ngcontent-%COMP%]:hover:not(:disabled) {\n  background: color-mix(in srgb, var(--ep-color-text) 4%, transparent);\n  color: var(--ep-color-text);\n}\n.ep-message__suggestions-panel-item[_ngcontent-%COMP%]:disabled {\n  opacity: 0.5;\n  cursor: not-allowed;\n}\n.epica-error[_ngcontent-%COMP%] {\n  display: flex;\n  width: fit-content;\n  flex-direction: row;\n  margin: 0 30px 0 0;\n  padding: 18px 20px;\n  align-items: center;\n  gap: 16px;\n  border-radius: 4px;\n  border: 1px solid rgba(104, 95, 255, 0.0784313725);\n  background: rgba(104, 95, 255, 0.0784313725);\n}\n.epica-error__text[_ngcontent-%COMP%] {\n  font-size: 14px;\n  font-style: normal;\n  font-weight: 400;\n  line-height: 20px;\n  color: var(--ep-color-accent);\n}\n[_nghost-%COMP%]     .ep-md-code__copy-icon {\n  font-size: 12px;\n  cursor: pointer;\n}\n/*# sourceMappingURL=message-item.component.css.map */'], changeDetection: 0 });
+], styles: [`@charset "UTF-8";
+
+
+
+.ep-message[_ngcontent-%COMP%] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 20px;
+  position: relative;
+  margin-bottom: 16px;
+}
+.ep-message[_ngcontent-%COMP%]:hover   .ep-message__time[_ngcontent-%COMP%] {
+  opacity: 1;
+  transform: translateY(0);
+}
+.ep-message[_ngcontent-%COMP%]   .ep-message__date-divider[_ngcontent-%COMP%] {
+  width: fit-content;
+  margin: 0 auto;
+  padding: 4px 12px;
+}
+.ep-message__content[_ngcontent-%COMP%] {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  align-self: flex-start;
+}
+.ep-message__date-divider[_ngcontent-%COMP%] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0 auto 8px auto;
+  font-size: 12px;
+  text-align: center;
+  color: var(--ep-color-text-muted);
+  padding: 4px 0;
+  align-self: center;
+}
+.ep-message__date-divider[_ngcontent-%COMP%]::before, 
+.ep-message__date-divider[_ngcontent-%COMP%]::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--ep-color-border);
+}
+.ep-message__text[_ngcontent-%COMP%] {
+  display: block;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  line-height: 20px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--ep-color-text);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.ep-message__text[_ngcontent-%COMP%]     markdown {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ep-message__text[_ngcontent-%COMP%]     p, 
+.ep-message__text[_ngcontent-%COMP%]   p[_ngcontent-%COMP%] {
+  margin: 0 0 8px 0;
+  line-height: 20px;
+}
+.ep-message__text[_ngcontent-%COMP%]     p:last-child, 
+.ep-message__text[_ngcontent-%COMP%]   p[_ngcontent-%COMP%]:last-child {
+  margin-bottom: 0;
+}
+.ep-message__text[_ngcontent-%COMP%]     strong, 
+.ep-message__text[_ngcontent-%COMP%]     b, 
+.ep-message__text[_ngcontent-%COMP%]   strong[_ngcontent-%COMP%], 
+.ep-message__text[_ngcontent-%COMP%]   b[_ngcontent-%COMP%] {
+  font-weight: 600;
+  color: var(--ep-color-text);
+}
+.ep-message__text[_ngcontent-%COMP%]     em, 
+.ep-message__text[_ngcontent-%COMP%]     i, 
+.ep-message__text[_ngcontent-%COMP%]   em[_ngcontent-%COMP%], 
+.ep-message__text[_ngcontent-%COMP%]   i[_ngcontent-%COMP%] {
+  font-style: italic;
+}
+.ep-message__text[_ngcontent-%COMP%]     a, 
+.ep-message__text[_ngcontent-%COMP%]   a[_ngcontent-%COMP%] {
+  color: var(--ep-color-accent);
+  text-decoration: none;
+  transition: text-decoration 0.2s;
+}
+.ep-message__text[_ngcontent-%COMP%]     a:hover, 
+.ep-message__text[_ngcontent-%COMP%]   a[_ngcontent-%COMP%]:hover {
+  text-decoration: underline;
+}
+.ep-message__text[_ngcontent-%COMP%]     ul, 
+.ep-message__text[_ngcontent-%COMP%]     ol, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%], 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%] {
+  margin: 8px 0;
+  padding-left: 0;
+  list-style: none;
+  line-height: 20px;
+  box-sizing: border-box;
+}
+.ep-message__text[_ngcontent-%COMP%]     ul:first-child, 
+.ep-message__text[_ngcontent-%COMP%]     ol:first-child, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]:first-child, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]:first-child {
+  margin-top: 0;
+}
+.ep-message__text[_ngcontent-%COMP%]     ul:last-child, 
+.ep-message__text[_ngcontent-%COMP%]     ol:last-child, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]:last-child, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]:last-child {
+  margin-bottom: 0;
+}
+.ep-message__text[_ngcontent-%COMP%]     ul   li, 
+.ep-message__text[_ngcontent-%COMP%]     ul li, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%] {
+  position: relative;
+  padding-left: 20px;
+  margin: 4px 0;
+  line-height: 20px;
+  box-sizing: border-box;
+}
+.ep-message__text[_ngcontent-%COMP%]     ul   li::before, 
+.ep-message__text[_ngcontent-%COMP%]     ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]::before {
+  content: "\\2022";
+  position: absolute;
+  left: 0;
+  color: var(--ep-color-text);
+  font-weight: 600;
+}
+.ep-message__text[_ngcontent-%COMP%]     ul   li   p, 
+.ep-message__text[_ngcontent-%COMP%]     ul   li p, 
+.ep-message__text[_ngcontent-%COMP%]     ul li   p, 
+.ep-message__text[_ngcontent-%COMP%]     ul li p, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   p, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li p, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     p, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   p[_ngcontent-%COMP%] {
+  margin: 0;
+}
+.ep-message__text[_ngcontent-%COMP%]     ul   li   ul, 
+.ep-message__text[_ngcontent-%COMP%]     ul   li ul, 
+.ep-message__text[_ngcontent-%COMP%]     ul li   ul, 
+.ep-message__text[_ngcontent-%COMP%]     ul li ul, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   ul, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li ul, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ul, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%] {
+  margin: 4px 0 4px 0;
+  padding-left: 0;
+}
+.ep-message__text[_ngcontent-%COMP%]     ul   li   ul   li, 
+.ep-message__text[_ngcontent-%COMP%]     ul   li   ul li, 
+.ep-message__text[_ngcontent-%COMP%]     ul   li ul   li, 
+.ep-message__text[_ngcontent-%COMP%]     ul   li ul li, 
+.ep-message__text[_ngcontent-%COMP%]     ul li   ul   li, 
+.ep-message__text[_ngcontent-%COMP%]     ul li   ul li, 
+.ep-message__text[_ngcontent-%COMP%]     ul li ul   li, 
+.ep-message__text[_ngcontent-%COMP%]     ul li ul li, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   ul   li, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   ul li, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li ul   li, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li ul li, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ul   li, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ul li, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%] {
+  padding-left: 24px;
+}
+.ep-message__text[_ngcontent-%COMP%]     ul   li   ul   li::before, 
+.ep-message__text[_ngcontent-%COMP%]     ul   li   ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]     ul   li ul   li::before, 
+.ep-message__text[_ngcontent-%COMP%]     ul   li ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]     ul li   ul   li::before, 
+.ep-message__text[_ngcontent-%COMP%]     ul li   ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]     ul li ul   li::before, 
+.ep-message__text[_ngcontent-%COMP%]     ul li ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   ul   li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li ul   li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ul   li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]::before {
+  content: "\\25e6";
+  left: 4px;
+}
+.ep-message__text[_ngcontent-%COMP%]     ul   li   ul   ul li, 
+.ep-message__text[_ngcontent-%COMP%]     ul   li   ul ul li, 
+.ep-message__text[_ngcontent-%COMP%]     ul   li ul   ul li, 
+.ep-message__text[_ngcontent-%COMP%]     ul   li ul ul li, 
+.ep-message__text[_ngcontent-%COMP%]     ul li   ul   ul li, 
+.ep-message__text[_ngcontent-%COMP%]     ul li   ul ul li, 
+.ep-message__text[_ngcontent-%COMP%]     ul li ul   ul li, 
+.ep-message__text[_ngcontent-%COMP%]     ul li ul ul li, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   ul   ul li, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   ul ul li, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li ul   ul li, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li ul ul li, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ul   ul li, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ul ul li, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     ul li, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%] {
+  padding-left: 28px;
+}
+.ep-message__text[_ngcontent-%COMP%]     ul   li   ul   ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]     ul   li   ul ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]     ul   li ul   ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]     ul   li ul ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]     ul li   ul   ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]     ul li   ul ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]     ul li ul   ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]     ul li ul ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   ul   ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li   ul ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li ul   ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     li ul ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ul   ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ul ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]     ul li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]::before {
+  content: "\\25aa";
+  left: 8px;
+}
+.ep-message__text[_ngcontent-%COMP%]     ol, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%] {
+  counter-reset: list-counter;
+}
+.ep-message__text[_ngcontent-%COMP%]     ol   li, 
+.ep-message__text[_ngcontent-%COMP%]     ol li, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%] {
+  position: relative;
+  padding-left: 24px;
+  margin: 4px 0;
+  line-height: 20px;
+  counter-increment: list-counter;
+  box-sizing: border-box;
+}
+.ep-message__text[_ngcontent-%COMP%]     ol   li::before, 
+.ep-message__text[_ngcontent-%COMP%]     ol li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]::before {
+  content: counter(list-counter) ".";
+  position: absolute;
+  left: 0;
+  color: var(--ep-color-text);
+  font-weight: 500;
+}
+.ep-message__text[_ngcontent-%COMP%]     ol   li   p, 
+.ep-message__text[_ngcontent-%COMP%]     ol   li p, 
+.ep-message__text[_ngcontent-%COMP%]     ol li   p, 
+.ep-message__text[_ngcontent-%COMP%]     ol li p, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li   p, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li p, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     p, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   p[_ngcontent-%COMP%] {
+  margin: 0;
+}
+.ep-message__text[_ngcontent-%COMP%]     ol   li   ol, 
+.ep-message__text[_ngcontent-%COMP%]     ol   li ol, 
+.ep-message__text[_ngcontent-%COMP%]     ol li   ol, 
+.ep-message__text[_ngcontent-%COMP%]     ol li ol, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li   ol, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li ol, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ol, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%] {
+  margin: 4px 0 4px 0;
+  padding-left: 0;
+  counter-reset: list-counter;
+}
+.ep-message__text[_ngcontent-%COMP%]     ol   li   ol li, 
+.ep-message__text[_ngcontent-%COMP%]     ol   li ol li, 
+.ep-message__text[_ngcontent-%COMP%]     ol li   ol li, 
+.ep-message__text[_ngcontent-%COMP%]     ol li ol li, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li   ol li, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li ol li, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ol li, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%] {
+  padding-left: 28px;
+}
+.ep-message__text[_ngcontent-%COMP%]     ol   li   ol li::before, 
+.ep-message__text[_ngcontent-%COMP%]     ol   li ol li::before, 
+.ep-message__text[_ngcontent-%COMP%]     ol li   ol li::before, 
+.ep-message__text[_ngcontent-%COMP%]     ol li ol li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li   ol li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]     li ol li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]     ol li::before, 
+.ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]::before {
+  left: 4px;
+}
+.ep-message__text[_ngcontent-%COMP%]     code, 
+.ep-message__text[_ngcontent-%COMP%]   code[_ngcontent-%COMP%] {
+  background: var(--ep-color-surface-alt);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family:
+    "Consolas",
+    "Courier New",
+    monospace;
+  font-size: 13px;
+}
+.ep-message__text[_ngcontent-%COMP%]     .ep-md-code {
+  border: 1px solid color-mix(in srgb, var(--ep-color-border) 70%, transparent);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.ep-message__text[_ngcontent-%COMP%]     .ep-md-code__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--ep-color-border) 70%, transparent);
+}
+.ep-message__text[_ngcontent-%COMP%]     .ep-md-code__lang {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ep-color-text-muted);
+  line-height: 1;
+}
+.ep-message__text[_ngcontent-%COMP%]     .ep-md-code__copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ep-color-text-muted);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background-color 0.15s;
+}
+.ep-message__text[_ngcontent-%COMP%]     .ep-md-code__copy:hover:not(:disabled) {
+  color: var(--ep-color-text);
+  border-color: var(--ep-color-accent);
+  background: var(--ep-color-accent-soft);
+}
+.ep-message__text[_ngcontent-%COMP%]     .ep-md-code__copy:disabled {
+  opacity: 0.75;
+  cursor: default;
+}
+.ep-message__text[_ngcontent-%COMP%]     .ep-md-code pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 10px 12px;
+  overflow-x: auto;
+  background: rgba(21, 21, 21, 0.6);
+}
+.ep-message__text[_ngcontent-%COMP%]     .ep-md-code code {
+  display: block;
+  background: none;
+  border-radius: 0;
+  padding: 0;
+  color: var(--ep-color-text);
+  font-size: 12.5px;
+  line-height: 18px;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+.ep-message__text[_ngcontent-%COMP%]     .ep-md-code--plain code {
+  color: var(--ep-color-text-muted);
+}
+.ep-message__text[_ngcontent-%COMP%]     pre, 
+.ep-message__text[_ngcontent-%COMP%]   pre[_ngcontent-%COMP%] {
+  background: var(--ep-color-surface-alt);
+  padding: 8px 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.ep-message__text[_ngcontent-%COMP%]     pre code, 
+.ep-message__text[_ngcontent-%COMP%]   pre[_ngcontent-%COMP%]   code[_ngcontent-%COMP%] {
+  background: none;
+  padding: 0;
+}
+.ep-message__text[_ngcontent-%COMP%]   h1[_ngcontent-%COMP%], 
+.ep-message__text[_ngcontent-%COMP%]   h2[_ngcontent-%COMP%], 
+.ep-message__text[_ngcontent-%COMP%]   h3[_ngcontent-%COMP%], 
+.ep-message__text[_ngcontent-%COMP%]   h4[_ngcontent-%COMP%], 
+.ep-message__text[_ngcontent-%COMP%]   h5[_ngcontent-%COMP%], 
+.ep-message__text[_ngcontent-%COMP%]   h6[_ngcontent-%COMP%] {
+  margin: 12px 0 8px 0;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.ep-message__text[_ngcontent-%COMP%]   h1[_ngcontent-%COMP%]:first-child, 
+.ep-message__text[_ngcontent-%COMP%]   h2[_ngcontent-%COMP%]:first-child, 
+.ep-message__text[_ngcontent-%COMP%]   h3[_ngcontent-%COMP%]:first-child, 
+.ep-message__text[_ngcontent-%COMP%]   h4[_ngcontent-%COMP%]:first-child, 
+.ep-message__text[_ngcontent-%COMP%]   h5[_ngcontent-%COMP%]:first-child, 
+.ep-message__text[_ngcontent-%COMP%]   h6[_ngcontent-%COMP%]:first-child {
+  margin-top: 0;
+}
+.ep-message__text[_ngcontent-%COMP%]   h1[_ngcontent-%COMP%] {
+  font-size: 20px;
+}
+.ep-message__text[_ngcontent-%COMP%]   h2[_ngcontent-%COMP%] {
+  font-size: 18px;
+}
+.ep-message__text[_ngcontent-%COMP%]   h3[_ngcontent-%COMP%] {
+  font-size: 16px;
+}
+.ep-message__text[_ngcontent-%COMP%]   h4[_ngcontent-%COMP%], 
+.ep-message__text[_ngcontent-%COMP%]   h5[_ngcontent-%COMP%], 
+.ep-message__text[_ngcontent-%COMP%]   h6[_ngcontent-%COMP%] {
+  font-size: 14px;
+}
+.ep-message__text[_ngcontent-%COMP%]   hr[_ngcontent-%COMP%] {
+  border: none;
+  border-top: 1px solid var(--ep-color-border);
+  margin: 12px 0;
+}
+.ep-message__text[_ngcontent-%COMP%]   blockquote[_ngcontent-%COMP%] {
+  border-left: 3px solid var(--ep-color-border);
+  padding-left: 12px;
+  margin: 8px 0;
+  color: var(--ep-color-text-muted);
+  font-style: italic;
+}
+.ep-message__text[_ngcontent-%COMP%]   img[_ngcontent-%COMP%] {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin: 8px 0;
+}
+.ep-message[_ngcontent-%COMP%]:not(.ep-message--user)   .ep-message__text[_ngcontent-%COMP%] {
+  background: var(--ep-chat-bg-answer);
+  border-radius: 0 4px 4px 4px;
+  width: fit-content;
+  max-width: 100%;
+}
+.ep-message--user[_ngcontent-%COMP%] {
+  align-items: flex-end;
+}
+.ep-message--user[_ngcontent-%COMP%]   .ep-message__content[_ngcontent-%COMP%] {
+  align-items: flex-end;
+  align-self: flex-end;
+}
+.ep-message--user[_ngcontent-%COMP%]   .ep-message__text[_ngcontent-%COMP%] {
+  background: var(--ep-chat-bg-question);
+  border-radius: 4px;
+  margin-left: 30px;
+  width: fit-content;
+  max-width: calc(100% - 20px);
+  color: var(--ep-chat-text-question);
+}
+.ep-message--user[_ngcontent-%COMP%]   .ep-message__text[_ngcontent-%COMP%]     strong, 
+.ep-message--user[_ngcontent-%COMP%]   .ep-message__text[_ngcontent-%COMP%]     b, 
+.ep-message--user[_ngcontent-%COMP%]   .ep-message__text[_ngcontent-%COMP%]   strong[_ngcontent-%COMP%], 
+.ep-message--user[_ngcontent-%COMP%]   .ep-message__text[_ngcontent-%COMP%]   b[_ngcontent-%COMP%], 
+.ep-message--user[_ngcontent-%COMP%]   .ep-message__text[_ngcontent-%COMP%]     ul li::before, 
+.ep-message--user[_ngcontent-%COMP%]   .ep-message__text[_ngcontent-%COMP%]   ul[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]::before, 
+.ep-message--user[_ngcontent-%COMP%]   .ep-message__text[_ngcontent-%COMP%]     ol li::before, 
+.ep-message--user[_ngcontent-%COMP%]   .ep-message__text[_ngcontent-%COMP%]   ol[_ngcontent-%COMP%]   li[_ngcontent-%COMP%]::before {
+  color: inherit;
+}
+.ep-message--user[_ngcontent-%COMP%]   .ep-message__time[_ngcontent-%COMP%] {
+  left: auto;
+  right: 0;
+  text-align: right;
+}
+.ep-message__attached-files[_ngcontent-%COMP%] {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+.ep-message__attached-file[_ngcontent-%COMP%] {
+  font-size: 12px;
+  color: var(--ep-color-text-muted);
+  padding: 4px 8px;
+  background: var(--ep-color-surface-alt);
+  border-radius: 4px;
+  display: inline-block;
+}
+.ep-message__thinking[_ngcontent-%COMP%] {
+  font-size: 13px;
+  color: var(--ep-color-text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+.ep-message__links[_ngcontent-%COMP%] {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.ep-message__link[_ngcontent-%COMP%] {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid var(--ep-color-accent);
+  border-radius: 4px;
+  background: transparent;
+  font-size: 13px;
+  line-height: 18px;
+  text-align: left;
+  color: var(--ep-color-accent);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.ep-message__link-text[_ngcontent-%COMP%] {
+  color: inherit;
+}
+.ep-message__link-icon[_ngcontent-%COMP%] {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  color: inherit;
+}
+.ep-message__link[_ngcontent-%COMP%]:hover:not(.ep-message__link--disabled) {
+  background: var(--ep-color-accent-soft);
+  border-color: var(--ep-color-accent);
+  color: var(--ep-color-accent);
+}
+.ep-message__link.ep-message__link--disabled[_ngcontent-%COMP%] {
+  border-color: var(--ep-color-border);
+  color: var(--ep-color-text-muted);
+  background: transparent;
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.ep-message__actions[_ngcontent-%COMP%] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.ep-message__actions-row[_ngcontent-%COMP%] {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.ep-message__time[_ngcontent-%COMP%] {
+  position: absolute;
+  top: -16px;
+  left: 0;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--ep-color-text-muted);
+  opacity: 0.6;
+  white-space: nowrap;
+  min-width: fit-content;
+}
+.ep-message__suggestions-panel[_ngcontent-%COMP%] {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  margin-top: 4px;
+  border: 1px solid color-mix(in srgb, var(--ep-color-text) 8%, transparent);
+  border-radius: 4px;
+  background: transparent;
+  overflow: hidden;
+}
+.ep-message__suggestions-panel-header[_ngcontent-%COMP%] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 47px;
+  padding: 0 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--ep-color-text) 8%, transparent);
+}
+.ep-message__suggestions-panel-title[_ngcontent-%COMP%] {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--ep-color-text);
+  line-height: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ep-message__suggestions-panel-close[_ngcontent-%COMP%] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--ep-color-text-muted);
+  opacity: 0.6;
+  transition: opacity 0.15s, color 0.15s;
+}
+.ep-message__suggestions-panel-close[_ngcontent-%COMP%]:hover {
+  opacity: 1;
+  color: var(--ep-color-text);
+}
+.ep-message__suggestions-panel-close[_ngcontent-%COMP%]   svg[_ngcontent-%COMP%] {
+  width: 10px;
+  height: 10px;
+}
+.ep-message__suggestions-panel-list[_ngcontent-%COMP%] {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+.ep-message__suggestions-panel-item[_ngcontent-%COMP%] {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 49px;
+  padding: 7px 14px;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  color: var(--ep-color-text-muted);
+  background: transparent;
+  border: none;
+  border-top: 1px solid color-mix(in srgb, var(--ep-color-text) 8%, transparent);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+.ep-message__suggestions-panel-item[_ngcontent-%COMP%]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ep-color-text) 4%, transparent);
+  color: var(--ep-color-text);
+}
+.ep-message__suggestions-panel-item[_ngcontent-%COMP%]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.epica-error[_ngcontent-%COMP%] {
+  display: flex;
+  width: fit-content;
+  flex-direction: row;
+  margin: 0 30px 0 0;
+  padding: 18px 20px;
+  align-items: center;
+  gap: 16px;
+  border-radius: 4px;
+  border: 1px solid rgba(104, 95, 255, 0.0784313725);
+  background: rgba(104, 95, 255, 0.0784313725);
+}
+.epica-error__text[_ngcontent-%COMP%] {
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 20px;
+  color: var(--ep-color-accent);
+}
+[_nghost-%COMP%]     .ep-md-code__copy-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--ep-color-text-muted);
+  background-color: transparent;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background-color 0.15s;
+}
+[_nghost-%COMP%]     .ep-md-code__copy-icon::before {
+  content: "";
+  display: block;
+  width: 11px;
+  height: 11px;
+  background-color: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg width='11' height='11' viewBox='0 0 11 11' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M2.7226 4.20432C2.7226 3.81136 2.87869 3.43449 3.15654 3.15663C3.4344 2.87876 3.81125 2.72266 4.20419 2.72266H9.01841C9.21298 2.72266 9.40564 2.76098 9.58539 2.83544C9.76515 2.9099 9.92848 3.01904 10.0661 3.15663C10.2036 3.29421 10.3128 3.45755 10.3872 3.63731C10.4617 3.81708 10.5 4.00975 10.5 4.20432V9.01876C10.5 9.21333 10.4617 9.406 10.3872 9.58577C10.3128 9.76553 10.2036 9.92887 10.0661 10.0665C9.92848 10.204 9.76515 10.3132 9.58539 10.3876C9.40564 10.4621 9.21298 10.5004 9.01841 10.5004H4.20419C4.00963 10.5004 3.81697 10.4621 3.63721 10.3876C3.45745 10.3132 3.29412 10.204 3.15654 10.0665C3.01897 9.92887 2.90983 9.76553 2.83538 9.58577C2.76092 9.406 2.7226 9.21333 2.7226 9.01876V4.20432Z' stroke='black' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M1.0622 8.13166C0.891648 8.03475 0.749793 7.89442 0.651049 7.72493C0.552304 7.55544 0.500189 7.36282 0.5 7.16666V1.61111C0.5 0.999999 0.999977 0.5 1.61106 0.5H7.16635C7.583 0.5 7.80966 0.713889 7.99965 1.05555' stroke='black' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg width='11' height='11' viewBox='0 0 11 11' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M2.7226 4.20432C2.7226 3.81136 2.87869 3.43449 3.15654 3.15663C3.4344 2.87876 3.81125 2.72266 4.20419 2.72266H9.01841C9.21298 2.72266 9.40564 2.76098 9.58539 2.83544C9.76515 2.9099 9.92848 3.01904 10.0661 3.15663C10.2036 3.29421 10.3128 3.45755 10.3872 3.63731C10.4617 3.81708 10.5 4.00975 10.5 4.20432V9.01876C10.5 9.21333 10.4617 9.406 10.3872 9.58577C10.3128 9.76553 10.2036 9.92887 10.0661 10.0665C9.92848 10.204 9.76515 10.3132 9.58539 10.3876C9.40564 10.4621 9.21298 10.5004 9.01841 10.5004H4.20419C4.00963 10.5004 3.81697 10.4621 3.63721 10.3876C3.45745 10.3132 3.29412 10.204 3.15654 10.0665C3.01897 9.92887 2.90983 9.76553 2.83538 9.58577C2.76092 9.406 2.7226 9.21333 2.7226 9.01876V4.20432Z' stroke='black' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M1.0622 8.13166C0.891648 8.03475 0.749793 7.89442 0.651049 7.72493C0.552304 7.55544 0.500189 7.36282 0.5 7.16666V1.61111C0.5 0.999999 0.999977 0.5 1.61106 0.5H7.16635C7.583 0.5 7.80966 0.713889 7.99965 1.05555' stroke='black' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
+[_nghost-%COMP%]     .ep-md-code__copy-icon:hover {
+  color: var(--ep-color-text);
+  border-color: var(--ep-color-accent);
+  background-color: var(--ep-color-accent-soft);
+}
+/*# sourceMappingURL=message-item.component.css.map */`], changeDetection: 0 });
 var MessageItemComponent = _MessageItemComponent;
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(MessageItemComponent, [{
@@ -95957,7 +96672,719 @@ var MessageItemComponent = _MessageItemComponent;
     </div>
   }
 </div>
-`, styles: ['@charset "UTF-8";\n\n/* src/app/components/message-item/message-item.component.scss */\n.ep-message {\n  display: flex;\n  flex-direction: column;\n  gap: 8px;\n  padding: 0 20px;\n  position: relative;\n  margin-bottom: 16px;\n}\n.ep-message:hover .ep-message__time {\n  opacity: 1;\n  transform: translateY(0);\n}\n.ep-message .ep-message__date-divider {\n  width: fit-content;\n  margin: 0 auto;\n  padding: 4px 12px;\n}\n.ep-message__content {\n  position: relative;\n  display: inline-flex;\n  flex-direction: column;\n  gap: 8px;\n  width: 100%;\n  align-self: flex-start;\n}\n.ep-message__date-divider {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  width: 100%;\n  margin: 0 auto 8px auto;\n  font-size: 11px;\n  text-align: center;\n  color: var(--ep-color-text-muted);\n  padding: 4px 0;\n  align-self: center;\n}\n.ep-message__date-divider::before,\n.ep-message__date-divider::after {\n  content: "";\n  flex: 1;\n  height: 1px;\n  background: var(--ep-color-border);\n}\n.ep-message__text {\n  display: block;\n  padding: 6px 12px;\n  overflow: hidden;\n  overflow-wrap: break-word;\n  word-wrap: break-word;\n  line-height: 20px;\n  font-size: 14px;\n  font-weight: 400;\n  color: var(--ep-color-text);\n  max-width: 100%;\n  box-sizing: border-box;\n}\n.ep-message__text ::ng-deep markdown {\n  display: block;\n}\n.ep-message__text ::ng-deep p,\n.ep-message__text p {\n  margin: 0 0 8px 0;\n  line-height: 20px;\n}\n.ep-message__text ::ng-deep p:last-child,\n.ep-message__text p:last-child {\n  margin-bottom: 0;\n}\n.ep-message__text ::ng-deep strong,\n.ep-message__text ::ng-deep b,\n.ep-message__text strong,\n.ep-message__text b {\n  font-weight: 600;\n  color: var(--ep-color-text);\n}\n.ep-message__text ::ng-deep em,\n.ep-message__text ::ng-deep i,\n.ep-message__text em,\n.ep-message__text i {\n  font-style: italic;\n}\n.ep-message__text ::ng-deep a,\n.ep-message__text a {\n  color: var(--ep-color-accent);\n  text-decoration: none;\n  transition: text-decoration 0.2s;\n}\n.ep-message__text ::ng-deep a:hover,\n.ep-message__text a:hover {\n  text-decoration: underline;\n}\n.ep-message__text ::ng-deep ul,\n.ep-message__text ::ng-deep ol,\n.ep-message__text ul,\n.ep-message__text ol {\n  margin: 8px 0;\n  padding-left: 0;\n  list-style: none;\n  line-height: 20px;\n  box-sizing: border-box;\n}\n.ep-message__text ::ng-deep ul:first-child,\n.ep-message__text ::ng-deep ol:first-child,\n.ep-message__text ul:first-child,\n.ep-message__text ol:first-child {\n  margin-top: 0;\n}\n.ep-message__text ::ng-deep ul:last-child,\n.ep-message__text ::ng-deep ol:last-child,\n.ep-message__text ul:last-child,\n.ep-message__text ol:last-child {\n  margin-bottom: 0;\n}\n.ep-message__text ::ng-deep ul ::ng-deep li,\n.ep-message__text ::ng-deep ul li,\n.ep-message__text ul ::ng-deep li,\n.ep-message__text ul li {\n  position: relative;\n  padding-left: 20px;\n  margin: 4px 0;\n  line-height: 20px;\n  box-sizing: border-box;\n}\n.ep-message__text ::ng-deep ul ::ng-deep li::before,\n.ep-message__text ::ng-deep ul li::before,\n.ep-message__text ul ::ng-deep li::before,\n.ep-message__text ul li::before {\n  content: "\\2022";\n  position: absolute;\n  left: 0;\n  color: var(--ep-color-text);\n  font-weight: 600;\n}\n.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep p,\n.ep-message__text ::ng-deep ul ::ng-deep li p,\n.ep-message__text ::ng-deep ul li ::ng-deep p,\n.ep-message__text ::ng-deep ul li p,\n.ep-message__text ul ::ng-deep li ::ng-deep p,\n.ep-message__text ul ::ng-deep li p,\n.ep-message__text ul li ::ng-deep p,\n.ep-message__text ul li p {\n  margin: 0;\n}\n.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep ul,\n.ep-message__text ::ng-deep ul ::ng-deep li ul,\n.ep-message__text ::ng-deep ul li ::ng-deep ul,\n.ep-message__text ::ng-deep ul li ul,\n.ep-message__text ul ::ng-deep li ::ng-deep ul,\n.ep-message__text ul ::ng-deep li ul,\n.ep-message__text ul li ::ng-deep ul,\n.ep-message__text ul li ul {\n  margin: 4px 0 4px 0;\n  padding-left: 0;\n}\n.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep ul ::ng-deep li,\n.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep ul li,\n.ep-message__text ::ng-deep ul ::ng-deep li ul ::ng-deep li,\n.ep-message__text ::ng-deep ul ::ng-deep li ul li,\n.ep-message__text ::ng-deep ul li ::ng-deep ul ::ng-deep li,\n.ep-message__text ::ng-deep ul li ::ng-deep ul li,\n.ep-message__text ::ng-deep ul li ul ::ng-deep li,\n.ep-message__text ::ng-deep ul li ul li,\n.ep-message__text ul ::ng-deep li ::ng-deep ul ::ng-deep li,\n.ep-message__text ul ::ng-deep li ::ng-deep ul li,\n.ep-message__text ul ::ng-deep li ul ::ng-deep li,\n.ep-message__text ul ::ng-deep li ul li,\n.ep-message__text ul li ::ng-deep ul ::ng-deep li,\n.ep-message__text ul li ::ng-deep ul li,\n.ep-message__text ul li ul ::ng-deep li,\n.ep-message__text ul li ul li {\n  padding-left: 24px;\n}\n.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep ul ::ng-deep li::before,\n.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep ul li::before,\n.ep-message__text ::ng-deep ul ::ng-deep li ul ::ng-deep li::before,\n.ep-message__text ::ng-deep ul ::ng-deep li ul li::before,\n.ep-message__text ::ng-deep ul li ::ng-deep ul ::ng-deep li::before,\n.ep-message__text ::ng-deep ul li ::ng-deep ul li::before,\n.ep-message__text ::ng-deep ul li ul ::ng-deep li::before,\n.ep-message__text ::ng-deep ul li ul li::before,\n.ep-message__text ul ::ng-deep li ::ng-deep ul ::ng-deep li::before,\n.ep-message__text ul ::ng-deep li ::ng-deep ul li::before,\n.ep-message__text ul ::ng-deep li ul ::ng-deep li::before,\n.ep-message__text ul ::ng-deep li ul li::before,\n.ep-message__text ul li ::ng-deep ul ::ng-deep li::before,\n.ep-message__text ul li ::ng-deep ul li::before,\n.ep-message__text ul li ul ::ng-deep li::before,\n.ep-message__text ul li ul li::before {\n  content: "\\25e6";\n  left: 4px;\n}\n.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep ul ::ng-deep ul li,\n.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep ul ul li,\n.ep-message__text ::ng-deep ul ::ng-deep li ul ::ng-deep ul li,\n.ep-message__text ::ng-deep ul ::ng-deep li ul ul li,\n.ep-message__text ::ng-deep ul li ::ng-deep ul ::ng-deep ul li,\n.ep-message__text ::ng-deep ul li ::ng-deep ul ul li,\n.ep-message__text ::ng-deep ul li ul ::ng-deep ul li,\n.ep-message__text ::ng-deep ul li ul ul li,\n.ep-message__text ul ::ng-deep li ::ng-deep ul ::ng-deep ul li,\n.ep-message__text ul ::ng-deep li ::ng-deep ul ul li,\n.ep-message__text ul ::ng-deep li ul ::ng-deep ul li,\n.ep-message__text ul ::ng-deep li ul ul li,\n.ep-message__text ul li ::ng-deep ul ::ng-deep ul li,\n.ep-message__text ul li ::ng-deep ul ul li,\n.ep-message__text ul li ul ::ng-deep ul li,\n.ep-message__text ul li ul ul li {\n  padding-left: 28px;\n}\n.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep ul ::ng-deep ul li::before,\n.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep ul ul li::before,\n.ep-message__text ::ng-deep ul ::ng-deep li ul ::ng-deep ul li::before,\n.ep-message__text ::ng-deep ul ::ng-deep li ul ul li::before,\n.ep-message__text ::ng-deep ul li ::ng-deep ul ::ng-deep ul li::before,\n.ep-message__text ::ng-deep ul li ::ng-deep ul ul li::before,\n.ep-message__text ::ng-deep ul li ul ::ng-deep ul li::before,\n.ep-message__text ::ng-deep ul li ul ul li::before,\n.ep-message__text ul ::ng-deep li ::ng-deep ul ::ng-deep ul li::before,\n.ep-message__text ul ::ng-deep li ::ng-deep ul ul li::before,\n.ep-message__text ul ::ng-deep li ul ::ng-deep ul li::before,\n.ep-message__text ul ::ng-deep li ul ul li::before,\n.ep-message__text ul li ::ng-deep ul ::ng-deep ul li::before,\n.ep-message__text ul li ::ng-deep ul ul li::before,\n.ep-message__text ul li ul ::ng-deep ul li::before,\n.ep-message__text ul li ul ul li::before {\n  content: "\\25aa";\n  left: 8px;\n}\n.ep-message__text ::ng-deep ol,\n.ep-message__text ol {\n  counter-reset: list-counter;\n}\n.ep-message__text ::ng-deep ol ::ng-deep li,\n.ep-message__text ::ng-deep ol li,\n.ep-message__text ol ::ng-deep li,\n.ep-message__text ol li {\n  position: relative;\n  padding-left: 24px;\n  margin: 4px 0;\n  line-height: 20px;\n  counter-increment: list-counter;\n  box-sizing: border-box;\n}\n.ep-message__text ::ng-deep ol ::ng-deep li::before,\n.ep-message__text ::ng-deep ol li::before,\n.ep-message__text ol ::ng-deep li::before,\n.ep-message__text ol li::before {\n  content: counter(list-counter) ".";\n  position: absolute;\n  left: 0;\n  color: var(--ep-color-text);\n  font-weight: 500;\n}\n.ep-message__text ::ng-deep ol ::ng-deep li ::ng-deep p,\n.ep-message__text ::ng-deep ol ::ng-deep li p,\n.ep-message__text ::ng-deep ol li ::ng-deep p,\n.ep-message__text ::ng-deep ol li p,\n.ep-message__text ol ::ng-deep li ::ng-deep p,\n.ep-message__text ol ::ng-deep li p,\n.ep-message__text ol li ::ng-deep p,\n.ep-message__text ol li p {\n  margin: 0;\n}\n.ep-message__text ::ng-deep ol ::ng-deep li ::ng-deep ol,\n.ep-message__text ::ng-deep ol ::ng-deep li ol,\n.ep-message__text ::ng-deep ol li ::ng-deep ol,\n.ep-message__text ::ng-deep ol li ol,\n.ep-message__text ol ::ng-deep li ::ng-deep ol,\n.ep-message__text ol ::ng-deep li ol,\n.ep-message__text ol li ::ng-deep ol,\n.ep-message__text ol li ol {\n  margin: 4px 0 4px 0;\n  padding-left: 0;\n  counter-reset: list-counter;\n}\n.ep-message__text ::ng-deep ol ::ng-deep li ::ng-deep ol li,\n.ep-message__text ::ng-deep ol ::ng-deep li ol li,\n.ep-message__text ::ng-deep ol li ::ng-deep ol li,\n.ep-message__text ::ng-deep ol li ol li,\n.ep-message__text ol ::ng-deep li ::ng-deep ol li,\n.ep-message__text ol ::ng-deep li ol li,\n.ep-message__text ol li ::ng-deep ol li,\n.ep-message__text ol li ol li {\n  padding-left: 28px;\n}\n.ep-message__text ::ng-deep ol ::ng-deep li ::ng-deep ol li::before,\n.ep-message__text ::ng-deep ol ::ng-deep li ol li::before,\n.ep-message__text ::ng-deep ol li ::ng-deep ol li::before,\n.ep-message__text ::ng-deep ol li ol li::before,\n.ep-message__text ol ::ng-deep li ::ng-deep ol li::before,\n.ep-message__text ol ::ng-deep li ol li::before,\n.ep-message__text ol li ::ng-deep ol li::before,\n.ep-message__text ol li ol li::before {\n  left: 4px;\n}\n.ep-message__text ::ng-deep code,\n.ep-message__text code {\n  background: var(--ep-color-surface-alt);\n  padding: 2px 4px;\n  border-radius: 3px;\n  font-family:\n    "Consolas",\n    "Courier New",\n    monospace;\n  font-size: 13px;\n}\n.ep-message__text ::ng-deep .ep-md-code {\n  margin: 8px 0;\n  border: 1px solid color-mix(in srgb, var(--ep-color-border) 70%, transparent);\n  border-radius: 8px;\n  background: color-mix(in srgb, var(--ep-color-surface-alt) 70%, transparent);\n  overflow: hidden;\n}\n.ep-message__text ::ng-deep .ep-md-code__header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 12px;\n  min-height: 32px;\n  padding: 0 10px;\n  border-bottom: 1px solid color-mix(in srgb, var(--ep-color-border) 70%, transparent);\n  background: color-mix(in srgb, var(--ep-color-surface) 50%, transparent);\n}\n.ep-message__text ::ng-deep .ep-md-code__lang {\n  font-size: 11px;\n  font-weight: 600;\n  letter-spacing: 0.05em;\n  text-transform: uppercase;\n  color: var(--ep-color-text-muted);\n  line-height: 1;\n}\n.ep-message__text ::ng-deep .ep-md-code__copy {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 20px;\n  height: 20px;\n  padding: 0;\n  border: 1px solid transparent;\n  border-radius: 4px;\n  background: transparent;\n  color: var(--ep-color-text-muted);\n  cursor: pointer;\n  transition:\n    color 0.15s,\n    border-color 0.15s,\n    background-color 0.15s;\n}\n.ep-message__text ::ng-deep .ep-md-code__copy:hover:not(:disabled) {\n  color: var(--ep-color-text);\n  border-color: var(--ep-color-accent);\n  background: var(--ep-color-accent-soft);\n}\n.ep-message__text ::ng-deep .ep-md-code__copy:disabled {\n  opacity: 0.75;\n  cursor: default;\n}\n.ep-message__text ::ng-deep .ep-md-code pre {\n  margin: 0;\n  border: 0;\n  border-radius: 0;\n  background: transparent;\n  padding: 10px 12px;\n  overflow-x: auto;\n}\n.ep-message__text ::ng-deep .ep-md-code code {\n  display: block;\n  background: none;\n  border-radius: 0;\n  padding: 0;\n  color: var(--ep-color-text);\n  font-size: 12.5px;\n  line-height: 18px;\n  white-space: pre;\n  overflow-wrap: normal;\n}\n.ep-message__text ::ng-deep .ep-md-code--plain code {\n  color: var(--ep-color-text-muted);\n}\n.ep-message__text ::ng-deep pre,\n.ep-message__text pre {\n  background: var(--ep-color-surface-alt);\n  padding: 8px 12px;\n  border-radius: 4px;\n  overflow-x: auto;\n  margin: 8px 0;\n}\n.ep-message__text ::ng-deep pre code,\n.ep-message__text pre code {\n  background: none;\n  padding: 0;\n}\n.ep-message__text h1,\n.ep-message__text h2,\n.ep-message__text h3,\n.ep-message__text h4,\n.ep-message__text h5,\n.ep-message__text h6 {\n  margin: 12px 0 8px 0;\n  font-weight: 600;\n  line-height: 1.4;\n}\n.ep-message__text h1:first-child,\n.ep-message__text h2:first-child,\n.ep-message__text h3:first-child,\n.ep-message__text h4:first-child,\n.ep-message__text h5:first-child,\n.ep-message__text h6:first-child {\n  margin-top: 0;\n}\n.ep-message__text h1 {\n  font-size: 20px;\n}\n.ep-message__text h2 {\n  font-size: 18px;\n}\n.ep-message__text h3 {\n  font-size: 16px;\n}\n.ep-message__text h4,\n.ep-message__text h5,\n.ep-message__text h6 {\n  font-size: 14px;\n}\n.ep-message__text hr {\n  border: none;\n  border-top: 1px solid var(--ep-color-border);\n  margin: 12px 0;\n}\n.ep-message__text blockquote {\n  border-left: 3px solid var(--ep-color-border);\n  padding-left: 12px;\n  margin: 8px 0;\n  color: var(--ep-color-text-muted);\n  font-style: italic;\n}\n.ep-message__text img {\n  max-width: 100%;\n  height: auto;\n  border-radius: 4px;\n  margin: 8px 0;\n}\n.ep-message:not(.ep-message--user) .ep-message__text {\n  background: var(--ep-chat-bg-answer);\n  border-radius: 0 4px 4px 4px;\n  width: fit-content;\n  max-width: 100%;\n}\n.ep-message--user {\n  align-items: flex-end;\n}\n.ep-message--user .ep-message__content {\n  align-items: flex-end;\n  align-self: flex-end;\n}\n.ep-message--user .ep-message__text {\n  background: var(--ep-chat-bg-question);\n  border-radius: 4px;\n  margin-left: 30px;\n  width: fit-content;\n  max-width: calc(100% - 20px);\n  color: var(--ep-chat-text-question);\n}\n.ep-message--user .ep-message__text ::ng-deep strong,\n.ep-message--user .ep-message__text ::ng-deep b,\n.ep-message--user .ep-message__text strong,\n.ep-message--user .ep-message__text b,\n.ep-message--user .ep-message__text ::ng-deep ul li::before,\n.ep-message--user .ep-message__text ul li::before,\n.ep-message--user .ep-message__text ::ng-deep ol li::before,\n.ep-message--user .ep-message__text ol li::before {\n  color: inherit;\n}\n.ep-message--user .ep-message__time {\n  left: auto;\n  right: 0;\n  text-align: right;\n}\n.ep-message__attached-files {\n  display: flex;\n  flex-direction: column;\n  gap: 4px;\n  margin-top: 4px;\n}\n.ep-message__attached-file {\n  font-size: 12px;\n  color: var(--ep-color-text-muted);\n  padding: 4px 8px;\n  background: var(--ep-color-surface-alt);\n  border-radius: 4px;\n  display: inline-block;\n}\n.ep-message__thinking {\n  font-size: 13px;\n  color: var(--ep-color-text-muted);\n  font-style: italic;\n  padding: 4px 0;\n}\n.ep-message__links {\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n  margin-top: 8px;\n}\n.ep-message__link {\n  display: inline-flex;\n  align-items: center;\n  gap: 8px;\n  width: fit-content;\n  min-height: 28px;\n  padding: 4px 10px;\n  border: 1px solid var(--ep-color-accent);\n  border-radius: 4px;\n  background: transparent;\n  font-size: 13px;\n  line-height: 18px;\n  text-align: left;\n  color: var(--ep-color-accent);\n  text-decoration: none;\n  cursor: pointer;\n  transition:\n    background-color 0.15s,\n    border-color 0.15s,\n    color 0.15s;\n}\n.ep-message__link-text {\n  color: inherit;\n}\n.ep-message__link-icon {\n  width: 8px;\n  height: 8px;\n  flex-shrink: 0;\n  color: inherit;\n}\n.ep-message__link:hover:not(.ep-message__link--disabled) {\n  background: var(--ep-color-accent-soft);\n  border-color: var(--ep-color-accent);\n  color: var(--ep-color-accent);\n}\n.ep-message__link.ep-message__link--disabled {\n  border-color: var(--ep-color-border);\n  color: var(--ep-color-text-muted);\n  background: transparent;\n  opacity: 0.5;\n  cursor: not-allowed;\n  pointer-events: none;\n}\n.ep-message__actions {\n  display: flex;\n  flex-direction: column;\n  gap: 8px;\n  margin-top: 8px;\n}\n.ep-message__actions-row {\n  display: flex;\n  flex-direction: row;\n  flex-wrap: wrap;\n  gap: 8px;\n  justify-content: flex-end;\n}\n.ep-message__time {\n  position: absolute;\n  top: -16px;\n  left: 0;\n  font-size: 11px;\n  line-height: 1;\n  color: var(--ep-color-text-muted);\n  opacity: 0.6;\n  white-space: nowrap;\n  min-width: fit-content;\n}\n.ep-message__suggestions-panel {\n  display: flex;\n  flex-direction: column;\n  width: 100%;\n  max-width: 100%;\n  margin-top: 4px;\n  border: 1px solid color-mix(in srgb, var(--ep-color-text) 8%, transparent);\n  border-radius: 4px;\n  background: transparent;\n  overflow: hidden;\n}\n.ep-message__suggestions-panel-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 12px;\n  min-height: 47px;\n  padding: 0 14px;\n  border-bottom: 1px solid color-mix(in srgb, var(--ep-color-text) 8%, transparent);\n}\n.ep-message__suggestions-panel-title {\n  font-size: 14px;\n  font-weight: 400;\n  color: var(--ep-color-text);\n  line-height: 20px;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n.ep-message__suggestions-panel-close {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  flex-shrink: 0;\n  width: 24px;\n  height: 24px;\n  background: none;\n  border: none;\n  padding: 0;\n  cursor: pointer;\n  color: var(--ep-color-text-muted);\n  opacity: 0.6;\n  transition: opacity 0.15s, color 0.15s;\n}\n.ep-message__suggestions-panel-close:hover {\n  opacity: 1;\n  color: var(--ep-color-text);\n}\n.ep-message__suggestions-panel-close svg {\n  width: 10px;\n  height: 10px;\n}\n.ep-message__suggestions-panel-list {\n  display: flex;\n  flex-direction: column;\n  width: 100%;\n}\n.ep-message__suggestions-panel-item {\n  display: flex;\n  align-items: center;\n  width: 100%;\n  min-height: 49px;\n  padding: 7px 14px;\n  font-size: 14px;\n  line-height: 20px;\n  text-align: left;\n  color: var(--ep-color-text-muted);\n  background: transparent;\n  border: none;\n  border-top: 1px solid color-mix(in srgb, var(--ep-color-text) 8%, transparent);\n  cursor: pointer;\n  transition: background-color 0.15s, color 0.15s;\n}\n.ep-message__suggestions-panel-item:hover:not(:disabled) {\n  background: color-mix(in srgb, var(--ep-color-text) 4%, transparent);\n  color: var(--ep-color-text);\n}\n.ep-message__suggestions-panel-item:disabled {\n  opacity: 0.5;\n  cursor: not-allowed;\n}\n.epica-error {\n  display: flex;\n  width: fit-content;\n  flex-direction: row;\n  margin: 0 30px 0 0;\n  padding: 18px 20px;\n  align-items: center;\n  gap: 16px;\n  border-radius: 4px;\n  border: 1px solid rgba(104, 95, 255, 0.0784313725);\n  background: rgba(104, 95, 255, 0.0784313725);\n}\n.epica-error__text {\n  font-size: 14px;\n  font-style: normal;\n  font-weight: 400;\n  line-height: 20px;\n  color: var(--ep-color-accent);\n}\n:host ::ng-deep .ep-md-code__copy-icon {\n  font-size: 12px;\n  cursor: pointer;\n}\n/*# sourceMappingURL=message-item.component.css.map */\n'] }]
+`, styles: [`@charset "UTF-8";
+
+/* src/app/components/message-item/message-item.component.scss */
+.ep-message {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 20px;
+  position: relative;
+  margin-bottom: 16px;
+}
+.ep-message:hover .ep-message__time {
+  opacity: 1;
+  transform: translateY(0);
+}
+.ep-message .ep-message__date-divider {
+  width: fit-content;
+  margin: 0 auto;
+  padding: 4px 12px;
+}
+.ep-message__content {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  align-self: flex-start;
+}
+.ep-message__date-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0 auto 8px auto;
+  font-size: 12px;
+  text-align: center;
+  color: var(--ep-color-text-muted);
+  padding: 4px 0;
+  align-self: center;
+}
+.ep-message__date-divider::before,
+.ep-message__date-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--ep-color-border);
+}
+.ep-message__text {
+  display: block;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  line-height: 20px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--ep-color-text);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.ep-message__text ::ng-deep markdown {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ep-message__text ::ng-deep p,
+.ep-message__text p {
+  margin: 0 0 8px 0;
+  line-height: 20px;
+}
+.ep-message__text ::ng-deep p:last-child,
+.ep-message__text p:last-child {
+  margin-bottom: 0;
+}
+.ep-message__text ::ng-deep strong,
+.ep-message__text ::ng-deep b,
+.ep-message__text strong,
+.ep-message__text b {
+  font-weight: 600;
+  color: var(--ep-color-text);
+}
+.ep-message__text ::ng-deep em,
+.ep-message__text ::ng-deep i,
+.ep-message__text em,
+.ep-message__text i {
+  font-style: italic;
+}
+.ep-message__text ::ng-deep a,
+.ep-message__text a {
+  color: var(--ep-color-accent);
+  text-decoration: none;
+  transition: text-decoration 0.2s;
+}
+.ep-message__text ::ng-deep a:hover,
+.ep-message__text a:hover {
+  text-decoration: underline;
+}
+.ep-message__text ::ng-deep ul,
+.ep-message__text ::ng-deep ol,
+.ep-message__text ul,
+.ep-message__text ol {
+  margin: 8px 0;
+  padding-left: 0;
+  list-style: none;
+  line-height: 20px;
+  box-sizing: border-box;
+}
+.ep-message__text ::ng-deep ul:first-child,
+.ep-message__text ::ng-deep ol:first-child,
+.ep-message__text ul:first-child,
+.ep-message__text ol:first-child {
+  margin-top: 0;
+}
+.ep-message__text ::ng-deep ul:last-child,
+.ep-message__text ::ng-deep ol:last-child,
+.ep-message__text ul:last-child,
+.ep-message__text ol:last-child {
+  margin-bottom: 0;
+}
+.ep-message__text ::ng-deep ul ::ng-deep li,
+.ep-message__text ::ng-deep ul li,
+.ep-message__text ul ::ng-deep li,
+.ep-message__text ul li {
+  position: relative;
+  padding-left: 20px;
+  margin: 4px 0;
+  line-height: 20px;
+  box-sizing: border-box;
+}
+.ep-message__text ::ng-deep ul ::ng-deep li::before,
+.ep-message__text ::ng-deep ul li::before,
+.ep-message__text ul ::ng-deep li::before,
+.ep-message__text ul li::before {
+  content: "\\2022";
+  position: absolute;
+  left: 0;
+  color: var(--ep-color-text);
+  font-weight: 600;
+}
+.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep p,
+.ep-message__text ::ng-deep ul ::ng-deep li p,
+.ep-message__text ::ng-deep ul li ::ng-deep p,
+.ep-message__text ::ng-deep ul li p,
+.ep-message__text ul ::ng-deep li ::ng-deep p,
+.ep-message__text ul ::ng-deep li p,
+.ep-message__text ul li ::ng-deep p,
+.ep-message__text ul li p {
+  margin: 0;
+}
+.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep ul,
+.ep-message__text ::ng-deep ul ::ng-deep li ul,
+.ep-message__text ::ng-deep ul li ::ng-deep ul,
+.ep-message__text ::ng-deep ul li ul,
+.ep-message__text ul ::ng-deep li ::ng-deep ul,
+.ep-message__text ul ::ng-deep li ul,
+.ep-message__text ul li ::ng-deep ul,
+.ep-message__text ul li ul {
+  margin: 4px 0 4px 0;
+  padding-left: 0;
+}
+.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep ul ::ng-deep li,
+.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep ul li,
+.ep-message__text ::ng-deep ul ::ng-deep li ul ::ng-deep li,
+.ep-message__text ::ng-deep ul ::ng-deep li ul li,
+.ep-message__text ::ng-deep ul li ::ng-deep ul ::ng-deep li,
+.ep-message__text ::ng-deep ul li ::ng-deep ul li,
+.ep-message__text ::ng-deep ul li ul ::ng-deep li,
+.ep-message__text ::ng-deep ul li ul li,
+.ep-message__text ul ::ng-deep li ::ng-deep ul ::ng-deep li,
+.ep-message__text ul ::ng-deep li ::ng-deep ul li,
+.ep-message__text ul ::ng-deep li ul ::ng-deep li,
+.ep-message__text ul ::ng-deep li ul li,
+.ep-message__text ul li ::ng-deep ul ::ng-deep li,
+.ep-message__text ul li ::ng-deep ul li,
+.ep-message__text ul li ul ::ng-deep li,
+.ep-message__text ul li ul li {
+  padding-left: 24px;
+}
+.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep ul ::ng-deep li::before,
+.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep ul li::before,
+.ep-message__text ::ng-deep ul ::ng-deep li ul ::ng-deep li::before,
+.ep-message__text ::ng-deep ul ::ng-deep li ul li::before,
+.ep-message__text ::ng-deep ul li ::ng-deep ul ::ng-deep li::before,
+.ep-message__text ::ng-deep ul li ::ng-deep ul li::before,
+.ep-message__text ::ng-deep ul li ul ::ng-deep li::before,
+.ep-message__text ::ng-deep ul li ul li::before,
+.ep-message__text ul ::ng-deep li ::ng-deep ul ::ng-deep li::before,
+.ep-message__text ul ::ng-deep li ::ng-deep ul li::before,
+.ep-message__text ul ::ng-deep li ul ::ng-deep li::before,
+.ep-message__text ul ::ng-deep li ul li::before,
+.ep-message__text ul li ::ng-deep ul ::ng-deep li::before,
+.ep-message__text ul li ::ng-deep ul li::before,
+.ep-message__text ul li ul ::ng-deep li::before,
+.ep-message__text ul li ul li::before {
+  content: "\\25e6";
+  left: 4px;
+}
+.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep ul ::ng-deep ul li,
+.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep ul ul li,
+.ep-message__text ::ng-deep ul ::ng-deep li ul ::ng-deep ul li,
+.ep-message__text ::ng-deep ul ::ng-deep li ul ul li,
+.ep-message__text ::ng-deep ul li ::ng-deep ul ::ng-deep ul li,
+.ep-message__text ::ng-deep ul li ::ng-deep ul ul li,
+.ep-message__text ::ng-deep ul li ul ::ng-deep ul li,
+.ep-message__text ::ng-deep ul li ul ul li,
+.ep-message__text ul ::ng-deep li ::ng-deep ul ::ng-deep ul li,
+.ep-message__text ul ::ng-deep li ::ng-deep ul ul li,
+.ep-message__text ul ::ng-deep li ul ::ng-deep ul li,
+.ep-message__text ul ::ng-deep li ul ul li,
+.ep-message__text ul li ::ng-deep ul ::ng-deep ul li,
+.ep-message__text ul li ::ng-deep ul ul li,
+.ep-message__text ul li ul ::ng-deep ul li,
+.ep-message__text ul li ul ul li {
+  padding-left: 28px;
+}
+.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep ul ::ng-deep ul li::before,
+.ep-message__text ::ng-deep ul ::ng-deep li ::ng-deep ul ul li::before,
+.ep-message__text ::ng-deep ul ::ng-deep li ul ::ng-deep ul li::before,
+.ep-message__text ::ng-deep ul ::ng-deep li ul ul li::before,
+.ep-message__text ::ng-deep ul li ::ng-deep ul ::ng-deep ul li::before,
+.ep-message__text ::ng-deep ul li ::ng-deep ul ul li::before,
+.ep-message__text ::ng-deep ul li ul ::ng-deep ul li::before,
+.ep-message__text ::ng-deep ul li ul ul li::before,
+.ep-message__text ul ::ng-deep li ::ng-deep ul ::ng-deep ul li::before,
+.ep-message__text ul ::ng-deep li ::ng-deep ul ul li::before,
+.ep-message__text ul ::ng-deep li ul ::ng-deep ul li::before,
+.ep-message__text ul ::ng-deep li ul ul li::before,
+.ep-message__text ul li ::ng-deep ul ::ng-deep ul li::before,
+.ep-message__text ul li ::ng-deep ul ul li::before,
+.ep-message__text ul li ul ::ng-deep ul li::before,
+.ep-message__text ul li ul ul li::before {
+  content: "\\25aa";
+  left: 8px;
+}
+.ep-message__text ::ng-deep ol,
+.ep-message__text ol {
+  counter-reset: list-counter;
+}
+.ep-message__text ::ng-deep ol ::ng-deep li,
+.ep-message__text ::ng-deep ol li,
+.ep-message__text ol ::ng-deep li,
+.ep-message__text ol li {
+  position: relative;
+  padding-left: 24px;
+  margin: 4px 0;
+  line-height: 20px;
+  counter-increment: list-counter;
+  box-sizing: border-box;
+}
+.ep-message__text ::ng-deep ol ::ng-deep li::before,
+.ep-message__text ::ng-deep ol li::before,
+.ep-message__text ol ::ng-deep li::before,
+.ep-message__text ol li::before {
+  content: counter(list-counter) ".";
+  position: absolute;
+  left: 0;
+  color: var(--ep-color-text);
+  font-weight: 500;
+}
+.ep-message__text ::ng-deep ol ::ng-deep li ::ng-deep p,
+.ep-message__text ::ng-deep ol ::ng-deep li p,
+.ep-message__text ::ng-deep ol li ::ng-deep p,
+.ep-message__text ::ng-deep ol li p,
+.ep-message__text ol ::ng-deep li ::ng-deep p,
+.ep-message__text ol ::ng-deep li p,
+.ep-message__text ol li ::ng-deep p,
+.ep-message__text ol li p {
+  margin: 0;
+}
+.ep-message__text ::ng-deep ol ::ng-deep li ::ng-deep ol,
+.ep-message__text ::ng-deep ol ::ng-deep li ol,
+.ep-message__text ::ng-deep ol li ::ng-deep ol,
+.ep-message__text ::ng-deep ol li ol,
+.ep-message__text ol ::ng-deep li ::ng-deep ol,
+.ep-message__text ol ::ng-deep li ol,
+.ep-message__text ol li ::ng-deep ol,
+.ep-message__text ol li ol {
+  margin: 4px 0 4px 0;
+  padding-left: 0;
+  counter-reset: list-counter;
+}
+.ep-message__text ::ng-deep ol ::ng-deep li ::ng-deep ol li,
+.ep-message__text ::ng-deep ol ::ng-deep li ol li,
+.ep-message__text ::ng-deep ol li ::ng-deep ol li,
+.ep-message__text ::ng-deep ol li ol li,
+.ep-message__text ol ::ng-deep li ::ng-deep ol li,
+.ep-message__text ol ::ng-deep li ol li,
+.ep-message__text ol li ::ng-deep ol li,
+.ep-message__text ol li ol li {
+  padding-left: 28px;
+}
+.ep-message__text ::ng-deep ol ::ng-deep li ::ng-deep ol li::before,
+.ep-message__text ::ng-deep ol ::ng-deep li ol li::before,
+.ep-message__text ::ng-deep ol li ::ng-deep ol li::before,
+.ep-message__text ::ng-deep ol li ol li::before,
+.ep-message__text ol ::ng-deep li ::ng-deep ol li::before,
+.ep-message__text ol ::ng-deep li ol li::before,
+.ep-message__text ol li ::ng-deep ol li::before,
+.ep-message__text ol li ol li::before {
+  left: 4px;
+}
+.ep-message__text ::ng-deep code,
+.ep-message__text code {
+  background: var(--ep-color-surface-alt);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family:
+    "Consolas",
+    "Courier New",
+    monospace;
+  font-size: 13px;
+}
+.ep-message__text ::ng-deep .ep-md-code {
+  border: 1px solid color-mix(in srgb, var(--ep-color-border) 70%, transparent);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.ep-message__text ::ng-deep .ep-md-code__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--ep-color-border) 70%, transparent);
+}
+.ep-message__text ::ng-deep .ep-md-code__lang {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ep-color-text-muted);
+  line-height: 1;
+}
+.ep-message__text ::ng-deep .ep-md-code__copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ep-color-text-muted);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background-color 0.15s;
+}
+.ep-message__text ::ng-deep .ep-md-code__copy:hover:not(:disabled) {
+  color: var(--ep-color-text);
+  border-color: var(--ep-color-accent);
+  background: var(--ep-color-accent-soft);
+}
+.ep-message__text ::ng-deep .ep-md-code__copy:disabled {
+  opacity: 0.75;
+  cursor: default;
+}
+.ep-message__text ::ng-deep .ep-md-code pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 10px 12px;
+  overflow-x: auto;
+  background: rgba(21, 21, 21, 0.6);
+}
+.ep-message__text ::ng-deep .ep-md-code code {
+  display: block;
+  background: none;
+  border-radius: 0;
+  padding: 0;
+  color: var(--ep-color-text);
+  font-size: 12.5px;
+  line-height: 18px;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+.ep-message__text ::ng-deep .ep-md-code--plain code {
+  color: var(--ep-color-text-muted);
+}
+.ep-message__text ::ng-deep pre,
+.ep-message__text pre {
+  background: var(--ep-color-surface-alt);
+  padding: 8px 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.ep-message__text ::ng-deep pre code,
+.ep-message__text pre code {
+  background: none;
+  padding: 0;
+}
+.ep-message__text h1,
+.ep-message__text h2,
+.ep-message__text h3,
+.ep-message__text h4,
+.ep-message__text h5,
+.ep-message__text h6 {
+  margin: 12px 0 8px 0;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.ep-message__text h1:first-child,
+.ep-message__text h2:first-child,
+.ep-message__text h3:first-child,
+.ep-message__text h4:first-child,
+.ep-message__text h5:first-child,
+.ep-message__text h6:first-child {
+  margin-top: 0;
+}
+.ep-message__text h1 {
+  font-size: 20px;
+}
+.ep-message__text h2 {
+  font-size: 18px;
+}
+.ep-message__text h3 {
+  font-size: 16px;
+}
+.ep-message__text h4,
+.ep-message__text h5,
+.ep-message__text h6 {
+  font-size: 14px;
+}
+.ep-message__text hr {
+  border: none;
+  border-top: 1px solid var(--ep-color-border);
+  margin: 12px 0;
+}
+.ep-message__text blockquote {
+  border-left: 3px solid var(--ep-color-border);
+  padding-left: 12px;
+  margin: 8px 0;
+  color: var(--ep-color-text-muted);
+  font-style: italic;
+}
+.ep-message__text img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin: 8px 0;
+}
+.ep-message:not(.ep-message--user) .ep-message__text {
+  background: var(--ep-chat-bg-answer);
+  border-radius: 0 4px 4px 4px;
+  width: fit-content;
+  max-width: 100%;
+}
+.ep-message--user {
+  align-items: flex-end;
+}
+.ep-message--user .ep-message__content {
+  align-items: flex-end;
+  align-self: flex-end;
+}
+.ep-message--user .ep-message__text {
+  background: var(--ep-chat-bg-question);
+  border-radius: 4px;
+  margin-left: 30px;
+  width: fit-content;
+  max-width: calc(100% - 20px);
+  color: var(--ep-chat-text-question);
+}
+.ep-message--user .ep-message__text ::ng-deep strong,
+.ep-message--user .ep-message__text ::ng-deep b,
+.ep-message--user .ep-message__text strong,
+.ep-message--user .ep-message__text b,
+.ep-message--user .ep-message__text ::ng-deep ul li::before,
+.ep-message--user .ep-message__text ul li::before,
+.ep-message--user .ep-message__text ::ng-deep ol li::before,
+.ep-message--user .ep-message__text ol li::before {
+  color: inherit;
+}
+.ep-message--user .ep-message__time {
+  left: auto;
+  right: 0;
+  text-align: right;
+}
+.ep-message__attached-files {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+.ep-message__attached-file {
+  font-size: 12px;
+  color: var(--ep-color-text-muted);
+  padding: 4px 8px;
+  background: var(--ep-color-surface-alt);
+  border-radius: 4px;
+  display: inline-block;
+}
+.ep-message__thinking {
+  font-size: 13px;
+  color: var(--ep-color-text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+.ep-message__links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.ep-message__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid var(--ep-color-accent);
+  border-radius: 4px;
+  background: transparent;
+  font-size: 13px;
+  line-height: 18px;
+  text-align: left;
+  color: var(--ep-color-accent);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.ep-message__link-text {
+  color: inherit;
+}
+.ep-message__link-icon {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  color: inherit;
+}
+.ep-message__link:hover:not(.ep-message__link--disabled) {
+  background: var(--ep-color-accent-soft);
+  border-color: var(--ep-color-accent);
+  color: var(--ep-color-accent);
+}
+.ep-message__link.ep-message__link--disabled {
+  border-color: var(--ep-color-border);
+  color: var(--ep-color-text-muted);
+  background: transparent;
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.ep-message__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.ep-message__actions-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.ep-message__time {
+  position: absolute;
+  top: -16px;
+  left: 0;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--ep-color-text-muted);
+  opacity: 0.6;
+  white-space: nowrap;
+  min-width: fit-content;
+}
+.ep-message__suggestions-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  margin-top: 4px;
+  border: 1px solid color-mix(in srgb, var(--ep-color-text) 8%, transparent);
+  border-radius: 4px;
+  background: transparent;
+  overflow: hidden;
+}
+.ep-message__suggestions-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 47px;
+  padding: 0 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--ep-color-text) 8%, transparent);
+}
+.ep-message__suggestions-panel-title {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--ep-color-text);
+  line-height: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ep-message__suggestions-panel-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--ep-color-text-muted);
+  opacity: 0.6;
+  transition: opacity 0.15s, color 0.15s;
+}
+.ep-message__suggestions-panel-close:hover {
+  opacity: 1;
+  color: var(--ep-color-text);
+}
+.ep-message__suggestions-panel-close svg {
+  width: 10px;
+  height: 10px;
+}
+.ep-message__suggestions-panel-list {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+.ep-message__suggestions-panel-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 49px;
+  padding: 7px 14px;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  color: var(--ep-color-text-muted);
+  background: transparent;
+  border: none;
+  border-top: 1px solid color-mix(in srgb, var(--ep-color-text) 8%, transparent);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+.ep-message__suggestions-panel-item:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ep-color-text) 4%, transparent);
+  color: var(--ep-color-text);
+}
+.ep-message__suggestions-panel-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.epica-error {
+  display: flex;
+  width: fit-content;
+  flex-direction: row;
+  margin: 0 30px 0 0;
+  padding: 18px 20px;
+  align-items: center;
+  gap: 16px;
+  border-radius: 4px;
+  border: 1px solid rgba(104, 95, 255, 0.0784313725);
+  background: rgba(104, 95, 255, 0.0784313725);
+}
+.epica-error__text {
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 20px;
+  color: var(--ep-color-accent);
+}
+:host ::ng-deep .ep-md-code__copy-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--ep-color-text-muted);
+  background-color: transparent;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background-color 0.15s;
+}
+:host ::ng-deep .ep-md-code__copy-icon::before {
+  content: "";
+  display: block;
+  width: 11px;
+  height: 11px;
+  background-color: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg width='11' height='11' viewBox='0 0 11 11' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M2.7226 4.20432C2.7226 3.81136 2.87869 3.43449 3.15654 3.15663C3.4344 2.87876 3.81125 2.72266 4.20419 2.72266H9.01841C9.21298 2.72266 9.40564 2.76098 9.58539 2.83544C9.76515 2.9099 9.92848 3.01904 10.0661 3.15663C10.2036 3.29421 10.3128 3.45755 10.3872 3.63731C10.4617 3.81708 10.5 4.00975 10.5 4.20432V9.01876C10.5 9.21333 10.4617 9.406 10.3872 9.58577C10.3128 9.76553 10.2036 9.92887 10.0661 10.0665C9.92848 10.204 9.76515 10.3132 9.58539 10.3876C9.40564 10.4621 9.21298 10.5004 9.01841 10.5004H4.20419C4.00963 10.5004 3.81697 10.4621 3.63721 10.3876C3.45745 10.3132 3.29412 10.204 3.15654 10.0665C3.01897 9.92887 2.90983 9.76553 2.83538 9.58577C2.76092 9.406 2.7226 9.21333 2.7226 9.01876V4.20432Z' stroke='black' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M1.0622 8.13166C0.891648 8.03475 0.749793 7.89442 0.651049 7.72493C0.552304 7.55544 0.500189 7.36282 0.5 7.16666V1.61111C0.5 0.999999 0.999977 0.5 1.61106 0.5H7.16635C7.583 0.5 7.80966 0.713889 7.99965 1.05555' stroke='black' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg width='11' height='11' viewBox='0 0 11 11' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M2.7226 4.20432C2.7226 3.81136 2.87869 3.43449 3.15654 3.15663C3.4344 2.87876 3.81125 2.72266 4.20419 2.72266H9.01841C9.21298 2.72266 9.40564 2.76098 9.58539 2.83544C9.76515 2.9099 9.92848 3.01904 10.0661 3.15663C10.2036 3.29421 10.3128 3.45755 10.3872 3.63731C10.4617 3.81708 10.5 4.00975 10.5 4.20432V9.01876C10.5 9.21333 10.4617 9.406 10.3872 9.58577C10.3128 9.76553 10.2036 9.92887 10.0661 10.0665C9.92848 10.204 9.76515 10.3132 9.58539 10.3876C9.40564 10.4621 9.21298 10.5004 9.01841 10.5004H4.20419C4.00963 10.5004 3.81697 10.4621 3.63721 10.3876C3.45745 10.3132 3.29412 10.204 3.15654 10.0665C3.01897 9.92887 2.90983 9.76553 2.83538 9.58577C2.76092 9.406 2.7226 9.21333 2.7226 9.01876V4.20432Z' stroke='black' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M1.0622 8.13166C0.891648 8.03475 0.749793 7.89442 0.651049 7.72493C0.552304 7.55544 0.500189 7.36282 0.5 7.16666V1.61111C0.5 0.999999 0.999977 0.5 1.61106 0.5H7.16635C7.583 0.5 7.80966 0.713889 7.99965 1.05555' stroke='black' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
+:host ::ng-deep .ep-md-code__copy-icon:hover {
+  color: var(--ep-color-text);
+  border-color: var(--ep-color-accent);
+  background-color: var(--ep-color-accent-soft);
+}
+/*# sourceMappingURL=message-item.component.css.map */
+`] }]
   }], () => [{ type: ActionService }, { type: TimestampTickService }], { message: [{ type: Input, args: [{ isSignal: true, alias: "message", required: true }] }], isLast: [{ type: Input, args: [{ isSignal: true, alias: "isLast", required: false }] }], actionClick: [{ type: Output, args: ["actionClick"] }], onHostClick: [{
     type: HostListener,
     args: ["click", ["$event"]]
@@ -96377,7 +97804,7 @@ _ChatBodyComponent.\u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ typ
     \u0275\u0275advance(2);
     \u0275\u0275conditional(ctx.messages().length === 0 && !ctx.isTyping() ? 2 : 3);
   }
-}, dependencies: [MessageItemComponent, TypingIndicatorComponent, AutoScrollDirective], styles: ["\n\n[_nghost-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  flex: 1 1 auto;\n  min-height: 0;\n  overflow: hidden;\n}\n.chat-body[_ngcontent-%COMP%] {\n  position: relative;\n  flex: 1 1 auto;\n  min-height: 0;\n  background: var(--ep-color-surface);\n  display: flex;\n  flex-direction: column;\n  overflow-y: auto;\n}\n.chat-body--empty[_ngcontent-%COMP%] {\n  overflow-y: hidden;\n}\n.chat-body__upper-gradient-line[_ngcontent-%COMP%] {\n  position: sticky;\n  top: 0;\n  left: 0;\n  right: 0;\n  z-index: 100;\n  pointer-events: none;\n  display: flex;\n  justify-content: center;\n  align-items: flex-start;\n  padding: 4px;\n  transition: transform 0.3s ease, visibility 0s linear 0.3s;\n  transform: translateY(-100%);\n  visibility: hidden;\n}\n.chat-body__upper-gradient-line.visible[_ngcontent-%COMP%] {\n  transform: translateY(0);\n  visibility: visible;\n  transition: transform 0.3s ease, visibility 0s linear 0s;\n}\n.chat-body__upper-date[_ngcontent-%COMP%] {\n  font-size: 13px;\n  text-align: center;\n  color: var(--ep-color-text-muted);\n  padding: 4px 8px;\n  border-radius: 4px;\n  -webkit-backdrop-filter: blur(12px) saturate(180%);\n  backdrop-filter: blur(12px) saturate(180%);\n  border: 1px solid var(--ep-color-border);\n  opacity: 0;\n  transform: translateY(-10px);\n  transition: opacity 0.25s ease, transform 0.3s ease;\n  white-space: nowrap;\n}\n.chat-body__upper-date.visible[_ngcontent-%COMP%] {\n  opacity: 1;\n  transform: translateY(0);\n  transition: opacity 0.2s ease 0.1s, transform 0.2s ease 0.1s;\n}\n.chat-body__messages[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  gap: 12px;\n  flex: 1 0 auto;\n}\n.chat-body__typing[_ngcontent-%COMP%] {\n  display: flex;\n  gap: 12px;\n  align-items: flex-start;\n  padding: 0 20px;\n}\n.chat-body__spacer[_ngcontent-%COMP%] {\n  flex-shrink: 0;\n  min-height: 0;\n}\n.chat-body__empty[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  flex: 1;\n  padding: 40px 32px;\n  text-align: center;\n  gap: 8px;\n}\n.chat-body__empty-icon[_ngcontent-%COMP%] {\n  width: 60px;\n  height: 60px;\n  margin-bottom: 4px;\n}\n.chat-body__empty-title[_ngcontent-%COMP%] {\n  font-size: 18px;\n  font-weight: 600;\n  color: var(--ep-color-text);\n  line-height: 1.4;\n}\n.chat-body__empty-subtitle[_ngcontent-%COMP%] {\n  font-size: 12px;\n  font-weight: 400;\n  color: var(--ep-color-text-muted);\n  line-height: 1.5;\n  max-width: 320px;\n}\n/*# sourceMappingURL=chat-body.component.css.map */"], changeDetection: 0 });
+}, dependencies: [MessageItemComponent, TypingIndicatorComponent, AutoScrollDirective], styles: ["\n\n[_nghost-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  flex: 1 1 auto;\n  min-height: 0;\n  overflow: hidden;\n}\n.chat-body[_ngcontent-%COMP%] {\n  position: relative;\n  flex: 1 1 auto;\n  min-height: 0;\n  background: var(--ep-color-surface);\n  display: flex;\n  flex-direction: column;\n  overflow-y: auto;\n}\n.chat-body--empty[_ngcontent-%COMP%] {\n  overflow-y: hidden;\n}\n.chat-body__upper-gradient-line[_ngcontent-%COMP%] {\n  position: sticky;\n  top: 0;\n  left: 0;\n  right: 0;\n  z-index: 100;\n  pointer-events: none;\n  display: flex;\n  justify-content: center;\n  align-items: flex-start;\n  padding: 4px;\n  transition: transform 0.3s ease, visibility 0s linear 0.3s;\n  transform: translateY(-100%);\n  visibility: hidden;\n}\n.chat-body__upper-gradient-line.visible[_ngcontent-%COMP%] {\n  transform: translateY(0);\n  visibility: visible;\n  transition: transform 0.3s ease, visibility 0s linear 0s;\n}\n.chat-body__upper-date[_ngcontent-%COMP%] {\n  font-size: 12px;\n  text-align: center;\n  color: var(--ep-color-text-muted);\n  padding: 4px 8px;\n  border-radius: 4px;\n  -webkit-backdrop-filter: blur(12px) saturate(180%);\n  backdrop-filter: blur(12px) saturate(180%);\n  border: 1px solid var(--ep-color-border);\n  opacity: 0;\n  transform: translateY(-10px);\n  transition: opacity 0.25s ease, transform 0.3s ease;\n  white-space: nowrap;\n}\n.chat-body__upper-date.visible[_ngcontent-%COMP%] {\n  opacity: 1;\n  transform: translateY(0);\n  transition: opacity 0.2s ease 0.1s, transform 0.2s ease 0.1s;\n}\n.chat-body__messages[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  gap: 12px;\n  flex: 1 0 auto;\n}\n.chat-body__typing[_ngcontent-%COMP%] {\n  display: flex;\n  gap: 12px;\n  align-items: flex-start;\n  padding: 0 20px;\n}\n.chat-body__spacer[_ngcontent-%COMP%] {\n  flex-shrink: 0;\n  min-height: 0;\n}\n.chat-body__empty[_ngcontent-%COMP%] {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  flex: 1;\n  padding: 40px 32px;\n  text-align: center;\n  gap: 8px;\n}\n.chat-body__empty-icon[_ngcontent-%COMP%] {\n  width: 60px;\n  height: 60px;\n  margin-bottom: 4px;\n}\n.chat-body__empty-title[_ngcontent-%COMP%] {\n  font-size: 18px;\n  font-weight: 600;\n  color: var(--ep-color-text);\n  line-height: 1.4;\n}\n.chat-body__empty-subtitle[_ngcontent-%COMP%] {\n  font-size: 12px;\n  font-weight: 400;\n  color: var(--ep-color-text-muted);\n  line-height: 1.5;\n  max-width: 320px;\n}\n/*# sourceMappingURL=chat-body.component.css.map */"], changeDetection: 0 });
 var ChatBodyComponent = _ChatBodyComponent;
 (() => {
   (typeof ngDevMode === "undefined" || ngDevMode) && setClassMetadata(ChatBodyComponent, [{
@@ -96427,7 +97854,7 @@ var ChatBodyComponent = _ChatBodyComponent;
     </div>
   }
 </div>
-`, styles: ["/* src/app/components/chat-body/chat-body.component.scss */\n:host {\n  display: flex;\n  flex-direction: column;\n  flex: 1 1 auto;\n  min-height: 0;\n  overflow: hidden;\n}\n.chat-body {\n  position: relative;\n  flex: 1 1 auto;\n  min-height: 0;\n  background: var(--ep-color-surface);\n  display: flex;\n  flex-direction: column;\n  overflow-y: auto;\n}\n.chat-body--empty {\n  overflow-y: hidden;\n}\n.chat-body__upper-gradient-line {\n  position: sticky;\n  top: 0;\n  left: 0;\n  right: 0;\n  z-index: 100;\n  pointer-events: none;\n  display: flex;\n  justify-content: center;\n  align-items: flex-start;\n  padding: 4px;\n  transition: transform 0.3s ease, visibility 0s linear 0.3s;\n  transform: translateY(-100%);\n  visibility: hidden;\n}\n.chat-body__upper-gradient-line.visible {\n  transform: translateY(0);\n  visibility: visible;\n  transition: transform 0.3s ease, visibility 0s linear 0s;\n}\n.chat-body__upper-date {\n  font-size: 13px;\n  text-align: center;\n  color: var(--ep-color-text-muted);\n  padding: 4px 8px;\n  border-radius: 4px;\n  -webkit-backdrop-filter: blur(12px) saturate(180%);\n  backdrop-filter: blur(12px) saturate(180%);\n  border: 1px solid var(--ep-color-border);\n  opacity: 0;\n  transform: translateY(-10px);\n  transition: opacity 0.25s ease, transform 0.3s ease;\n  white-space: nowrap;\n}\n.chat-body__upper-date.visible {\n  opacity: 1;\n  transform: translateY(0);\n  transition: opacity 0.2s ease 0.1s, transform 0.2s ease 0.1s;\n}\n.chat-body__messages {\n  display: flex;\n  flex-direction: column;\n  gap: 12px;\n  flex: 1 0 auto;\n}\n.chat-body__typing {\n  display: flex;\n  gap: 12px;\n  align-items: flex-start;\n  padding: 0 20px;\n}\n.chat-body__spacer {\n  flex-shrink: 0;\n  min-height: 0;\n}\n.chat-body__empty {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  flex: 1;\n  padding: 40px 32px;\n  text-align: center;\n  gap: 8px;\n}\n.chat-body__empty-icon {\n  width: 60px;\n  height: 60px;\n  margin-bottom: 4px;\n}\n.chat-body__empty-title {\n  font-size: 18px;\n  font-weight: 600;\n  color: var(--ep-color-text);\n  line-height: 1.4;\n}\n.chat-body__empty-subtitle {\n  font-size: 12px;\n  font-weight: 400;\n  color: var(--ep-color-text-muted);\n  line-height: 1.5;\n  max-width: 320px;\n}\n/*# sourceMappingURL=chat-body.component.css.map */\n"] }]
+`, styles: ["/* src/app/components/chat-body/chat-body.component.scss */\n:host {\n  display: flex;\n  flex-direction: column;\n  flex: 1 1 auto;\n  min-height: 0;\n  overflow: hidden;\n}\n.chat-body {\n  position: relative;\n  flex: 1 1 auto;\n  min-height: 0;\n  background: var(--ep-color-surface);\n  display: flex;\n  flex-direction: column;\n  overflow-y: auto;\n}\n.chat-body--empty {\n  overflow-y: hidden;\n}\n.chat-body__upper-gradient-line {\n  position: sticky;\n  top: 0;\n  left: 0;\n  right: 0;\n  z-index: 100;\n  pointer-events: none;\n  display: flex;\n  justify-content: center;\n  align-items: flex-start;\n  padding: 4px;\n  transition: transform 0.3s ease, visibility 0s linear 0.3s;\n  transform: translateY(-100%);\n  visibility: hidden;\n}\n.chat-body__upper-gradient-line.visible {\n  transform: translateY(0);\n  visibility: visible;\n  transition: transform 0.3s ease, visibility 0s linear 0s;\n}\n.chat-body__upper-date {\n  font-size: 12px;\n  text-align: center;\n  color: var(--ep-color-text-muted);\n  padding: 4px 8px;\n  border-radius: 4px;\n  -webkit-backdrop-filter: blur(12px) saturate(180%);\n  backdrop-filter: blur(12px) saturate(180%);\n  border: 1px solid var(--ep-color-border);\n  opacity: 0;\n  transform: translateY(-10px);\n  transition: opacity 0.25s ease, transform 0.3s ease;\n  white-space: nowrap;\n}\n.chat-body__upper-date.visible {\n  opacity: 1;\n  transform: translateY(0);\n  transition: opacity 0.2s ease 0.1s, transform 0.2s ease 0.1s;\n}\n.chat-body__messages {\n  display: flex;\n  flex-direction: column;\n  gap: 12px;\n  flex: 1 0 auto;\n}\n.chat-body__typing {\n  display: flex;\n  gap: 12px;\n  align-items: flex-start;\n  padding: 0 20px;\n}\n.chat-body__spacer {\n  flex-shrink: 0;\n  min-height: 0;\n}\n.chat-body__empty {\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  flex: 1;\n  padding: 40px 32px;\n  text-align: center;\n  gap: 8px;\n}\n.chat-body__empty-icon {\n  width: 60px;\n  height: 60px;\n  margin-bottom: 4px;\n}\n.chat-body__empty-title {\n  font-size: 18px;\n  font-weight: 600;\n  color: var(--ep-color-text);\n  line-height: 1.4;\n}\n.chat-body__empty-subtitle {\n  font-size: 12px;\n  font-weight: 400;\n  color: var(--ep-color-text-muted);\n  line-height: 1.5;\n  max-width: 320px;\n}\n/*# sourceMappingURL=chat-body.component.css.map */\n"] }]
   }], () => [], { messages: [{ type: Input, args: [{ isSignal: true, alias: "messages", required: false }] }], isTyping: [{ type: Input, args: [{ isSignal: true, alias: "isTyping", required: false }] }], scrollMode: [{ type: Input, args: [{ isSignal: true, alias: "scrollMode", required: false }] }], actionClick: [{ type: Output, args: ["actionClick"] }], bodyElement: [{
     type: ViewChild,
     args: ["bodyElement"]
@@ -101996,7 +103423,7 @@ function markedOptionsFactory() {
                     tabindex="0"
                     aria-label="Copy code"
                     title="Copy code"
-                    >\u29C9</span>
+                    ></span>
                 </div>
                 <pre><code id="${codeId}" class="language-${language}">${escapedCode}</code></pre>
                 </div>

@@ -146,7 +146,10 @@
     .body {
         flex: 1;
         padding: 16px;
-        transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+        transition:
+            max-height 0.3s ease,
+            opacity 0.3s ease,
+            padding 0.3s ease;
         opacity: 1;
         visibility: visible;
 
@@ -210,10 +213,7 @@
                 transition: background-color 0.2s ease;
 
                 &:hover {
-                    background-color: var(
-                        --gray-850,
-                        rgba(255, 255, 255, 0.05)
-                    );
+                    background-color: var(--gray-850, rgba(255, 255, 255, 0.05));
                 }
 
                 .icon {
@@ -230,7 +230,9 @@
                 overflow: hidden;
                 max-height: 0;
                 opacity: 0;
-                transition: max-height 0.3s ease, opacity 0.3s ease,
+                transition:
+                    max-height 0.3s ease,
+                    opacity 0.3s ease,
                     margin-top 0.3s ease;
 
                 &.expanded {
@@ -263,10 +265,7 @@
                     gap: 8px;
 
                     &:hover {
-                        background-color: var(
-                            --gray-850,
-                            rgba(255, 255, 255, 0.05)
-                        );
+                        background-color: var(--gray-850, rgba(255, 255, 255, 0.05));
                     }
 
                     .tool-count {
@@ -388,7 +387,7 @@
     }
 }
 
-:host([size="small"]) {
+:host([size='small']) {
     .agent-card {
         transition: height 0.3s ease-in-out;
 
@@ -406,13 +405,16 @@
             opacity: 0;
             padding: 0 16px;
             visibility: hidden;
-            transition: max-height 0.3s ease, opacity 0.2s ease,
-                padding 0.3s ease, visibility 0s 0.3s;
+            transition:
+                max-height 0.3s ease,
+                opacity 0.2s ease,
+                padding 0.3s ease,
+                visibility 0s 0.3s;
         }
     }
 }
 
-:host([size="medium"]) {
+:host([size='medium']) {
     .agent-card {
         transition: height 0.3s ease-in-out;
 
@@ -425,7 +427,7 @@
     }
 }
 
-:host([size="large"]) {
+:host([size='large']) {
     .agent-card {
         transition: height 0.3s ease-in-out;
 

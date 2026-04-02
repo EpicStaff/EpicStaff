@@ -25,9 +25,7 @@ export const EMPTY_VALIDATION_RESULT: PersistentVariablesValidationResult = {
     numericSegmentPathErrors: [],
 };
 
-export function hasValidationErrors(
-    result: PersistentVariablesValidationResult
-): boolean {
+export function hasValidationErrors(result: PersistentVariablesValidationResult): boolean {
     return (
         result.pathValidationErrors.length > 0 ||
         result.crossArrayDuplicatePaths.length > 0 ||
@@ -36,33 +34,23 @@ export function hasValidationErrors(
     );
 }
 
-export function formatValidationMessages(
-    result: PersistentVariablesValidationResult
-): string[] {
+export function formatValidationMessages(result: PersistentVariablesValidationResult): string[] {
     const messages: string[] = [];
 
     for (const path of result.pathValidationErrors) {
-        messages.push(
-            `Path ${path} in persistent_variables does not exist in variables`
-        );
+        messages.push(`Path ${path} in persistent_variables does not exist in variables`);
     }
 
     for (const path of result.crossArrayDuplicatePaths) {
-        messages.push(
-            `Path ${path} cannot be in both user and organization`
-        );
+        messages.push(`Path ${path} cannot be in both user and organization`);
     }
 
     for (const item of result.withinArrayDuplicatePaths) {
-        messages.push(
-            `Path ${item.path} is duplicated in ${item.array} array`
-        );
+        messages.push(`Path ${item.path} is duplicated in ${item.array} array`);
     }
 
     for (const path of result.numericSegmentPathErrors) {
-        messages.push(
-            `Path ${path}: use object properties instead of array indices (e.g. .0)`
-        );
+        messages.push(`Path ${path}: use object properties instead of array indices (e.g. .0)`);
     }
 
     return messages;
@@ -108,19 +96,12 @@ export function findDuplicatesWithinArray(arr: unknown): string[] {
 /**
  * Checks if a path exists in the object using path parts (without "context." prefix).
  */
-export function pathExistsInObject(
-    obj: unknown,
-    pathParts: string[]
-): boolean {
+export function pathExistsInObject(obj: unknown, pathParts: string[]): boolean {
     if (obj === null || obj === undefined) return false;
     if (pathParts.length === 0) return true;
     let current: unknown = obj;
     for (const part of pathParts) {
-        if (
-            current === null ||
-            current === undefined ||
-            typeof current !== 'object'
-        ) {
+        if (current === null || current === undefined || typeof current !== 'object') {
             return false;
         }
         if (!Object.prototype.hasOwnProperty.call(current, part)) {
@@ -142,9 +123,7 @@ function hasNumericSegment(path: string): boolean {
  * @param json - JSON string of domain variables (variables + persistent_variables)
  * @returns Validation result with all error categories
  */
-export function validatePersistentVariables(
-    json: string
-): PersistentVariablesValidationResult {
+export function validatePersistentVariables(json: string): PersistentVariablesValidationResult {
     const result: PersistentVariablesValidationResult = {
         pathValidationErrors: [],
         crossArrayDuplicatePaths: [],

@@ -1,23 +1,19 @@
-import { Component, OnInit, ViewChild, HostListener  } from '@angular/core';
-import { Dialog, DialogRef } from '@angular/cdk/dialog'; // Import from CDK instead of Material
-import { PageHeaderComponent } from '../../shared/components/header/page-header.component';
-import { FullAgent, FullAgentService } from '../../features/staff/services/full-agent.service';
-import { CreateAgentFormComponent } from '../../shared/components/create-agent-form-dialog/create-agent-form-dialog.component';
-import { AgentsTableComponent } from './components/agents-table/agents-table.component';
-import { ButtonComponent } from '../../shared/components/buttons/button/button.component';
-import { TabButtonComponent } from '../../shared/components/tab-button/tab-button.component';
-import { FiltersListComponent } from '../../shared/components/filters-list/filters-list.component';
-import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
-import { NgIf } from '@angular/common';
-import { CreateAgentRequest, GetAgentRequest } from '../../features/staff/models/agent.model';
-import { SaveWithIndicatorComponent } from '../../shared/components/save-with-indicator/save-with-indicator.component';
-import { UnsavedIndicatorComponent } from '../../shared/components/unsaved-indicator/unsaved-indicator.component';
+import { Dialog } from '@angular/cdk/dialog'; // Import from CDK instead of Material
+import { Component, HostListener, ViewChild } from '@angular/core';
 import { Observable, of } from 'rxjs';
-import { finalize, catchError, map, tap } from 'rxjs/operators';
-import { UnsavedChangesDialogService } from '../../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
+import { catchError, finalize, map, tap } from 'rxjs/operators';
+
 import { CanComponentDeactivate } from '../../core/guards/unsaved-changes.guard';
+import { FullAgent, FullAgentService } from '../../features/staff/services/full-agent.service';
 import { ToastService } from '../../services/notifications/toast.service';
+import { ButtonComponent } from '../../shared/components/buttons/button/button.component';
+import { CreateAgentFormComponent } from '../../shared/components/create-agent-form-dialog/create-agent-form-dialog.component';
 import { AgentDialogResult } from '../../shared/components/create-agent-form-dialog/create-agent-form-dialog.component';
+import { SaveWithIndicatorComponent } from '../../shared/components/save-with-indicator/save-with-indicator.component';
+import { UnsavedChangesDialogService } from '../../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
+import { UnsavedIndicatorComponent } from '../../shared/components/unsaved-indicator/unsaved-indicator.component';
+import { HideInlineSubtitleOnOverflowDirective } from '../../shared/directives/hide-inline-subtitle-on-overflow.directive';
+import { AgentsTableComponent } from './components/agents-table/agents-table.component';
 
 @Component({
     selector: 'app-staff-page',
@@ -25,10 +21,9 @@ import { AgentDialogResult } from '../../shared/components/create-agent-form-dia
     imports: [
         AgentsTableComponent,
         ButtonComponent,
-        LoadingSpinnerComponent,
-        NgIf,
         SaveWithIndicatorComponent,
-        UnsavedIndicatorComponent
+        UnsavedIndicatorComponent,
+        HideInlineSubtitleOnOverflowDirective,
     ],
     templateUrl: './staff-page.component.html',
     styleUrls: ['./staff-page.component.scss'],
@@ -41,24 +36,21 @@ export class StaffPageComponent implements CanComponentDeactivate {
         private dialog: Dialog,
         private fullAgentService: FullAgentService,
         private unsavedChangesDialog: UnsavedChangesDialogService,
-        private toastService: ToastService,
+        private toastService: ToastService
     ) {}
 
     @ViewChild(AgentsTableComponent) private agentsTable?: AgentsTableComponent;
 
     openCreateAgentDialog(): void {
-        const dialogRef = this.dialog.open<AgentDialogResult>(
-            CreateAgentFormComponent,
-            {
-                maxWidth: '95vw',
-                maxHeight: '90vh',
-                autoFocus: true,
-                data: {
-                    toolConfigs: [],
-                    toolsData: [],
-                },
-            }
-        );
+        const dialogRef = this.dialog.open<AgentDialogResult>(CreateAgentFormComponent, {
+            maxWidth: '95vw',
+            maxHeight: '90vh',
+            autoFocus: true,
+            data: {
+                toolConfigs: [],
+                toolsData: [],
+            },
+        });
 
         dialogRef.closed.subscribe((result: AgentDialogResult | undefined) => {
             if (!result || !this.agentsTable) return;
@@ -84,7 +76,7 @@ export class StaffPageComponent implements CanComponentDeactivate {
             this.toastService.warning('Please fill in all required fields.');
             return;
         }
-        
+
         this.isSaving = true;
 
         this.agentsTable
@@ -109,11 +101,11 @@ export class StaffPageComponent implements CanComponentDeactivate {
                 const success = !this.agentsTable!.hasPendingChanges;
                 if (success) {
                     this.toastService.success('Agents saved successfully');
-                }   
+                }
                 return success;
             }),
             catchError(() => of(false)),
-            finalize(() => (this.isSaving = false)),
+            finalize(() => (this.isSaving = false))
         );
     }
 
@@ -137,12 +129,9 @@ export class StaffPageComponent implements CanComponentDeactivate {
                         this.hasUnsavedChanges = false;
                     }
                 }),
-                map((result) => result === 'save' || result === 'dont-save'),
+                map((result) => result === 'save' || result === 'dont-save')
             );
     }
-
-    
-
 
     @HostListener('window:beforeunload', ['$event'])
     public onBeforeUnload(event: BeforeUnloadEvent): void {

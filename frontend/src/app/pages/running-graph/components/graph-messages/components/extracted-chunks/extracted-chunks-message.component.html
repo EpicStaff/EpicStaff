@@ -1,12 +1,7 @@
 <div class="extracted-chunks-container" *ngIf="data">
     <div class="header" (click)="toggle()">
         <div class="play-arrow">
-            <i
-                class="ti"
-                [ngClass]="
-              isExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'
-            "
-            ></i>
+            <i class="ti" [ngClass]="isExpanded ? 'ti-caret-down-filled' : 'ti-caret-right-filled'"></i>
         </div>
         <div class="icon-container">
             <i class="ti ti-database"></i>
@@ -16,8 +11,8 @@
             <p class="subtitle">
                 Query:
                 <span class="query">
-              {{ data.knowledge_query || '—' }}
-            </span>
+                    {{ data.knowledge_query || '—' }}
+                </span>
             </p>
         </div>
         <div class="meta">
@@ -25,11 +20,7 @@
         </div>
     </div>
 
-    <div
-        class="content"
-        [class.collapsed]="!isExpanded"
-        [@expandCollapse]="isExpanded ? 'expanded' : 'collapsed'"
-    >
+    <div class="content" [class.collapsed]="!isExpanded" [@expandCollapse]="isExpanded ? 'expanded' : 'collapsed'">
         <div class="stats">
             <div class="stat">
                 <span class="label">Search limit</span>
@@ -42,24 +33,21 @@
             <div class="stat">
                 <span class="label">Similarity threshold</span>
                 <span class="value">
-              {{ data.rag_search_config.similarity_threshold | percent: '1.0-1' }}
-            </span>
+                    {{ data.rag_search_config.similarity_threshold | percent: '1.0-1' }}
+                </span>
             </div>
         </div>
 
         <div class="chunks">
-            <article
-                class="chunk-card"
-                *ngFor="let chunk of data.chunks; trackBy: trackByOrder"
-            >
+            <article class="chunk-card" *ngFor="let chunk of data.chunks; trackBy: trackByOrder">
                 <div class="chunk-header">
                     <div class="chunk-order">#{{ chunk.chunk_order }}</div>
                     <div class="chunk-source" [title]="chunk.chunk_source">
                         {{ chunk.chunk_source || 'Unknown source' }}
                     </div>
                     <span class="similarity">
-                {{ chunk.chunk_similarity | percent: '1.0-2' }}
-              </span>
+                        {{ chunk.chunk_similarity | percent: '1.0-2' }}
+                    </span>
                 </div>
                 <pre class="chunk-text">{{ chunk.chunk_text }}</pre>
             </article>

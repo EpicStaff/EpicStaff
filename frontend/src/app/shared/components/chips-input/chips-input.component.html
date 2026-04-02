@@ -3,12 +3,7 @@
         @for (chip of selectedChips(); let i = $index; track $index) {
             <span class="chips__item">
                 {{ chip.name }}
-                <app-icon
-                    [icon]="'ui/close'"
-                    class="chips__item-remove"
-                    [size]="'1rem'"
-                    (click)="remove($event, i)"
-                />
+                <app-icon [icon]="'ui/close'" class="chips__item-remove" [size]="'1rem'" (click)="remove($event, i)" />
             </span>
         }
     </div>

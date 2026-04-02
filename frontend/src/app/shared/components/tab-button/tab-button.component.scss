@@ -1,30 +1,44 @@
 .tab-btn {
-  background: none;
-  border: none;
-  color: var(--color-text-secondary);
-  font-size: 1rem;
-  padding: 1rem 1.5rem 0.7rem 1.5rem;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: color 0.2s, border-bottom 0.2s;
-  text-decoration: none;
-  display: inline-block;
-  outline: none;
-
-  &:hover {
-    color: #ffffff;
-  }
-
-  &.active {
-    color: var(--color-text-primary);
-    border-bottom: 2px solid var(--accent-color);
-  }
-
-  &.disabled,
-  &:disabled {
-    color: #666;
-    cursor: not-allowed;
-    opacity: 0.6;
+    background: none;
+    border: none;
+    color: var(--color-text-secondary);
+    font-size: 1rem;
+    padding: 1rem 1.5rem 0.7rem 1.5rem;
+    cursor: pointer;
     border-bottom: 2px solid transparent;
-  }
+    transition:
+        color 0.2s,
+        border-bottom 0.2s;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    flex: 0 1 auto;
+    max-width: 100%;
+    outline: none;
+
+    &:hover {
+        color: #ffffff;
+    }
+
+    &.active {
+        color: var(--color-text-primary);
+        border-bottom: 2px solid var(--accent-color);
+    }
+
+    &.disabled,
+    &:disabled {
+        color: #666;
+        cursor: not-allowed;
+        opacity: 0.6;
+        border-bottom: 2px solid transparent;
+    }
+}
+
+.tab-btn__label {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }

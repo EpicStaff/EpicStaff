@@ -370,11 +370,13 @@
         border-radius: 8px;
         padding: 0.5rem;
         margin: -0.5rem;
-        transition: background-color 0.3s ease, box-shadow 0.3s ease;
+        transition:
+            background-color 0.3s ease,
+            box-shadow 0.3s ease;
 
         &.highlighted {
             background-color: rgba(104, 95, 255, 0.06);
-            box-shadow: 0 0 8px 1px rgba(104, 95, 255, 0.25);;
+            box-shadow: 0 0 8px 1px rgba(104, 95, 255, 0.25);
         }
 
         .entity-type-title {

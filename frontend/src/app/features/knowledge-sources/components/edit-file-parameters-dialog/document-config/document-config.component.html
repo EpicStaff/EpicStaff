@@ -15,7 +15,7 @@
             <app-select
                 [selectedValue]="selectedStrategy()"
                 [items]="chunkStrategySelectItems"
-                (changed)="selectedStrategy.set($event)"
+                (changed)="onSelectedStrategyChange($event)"
             />
         </div>
     </div>

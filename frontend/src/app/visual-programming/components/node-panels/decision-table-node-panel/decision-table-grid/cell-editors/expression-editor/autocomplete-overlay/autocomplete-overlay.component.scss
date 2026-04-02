@@ -5,7 +5,7 @@
     border: 1px solid var(--color-divider-subtle, #333);
     border-radius: 6px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    position: relative; 
+    position: relative;
 }
 
 .tooltip-wrapper {
@@ -13,14 +13,14 @@
     top: 0;
     z-index: 1200;
     pointer-events: none;
-    
+
     &.position-right {
         left: 100%;
         right: auto;
         margin-left: 8px;
         margin-right: 0;
     }
-    
+
     &.position-left {
         right: 100%;
         left: auto;
@@ -74,7 +74,7 @@
         padding: 2px 4px;
         border-radius: 3px;
         transition: all 0.15s ease;
-        
+
         &:hover {
             color: #fff;
             background: rgba(255, 255, 255, 0.1);
@@ -145,7 +145,7 @@
                 color: #9ca3af;
             }
         }
-        
+
         .item-content {
             display: flex;
             align-items: center;
@@ -161,7 +161,7 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        
+
         .item-type {
             font-size: 10px;
             color: #666;

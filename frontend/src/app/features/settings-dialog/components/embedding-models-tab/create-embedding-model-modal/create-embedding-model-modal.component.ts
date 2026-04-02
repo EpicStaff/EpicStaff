@@ -1,18 +1,18 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
-import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { finalize } from 'rxjs/operators';
 
+import { ToastService } from '../../../../../services/notifications/toast.service';
 import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
-import { CustomInputComponent } from '../../../../../shared/components/form-input/form-input.component';
 import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
 import { ToggleSwitchComponent } from '../../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
-import { LLM_Provider } from '../../../models/llm-provider.model';
+import { CustomInputComponent } from '../../../../../shared/components/form-input/form-input.component';
 import { EmbeddingModel } from '../../../models/embeddings/embedding.model';
+import { LLM_Provider } from '../../../models/llm-provider.model';
 import { EmbeddingModelsService } from '../../../services/embeddings/embeddings.service';
 import { getProviderIconPath } from '../../../utils/get-provider-icon';
-import { ToastService } from '../../../../../services/notifications/toast.service';
 
 export interface CreateEmbeddingModelDialogData {
     provider: LLM_Provider;
@@ -113,4 +113,3 @@ export class CreateEmbeddingModelModalComponent {
         return fallback;
     }
 }
-

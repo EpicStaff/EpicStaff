@@ -2,9 +2,7 @@
     <!-- info -->
     <div class="info__meta">
         <ul class="info__meta-list">
-            <h3 class="info__meta-title">
-                QUANTITATIVE PARAMETERS
-            </h3>
+            <h3 class="info__meta-title">QUANTITATIVE PARAMETERS</h3>
 
             <li class="info__meta-item">
                 <span class="info__meta-label">Number of files: </span>
@@ -13,34 +11,32 @@
 
             <li class="info__meta-item">
                 <span class="info__meta-label">File types: </span>
-                <span class="info__meta-value">{{documentTypes().join()}}</span>
+                <span class="info__meta-value">{{ documentTypes().join() }}</span>
             </li>
         </ul>
 
-<!--        <ul class="info__meta-list">-->
-<!--            <h3 class="info__meta-title">-->
-<!--                MEMORY CAPACITY-->
-<!--            </h3>-->
-<!--            <li class="info__meta-item">-->
-<!--                <span class="info__meta-label">Size of collection: </span>-->
-<!--                <span class="info__meta-value">60 KB</span>-->
-<!--            </li>-->
+        <!--        <ul class="info__meta-list">-->
+        <!--            <h3 class="info__meta-title">-->
+        <!--                MEMORY CAPACITY-->
+        <!--            </h3>-->
+        <!--            <li class="info__meta-item">-->
+        <!--                <span class="info__meta-label">Size of collection: </span>-->
+        <!--                <span class="info__meta-value">60 KB</span>-->
+        <!--            </li>-->
 
-<!--            <li class="info__meta-item">-->
-<!--                <span class="info__meta-label">Largest file: </span>-->
-<!--                <span class="info__meta-value">10 KB</span>-->
-<!--            </li>-->
+        <!--            <li class="info__meta-item">-->
+        <!--                <span class="info__meta-label">Largest file: </span>-->
+        <!--                <span class="info__meta-value">10 KB</span>-->
+        <!--            </li>-->
 
-<!--            <li class="info__meta-item">-->
-<!--                <span class="info__meta-label">Smallest file: </span>-->
-<!--                <span class="info__meta-value">1 KB</span>-->
-<!--            </li>-->
-<!--        </ul>-->
+        <!--            <li class="info__meta-item">-->
+        <!--                <span class="info__meta-label">Smallest file: </span>-->
+        <!--                <span class="info__meta-value">1 KB</span>-->
+        <!--            </li>-->
+        <!--        </ul>-->
 
         <ul class="info__meta-list">
-            <h3 class="info__meta-title">
-                TIME DATA
-            </h3>
+            <h3 class="info__meta-title">TIME DATA</h3>
             <li class="info__meta-item">
                 <span class="info__meta-label">Created: </span>
                 <span class="info__meta-value">{{ collection().created_at | date: 'dd MMM, yyyy' }}</span>
@@ -54,47 +50,47 @@
     </div>
 
     <!-- issues -->
-<!--    <div class="info__issues">-->
-<!--        <div class="info__issues-header">-->
-<!--            <span class="info__issues-title">-->
-<!--                Indexation issues ({{ 2 }})-->
-<!--            </span>-->
-<!--            <app-button mod="small" type="outline-secondary">-->
-<!--                Hide details-->
-<!--            </app-button>-->
-<!--        </div>-->
+    <!--    <div class="info__issues">-->
+    <!--        <div class="info__issues-header">-->
+    <!--            <span class="info__issues-title">-->
+    <!--                Indexation issues ({{ 2 }})-->
+    <!--            </span>-->
+    <!--            <app-button mod="small" type="outline-secondary">-->
+    <!--                Hide details-->
+    <!--            </app-button>-->
+    <!--        </div>-->
 
-<!--        <ul class="info__issues-list">-->
-<!--            <li class="info__issue">-->
-<!--                <div class="info__issue-header">-->
-<!--                    <div class="info__issue-file">-->
-<!--                        <app-icon-->
-<!--                            size="1rem"-->
-<!--                            icon="ui/document"-->
-<!--                        />-->
-<!--                        <span class="info__issue-file">test_1.pdf</span></div>-->
-<!--                    <span class="info__issue-type">Parsing issue</span>-->
-<!--                </div>-->
-<!--                <p class="info__issue-description">-->
-<!--                    Unable to recognize text from page 15. The file may be damaged or contain-->
-<!--                    non-standard encoding.-->
-<!--                </p>-->
-<!--            </li>-->
+    <!--        <ul class="info__issues-list">-->
+    <!--            <li class="info__issue">-->
+    <!--                <div class="info__issue-header">-->
+    <!--                    <div class="info__issue-file">-->
+    <!--                        <app-icon-->
+    <!--                            size="1rem"-->
+    <!--                            icon="ui/document"-->
+    <!--                        />-->
+    <!--                        <span class="info__issue-file">test_1.pdf</span></div>-->
+    <!--                    <span class="info__issue-type">Parsing issue</span>-->
+    <!--                </div>-->
+    <!--                <p class="info__issue-description">-->
+    <!--                    Unable to recognize text from page 15. The file may be damaged or contain-->
+    <!--                    non-standard encoding.-->
+    <!--                </p>-->
+    <!--            </li>-->
 
-<!--            <li class="info__issue">-->
-<!--                <div class="info__issue-header">-->
-<!--                    <div class="info__issue-file">-->
-<!--                        <app-icon-->
-<!--                            size="1rem"-->
-<!--                            icon="ui/document"-->
-<!--                        />-->
-<!--                        <span class="info__issue-file-name">test_2.pdf</span></div>-->
-<!--                    <span class="info__issue-type">Exceeded size</span>-->
-<!--                </div>-->
-<!--                <p class="info__issue-description">-->
-<!--                    Chunk size 1000 tokens exceeds model maximum (987)-->
-<!--                </p>-->
-<!--            </li>-->
-<!--        </ul>-->
-<!--    </div>-->
+    <!--            <li class="info__issue">-->
+    <!--                <div class="info__issue-header">-->
+    <!--                    <div class="info__issue-file">-->
+    <!--                        <app-icon-->
+    <!--                            size="1rem"-->
+    <!--                            icon="ui/document"-->
+    <!--                        />-->
+    <!--                        <span class="info__issue-file-name">test_2.pdf</span></div>-->
+    <!--                    <span class="info__issue-type">Exceeded size</span>-->
+    <!--                </div>-->
+    <!--                <p class="info__issue-description">-->
+    <!--                    Chunk size 1000 tokens exceeds model maximum (987)-->
+    <!--                </p>-->
+    <!--            </li>-->
+    <!--        </ul>-->
+    <!--    </div>-->
 </aside>

@@ -94,7 +94,13 @@
                 },
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "10kB",
+                  "maximumWarning": "15kB",
+                  "maximumError": "30kB"
+                },
+                {
+                  "type": "bundle",
+                  "name": "css-inline-fonts:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap",
+                  "maximumWarning": "15kB",
                   "maximumError": "30kB"
                 }
               ],

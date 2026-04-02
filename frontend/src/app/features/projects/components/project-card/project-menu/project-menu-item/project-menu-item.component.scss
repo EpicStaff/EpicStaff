@@ -1,26 +1,26 @@
 .menu-item {
-  display: flex;
-  align-items: center;
-  padding: 8px 12px;
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  border-radius: 6px;
-  margin: 0;
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border-radius: 6px;
+    margin: 0;
 
-  i {
-    margin-right: 10px;
-    font-size: 15px;
-  }
+    i {
+        margin-right: 10px;
+        font-size: 15px;
+    }
 
-  &:hover {
-    background: rgba(255, 255, 255, 0.06);
-    color: var(--color-text-primary);
-  }
+    &:hover {
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--color-text-primary);
+    }
 
-  &.delete:hover {
-    color: #ff6b6b;
-    background: rgba(255, 107, 107, 0.1);
-  }
+    &.delete:hover {
+        color: #ff6b6b;
+        background: rgba(255, 107, 107, 0.1);
+    }
 }

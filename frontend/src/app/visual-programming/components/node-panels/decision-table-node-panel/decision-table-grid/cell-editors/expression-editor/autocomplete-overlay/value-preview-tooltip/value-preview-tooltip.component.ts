@@ -46,7 +46,7 @@ export class ValuePreviewTooltipComponent {
     public formatJson(): string {
         try {
             return JSON.stringify(this.value(), null, 2);
-        } catch (e) {
+        } catch {
             return String(this.value());
         }
     }

@@ -47,8 +47,11 @@ export class RealtimeEventHandler {
      * @param {number|null} [timeout]
      * @returns {Promise<{[key: string]: any}|null>}
      */
-    waitForNext(eventName: string, timeout?: number | null): Promise<{
-        [key: string]: any;
+    waitForNext(
+        eventName: string,
+        timeout?: number | null
+    ): Promise<{
+        [key: string]: unknown;
     } | null>;
     /**
      * Executes all events in the order they were added, with .on() event handlers executing before .onNext() handlers
@@ -56,6 +59,6 @@ export class RealtimeEventHandler {
      * @param {any} event
      * @returns {true}
      */
-    dispatch(eventName: string, event: any): true;
+    dispatch(eventName: string, event: unknown): true;
 }
 //# sourceMappingURL=event_handler.d.ts.map

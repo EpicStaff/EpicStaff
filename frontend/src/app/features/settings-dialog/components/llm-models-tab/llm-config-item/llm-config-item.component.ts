@@ -1,27 +1,16 @@
-import {
-    ChangeDetectionStrategy,
-    Component,
-    Input,
-    Output,
-    EventEmitter,
-} from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
+
 import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
-import { IconButtonComponent } from '../../../../../shared/components/buttons/icon-button/icon-button.component';
 import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
+import { IconButtonComponent } from '../../../../../shared/components/buttons/icon-button/icon-button.component';
 import { FullLLMConfig } from '../../../services/llms/full-llm-config.service';
 import { getProviderIconPath } from '../../../utils/get-provider-icon';
-import { ToggleSwitchComponent } from '../../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 
 @Component({
     selector: 'app-llm-config-item',
     standalone: true,
-    imports: [
-        CommonModule,
-        AppIconComponent,
-        IconButtonComponent,
-        ButtonComponent,
-    ],
+    imports: [CommonModule, AppIconComponent, IconButtonComponent, ButtonComponent],
     templateUrl: './llm-config-item.component.html',
     styleUrls: ['./llm-config-item.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -1,4 +1,5 @@
 import { Component, Input } from '@angular/core';
+
 import { StartNodeModel } from '../../../core/models/node.model';
 
 @Component({

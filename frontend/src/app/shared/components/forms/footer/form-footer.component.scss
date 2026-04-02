@@ -1,69 +1,69 @@
 .bottom {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  padding: 1.25rem 1.5rem;
-  gap: 1rem;
-  border-top: 1px solid var(--gray-800);
-  height: 75px;
-
-  .close {
-    color: var(--gray-300);
-    border: 1px solid var(--gray-700);
-    background-color: var(--gray-850);
-    padding: 0.625rem 1.25rem;
-    border-radius: 8px;
-    font-weight: 500;
-    font-size: 0.9375rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .close:hover {
-    background-color: var(--gray-800);
-    color: var(--gray-100);
-  }
-
-  .submit {
     display: flex;
-    gap: 8px;
+    justify-content: flex-end;
     align-items: center;
-    background-color: var(--accent-color);
-    color: white;
-    font-weight: 500;
-    border-radius: 8px;
-    padding: 0.625rem 1.25rem;
-    font-size: 0.9375rem;
-    cursor: pointer;
-    border: none;
-    transition: all 0.2s ease;
-  }
+    padding: 1.25rem 1.5rem;
+    gap: 1rem;
+    border-top: 1px solid var(--gray-800);
+    height: 75px;
 
-  .submit:hover {
-    background-color: #7a70ff;
-  }
+    .close {
+        color: var(--gray-300);
+        border: 1px solid var(--gray-700);
+        background-color: var(--gray-850);
+        padding: 0.625rem 1.25rem;
+        border-radius: 8px;
+        font-weight: 500;
+        font-size: 0.9375rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
 
-  .submit:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    background-color: var(--accent-color);
-  }
+    .close:hover {
+        background-color: var(--gray-800);
+        color: var(--gray-100);
+    }
+
+    .submit {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        background-color: var(--accent-color);
+        color: white;
+        font-weight: 500;
+        border-radius: 8px;
+        padding: 0.625rem 1.25rem;
+        font-size: 0.9375rem;
+        cursor: pointer;
+        border: none;
+        transition: all 0.2s ease;
+    }
+
+    .submit:hover {
+        background-color: #7a70ff;
+    }
+
+    .submit:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        background-color: var(--accent-color);
+    }
 }
 
 .spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-radius: 50%;
-  border-top-color: white;
-  animation: spin 0.8s linear infinite;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: white;
+    animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
 }

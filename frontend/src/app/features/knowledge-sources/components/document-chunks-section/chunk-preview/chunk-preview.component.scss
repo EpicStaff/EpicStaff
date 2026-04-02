@@ -40,12 +40,12 @@
 
         &--even {
             color: var(--color-ks-status-blue);
-            background-color: rgb(32,40,43);
+            background-color: rgb(32, 40, 43);
         }
 
         &--odd {
             color: var(--color-ks-status-completed);
-            background-color: rgb(34,34,43);
+            background-color: rgb(34, 34, 43);
         }
     }
 
@@ -116,7 +116,8 @@
 }
 
 @keyframes blink {
-    0%, 100% {
+    0%,
+    100% {
         opacity: 1;
     }
     50% {
@@ -147,7 +148,8 @@
 }
 
 @keyframes bounce {
-    0%, 100% {
+    0%,
+    100% {
         transform: translateY(0);
     }
     25% {

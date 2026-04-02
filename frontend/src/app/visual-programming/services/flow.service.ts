@@ -98,8 +98,6 @@ export class FlowService {
             connections: [...flow.connections, conn],
         }));
 
-        console.log('New connection added to the flow state:', conn);
-
         this.updateDecisionTableNextNodeFromConnection(conn);
     }
     public addConnectionsInBatch(connections: ConnectionModel[]): void {
@@ -111,8 +109,6 @@ export class FlowService {
             ...flow,
             connections: [...flow.connections, ...connections],
         }));
-
-        console.log(`Batch added ${connections.length} connections`);
     }
     public removeConnectionsInBatch(connectionIds: string[]): void {
         if (!connectionIds || connectionIds.length === 0) {
@@ -123,8 +119,6 @@ export class FlowService {
             ...flow,
             connections: flow.connections.filter((conn) => !connectionIds.includes(conn.id)),
         }));
-
-        console.log(`Batch removed ${connectionIds.length} connections`);
 
         const remainingConnections = this.connections();
         connectionIds.forEach((connectionId) => {
@@ -225,9 +219,6 @@ export class FlowService {
                 // Otherwise return the existing node unchanged
                 return existingNode;
             });
-
-            // Log the batch update
-            console.log(`Batch updated ${nodes.length} nodes`);
 
             // Return updated flow state
             return {
@@ -332,9 +323,6 @@ export class FlowService {
                 }
                 return existingConn;
             });
-
-            // Log the batch update
-            console.log(`Batch updated ${connections.length} connections`);
 
             // Return updated flow state
             return {
@@ -713,12 +701,7 @@ export class FlowService {
                     }
                 }
 
-                const updatedPorts = generatePortsForDecisionTableNode(
-                    sourceNode.id,
-                    updatedTable.condition_groups,
-                    !!updatedTable.default_next_node,
-                    !!updatedTable.next_error_node
-                );
+                const updatedPorts = generatePortsForDecisionTableNode(sourceNode.id, updatedTable.condition_groups);
 
                 decisionTableUpdates.set(sourceNode.id, {
                     table: updatedTable,

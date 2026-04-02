@@ -1,8 +1,9 @@
-<input type="checkbox"
-       [indeterminate]="indeterminate()"
-       [checked]="checked()"
-       [class]="mod()"
-       [class.variant-main-color]="variant() === 'mainColor'"
-       [disabled]="disabled()"
-       (change)="toggleCheckbox($event)"
+<input
+    type="checkbox"
+    [indeterminate]="indeterminate()"
+    [checked]="checked()"
+    [class]="mod()"
+    [class.variant-main-color]="variant() === 'mainColor'"
+    [disabled]="disabled()"
+    (change)="toggleCheckbox($event)"
 />

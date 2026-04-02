@@ -1,5 +1,5 @@
-import { CollectionDocument } from "./document.model";
-import { CollectionNaiveRag } from "./naive-rag.model";
+import { CollectionDocument } from './document.model';
+import { CollectionNaiveRag } from './naive-rag.model';
 
 export enum CreateCollectionStep {
     UPLOAD_FILES = 0,
@@ -12,22 +12,22 @@ export interface CreateCollectionDtoRequest {
 }
 
 export enum CollectionStatus {
-    EMPTY = "empty",
-    UPLOADING = "uploading",
-    COMPLETED = "completed",
-    WARNING = "warning",
-    FAILED = "failed",
+    EMPTY = 'empty',
+    UPLOADING = 'uploading',
+    COMPLETED = 'completed',
+    WARNING = 'warning',
+    FAILED = 'failed',
 }
 
 export interface CreateCollectionDtoResponse {
     collection_id: number;
     collection_name: string;
-    user_id: string,
-    status: CollectionStatus,
-    document_count: number,
-    rag_configurations: CollectionNaiveRag[],
-    created_at: string,
-    updated_at: string
+    user_id: string;
+    status: CollectionStatus;
+    document_count: number;
+    rag_configurations: CollectionNaiveRag[];
+    created_at: string;
+    updated_at: string;
 }
 
 export interface GetCollectionRequest {

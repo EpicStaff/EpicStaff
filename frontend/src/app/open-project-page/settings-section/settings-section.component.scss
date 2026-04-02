@@ -1,4 +1,4 @@
-@use "sass:color";
+@use 'sass:color';
 
 $accent-color: #685fff;
 $background-color: #1a181a;
@@ -79,7 +79,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
             }
 
             &:not(:last-child)::after {
-                content: "";
+                content: '';
                 position: absolute;
                 bottom: 0;
                 left: 1.5rem;
@@ -197,7 +197,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                         margin-bottom: 0.5rem;
                     }
 
-                    input[type="range"].gradient-slider {
+                    input[type='range'].gradient-slider {
                         -webkit-appearance: none;
                         appearance: none;
                         width: 100%;
@@ -224,7 +224,8 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                             margin-top: -6px; /* center the thumb on the track */
                             background: $accent-color;
                             border-radius: 50%;
-                            transition: transform 0.2s ease,
+                            transition:
+                                transform 0.2s ease,
                                 box-shadow 0.2s ease;
 
                             &:hover {
@@ -247,7 +248,8 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                             background: $text-color;
                             border: 2px solid $accent-color;
                             border-radius: 50%;
-                            transition: transform 0.2s ease,
+                            transition:
+                                transform 0.2s ease,
                                 box-shadow 0.2s ease;
 
                             &:hover {
@@ -288,12 +290,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                         transition: all 0.2s ease;
 
                         &.not-specified {
-                            border-color: rgba(
-                                255,
-                                165,
-                                0,
-                                0.3
-                            ); // Orange-ish border
+                            border-color: rgba(255, 165, 0, 0.3); // Orange-ish border
                             color: $muted-text-color;
                             font-style: italic;
                         }
@@ -309,7 +306,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                             box-shadow: 0 0 0 2px rgba($accent-color, 0.1);
                         }
 
-                        option[value="null"] {
+                        option[value='null'] {
                             color: $muted-text-color;
                             font-style: italic;
                         }
@@ -331,7 +328,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                     }
                 }
 
-                input[type="number"] {
+                input[type='number'] {
                     width: 120px;
                     padding: 0.6rem 1rem;
                     background: rgba(20, 20, 20, 0.4);

@@ -1,12 +1,12 @@
 <div class="slider-container">
-  <!-- <label [for]="label">{{ label }}: {{ formatValue() }}</label> -->
-  <input
-    type="range"
-    [id]="label"
-    [min]="min"
-    [max]="max"
-    [step]="step"
-    [(ngModel)]="value"
-    (change)="onValueChange($event)"
-  />
+    <!-- <label [for]="label">{{ label }}: {{ formatValue() }}</label> -->
+    <input
+        type="range"
+        [id]="label"
+        [min]="min"
+        [max]="max"
+        [step]="step"
+        [(ngModel)]="value"
+        (change)="onValueChange($event)"
+    />
 </div>

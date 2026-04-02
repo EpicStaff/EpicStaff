@@ -115,7 +115,7 @@ export class JsonEditorComponent implements OnChanges {
         try {
             JSON.parse(newValue);
             this.jsonIsValid = true;
-        } catch (e) {
+        } catch {
             this.jsonIsValid = false;
         }
 

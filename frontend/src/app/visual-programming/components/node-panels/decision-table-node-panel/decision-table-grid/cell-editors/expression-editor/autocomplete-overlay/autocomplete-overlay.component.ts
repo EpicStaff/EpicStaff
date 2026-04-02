@@ -1,21 +1,22 @@
+import { CommonModule } from '@angular/common';
 import {
-    Component,
     ChangeDetectionStrategy,
     ChangeDetectorRef,
+    Component,
+    computed,
+    effect,
     ElementRef,
     inject,
     output,
     signal,
-    computed,
-    effect,
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { ValuePreviewTooltipComponent } from './value-preview-tooltip/value-preview-tooltip.component';
 
 export interface AutocompleteItem {
     key: string;
     path: string;
-    value: any;
+    value: unknown;
     type: 'group' | 'value';
 }
 
@@ -30,17 +31,17 @@ export interface AutocompleteItem {
 export class AutocompleteOverlayComponent {
     private cdr = inject(ChangeDetectorRef);
     private elementRef = inject(ElementRef);
-    
+
     public items = signal<AutocompleteItem[]>([]);
     public currentPath = signal<string[]>([]);
     public filterText = signal<string>('');
     public rootLabel = signal<string>('state');
     public emptyMessage = signal<string>('No matching variables');
-    
+
     public itemSelected = output<AutocompleteItem>();
     public navigateUp = output<void>();
     public navigateDown = output<AutocompleteItem>();
-    public navigateToPath = output<number>(); 
+    public navigateToPath = output<number>();
 
     public activeItem = signal<AutocompleteItem | null>(null);
     public tooltipPosition = signal<'left' | 'right'>('right');
@@ -49,10 +50,8 @@ export class AutocompleteOverlayComponent {
         const filter = this.filterText().toLowerCase();
         const allItems = this.items();
         if (!filter) return allItems;
-        
-        return allItems.filter(item => 
-            item.key.toLowerCase().includes(filter)
-        );
+
+        return allItems.filter((item) => item.key.toLowerCase().includes(filter));
     });
 
     public hoveredItem = signal<AutocompleteItem | null>(null);
@@ -68,14 +67,14 @@ export class AutocompleteOverlayComponent {
             }
         });
     }
-    
+
     // Public method to update data and force refresh (for dynamic component usage)
     public updateData(
         items: AutocompleteItem[],
         path: string[],
         filter: string,
         rootLabel?: string,
-        emptyMessage?: string,
+        emptyMessage?: string
     ): void {
         this.items.set(items);
         this.currentPath.set(path);
@@ -98,15 +97,15 @@ export class AutocompleteOverlayComponent {
         event.preventDefault();
         this.navigateUp.emit();
     }
-    
+
     public onCrumbClick(event: MouseEvent, index: number): void {
         event.stopPropagation();
         event.preventDefault();
         // Emit the target path index (-1 for root, or specific index)
         this.navigateToPath.emit(index);
     }
-    
-    public typeof(value: any): string {
+
+    public typeof(value: unknown): string {
         if (value === null) return 'null';
         if (Array.isArray(value)) return 'array';
         return typeof value;
@@ -123,17 +122,17 @@ export class AutocompleteOverlayComponent {
         this.hoveredItem.set(item);
         this.calculateTooltipPosition();
     }
-    
+
     private calculateTooltipPosition(): void {
         const el = this.elementRef.nativeElement;
         const rect = el.getBoundingClientRect();
         const viewportWidth = window.innerWidth;
         const tooltipWidth = 300; // Approximate tooltip width
-        
+
         // Check if there's enough space on the right
         const spaceOnRight = viewportWidth - rect.right;
         const spaceOnLeft = rect.left;
-        
+
         if (spaceOnRight >= tooltipWidth + 16) {
             this.tooltipPosition.set('right');
         } else if (spaceOnLeft >= tooltipWidth + 16) {
@@ -173,4 +172,3 @@ export class AutocompleteOverlayComponent {
         this.activeItem.set(items[prevIndex]);
     }
 }
-

@@ -1,48 +1,35 @@
 <!-- microphone-selector.component.html -->
 <div class="microphone-selector">
-  <button
-    class="device-button"
-    (click)="toggleDevicesList($event)"
-    [class.disabled]="!isInitialized || !hasDevices"
-  >
-    <!-- Loading spinner when not initialized -->
-    <div class="spinner" *ngIf="!isInitialized">
-      <i class="ti ti-loader ti-spin"></i>
+    <button class="device-button" (click)="toggleDevicesList($event)" [class.disabled]="!isInitialized || !hasDevices">
+        <!-- Loading spinner when not initialized -->
+        <div class="spinner" *ngIf="!isInitialized">
+            <i class="ti ti-loader ti-spin"></i>
+        </div>
+
+        <!-- No microphones found message -->
+        <span class="device-label" *ngIf="isInitialized && !hasDevices"> No microphones found </span>
+
+        <!-- Selected device when loaded -->
+        <span class="device-label" *ngIf="isInitialized && hasDevices">
+            {{ getSelectedDeviceLabel() }}
+        </span>
+
+        <!-- Dropdown chevron -->
+        <span class="chevron" [class.open]="showDevicesList" *ngIf="isInitialized && hasDevices">
+            <i class="ti ti-chevron-down"></i>
+        </span>
+    </button>
+
+    <!-- Devices dropdown -->
+    <div class="devices-dropdown" *ngIf="showDevicesList && isInitialized && hasDevices">
+        <div
+            class="device-item"
+            *ngFor="let device of audioInputDevices"
+            (click)="selectDevice(device.deviceId)"
+            [class.selected]="selectedDeviceId === device.deviceId"
+        >
+            <i class="ti ti-check" *ngIf="selectedDeviceId === device.deviceId"></i>
+            <span>{{ device.label || 'Unnamed device' }}</span>
+        </div>
     </div>
-
-    <!-- No microphones found message -->
-    <span class="device-label" *ngIf="isInitialized && !hasDevices">
-      No microphones found
-    </span>
-
-    <!-- Selected device when loaded -->
-    <span class="device-label" *ngIf="isInitialized && hasDevices">
-      {{ getSelectedDeviceLabel() }}
-    </span>
-
-    <!-- Dropdown chevron -->
-    <span
-      class="chevron"
-      [class.open]="showDevicesList"
-      *ngIf="isInitialized && hasDevices"
-    >
-      <i class="ti ti-chevron-down"></i>
-    </span>
-  </button>
-
-  <!-- Devices dropdown -->
-  <div
-    class="devices-dropdown"
-    *ngIf="showDevicesList && isInitialized && hasDevices"
-  >
-    <div
-      class="device-item"
-      *ngFor="let device of audioInputDevices"
-      (click)="selectDevice(device.deviceId)"
-      [class.selected]="selectedDeviceId === device.deviceId"
-    >
-      <i class="ti ti-check" *ngIf="selectedDeviceId === device.deviceId"></i>
-      <span>{{ device.label || "Unnamed device" }}</span>
-    </div>
-  </div>
 </div>

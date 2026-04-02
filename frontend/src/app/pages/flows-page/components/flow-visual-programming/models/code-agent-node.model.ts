@@ -14,11 +14,11 @@ export interface GetCodeAgentNodeRequest {
     chunk_timeout_s: number;
     inactivity_timeout_s: number;
     max_wait_s: number;
-    input_map: Record<string, any>;
+    input_map: Record<string, unknown>;
     output_variable_path: string | null;
     stream_config?: Record<string, boolean>;
-    output_schema?: Record<string, any>;
-    metadata?: Record<string, any>;
+    output_schema?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
 }
 
 export interface CreateCodeAgentNodeRequest {
@@ -36,11 +36,11 @@ export interface CreateCodeAgentNodeRequest {
     chunk_timeout_s: number;
     inactivity_timeout_s: number;
     max_wait_s: number;
-    input_map: Record<string, any>;
+    input_map: Record<string, unknown>;
     output_variable_path: string | null;
     stream_config?: Record<string, boolean>;
-    output_schema?: Record<string, any>;
-    metadata?: Record<string, any>;
+    output_schema?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
 }
 
 export interface CodeAgentNodeData {
@@ -57,5 +57,5 @@ export interface CodeAgentNodeData {
     inactivity_timeout_s: number;
     max_wait_s: number;
     stream_config?: Record<string, boolean>;
-    output_schema?: Record<string, any>;
+    output_schema?: Record<string, unknown>;
 }

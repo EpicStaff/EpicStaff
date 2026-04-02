@@ -1,15 +1,12 @@
-import { Component, Inject } from '@angular/core';
+import { DIALOG_DATA, DialogModule, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { DIALOG_DATA, DialogRef, DialogModule } from '@angular/cdk/dialog';
-import { IconButtonComponent } from '../buttons/icon-button/icon-button.component';
+import { Component, Inject } from '@angular/core';
 import { Observable, of } from 'rxjs';
 import { catchError, finalize } from 'rxjs/operators';
 
-export type UnsavedChangesDialogResult =
-    | 'save'
-    | 'dont-save'
-    | 'cancel'
-    | 'close';
+import { IconButtonComponent } from '../buttons/icon-button/icon-button.component';
+
+export type UnsavedChangesDialogResult = 'save' | 'dont-save' | 'cancel' | 'close';
 
 export interface UnsavedChangesDialogData {
     title: string;

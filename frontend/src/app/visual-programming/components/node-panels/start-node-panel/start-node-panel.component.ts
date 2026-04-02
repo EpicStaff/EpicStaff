@@ -1,14 +1,10 @@
+import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
-import {
-    ReactiveFormsModule,
-    FormGroup,
-    Validators,
-    FormBuilder,
-} from '@angular/forms';
+import { FormGroup, ReactiveFormsModule } from '@angular/forms';
+
+import { JsonEditorComponent } from '../../../../shared/components/json-editor/json-editor.component';
 import { StartNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
-import { JsonEditorComponent } from '../../../../shared/components/json-editor/json-editor.component';
-import { CommonModule } from '@angular/common';
 
 @Component({
     standalone: true,
@@ -20,8 +16,8 @@ import { CommonModule } from '@angular/common';
                 <form [formGroup]="form" class="form-container">
                     <!-- Helper Text -->
                     <div class="helper-text">
-                        Here you can define your domain variables that will be
-                        available throughout your workflow execution.
+                        Here you can define your domain variables that will be available throughout your workflow
+                        execution.
                     </div>
 
                     <!-- Initial State JSON Editor -->
@@ -125,11 +121,7 @@ export class StartNodePanelComponent extends BaseSidePanel<StartNodeModel> {
         if (this.node().data?.initialState) {
             try {
                 // Always stringify the object since initialState is typed as Record<string, unknown>
-                this.initialStateJson = JSON.stringify(
-                    this.node().data.initialState,
-                    null,
-                    2
-                );
+                this.initialStateJson = JSON.stringify(this.node().data.initialState, null, 2);
                 this.isJsonValid = true;
             } catch (e) {
                 console.error('Error parsing initial state JSON:', e);

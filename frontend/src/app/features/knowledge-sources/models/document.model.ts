@@ -1,11 +1,11 @@
-import {FILE_TYPES} from "../constants/constants";
+import { FILE_TYPES } from '../constants/constants';
 
 export interface UploadDocumentResponse {
     message: string;
     documents: CollectionDocument[];
 }
 
-export type FileType = typeof FILE_TYPES[number];
+export type FileType = (typeof FILE_TYPES)[number];
 
 export interface CollectionDocument {
     document_id: number;

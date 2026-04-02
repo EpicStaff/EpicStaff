@@ -1,63 +1,60 @@
-import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { inject, Injectable } from '@angular/core';
 import { map, Observable } from 'rxjs';
-import {
-  CreatePythonCodeToolRequest,
-  GetPythonCodeToolRequest,
-  UpdatePythonCodeToolRequest,
-} from '../../models/python-code-tool.model';
+
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { ConfigService } from '../../../../services/config/config.service';
+import {
+    CreatePythonCodeToolRequest,
+    GetPythonCodeToolRequest,
+    UpdatePythonCodeToolRequest,
+} from '../../models/python-code-tool.model';
 
 @Injectable({
-  providedIn: 'root',
+    providedIn: 'root',
 })
 export class CustomToolsService {
-  private http = inject(HttpClient);
-  private configService = inject(ConfigService);
+    private http = inject(HttpClient);
+    private configService = inject(ConfigService);
 
-  private readonly httpHeaders = new HttpHeaders({
-    'Content-Type': 'application/json',
-  });
-
-  private get baseUrl(): string {
-    return `${this.configService.apiUrl}python-code-tool/`;
-  }
-
-  getPythonCodeTools(): Observable<GetPythonCodeToolRequest[]> {
-    return this.http
-      .get<ApiGetRequest<GetPythonCodeToolRequest>>(this.baseUrl)
-      .pipe(map((response) => response.results));
-  }
-
-  createPythonCodeTool(
-    tool: CreatePythonCodeToolRequest
-  ): Observable<GetPythonCodeToolRequest> {
-    return this.http.post<GetPythonCodeToolRequest>(this.baseUrl, tool, {
-      headers: this.httpHeaders,
+    private readonly httpHeaders = new HttpHeaders({
+        'Content-Type': 'application/json',
     });
-  }
 
-  updatePythonCodeTool(
-    toolId: string,
-    updatedTool: UpdatePythonCodeToolRequest
-  ): Observable<GetPythonCodeToolRequest> {
-    return this.http.put<GetPythonCodeToolRequest>(
-      `${this.baseUrl}${toolId}/`,
-      updatedTool,
-      { headers: this.httpHeaders }
-    );
-  }
+    private get baseUrl(): string {
+        return `${this.configService.apiUrl}python-code-tool/`;
+    }
 
-  deletePythonCodeTool(toolId: number): Observable<void> {
-    return this.http.delete<void>(`${this.baseUrl}${toolId}/`, {
-      headers: this.httpHeaders,
-    });
-  }
+    getPythonCodeTools(): Observable<GetPythonCodeToolRequest[]> {
+        return this.http
+            .get<ApiGetRequest<GetPythonCodeToolRequest>>(this.baseUrl)
+            .pipe(map((response) => response.results));
+    }
 
-  getPythonCodeToolById(id: number): Observable<GetPythonCodeToolRequest> {
-    return this.http.get<GetPythonCodeToolRequest>(`${this.baseUrl}${id}/`, {
-      headers: this.httpHeaders,
-    });
-  }
+    createPythonCodeTool(tool: CreatePythonCodeToolRequest): Observable<GetPythonCodeToolRequest> {
+        return this.http.post<GetPythonCodeToolRequest>(this.baseUrl, tool, {
+            headers: this.httpHeaders,
+        });
+    }
+
+    updatePythonCodeTool(
+        toolId: string,
+        updatedTool: UpdatePythonCodeToolRequest
+    ): Observable<GetPythonCodeToolRequest> {
+        return this.http.put<GetPythonCodeToolRequest>(`${this.baseUrl}${toolId}/`, updatedTool, {
+            headers: this.httpHeaders,
+        });
+    }
+
+    deletePythonCodeTool(toolId: number): Observable<void> {
+        return this.http.delete<void>(`${this.baseUrl}${toolId}/`, {
+            headers: this.httpHeaders,
+        });
+    }
+
+    getPythonCodeToolById(id: number): Observable<GetPythonCodeToolRequest> {
+        return this.http.get<GetPythonCodeToolRequest>(`${this.baseUrl}${id}/`, {
+            headers: this.httpHeaders,
+        });
+    }
 }

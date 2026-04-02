@@ -1,359 +1,361 @@
 .main-wrapper {
-  background-color: var(--gray-900);
-  color: var(--white);
-  display: flex;
-  flex-direction: column;
-  width: 900px;
-  max-width: 80vw;
-  max-height: 80vh;
-  min-height: 750px;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.25), 0 8px 10px rgba(0, 0, 0, 0.15);
-  border: 1px solid var(--gray-750);
+    background-color: var(--gray-900);
+    color: var(--white);
+    display: flex;
+    flex-direction: column;
+    width: 900px;
+    max-width: 80vw;
+    max-height: 80vh;
+    min-height: 750px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow:
+        0 12px 28px rgba(0, 0, 0, 0.25),
+        0 8px 10px rgba(0, 0, 0, 0.15);
+    border: 1px solid var(--gray-750);
 }
 
 .dialog-title {
-  display: flex;
-  align-items: center;
-  padding: 1.25rem 1.75rem;
-  background-color: var(--gray-850);
-  border-bottom: 1px solid var(--gray-750);
+    display: flex;
+    align-items: center;
+    padding: 1.25rem 1.75rem;
+    background-color: var(--gray-850);
+    border-bottom: 1px solid var(--gray-750);
 }
 
 .title-text {
-  font-size: 1.5rem;
-  font-weight: 500;
-  color: var(--white);
-  letter-spacing: 0.01em;
+    font-size: 1.5rem;
+    font-weight: 500;
+    color: var(--white);
+    letter-spacing: 0.01em;
 }
 
 .close-button {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem;
-  border-radius: 6px;
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem;
+    border-radius: 6px;
 
-  color: var(--gray-300);
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    color: var(--gray-300);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .close-icon {
-  font-size: 1.25rem;
-  color: var(--gray-400);
-  transition: color 0.2s ease;
+    font-size: 1.25rem;
+    color: var(--gray-400);
+    transition: color 0.2s ease;
 }
 
 .close-button:hover {
-  background-color: var(--gray-750);
-  color: var(--white);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    background-color: var(--gray-750);
+    color: var(--white);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .close-button:hover .close-icon {
-  color: var(--white);
+    color: var(--white);
 }
 
 .dialog-content {
-  display: flex;
-  flex-direction: row;
-  flex-grow: 1;
-  overflow: hidden;
+    display: flex;
+    flex-direction: row;
+    flex-grow: 1;
+    overflow: hidden;
 }
 
 /* Loading Container */
 .loading-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  flex-grow: 1;
-  height: 100%;
-  padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex-grow: 1;
+    height: 100%;
+    padding: 2rem;
 }
 
 .spinner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1rem;
 
-  i {
-    font-size: 2.5rem;
-    color: var(--accent-color);
-    animation: spin 1.5s linear infinite;
-  }
+    i {
+        font-size: 2.5rem;
+        color: var(--accent-color);
+        animation: spin 1.5s linear infinite;
+    }
 }
 
 .loading-text {
-  font-size: 1rem;
-  color: var(--gray-300);
+    font-size: 1rem;
+    color: var(--gray-300);
 }
 
 @keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* Config List Container */
 .config-list-container {
-  display: flex;
-  flex-direction: column;
-  width: 300px;
-  min-height: 0;
-  background-color: var(--gray-850);
-  border-right: 1px solid var(--gray-750);
-  padding: 1.5rem;
-  overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    width: 300px;
+    min-height: 0;
+    background-color: var(--gray-850);
+    border-right: 1px solid var(--gray-750);
+    padding: 1.5rem;
+    overflow: hidden;
 }
 
 /* Search Input */
 .search-input-wrapper {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  background-color: var(--gray-800);
-  border: 1px solid var(--gray-750);
-  border-radius: 8px;
-  padding: 0.625rem 1rem;
-  margin-bottom: 1.25rem;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-  transition: all 0.2s ease;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    background-color: var(--gray-800);
+    border: 1px solid var(--gray-750);
+    border-radius: 8px;
+    padding: 0.625rem 1rem;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    transition: all 0.2s ease;
 }
 
 .search-icon {
-  color: var(--gray-500);
-  margin-right: 0.5rem;
-  font-size: 1.125rem;
-  transition: color 0.2s ease;
+    color: var(--gray-500);
+    margin-right: 0.5rem;
+    font-size: 1.125rem;
+    transition: color 0.2s ease;
 }
 
 .search-input {
-  border: none;
-  background: transparent;
-  outline: none;
-  font-size: 0.9375rem;
-  color: var(--gray-200);
-  width: 100%;
-  transition: color 0.2s ease;
+    border: none;
+    background: transparent;
+    outline: none;
+    font-size: 0.9375rem;
+    color: var(--gray-200);
+    width: 100%;
+    transition: color 0.2s ease;
 }
 
 .search-input::placeholder {
-  color: var(--gray-600);
+    color: var(--gray-600);
 }
 
 .search-input-wrapper.input-has-content,
 .search-input-wrapper:focus-within {
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 2px var(--focus-ring);
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .search-input-wrapper.input-has-content .search-icon,
 .search-input-wrapper:focus-within .search-icon {
-  color: var(--accent-color);
+    color: var(--accent-color);
 }
 
 .search-input-wrapper.input-has-content .search-input,
 .search-input-wrapper:focus-within .search-input {
-  color: var(--white);
+    color: var(--white);
 }
 
 /* List Content */
 .list-content-wrapper {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  margin: 0 -0.5rem;
-  padding: 0 0.5rem;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    margin: 0 -0.5rem;
+    padding: 0 0.5rem;
 }
 
 .list-content-wrapper::-webkit-scrollbar {
-  width: 6px;
+    width: 6px;
 }
 
 .list-content-wrapper::-webkit-scrollbar-track {
-  background: var(--gray-800);
-  border-radius: 3px;
+    background: var(--gray-800);
+    border-radius: 3px;
 }
 
 .list-content-wrapper::-webkit-scrollbar-thumb {
-  background-color: var(--gray-600);
-  border-radius: 3px;
+    background-color: var(--gray-600);
+    border-radius: 3px;
 }
 
 .list-content-wrapper::-webkit-scrollbar-thumb:hover {
-  background-color: var(--accent-color);
+    background-color: var(--accent-color);
 }
 
 .no-configs-message {
-  color: var(--gray-400);
-  font-size: 0.9375rem;
-  margin: 1.5rem 0;
-  text-align: center;
-  font-style: italic;
+    color: var(--gray-400);
+    font-size: 0.9375rem;
+    margin: 1.5rem 0;
+    text-align: center;
+    font-style: italic;
 }
 
 .config-list {
-  padding: 0;
-  margin: 0;
-  list-style: none;
-  height: 100%;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+    height: 100%;
 }
 
 .config-list li {
-  display: flex;
-  align-items: center;
-  padding: 0.75rem 1rem;
-  margin-bottom: 0.375rem;
-  cursor: pointer;
-  border-radius: 6px;
-  color: var(--gray-300);
-  transition: all 0.2s ease-in-out;
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.375rem;
+    cursor: pointer;
+    border-radius: 6px;
+    color: var(--gray-300);
+    transition: all 0.2s ease-in-out;
 }
 
 .config-list li:hover {
-  background-color: var(--gray-800);
+    background-color: var(--gray-800);
 }
 
 .config-list li.selected {
-  background-color: var(--gray-750);
-  border-left: 3px solid var(--accent-color);
+    background-color: var(--gray-750);
+    border-left: 3px solid var(--accent-color);
 }
 
 .config-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
 }
 
 .config-name {
-  flex-grow: 1;
-  font-size: 0.9375rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--gray-200);
+    flex-grow: 1;
+    font-size: 0.9375rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--gray-200);
 }
 
 .status-circle {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-  margin-left: 8px;
-  flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-left: 8px;
+    flex-shrink: 0;
 }
 
 .status-circle.completed {
-  background-color: var(--success-color);
-  box-shadow: 0 0 4px var(--success-color);
+    background-color: var(--success-color);
+    box-shadow: 0 0 4px var(--success-color);
 }
 
 .status-circle.incomplete {
-  background-color: var(--error-color);
-  box-shadow: 0 0 4px var(--error-color);
+    background-color: var(--error-color);
+    box-shadow: 0 0 4px var(--error-color);
 }
 
 .delete-button {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 0.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease-in-out;
-  border-radius: 4px;
-  margin-left: 0.5rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease-in-out;
+    border-radius: 4px;
+    margin-left: 0.5rem;
 }
 
 .delete-button i {
-  font-size: 1.125rem;
-  color: var(--gray-500);
-  transition: color 0.2s ease;
+    font-size: 1.125rem;
+    color: var(--gray-500);
+    transition: color 0.2s ease;
 }
 
 .delete-button:hover {
-  background-color: rgba(103, 103, 103, 0.1);
+    background-color: rgba(103, 103, 103, 0.1);
 }
 
 .delete-button:hover i {
-  color: var(--error-color);
+    color: var(--error-color);
 }
 
 /* Create Button */
 .create-config-button {
-  flex-shrink: 0;
-  margin-top: 1.25rem;
-  padding: 0.75rem 1rem;
-  font-size: 0.9375rem;
-  font-weight: 500;
-  color: var(--white);
-  background-color: var(--accent-color);
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  transition: all 0.2s ease-in-out;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    flex-shrink: 0;
+    margin-top: 1.25rem;
+    padding: 0.75rem 1rem;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--white);
+    background-color: var(--accent-color);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: all 0.2s ease-in-out;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .create-config-button:hover {
-  background-color: var(--accent-dark);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    background-color: var(--accent-dark);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 .create-config-button:active {
-  background-color: var(--accent-darker);
-  transform: translateY(1px);
+    background-color: var(--accent-darker);
+    transform: translateY(1px);
 }
 
 .create-config-button:disabled {
-  background-color: var(--gray-700);
-  cursor: not-allowed;
-  opacity: 0.7;
+    background-color: var(--gray-700);
+    cursor: not-allowed;
+    opacity: 0.7;
 }
 
 .create-config-button i {
-  font-size: 1.25rem;
-  margin-right: 0.5rem;
+    font-size: 1.25rem;
+    margin-right: 0.5rem;
 }
 
 /* Form Container */
 .config-form-container {
-  flex: 1 1 0;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  background-color: var(--gray-900);
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background-color: var(--gray-900);
 
-  overflow-y: auto;
+    overflow-y: auto;
 }
 
 /* Animations */
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
 }
 
 .main-wrapper {
-  animation: fadeIn 0.3s ease-out;
+    animation: fadeIn 0.3s ease-out;
 }
 
 .config-list li {
-  animation: fadeIn 0.2s ease-out;
+    animation: fadeIn 0.2s ease-out;
 }

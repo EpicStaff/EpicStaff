@@ -20,7 +20,6 @@
         font-size: 1.25rem;
     }
 
-
     &__actions {
         display: flex;
         flex-wrap: wrap;
@@ -118,7 +117,7 @@
     &__active-fields-count {
         font-size: 0.875rem;
         line-height: 130%;
-        color: var(--color-ks-transparent-text-80)
+        color: var(--color-ks-transparent-text-80);
     }
 
     &__json-wrapper {

@@ -1,5 +1,5 @@
-import { Component, ChangeDetectionStrategy, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, output } from '@angular/core';
 
 @Component({
     selector: 'app-editor-toolbar',
@@ -16,4 +16,3 @@ export class EditorToolbarComponent {
         this.tokenInserted.emit(token);
     }
 }
-

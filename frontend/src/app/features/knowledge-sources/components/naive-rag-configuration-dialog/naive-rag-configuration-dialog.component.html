@@ -1,29 +1,13 @@
 <div class="dialog">
     <div class="dialog__header">
-        <span class="dialog__header-title">
-            Naive RAG Configuration
-        </span>
+        <span class="dialog__header-title"> Naive RAG Configuration </span>
 
         <div class="dialog__actions">
-            <app-button
-                type="outline-primary"
-                (click)="onClose()"
-            >
-                Close
-            </app-button>
+            <app-button type="outline-primary" (click)="onClose()"> Close </app-button>
 
-            <app-button
-                type="primary"
-                (click)="runIndexing()"
-            >
-                Run reindexing
-            </app-button>
+            <app-button type="primary" (click)="runIndexing()"> Run reindexing </app-button>
         </div>
     </div>
 
-    <app-rag-configuration
-        class="dialog__content"
-        [naiveRagId]="data.ragId"
-        [collection]="data.collection"
-    />
+    <app-rag-configuration class="dialog__content" [naiveRagId]="data.ragId" [collection]="data.collection" />
 </div>

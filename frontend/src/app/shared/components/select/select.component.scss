@@ -1,5 +1,7 @@
 :host {
     width: 100%;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .selector {
@@ -8,6 +10,8 @@
     justify-content: space-between;
     align-items: center;
     width: 100%;
+    min-width: 0;
+    overflow: hidden;
 
     &__btn {
         cursor: pointer;
@@ -15,13 +19,14 @@
         height: 100%;
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        justify-content: flex-start;
         position: relative;
         border-radius: 0.5rem;
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
         transition: border-color 0.2s ease;
+        min-width: 0;
 
         &--placeholder {
             color: var(--color-input-text-placeholder);
@@ -53,6 +58,14 @@
             cursor: not-allowed;
             opacity: 0.7;
         }
+    }
+
+    &__value {
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     &__spinner {
@@ -101,7 +114,7 @@
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
-        box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
         z-index: 1005;
         max-height: 240px;
         overflow-y: auto;

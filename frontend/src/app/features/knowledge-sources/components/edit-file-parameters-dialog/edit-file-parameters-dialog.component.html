@@ -1,8 +1,6 @@
 <div class="dialog">
     <div class="dialog__header">
-        <span class="dialog__header-title">
-            Editing File Parameters
-        </span>
+        <span class="dialog__header-title"> Editing File Parameters </span>
 
         <div class="dialog__actions">
             <div class="dialog__actions-switcher">
@@ -24,12 +22,7 @@
                     (click)="nextDocument()"
                 />
             </div>
-            <app-icon
-                [icon]="'ui/close'"
-                class="dialog__action"
-                [size]="'1.5rem'"
-                (click)="onClose()"
-            />
+            <app-icon [icon]="'ui/close'" class="dialog__action" [size]="'1.5rem'" (click)="onClose()" />
         </div>
     </div>
 
@@ -40,11 +33,7 @@
                 [naiveRagId]="data.ragId"
                 [selectedDocumentId]="selectedDocumentId()"
             >
-                <app-button
-                    class="dialog__chunk-preview-button"
-                    type="outline-primary"
-                    (click)="onShowChunks()"
-                >
+                <app-button class="dialog__chunk-preview-button" type="outline-primary" (click)="onShowChunks()">
                     Show
                 </app-button>
             </app-document-chunks-section>

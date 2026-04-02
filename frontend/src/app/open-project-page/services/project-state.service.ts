@@ -1,17 +1,16 @@
 import { Injectable, signal } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
-import { FullAgent, FullAgentService } from '../../features/staff/services/full-agent.service';
-import { FullTask } from '../../features/tasks/models/full-task.model';
+
 import { GetProjectRequest } from '../../features/projects/models/project.model';
 import { ProjectsStorageService } from '../../features/projects/services/projects-storage.service';
+import { FullAgent, FullAgentService } from '../../features/staff/services/full-agent.service';
+import { FullTask } from '../../features/tasks/models/full-task.model';
 import { ToastService } from '../../services/notifications/toast.service';
 
 @Injectable()
 export class ProjectStateService {
-    private projectSubject = new BehaviorSubject<GetProjectRequest | null>(
-        null
-    );
+    private projectSubject = new BehaviorSubject<GetProjectRequest | null>(null);
     private tasksSubject = new BehaviorSubject<FullTask[]>([]);
     private agentsSubject = new BehaviorSubject<FullAgent[]>([]);
 
@@ -62,15 +61,13 @@ export class ProjectStateService {
             [fieldName]: fieldValue,
         };
 
-        return this.projectsService
-            .patchUpdateProject(projectId, updateData)
-            .pipe(
-                tap((updatedProject) => {
-                    // Update the local project state with the updated project
+        return this.projectsService.patchUpdateProject(projectId, updateData).pipe(
+            tap((updatedProject) => {
+                // Update the local project state with the updated project
 
-                    this.projectSubject.next(updatedProject);
-                })
-            );
+                this.projectSubject.next(updatedProject);
+            })
+        );
     }
 
     public addAgent(newAgent: FullAgent): void {
@@ -83,27 +80,22 @@ export class ProjectStateService {
 
         const currentProject = this.projectSubject.getValue();
         if (currentProject) {
-            this.projectsService
-                .patchUpdateProject(currentProject.id, { agents: agentIds })
-                .subscribe({
-                    next: (updatedProject) => {
-                        console.log(updatedProject);
-                        this.projectSubject.next(updatedProject);
-                    },
-                    error: (error) => {
-                        console.error('Error updating project agents:', error);
-                        // Revert the change by removing the agent we just added.
-                        this.agentsSubject.next(currentAgents);
-                    },
-                });
+            this.projectsService.patchUpdateProject(currentProject.id, { agents: agentIds }).subscribe({
+                next: (updatedProject) => {
+                    this.projectSubject.next(updatedProject);
+                },
+                error: (error) => {
+                    console.error('Error updating project agents:', error);
+                    // Revert the change by removing the agent we just added.
+                    this.agentsSubject.next(currentAgents);
+                },
+            });
         }
     }
 
     public removeAgent(agentToRemove: FullAgent): void {
         const currentAgents = this.agentsSubject.getValue();
-        const updatedAgents = currentAgents.filter(
-            (agent) => agent.id !== agentToRemove.id
-        );
+        const updatedAgents = currentAgents.filter((agent) => agent.id !== agentToRemove.id);
         this.agentsSubject.next(updatedAgents);
 
         // Update tasks that were assigned to the removed agent
@@ -125,23 +117,20 @@ export class ProjectStateService {
 
         const currentProject = this.projectSubject.getValue();
         if (currentProject) {
-            this.projectsService
-                .patchUpdateProject(currentProject.id, { agents: agentIds })
-                .subscribe({
-                    next: (updatedProject) => {
-                        console.log(updatedProject);
-                        this.projectSubject.next(updatedProject);
-                        this.toastService.success('Agent removed successfully');
-                    },
-                    error: (error) => {
-                        console.error('Error updating project agents:', error);
-                        // Revert the change by adding back the agent we just removed
-                        this.agentsSubject.next(currentAgents);
-                        // Also revert the task changes
-                        this.tasksSubject.next(currentTasks);
-                        this.toastService.error('Error removing agent');
-                    },
-                });
+            this.projectsService.patchUpdateProject(currentProject.id, { agents: agentIds }).subscribe({
+                next: (updatedProject) => {
+                    this.projectSubject.next(updatedProject);
+                    this.toastService.success('Agent removed successfully');
+                },
+                error: (error) => {
+                    console.error('Error updating project agents:', error);
+                    // Revert the change by adding back the agent we just removed
+                    this.agentsSubject.next(currentAgents);
+                    // Also revert the task changes
+                    this.tasksSubject.next(currentTasks);
+                    this.toastService.error('Error removing agent');
+                },
+            });
         }
     }
 
@@ -152,9 +141,7 @@ export class ProjectStateService {
                 if (refreshedAgent) {
                     const currentAgents = this.agentsSubject.getValue();
                     const updatedAgents = [...currentAgents];
-                    const index = updatedAgents.findIndex(
-                        (a) => a.id === agentId
-                    );
+                    const index = updatedAgents.findIndex((a) => a.id === agentId);
 
                     if (index !== -1) {
                         // Replace the agent with the refreshed one
@@ -164,7 +151,7 @@ export class ProjectStateService {
                     }
                 }
             },
-            error: (error: any) => {
+            error: (error: unknown) => {
                 console.error('Error refreshing agent:', error);
                 this.toastService.error('Error updating agent');
             },
@@ -180,9 +167,7 @@ export class ProjectStateService {
     // Update an existing task by its ID
     updateTask(updatedTask: FullTask): void {
         const currentTasks = this.tasksSubject.getValue();
-        const taskIndex = currentTasks.findIndex(
-            (task) => task.id === updatedTask.id
-        );
+        const taskIndex = currentTasks.findIndex((task) => task.id === updatedTask.id);
         if (taskIndex !== -1) {
             currentTasks[taskIndex] = updatedTask;
             this.tasksSubject.next([...currentTasks]);

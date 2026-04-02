@@ -10,7 +10,6 @@ import {
     ConfirmationDialogService,
     ConfirmationResult,
 } from '../../../../../../shared/components/cofirm-dialog/confimation-dialog.service';
-import { ConfirmationDialogComponent } from '../../../../../../shared/components/cofirm-dialog/confirmation-dialog.component';
 import { LoadingSpinnerComponent } from '../../../../../../shared/components/loading-spinner/loading-spinner.component';
 import { GraphUpdateService } from '../../../../../../visual-programming/services/graph/save-graph.service';
 import { FlowCardAction, FlowCardComponent } from '../../../../components/flow-card/flow-card.component';
@@ -98,7 +97,6 @@ export class MyFlowsComponent {
                 break;
 
             case 'viewSessions':
-                console.log('View sessions for flow:', flow.name);
                 this.dialog.open(FlowSessionsListComponent, {
                     data: { flow },
                     panelClass: 'custom-dialog-panel',
@@ -133,7 +131,6 @@ export class MyFlowsComponent {
                 if (result === true) {
                     this.flowsService.deleteFlow(flow.id).subscribe({
                         next: () => {
-                            console.log(`Flow ${flow.id} - ${flow.name} deleted successfully.`);
                             this.flowsService.getFlows(true, this.labelsStorage.activeLabelFilter()).subscribe();
                         },
                         error: (err) => {
@@ -201,8 +198,6 @@ export class MyFlowsComponent {
 
         this.runGraphService.runGraph(flow.id, inputs).subscribe({
             next: (response) => {
-                console.log('Flow execution started:', response);
-
                 if (response && response.session_id) {
                     this.router.navigate(['/graph', flow.id, 'session', response.session_id]);
                 } else {

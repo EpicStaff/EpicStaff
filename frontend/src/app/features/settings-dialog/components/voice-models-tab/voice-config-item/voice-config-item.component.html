@@ -1,18 +1,14 @@
 <div class="voice-config-item">
-  <div class="item-left">
-    <app-icon
-      [icon]="getProviderIcon()"
-      [size]="'2rem'"
-      class="provider-icon"
-    ></app-icon>
-    <div class="model-info">
-      <div class="model-name">{{ config.modelDetails?.name }}</div>
-      <div class="config-name">{{ config.custom_name }}</div>
+    <div class="item-left">
+        <app-icon [icon]="getProviderIcon()" [size]="'2rem'" class="provider-icon"></app-icon>
+        <div class="model-info">
+            <div class="model-name">{{ config.modelDetails?.name }}</div>
+            <div class="config-name">{{ config.custom_name }}</div>
+        </div>
     </div>
-  </div>
-  <div class="item-right">
-    <app-button type="ghost" (click)="onConfigure()">Configure</app-button>
-    <!-- <app-icon-button
+    <div class="item-right">
+        <app-button type="ghost" (click)="onConfigure()">Configure</app-button>
+        <!-- <app-icon-button
       [icon]="isFavorite ? 'ui/star-filled' : 'ui/star'"
       [size]="'2rem'"
       [ariaLabel]="isFavorite ? 'Remove from favorites' : 'Add to favorites'"
@@ -25,13 +21,13 @@
       label="Enabled"
       id="enabled-{{ config.id }}"
     ></app-toggle-switch> -->
-    <div class="separator"></div>
-    <app-icon-button
-      icon="ui/x"
-      [size]="'2rem'"
-      ariaLabel="Delete"
-      (onClick)="onDelete()"
-      class="delete-btn"
-    ></app-icon-button>
-  </div>
+        <div class="separator"></div>
+        <app-icon-button
+            icon="ui/x"
+            [size]="'2rem'"
+            ariaLabel="Delete"
+            (onClick)="onDelete()"
+            class="delete-btn"
+        ></app-icon-button>
+    </div>
 </div>

@@ -1,47 +1,49 @@
-import { NgClass } from "@angular/common";
+import { NgClass } from '@angular/common';
 import {
     AfterViewInit,
     ChangeDetectionStrategy,
     Component,
-    computed, DestroyRef, ElementRef, inject,
-    input, NgZone, OnChanges, signal, SimpleChanges, ViewChild,
-} from "@angular/core";
-import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
-import { FormsModule } from "@angular/forms";
-import { MATERIAL_FORMS } from "@shared/material-forms";
-import { take } from "rxjs";
-import { calcLimit } from "../../../helpers/calculate-chunks-fetch-limit.util";
-import {
-    DocumentChunkingState,
-    NaiveRagDocumentChunk
-} from "../../../models/naive-rag-chunk.model";
-import { NaiveRagDocumentsStorageService } from "../../../services/naive-rag-documents-storage.service";
+    computed,
+    DestroyRef,
+    ElementRef,
+    inject,
+    input,
+    NgZone,
+    OnChanges,
+    signal,
+    ViewChild,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormsModule } from '@angular/forms';
+import { MATERIAL_FORMS } from '@shared/material-forms';
+import { take } from 'rxjs';
+
+import { calcLimit } from '../../../helpers/calculate-chunks-fetch-limit.util';
+import { DocumentChunkingState, NaiveRagDocumentChunk } from '../../../models/naive-rag-chunk.model';
+import { NaiveRagDocumentsStorageService } from '../../../services/naive-rag-documents-storage.service';
 
 interface DisplayedChunk {
-    chunkIndex: number,
-    overlap: string,
-    text: string
+    chunkIndex: number;
+    overlap: string;
+    text: string;
 }
 
 @Component({
     selector: 'app-chunk-preview',
     templateUrl: './chunk-preview.component.html',
     styleUrls: ['./chunk-preview.component.scss'],
-    imports: [
-        NgClass,
-        FormsModule,
-        MATERIAL_FORMS,
-    ],
-    changeDetection: ChangeDetectionStrategy.OnPush
+    imports: [NgClass, FormsModule, MATERIAL_FORMS],
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ChunkPreviewComponent implements OnChanges, AfterViewInit {
     ragId = input.required<number>();
     docId = input.required<number>();
     chunkingState = input.required<DocumentChunkingState>();
-    blurredChunk: string = 'The policeman on the beat moved up the avenue impressively. The impressiveness was habitual and not for show, for spectators were few. The time was barely 10 o\'clock at night, but chilly gusts of wind with a taste of rain in them had well nigh depeopled the streets.\n' +
-            'Trying doors as he went, twirling his club with many intricate and artful movements, turning now and then to cast his watchful eye adown the pacific thoroughfare, the officer, with his stalwart form and slight swagger, made a fine picture of a guardian of the peace. ';
+    blurredChunk: string =
+        "The policeman on the beat moved up the avenue impressively. The impressiveness was habitual and not for show, for spectators were few. The time was barely 10 o'clock at night, but chilly gusts of wind with a taste of rain in them had well nigh depeopled the streets.\n" +
+        'Trying doors as he went, twirling his club with many intricate and artful movements, turning now and then to cast his watchful eye adown the pacific thoroughfare, the officer, with his stalwart form and slight swagger, made a fine picture of a guardian of the peace. ';
 
-    private ngZone = inject(NgZone)
+    private ngZone = inject(NgZone);
     private documentStorageService = inject(NaiveRagDocumentsStorageService);
     private destroyRef = inject(DestroyRef);
 
@@ -72,7 +74,7 @@ export class ChunkPreviewComponent implements OnChanges, AfterViewInit {
 
     @ViewChild('scrollContainer') private scrollContainer!: ElementRef<HTMLDivElement>;
 
-    ngOnChanges(changes: SimpleChanges) {
+    ngOnChanges() {
         const state: DocumentChunkingState = this.chunkingState();
         const limit = calcLimit(state.chunkSize);
 
@@ -124,7 +126,7 @@ export class ChunkPreviewComponent implements OnChanges, AfterViewInit {
                 setTimeout(() => {
                     this.loading.set(false);
                     this.checkIfNeedsMoreChunks();
-                }, 500)
+                }, 500);
             });
     }
 
@@ -167,9 +169,7 @@ export class ChunkPreviewComponent implements OnChanges, AfterViewInit {
 
             const overlap = isFirst ? '' : chunk.text.slice(0, start);
 
-            const text = end
-                ? chunk.text.slice(start, -end)
-                : chunk.text.slice(start);
+            const text = end ? chunk.text.slice(start, -end) : chunk.text.slice(start);
 
             return {
                 chunkIndex: chunk.chunk_index,

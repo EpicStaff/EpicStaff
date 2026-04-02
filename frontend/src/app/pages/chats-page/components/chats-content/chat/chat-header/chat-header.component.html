@@ -1,27 +1,24 @@
 <div class="chat-header" *ngIf="agent">
-  <div class="agent-info">
-    <div>
-      <h3>{{ agent.role }}</h3>
-      <div
-        class="model-info"
-        *ngIf="agent.fullRealtimeConfig?.modelDetails?.name; else noModel"
-      >
-        {{ agent.fullRealtimeConfig?.modelDetails?.name }}
-        <ng-container *ngIf="agent.fullRealtimeConfig?.custom_name"
-          >({{ agent.fullRealtimeConfig?.custom_name }})</ng-container
-        >
-      </div>
-      <ng-template #noModel>
-        <div class="model-info">Realtime Model not specified</div>
-      </ng-template>
+    <div class="agent-info">
+        <div>
+            <h3>{{ agent.role }}</h3>
+            <div class="model-info" *ngIf="agent.fullRealtimeConfig?.modelDetails?.name; else noModel">
+                {{ agent.fullRealtimeConfig?.modelDetails?.name }}
+                <ng-container *ngIf="agent.fullRealtimeConfig?.custom_name"
+                    >({{ agent.fullRealtimeConfig?.custom_name }})</ng-container
+                >
+            </div>
+            <ng-template #noModel>
+                <div class="model-info">Realtime Model not specified</div>
+            </ng-template>
+        </div>
+        <ng-container *ngIf="consoleService.isConversationConnected()">
+            <app-tiny-audio-visualizer></app-tiny-audio-visualizer>
+        </ng-container>
     </div>
-    <ng-container *ngIf="consoleService.isConversationConnected()">
-      <app-tiny-audio-visualizer></app-tiny-audio-visualizer>
-    </ng-container>
-  </div>
 
-  <div class="communication-controls">
-    <!-- <div class="toggle-container">
+    <div class="communication-controls">
+        <!-- <div class="toggle-container">
               <button
                 class="toggle-btn"
                 [class.active]="communicationType === 'text'"
@@ -38,7 +35,7 @@
               </button>
             </div> -->
 
-    <!-- <div class="voice-selector">
+        <!-- <div class="voice-selector">
               <div class="voice-select-wrapper">
                 <i class="voice-icon">
                   <i class="ti ti-volume"></i>
@@ -51,10 +48,10 @@
               </div>
             </div> -->
 
-    <!-- <div class="settings-container">
+        <!-- <div class="settings-container">
       <button class="settings-btn" (click)="openSettings($event)">
         <i class="ti ti-settings"></i>
       </button>
     </div> -->
-  </div>
+    </div>
 </div>

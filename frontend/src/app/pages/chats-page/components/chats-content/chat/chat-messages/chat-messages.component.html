@@ -1,129 +1,91 @@
 <!-- chat-messages.component.html with expandable tool arguments and JSON viewer -->
 <div class="chat-messages">
-  <div
-    *ngIf="!this.consoleService.isConversationConnected()"
-    class="awaiting-connection"
-  >
-    press start speaking to start conversation ...
-  </div>
-
-  <div
-    class="message-group"
-    *ngFor="let group of groupedMessages(); trackBy: trackByGroupId"
-    [ngClass]="group.role === 'user' ? 'message-user' : 'message-assistant'"
-  >
-    <div class="message-role">
-      {{ group?.role === "user" ? "You" : agent?.role || "Assistant" }}
+    <div *ngIf="!this.consoleService.isConversationConnected()" class="awaiting-connection">
+        press start speaking to start conversation ...
     </div>
 
-    <div class="message-content">
-      <div
-        *ngFor="let item of group.items; trackBy: trackByItemId"
-        class="message-item"
-      >
-        <!-- Tool Call with Expandable Arguments -->
-        <div *ngIf="item.formatted?.tool" class="message-text tool-call">
-          <div class="tool-call-name">
-            {{ item.formatted.tool?.name }}
+    <div
+        class="message-group"
+        *ngFor="let group of groupedMessages(); trackBy: trackByGroupId"
+        [ngClass]="group.role === 'user' ? 'message-user' : 'message-assistant'"
+    >
+        <div class="message-role">
+            {{ group?.role === 'user' ? 'You' : agent?.role || 'Assistant' }}
+        </div>
 
-            <!-- Loading animation - only shown if no matching function_call_output exists -->
-            <div
-              *ngIf="!(groupedMessages() | hasToolOutput : item.id)"
-              class="loading-dots"
-            >
-              <span></span>
-              <span></span>
-              <span></span>
+        <div class="message-content">
+            <div *ngFor="let item of group.items; trackBy: trackByItemId" class="message-item">
+                <!-- Tool Call with Expandable Arguments -->
+                <div *ngIf="item.formatted?.tool" class="message-text tool-call">
+                    <div class="tool-call-name">
+                        {{ item.formatted.tool?.name }}
+
+                        <!-- Loading animation - only shown if no matching function_call_output exists -->
+                        <div *ngIf="!(groupedMessages() | hasToolOutput: item.id)" class="loading-dots">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                    </div>
+
+                    <div class="tool-arguments">
+                        <div class="tool-arguments-header" (click)="toggleArgumentsVisibility(item.id)">
+                            <i
+                                class="ti ti-player-play-filled"
+                                [ngClass]="{ expanded: isArgumentsExpanded(item.id) }"
+                            ></i>
+                            <span>Arguments</span>
+                        </div>
+                        <div class="tool-arguments-content" *ngIf="isArgumentsExpanded(item.id)">
+                            <ngx-json-viewer
+                                [json]="getParsedJson(item.formatted.tool?.arguments)"
+                                [expanded]="false"
+                            ></ngx-json-viewer>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tool Response -->
+                <div *ngIf="item.type === 'function_call_output'" class="message-text tool-response">
+                    <div class="tool-response-header" (click)="toggleResponseVisibility(item.id)">
+                        <i class="ti ti-player-play-filled" [ngClass]="{ expanded: isResponseExpanded(item.id) }"></i>
+                        <span>Output</span>
+                    </div>
+                    <div class="tool-response-content" *ngIf="isResponseExpanded(item.id)">
+                        {{ item.formatted.output }}
+                    </div>
+                </div>
+
+                <!-- Regular User Message -->
+                <div
+                    *ngIf="item.role === 'user' && item.type === 'message' && !item.formatted?.tool"
+                    class="message-text"
+                >
+                    <span
+                        [ngClass]="{
+                            inaudible: getDisplayUserText(item) === '[inaudible]',
+                            'awaiting-transcript': getDisplayUserText(item) === '(awaiting transcript)',
+                        }"
+                    >
+                        {{ getDisplayUserText(item) }}
+                    </span>
+                </div>
+
+                <!-- Regular Assistant Message with Markdown -->
+                <div
+                    *ngIf="item.role === 'assistant' && item.type === 'message' && !item.formatted?.tool"
+                    class="message-text markdown-content"
+                >
+                    <markdown
+                        *ngIf="item.formatted?.transcript || item.formatted?.text"
+                        [data]="getAssistantText(item)"
+                        [inline]="false"
+                    ></markdown>
+                    <span *ngIf="!item.formatted?.transcript && !item.formatted?.text"> (truncated) </span>
+                </div>
             </div>
-          </div>
-
-          <div class="tool-arguments">
-            <div
-              class="tool-arguments-header"
-              (click)="toggleArgumentsVisibility(item.id)"
-            >
-              <i
-                class="ti ti-player-play-filled"
-                [ngClass]="{ expanded: isArgumentsExpanded(item.id) }"
-              ></i>
-              <span>Arguments</span>
-            </div>
-            <div
-              class="tool-arguments-content"
-              *ngIf="isArgumentsExpanded(item.id)"
-            >
-              <ngx-json-viewer
-                [json]="getParsedJson(item.formatted.tool?.arguments)"
-                [expanded]="false"
-              ></ngx-json-viewer>
-            </div>
-          </div>
         </div>
 
-        <!-- Tool Response -->
-        <div
-          *ngIf="item.type === 'function_call_output'"
-          class="message-text tool-response"
-        >
-          <div
-            class="tool-response-header"
-            (click)="toggleResponseVisibility(item.id)"
-          >
-            <i
-              class="ti ti-player-play-filled"
-              [ngClass]="{ expanded: isResponseExpanded(item.id) }"
-            ></i>
-            <span>Output</span>
-          </div>
-          <div
-            class="tool-response-content"
-            *ngIf="isResponseExpanded(item.id)"
-          >
-            {{ item.formatted.output }}
-          </div>
-        </div>
-
-        <!-- Regular User Message -->
-        <div
-          *ngIf="
-            item.role === 'user' &&
-            item.type === 'message' &&
-            !item.formatted?.tool
-          "
-          class="message-text"
-        >
-          <span
-            [ngClass]="{
-              inaudible: getDisplayUserText(item) === '[inaudible]',
-              'awaiting-transcript':
-                getDisplayUserText(item) === '(awaiting transcript)'
-            }"
-          >
-            {{ getDisplayUserText(item) }}
-          </span>
-        </div>
-
-        <!-- Regular Assistant Message with Markdown -->
-        <div
-          *ngIf="
-            item.role === 'assistant' &&
-            item.type === 'message' &&
-            !item.formatted?.tool
-          "
-          class="message-text markdown-content"
-        >
-          <markdown
-            *ngIf="item.formatted?.transcript || item.formatted?.text"
-            [data]="getAssistantText(item)"
-            [inline]="false"
-          ></markdown>
-          <span *ngIf="!item.formatted?.transcript && !item.formatted?.text">
-            (truncated)
-          </span>
-        </div>
-      </div>
+        <div class="timestamp">{{ group.timestamp }}</div>
     </div>
-
-    <div class="timestamp">{{ group.timestamp }}</div>
-  </div>
 </div>

@@ -1,78 +1,53 @@
 <nav class="sidenav">
     <div class="logo-container">
         <div class="app-logo">
-            <img
-                src="assets/icons/llm-providers-logos/logo.svg"
-                alt="AI"
-                class="logo-svg static-logo"
-            />
-            <img
-                src="assets/gifs/logo.gif"
-                alt="AI"
-                class="logo-svg gif-logo"
-            />
+            <img src="assets/icons/llm-providers-logos/logo.svg" alt="AI" class="logo-svg static-logo" />
+            <img src="assets/gifs/logo.gif" alt="AI" class="logo-svg gif-logo" />
             <div class="logo-text">EpicStaff.ai</div>
         </div>
     </div>
 
     <ul class="sidenav-nav main-nav">
         @for (item of topNavItems; track item.id) {
-        <li
-            class="sidenav-nav-item"
-            (mouseenter)="item.showTooltip = true"
-            (mouseleave)="item.showTooltip = false"
-        >
-            <div class="tooltip-wrapper">
-                <a
-                    class="sidenav-nav-link"
-                    [routerLink]="item.routeLink || null"
-                    routerLinkActive="active"
-                    [routerLinkActiveOptions]="{ exact: false }"
-                    (click)="item.action ? handleItemClick(item, $event) : null"
-                    [attr.href]="item.routeLink || (item.action ? '#' : null)"
-                >
-                    <div
-                        class="sidenav-link-icon"
-                        [innerHTML]="item.svgIcon"
-                    ></div>
-                </a>
-                <app-tooltip
-                    [text]="item.label"
-                    [visible]="item.showTooltip"
-                ></app-tooltip>
-            </div>
-        </li>
+            <li class="sidenav-nav-item" (mouseenter)="item.showTooltip = true" (mouseleave)="item.showTooltip = false">
+                <div class="tooltip-wrapper">
+                    <a
+                        class="sidenav-nav-link"
+                        [routerLink]="item.routeLink || null"
+                        routerLinkActive="active"
+                        [routerLinkActiveOptions]="{ exact: false }"
+                        (click)="item.action ? handleItemClick(item, $event) : null"
+                        [attr.href]="item.routeLink || (item.action ? '#' : null)"
+                    >
+                        <div class="sidenav-link-icon" [innerHTML]="item.svgIcon"></div>
+                    </a>
+                    <app-tooltip [text]="item.label" [visible]="item.showTooltip"></app-tooltip>
+                </div>
+            </li>
         }
     </ul>
 
     <ul class="sidenav-nav bottom-nav">
         @for (item of bottomNavItems; track item.id) {
-        <li
-            class="sidenav-nav-item"
-            (mouseenter)="item.showTooltip = true"
-            (mouseleave)="item.showTooltip = false"
-        >
-            <div class="tooltip-wrapper">
-                <a
-                    class="sidenav-nav-link"
-                    [routerLink]="item.routeLink || null"
-                    routerLinkActive="active"
-                    [routerLinkActiveOptions]="{ exact: false }"
-                    (click)="handleItemClick(item, $event)"
-                    [attr.href]="item.routeLink || (item.action ? '#' : null)"
-                >
-                    <div
-                        class="sidenav-link-icon"
-                        [innerHTML]="item.svgIcon"
-                    ></div>
-                </a>
-                <app-tooltip
-                    [text]="item.label"
-                    [visible]="item.showTooltip"
-                    [class]="item.customClass || ''"
-                ></app-tooltip>
-            </div>
-        </li>
+            <li class="sidenav-nav-item" (mouseenter)="item.showTooltip = true" (mouseleave)="item.showTooltip = false">
+                <div class="tooltip-wrapper">
+                    <a
+                        class="sidenav-nav-link"
+                        [routerLink]="item.routeLink || null"
+                        routerLinkActive="active"
+                        [routerLinkActiveOptions]="{ exact: false }"
+                        (click)="handleItemClick(item, $event)"
+                        [attr.href]="item.routeLink || (item.action ? '#' : null)"
+                    >
+                        <div class="sidenav-link-icon" [innerHTML]="item.svgIcon"></div>
+                    </a>
+                    <app-tooltip
+                        [text]="item.label"
+                        [visible]="item.showTooltip"
+                        [class]="item.customClass || ''"
+                    ></app-tooltip>
+                </div>
+            </li>
         }
     </ul>
 

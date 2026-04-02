@@ -1,14 +1,14 @@
 <div class="panel-content">
-  <!-- Description Section -->
-  <div class="description" [class.editing]="isEditingDescription">
-    <textarea
-      [(ngModel)]="internalDescription"
-      placeholder="Enter project description..."
-      #descriptionTextarea
-      [rows]="getTextareaRows(internalDescription)"
-      (focus)="onFocusDescription()"
-      (blur)="onBlurDescription()"
-      (input)="adjustTextareaHeight(descriptionTextarea); onDescriptionInput()"
-    ></textarea>
-  </div>
+    <!-- Description Section -->
+    <div class="description" [class.editing]="isEditingDescription">
+        <textarea
+            [(ngModel)]="internalDescription"
+            placeholder="Enter project description..."
+            #descriptionTextarea
+            [rows]="getTextareaRows(internalDescription)"
+            (focus)="onFocusDescription()"
+            (blur)="onBlurDescription()"
+            (input)="adjustTextareaHeight(descriptionTextarea); onDescriptionInput()"
+        ></textarea>
+    </div>
 </div>

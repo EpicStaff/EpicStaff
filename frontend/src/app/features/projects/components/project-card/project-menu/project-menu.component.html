@@ -9,12 +9,7 @@
     >
         <app-icon icon="ui/dots-vertical" size="1rem"></app-icon>
     </button>
-    <div
-        class="context-menu"
-        *ngIf="isMenuOpen()"
-        (mouseenter)="onMenuEnter()"
-        (mouseleave)="onMenuLeave()"
-    >
+    <div class="context-menu" *ngIf="isMenuOpen()" (mouseenter)="onMenuEnter()" (mouseleave)="onMenuLeave()">
         <!-- <app-project-menu-item
             icon="ti-tags"
             label="Manage Tags"

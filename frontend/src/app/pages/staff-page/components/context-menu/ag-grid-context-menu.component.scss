@@ -1,58 +1,60 @@
 .custom-menu {
-  position: fixed;
-  background: #1e1e1f;
-  border: 1px solid #333741;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  padding: 0.25rem 0;
-  z-index: 1000;
-  padding: 8px;
-  ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-
-    li {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 15px;
-      cursor: pointer;
-      transition: background 0.15s ease, color 0.2s ease;
-      color: #e1e4e9;
-      font-size: 14px;
-      border-radius: 4px;
-
-      &.divider {
-        height: 1px;
-        background-color: #333741;
-        margin: 8px 0;
+    position: fixed;
+    background: #1e1e1f;
+    border: 1px solid #333741;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 0.25rem 0;
+    z-index: 1000;
+    padding: 8px;
+    ul {
+        list-style: none;
+        margin: 0;
         padding: 0;
-        cursor: default;
-        pointer-events: none;
-      }
 
-      &:not(.divider):hover {
-        background: #292a2f;
-        color: #ffffff;
+        li {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 15px;
+            cursor: pointer;
+            transition:
+                background 0.15s ease,
+                color 0.2s ease;
+            color: #e1e4e9;
+            font-size: 14px;
+            border-radius: 4px;
 
-        i.icon {
-          color: #ffffff;
+            &.divider {
+                height: 1px;
+                background-color: #333741;
+                margin: 8px 0;
+                padding: 0;
+                cursor: default;
+                pointer-events: none;
+            }
+
+            &:not(.divider):hover {
+                background: #292a2f;
+                color: #ffffff;
+
+                i.icon {
+                    color: #ffffff;
+                }
+            }
+
+            &.delete-option:hover {
+                background: #542326;
+                color: #ff8383;
+
+                i.icon {
+                    color: #ff7a7a;
+                }
+            }
+
+            i.icon {
+                margin-right: 0.5rem;
+            }
         }
-      }
-
-      &.delete-option:hover {
-        background: #542326;
-        color: #ff8383;
-
-        i.icon {
-          color: #ff7a7a;
-        }
-      }
-
-      i.icon {
-        margin-right: 0.5rem;
-      }
     }
-  }
 }

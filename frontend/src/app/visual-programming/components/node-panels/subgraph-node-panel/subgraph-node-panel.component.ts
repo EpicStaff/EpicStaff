@@ -1,14 +1,14 @@
-import { ChangeDetectionStrategy, Component, signal, inject, OnInit, input, computed } from '@angular/core';
-import { ReactiveFormsModule, FormGroup, Validators, FormArray } from '@angular/forms';
+import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
+import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+
+import { GraphDto } from '../../../../features/flows/models/graph.model';
+import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
+import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
+import { GoToButtonComponent } from '../../../../shared/components/go-to-button/go-to-button.component';
 import { SubGraphNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
-import { CommonModule } from '@angular/common';
-import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
-import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
-import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { InputMapComponent } from '../../input-map/input-map.component';
-import { GoToButtonComponent } from '../../../../shared/components/go-to-button/go-to-button.component';
-import { flowUrl } from '../../../../shared/utils/flow-links';
 
 interface InputMapPair {
     key: string;
@@ -33,9 +33,7 @@ interface InputMapPair {
                     ></app-custom-input>
 
                     <div class="input-map">
-                        <app-input-map
-                            [activeColor]="activeColor"
-                        ></app-input-map>
+                        <app-input-map [activeColor]="activeColor"></app-input-map>
                     </div>
 
                     <app-custom-input
@@ -49,17 +47,16 @@ interface InputMapPair {
                     <div class="field">
                         <label>
                             Selected Flow
-                            <i class="ti ti-help-circle tooltip-icon" title="Select the flow that this node will execute"></i>
+                            <i
+                                class="ti ti-help-circle tooltip-icon"
+                                title="Select the flow that this node will execute"
+                            ></i>
                         </label>
                         <div class="selected-flow-row">
-                            <select
-                                formControlName="selectedFlowId"
-                                class="select-field"
-                                (change)="onFlowChange()"
-                            >
+                            <select formControlName="selectedFlowId" class="select-field" (change)="onFlowChange()">
                                 <option [value]="null" disabled>Select a flow</option>
                                 @for (flow of filteredFlows(); track flow.id) {
-                                <option [value]="flow.id">{{ flow.name }}</option>
+                                    <option [value]="flow.id">{{ flow.name }}</option>
                                 }
                             </select>
                             <app-go-to-button
@@ -97,7 +94,6 @@ interface InputMapPair {
             .field {
                 display: flex;
                 flex-direction: column;
-            
             }
 
             .field label {
@@ -159,7 +155,7 @@ interface InputMapPair {
 })
 export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel> implements OnInit {
     private flowsApiService = inject(FlowsApiService);
-    
+
     public availableFlows = signal<GraphDto[]>([]);
     public readonly currentFlowId = input<number | null>(null);
     public readonly filteredFlows = computed(() => {
@@ -184,7 +180,7 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
 
     ngOnInit(): void {
         this.flowsApiService.getGraphsLight().subscribe({
-            next: (flows: any[]) => {
+            next: (flows: GraphDto[]) => {
                 this.availableFlows.set(flows);
             },
             error: (err) => console.error('Error fetching flows:', err),
@@ -194,8 +190,7 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
     protected initializeForm(): FormGroup {
         const currentFlowId = this.currentFlowId();
         const selectedId = this.node().data.id ?? null;
-        const initialSelectedId =
-            currentFlowId && selectedId === currentFlowId ? null : selectedId;
+        const initialSelectedId = currentFlowId && selectedId === currentFlowId ? null : selectedId;
 
         const form = this.fb.group({
             node_name: [this.node().node_name || '', this.createNodeNameValidators()],
@@ -208,13 +203,12 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
         return form;
     }
 
-    public onFlowChange(): void {
-    }
+    public onFlowChange(): void {}
 
     protected createUpdatedNode(): SubGraphNodeModel {
         const selectedId = this.form.get('selectedFlowId')?.value;
-        const selectedFlow = this.availableFlows().find(f => f.id === Number(selectedId));
-        
+        const selectedFlow = this.availableFlows().find((f) => f.id === Number(selectedId));
+
         let updatedData = this.node().data;
         if (selectedFlow) {
             updatedData = {
@@ -240,10 +234,7 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
     private initializeInputMap(form: FormGroup): void {
         const inputMapArray = form.get('input_map') as FormArray;
 
-        if (
-            this.node().input_map &&
-            Object.keys(this.node().input_map).length > 0
-        ) {
+        if (this.node().input_map && Object.keys(this.node().input_map).length > 0) {
             Object.entries(this.node().input_map).forEach(([key, value]) => {
                 inputMapArray.push(
                     this.fb.group({
@@ -262,15 +253,15 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
         }
     }
 
-    private getValidInputPairs(): any[] {
+    private getValidInputPairs(): AbstractControl[] {
         return this.inputMapPairs.controls.filter((control) => {
-            const value = control.value;
+            const value = control.value as InputMapPair;
             return value.key?.trim() !== '' || value.value?.trim() !== '';
         });
     }
 
-    private createInputMapFromPairs(pairs: any[]): Record<string, string> {
-        return pairs.reduce((acc: Record<string, string>, curr: any) => {
+    private createInputMapFromPairs(pairs: AbstractControl[]): Record<string, string> {
+        return pairs.reduce((acc: Record<string, string>, curr: AbstractControl) => {
             const pair = curr.value as InputMapPair;
             if (pair.key?.trim()) {
                 acc[pair.key.trim()] = pair.value;
@@ -289,6 +280,6 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
         const id = Number(this.form?.get('selectedFlowId')?.value);
         if (!id) return false;
 
-        return this.availableFlows().some(f => f.id === id);
+        return this.availableFlows().some((f) => f.id === id);
     });
 }

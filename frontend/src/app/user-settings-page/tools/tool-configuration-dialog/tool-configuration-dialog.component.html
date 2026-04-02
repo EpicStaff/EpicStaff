@@ -1,96 +1,93 @@
 <div class="main-wrapper">
-  <div class="dialog-title">
-    <span class="title-text">Configure {{ tool.name }}</span>
-    <div
-      class="close-button"
-      tabindex="0"
-      role="button"
-      aria-label="Close"
-      (click)="onCancel()"
-      (keydown.enter)="onCancel()"
-      (keydown.space)="onCancel()"
-    >
-      <i class="ti ti-x close-icon"></i>
-    </div>
-  </div>
-
-  <div class="dialog-content" *ngIf="!isLoading">
-    <div class="config-list-container">
-      <!-- Search Input -->
-      <div
-        class="search-input-wrapper"
-        [ngClass]="{ 'input-has-content': searchHasContent }"
-      >
-        <i class="ti ti-search search-icon"></i>
-        <input
-          type="text"
-          class="search-input"
-          placeholder="Search configurations"
-          (input)="onSearch($event)"
-        />
-      </div>
-
-      <!-- Scrollable content area -->
-      <div class="list-content-wrapper">
-        <div *ngIf="filteredConfigs.length === 0" class="no-configs-message">
-          No configurations available. Please create a new one.
-        </div>
-
-        <ul class="config-list" *ngIf="filteredConfigs.length > 0">
-          <li
-            *ngFor="let config of filteredConfigs"
-            (click)="onSelect(config)"
-            [class.selected]="config === selectedConfig"
+    <div class="dialog-title">
+        <span class="title-text">Configure {{ tool.name }}</span>
+        <div
+            class="close-button"
             tabindex="0"
             role="button"
-            (keydown.enter)="onSelect(config)"
-            (keydown.space)="onSelect(config)"
-          >
-            <div class="config-item">
-              <!-- Config Name and Status Indicator -->
-              <span class="config-name">{{ config.name }}</span>
-              <span
-                class="status-circle"
-                [class.completed]="config.is_completed"
-                [class.incomplete]="!config.is_completed"
-              ></span>
+            aria-label="Close"
+            (click)="onCancel()"
+            (keydown.enter)="onCancel()"
+            (keydown.space)="onCancel()"
+        >
+            <i class="ti ti-x close-icon"></i>
+        </div>
+    </div>
 
-              <!-- Delete Icon -->
-              <button
-                class="delete-button"
-                (click)="deleteFromList(config, $event)"
-                aria-label="Delete Configuration"
-              >
-                <i class="ti ti-trash"></i>
-              </button>
+    <div class="dialog-content" *ngIf="!isLoading">
+        <div class="config-list-container">
+            <!-- Search Input -->
+            <div class="search-input-wrapper" [ngClass]="{ 'input-has-content': searchHasContent }">
+                <i class="ti ti-search search-icon"></i>
+                <input
+                    type="text"
+                    class="search-input"
+                    placeholder="Search configurations"
+                    (input)="onSearch($event)"
+                />
             </div>
-          </li>
-        </ul>
-      </div>
 
-      <!-- "Create New" button stays at the bottom -->
-      <button class="create-config-button" (click)="onCreateNew()">
-        <i class="ti ti-plus"></i>
-        New Form
-      </button>
+            <!-- Scrollable content area -->
+            <div class="list-content-wrapper">
+                <div *ngIf="filteredConfigs.length === 0" class="no-configs-message">
+                    No configurations available. Please create a new one.
+                </div>
+
+                <ul class="config-list" *ngIf="filteredConfigs.length > 0">
+                    <li
+                        *ngFor="let config of filteredConfigs"
+                        (click)="onSelect(config)"
+                        [class.selected]="config === selectedConfig"
+                        tabindex="0"
+                        role="button"
+                        (keydown.enter)="onSelect(config)"
+                        (keydown.space)="onSelect(config)"
+                    >
+                        <div class="config-item">
+                            <!-- Config Name and Status Indicator -->
+                            <span class="config-name">{{ config.name }}</span>
+                            <span
+                                class="status-circle"
+                                [class.completed]="config.is_completed"
+                                [class.incomplete]="!config.is_completed"
+                            ></span>
+
+                            <!-- Delete Icon -->
+                            <button
+                                class="delete-button"
+                                (click)="deleteFromList(config, $event)"
+                                aria-label="Delete Configuration"
+                            >
+                                <i class="ti ti-trash"></i>
+                            </button>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- "Create New" button stays at the bottom -->
+            <button class="create-config-button" (click)="onCreateNew()">
+                <i class="ti ti-plus"></i>
+                New Form
+            </button>
+        </div>
+
+        <app-tool-config-form
+            [tool]="tool"
+            [llmConfigs]="llmConfigs"
+            [embeddingConfigs]="embeddingConfigs"
+            [existingToolConfigs]="existingToolConfigs"
+            [selectedConfig]="selectedConfig"
+            (submitForm)="onFormSubmit($event)"
+            (cancelForm)="onCancel()"
+        ></app-tool-config-form>
     </div>
 
-    <app-tool-config-form
-      [tool]="tool"
-      [llmConfigs]="llmConfigs"
-      [embeddingConfigs]="embeddingConfigs"
-      [existingToolConfigs]="existingToolConfigs"
-      [selectedConfig]="selectedConfig"
-      (submitForm)="onFormSubmit($event)"
-      (cancelForm)="onCancel()"
-    ></app-tool-config-form>
-  </div>
-
-  <!-- Loading Spinner -->
-  <div class="loading-container" *ngIf="isLoading">
-    <div class="spinner">
-      <i class="ti ti-loader"></i>
+    <!-- Loading Spinner -->
+    <div class="loading-container" *ngIf="isLoading">
+        <div class="spinner">
+            <i class="ti ti-loader"></i>
+        </div>
+        <div class="loading-text">Loading configurations...</div>
     </div>
-    <div class="loading-text">Loading configurations...</div>
-  </div>
 </div>

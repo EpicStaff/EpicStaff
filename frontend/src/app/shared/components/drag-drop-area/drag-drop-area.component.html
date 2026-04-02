@@ -1,9 +1,4 @@
-<div
-    class="drag-drop"
-    (dragover)="onDragOver($event)"
-    (dragleave)="onDragLeave($event)"
-    (drop)="onDrop($event)"
->
+<div class="drag-drop" (dragover)="onDragOver($event)" (dragleave)="onDragLeave($event)" (drop)="onDrop($event)">
     <div class="drag-drop__content">
         <ng-content />
     </div>
@@ -11,9 +6,7 @@
     @if (isDragging()) {
         <div class="drag-drop__overlay">
             <h3 class="drag-drop__title">Upload files</h3>
-            <p class="drag-drop__label">
-                Drag and drop files here
-            </p>
+            <p class="drag-drop__label">Drag and drop files here</p>
 
             <div class="drag-drop__icon">
                 <app-icon icon="ui/upload" size="2rem" />
@@ -23,8 +16,8 @@
                 <h3 class="drag-drop__types">
                     Allowed file types:
                     <span class="drag-drop__types-list">
-                    {{ allowedTypes().join(', ') | uppercase }}
-                </span>
+                        {{ allowedTypes().join(', ') | uppercase }}
+                    </span>
                 </h3>
             }
         </div>

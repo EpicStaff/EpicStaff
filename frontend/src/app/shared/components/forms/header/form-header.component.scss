@@ -1,38 +1,38 @@
 .header-container {
-  padding: 1.25rem 1.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--gray-800);
-  height: 75px;
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--gray-800);
+    height: 75px;
 }
 
 .header {
-  color: var(--gray-100);
-  font-size: 1.25rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+    color: var(--gray-100);
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
 }
 
 .close-button {
-  background: none;
-  border: none;
-  color: var(--gray-400);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px;
-  border-radius: 6px;
-  transition: all 0.2s ease;
+    background: none;
+    border: none;
+    color: var(--gray-400);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
 }
 
 .close-button:hover {
-  background-color: var(--gray-800);
-  color: var(--gray-100);
+    background-color: var(--gray-800);
+    color: var(--gray-100);
 }
 
 .close-button svg {
-  width: 20px;
-  height: 20px;
+    width: 20px;
+    height: 20px;
 }

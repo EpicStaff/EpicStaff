@@ -1,6 +1,6 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { Observable, of } from 'rxjs';
-import { catchError, delay, map, shareReplay, switchMap, tap } from 'rxjs/operators';
+import { catchError, delay, shareReplay, switchMap, tap } from 'rxjs/operators';
 
 import { SearchFilterChange } from '../../../shared/components/filters-list/filters-list.component';
 import { CreateGraphDtoRequest, GraphDto, UpdateGraphDtoRequest } from '../models/graph.model';

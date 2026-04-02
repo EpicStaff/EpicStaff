@@ -1,49 +1,52 @@
 .category-btn {
-  position: relative;
-  display: flex;
-  align-items: center;
-  padding: 0.4rem 1rem 0.4rem 2.4rem;
-  border-radius: 14px;
-  background: var(--color-nodes-background);
-  border: 1px solid var(--color-divider-subtle);
+    position: relative;
+    display: flex;
+    align-items: center;
+    padding: 0.4rem 1rem 0.4rem 2.4rem;
+    border-radius: 14px;
+    background: var(--color-nodes-background);
+    border: 1px solid var(--color-divider-subtle);
 
-  color: var(--color-text-primary, #d9d9de);
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-
-  outline: none;
-  box-shadow: none;
-
-  transition: background 0.18s, color 0.18s, border 0.18s;
-  &:hover:not(.selected),
-  &:focus-visible:not(.selected) {
-    background: var(--color-secondary-btn-background-hover);
-    border-color: var(--gray-400, #b4b4b4);
-    color: var(--color-text-primary-hover, #ececf3);
-  }
-
-  &.selected {
-    background: var(--accent-color, #685fff);
-    color: #fff;
-    border-color: var(--accent-color, #685fff);
-    .cat-icon {
-      filter: brightness(0) invert(1);
-    }
-  }
-  .cat-icon {
-    position: absolute;
-    left: 0.75rem;
-    top: 50%;
-    transform: translateY(-50%);
-    pointer-events: none;
-    color: var(--color-text-primary);
-  }
-
-  .cat-label {
-    font-weight: 500;
-
-    letter-spacing: 0.01em;
+    color: var(--color-text-primary, #d9d9de);
+    cursor: pointer;
     font-size: 14px;
-  }
+    font-weight: 600;
+
+    outline: none;
+    box-shadow: none;
+
+    transition:
+        background 0.18s,
+        color 0.18s,
+        border 0.18s;
+    &:hover:not(.selected),
+    &:focus-visible:not(.selected) {
+        background: var(--color-secondary-btn-background-hover);
+        border-color: var(--gray-400, #b4b4b4);
+        color: var(--color-text-primary-hover, #ececf3);
+    }
+
+    &.selected {
+        background: var(--accent-color, #685fff);
+        color: #fff;
+        border-color: var(--accent-color, #685fff);
+        .cat-icon {
+            filter: brightness(0) invert(1);
+        }
+    }
+    .cat-icon {
+        position: absolute;
+        left: 0.75rem;
+        top: 50%;
+        transform: translateY(-50%);
+        pointer-events: none;
+        color: var(--color-text-primary);
+    }
+
+    .cat-label {
+        font-weight: 500;
+
+        letter-spacing: 0.01em;
+        font-size: 14px;
+    }
 }

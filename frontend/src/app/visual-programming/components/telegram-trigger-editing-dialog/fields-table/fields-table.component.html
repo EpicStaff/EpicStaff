@@ -3,53 +3,32 @@
     <div class="table__row table__header">
         <!-- 1. Checkbox -->
         <div class="table__col" (click)="toggleAll()">
-            <app-checkbox
-                [checked]="allChecked()"
-                [indeterminate]="indeterminate()"
-            />
+            <app-checkbox [checked]="allChecked()" [indeterminate]="indeterminate()" />
         </div>
 
         <!-- 2. Default Name -->
-        <div class="table__col">
-            DEFAULT NAME
-        </div>
+        <div class="table__col">DEFAULT NAME</div>
 
         <!-- 3. Type Select -->
-        <div class="table__col">
-            TYPE
-        </div>
+        <div class="table__col">TYPE</div>
 
         <!-- 4. Assigned Name -->
-        <div class="table__col">
-            ASSIGNED NAME
-        </div>
+        <div class="table__col">ASSIGNED NAME</div>
 
         <!-- 5. Description -->
-        <div class="table__col">
-            DESCRIPTION
-        </div>
+        <div class="table__col">DESCRIPTION</div>
     </div>
 
     <!-- DATA ROWS -->
     <div class="table__fields-wrapper">
         <ol class="table__rows">
-            <label class="table__list-title">
-                Message items
-            </label>
+            <label class="table__list-title"> Message items </label>
             @for (item of messageTableItems(); track $index; let odd = $odd) {
-                <div
-                    class="table__row-wrapper"
-                    [class.table__row-wrapper--dark]="odd"
-                >
-                    <li
-                        class="table__row"
-                    >
+                <div class="table__row-wrapper" [class.table__row-wrapper--dark]="odd">
+                    <li class="table__row">
                         <!-- checkbox -->
                         <div class="table__col table__col--small">
-                            <app-checkbox
-                                [checked]="item.checked"
-                                (changed)="toggleItem(item)"
-                            />
+                            <app-checkbox [checked]="item.checked" (changed)="toggleItem(item)" />
                         </div>
 
                         <!-- default name -->
@@ -82,23 +61,13 @@
                 </div>
             }
 
-            <label class="table__list-title">
-                Callback query items
-            </label>
+            <label class="table__list-title"> Callback query items </label>
             @for (item of callbackQueryTableItems(); track $index; let even = $even) {
-                <div
-                    class="table__row-wrapper"
-                    [class.table__row-wrapper--dark]="even"
-                >
-                    <li
-                        class="table__row"
-                    >
+                <div class="table__row-wrapper" [class.table__row-wrapper--dark]="even">
+                    <li class="table__row">
                         <!-- checkbox -->
                         <div class="table__col table__col--small">
-                            <app-checkbox
-                                [checked]="item.checked"
-                                (changed)="toggleItem(item)"
-                            />
+                            <app-checkbox [checked]="item.checked" (changed)="toggleItem(item)" />
                         </div>
 
                         <!-- default name -->

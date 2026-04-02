@@ -2,11 +2,15 @@
     background-color: #1e1e20;
     border: 1px solid #685fff;
     border-radius: 4px;
-    box-shadow: 0 0 0 2px rgba(104, 95, 255, 0.2), 0 4px 16px rgba(0, 0, 0, 0.4);
+    box-shadow:
+        0 0 0 2px rgba(104, 95, 255, 0.2),
+        0 4px 16px rgba(0, 0, 0, 0.4);
     overflow: visible;
     display: flex;
     flex-direction: column;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    transition:
+        border-color 0.2s ease,
+        box-shadow 0.2s ease;
     position: relative;
 
     .editor-toolbar {
@@ -33,9 +37,9 @@
         font-size: 14px;
         line-height: 1.5;
         white-space: pre-wrap;
-        word-break: break-word; 
+        word-break: break-word;
         pointer-events: none;
-        overflow: hidden; 
+        overflow: hidden;
 
         ::ng-deep .variable {
             background-color: rgba(104, 95, 255, 0.2);
@@ -47,7 +51,7 @@
         }
 
         ::ng-deep .keyword {
-            color: #c586c0; 
+            color: #c586c0;
             font-weight: bold;
             text-transform: uppercase;
         }
@@ -60,7 +64,7 @@
         height: 100%; // Fill wrapper
         background-color: transparent;
         color: transparent;
-        caret-color: #d9d9de; 
+        caret-color: #d9d9de;
         border: none;
         padding: 0.5rem;
         font-family: 'JetBrains Mono', monospace;
@@ -73,8 +77,8 @@
         word-break: break-word;
 
         &::selection {
-            background-color: rgba(104, 95, 255, 0.3); 
-            color: transparent; 
+            background-color: rgba(104, 95, 255, 0.3);
+            color: transparent;
         }
 
         &:focus {
@@ -84,12 +88,12 @@
 
     .autocomplete-wrapper {
         position: absolute;
-        top: 100%; 
+        top: 100%;
         left: 0;
         margin-top: 4px;
         z-index: 1000;
     }
-    
+
     .python-badge {
         position: absolute;
         bottom: 8px;
@@ -103,7 +107,7 @@
         border-radius: 4px;
         pointer-events: none;
         z-index: 2;
-        
+
         i {
             font-size: 18px;
             color: #ffd43b;

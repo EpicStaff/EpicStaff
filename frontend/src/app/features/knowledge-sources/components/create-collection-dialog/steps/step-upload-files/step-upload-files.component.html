@@ -18,20 +18,15 @@
             class="dialog__form-input"
             [formControl]="collectionName"
             placeholder="Enter collection name"
-            [class.dialog__input--invalid]="collectionName?.invalid && collectionName?.touched"
+            [class.dialog__input--invalid]="collectionName.invalid && collectionName.touched"
         />
-        <app-validation-errors [control]="collectionName"/>
+        <app-validation-errors [control]="collectionName" />
     </div>
-
 
     <div class="dialog__content">
         @if (!documents().length) {
-            <h6 class="dialog__content-title">
-                Selected Files: <span class="dialog__content-title--count">(0)</span>
-            </h6>
-            <app-file-uploader
-                (filesUploaded)="onFilesUpload($event)"
-            />
+            <h6 class="dialog__content-title">Selected Files: <span class="dialog__content-title--count">(0)</span></h6>
+            <app-file-uploader (filesUploaded)="onFilesUpload($event)" />
         } @else {
             <div class="dialog__files">
                 <app-files-list
@@ -39,9 +34,7 @@
                     (filesUploaded)="onFilesUpload($event)"
                     class="dialog__files-list"
                 />
-                <app-file-preview
-                    class="dialog__file-preview"
-                />
+                <app-file-preview class="dialog__file-preview" />
             </div>
         }
     </div>

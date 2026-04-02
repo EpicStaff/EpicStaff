@@ -1,4 +1,4 @@
-@if (control()?.invalid && (control().dirty || control().touched)) {
+@if (control().invalid && (control().dirty || control().touched)) {
     <div class="validation-errors">
         @for (error of errors; track $index) {
             <label class="validation-errors__item">

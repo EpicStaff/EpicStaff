@@ -1,70 +1,70 @@
 .agents-section {
-  height: auto;
-  padding-inline: 3rem;
-  padding-top: 1rem;
-  padding-bottom: 0.75rem;
-  color: #e2e8f0;
+    height: auto;
+    padding-inline: 3rem;
+    padding-top: 1rem;
+    padding-bottom: 0.75rem;
+    color: #e2e8f0;
 }
 
 /* Grid Container */
 .grid-container {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 1rem;
-  width: 100%;
-  position: relative;
-  margin-bottom: 1rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 1rem;
+    width: 100%;
+    position: relative;
+    margin-bottom: 1rem;
 }
 
 /* Responsive adjustments based on grid size classes */
 :host {
-  &.size-small .grid-container {
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  }
+    &.size-small .grid-container {
+        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    }
 
-  &.size-medium .grid-container {
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  }
+    &.size-medium .grid-container {
+        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    }
 
-  &.size-large .grid-container {
-    grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
-  }
+    &.size-large .grid-container {
+        grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
+    }
 }
 
 /* Loading Animation */
 .loading-container {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  min-height: 200px; /* Ensure the loading container has enough height */
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  background-color: var(--gray-800);
-  z-index: 10;
-  border-radius: 0.5rem;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    min-height: 200px; /* Ensure the loading container has enough height */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background-color: var(--gray-800);
+    z-index: 10;
+    border-radius: 0.5rem;
 }
 
 .loading-spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid rgba(255, 255, 255, 0.1);
-  border-radius: 50%;
-  border-top-color: var(--blue-500);
-  animation: spin 1s ease-in-out infinite;
-  margin-bottom: 1rem;
+    width: 50px;
+    height: 50px;
+    border: 4px solid rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    border-top-color: var(--blue-500);
+    animation: spin 1s ease-in-out infinite;
+    margin-bottom: 1rem;
 }
 
 .loading-text {
-  color: var(--gray-300);
-  font-size: 0.875rem;
+    color: var(--gray-300);
+    font-size: 0.875rem;
 }
 
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+    to {
+        transform: rotate(360deg);
+    }
 }

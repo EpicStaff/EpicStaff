@@ -364,7 +364,7 @@ export class WavRecorder {
     analyser.smoothingTimeConstant = 0.1;
     node.connect(analyser);
     if (this.outputToSpeakers) {
-      // eslint-disable-next-line no-console
+       
       console.warn(
         "Warning: Output to speakers may affect sound quality,\n" +
           "especially due to system audio feedback preventative measures.\n" +

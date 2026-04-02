@@ -1,4 +1,5 @@
-import { Injectable, Signal, computed, signal } from '@angular/core';
+import { computed, Injectable, Signal, signal } from '@angular/core';
+
 import { NodeModel } from '../core/models/node.model';
 import { FlowService } from './flow.service';
 
@@ -9,23 +10,17 @@ export class SidePanelService {
     private readonly selectedNodeIdSignal = signal<string | null>(null);
     private readonly autosaveTriggerSignal = signal<boolean>(false);
 
-    public readonly selectedNodeId: Signal<string | null> =
-        this.selectedNodeIdSignal.asReadonly();
+    public readonly selectedNodeId: Signal<string | null> = this.selectedNodeIdSignal.asReadonly();
 
     public readonly selectedNode: Signal<NodeModel | null> = computed(() => {
         const selectedId = this.selectedNodeId();
         if (!selectedId) {
             return null;
         }
-        return (
-            this.flowService
-                .nodes()
-                .find((node) => node.id === selectedId) || null
-        );
+        return this.flowService.nodes().find((node) => node.id === selectedId) || null;
     });
 
-    public readonly autosaveTrigger: Signal<boolean> =
-        this.autosaveTriggerSignal.asReadonly();
+    public readonly autosaveTrigger: Signal<boolean> = this.autosaveTriggerSignal.asReadonly();
 
     constructor(private readonly flowService: FlowService) {}
 

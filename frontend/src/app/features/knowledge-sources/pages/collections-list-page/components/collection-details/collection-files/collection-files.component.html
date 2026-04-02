@@ -4,49 +4,42 @@
             <app-list-row class="files__file">
                 <div class="files__name-column">
                     <span>{{ i + 1 }}</span>
-                    <app-icon icon="ui/document" size="0.75rem"/>
+                    <app-icon icon="ui/document" size="0.75rem" />
 
                     <span class="files__name">
                         {{ item.file_name }}
                     </span>
-                    <div
-                        [class.files__file-error]="!item.isValidSize || !item.isValidType"
-                    >
+                    <div [class.files__file-error]="!item.isValidSize || !item.isValidType">
                         @if (!item.isValidType) {
                             Invalid file type
                         } @else if (!item.isValidSize) {
                             File size is too big
                         }
                     </div>
-<!--                    <app-icon-->
-<!--                        [icon]="'ui/warning'"-->
-<!--                        size="0.75rem"-->
-<!--                    />-->
+                    <!--                    <app-icon-->
+                    <!--                        [icon]="'ui/warning'"-->
+                    <!--                        size="0.75rem"-->
+                    <!--                    />-->
                 </div>
 
                 <div class="files__size-column">
                     <span class="files__size">{{ item.file_size | fileSize }}</span>
                     <app-list-actions>
-<!--                        <app-icon-->
-<!--                            [isAction]="true"-->
-<!--                            icon="ui/download"-->
-<!--                            class="files__file-action"-->
-<!--                            size="0.875rem"-->
-<!--                            (click)="onDocumentDelete(item)"-->
-<!--                        />-->
-<!--                        <app-icon-->
-<!--                            [isAction]="true"-->
-<!--                            icon="ui/preview"-->
-<!--                            class="files__file-action"-->
-<!--                            size="1rem"-->
-<!--                            (click)="onDocumentDelete(item)"-->
-<!--                        />-->
-                        <app-icon
-                            [isAction]="true"
-                            icon="ui/close"
-                            size="1rem"
-                            (click)="onDelete(item)"
-                        />
+                        <!--                        <app-icon-->
+                        <!--                            [isAction]="true"-->
+                        <!--                            icon="ui/download"-->
+                        <!--                            class="files__file-action"-->
+                        <!--                            size="0.875rem"-->
+                        <!--                            (click)="onDocumentDelete(item)"-->
+                        <!--                        />-->
+                        <!--                        <app-icon-->
+                        <!--                            [isAction]="true"-->
+                        <!--                            icon="ui/preview"-->
+                        <!--                            class="files__file-action"-->
+                        <!--                            size="1rem"-->
+                        <!--                            (click)="onDocumentDelete(item)"-->
+                        <!--                        />-->
+                        <app-icon [isAction]="true" icon="ui/close" size="1rem" (click)="onDelete(item)" />
                     </app-list-actions>
                 </div>
             </app-list-row>

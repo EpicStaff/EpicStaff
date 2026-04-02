@@ -1,73 +1,52 @@
 <!-- Updated flow-nodes-panel.component.html -->
 <div class="nodes-panel-container">
-  <div class="panel-header">
-    <!-- VS Code logo button with badge -->
-    <button
-      class="vscode-button"
-      (click)="togglePanel()"
-      [attr.title]="isExpanded() ? 'Collapse panel' : 'Expand node panel'"
-    >
-      <svg
-        class="vscode-logo"
-        viewBox="0 0 100 100"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <path
-          d="M95.3612 19.4943L76.8512 9.1617C75.3133 8.3193 73.5018 8.3193 72.0121 9.1617L42.1552 26.0243L18.1448 8.9449C16.9307 8.054 15.2142 8.054 13.9518 8.8957L4.5322 14.4597C3.223 15.3022 2.5 16.7306 2.5 18.1106V81.8894C2.5 83.2694 3.223 84.6978 4.5322 85.5403L13.9518 91.1043C15.2142 91.946 16.9307 91.946 18.1448 91.0551L42.1552 73.9757L72.0121 90.8383C73.5018 91.6807 75.3133 91.6807 76.8512 90.8383L95.3612 80.5057C96.9474 79.6633 97.5 78.4017 97.5 76.973V23.027C97.5 21.5983 96.9474 20.3367 95.3612 19.4943Z"
-          class="bg"
-          stroke="var(--accent-color)"
-          stroke-width="5"
-        />
-        <path
-          d="M18.5294 76.1176V24.1176L73.5294 50.1176L18.5294 76.1176Z"
-          fill="var(--accent-color)"
-        />
-      </svg>
-      <span class="node-count-badge">{{ nodes().length }}</span>
-    </button>
+    <div class="panel-header">
+        <!-- VS Code logo button with badge -->
+        <button
+            class="vscode-button"
+            (click)="togglePanel()"
+            [attr.title]="isExpanded() ? 'Collapse panel' : 'Expand node panel'"
+        >
+            <svg class="vscode-logo" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path
+                    d="M95.3612 19.4943L76.8512 9.1617C75.3133 8.3193 73.5018 8.3193 72.0121 9.1617L42.1552 26.0243L18.1448 8.9449C16.9307 8.054 15.2142 8.054 13.9518 8.8957L4.5322 14.4597C3.223 15.3022 2.5 16.7306 2.5 18.1106V81.8894C2.5 83.2694 3.223 84.6978 4.5322 85.5403L13.9518 91.1043C15.2142 91.946 16.9307 91.946 18.1448 91.0551L42.1552 73.9757L72.0121 90.8383C73.5018 91.6807 75.3133 91.6807 76.8512 90.8383L95.3612 80.5057C96.9474 79.6633 97.5 78.4017 97.5 76.973V23.027C97.5 21.5983 96.9474 20.3367 95.3612 19.4943Z"
+                    class="bg"
+                    stroke="var(--accent-color)"
+                    stroke-width="5"
+                />
+                <path d="M18.5294 76.1176V24.1176L73.5294 50.1176L18.5294 76.1176Z" fill="var(--accent-color)" />
+            </svg>
+            <span class="node-count-badge">{{ nodes().length }}</span>
+        </button>
 
-    <!-- Search input (visible when expanded) -->
-    <div class="search-input-container" *ngIf="isExpanded()">
-      <input
-        #searchInputRef
-        type="text"
-        class="search-input"
-        placeholder="Search nodes..."
-        [value]="searchQuery()"
-        (input)="updateSearchQuery($event)"
-      />
-      <button
-        *ngIf="searchQuery()"
-        class="clear-button"
-        (click)="clearSearch()"
-        title="Clear search"
-      >
-        <i class="ti ti-x"></i>
-      </button>
-    </div>
-  </div>
-
-  <!-- Results container (visible when expanded) -->
-  <div class="panel-results" *ngIf="isExpanded()">
-    <div class="panel-title">
-      <h3>{{ nodes().length }} nodes pushed from VS Code</h3>
+        <!-- Search input (visible when expanded) -->
+        <div class="search-input-container" *ngIf="isExpanded()">
+            <input
+                #searchInputRef
+                type="text"
+                class="search-input"
+                placeholder="Search nodes..."
+                [value]="searchQuery()"
+                (input)="updateSearchQuery($event)"
+            />
+            <button *ngIf="searchQuery()" class="clear-button" (click)="clearSearch()" title="Clear search">
+                <i class="ti ti-x"></i>
+            </button>
+        </div>
     </div>
 
-    <ul class="node-list">
-      <li class="no-results" *ngIf="filteredNodes().length === 0">
-        No nodes match your search
-      </li>
+    <!-- Results container (visible when expanded) -->
+    <div class="panel-results" *ngIf="isExpanded()">
+        <div class="panel-title">
+            <h3>{{ nodes().length }} nodes pushed from VS Code</h3>
+        </div>
 
-      <li
-        *ngFor="let node of filteredNodes(); let last = last"
-        [class.last-node]="last"
-      >
-        <app-node-item
-          [node]="node"
-          (click)="onNodeItemClick(node)"
-        ></app-node-item>
-      </li>
-    </ul>
-  </div>
+        <ul class="node-list">
+            <li class="no-results" *ngIf="filteredNodes().length === 0">No nodes match your search</li>
+
+            <li *ngFor="let node of filteredNodes(); let last = last" [class.last-node]="last">
+                <app-node-item [node]="node" (click)="onNodeItemClick(node)"></app-node-item>
+            </li>
+        </ul>
+    </div>
 </div>

@@ -1,21 +1,14 @@
 <div class="project-container">
-    @if(isLoading()) {
-    <div class="loading-container">
-        <app-spinner
-            [text]="'Loading project...'"
-            [accentColor]="'#685fff'"
-            [isOverlay]="false"
-        ></app-spinner>
-    </div>
-    } @else { @if (!showHeader) {
-    <app-header
-        [hasUnsavedChanges]="hasUnsavedChanges"
-        [isSaving]="isSaving"
-        (save)="onSaveAll()"
-    ></app-header>
-    }
+    @if (isLoading()) {
+        <div class="loading-container">
+            <app-spinner [text]="'Loading project...'" [accentColor]="'#685fff'" [isOverlay]="false"></app-spinner>
+        </div>
+    } @else {
+        @if (!showHeader) {
+            <app-header [hasUnsavedChanges]="hasUnsavedChanges" [isSaving]="isSaving" (save)="onSaveAll()"></app-header>
+        }
 
-    <!-- <div class="tabs-container">
+        <!-- <div class="tabs-container">
     <div class="tabs-navigation">
       <div
         class="tab-item"
@@ -34,83 +27,76 @@
     </div>
   </div> -->
 
-    <div class="content-area">
-        @if(activeTab === 'overview') {
-        <div class="section-list">
-            @for (section of sections; track section.id) {
-            <div
-                class="section-item"
-                [class.expanded]="isSectionExpanded(section.id)"
-            >
-                <div class="section-header" (click)="toggleSection(section.id)">
-                    <i
-                        class="toggle-icon play-icon ti ti-player-play-filled"
-                    ></i>
-                    <span class="section-title">
-                        {{ section.title }}
-                        @if (section.showCount) { @if (section.id === 'agents'
-                        && getAgentCount() > 0) {
-                        <span class="item-count">{{ getAgentCount() }}</span>
-                        } @if (section.id === 'tasks' && getTaskCount() > 0) {
-                        <span class="item-count">{{ getTaskCount() }}</span>
-                        } }
-                    </span>
-                    @if (section.showAddButton) {
-                    <span
-                        class="add-button"
-                        (click)="onAddAction($event, section.id)"
-                    >
-                        <i class="ti ti-plus"></i>
-                    </span>
+        <div class="content-area">
+            @if (activeTab === 'overview') {
+                <div class="section-list">
+                    @for (section of sections; track section.id) {
+                        <div class="section-item" [class.expanded]="isSectionExpanded(section.id)">
+                            <div class="section-header" (click)="toggleSection(section.id)">
+                                <i class="toggle-icon play-icon ti ti-player-play-filled"></i>
+                                <span class="section-title">
+                                    {{ section.title }}
+                                    @if (section.showCount) {
+                                        @if (section.id === 'agents' && agentCount() > 0) {
+                                            <span class="item-count">{{ agentCount() }}</span>
+                                        }
+                                        @if (section.id === 'tasks' && taskCount() > 0) {
+                                            <span class="item-count">{{ taskCount() }}</span>
+                                        }
+                                    }
+                                </span>
+                                @if (section.showAddButton) {
+                                    <span class="add-button" (click)="onAddAction($event, section.id)">
+                                        <i class="ti ti-plus"></i>
+                                    </span>
+                                }
+                            </div>
+                            <div
+                                class="section-content"
+                                [@expandCollapse]="isSectionExpanded(section.id) ? 'expanded' : 'collapsed'"
+                            >
+                                @if (section.id === 'settings') {
+                                    <app-settings-section
+                                        [project]="project"
+                                        (settingsChange)="onSettingsChanged($event)"
+                                    >
+                                    </app-settings-section>
+                                } @else if (section.id === 'details') {
+                                    <app-details-content
+                                        [projectId]="project.id"
+                                        [description]="project.description ?? ''"
+                                        [tags]="detailsTagsAsStrings"
+                                        (detailsChange)="onDetailsChanged($event)"
+                                        (dirtyChange)="onDetailsDirtyChange($event)"
+                                    ></app-details-content>
+                                } @else if (section.id === 'agents') {
+                                    <app-agents-section
+                                        (agentsIdsChange)="onAgentsIdsChanged($event)"
+                                        (agentUpdatePending)="onAgentUpdatePending($event)"
+                                        (dirtyChange)="onAgentsDirtyChange()"
+                                    ></app-agents-section>
+                                } @else if (section.id === 'tasks') {
+                                    <app-tasks-section
+                                        [project]="project"
+                                        [isSaving]="isSaving"
+                                        (taskPending)="onTaskPending($event)"
+                                        (dirtyChange)="onTasksDirtyChange($event)"
+                                    ></app-tasks-section>
+                                } @else {
+                                    <ng-container
+                                        [ngComponentOutlet]="section.component"
+                                        [ngComponentOutletInputs]="section.inputs"
+                                    >
+                                    </ng-container>
+                                }
+                            </div>
+                        </div>
                     }
                 </div>
-                <div
-                    class="section-content"
-                    [@expandCollapse]="
-                        isSectionExpanded(section.id) ? 'expanded' : 'collapsed'
-                    "
-                >
-                    @if (section.id === 'settings') {
-                    <app-settings-section
-                        [project]="project"
-                        (settingsChange)="onSettingsChanged($event)"
-                    >
-                    </app-settings-section>
-                    } @else if (section.id === 'details') {
-                        <app-details-content
-                            [projectId]="project?.id ?? 0"
-                            [description]="project?.description ?? ''"
-                            [tags]="detailsTagsAsStrings"
-                            (detailsChange)="onDetailsChanged($event)"
-                            (dirtyChange)="onDetailsDirtyChange($event)"
-                        ></app-details-content>
-                    } @else if (section.id === 'agents') {
-                        <app-agents-section
-                            (agentsIdsChange)="onAgentsIdsChanged($event)"
-                            (agentUpdatePending)="onAgentUpdatePending($event)"
-                            (dirtyChange)="onAgentsDirtyChange($event)"
-                        ></app-agents-section>
-                    } @else if (section.id === 'tasks') {
-                        <app-tasks-section
-                            [project]="project"
-                            [isSaving]="isSaving"
-                            (taskPending)="onTaskPending($event)"
-                            (dirtyChange)="onTasksDirtyChange($event)"
-                        ></app-tasks-section>
-                    } @else {
-                    <ng-container
-                        [ngComponentOutlet]="section.component"
-                        [ngComponentOutletInputs]="section.inputs"
-                    >
-                    </ng-container>
-                    }
-                </div>
-            </div>
+            }
+            @if (activeTab === 'draft') {
+                <div class="draft-content"></div>
             }
         </div>
-        } @if(activeTab === 'draft') {
-        <div class="draft-content"></div>
-        }
-    </div>
     }
 </div>

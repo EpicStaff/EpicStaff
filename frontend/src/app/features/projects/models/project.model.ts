@@ -1,5 +1,3 @@
-import { Session } from './sesson.model';
-import { GetCrewTagRequest } from './crew-tag.model';
 export enum ProjectProcess {
     SEQUENTIAL = 'sequential',
     HIERARCHICAL = 'hierarchical',
@@ -15,7 +13,7 @@ export interface GetProjectRequest {
     tags: number[];
 
     memory: boolean | null;
-    config: any | null;
+    config: Record<string, unknown> | null;
     max_rpm: number | null;
     cache: boolean | null;
     full_output: boolean;
@@ -28,7 +26,7 @@ export interface GetProjectRequest {
     manager_llm_config: number | null;
     embedding_config: number | null;
     memory_llm_config: number | null;
-    metadata?: any | null;
+    metadata?: Record<string, unknown> | null;
 }
 
 export interface CreateProjectRequest {
@@ -40,7 +38,7 @@ export interface CreateProjectRequest {
     agents?: number[];
     tags?: number[];
     memory: boolean | null;
-    config?: any | null;
+    config?: Record<string, unknown> | null;
     max_rpm?: number | null;
     cache?: boolean | null;
     full_output?: boolean;
@@ -50,7 +48,7 @@ export interface CreateProjectRequest {
     manager_llm_config?: number | null;
     embedding_config?: number | null;
     memory_llm_config?: number | null;
-    metadata?: any | null;
+    metadata?: Record<string, unknown> | null;
     similarity_threshold?: string | null;
     search_limit?: number | null;
 }
@@ -64,7 +62,7 @@ export interface UpdateProjectRequest {
     agents?: number[];
     tags?: number[];
     memory: boolean | null;
-    config?: any | null;
+    config?: Record<string, unknown> | null;
     max_rpm?: number | null;
     cache?: boolean | null;
     full_output?: boolean;

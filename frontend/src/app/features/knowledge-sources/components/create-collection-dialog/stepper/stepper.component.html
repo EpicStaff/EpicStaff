@@ -3,9 +3,9 @@
         <div
             class="stepper__step"
             [ngClass]="{
-        'stepper__step--active': i === currentStep(),
-        'stepper__step--completed': i < currentStep()
-      }"
+                'stepper__step--active': i === currentStep(),
+                'stepper__step--completed': i < currentStep(),
+            }"
             [ngStyle]="{ width: `calc(100% / ${steps().length})` }"
         >
             <div class="stepper__circle">
@@ -21,7 +21,7 @@
                         stroke-linecap="round"
                         stroke-linejoin="round"
                     >
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
                         <path d="M5 12l5 5l10 -10" />
                     </svg>
                 } @else {

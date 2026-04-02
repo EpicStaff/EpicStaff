@@ -1,42 +1,43 @@
+import { Overlay, OverlayModule, OverlayRef } from '@angular/cdk/overlay';
+import { ComponentPortal } from '@angular/cdk/portal';
+import { CommonModule } from '@angular/common';
 import {
-    Component,
-    ViewChild,
-    ElementRef,
     AfterViewInit,
     ChangeDetectionStrategy,
-    inject,
-    signal,
+    Component,
     computed,
+    effect,
+    ElementRef,
+    inject,
     OnDestroy,
+    signal,
+    ViewChild,
     ViewContainerRef,
-    effect
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ICellEditorAngularComp } from 'ag-grid-angular';
 import { ICellEditorParams } from 'ag-grid-community';
-import { AutocompleteOverlayComponent, AutocompleteItem } from './autocomplete-overlay/autocomplete-overlay.component';
-import { EditorToolbarComponent } from './editor-toolbar/editor-toolbar.component';
+
 import { FlowService } from '../../../../../../services/flow.service';
-import { Overlay, OverlayModule, OverlayRef } from '@angular/cdk/overlay';
-import { ComponentPortal } from '@angular/cdk/portal';
+import { AutocompleteItem, AutocompleteOverlayComponent } from './autocomplete-overlay/autocomplete-overlay.component';
+import { EditorToolbarComponent } from './editor-toolbar/editor-toolbar.component';
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 
 @Component({
     selector: 'app-expression-editor',
     standalone: true,
-    imports: [CommonModule, FormsModule, AutocompleteOverlayComponent, EditorToolbarComponent, OverlayModule],
+    imports: [CommonModule, FormsModule, EditorToolbarComponent, OverlayModule],
     templateUrl: './expression-editor.component.html',
     styleUrls: ['./expression-editor.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ExpressionEditorComponent
-    implements ICellEditorAngularComp, AfterViewInit, OnDestroy
-{
+export class ExpressionEditorComponent implements ICellEditorAngularComp, AfterViewInit, OnDestroy {
     @ViewChild('input', { read: ElementRef })
     public input!: ElementRef<HTMLTextAreaElement>;
     @ViewChild('backdrop', { read: ElementRef })
     public backdrop!: ElementRef<HTMLDivElement>;
-    
+
     private flowService = inject(FlowService);
     private overlay = inject(Overlay);
     private viewContainerRef = inject(ViewContainerRef);
@@ -48,7 +49,7 @@ export class ExpressionEditorComponent
     public showAutocomplete = signal<boolean>(false);
     public filterText = signal<string>('');
     public currentPath = signal<string[]>([]);
-    
+
     private overlayRef: OverlayRef | null = null;
     private componentPortal: ComponentPortal<AutocompleteOverlayComponent> | null = null;
     private autocompleteInstance: AutocompleteOverlayComponent | null = null;
@@ -56,26 +57,26 @@ export class ExpressionEditorComponent
     public autocompleteItems = computed<AutocompleteItem[]>(() => {
         const startNodeState = this.flowService.startNodeInitialState();
         if (!startNodeState) return [];
-        
-        let current: any = startNodeState;
+
+        let current: unknown = startNodeState;
         for (const key of this.currentPath()) {
-            if (current && typeof current === 'object') {
+            if (isRecord(current)) {
                 current = current[key];
             } else {
                 return [];
             }
         }
 
-        if (!current || typeof current !== 'object') return [];
+        if (!isRecord(current)) return [];
 
-        return Object.keys(current).map(key => ({
+        return Object.keys(current).map((key) => ({
             key,
             path: [...this.currentPath(), key].join('.'),
-            type: (typeof current[key] === 'object' && current[key] !== null) ? 'group' : 'value',
-            value: current[key]
+            type: typeof current[key] === 'object' && current[key] !== null ? 'group' : 'value',
+            value: current[key],
         }));
     });
-    
+
     private cursorPosition: number = 0;
 
     constructor() {
@@ -92,11 +93,7 @@ export class ExpressionEditorComponent
         // Effect to update overlay inputs when data changes
         effect(() => {
             if (this.autocompleteInstance) {
-                this.autocompleteInstance.updateData(
-                    this.autocompleteItems(),
-                    this.currentPath(),
-                    this.filterText()
-                );
+                this.autocompleteInstance.updateData(this.autocompleteItems(), this.currentPath(), this.filterText());
             }
         });
     }
@@ -113,15 +110,16 @@ export class ExpressionEditorComponent
         // We want to position the overlay near the cursor, or specifically near the '@' that triggered it.
         // Since we can't easily get the exact pixel coordinates of the cursor in a textarea without a library,
         // and we want a native-like feel, we can use a workaround:
-        // Create a temporary span element that mirrors the text up to the cursor, measure its position, 
+        // Create a temporary span element that mirrors the text up to the cursor, measure its position,
         // and position the overlay there.
         // OR simpler: position relative to the textarea but offset? No, that's static.
-        
+
         // Get cursor coordinates relative to textarea
         const cursorCoords = this.getCursorCoordinates();
-        
+
         // Flexible position strategy with fallbacks for all directions
-        const positionStrategy = this.overlay.position()
+        const positionStrategy = this.overlay
+            .position()
             .flexibleConnectedTo(this.input)
             .withPositions([
                 // Below cursor (preferred)
@@ -131,7 +129,7 @@ export class ExpressionEditorComponent
                     overlayX: 'start',
                     overlayY: 'top',
                     offsetX: cursorCoords.left,
-                    offsetY: cursorCoords.top + 10
+                    offsetY: cursorCoords.top + 10,
                 },
                 // Above cursor (if no space below)
                 {
@@ -140,7 +138,7 @@ export class ExpressionEditorComponent
                     overlayX: 'start',
                     overlayY: 'bottom',
                     offsetX: cursorCoords.left,
-                    offsetY: cursorCoords.top - 10
+                    offsetY: cursorCoords.top - 10,
                 },
                 // Below, aligned right (if no space on left)
                 {
@@ -149,7 +147,7 @@ export class ExpressionEditorComponent
                     overlayX: 'end',
                     overlayY: 'top',
                     offsetX: cursorCoords.left - 250, // Overlay width ~280px
-                    offsetY: cursorCoords.top + 10
+                    offsetY: cursorCoords.top + 10,
                 },
                 // Above, aligned right
                 {
@@ -158,8 +156,8 @@ export class ExpressionEditorComponent
                     overlayX: 'end',
                     overlayY: 'bottom',
                     offsetX: cursorCoords.left - 250,
-                    offsetY: cursorCoords.top - 10
-                }
+                    offsetY: cursorCoords.top - 10,
+                },
             ])
             .withPush(true)
             .withViewportMargin(8)
@@ -168,13 +166,13 @@ export class ExpressionEditorComponent
         this.overlayRef = this.overlay.create({
             positionStrategy,
             scrollStrategy: this.overlay.scrollStrategies.reposition(),
-            hasBackdrop: false // No backdrop - nothing closes the overlay except explicit actions
+            hasBackdrop: false, // No backdrop - nothing closes the overlay except explicit actions
         });
 
         this.componentPortal = new ComponentPortal(AutocompleteOverlayComponent, this.viewContainerRef);
         const componentRef = this.overlayRef.attach(this.componentPortal);
         this.autocompleteInstance = componentRef.instance;
-        
+
         // Prevent overlay interactions from stealing focus from input
         const overlayElement = this.overlayRef.overlayElement;
         overlayElement.addEventListener('mousedown', (e) => {
@@ -189,27 +187,23 @@ export class ExpressionEditorComponent
         this.autocompleteInstance.navigateUp.subscribe(() => this.onNavigateUp());
         this.autocompleteInstance.navigateDown.subscribe((item: AutocompleteItem) => this.onNavigateDown(item));
         this.autocompleteInstance.navigateToPath.subscribe((index: number) => this.onNavigateToPath(index));
-        
+
         // Initial data set
-        this.autocompleteInstance.updateData(
-            this.autocompleteItems(),
-            this.currentPath(),
-            this.filterText()
-        );
+        this.autocompleteInstance.updateData(this.autocompleteItems(), this.currentPath(), this.filterText());
     }
-    
-    private getCursorCoordinates(): { top: number, left: number } {
+
+    private getCursorCoordinates(): { top: number; left: number } {
         const textarea = this.input.nativeElement;
-        
+
         const textBeforeCursor = this.value.substring(0, this.cursorPosition);
         const lastAtIndex = textBeforeCursor.lastIndexOf('@');
-        
+
         // Position relative to the triggering '@'
-        const textToMeasure = textBeforeCursor.substring(0, lastAtIndex); 
-        
+        const textToMeasure = textBeforeCursor.substring(0, lastAtIndex);
+
         const div = document.createElement('div');
         const style = getComputedStyle(textarea);
-        
+
         // Copy essential styles
         div.style.fontFamily = style.fontFamily;
         div.style.fontSize = style.fontSize;
@@ -224,24 +218,24 @@ export class ExpressionEditorComponent
         div.style.visibility = 'hidden';
         div.style.top = textarea.getBoundingClientRect().top + 'px';
         div.style.left = textarea.getBoundingClientRect().left + 'px';
-        
+
         div.textContent = textToMeasure;
         const span = document.createElement('span');
         span.textContent = '@';
         div.appendChild(span);
-        
+
         document.body.appendChild(div);
-        
+
         const spanRect = span.getBoundingClientRect();
         const textareaRect = textarea.getBoundingClientRect();
-        
+
         // Calculate relative offset from top-left of textarea
         // Also account for scroll position of textarea
-        const top = (spanRect.bottom - textareaRect.top) - textarea.scrollTop;
-        const left = (spanRect.left - textareaRect.left) - textarea.scrollLeft;
-        
+        const top = spanRect.bottom - textareaRect.top - textarea.scrollTop;
+        const left = spanRect.left - textareaRect.left - textarea.scrollLeft;
+
         document.body.removeChild(div);
-        
+
         return { top, left };
     }
 
@@ -259,7 +253,7 @@ export class ExpressionEditorComponent
         this.updateHighlighting();
     }
 
-    getValue(): any {
+    getValue(): string {
         return this.value;
     }
 
@@ -289,7 +283,7 @@ export class ExpressionEditorComponent
             this.backdrop.nativeElement.scrollLeft = this.input.nativeElement.scrollLeft;
         }
     }
-    
+
     onBlur(event: FocusEvent): void {
         // If autocomplete is showing, prevent blur from causing issues
         // Refocus the input to keep editor open
@@ -339,7 +333,7 @@ export class ExpressionEditorComponent
                 return;
             }
         }
-        
+
         this.showAutocomplete.set(false);
     }
 
@@ -410,9 +404,9 @@ export class ExpressionEditorComponent
             const start = textarea.selectionStart;
             const end = textarea.selectionEnd;
             const value = textarea.value;
-            
+
             this.value = value.substring(0, start) + text + value.substring(end);
-            
+
             setTimeout(() => {
                 const newPos = start + text.length;
                 textarea.setSelectionRange(newPos, newPos);
@@ -429,21 +423,21 @@ export class ExpressionEditorComponent
     onItemSelect(item: AutocompleteItem): void {
         const textBeforeCursor = this.value.substring(0, this.cursorPosition);
         const lastAtIndex = textBeforeCursor.lastIndexOf('@');
-        
+
         if (lastAtIndex !== -1) {
             const textarea = this.input.nativeElement;
             textarea.focus();
             textarea.setSelectionRange(lastAtIndex + 1, this.cursorPosition);
-            
+
             const variablePath = `state.${item.path}`;
-            
+
             const success = document.execCommand('insertText', false, variablePath);
-            
+
             if (!success) {
                 const prefix = this.value.substring(0, lastAtIndex + 1);
                 const suffix = this.value.substring(this.cursorPosition);
                 this.value = `${prefix}${variablePath}${suffix}`;
-                
+
                 setTimeout(() => {
                     const newCursorPos = lastAtIndex + 1 + variablePath.length;
                     textarea.setSelectionRange(newCursorPos, newCursorPos);
@@ -457,7 +451,7 @@ export class ExpressionEditorComponent
 
             this.showAutocomplete.set(false);
             this.currentPath.set([]); // Reset path
-            
+
             textarea.focus();
         }
     }
@@ -467,23 +461,19 @@ export class ExpressionEditorComponent
         const lastAtIndex = textBeforeCursor.lastIndexOf('@');
 
         if (lastAtIndex !== -1) {
-            this.currentPath.update(path => [...path, item.key]);
-            
+            this.currentPath.update((path) => [...path, item.key]);
+
             const prefix = this.value.substring(0, lastAtIndex);
             const suffix = this.value.substring(this.cursorPosition);
             this.value = `${prefix}@${suffix}`;
-            
+
             this.filterText.set('');
-            
+
             // Directly update the overlay with new data
             if (this.autocompleteInstance) {
-                this.autocompleteInstance.updateData(
-                    this.autocompleteItems(),
-                    this.currentPath(),
-                    this.filterText()
-                );
+                this.autocompleteInstance.updateData(this.autocompleteItems(), this.currentPath(), this.filterText());
             }
-            
+
             setTimeout(() => {
                 this.input.nativeElement.focus();
                 const newCursorPos = lastAtIndex + 1;
@@ -494,36 +484,28 @@ export class ExpressionEditorComponent
     }
 
     onNavigateUp(): void {
-        this.currentPath.update(path => {
+        this.currentPath.update((path) => {
             if (path.length === 0) return path;
             return path.slice(0, -1);
         });
-        
+
         // Update the overlay with new data
         if (this.autocompleteInstance) {
-            this.autocompleteInstance.updateData(
-                this.autocompleteItems(),
-                this.currentPath(),
-                this.filterText()
-            );
+            this.autocompleteInstance.updateData(this.autocompleteItems(), this.currentPath(), this.filterText());
         }
     }
-    
+
     onNavigateToPath(index: number): void {
         // index -1 means root, otherwise slice path to that index + 1
         if (index === -1) {
             this.currentPath.set([]);
         } else {
-            this.currentPath.update(path => path.slice(0, index + 1));
+            this.currentPath.update((path) => path.slice(0, index + 1));
         }
-        
+
         // Update the overlay with new data
         if (this.autocompleteInstance) {
-            this.autocompleteInstance.updateData(
-                this.autocompleteItems(),
-                this.currentPath(),
-                this.filterText()
-            );
+            this.autocompleteInstance.updateData(this.autocompleteItems(), this.currentPath(), this.filterText());
         }
     }
 }

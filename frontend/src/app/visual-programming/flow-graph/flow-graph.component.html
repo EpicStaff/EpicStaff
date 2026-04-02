@@ -192,8 +192,8 @@
             [position]="contextMenuPostion"
             [menuContext]="nodesMode"
             [currentFlowId]="currentFlowId"
-            clickOutside
-            (clickOutside)="onCloseContextMenu()"
+            appClickOutside
+            (appClickOutside)="onCloseContextMenu()"
             (nodeSelected)="onAddNodeFromContextMenu($event)"
         >
         </app-flow-graph-context-menu>

@@ -1,32 +1,31 @@
 import {
     ChangeDetectionStrategy,
+    ChangeDetectorRef,
     Component,
+    computed,
+    effect,
+    inject,
     input,
+    OnInit,
     output,
     signal,
-    computed,
-    ChangeDetectorRef,
-    inject,
-    OnInit,
-    effect,
 } from '@angular/core';
 import { AgGridModule } from 'ag-grid-angular';
 import {
+    CellClickedEvent,
+    CellValueChangedEvent,
     ColDef,
     GridApi,
     GridOptions,
     GridReadyEvent,
-    CellValueChangedEvent,
-    CellClickedEvent,
-    ICellEditorParams,
 } from 'ag-grid-community';
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
 import { themeQuartz } from 'ag-grid-community';
+
+import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
+import { NodeType } from '../../../../core/enums/node-type';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import { FlowService } from '../../../../services/flow.service';
-import { NodeType } from '../../../../core/enums/node-type';
-import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
-
 import { ExpressionEditorComponent } from './cell-editors/expression-editor/expression-editor.component';
 import { ExpressionRendererComponent } from './cell-renderers/expression-renderer/expression-renderer.component';
 
@@ -35,7 +34,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 @Component({
     selector: 'app-decision-table-grid',
     standalone: true,
-    imports: [AgGridModule, ButtonComponent, ExpressionEditorComponent, ExpressionRendererComponent],
+    imports: [AgGridModule, ButtonComponent],
     templateUrl: './decision-table-grid.component.html',
     styleUrls: ['./decision-table-grid.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -60,12 +59,13 @@ export class DecisionTableGridComponent implements OnInit {
         const currentId = this.currentNodeId();
 
         return nodes
-            .filter((node) =>
-                node.type !== NodeType.NOTE &&
-                node.type !== NodeType.START &&
-                node.type !== NodeType.WEBHOOK_TRIGGER &&
-                node.type !== NodeType.TELEGRAM_TRIGGER &&
-                node.id !== currentId
+            .filter(
+                (node) =>
+                    node.type !== NodeType.NOTE &&
+                    node.type !== NodeType.START &&
+                    node.type !== NodeType.WEBHOOK_TRIGGER &&
+                    node.type !== NodeType.TELEGRAM_TRIGGER &&
+                    node.id !== currentId
             )
             .map((node) => ({
                 value: node.id,
@@ -84,7 +84,7 @@ export class DecisionTableGridComponent implements OnInit {
             if (this.gridApi) {
                 const colDefs = this.gridApi.getColumnDefs();
                 if (colDefs) {
-                    const newColDefs = colDefs.map((col: any) => {
+                    const newColDefs = colDefs.map((col: ColDef) => {
                         if (col.field === 'next_node' || col.colId === 'next_node') {
                             return {
                                 ...col,
@@ -108,12 +108,10 @@ export class DecisionTableGridComponent implements OnInit {
         const connections = this.flowService.connections();
         const currentNodeId = this.currentNodeId();
 
-        console.log('[DecisionTableGrid] Initializing with groups:', groups);
-
         const findNodeId = (value: string | null, groupName: string): string | null => {
             // 1. Try direct lookup
             if (value) {
-                const foundNode = nodes.find(n => n.id === value || n.node_name === value);
+                const foundNode = nodes.find((n) => n.id === value || n.node_name === value);
                 if (foundNode) return foundNode.id;
                 console.warn(`[DecisionTableGrid] Node not found for value: '${value}'`);
             }
@@ -121,17 +119,16 @@ export class DecisionTableGridComponent implements OnInit {
             // 2. Fallback: Visual Connection lookup
             // Port ID: `${nodeId}_decision-out-${normalizedGroupName}`
             if (groupName) {
-                 const normalizedGroupName = groupName.toLowerCase().replace(/\s+/g, '-');
-                 const portId = `${currentNodeId}_decision-out-${normalizedGroupName}`;
+                const normalizedGroupName = groupName.toLowerCase().replace(/\s+/g, '-');
+                const portId = `${currentNodeId}_decision-out-${normalizedGroupName}`;
 
-                 const connection = connections.find(
-                    c => c.sourceNodeId === currentNodeId && c.sourcePortId === portId
-                 );
+                const connection = connections.find(
+                    (c) => c.sourceNodeId === currentNodeId && c.sourcePortId === portId
+                );
 
-                 if (connection) {
-                     console.log(`[DecisionTableGrid] Recovered connection for group '${groupName}' -> ${connection.targetNodeId}`);
-                     return connection.targetNodeId;
-                 }
+                if (connection) {
+                    return connection.targetNodeId;
+                }
             }
 
             return value;
@@ -141,11 +138,7 @@ export class DecisionTableGridComponent implements OnInit {
             this.rowData.set([this.createEmptyGroup(0)]);
         } else {
             const normalizedGroups = [...groups]
-                .sort(
-                    (a, b) =>
-                        (a.order ?? Number.MAX_SAFE_INTEGER) -
-                        (b.order ?? Number.MAX_SAFE_INTEGER)
-                )
+                .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER))
                 .map((group, index) => {
                     // Update group name if it matches the default pattern "Condition X" to reflect current position
                     const groupNameMatch = group.group_name?.match(/^(Condition|Group) (\d+)$/);
@@ -153,7 +146,7 @@ export class DecisionTableGridComponent implements OnInit {
                         ...group,
                         group_name: groupNameMatch ? `Condition ${index + 1}` : group.group_name,
                         order: index + 1,
-                        next_node: findNodeId(group.next_node, group.group_name) // Ensure we use ID with fallback
+                        next_node: findNodeId(group.next_node, group.group_name), // Ensure we use ID with fallback
                     };
                     this.updateGroupValidFlag(normalizedGroup, index);
                     return normalizedGroup;
@@ -257,7 +250,7 @@ export class DecisionTableGridComponent implements OnInit {
             editable: true,
             width: 200,
             cellEditor: 'agSelectCellEditor',
-            cellEditorParams: (params: ICellEditorParams) => {
+            cellEditorParams: () => {
                 const nodes = this.availableNodes();
                 return {
                     values: ['', ...nodes.map((n) => n.value)],
@@ -306,8 +299,7 @@ export class DecisionTableGridComponent implements OnInit {
         animateRows: true,
         suppressColumnVirtualisation: false,
         stopEditingWhenCellsLoseFocus: true,
-        onCellValueChanged: (event: CellValueChangedEvent) =>
-            this.onCellValueChanged(event),
+        onCellValueChanged: (event: CellValueChangedEvent) => this.onCellValueChanged(event),
         onCellClicked: (event: CellClickedEvent) => this.onCellClicked(event),
     };
 
@@ -323,15 +315,14 @@ export class DecisionTableGridComponent implements OnInit {
         if (colId === 'group_name') {
             const newName = event.newValue?.trim();
             const isEmpty = !newName;
-            const isDuplicate = !isEmpty && this.rowData().some((row, idx) =>
-                idx !== rowIndex && row.group_name === newName
-            );
+            const isDuplicate =
+                !isEmpty && this.rowData().some((row, idx) => idx !== rowIndex && row.group_name === newName);
 
-            (event.data as any).group_nameWarning = isEmpty || isDuplicate;
+            event.data.group_nameWarning = isEmpty || isDuplicate;
         } else if (colId === 'expression') {
-            (event.data as any).expressionWarning = !event.newValue?.trim();
+            event.data.expressionWarning = !event.newValue?.trim();
         } else if (colId === 'manipulation') {
-            (event.data as any).manipulationWarning = false;
+            event.data.manipulationWarning = false;
         }
 
         this.updateGroupValidFlag(event.data, rowIndex);
@@ -341,18 +332,14 @@ export class DecisionTableGridComponent implements OnInit {
         this.emitChanges();
     }
 
-    private updateGroupValidFlag(
-        group: ConditionGroup,
-        groupIndex: number
-    ): void {
-        const hasValidName = !!(group.group_name?.trim());
+    private updateGroupValidFlag(group: ConditionGroup, groupIndex: number): void {
+        const hasValidName = !!group.group_name?.trim();
         const hasNoDuplicateName = !this.rowData().some(
             (g, idx) => idx !== groupIndex && g.group_name === group.group_name
         );
-        const hasExpression = !!(group.expression?.trim());
+        const hasExpression = !!group.expression?.trim();
 
         group.valid = hasValidName && hasNoDuplicateName && hasExpression;
-
     }
 
     public onCellClicked(event: CellClickedEvent): void {

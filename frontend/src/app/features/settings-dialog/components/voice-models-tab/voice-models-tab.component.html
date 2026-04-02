@@ -1,55 +1,46 @@
 <div class="tab-content">
-  <div class="tab-header">
-    <div>
-      <h3 class="title">Voice Models</h3>
-      <p class="subtitle">
-        Configure voice models for text-to-speech and speech-to-text
-        functionality.
-      </p>
+    <div class="tab-header">
+        <div>
+            <h3 class="title">Voice Models</h3>
+            <p class="subtitle">Configure voice models for text-to-speech and speech-to-text functionality.</p>
+        </div>
+        <app-button type="primary" leftIcon="ui/plus" (click)="createNewConfig()">Add</app-button>
     </div>
-    <app-button type="primary" leftIcon="ui/plus" (click)="createNewConfig()"
-      >Add</app-button
-    >
-  </div>
 
-  <div class="voice-configs-list">
-    <!-- Loading state -->
-    @if (status() === 'loading') {
-    <div class="loading-state">
-      <p>Loading voice configurations...</p>
+    <div class="voice-configs-list">
+        <!-- Loading state -->
+        @if (status() === 'loading') {
+            <div class="loading-state">
+                <p>Loading voice configurations...</p>
+            </div>
+        }
+
+        <!-- Error state -->
+        @else if (status() === 'error') {
+            <div class="error-state">
+                <p>{{ errorMessage() }}</p>
+                <app-button type="secondary" leftIcon="ui/refresh" (click)="refreshData()"> Retry </app-button>
+            </div>
+        }
+
+        <!-- Empty state -->
+        @else if (voiceConfigs().length === 0) {
+            <div class="empty-state">
+                <p>No embedding configurations found. Add one to get started.</p>
+            </div>
+        }
+
+        <!-- Loaded with data -->
+        @else {
+            @for (config of voiceConfigs(); track config.id) {
+                <app-voice-config-item
+                    [config]="config"
+                    (favoriteToggled)="onFavoriteToggled($event)"
+                    (enabledToggled)="onEnabledToggled($event)"
+                    (configureClicked)="onConfigureClicked($event)"
+                    (deleteClicked)="onDeleteClicked($event)"
+                ></app-voice-config-item>
+            }
+        }
     </div>
-    }
-
-    <!-- Error state -->
-    @else if (status() === 'error') {
-    <div class="error-state">
-      <p>{{ errorMessage() }}</p>
-      <app-button
-        type="secondary"
-        leftIcon="ui/refresh"
-        (click)="refreshData()"
-      >
-        Retry
-      </app-button>
-    </div>
-    }
-
-    <!-- Empty state -->
-    @else if (voiceConfigs().length === 0) {
-    <div class="empty-state">
-      <p>No embedding configurations found. Add one to get started.</p>
-    </div>
-    }
-
-    <!-- Loaded with data -->
-    @else { @for (config of voiceConfigs(); track config.id) {
-    <app-voice-config-item
-      [config]="config"
-      (favoriteToggled)="onFavoriteToggled($event)"
-      (enabledToggled)="onEnabledToggled($event)"
-      (configureClicked)="onConfigureClicked($event)"
-      (deleteClicked)="onDeleteClicked($event)"
-    ></app-voice-config-item>
-    } }
-  </div>
 </div>

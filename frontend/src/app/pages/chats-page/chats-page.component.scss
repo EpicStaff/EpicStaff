@@ -1,21 +1,21 @@
 .chats {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-
-  &__body {
     display: flex;
-    flex: 1;
-    position: relative;
+    flex-direction: column;
+    height: 100%;
     overflow: hidden;
-  }
 
-  &__loading-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 100%;
-    flex: 1;
-  }
+    &__body {
+        display: flex;
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+    }
+
+    &__loading-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        flex: 1;
+    }
 }

@@ -141,8 +141,7 @@
 }
 
 .code-editor-section {
-    border: 1px solid
-    var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
+    border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
     overflow: hidden;
     display: flex;
     flex-direction: column;

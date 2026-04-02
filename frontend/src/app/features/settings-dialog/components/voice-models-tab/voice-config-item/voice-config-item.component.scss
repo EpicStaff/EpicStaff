@@ -1,79 +1,79 @@
 .voice-config-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
-  background-color: var(--color-surface-card);
-  border: 1px solid var(--color-divider-subtle);
-  margin-bottom: 0.5rem;
-  transition: background-color 0.2s ease;
-
-  &:hover {
-    background-color: var(--color-surface-hover);
-  }
-
-  &.disabled {
-    opacity: 0.5;
-    filter: grayscale(0.7);
-  }
-
-  .item-left {
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    background-color: var(--color-surface-card);
+    border: 1px solid var(--color-divider-subtle);
+    margin-bottom: 0.5rem;
+    transition: background-color 0.2s ease;
 
-    .provider-icon {
-      flex-shrink: 0;
+    &:hover {
+        background-color: var(--color-surface-hover);
     }
 
-    .model-info {
-      display: flex;
-      flex-direction: column;
-
-      .model-name {
-        font-weight: 500;
-        color: var(--color-text-primary);
-        font-size: 0.9rem;
-      }
-
-      .config-name {
-        color: var(--color-text-secondary);
-        font-size: 0.8rem;
-        margin-top: 0.15rem;
-        max-width: 180px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-    }
-  }
-
-  .item-right {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-
-    .separator {
-      width: 1px;
-      height: 24px;
-      background-color: var(--color-divider-subtle);
+    &.disabled {
+        opacity: 0.5;
+        filter: grayscale(0.7);
     }
 
-    .favorite-btn {
-      color: var(--color-text-secondary);
+    .item-left {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
 
-      &:has(app-icon[icon="ui/star-filled"]) {
-        color: #ffb800; // Gold color for active favorite
-      }
+        .provider-icon {
+            flex-shrink: 0;
+        }
+
+        .model-info {
+            display: flex;
+            flex-direction: column;
+
+            .model-name {
+                font-weight: 500;
+                color: var(--color-text-primary);
+                font-size: 0.9rem;
+            }
+
+            .config-name {
+                color: var(--color-text-secondary);
+                font-size: 0.8rem;
+                margin-top: 0.15rem;
+                max-width: 180px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+        }
     }
 
-    .delete-btn {
-      color: var(--color-text-secondary);
+    .item-right {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
 
-      &:hover {
-        color: var(--color-error);
-      }
+        .separator {
+            width: 1px;
+            height: 24px;
+            background-color: var(--color-divider-subtle);
+        }
+
+        .favorite-btn {
+            color: var(--color-text-secondary);
+
+            &:has(app-icon[icon='ui/star-filled']) {
+                color: #ffb800; // Gold color for active favorite
+            }
+        }
+
+        .delete-btn {
+            color: var(--color-text-secondary);
+
+            &:hover {
+                color: var(--color-error);
+            }
+        }
     }
-  }
 }

@@ -32,7 +32,7 @@ import {
 
 // ---- UI metadata stored in each node's backend `metadata` JSON field ----
 
-export interface NodeUIMetadata {
+export interface NodeUIMetadata extends Record<string, unknown> {
     position: { x: number; y: number };
     color: string;
     icon: string;

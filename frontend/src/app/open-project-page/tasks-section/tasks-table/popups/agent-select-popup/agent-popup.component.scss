@@ -1,4 +1,6 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
+@use 'sass:color';
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 
 // Modern Dark Theme Variables
 $bg-dark: #121212;
@@ -17,220 +19,220 @@ $transition-default: all 0.2s ease;
 
 // Animations
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
 }
 
 .agent-list-container {
-  background-color: $bg-card;
-  border-radius: 8px;
-  width: 400px; // Wider than the LLM popup (350px)
-  color: $text-primary;
-  font-family: "Inter", sans-serif;
-  box-shadow: 0 10px 40px $shadow-color;
-  border: 1px solid $border-color;
-  animation: fadeIn 0.3s ease;
-  max-height: 450px;
-  display: flex;
-  flex-direction: column;
-
-  .list-header {
+    background-color: $bg-card;
+    border-radius: 8px;
+    width: 400px; // Wider than the LLM popup (350px)
+    color: $text-primary;
+    font-family: 'Inter', sans-serif;
+    box-shadow: 0 10px 40px $shadow-color;
+    border: 1px solid $border-color;
+    animation: fadeIn 0.3s ease;
+    max-height: 450px;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 16px;
+    flex-direction: column;
 
-    input {
-      flex: 1;
-      padding: 7px 14px;
-      border-radius: 6px;
-      background-color: $bg-input;
-      color: $text-primary;
-      font-size: 13px;
-      border: 1px solid $border-color;
-      transition: $transition-default;
-      outline: none;
-
-      &::placeholder {
-        color: $text-tertiary;
-      }
-
-      &:focus {
-        border-color: $accent-blue;
-        box-shadow: 0 0 0 2px rgba($accent-blue, 0.15);
-      }
-    }
-
-    .filter-button {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      background-color: $bg-input;
-      color: $text-secondary;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 500;
-      transition: $transition-default;
-      border: none;
-
-      i {
-        font-size: 14px;
-        width: 14px;
-        height: 14px;
-        margin-bottom: 2px;
-      }
-
-      &:hover {
-        background-color: lighten($bg-input, 5%);
-        color: $text-primary;
-      }
-    }
-  }
-
-  // Wrapper for scrolling
-  .agent-list-wrapper {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px;
-    padding-top: 0;
-  }
-
-  .agents-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-
-    .no-results {
-      padding: 20px 0;
-
-      .empty-state {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        color: $text-secondary;
-
-        i {
-          font-size: 24px;
-          margin-bottom: 8px;
-          opacity: 0.7;
-        }
-
-        p {
-          font-size: 13px;
-          text-align: center;
-        }
-      }
-    }
-
-    .agent-item {
-      display: flex;
-      align-items: center;
-      padding: 10px 12px;
-      border-radius: 6px;
-      background-color: $bg-item;
-      margin-bottom: 8px;
-      transition: $transition-default;
-      cursor: pointer;
-      border: 1px solid transparent;
-      position: relative;
-
-      &:focus {
-        outline: none;
-        border-color: $accent-blue;
-      }
-
-      &:hover {
-        background-color: $bg-item-hover;
-      }
-
-      &.selected {
-        background-color: rgba($accent-blue, 0.15);
-        border-color: $accent-blue;
-        box-shadow: 0 0 0 1px rgba($accent-blue, 0.4);
-
-        .select-button {
-          background-color: $accent-blue;
-          color: white;
-        }
-      }
-
-      .agent-avatar {
+    .list-header {
         display: flex;
         align-items: center;
-        justify-content: center;
-        width: 28px;
-        height: 28px;
-        border-radius: 6px;
-        margin-right: 12px;
-        background-color: rgba($accent-blue, 0.1);
-        color: $accent-blue;
-        border: 1px solid rgba($accent-blue, 0.2);
+        justify-content: space-between;
+        gap: 16px;
+        padding: 16px;
 
-        i {
-          font-size: 16px;
+        input {
+            flex: 1;
+            padding: 7px 14px;
+            border-radius: 6px;
+            background-color: $bg-input;
+            color: $text-primary;
+            font-size: 13px;
+            border: 1px solid $border-color;
+            transition: $transition-default;
+            outline: none;
+
+            &::placeholder {
+                color: $text-tertiary;
+            }
+
+            &:focus {
+                border-color: $accent-blue;
+                box-shadow: 0 0 0 2px rgba($accent-blue, 0.15);
+            }
         }
-      }
 
-      .item-content {
-        flex: 1;
-        min-width: 0; // Helps with text overflow
-
-        .item-text {
-          display: flex;
-          flex-direction: column;
-          font-size: 13px;
-          font-weight: 500;
-          color: $text-primary;
-          line-height: 1.2;
-
-          .agent-name {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-
-          .agent-role {
-            margin-top: 3px;
+        .filter-button {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background-color: $bg-input;
             color: $text-secondary;
-            font-size: 12px;
-            font-weight: normal;
-          }
-        }
-      }
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: $transition-default;
+            border: none;
 
-      .select-button {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-width: 26px;
-        height: 26px;
-        padding: 0;
-        background-color: $bg-input;
-        color: $text-secondary;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 14px;
-        transition: $transition-default;
-        border: none;
-        margin-left: 8px;
+            i {
+                font-size: 14px;
+                width: 14px;
+                height: 14px;
+                margin-bottom: 2px;
+            }
 
-        i {
-          transition: transform 0.2s ease;
+            &:hover {
+                background-color: color.adjust($bg-input, $lightness: 5%);
+                color: $text-primary;
+            }
         }
-
-        &:hover {
-          background-color: $accent-blue;
-          color: white;
-        }
-      }
     }
-  }
+
+    // Wrapper for scrolling
+    .agent-list-wrapper {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+        padding-top: 0;
+    }
+
+    .agents-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+
+        .no-results {
+            padding: 20px 0;
+
+            .empty-state {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                color: $text-secondary;
+
+                i {
+                    font-size: 24px;
+                    margin-bottom: 8px;
+                    opacity: 0.7;
+                }
+
+                p {
+                    font-size: 13px;
+                    text-align: center;
+                }
+            }
+        }
+
+        .agent-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 6px;
+            background-color: $bg-item;
+            margin-bottom: 8px;
+            transition: $transition-default;
+            cursor: pointer;
+            border: 1px solid transparent;
+            position: relative;
+
+            &:focus {
+                outline: none;
+                border-color: $accent-blue;
+            }
+
+            &:hover {
+                background-color: $bg-item-hover;
+            }
+
+            &.selected {
+                background-color: rgba($accent-blue, 0.15);
+                border-color: $accent-blue;
+                box-shadow: 0 0 0 1px rgba($accent-blue, 0.4);
+
+                .select-button {
+                    background-color: $accent-blue;
+                    color: white;
+                }
+            }
+
+            .agent-avatar {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 28px;
+                height: 28px;
+                border-radius: 6px;
+                margin-right: 12px;
+                background-color: rgba($accent-blue, 0.1);
+                color: $accent-blue;
+                border: 1px solid rgba($accent-blue, 0.2);
+
+                i {
+                    font-size: 16px;
+                }
+            }
+
+            .item-content {
+                flex: 1;
+                min-width: 0; // Helps with text overflow
+
+                .item-text {
+                    display: flex;
+                    flex-direction: column;
+                    font-size: 13px;
+                    font-weight: 500;
+                    color: $text-primary;
+                    line-height: 1.2;
+
+                    .agent-name {
+                        white-space: nowrap;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                    }
+
+                    .agent-role {
+                        margin-top: 3px;
+                        color: $text-secondary;
+                        font-size: 12px;
+                        font-weight: normal;
+                    }
+                }
+            }
+
+            .select-button {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-width: 26px;
+                height: 26px;
+                padding: 0;
+                background-color: $bg-input;
+                color: $text-secondary;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+                transition: $transition-default;
+                border: none;
+                margin-left: 8px;
+
+                i {
+                    transition: transform 0.2s ease;
+                }
+
+                &:hover {
+                    background-color: $accent-blue;
+                    color: white;
+                }
+            }
+        }
+    }
 }

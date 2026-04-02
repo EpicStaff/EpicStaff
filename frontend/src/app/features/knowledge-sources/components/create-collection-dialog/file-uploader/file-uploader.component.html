@@ -6,21 +6,10 @@
         (dragleave)="onDragLeave($event)"
         (drop)="onDrop($event)"
     >
-        <h3 class="file-uploader__label">
-            Drag and drop files here or click to upload
-        </h3>
-        <label
-            (click)="fileInput.click()"
-            class="file-uploader__button"
-        >
+        <h3 class="file-uploader__label">Drag and drop files here or click to upload</h3>
+        <label (click)="fileInput.click()" class="file-uploader__button">
             <app-icon icon="ui/upload" size="2rem" />
         </label>
-        <input
-            #fileInput
-            type="file"
-            multiple
-            style="display: none"
-            (change)="onFileSelect($event)"
-        >
+        <input #fileInput type="file" multiple style="display: none" (change)="onFileSelect($event)" />
     </div>
 </div>

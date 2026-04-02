@@ -2,11 +2,7 @@
     <!-- Header -->
     <div class="model-selector__header">
         <h3 class="model-selector__title">Select Model</h3>
-        <button
-            type="button"
-            class="model-selector__close-btn"
-            (click)="onClose()"
-        >
+        <button type="button" class="model-selector__close-btn" (click)="onClose()">
             <app-icon icon="ui/x" size="0.875rem" />
         </button>
     </div>
@@ -41,10 +37,7 @@
                     <!-- Provider Header -->
                     <div class="model-selector__provider-header">
                         <div class="model-selector__provider-info">
-                            <app-icon
-                                [icon]="getProviderIcon(providerData.provider.name)"
-                                size="1.125rem"
-                            />
+                            <app-icon [icon]="getProviderIcon(providerData.provider.name)" size="1.125rem" />
                             <span class="model-selector__provider-name">
                                 {{ providerData.provider.name | uppercase }}
                             </span>
@@ -52,10 +45,10 @@
                         <button
                             type="button"
                             class="model-selector__add-btn"
-                            (click)="openAllModelsModal(providerData.provider, providerData)"
+                            (click)="openAllModelsModal(providerData.provider)"
                         >
                             <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
-                                <path d="M5 0V10M0 5H10" stroke="currentColor" stroke-width="1.5"/>
+                                <path d="M5 0V10M0 5H10" stroke="currentColor" stroke-width="1.5" />
                             </svg>
                             <span>Edit models</span>
                         </button>

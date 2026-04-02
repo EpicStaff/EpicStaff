@@ -1,15 +1,11 @@
 <div class="staff-page-container">
     <div class="header-section">
         <header class="header">
-            <div class="header-titles">
+            <div class="header-titles" appHideInlineSubtitleOnOverflow>
                 <h1 class="title">
                     Staff
-                    <span class="subtitle-inline"
-                        >Manage your AI agents and their capabilities.</span
-                    >
-                    <app-unsaved-indicator
-                        [show]="hasUnsavedChanges"
-                    ></app-unsaved-indicator>
+                    <span class="subtitle-inline">Manage your AI agents and their capabilities.</span>
+                    <app-unsaved-indicator [show]="hasUnsavedChanges"></app-unsaved-indicator>
                 </h1>
             </div>
             <div class="header-actions">
@@ -36,9 +32,6 @@
         </header>
     </div>
     <section class="body">
-        <app-agents-table 
-            [isSaving]="isSaving"
-            (dirtyChange)="hasUnsavedChanges = $event">
-        </app-agents-table>
+        <app-agents-table [isSaving]="isSaving" (dirtyChange)="hasUnsavedChanges = $event"> </app-agents-table>
     </section>
 </div>

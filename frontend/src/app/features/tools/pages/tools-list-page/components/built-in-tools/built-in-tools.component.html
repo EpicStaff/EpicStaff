@@ -1,35 +1,36 @@
 <div class="built-in-tools">
-  <div class="category-filters">
-    @for (cat of TOOL_CATEGORIES_CONFIG; track cat.name) {
-    <app-category-button
-      [label]="cat.name"
-      [selected]="selectedCategory() === cat.name"
-      [icon]="cat.icon"
-      (clicked)="toggleCategory(cat.name)"
-    ></app-category-button>
-    }
-  </div>
-  @if (!isLoaded()) {
-  <app-loading-spinner
-    size="md"
-    message="Loading tools..."
-  ></app-loading-spinner>
-  } @else { @if (error()) {
-  <div class="error">{{ error() }}</div>
-  <button type="button" (click)="ngOnInit()">Retry</button>
-  } @else {
-  <div class="tools-grid">
-    @if (filteredTools().length === 0) {
-    <div class="empty-message">
-      <p>No built-in tools found for selected category.</p>
+    <div class="category-filters">
+        @for (cat of TOOL_CATEGORIES_CONFIG; track cat.name) {
+            <app-category-button
+                [label]="cat.name"
+                [selected]="selectedCategory() === cat.name"
+                [icon]="cat.icon"
+                (clicked)="toggleCategory(cat.name)"
+            ></app-category-button>
+        }
     </div>
-    } @else { @for (tool of filteredTools(); track tool.id) {
-    <app-built-in-tool-card
-      [tool]="tool"
-      (configure)="onToolConfigure($event)"
-      (enabledChange)="onToolEnabledChange($event)"
-    ></app-built-in-tool-card>
-    } }
-  </div>
-  } }
+    @if (!isLoaded()) {
+        <app-loading-spinner size="md" message="Loading tools..."></app-loading-spinner>
+    } @else {
+        @if (error()) {
+            <div class="error">{{ error() }}</div>
+            <button type="button" (click)="ngOnInit()">Retry</button>
+        } @else {
+            <div class="tools-grid">
+                @if (filteredTools().length === 0) {
+                    <div class="empty-message">
+                        <p>No built-in tools found for selected category.</p>
+                    </div>
+                } @else {
+                    @for (tool of filteredTools(); track tool.id) {
+                        <app-built-in-tool-card
+                            [tool]="tool"
+                            (configure)="onToolConfigure($event)"
+                            (enabledChange)="onToolEnabledChange($event)"
+                        ></app-built-in-tool-card>
+                    }
+                }
+            </div>
+        }
+    }
 </div>

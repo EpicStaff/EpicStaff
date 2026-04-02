@@ -1,30 +1,18 @@
-import {
-    Component,
-    ChangeDetectionStrategy,
-    signal,
-    inject,
-    computed,
-    OnInit,
-    OnDestroy,
-    effect,
-} from '@angular/core';
-import { ProjectsStorageService } from '../../../../services/projects-storage.service';
-import { ProjectTagsStorageService } from '../../../../services/project-tags-storage.service';
-import { GetProjectRequest } from '../../../../models/project.model';
-import { NgIf, NgFor } from '@angular/common';
-import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
-import { ProjectCardComponent } from '../../../../components/project-card/project-card.component';
-import { Router } from '@angular/router';
-import { AddProjectCardComponent } from './add-project-card/add-project-card.component';
-import { LoadingSpinnerComponent } from '../../../../../../shared/components/loading-spinner/loading-spinner.component';
-import { HttpErrorResponse } from '@angular/common/http';
 import { Dialog } from '@angular/cdk/dialog';
-import { FlowRenameDialogComponent } from '../../../../../flows/components/flow-rename-dialog/flow-rename-dialog.component';
-import { ProjectTagsApiService } from '../../../../services/project-tags-api.service';
-import { CreateProjectComponent } from '../../../../components/create-project-form-dialog/create-project.component';
-import { ConfirmationDialogComponent } from '../../../../../../shared/components/cofirm-dialog/confirmation-dialog.component';
+import { HttpErrorResponse } from '@angular/common/http';
+import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
+import { Router } from '@angular/router';
+
 import { ConfirmationDialogService } from '../../../../../../shared/components/cofirm-dialog/confimation-dialog.service';
+import { LoadingSpinnerComponent } from '../../../../../../shared/components/loading-spinner/loading-spinner.component';
+import { FlowRenameDialogComponent } from '../../../../../flows/components/flow-rename-dialog/flow-rename-dialog.component';
+import { CreateProjectComponent } from '../../../../components/create-project-form-dialog/create-project.component';
+import { ProjectCardComponent } from '../../../../components/project-card/project-card.component';
+import { GetProjectRequest } from '../../../../models/project.model';
+import { ProjectTagsApiService } from '../../../../services/project-tags-api.service';
+import { ProjectTagsStorageService } from '../../../../services/project-tags-storage.service';
+import { ProjectsStorageService } from '../../../../services/projects-storage.service';
+import { AddProjectCardComponent } from './add-project-card/add-project-card.component';
 
 @Component({
     selector: 'app-my-projects',
@@ -33,37 +21,32 @@ import { ConfirmationDialogService } from '../../../../../../shared/components/c
     template: `
         <div class="project-grid">
             @if (!isProjectsLoaded()) {
-            <app-loading-spinner
-                size="md"
-                message="Loading projects..."
-            ></app-loading-spinner>
-            } @else { @if (error()) {
-            <div class="error">{{ error() }}</div>
-            <button type="button" (click)="ngOnInit()">Retry</button>
+                <app-loading-spinner size="md" message="Loading projects..."></app-loading-spinner>
             } @else {
-            <div class="grid">
-                <app-add-project-card
-                    (createClick)="onCreateProject()"
-                ></app-add-project-card>
+                @if (error()) {
+                    <div class="error">{{ error() }}</div>
+                    <button type="button" (click)="ngOnInit()">Retry</button>
+                } @else {
+                    <div class="grid">
+                        <app-add-project-card (createClick)="onCreateProject()"></app-add-project-card>
 
-                @if (filteredProjects().length === 0) {
-                <div class="empty-message">
-                    <p>
-                        No projects found. Create your first project to get
-                        started.
-                    </p>
-                </div>
-                } @else { @for (project of filteredProjects(); track project.id)
-                {
-                <app-project-card
-                    [project]="project"
-                    (cardClick)="onOpenProject(project.id)"
-                    (actionClick)="handleProjectAction($event)"
-                >
-                </app-project-card>
-                } }
-            </div>
-            } }
+                        @if (filteredProjects().length === 0) {
+                            <div class="empty-message">
+                                <p>No projects found. Create your first project to get started.</p>
+                            </div>
+                        } @else {
+                            @for (project of filteredProjects(); track project.id) {
+                                <app-project-card
+                                    [project]="project"
+                                    (cardClick)="onOpenProject(project.id)"
+                                    (actionClick)="handleProjectAction($event)"
+                                >
+                                </app-project-card>
+                            }
+                        }
+                    </div>
+                }
+            }
         </div>
     `,
     styles: [
@@ -75,7 +58,7 @@ import { ConfirmationDialogService } from '../../../../../../shared/components/c
 
             .grid {
                 display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(335px, 1fr));
+                grid-template-columns: repeat(auto-fill, minmax(clamp(10vw, 100%, 335px), 1fr));
                 gap: 1.5rem;
                 width: 100%;
             }
@@ -100,29 +83,19 @@ import { ConfirmationDialogService } from '../../../../../../shared/components/c
             }
         `,
     ],
-    imports: [
-        ProjectCardComponent,
-        AddProjectCardComponent,
-        LoadingSpinnerComponent,
-    ],
+    imports: [ProjectCardComponent, AddProjectCardComponent, LoadingSpinnerComponent],
 })
 export class MyProjectsComponent implements OnInit {
     private readonly router = inject(Router);
     private readonly projectsStorageService = inject(ProjectsStorageService);
-    private readonly projectTagsStorageService = inject(
-        ProjectTagsStorageService
-    );
+    private readonly projectTagsStorageService = inject(ProjectTagsStorageService);
     private readonly dialog = inject(Dialog);
     private readonly projectTagsApiService = inject(ProjectTagsApiService);
-    private readonly confirmationDialogService = inject(
-        ConfirmationDialogService
-    );
+    private readonly confirmationDialogService = inject(ConfirmationDialogService);
 
     public readonly error = signal<string | null>(null);
-    public readonly filteredProjects =
-        this.projectsStorageService.filteredProjects;
-    public readonly isProjectsLoaded =
-        this.projectsStorageService.isProjectsLoaded;
+    public readonly filteredProjects = this.projectsStorageService.filteredProjects;
+    public readonly isProjectsLoaded = this.projectsStorageService.isProjectsLoaded;
 
     constructor() {
         // Initial data fetch
@@ -137,9 +110,7 @@ export class MyProjectsComponent implements OnInit {
                 next: () => {},
                 error: (err: HttpErrorResponse) => {
                     console.error('Error loading projects', err);
-                    this.error.set(
-                        'Failed to load projects. Please try again later.'
-                    );
+                    this.error.set('Failed to load projects. Please try again later.');
                 },
             });
         }
@@ -150,14 +121,11 @@ export class MyProjectsComponent implements OnInit {
     }
 
     public onCreateProject(): void {
-        const dialogRef = this.dialog.open<GetProjectRequest | undefined>(
-            CreateProjectComponent,
-            {
-                maxWidth: '95vw',
-                maxHeight: '90vh',
-                autoFocus: true,
-            }
-        );
+        const dialogRef = this.dialog.open<GetProjectRequest | undefined>(CreateProjectComponent, {
+            maxWidth: '95vw',
+            maxHeight: '90vh',
+            autoFocus: true,
+        });
         dialogRef.closed.subscribe((result: GetProjectRequest | undefined) => {
             if (result) {
                 this.router.navigate(['/projects', result.id]);
@@ -165,15 +133,11 @@ export class MyProjectsComponent implements OnInit {
         });
     }
 
-    public handleProjectAction(event: {
-        action: string;
-        project: GetProjectRequest;
-    }): void {
+    public handleProjectAction(event: { action: string; project: GetProjectRequest }): void {
         const { action, project } = event;
 
         switch (action) {
             case 'run':
-                console.log('Running project:', project.id);
                 break;
             case 'copy':
                 this.projectsStorageService.copyProject(project.id).subscribe();
@@ -190,7 +154,7 @@ export class MyProjectsComponent implements OnInit {
         }
     }
     private openCopyDialog(project: GetProjectRequest): void {
-        const dialogRef = this.dialog.open<string>(FlowRenameDialogComponent, {
+        this.dialog.open<string>(FlowRenameDialogComponent, {
             data: {
                 flowName: `${project.name} Copy`,
                 title: 'Copy Project',
@@ -199,27 +163,18 @@ export class MyProjectsComponent implements OnInit {
     }
 
     private confirmAndDeleteProject(project: GetProjectRequest): void {
-        this.confirmationDialogService
-            .confirmDeleteWithTruncation(project.name, 50)
-            .subscribe((result) => {
-                if (result === true) {
-                    this.projectsStorageService
-                        .deleteProject(project.id)
-                        .subscribe({
-                            next: () => {
-                                console.log(
-                                    `Project ${project.id} - ${project.name} deleted successfully.`
-                                );
-                            },
-                            error: (err) => {
-                                console.error(
-                                    `Error deleting project ${project.id} - ${project.name}`,
-                                    err
-                                );
-                            },
-                        });
-                }
-            });
+        this.confirmationDialogService.confirmDeleteWithTruncation(project.name, 50).subscribe((result) => {
+            if (result === true) {
+                this.projectsStorageService.deleteProject(project.id).subscribe({
+                    next: () => {
+                        console.log(`Project ${project.id} - ${project.name} deleted successfully.`);
+                    },
+                    error: (err) => {
+                        console.error(`Error deleting project ${project.id} - ${project.name}`, err);
+                    },
+                });
+            }
+        });
     }
 
     // private openTagsDialog(project: GetProjectRequest): void {
@@ -250,8 +205,6 @@ export class MyProjectsComponent implements OnInit {
 
     public openCreateProjectDialog(): void {
         // Logic to open a dialog or navigate to a creation page
-        // Example: this.dialog.open(CreateProjectDialogComponent).closed.subscribe(result => ...);
-        console.log('Open create project dialog - placeholder');
-        this.router.navigate(['/projects', 'new']); // Placeholder navigation
+        this.router.navigate(['/projects', 'new']);
     }
 }

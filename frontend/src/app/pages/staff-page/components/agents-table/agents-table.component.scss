@@ -9,16 +9,16 @@ $shadow-color: rgba(0, 0, 0, 0.2);
 $transition-default: all 0.2s ease;
 
 .wrapper {
-  position: relative;
-  height: 100%;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  border-radius: 4px;
-  box-shadow: 1px 1px 10px rgba(3, 3, 5, 0.35);
+    position: relative;
+    height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    border-radius: 4px;
+    box-shadow: 1px 1px 10px rgba(3, 3, 5, 0.35);
 }
 .hidden-grid {
-  visibility: hidden;
+    visibility: hidden;
 }
 //header column
 // ::ng-deep .ag-grid-staff .global-header-class .ag-header-cell-comp-wrapper {
@@ -35,241 +35,245 @@ $transition-default: all 0.2s ease;
 //general cell styles
 
 ::ng-deep .ag-grid-staff {
-  .ag-cell.ag-cell-value {
-    &[col-id="goal"],
-    &[col-id="backstory"] {
-      padding: 5px 11px;
+    .ag-cell.ag-cell-value {
+        &[col-id='goal'],
+        &[col-id='backstory'] {
+            padding: 5px 11px;
+        }
     }
-  }
 }
 //tags column
 //cells
 ::ng-deep .ag-grid-staff .tags-cell-wrapper {
-  padding: 10px;
+    padding: 10px;
 }
 
 ::ng-deep .ag-grid-staff .tag {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.8rem;
-  padding: 4px 10px;
-  line-height: 1.2;
-  border-radius: 6px;
-  background-color: #2a2a2a;
-  color: #e6e6e6;
-  border: 1px solid #3a3a3a;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  transition: all 0.15s ease;
-  cursor: pointer;
-  font-weight: 500;
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  height: 24px;
-  margin-bottom: 6px;
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.8rem;
+    padding: 4px 10px;
+    line-height: 1.2;
+    border-radius: 6px;
+    background-color: #2a2a2a;
+    color: #e6e6e6;
+    border: 1px solid #3a3a3a;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    transition: all 0.15s ease;
+    cursor: pointer;
+    font-weight: 500;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    height: 24px;
+    margin-bottom: 6px;
 }
 
 ::ng-deep .ag-grid-staff .tag:hover {
-  background-color: #333;
-  border-color: #444;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    background-color: #333;
+    border-color: #444;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
 }
 //tools column
 //cells
 ::ng-deep .ag-grid-staff .tools-cell-wrapper {
-  display: flex;
-  flex-direction: column;
-
-  gap: 4px;
-  margin: 5px 0;
-  padding: 5px;
-  color: #f0f0f0; // Light text for visibility
-
-  .tool-item {
     display: flex;
-    align-items: center;
-    background-color: #2a2a2a;
-    border: 1px solid $border-color;
+    flex-direction: column;
 
-    border-radius: 4px;
-    padding: 6px 8px;
+    gap: 4px;
+    margin: 5px 0;
+    padding: 5px;
+    color: #f0f0f0; // Light text for visibility
 
-    margin-bottom: 4px; // Adds spacing between tool items
+    .tool-item {
+        display: flex;
+        align-items: center;
+        background-color: #2a2a2a;
+        border: 1px solid $border-color;
 
-    .tool-icon {
-      margin-right: 6px;
-      font-style: normal;
-      color: #f0f0f0; // Light icon color
+        border-radius: 4px;
+        padding: 6px 8px;
+
+        margin-bottom: 4px; // Adds spacing between tool items
+
+        .tool-icon {
+            margin-right: 6px;
+            font-style: normal;
+            color: #f0f0f0; // Light icon color
+        }
+        &:hover {
+            background-color: #3a3a3a;
+        }
+        .tool-name-text {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 13px;
+            font-weight: 500;
+            color: #f0f0f0; // Light text color
+        }
     }
-    &:hover {
-      background-color: #3a3a3a;
-    }
-    .tool-name-text {
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      font-size: 13px;
-      font-weight: 500;
-      color: #f0f0f0; // Light text color
-    }
-  }
 }
 
 ::ng-deep .ag-grid-staff .no-tools {
-  height: 100%;
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-  color: $text-secondary;
-  font-style: italic;
-  padding: 4px 8px;
-  font-size: 0.8rem;
-}
-//checkbox cells
-::ng-deep .ag-grid-staff .ag-checkbox-cell {
-  display: flex !important;
-  justify-content: center !important;
-  align-items: center !important;
-}
-
-::ng-deep .ag-grid-staff .ag-checkbox-edit {
-  display: flex !important;
-  justify-content: center !important;
-  align-items: center !important;
-}
-
-//agent role cells
-::ng-deep .ag-grid-staff .ag-cell.agent-role-cell .ag-cell-wrapper {
-  //   :where(.ag-cell-value) {
-  //     height: auto !important;
-  //   }
-  font-weight: 500;
-  font-size: 14px;
-  padding: 5px 10px;
-  padding-left: 0;
-}
-
-//large input
-::ng-deep .ag-large-text-input .ag-input-field-input.ag-text-area-input {
-  font-size: 14px !important; // Set minimum font size
-  line-height: 1.6;
-  padding: 10px;
-  color: #dedede;
-}
-
-//actions-cell
-::ng-deep .ag-grid-staff .action-cell {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  cursor: pointer;
-
-  .action-icon {
-    font-size: 1.2rem;
-    color: #b1b1b1;
-    transition: color 0.2s, transform 0.2s;
-
-    &:hover {
-      color: #3498db; // Change to a light blue on hover
-      transform: scale(1.1); // Slightly increase the size on hover
-    }
-  }
-}
-::ng-deep .ag-grid-staff .ag-cell.popup-open {
-  border: 1px solid #6562f5 !important; /* Example: a blue border */
-}
-// Update the llm-item class with padding
-::ng-deep .ag-grid-staff {
-  .ag-cell.ag-cell-value {
-    &[col-id="fullLlmConfig"] {
-      padding: 10px;
-    }
-  }
-
-  .llm-item {
-    display: inline-flex;
-    align-items: center;
-    margin: 0 !important; // Remove the margin since we now have padding on the cell
-    padding: 8px 8px;
-    background-color: #2a2a2a;
-    border-radius: 4px;
-    cursor: default;
-    transition: background-color 0.3s, border 0.3s;
-    width: 100%;
-    border: 1px solid #404040;
-
-    &:hover {
-      background-color: #3a3a3a;
-    }
-
-    .chatgpt-logo {
-      flex-shrink: 0;
-      width: 20px;
-      height: 20px;
-      margin-right: 8px;
-      border-radius: 4px;
-    }
-
-    .item-content {
-      display: flex;
-      flex: 1;
-      align-items: center;
-      min-width: 0;
-      justify-content: flex-start;
-
-      .item-text {
-        line-height: 1.3;
-        font-size: 13px;
-        font-weight: 500;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        min-width: 0;
-        max-width: 100%;
-
-        .custom-name {
-          color: #aaa;
-          margin-left: 5px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-      }
-    }
-  }
-
-  .no-llm {
     height: 100%;
     display: flex;
     align-items: flex-end;
     justify-content: flex-end;
-    color: #aaa;
+    color: $text-secondary;
     font-style: italic;
     padding: 4px 8px;
     font-size: 0.8rem;
-  }
+}
+//checkbox cells
+::ng-deep .ag-grid-staff .ag-checkbox-cell {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+}
+
+::ng-deep .ag-grid-staff .ag-checkbox-edit {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+}
+
+//agent role cells
+::ng-deep .ag-grid-staff .ag-cell.agent-role-cell .ag-cell-wrapper {
+    //   :where(.ag-cell-value) {
+    //     height: auto !important;
+    //   }
+    font-weight: 500;
+    font-size: 14px;
+    padding: 5px 10px;
+    padding-left: 0;
+}
+
+//large input
+::ng-deep .ag-large-text-input .ag-input-field-input.ag-text-area-input {
+    font-size: 14px !important; // Set minimum font size
+    line-height: 1.6;
+    padding: 10px;
+    color: #dedede;
+}
+
+//actions-cell
+::ng-deep .ag-grid-staff .action-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    cursor: pointer;
+
+    .action-icon {
+        font-size: 1.2rem;
+        color: #b1b1b1;
+        transition:
+            color 0.2s,
+            transform 0.2s;
+
+        &:hover {
+            color: #3498db; // Change to a light blue on hover
+            transform: scale(1.1); // Slightly increase the size on hover
+        }
+    }
+}
+::ng-deep .ag-grid-staff .ag-cell.popup-open {
+    border: 1px solid #6562f5 !important; /* Example: a blue border */
+}
+// Update the llm-item class with padding
+::ng-deep .ag-grid-staff {
+    .ag-cell.ag-cell-value {
+        &[col-id='fullLlmConfig'] {
+            padding: 10px;
+        }
+    }
+
+    .llm-item {
+        display: inline-flex;
+        align-items: center;
+        margin: 0 !important; // Remove the margin since we now have padding on the cell
+        padding: 8px 8px;
+        background-color: #2a2a2a;
+        border-radius: 4px;
+        cursor: default;
+        transition:
+            background-color 0.3s,
+            border 0.3s;
+        width: 100%;
+        border: 1px solid #404040;
+
+        &:hover {
+            background-color: #3a3a3a;
+        }
+
+        .chatgpt-logo {
+            flex-shrink: 0;
+            width: 20px;
+            height: 20px;
+            margin-right: 8px;
+            border-radius: 4px;
+        }
+
+        .item-content {
+            display: flex;
+            flex: 1;
+            align-items: center;
+            min-width: 0;
+            justify-content: flex-start;
+
+            .item-text {
+                line-height: 1.3;
+                font-size: 13px;
+                font-weight: 500;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                min-width: 0;
+                max-width: 100%;
+
+                .custom-name {
+                    color: #aaa;
+                    margin-left: 5px;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+            }
+        }
+    }
+
+    .no-llm {
+        height: 100%;
+        display: flex;
+        align-items: flex-end;
+        justify-content: flex-end;
+        color: #aaa;
+        font-style: italic;
+        padding: 4px 8px;
+        font-size: 0.8rem;
+    }
 }
 
 ::ng-deep .ag-grid-staff .cell-warning {
-  border: 1px solid orange !important;
+    border: 1px solid orange !important;
 }
 
 :host ::ng-deep .ag-grid-staff .ag-header-cell.required-header .ag-header-cell-text::after {
-  content: ' *';
-  color: rgba(255, 77, 79, 1);
-  font-weight: 700;
+    content: ' *';
+    color: rgba(255, 77, 79, 1);
+    font-weight: 700;
 }
 
 ::ng-deep .ag-grid-staff .cell-required-invalid {
-  border: 1px solid rgba(255, 77, 79, 0.95) !important;
-  box-shadow: inset 0 0 0 1px rgba(255, 77, 79, 0.35);
-  border-radius: 6px;
+    border: 1px solid rgba(255, 77, 79, 0.95) !important;
+    box-shadow: inset 0 0 0 1px rgba(255, 77, 79, 0.35);
+    border-radius: 6px;
 }
 
 .wrapper.agents-table-wrap--saving {
-  pointer-events: none;
-  opacity: 0.85;
+    pointer-events: none;
+    opacity: 0.85;
 }

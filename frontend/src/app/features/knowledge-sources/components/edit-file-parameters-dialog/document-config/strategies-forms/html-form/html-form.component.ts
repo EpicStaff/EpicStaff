@@ -1,14 +1,17 @@
-import { ChangeDetectionStrategy, Component } from "@angular/core";
-import { jsonValidator } from "@shared/form-validators";
-import { StrategyForm } from "../strategy-config-form.abstract";
-import { FormGroup, ReactiveFormsModule, Validators } from "@angular/forms";
-import { HtmlStrategyModel } from "../../../../../models/strategy.model";
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
-    CustomInputComponent, InputNumberComponent,
+    CustomInputComponent,
+    InputNumberComponent,
     JsonEditorComponent,
-    ToggleSwitchComponent, ValidationErrorsComponent
-} from "@shared/components";
-import { MATERIAL_FORMS } from "@shared/material-forms";
+    ToggleSwitchComponent,
+    ValidationErrorsComponent,
+} from '@shared/components';
+import { jsonValidator } from '@shared/form-validators';
+import { MATERIAL_FORMS } from '@shared/material-forms';
+
+import { HtmlStrategyModel } from '../../../../../models/strategy.model';
+import { StrategyForm } from '../strategy-config-form.abstract';
 
 @Component({
     selector: 'app-html-form',
@@ -22,17 +25,17 @@ import { MATERIAL_FORMS } from "@shared/material-forms";
         ReactiveFormsModule,
         JsonEditorComponent,
         InputNumberComponent,
-        ValidationErrorsComponent
-    ]
+        ValidationErrorsComponent,
+    ],
 })
 export class HtmlFormComponent extends StrategyForm<HtmlStrategyModel> {
     jsonData: string = '{}';
-    editorOptions: any = {
+    editorOptions: Record<string, unknown> = {
         lineNumbers: 'off',
         theme: 'vs-dark',
         language: 'json',
         automaticLayout: true,
-        minimap: {enabled: false},
+        minimap: { enabled: false },
         scrollBeyondLastLine: false,
         wordWrap: 'on',
         wrappingIndent: 'indent',
@@ -61,7 +64,10 @@ export class HtmlFormComponent extends StrategyForm<HtmlStrategyModel> {
         return this.fb.group({
             mainParams: this.fb.group({
                 chunk_size: [config.chunk_size || 20, [Validators.required, Validators.min(20), Validators.max(8000)]],
-                chunk_overlap: [config.chunk_overlap || 0, [Validators.required, Validators.min(0), Validators.max(1000)]],
+                chunk_overlap: [
+                    config.chunk_overlap || 0,
+                    [Validators.required, Validators.min(0), Validators.max(1000)],
+                ],
             }),
             additionalParams: this.additionalParamsFG,
         });

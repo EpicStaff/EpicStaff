@@ -1,37 +1,27 @@
 <!-- search-dropdown.component.html -->
 <div class="dropdown-container">
-  <div class="agent-grid">
-    <!-- Loading Animation -->
-    <div *ngIf="isLoading" class="loading-container">
-      <div class="loading-spinner"></div>
-      <p class="loading-text">Loading staff agents...</p>
-    </div>
+    <div class="agent-grid">
+        <!-- Loading Animation -->
+        <div *ngIf="isLoading" class="loading-container">
+            <div class="loading-spinner"></div>
+            <p class="loading-text">Loading staff agents...</p>
+        </div>
 
-    <!-- Empty State Message -->
-    <div
-      *ngIf="!isLoading && filteredStaffAgents.length === 0"
-      class="empty-state"
-    >
-      <i class="ti ti-search-off"></i>
-      <p *ngIf="searchTerm && searchTerm.trim() !== ''">
-        No staff agents found matching "{{ searchTerm }}"
-      </p>
-      <p *ngIf="!searchTerm || searchTerm.trim() === ''">
-        No available staff agents found
-      </p>
-    </div>
+        <!-- Empty State Message -->
+        <div *ngIf="!isLoading && filteredStaffAgents.length === 0" class="empty-state">
+            <i class="ti ti-search-off"></i>
+            <p *ngIf="searchTerm && searchTerm.trim() !== ''">No staff agents found matching "{{ searchTerm }}"</p>
+            <p *ngIf="!searchTerm || searchTerm.trim() === ''">No available staff agents found</p>
+        </div>
 
-    <!-- Staff Agent Cards -->
-    <app-staff-agent-card
-      *ngFor="
-        let staffAgent of filteredStaffAgents;
-        trackBy: trackStaffAgentById
-      "
-      [agent]="staffAgent"
-      [size]="currentSize"
-      cardState="adding"
-      (addAgent)="onAddStaffAgent($event)"
-    >
-    </app-staff-agent-card>
-  </div>
+        <!-- Staff Agent Cards -->
+        <app-staff-agent-card
+            *ngFor="let staffAgent of filteredStaffAgents; trackBy: trackStaffAgentById"
+            [agent]="staffAgent"
+            [size]="currentSize"
+            cardState="adding"
+            (addAgent)="onAddStaffAgent($event)"
+        >
+        </app-staff-agent-card>
+    </div>
 </div>

@@ -1,0 +1,60 @@
+@mixin headerLayout() {
+    .header-titles.hide-inline-subtitle .subtitle-inline {
+        display: none !important;
+    }
+
+    .header {
+        min-width: 0;
+    }
+
+    .header .header-titles {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .header .header-titles .title {
+        display: block;
+        min-width: 0;
+        max-width: 100%;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .header .header-titles .subtitle-inline {
+        white-space: nowrap;
+    }
+
+    .header .header-actions {
+        display: flex;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .header .header-actions > app-button {
+        min-width: 0;
+        flex: 0 1 auto;
+        max-width: 100%;
+    }
+
+    .tabs .tabs-right {
+        min-width: 0;
+    }
+
+    .tabs .tabs-left {
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    .tabs .tabs-left > app-tab-button {
+        min-width: 0;
+        flex: 0 1 auto;
+        max-width: 100%;
+    }
+
+    .tabs .tabs-right .search-container {
+        width: 20rem;
+        max-width: 100%;
+        flex: 0 1 20rem;
+    }
+}

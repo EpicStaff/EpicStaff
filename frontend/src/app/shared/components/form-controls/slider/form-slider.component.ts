@@ -1,12 +1,5 @@
-import {
-    Component,
-    Input,
-    Output,
-    EventEmitter,
-    OnChanges,
-    SimpleChanges,
-} from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from '@angular/core';
 
 @Component({
     selector: 'app-form-slider',
@@ -41,8 +34,7 @@ export class FormSliderComponent implements OnChanges {
     }
 
     private updateValuePosition(): void {
-        const percentage =
-            ((this.value - this.min) / (this.max - this.min)) * 100;
+        const percentage = ((this.value - this.min) / (this.max - this.min)) * 100;
         this.valuePosition = `${percentage}%`;
     }
 

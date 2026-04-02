@@ -1,68 +1,57 @@
 <div class="tools-list-page">
-  <div class="sticky-header">
-    <header class="header">
-      <div class="header-titles">
-        <h1 class="title">
-          Tools
-          <span class="subtitle-inline">
-            Manage your built-in and custom tools here.
-          </span>
-        </h1>
-      </div>
-      <div class="header-actions">
-        <!-- <app-button type="ghost" [leftIcon]="'ui/upload'"> Import </app-button> -->
-        <app-button
-          type="primary"
-          class="btn-primary create-btn"
-          [leftIcon]="createButtonIcon"
-          (click)="onCreateToolClick()"
-        >
-          {{ createButtonLabel }}
-        </app-button>
-      </div>
-    </header>
-    <nav class="tabs">
-      <div class="tabs-left">
-        @for (tab of tabs; track tab.link) {
-        <app-tab-button
-          routerLink="{{ tab.link }}"
-          routerLinkActive="active"
-          #rla="routerLinkActive"
-          [active]="rla.isActive"
-        >
-          {{ tab.label }}
-        </app-tab-button>
-        }
-      </div>
-      <div class="tabs-right">
-        <div class="search-container">
-          <app-icon
-            icon="ui/search"
-            class="search-icon"
-            size="1.1rem"
-          ></app-icon>
-          <input
-            type="text"
-            class="search-input"
-            placeholder="Search tools..."
-            [(ngModel)]="searchTerm"
-            (ngModelChange)="onSearchTermChange($event)"
-          />
-          @if (searchTerm) {
-          <button
-            type="button"
-            class="clear-btn"
-            aria-label="Clear"
-            (click)="clearSearch()"
-          >
-            <app-icon icon="ui/x" size="1.1rem"></app-icon>
-          </button>
-          }
-        </div>
-      </div>
-    </nav>
-  </div>
-  <section class="body">
-    <router-outlet></router-outlet>
-  </section>
+    <div class="sticky-header">
+        <header class="header">
+            <div class="header-titles" appHideInlineSubtitleOnOverflow>
+                <h1 class="title">
+                    Tools
+                    <span class="subtitle-inline"> Manage your built-in and custom tools here. </span>
+                </h1>
+            </div>
+            <div class="header-actions">
+                <!-- <app-button type="ghost" [leftIcon]="'ui/upload'"> Import </app-button> -->
+                <app-button
+                    type="primary"
+                    class="btn-primary create-btn"
+                    [leftIcon]="createButtonIcon"
+                    (click)="onCreateToolClick()"
+                >
+                    {{ createButtonLabel }}
+                </app-button>
+            </div>
+        </header>
+        <nav class="tabs">
+            <div class="tabs-left">
+                @for (tab of tabs; track tab.link) {
+                    <app-tab-button
+                        routerLink="{{ tab.link }}"
+                        routerLinkActive="active"
+                        #rla="routerLinkActive"
+                        [active]="rla.isActive"
+                    >
+                        {{ tab.label }}
+                    </app-tab-button>
+                }
+            </div>
+            <div class="tabs-right">
+                <div class="search-container">
+                    <app-icon icon="ui/search" class="search-icon" size="1.1rem"></app-icon>
+                    <input
+                        type="text"
+                        class="search-input"
+                        placeholder="Search tools..."
+                        [(ngModel)]="searchTerm"
+                        (ngModelChange)="onSearchTermChange($event)"
+                    />
+                    @if (searchTerm) {
+                        <button type="button" class="clear-btn" aria-label="Clear" (click)="clearSearch()">
+                            <app-icon icon="ui/x" size="1.1rem"></app-icon>
+                        </button>
+                    }
+                </div>
+            </div>
+        </nav>
+    </div>
+    <section class="body">
+        <router-outlet></router-outlet>
+    </section>
 </div>

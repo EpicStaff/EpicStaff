@@ -1,68 +1,54 @@
 <div class="dialog-container">
-  <div class="dialog-header">
-    <h2>Edit Voice Configuration</h2>
-  </div>
-  <div class="dialog-content">
-    <form [formGroup]="form" (ngSubmit)="onSubmit()">
-      <div *ngIf="errorMessage()" class="error-message">
-        <p>{{ errorMessage() }}</p>
-      </div>
-      <div class="form-field">
-        <label for="customName"
-          >Custom Name <span class="required">*</span></label
-        >
-        <app-custom-input
-          id="customName"
-          type="text"
-          placeholder="Enter a custom name"
-          formControlName="customName"
-          [autofocus]="true"
-        ></app-custom-input>
-        <div
-          *ngIf="
-            form.get('customName')?.invalid && form.get('customName')?.touched
-          "
-          class="error-hint"
-        >
-          Custom name is required
-        </div>
-      </div>
-      <div class="form-field">
-        <label for="apiKey">API Key <span class="required">*</span></label>
-        <div class="api-key-container">
-          <app-custom-input
-            id="apiKey"
-            [type]="showApiKey() ? 'text' : 'password'"
-            placeholder="Enter your API key"
-            formControlName="apiKey"
-            class="api-key-input"
-          ></app-custom-input>
-          <button
-            type="button"
-            class="toggle-visibility-btn"
-            (click)="toggleApiKeyVisibility()"
-            [attr.aria-label]="showApiKey() ? 'Hide API key' : 'Show API key'"
-          >
-            <i [class]="showApiKey() ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
-          </button>
-        </div>
-        <div
-          *ngIf="form.get('apiKey')?.invalid && form.get('apiKey')?.touched"
-          class="error-hint"
-        >
-          API key is required
-        </div>
-      </div>
-      <div class="dialog-actions">
-        <app-button type="ghost" (click)="onCancel()">Cancel</app-button>
-        <app-button
-          type="primary"
-          (click)="onSubmit()"
-          [disabled]="form.invalid || isSubmitting()"
-        >
-          {{ isSubmitting() ? "Updating..." : "Update" }}
-        </app-button>
-      </div>
-    </form>
-  </div>
+    <div class="dialog-header">
+        <h2>Edit Voice Configuration</h2>
+    </div>
+    <div class="dialog-content">
+        <form [formGroup]="form" (ngSubmit)="onSubmit()">
+            <div *ngIf="errorMessage()" class="error-message">
+                <p>{{ errorMessage() }}</p>
+            </div>
+            <div class="form-field">
+                <label for="customName">Custom Name <span class="required">*</span></label>
+                <app-custom-input
+                    id="customName"
+                    type="text"
+                    placeholder="Enter a custom name"
+                    formControlName="customName"
+                    [autofocus]="true"
+                ></app-custom-input>
+                <div *ngIf="form.get('customName')?.invalid && form.get('customName')?.touched" class="error-hint">
+                    Custom name is required
+                </div>
+            </div>
+            <div class="form-field">
+                <label for="apiKey">API Key <span class="required">*</span></label>
+                <div class="api-key-container">
+                    <app-custom-input
+                        id="apiKey"
+                        [type]="showApiKey() ? 'text' : 'password'"
+                        placeholder="Enter your API key"
+                        formControlName="apiKey"
+                        class="api-key-input"
+                    ></app-custom-input>
+                    <button
+                        type="button"
+                        class="toggle-visibility-btn"
+                        (click)="toggleApiKeyVisibility()"
+                        [attr.aria-label]="showApiKey() ? 'Hide API key' : 'Show API key'"
+                    >
+                        <i [class]="showApiKey() ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
+                    </button>
+                </div>
+                <div *ngIf="form.get('apiKey')?.invalid && form.get('apiKey')?.touched" class="error-hint">
+                    API key is required
+                </div>
+            </div>
+            <div class="dialog-actions">
+                <app-button type="ghost" (click)="onCancel()">Cancel</app-button>
+                <app-button type="primary" (click)="onSubmit()" [disabled]="form.invalid || isSubmitting()">
+                    {{ isSubmitting() ? 'Updating...' : 'Update' }}
+                </app-button>
+            </div>
+        </form>
+    </div>
 </div>

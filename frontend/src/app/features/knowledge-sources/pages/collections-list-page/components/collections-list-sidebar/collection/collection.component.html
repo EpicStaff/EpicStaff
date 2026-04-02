@@ -1,20 +1,12 @@
-<div
-    class="collection"
-    [class.collection--selected]="selected()"
->
+<div class="collection" [class.collection--selected]="selected()">
     <div class="collection__header">
         <span class="collection__name">
-            {{collection()?.collection_name}}
+            {{ collection()?.collection_name }}
         </span>
-        <span class="collection__rag-type">
-            Rag Type
-        </span>
+        <span class="collection__rag-type"> Rag Type </span>
     </div>
-    <span
-        class="collection__status"
-        [ngClass]="'collection__status--' + collection()?.status"
-    >
-        <app-icon [icon]="statusData.icon" size="0.75rem" class="collection__status-icon"/>
-        {{statusData.text}}
+    <span class="collection__status" [ngClass]="'collection__status--' + collection()?.status">
+        <app-icon [icon]="statusData.icon" size="0.75rem" class="collection__status-icon" />
+        <span class="collection__status-text">{{ statusData.text }}</span>
     </span>
 </div>

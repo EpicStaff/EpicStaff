@@ -1,4 +1,5 @@
-import { Component, Input, Output, EventEmitter } from '@angular/core';
+import { Component, EventEmitter, Input, Output } from '@angular/core';
+
 import { AppIconComponent } from '../../app-icon/app-icon.component';
 
 @Component({
@@ -15,11 +16,7 @@ import { AppIconComponent } from '../../app-icon/app-icon.component';
             [disabled]="disabled"
             [attr.aria-label]="ariaLabel"
         >
-            <app-icon
-                [icon]="icon"
-                [size]="iconSize"
-                [ariaLabel]="ariaLabel"
-            ></app-icon>
+            <app-icon [icon]="icon" [size]="iconSize" [ariaLabel]="ariaLabel"></app-icon>
         </button>
     `,
     styles: [

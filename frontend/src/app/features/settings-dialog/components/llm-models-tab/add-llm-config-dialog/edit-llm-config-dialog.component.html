@@ -8,9 +8,7 @@
                 <p>{{ errorMessage() }}</p>
             </div>
             <div class="form-field">
-                <label for="customName"
-                    >Custom Name <span class="required">*</span></label
-                >
+                <label for="customName">Custom Name <span class="required">*</span></label>
                 <app-custom-input
                     id="customName"
                     type="text"
@@ -19,20 +17,12 @@
                     autocomplete="new-password"
                     [autofocus]="true"
                 ></app-custom-input>
-                <div
-                    *ngIf="
-                        form.get('customName')?.invalid &&
-                        form.get('customName')?.touched
-                    "
-                    class="error-hint"
-                >
+                <div *ngIf="form.get('customName')?.invalid && form.get('customName')?.touched" class="error-hint">
                     Custom name is required
                 </div>
             </div>
             <div class="form-field">
-                <label for="apiKey"
-                    >API Key <span class="required">*</span></label
-                >
+                <label for="apiKey">API Key <span class="required">*</span></label>
                 <div class="api-key-container">
                     <app-custom-input
                         id="apiKey"
@@ -46,32 +36,18 @@
                         type="button"
                         class="toggle-visibility-btn"
                         (click)="toggleApiKeyVisibility()"
-                        [attr.aria-label]="
-                            showApiKey() ? 'Hide API key' : 'Show API key'
-                        "
+                        [attr.aria-label]="showApiKey() ? 'Hide API key' : 'Show API key'"
                     >
-                        <i
-                            [class]="
-                                showApiKey() ? 'ti ti-eye-off' : 'ti ti-eye'
-                            "
-                        ></i>
+                        <i [class]="showApiKey() ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
                     </button>
                 </div>
-                <div
-                    *ngIf="
-                        form.get('apiKey')?.invalid &&
-                        form.get('apiKey')?.touched
-                    "
-                    class="error-hint"
-                >
+                <div *ngIf="form.get('apiKey')?.invalid && form.get('apiKey')?.touched" class="error-hint">
                     API key is required
                 </div>
             </div>
 
             <div class="form-field">
-                <label for="temperature"
-                    >Temperature: {{ temperatureControl.value }}°</label
-                >
+                <label for="temperature">Temperature: {{ temperatureControl.value }}°</label>
                 <mat-slider
                     id="temperature"
                     [min]="0"
@@ -86,15 +62,9 @@
             </div>
 
             <div class="dialog-actions">
-                <app-button type="ghost" (click)="onCancel()"
-                    >Cancel</app-button
-                >
-                <app-button
-                    type="primary"
-                    (click)="onSubmit()"
-                    [disabled]="form.invalid || isSubmitting()"
-                >
-                    {{ isSubmitting() ? "Updating..." : "Update" }}
+                <app-button type="ghost" (click)="onCancel()">Cancel</app-button>
+                <app-button type="primary" (click)="onSubmit()" [disabled]="form.invalid || isSubmitting()">
+                    {{ isSubmitting() ? 'Updating...' : 'Update' }}
                 </app-button>
             </div>
         </form>

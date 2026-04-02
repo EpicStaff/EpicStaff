@@ -1,4 +1,4 @@
-import { NaiveRagDocumentConfig, UpdateNaiveRagDocumentConfigError } from "../../../models/naive-rag-document.model";
+import { NaiveRagDocumentConfig, UpdateNaiveRagDocumentConfigError } from '../../../models/naive-rag-document.model';
 
 export interface TableDocument extends NaiveRagDocumentConfig {
     checked: boolean;
@@ -13,5 +13,5 @@ export type DocFieldChange = {
     documentId: number;
     documentName: string;
     field: keyof NaiveRagDocumentConfig;
-    value: any;
+    value: string | number | null;
 };

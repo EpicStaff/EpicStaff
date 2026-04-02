@@ -29,7 +29,7 @@
 
         &:last-child {
             border-bottom: none;
-        };
+        }
 
         &--dark {
             background-color: var(--color-drag-drop-active);
@@ -42,13 +42,12 @@
 
     &__row {
         display: grid;
-        grid-template-columns:
-            1rem    // checkbox
-            1fr     // file name
-            140px   // chunk strategy
-            110px   // chunk size
-            110px   // overlap
-            80px;   // tune chunks
+        grid-template-columns: 1rem // checkbox
+            1fr // file name
+            140px // chunk strategy
+            110px // chunk size
+            110px // overlap
+            80px; // tune chunks
         gap: 0.5rem;
         padding: 0.5rem 0.625rem;
         align-items: center;
@@ -92,7 +91,7 @@
         &--unavailable {
             justify-content: center;
             font-size: 0.75rem;
-            color: var(--color-ks-transparent-text-80)
+            color: var(--color-ks-transparent-text-80);
         }
     }
 
@@ -121,7 +120,3 @@
         width: 100%;
     }
 }
-
-
-
-

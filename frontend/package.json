@@ -15,8 +15,8 @@
     },
     "lint-staged": {
         "src/**/*.ts": [
-            "prettier --write",
-            "eslint --fix --max-warnings=0"
+            "eslint --fix --max-warnings=0",
+            "prettier --write"
         ],
         "src/**/*.html": [
             "prettier --write"
@@ -45,9 +45,10 @@
         "@foblex/utils": "1.1.1",
         "@openai/realtime-api-beta": "github:openai/openai-realtime-api-beta",
         "@tabler/icons": "^3.34.0",
+        "@types/lodash-es": "^4.17.12",
         "ag-grid-angular": "^33.1.1",
         "ag-grid-community": "^33.1.1",
-        "lodash": "^4.17.21",
+        "lodash-es": "^4.18.0",
         "monaco-editor": "^0.52.2",
         "ngx-color": "^10.0.0",
         "ngx-json-viewer": "^3.2.1",

@@ -17,7 +17,7 @@
                 [alwaysShowSteps]="true"
                 [invalid]="!!getMainParamControl('chunk_size')?.invalid"
             />
-            <app-validation-errors [control]="getMainParamControl('chunk_size')!"/>
+            <app-validation-errors [control]="getMainParamControl('chunk_size')!" />
         </div>
 
         <div class="config__grid-item">
@@ -37,7 +37,7 @@
                 [alwaysShowSteps]="true"
                 [invalid]="!!getMainParamControl('chunk_overlap')?.invalid"
             />
-            <app-validation-errors [control]="getMainParamControl('chunk_overlap')!"/>
+            <app-validation-errors [control]="getMainParamControl('chunk_overlap')!" />
         </div>
     </div>
 
@@ -59,9 +59,7 @@
             </mat-icon>
         </div>
         <div class="config__grid-item">
-            <app-toggle-switch
-                formControlName="preserve_links"
-            />
+            <app-toggle-switch formControlName="preserve_links" />
         </div>
         <div class="config__grid-item">
             <label>Normalize Text</label>
@@ -75,9 +73,7 @@
             </mat-icon>
         </div>
         <div class="config__grid-item">
-            <app-toggle-switch
-                formControlName="normalize_text"
-            />
+            <app-toggle-switch formControlName="normalize_text" />
         </div>
         <div class="config__grid-item">
             <label>External Metadata</label>

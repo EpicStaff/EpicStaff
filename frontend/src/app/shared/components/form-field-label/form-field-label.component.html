@@ -4,10 +4,6 @@
         <span class="form-field-label__required">*</span>
     }
     @if (tooltipText()) {
-        <app-help-tooltip
-            [text]="tooltipText()"
-            position="right"
-        />
+        <app-help-tooltip [text]="tooltipText()" position="right" />
     }
 </div>
-

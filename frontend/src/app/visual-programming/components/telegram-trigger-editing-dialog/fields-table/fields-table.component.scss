@@ -32,12 +32,11 @@
 
     &__row {
         display: grid;
-        grid-template-columns:
-            1rem    // checkbox
-            140px   // default name
-            120px   // type
-            200px   // assigned name
-            1fr;    // description
+        grid-template-columns: 1rem // checkbox
+            140px // default name
+            120px // type
+            200px // assigned name
+            1fr; // description
         gap: 1.25rem;
         padding: 0.5rem 0.625rem;
         align-items: flex-start;

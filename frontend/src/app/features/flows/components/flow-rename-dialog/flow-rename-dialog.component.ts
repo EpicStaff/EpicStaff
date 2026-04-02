@@ -2,7 +2,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { finalize, map,switchMap } from 'rxjs/operators';
+import { finalize, map, switchMap } from 'rxjs/operators';
 
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
 import { FlowsStorageService } from '../../services/flows-storage.service';

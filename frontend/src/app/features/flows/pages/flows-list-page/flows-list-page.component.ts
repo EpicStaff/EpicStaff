@@ -4,31 +4,32 @@ import {
     ChangeDetectorRef,
     Component,
     computed,
+    DestroyRef,
     inject,
     OnDestroy,
     signal,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { Subject, Subscription } from 'rxjs';
+import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 
-import { CreateFlowDialogComponent } from '../../components/create-flow-dialog/create-flow-dialog.component';
-import { ImportResultDialogComponent } from '../../components/import-result-dialog/import-result-dialog.component';
-import { ImportResult, EntityTypeResult, ImportResultItem } from '../../models/import-result.model';
-import { ImportFlowOptionsDialogComponent, ImportFlowOptions } from '../../components/import-flow-options-dialog/import-flow-options-dialog.component';
-
 import { ImportExportService } from '../../../../core/services/import-export.service';
+import { ToastService } from '../../../../services/notifications/toast.service';
 import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
-import {
-    FiltersListComponent,
-    SearchFilterChange,
-} from '../../../../shared/components/filters-list/filters-list.component';
+import { SearchFilterChange } from '../../../../shared/components/filters-list/filters-list.component';
 import { TabButtonComponent } from '../../../../shared/components/tab-button/tab-button.component';
-import { FlowService } from '../../../../visual-programming/services/flow.service';
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { CreateGraphDtoRequest, GraphDto, UpdateGraphDtoRequest } from '../../models/graph.model';
+import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/directives/hide-inline-subtitle-on-overflow.directive';
+import { CreateFlowDialogComponent } from '../../components/create-flow-dialog/create-flow-dialog.component';
+import {
+    ImportFlowOptions,
+    ImportFlowOptionsDialogComponent,
+} from '../../components/import-flow-options-dialog/import-flow-options-dialog.component';
+import { ImportResultDialogComponent } from '../../components/import-result-dialog/import-result-dialog.component';
+import { GraphDto } from '../../models/graph.model';
+import { EntityTypeResult, ImportResult, ImportResultItem } from '../../models/import-result.model';
 import { FlowsStorageService } from '../../services/flows-storage.service';
 import { LabelsStorageService } from '../../services/labels-storage.service';
 import { FlowsLabelSidebarComponent } from './components/flows-label-sidebar/flows-label-sidebar.component';
@@ -45,8 +46,8 @@ import { FlowsLabelSidebarComponent } from './components/flows-label-sidebar/flo
         TabButtonComponent,
         FormsModule,
         AppIconComponent,
-        ImportResultDialogComponent,
         FlowsLabelSidebarComponent,
+        HideInlineSubtitleOnOverflowDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -58,7 +59,6 @@ export class FlowsListPageComponent implements OnDestroy {
 
     public searchTerm: string = '';
     private searchTerms = new Subject<string>();
-    private subscription: Subscription;
 
     private dialog = inject(Dialog);
     private flowStorageService = inject(FlowsStorageService);
@@ -67,6 +67,7 @@ export class FlowsListPageComponent implements OnDestroy {
     private importExportService = inject(ImportExportService);
     private toastService = inject(ToastService);
     private labelsStorage = inject(LabelsStorageService);
+    private destroyRef = inject(DestroyRef);
 
     public selectMode = this.flowStorageService.selectMode;
     public selectedFlowIds = this.flowStorageService.selectedFlowIds;
@@ -90,16 +91,14 @@ export class FlowsListPageComponent implements OnDestroy {
     }
 
     constructor() {
-        this.subscription = this.searchTerms.pipe(debounceTime(300), distinctUntilChanged()).subscribe((term) => {
-            this.updateSearch(term);
-        });
+        this.searchTerms
+            .pipe(debounceTime(300), distinctUntilChanged(), takeUntilDestroyed(this.destroyRef))
+            .subscribe((term) => {
+                this.updateSearch(term);
+            });
     }
 
     ngOnDestroy(): void {
-        if (this.subscription) {
-            this.subscription.unsubscribe();
-        }
-
         this.searchTerm = '';
         this.flowStorageService.setFilter(null);
         this.flowStorageService.setSelectMode(false);
@@ -135,14 +134,14 @@ export class FlowsListPageComponent implements OnDestroy {
     }
 
     private readonly ENTITY_FILE_FIELDS: Record<string, string[]> = {
-        Flow:           ['description', 'time_to_live', 'persistent_variables'],
-        Project:        ['description', 'process', 'memory', 'max_rpm', 'planning'],
-        Agent:          ['goal', 'backstory', 'max_iter', 'memory', 'allow_delegation', 'allow_code_execution'],
-        LLMModel:       ['provider_name', 'predefined', 'is_custom', 'description'],
-        LLMConfig:      ['custom_name', 'temperature', 'max_tokens', 'timeout'],
+        Flow: ['description', 'time_to_live', 'persistent_variables'],
+        Project: ['description', 'process', 'memory', 'max_rpm', 'planning'],
+        Agent: ['goal', 'backstory', 'max_iter', 'memory', 'allow_delegation', 'allow_code_execution'],
+        LLMModel: ['provider_name', 'predefined', 'is_custom', 'description'],
+        LLMConfig: ['custom_name', 'temperature', 'max_tokens', 'timeout'],
         PythonCodeTool: ['description'],
-        MCPTool:        ['description'],
-        RealtimeModel:  ['provider_name', 'is_custom'],
+        MCPTool: ['description'],
+        RealtimeModel: ['provider_name', 'is_custom'],
         RealtimeConfig: ['custom_name'],
     };
 
@@ -163,11 +162,13 @@ export class FlowsListPageComponent implements OnDestroy {
 
                 file.text().then((text: string) => {
                     let fileData: Record<string, Record<string, unknown>[]> = {};
-                    try { fileData = JSON.parse(text); } catch {}
+                    try {
+                        fileData = JSON.parse(text);
+                    } catch {}
 
                     this.importExportService.importFlow(file, options.preserveUuids).subscribe({
-                        next: (result: ImportResult) => {
-                            const enriched = this._enrichImportResult(result, fileData);
+                        next: (result) => {
+                            const enriched = this._enrichImportResult(result as ImportResult, fileData);
 
                             this.dialog.open(ImportResultDialogComponent, {
                                 width: '80vw',
@@ -177,7 +178,10 @@ export class FlowsListPageComponent implements OnDestroy {
                             this.flowStorageService.getFlows(true).subscribe(() => {});
                         },
                         error: (error) => {
-                            const message = error?.error?.detail || error?.error?.message || 'Failed to import flow. Please check the file and try again.';
+                            const message =
+                                error?.error?.detail ||
+                                error?.error?.message ||
+                                'Failed to import flow. Please check the file and try again.';
                             this.toastService.error(message);
                         },
                     });
@@ -190,12 +194,15 @@ export class FlowsListPageComponent implements OnDestroy {
     // Per entity type: which field in the file serves as the display name
     // (used as fallback when id doesn't match, e.g. for newly created entities)
     private readonly ENTITY_NAME_KEY: Record<string, string> = {
-        Agent:          'role',
-        LLMConfig:      'custom_name',
+        Agent: 'role',
+        LLMConfig: 'custom_name',
         RealtimeConfig: 'custom_name',
     };
 
-    private _enrichImportResult(result: ImportResult, fileData: Record<string, Record<string, unknown>[]>): ImportResult {
+    private _enrichImportResult(
+        result: ImportResult,
+        fileData: Record<string, Record<string, unknown>[]>
+    ): ImportResult {
         const enriched: ImportResult = {};
 
         for (const [entityType, entityResult] of Object.entries(result) as [string, EntityTypeResult][]) {
@@ -208,7 +215,7 @@ export class FlowsListPageComponent implements OnDestroy {
             }
 
             const nameKey = this.ENTITY_NAME_KEY[entityType] ?? 'name';
-            const lookupById   = new Map<number | string, Record<string, unknown>>(
+            const lookupById = new Map<number | string, Record<string, unknown>>(
                 fileEntities.map((e) => [e['id'] as number | string, e])
             );
             const lookupByName = new Map<string, Record<string, unknown>>(
@@ -231,7 +238,7 @@ export class FlowsListPageComponent implements OnDestroy {
             enriched[entityType] = {
                 ...entityResult,
                 created: { ...entityResult.created, items: enrichItems(entityResult.created.items) },
-                reused:  { ...entityResult.reused,  items: enrichItems(entityResult.reused.items)  },
+                reused: { ...entityResult.reused, items: enrichItems(entityResult.reused.items) },
             };
         }
 

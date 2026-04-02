@@ -1,38 +1,22 @@
-<div
-    class="rag"
-    [class.rag--selected]="selected()"
-    [class.rag--disabled]="rag().disabled"
->
+<div class="rag" [class.rag--selected]="selected()" [class.rag--disabled]="rag().disabled">
     <div class="rag__header">
-        <app-icon
-            [icon]="rag().icon"
-            [size]="'40px'"
-        />
+        <app-icon [icon]="rag().icon" [size]="'40px'" />
         <div class="rag__header-level">
             <p class="rag__level">{{ rag().level }}</p>
             <div class="rag__stars">
-                <app-icon
-                    [icon]="'ui/star-filled'"
-                    [size]="'20px'"
-                />
-                <app-icon
-                    [icon]="rag().stars >= 2 ? 'ui/star-filled' : 'ui/star'"
-                    [size]="'20px'"
-                />
-                <app-icon
-                    [icon]="rag().stars >= 3 ? 'ui/star-filled' : 'ui/star'"
-                    [size]="'20px'"
-                />
+                <app-icon [icon]="'ui/star-filled'" [size]="'20px'" />
+                <app-icon [icon]="rag().stars >= 2 ? 'ui/star-filled' : 'ui/star'" [size]="'20px'" />
+                <app-icon [icon]="rag().stars >= 3 ? 'ui/star-filled' : 'ui/star'" [size]="'20px'" />
             </div>
         </div>
     </div>
     <h4 class="rag__name">
-        {{rag().name}}
+        {{ rag().name }}
     </h4>
     <span class="rag__description">
-        {{rag().description}}
+        {{ rag().description }}
     </span>
     <p class="rag__tip">
-        {{rag().tip}}
+        {{ rag().tip }}
     </p>
 </div>

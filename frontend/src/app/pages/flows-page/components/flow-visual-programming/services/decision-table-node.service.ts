@@ -1,11 +1,9 @@
-import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
-import {
-    CreateDecisionTableNodeRequest,
-    GetDecisionTableNodeRequest,
-} from '../models/decision-table-node.model';
+
 import { ConfigService } from '../../../../../services/config/config.service';
+import { CreateDecisionTableNodeRequest, GetDecisionTableNodeRequest } from '../models/decision-table-node.model';
 
 export interface PaginatedDecisionTableResponse {
     count: number;
@@ -31,11 +29,7 @@ export class DecisionTableNodeService {
         return this.configService.apiUrl + 'decision-table-node/';
     }
 
-   
-
-    createDecisionTableNode(
-        request: CreateDecisionTableNodeRequest
-    ): Observable<GetDecisionTableNodeRequest> {
+    createDecisionTableNode(request: CreateDecisionTableNodeRequest): Observable<GetDecisionTableNodeRequest> {
         return this.http.post<GetDecisionTableNodeRequest>(this.apiUrl, request, {
             headers: this.headers,
         });
@@ -45,13 +39,9 @@ export class DecisionTableNodeService {
         id: number,
         request: CreateDecisionTableNodeRequest
     ): Observable<GetDecisionTableNodeRequest> {
-        return this.http.put<GetDecisionTableNodeRequest>(
-            `${this.apiUrl}${id}/`,
-            request,
-            {
-                headers: this.headers,
-            }
-        );
+        return this.http.put<GetDecisionTableNodeRequest>(`${this.apiUrl}${id}/`, request, {
+            headers: this.headers,
+        });
     }
 
     getDecisionTableNodeById(id: number): Observable<GetDecisionTableNodeRequest> {
@@ -60,10 +50,9 @@ export class DecisionTableNodeService {
         });
     }
 
-    deleteDecisionTableNode(id: string): Observable<any> {
-        return this.http.delete(`${this.apiUrl}${id}/`, {
+    deleteDecisionTableNode(id: string): Observable<unknown> {
+        return this.http.delete<unknown>(`${this.apiUrl}${id}/`, {
             headers: this.headers,
         });
     }
 }
-

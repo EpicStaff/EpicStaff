@@ -1,12 +1,7 @@
 <div class="project-card" (click)="cardClick.emit()">
     <div class="card-header">
         <div class="icon-container" [ngStyle]="getIconContainerStyle()">
-            <app-icon
-                [icon]="getProjectIconPath()"
-                [size]="'20'"
-                [ngStyle]="getIconStyle()"
-            >
-            </app-icon>
+            <app-icon [icon]="getProjectIconPath()" [size]="'20'" [ngStyle]="getIconStyle()"> </app-icon>
         </div>
         <div class="title-section">
             <h3 class="title">{{ project.name }}</h3>
@@ -14,13 +9,11 @@
                 <span class="meta-item">{{ project.process }}</span>
                 <span class="meta-sep">~</span>
                 <span class="meta-item"
-                    >{{ project.agents.length }}
-                    {{ project.agents.length === 1 ? "agent" : "agents" }}</span
+                    >{{ project.agents.length }} {{ project.agents.length === 1 ? 'agent' : 'agents' }}</span
                 >
                 <span class="meta-sep">~</span>
                 <span class="meta-item"
-                    >{{ project.tasks.length }}
-                    {{ project.tasks.length === 1 ? "task" : "tasks" }}</span
+                    >{{ project.tasks.length }} {{ project.tasks.length === 1 ? 'task' : 'tasks' }}</span
                 >
             </div>
         </div>
@@ -31,16 +24,14 @@
         ></app-project-menu>
     </div>
     <div class="description">
-        {{ project.description || "No description provided." }}
+        {{ project.description || 'No description provided.' }}
     </div>
     <div class="tags-container">
         <div class="tags">
             <ng-container *ngFor="let tag of displayedTags()">
                 <app-tag [tag]="tag"></app-tag>
             </ng-container>
-            <span class="more-tags" *ngIf="hasMoreTags()">
-                +{{ additionalTagsCount() }} more
-            </span>
+            <span class="more-tags" *ngIf="hasMoreTags()"> +{{ additionalTagsCount() }} more </span>
         </div>
     </div>
 </div>

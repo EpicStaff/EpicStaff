@@ -1,12 +1,9 @@
+import { GetMcpToolRequest } from '../../tools/models/mcp-tool.model';
 import { GetPythonCodeToolRequest } from '../../tools/models/python-code-tool.model';
 import { GetToolRequest } from '../../tools/models/tool.model';
 import { GetToolConfigRequest } from '../../tools/models/tool-config.model';
-import { GetMcpToolRequest } from '../../tools/models/mcp-tool.model';
 
-export type ToolUniqueName =
-    | `configured-tool:${number}`
-    | `python-code-tool:${number}`
-    | `mcp-tool:${number}`;
+export type ToolUniqueName = `configured-tool:${number}` | `python-code-tool:${number}` | `mcp-tool:${number}`;
 
 export interface Agent {
     id: number;
@@ -81,7 +78,7 @@ export interface GetAgentRequest {
     rag: {
         rag_id: number;
         rag_type: string;
-        rag_status?: string
+        rag_status?: string;
     } | null;
     realtime_agent: RealtimeAgentConfig;
     tools: {
@@ -93,8 +90,8 @@ export interface GetAgentRequest {
         naive: {
             search_limit: number | null;
             similarity_threshold: number | null;
-        }
-    }
+        };
+    };
 }
 
 // Create Agent Request
@@ -136,8 +133,8 @@ export interface CreateAgentRequest {
         naive: {
             search_limit: number | null;
             similarity_threshold: number | null;
-        }
-    }
+        };
+    };
 }
 
 // partialUpdate Agent Request
@@ -183,8 +180,8 @@ export interface UpdateAgentRequest {
         naive: {
             search_limit: number | null;
             similarity_threshold: number | null;
-        }
-    }
+        };
+    };
 }
 
 export type AgentTableItem = Omit<Agent, 'id'> & {

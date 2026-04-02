@@ -1,14 +1,9 @@
 <div class="dialog">
     <div class="dialog__header">
-        <span class="dialog__header-title">
-            Create New Collection
-        </span>
+        <span class="dialog__header-title"> Create New Collection </span>
 
         <div class="dialog__stepper">
-            <app-stepper
-                [steps]="stepLabels()"
-                [currentStep]="currentStepIndex()"
-            />
+            <app-stepper [steps]="stepLabels()" [currentStep]="currentStepIndex()" />
         </div>
 
         <div class="dialog__actions">
@@ -28,12 +23,7 @@
             >
                 {{ nextButtonText() }}
             </app-button>
-            <app-icon
-                [icon]="'ui/close'"
-                class="dialog__actions--close"
-                [size]="'1.5rem'"
-                (click)="onClose()"
-            />
+            <app-icon [icon]="'ui/close'" class="dialog__actions--close" [size]="'1.5rem'" (click)="onClose()" />
         </div>
     </div>
 
@@ -46,17 +36,10 @@
             />
         }
         @case (CreateCollectionStep.SELECT_RAG) {
-            <app-step-select-rag
-                [(selectedRag)]="selectedRagType"
-                [(selectedEmbedder)]="selectedEmbedder"
-            />
+            <app-step-select-rag [(selectedRag)]="selectedRagType" [(selectedEmbedder)]="selectedEmbedder" />
         }
         @case (CreateCollectionStep.CONFIGURE) {
-            <app-rag-configuration
-                class="dialog__content"
-                [naiveRagId]="naiveRagId()!"
-                [collection]="collection()"
-            />
+            <app-rag-configuration class="dialog__content" [naiveRagId]="naiveRagId()!" [collection]="collection()" />
         }
     }
 </div>

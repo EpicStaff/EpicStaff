@@ -1,18 +1,9 @@
 <div class="configure">
     <div class="configure__files-section">
         <div class="configure__files-searchbar">
-            <app-search
-                class="configure__input"
-                placeholder="Search files..."
-                [(searchTerm)]="searchTerm"
-            />
+            <app-search class="configure__input" placeholder="Search files..." [(searchTerm)]="searchTerm" />
 
-            <app-button
-                type="outline-primary"
-                (click)="initDocuments()"
-            >
-                Re-include Files
-            </app-button>
+            <app-button type="outline-primary" (click)="initDocuments()"> Re-include Files </app-button>
             @if (filteredAndCheckedDocIds().length) {
                 <app-button
                     [type]="bulkBtnActive() ? 'primary' : 'outline-primary'"
@@ -42,9 +33,6 @@
     </div>
 
     @if (!tuneChunkOpened()) {
-        <app-document-chunks-section
-            [naiveRagId]="naiveRagId()"
-            [selectedDocumentId]="selectedRagDocId()"
-        />
+        <app-document-chunks-section [naiveRagId]="naiveRagId()" [selectedDocumentId]="selectedRagDocId()" />
     }
 </div>
