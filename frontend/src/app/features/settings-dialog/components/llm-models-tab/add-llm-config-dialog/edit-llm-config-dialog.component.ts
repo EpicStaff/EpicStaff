@@ -1,6 +1,7 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatSliderModule } from '@angular/material/slider';
 
@@ -21,6 +22,7 @@ export class EditLlmConfigDialogComponent implements OnInit {
     private dialogRef = inject(DialogRef);
     private formBuilder = inject(FormBuilder);
     private configService = inject(LLM_Config_Service);
+    private readonly destroyRef = inject(DestroyRef);
     public form!: FormGroup;
     public isSubmitting = signal<boolean>(false);
     public errorMessage = signal<string | null>(null);
@@ -37,6 +39,15 @@ export class EditLlmConfigDialogComponent implements OnInit {
             apiKey: [this.config.api_key, Validators.required],
             temperature: [Math.round(this.config.temperature * 100), [Validators.min(0), Validators.max(100)]],
         });
+
+        this.dialogRef.keydownEvents
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(event => {
+                if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                    event.preventDefault();
+                    this.onSubmit();
+                }
+            });
     }
 
     public toggleApiKeyVisibility(): void {
@@ -49,6 +60,7 @@ export class EditLlmConfigDialogComponent implements OnInit {
     }
 
     public onSubmit(): void {
+        this.form.markAllAsTouched();
         if (this.form.invalid) return;
         this.isSubmitting.set(true);
         const formValue = this.form.value;

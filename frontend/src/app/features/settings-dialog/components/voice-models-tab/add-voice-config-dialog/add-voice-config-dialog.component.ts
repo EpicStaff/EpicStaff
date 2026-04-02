@@ -43,6 +43,15 @@ export class AddVoiceConfigDialogComponent implements OnInit {
         this.loadProviders();
         this.setupProviderIdSubscription();
         this.setupModelIdSubscription();
+
+        this.dialogRef.keydownEvents
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(event => {
+                if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                    event.preventDefault();
+                    this.onSubmit();
+                }
+            });
     }
 
     private setupProviderIdSubscription(): void {
@@ -119,6 +128,7 @@ export class AddVoiceConfigDialogComponent implements OnInit {
     }
 
     public onSubmit(): void {
+        this.form.markAllAsTouched();
         if (this.form.invalid) {
             return;
         }

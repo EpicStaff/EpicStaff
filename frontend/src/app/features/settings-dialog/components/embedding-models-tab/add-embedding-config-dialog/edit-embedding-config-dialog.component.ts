@@ -48,6 +48,15 @@ export class EditEmbeddingConfigDialogComponent implements OnInit {
         this.selectedProvider.set(this.dialogData.providerDetails ?? null);
         this.selectedModel.set(this.dialogData.modelDetails ?? null);
         this.selectedModelId.set(this.dialogData.model ?? null);
+
+        this.dialogRef.keydownEvents
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(event => {
+                if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                    event.preventDefault();
+                    this.onSubmit();
+                }
+            });
     }
 
     private initForm(): void {
@@ -67,6 +76,7 @@ export class EditEmbeddingConfigDialogComponent implements OnInit {
     }
 
     public onSubmit(): void {
+        this.form.markAllAsTouched();
         if (!this.isFormValid()) {
             return;
         }

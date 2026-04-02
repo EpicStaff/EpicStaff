@@ -166,6 +166,15 @@ export class AddLlmConfigDialogComponent implements OnInit {
 
     ngOnInit(): void {
         this.loadProvidersAndEditConfig();
+
+        this.dialogRef.keydownEvents
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(event => {
+                if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                    event.preventDefault();
+                    this.onSubmit();
+                }
+            });
     }
 
     openModelSelector(): void {
@@ -399,6 +408,7 @@ export class AddLlmConfigDialogComponent implements OnInit {
     }
 
     onSubmit(): void {
+        this.form.markAllAsTouched();
         if (!this.isFormValid()) return;
 
         this.isSubmitting.set(true);

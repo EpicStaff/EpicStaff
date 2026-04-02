@@ -103,6 +103,15 @@ export class ModelSelectorModalComponent implements OnInit {
         this.dialogRef.backdropClick.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.onClose();
         });
+
+        this.dialogRef.keydownEvents
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(event => {
+                if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                    event.preventDefault();
+                    this.onClose();
+                }
+            });
     }
 
     private sortProviders(providers: LLM_Provider[]): LLM_Provider[] {

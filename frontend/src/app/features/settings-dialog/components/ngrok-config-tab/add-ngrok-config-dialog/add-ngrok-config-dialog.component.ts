@@ -56,6 +56,15 @@ export class AddNgrokConfigDialogComponent implements OnInit {
 
     ngOnInit() {
         this.initForm();
+
+        this.dialogRef.keydownEvents
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(event => {
+                if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                    event.preventDefault();
+                    this.onSubmit();
+                }
+            });
     }
 
     private initForm(): void {
