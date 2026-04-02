@@ -1,8 +1,6 @@
-<!-- Node name wrapper -->
-<div class="node-name-wrapper" *ngIf="!startNode && !noteNode && !endNode && node.type !== NodeType.TABLE">
-    <div class="node-name-label">
-        {{ node.node_name || 'Unnamed Node' }}
-    </div>
+<!-- Node badge number -->
+<div class="node-name-wrapper" *ngIf="!noteNode && node.nodeNumber != null">
+    <div class="node-name-label">#{{ node.nodeNumber }}</div>
 </div>
 
 <!-- Control buttons positioned above the node -->
