@@ -1,8 +1,8 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { Component, Inject, inject, OnInit } from '@angular/core';
+import { Component, Inject, inject, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { of } from 'rxjs';
+import { of, Subscription } from 'rxjs';
 import { finalize, map, switchMap } from 'rxjs/operators';
 
 import { CreateGraphDtoRequest, GraphDto } from '../../../../features/flows/models/graph.model';
@@ -22,7 +22,7 @@ export interface FlowDialogData {
     templateUrl: './create-flow-dialog.component.html',
     styleUrls: ['./create-flow-dialog.component.scss'],
 })
-export class CreateFlowDialogComponent implements OnInit {
+export class CreateFlowDialogComponent implements OnInit, OnDestroy {
     flowForm: FormGroup;
     isEditMode = false;
     dialogTitle = 'Create New Flow';
@@ -33,6 +33,10 @@ export class CreateFlowDialogComponent implements OnInit {
     public errorMessage: string | null = null;
 
     private flowsStorageService = inject(FlowsStorageService);
+    
+    @ViewChild(LabelDropdownComponent)
+    private labelDropdown?: LabelDropdownComponent;
+    private keydownSubscription?: Subscription;
 
     constructor(
         public dialogRef: DialogRef<GraphDto | undefined>,
@@ -65,12 +69,29 @@ export class CreateFlowDialogComponent implements OnInit {
             this.selectedIcon =
                 ((this.data.flow.metadata as unknown as Record<string, unknown>)?.['flow_icon'] as string) || null;
         }
+
+        this.keydownSubscription = this.dialogRef.keydownEvents.subscribe((event: KeyboardEvent) => {
+            if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                if (this.labelDropdown?.isOpen()) {
+                    return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                this.onSubmit();
+            }
+        });
+    }
+
+    ngOnDestroy(): void {
+        this.keydownSubscription?.unsubscribe();
     }
 
     onSubmit(): void {
         if (this.flowForm.invalid || this.isSubmitting) {
+            this.flowForm.markAllAsTouched();
             return;
         }
+
         this.isSubmitting = true;
         this.errorMessage = null;
 

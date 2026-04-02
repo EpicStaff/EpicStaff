@@ -1,8 +1,9 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnDestroy, OnInit, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { finalize, map,switchMap } from 'rxjs/operators';
+import { Subscription } from 'rxjs';
+import { finalize, map, switchMap } from 'rxjs/operators';
 
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
 import { FlowsStorageService } from '../../services/flows-storage.service';
@@ -59,10 +60,12 @@ interface FlowRenameData {
                 <div class="error-message-block">{{ errorMessage }}</div>
             }
             <div class="dialog-actions">
-                <app-button type="ghost" (click)="cancel()">Cancel</app-button>
-                <app-button type="primary" [disabled]="!newName || !newName.trim().length" (click)="save()"
-                    >Save</app-button
-                >
+                <app-button type="ghost" (click)="cancel()" [disabled]="isSubmitting">Cancel</app-button>
+                <app-button 
+                    type="primary" 
+                    [disabled]="isSubmitting || !newName || !newName.trim().length"
+                    (click)="save()"
+                >Save</app-button>
             </div>
         </div>
     `,
@@ -132,7 +135,7 @@ interface FlowRenameData {
         `,
     ],
 })
-export class FlowRenameDialogComponent implements OnInit {
+export class FlowRenameDialogComponent implements OnInit, OnDestroy {
     private readonly dialogRef = inject(DialogRef);
     private readonly cdr = inject(ChangeDetectorRef);
     public readonly data = inject<FlowRenameData>(DIALOG_DATA);
@@ -146,12 +149,31 @@ export class FlowRenameDialogComponent implements OnInit {
 
     public isValid = signal<boolean>(true);
 
+    @ViewChild(LabelDropdownComponent)
+    private labelDropdown?: LabelDropdownComponent;
+    private keydownSubscription?: Subscription;
+
     ngOnInit(): void {
         if (this.data.flow) {
             this.description = this.data.flow.description || '';
             this.selectedLabelIds = [...(this.data.flow.label_ids || [])];
         }
         this.validateName();
+        this.keydownSubscription = this.dialogRef.keydownEvents.subscribe((event: KeyboardEvent) => {
+            if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                if (this.labelDropdown?.isOpen()) {
+                    return;
+                }
+
+                event.preventDefault();
+                event.stopPropagation();
+                this.save();
+            }
+        });
+    }
+
+    ngOnDestroy(): void {
+        this.keydownSubscription?.unsubscribe();
     }
 
     private validateName(): void {
@@ -159,6 +181,9 @@ export class FlowRenameDialogComponent implements OnInit {
     }
 
     public save(): void {
+        if (this.isSubmitting) {
+            return;
+        }
         this.validateName();
         if (!this.isValid()) return;
 

@@ -88,6 +88,23 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
         }
     }
 
+    @HostListener('document:keydown', ['$event'])
+    onDocumentKeydown(event: KeyboardEvent): void {
+        if (!this.isOpen()) {
+            return;
+        }
+
+        if (this.addingRoot() || this.addingChildOf() !== null) {
+            return;
+        }
+
+        if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+            event.preventDefault();
+            event.stopPropagation();
+            this.save();
+        }
+    }
+
     open(): void {
         this.localSelectedIds.set(new Set(this.selectedLabelIds));
         this.isOpen.set(true);
@@ -197,6 +214,14 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
 
     getIndentPadding(depth: number): string {
         return `${depth * 1 + 0.25}rem`;
+    }
+
+    public saveIfOpen(): void {
+        if (!this.isOpen()) {
+            return;
+        }
+
+        this.save();
     }
 
     private scrollChildAddRowIntoView(): void {

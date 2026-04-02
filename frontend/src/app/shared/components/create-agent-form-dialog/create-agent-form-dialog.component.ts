@@ -1,6 +1,6 @@
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit, signal, ViewChild } from '@angular/core';
 import { FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ErrorStateMatcher } from '@angular/material/core';
 import { of, Subscription, switchMap, takeUntil } from 'rxjs';
@@ -106,6 +106,9 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
 
     public isSubmitting = signal(false);
 
+    @ViewChild(ToolsSelectorComponent)
+    private toolsSelector?: ToolsSelectorComponent;
+
     // Edit mode properties
     public isEditMode: boolean = false;
     public agentToEdit?: GetAgentRequest;
@@ -154,6 +157,19 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
         this.loadKnowledgeSources();
 
         this.trackKnowledgeSourceChange();
+
+        this.subscriptions.add(
+            this.dialogRef.keydownEvents.subscribe((event: KeyboardEvent) => {
+                if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                    if (this.toolsSelector?.isOpen()) {
+                        return;
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.onSubmitForm();
+                }
+            })
+        );
     }
 
     private trackKnowledgeSourceChange(): void {

@@ -4,6 +4,7 @@ import {
     OnDestroy,
     ChangeDetectionStrategy,
     ChangeDetectorRef,
+    HostListener,
     Input,
     Output,
     EventEmitter,
@@ -833,6 +834,20 @@ export class ToolsSelectorComponent implements OnInit, OnDestroy {
     public closeToolsDialog(): void {
         this.showToolsDialog = false;
         this.cdr.markForCheck();
+    }
+
+    public isOpen(): boolean {
+        return this.showToolsDialog;
+    }
+
+    @HostListener('document:keydown', ['$event'])
+    public onDocumentKeydown(event: KeyboardEvent): void {
+        if (!this.showToolsDialog) return;
+        if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+            event.preventDefault();
+            event.stopPropagation();
+            this.saveToolSelection();
+        }
     }
 
     public toggleToolType(toolType: 'python' | 'mcp'): void {
