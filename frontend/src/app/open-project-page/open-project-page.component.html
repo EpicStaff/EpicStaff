@@ -96,6 +96,7 @@
                             [isSaving]="isSaving"
                             (taskPending)="onTaskPending($event)"
                             (dirtyChange)="onTasksDirtyChange($event)"
+                            (autoSaveRequested)="onSaveAll()"
                         ></app-tasks-section>
                     } @else {
                     <ng-container

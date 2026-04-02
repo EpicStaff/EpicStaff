@@ -37,6 +37,7 @@ export class TasksSectionComponent implements OnInit, OnDestroy {
   @Input() isSaving = false;
   @Output() taskPending = new EventEmitter<TaskPendingEvent>();
   @Output() dirtyChange = new EventEmitter<boolean>();
+  @Output() autoSaveRequested = new EventEmitter<void>();
   @ViewChild(TasksTableComponent) private table?: TasksTableComponent;
 
   public tasks: FullTask[] = [];
@@ -109,5 +110,9 @@ export class TasksSectionComponent implements OnInit, OnDestroy {
 
   public stopEditing(): void {
     this.table?.stopEditing();
+  }
+
+  public commitPopupIfOpen(): void {
+    this.table?.commitPopupIfOpen();
   }
 }

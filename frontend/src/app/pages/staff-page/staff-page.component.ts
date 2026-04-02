@@ -148,6 +148,7 @@ export class StaffPageComponent implements CanComponentDeactivate {
     public handleCtrlS(event: KeyboardEvent): void {
         if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
             event.preventDefault();
+            this.agentsTable?.commitPopupIfOpen();
             this.agentsTable?.stopEditing();
             this.onSave();
         }

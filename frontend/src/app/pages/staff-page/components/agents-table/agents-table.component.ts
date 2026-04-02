@@ -124,12 +124,14 @@ export class AgentsTableComponent {
 
     //overlay
     private popupOverlayRef: OverlayRef | null = null;
+    private _activePopupCommitFn: (() => void) | null = null;
     private currentPopupCell: any = null;
     private currentCellElement: HTMLElement | null = null;
     private globalClickUnlistener: (() => void) | null = null;
     private globalKeydownUnlistener: (() => void) | null = null;
 
     @Output() dirtyChange = new EventEmitter<boolean>();
+    @Output() autoSaveRequested = new EventEmitter<void>();
     private pending = new Map<string, PendingChange>();
     private savedSnapshot = new Map<string, unknown>();
     private deletedRows = new Map<string, { row: TableFullAgent; index: number }>();
@@ -881,11 +883,12 @@ export class AgentsTableComponent {
         });
 
         dialogRef.closed.subscribe((updatedData: unknown) => {
-            const data = updatedData as AdvancedSettingsData | undefined;
-            if (!data) return;
-            const after = this.normalizeAdvancedSettings(data);
+            const raw = updatedData as (AdvancedSettingsData & { _saveAfterClose?: boolean }) | undefined;
+            if (!raw) return;
+            const { _saveAfterClose: saveAfter, ...data } = raw;
+            const after = this.normalizeAdvancedSettings(data as AdvancedSettingsData);
             if (this.jsonEqual(before, after)) return;
-            this.updateAgentDataInRow(data, agentData);
+            this.updateAgentDataInRow(data as AdvancedSettingsData, agentData);
 
             const rowId = String(agentData.id ?? '');
             const rowNode = this.gridApi?.getRowNode(rowId);
@@ -893,6 +896,10 @@ export class AgentsTableComponent {
 
             if (fresh) {
                 this.updateRequiredErrorsForTempRow(rowId, fresh);
+            }
+
+            if (saveAfter) {
+                this.autoSaveRequested.emit();
             }
         });
     }
@@ -1551,6 +1558,7 @@ export class AgentsTableComponent {
         if (cell.columnId === 'mergedConfigs') {
             const portal = new ComponentPortal(LLMPopupComponent);
             const popupRef = this.popupOverlayRef.attach(portal);
+            this._activePopupCommitFn = () => popupRef.instance.onSave();
 
             popupRef.instance.cellValue = event.data?.mergedConfigs || [];
 
@@ -1694,51 +1702,61 @@ export class AgentsTableComponent {
         } else if (cell.columnId === 'mergedTools') {
             const portal = new ComponentPortal(ToolsPopupComponent);
             const popupRef = this.popupOverlayRef.attach(portal);
-            // Pass the mergedTools array (or an empty array if not present)
+            this._activePopupCommitFn = () => popupRef.instance.save();
+
             popupRef.instance.mergedTools = event.data?.mergedTools || [];
 
-            // Subscribe to the mergedToolsSaved event
-            popupRef.instance.mergedToolsUpdated.subscribe(
-                (updatedMergedTools: string[]) => {
-                    console.log(
-                        'Returned from tools popup:',
-                        updatedMergedTools
-                    );
-                    if (this.currentPopupCell) {
-                        const rowIndex = this.currentPopupCell.rowIndex;
+            popupRef.instance.mergedToolsUpdated.subscribe((updatedMergedTools: any[]) => {
+                console.log('Returned from tools popup:', updatedMergedTools);
 
-                        // Get the row node using the row index
-                        const rowNode =
-                            this.gridApi.getDisplayedRowAtIndex(rowIndex);
-                        if (rowNode) {
-                            // Use setDataValue to update the mergedTools cell
-                            rowNode.setDataValue(
-                                'mergedTools',
-                                updatedMergedTools
+                if (this.currentPopupCell) {
+                    const rowIndex = this.currentPopupCell.rowIndex;
+                    const rowNode = this.gridApi.getDisplayedRowAtIndex(rowIndex);
+
+                    if (rowNode) {
+                        const mergedToolsClone = (updatedMergedTools ?? []).map((t) => ({ ...t }));
+
+                        rowNode.setDataValue('mergedTools', mergedToolsClone);
+                        const rowData = rowNode.data;
+                        const rowId = String(rowData?.id ?? '');
+
+                        if (this.isTempRowId(rowId)) {
+                            if (this.isTempRowTouched(rowData)) {
+                                this.draftTempRows.add(rowId);
+                            } else {
+                                this.draftTempRows.delete(rowId);
+                            }
+
+                            this.emitDirty();
+                            this.updateRequiredErrorsForTempRow(rowId, rowData);
+                        } else {
+                            const parsedData = this.parseAgentData(rowData);
+                            const configuredToolIds = parsedData.configured_tools || [];
+                            const pythonToolIds = parsedData.python_code_tools || [];
+                            const mcpToolIds = parsedData.mcp_tools || [];
+                            const toolIds = buildToolIdsArray(
+                                configuredToolIds,
+                                pythonToolIds,
+                                mcpToolIds
                             );
 
-                            const rowData = rowNode.data;
-                            const rowId = String(rowData?.id ?? '');
-
-                            if (this.isTempRowId(rowId)) {
-                                if (this.isTempRowTouched(rowData)) {
-                                    this.draftTempRows.add(rowId);
-                                } else {
-                                    this.draftTempRows.delete(rowId);
-                                }
-                                this.emitDirty();
-                                this.updateRequiredErrorsForTempRow(rowId, rowData);
-
-                                this.cdr.markForCheck();
-                            }
+                            const updateAgentData: UpdateAgentRequest = {
+                                ...parsedData,
+                                configured_tools: configuredToolIds,
+                                python_code_tools: pythonToolIds,
+                                mcp_tools: mcpToolIds,
+                                tool_ids: toolIds,
+                            };
+                            this.reconcilePendingUpdate(rowId, updateAgentData);
                         }
+                
+                        this.cdr.markForCheck();
                     }
-                    // Close the popup after saving
-                    this.closePopup();
                 }
-            );
 
-            // Handle cancel event
+                this.closePopup();
+            });
+
             popupRef.instance.cancel.subscribe(() => {
                 this.closePopup();
             });
@@ -1814,6 +1832,7 @@ export class AgentsTableComponent {
             this.popupOverlayRef.dispose();
             this.popupOverlayRef = null;
         }
+        this._activePopupCommitFn = null;
         this.currentPopupCell = null;
 
         // Remove the custom CSS class from the cell.
@@ -2299,6 +2318,10 @@ export class AgentsTableComponent {
 
     public stopEditing(): void {
         this.gridApi?.stopEditing();
+    }
+
+    public commitPopupIfOpen(): void {
+        this._activePopupCommitFn?.();
     }
 
     private requiredErrorsRows = new Set<string>();

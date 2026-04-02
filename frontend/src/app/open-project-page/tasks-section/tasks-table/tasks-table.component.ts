@@ -147,6 +147,7 @@ export class TasksTableComponent implements OnChanges {
 
     @Output() taskPending = new EventEmitter<TaskPendingEvent>();
     @Output() dirtyChange = new EventEmitter<boolean>();
+    @Output() autoSaveRequested = new EventEmitter<void>();
 
     public rowData: TableFullTask[] = [];
 
@@ -165,6 +166,7 @@ export class TasksTableComponent implements OnChanges {
 
     //overlay
     private popupOverlayRef: OverlayRef | null = null;
+    private _activePopupCommitFn: (() => void) | null = null;
     private currentPopupCell: any = null;
     private currentCellElement: HTMLElement | null = null;
     private globalClickUnlistener: (() => void) | null = null;
@@ -1116,6 +1118,10 @@ export class TasksTableComponent implements OnChanges {
                 },
                 taskData
             );
+
+            if (data._saveAfterClose) {
+                this.autoSaveRequested.emit();
+            }
         });
     }
 
@@ -1717,7 +1723,8 @@ export class TasksTableComponent implements OnChanges {
         if (cell.columnId === 'mergedTools') {
             const portal = new ComponentPortal(ToolsPopupComponent);
             const popupRef = this.popupOverlayRef.attach(portal);
-            const rowNode = event.node; 
+            this._activePopupCommitFn = () => popupRef.instance.save();
+            const rowNode = event.node;
             const taskData = rowNode.data as TableFullTask;
 
             popupRef.instance.mergedTools = event.data?.mergedTools || [];
@@ -1770,6 +1777,7 @@ export class TasksTableComponent implements OnChanges {
             this.popupOverlayRef.dispose();
             this.popupOverlayRef = null;
         }
+        this._activePopupCommitFn = null;
         this.currentPopupCell = null;
 
         // Remove the custom CSS class from the cell.
@@ -2398,5 +2406,9 @@ export class TasksTableComponent implements OnChanges {
 
     public stopEditing(): void {
         this.gridApi?.stopEditing();
+    }
+
+    public commitPopupIfOpen(): void {
+        this._activePopupCommitFn?.();
     }
 }
