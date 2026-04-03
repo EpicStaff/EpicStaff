@@ -53,6 +53,14 @@ export class ShortcutListenerDirective implements OnInit, OnDestroy {
                             return true;
                         }
 
+                        if (mod && evt.code === 'KeyS') {
+                            const el = evt.target as HTMLElement;
+                            if (el.matches('input,textarea,select,[contenteditable="true"]')) {
+                                return false;
+                            }
+                            return true;
+                        }
+
                         // 1) only keep delete/backspace/escape OR keys with ctrl/meta
                         if (
                             !(
@@ -96,6 +104,12 @@ export class ShortcutListenerDirective implements OnInit, OnDestroy {
             event.preventDefault();
             event.stopPropagation();
             this.openShortcuts.emit();
+            return;
+        }
+        if (event.code === 'KeyS' && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            event.stopPropagation();
+            this.save.emit();
             return;
         }
         const mod = event.ctrlKey || event.metaKey;

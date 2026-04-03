@@ -14,11 +14,12 @@ import { SidePanelService } from '../../../services/side-panel.service';
     hostDirectives: [
         {
             directive: ShortcutListenerDirective,
-            outputs: ['escape: escape'],
+            outputs: ['escape: escape', 'save: saveShortcut'],
         },
     ],
     host: {
         '(escape)': 'onEscape()',
+        '(saveShortcut)': 'onShortcutSave()',
     },
     template: `
         @if (node() && panelComponent()) {
@@ -162,6 +163,17 @@ export class NodePanelShellComponent {
 
     protected toggleExpanded(): void {
         this.isExpanded.update((expanded) => !expanded);
+    }
+
+    protected onShortcutSave(): void {
+        if (!this.panelInstance || typeof this.panelInstance.onSaveSilently !== 'function') {
+            return;
+        }  
+        const updatedNode = this.panelInstance.onSaveSilently();
+        if (!updatedNode) {
+            return;
+        }
+        this.save.emit(updatedNode);
     }
 
     public expandPanel(): void {
