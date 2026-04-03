@@ -37,7 +37,7 @@ export class EditLlmConfigDialogComponent implements OnInit {
         this.form = this.formBuilder.group({
             customName: [this.config.custom_name, Validators.required],
             apiKey: [this.config.api_key, Validators.required],
-            temperature: [Math.round(this.config.temperature * 100), [Validators.min(0), Validators.max(100)]],
+            temperature: [Math.round((this.config.temperature ?? 0) * 100), [Validators.min(0), Validators.max(100)]],
         });
 
         this.dialogRef.keydownEvents

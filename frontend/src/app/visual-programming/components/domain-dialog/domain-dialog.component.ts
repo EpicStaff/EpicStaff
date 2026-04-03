@@ -300,6 +300,12 @@ export class DomainDialogComponent implements OnDestroy {
         this.dialogRef.backdropClick.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.close());
 
         this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') {
+                if (this.overlayRef?.hasAttached()) return;
+                e.preventDefault();
+                this.close();
+                return;
+            }
             if (e.key === 'Escape') {
                 if (this.overlayRef?.hasAttached()) return;
                 e.preventDefault();

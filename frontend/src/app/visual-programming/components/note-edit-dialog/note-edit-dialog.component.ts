@@ -178,8 +178,10 @@ export class NoteEditDialogComponent implements OnInit {
     }
 
     @HostListener('document:keydown.escape', ['$event'])
-    onEsc(event: KeyboardEvent): void {
-        event.preventDefault();
+    onEsc(event: Event): void {
+        if (event instanceof KeyboardEvent) {
+            event.preventDefault();
+        }
         this.close();
     }
 }
