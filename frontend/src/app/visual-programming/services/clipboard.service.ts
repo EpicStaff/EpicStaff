@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { NodeType } from '../core/enums/node-type';
 import { generateMultipleNodeDisplayNames } from '../core/helpers/generate-node-display-name.util';
-import { generatePortsForNode, parsePortId } from '../core/helpers/helpers';
+import { generatePortsForNode, getPortsForType, parsePortId } from '../core/helpers/helpers';
 import { ConnectionModel } from '../core/models/connection.model';
 import { NodeModel } from '../core/models/node.model';
 import { CustomPortId, ViewPort } from '../core/models/port.model';
@@ -95,14 +95,13 @@ export class ClipboardService {
 
         const oldToNewIdMap = new Map<string, string>();
 
-        // Generate display names for all nodes at once
-        const currentNodes = this.flowService.getFlowState().nodes;
+        // Assign sequential badge numbers and generate names in one pass
         const nodesToCreate = clipboardNodes.map((oldNode) => ({
             type: oldNode.type,
             data: oldNode.data,
         }));
-
-        const displayNames = generateMultipleNodeDisplayNames(nodesToCreate, currentNodes);
+        const nodeNumbers = nodesToCreate.map(() => this.flowService.getNextNodeNumber());
+        const displayNames = generateMultipleNodeDisplayNames(nodesToCreate, nodeNumbers);
 
         // Create new nodes with backendId: null for diff-save support
         const newNodes: NodeModel[] = clipboardNodes.map((oldNode, index) => {
@@ -115,6 +114,7 @@ export class ClipboardService {
                 ...oldNode,
                 id: newNodeId,
                 backendId: null,
+                nodeNumber: nodeNumbers[index],
                 position: {
                     x: oldNode.position.x + offsetX,
                     y: oldNode.position.y + offsetY,

@@ -27,9 +27,10 @@ export interface BaseNodeModel {
         width: number;
         height: number;
     };
+    /** Unique incrementing number per graph, displayed as the #N badge. */
+    nodeNumber?: number;
     // UI-only flag for invalid references (e.g. deleted subgraph)
     isBlocked?: boolean;
-    // New fields
     input_map: Record<string, unknown>;
     output_variable_path: string | null;
 }

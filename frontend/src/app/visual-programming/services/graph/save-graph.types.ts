@@ -37,6 +37,7 @@ export interface NodeUIMetadata extends Record<string, unknown> {
     color: string;
     icon: string;
     size: { width: number; height: number };
+    nodeNumber?: number;
 }
 
 /**
@@ -50,6 +51,7 @@ export function getUIMetadataForComparison(node: BaseNodeModel): NodeUIMetadata 
         color: node.color,
         icon: node.icon,
         size: node.size,
+        nodeNumber: node.nodeNumber,
     };
 }
 
