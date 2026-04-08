@@ -28,14 +28,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 @Component({
     selector: 'app-expression-editor',
     standalone: true,
-    imports: [
-        CommonModule,
-        FormsModule,
-        AutocompleteOverlayComponent,
-        EditorToolbarComponent,
-        OverlayModule,
-        AppSvgIconComponent,
-    ],
+    imports: [CommonModule, FormsModule, EditorToolbarComponent, OverlayModule, AppSvgIconComponent],
     templateUrl: './expression-editor.component.html',
     styleUrls: ['./expression-editor.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

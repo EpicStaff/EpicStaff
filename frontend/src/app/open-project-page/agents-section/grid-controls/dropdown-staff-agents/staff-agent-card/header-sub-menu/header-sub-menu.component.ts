@@ -12,7 +12,7 @@ import { CardState } from '../staff-agent-card.component';
     standalone: true,
     imports: [CommonModule, ClickOutsideDirective, AppSvgIconComponent],
     template: `
-        <div class="menu-container" *ngIf="isOpen" (clickOutside)="onClickOutside()">
+        <div class="menu-container" *ngIf="isOpen" appClickOutside (appClickOutside)="onClickOutside()">
             <!-- <div class="menu-item" (click)="onEditAgent()">
         <svg
           xmlns="http://www.w3.org/2000/svg"

@@ -5,23 +5,23 @@ import { ICellRendererParams } from 'ag-grid-community';
 
 import { getProviderIconPath } from '../../../../../features/settings-dialog/utils/get-provider-icon';
 import { MergedConfig } from '../../../../../features/staff/services/full-agent.service';
-import { AppIconComponent } from '../../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-config-cell-renderer',
     standalone: true,
-    imports: [CommonModule, AppIconComponent],
+    imports: [CommonModule, AppSvgIconComponent],
     template: `
         <div class="configs-cell-wrapper">
             <div *ngIf="!configs || configs.length === 0" class="no-configs">No configurations assigned</div>
 
             <div *ngFor="let config of configs" class="config-item" [ngClass]="config.type">
-                <app-icon
+                <app-svg-icon
                     [icon]="getProviderIcon(config)"
                     size="20px"
                     [ariaLabel]="config.provider_name || ''"
                     class="provider-icon"
-                ></app-icon>
+                />
 
                 <div class="item-content">
                     <div class="item-text">

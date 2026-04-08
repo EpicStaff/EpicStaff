@@ -107,6 +107,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 transition: all 0.2s ease;
                 outline: none;
                 position: relative;
+                color: var(--gray-300);
 
                 &:hover {
                     background-color: var(--gray-750);
@@ -123,6 +124,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
 
                 &.active {
                     background-color: var(--accent-color);
+                    color: var(--white);
 
                     i {
                         color: var(--white);

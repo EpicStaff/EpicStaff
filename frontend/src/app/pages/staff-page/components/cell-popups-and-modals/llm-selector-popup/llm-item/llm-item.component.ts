@@ -12,21 +12,21 @@ import {
 
 import { getProviderIconPath } from '../../../../../../features/settings-dialog/utils/get-provider-icon';
 import { MergedConfig } from '../../../../../../features/staff/services/full-agent.service';
-import { AppIconComponent } from '../../../../../../shared/components/app-icon/app-icon.component';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-llm-item',
     standalone: true,
-    imports: [NgClass, NgIf, AppIconComponent],
+    imports: [NgClass, NgIf, AppSvgIconComponent],
     template: `
         <div class="llm-item-container">
             <div class="llm-item" [ngClass]="{ 'selected-item': isSelected }" (click)="onSelect()">
-                <app-icon
+                <app-svg-icon
                     [icon]="getProviderIcon(item)"
                     size="16px"
                     [ariaLabel]="item.provider_name || ''"
                     class="provider-icon"
-                ></app-icon>
+                />
 
                 <div class="llm-name">
                     {{ getModelName(item) }}

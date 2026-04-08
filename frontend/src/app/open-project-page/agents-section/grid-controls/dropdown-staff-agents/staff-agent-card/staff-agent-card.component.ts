@@ -16,7 +16,6 @@ import {
 import { getProviderIconPath } from '../../../../../features/settings-dialog/utils/get-provider-icon';
 import { FullAgent } from '../../../../../features/staff/services/full-agent.service';
 import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { AgentMenuComponent } from './header-sub-menu/header-sub-menu.component';
 
 export type CardState = 'adding' | 'removing';
 
@@ -29,7 +28,7 @@ interface SectionStates {
 @Component({
     selector: 'app-staff-agent-card',
     standalone: true,
-    imports: [CommonModule, AgentMenuComponent, AppSvgIconComponent],
+    imports: [CommonModule, AppSvgIconComponent],
     templateUrl: './staff-agent-card.component.html',
     styleUrls: ['./staff-agent-card.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

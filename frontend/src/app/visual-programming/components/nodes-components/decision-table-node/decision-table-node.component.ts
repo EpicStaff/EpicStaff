@@ -7,14 +7,12 @@ import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.dir
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { DecisionTableNodeModel } from '../../../core/models/node.model';
 import { FlowService } from '../../../services/flow.service';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-
 @Component({
     selector: 'app-decision-table-node',
     templateUrl: './decision-table-node.component.html',
     styleUrls: ['./decision-table-node.component.scss'],
     standalone: true,
-    imports: [CommonModule, FormsModule, ClickOrDragDirective, FFlowModule, NgStyle, AppSvgIconComponent],
+    imports: [CommonModule, FormsModule, ClickOrDragDirective, FFlowModule, NgStyle],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DecisionTableNodeComponent {

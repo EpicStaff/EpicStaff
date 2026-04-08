@@ -10,7 +10,7 @@ import {
     Output,
 } from '@angular/core';
 
-import { GetGraphLightRequest, GraphDto } from '../../../../features/flows/models/graph.model';
+import { GetGraphLightRequest } from '../../../../features/flows/models/graph.model';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { NodeType } from '../../../core/enums/node-type';
 
@@ -73,11 +73,11 @@ export class FlowsMenuComponent implements OnInit {
         data: GetGraphLightRequest;
     }>();
 
-    public flows: GraphDto[] = [];
+    public flows: GetGraphLightRequest[] = [];
 
     ngOnInit(): void {
         this.flowsApiService.getGraphsLight().subscribe({
-            next: (flows: GraphDto[]) => {
+            next: (flows: GetGraphLightRequest[]) => {
                 this.flows = flows;
                 this.cdr.markForCheck();
             },
@@ -85,15 +85,16 @@ export class FlowsMenuComponent implements OnInit {
         });
     }
 
-    public get filteredFlows(): GraphDto[] {
+    public get filteredFlows(): GetGraphLightRequest[] {
         return this.flows
             .filter((flow) => flow.id !== this.currentFlowId)
             .filter((flow) => flow.name.toLowerCase().includes(this.searchTerm.toLowerCase()));
     }
 
-    public onFlowClicked(flow: GraphDto): void {
+    public onFlowClicked(flow: GetGraphLightRequest): void {
         const lightData: GetGraphLightRequest = {
             id: flow.id,
+            uuid: flow.uuid,
             name: flow.name,
             description: flow.description,
             tags: flow.tags || [],

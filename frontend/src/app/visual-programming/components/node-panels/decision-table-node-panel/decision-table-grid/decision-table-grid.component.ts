@@ -36,13 +36,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 @Component({
     selector: 'app-decision-table-grid',
     standalone: true,
-    imports: [
-        AgGridModule,
-        ButtonComponent,
-        ExpressionEditorComponent,
-        ExpressionRendererComponent,
-        AppSvgIconComponent,
-    ],
+    imports: [AgGridModule, ButtonComponent, AppSvgIconComponent],
     templateUrl: './decision-table-grid.component.html',
     styleUrls: ['./decision-table-grid.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

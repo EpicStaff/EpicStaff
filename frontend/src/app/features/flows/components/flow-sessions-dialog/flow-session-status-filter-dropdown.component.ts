@@ -28,16 +28,13 @@ interface StatusOption {
         <div
             class="status-filter-dropdown-custom"
             [class.open]="open"
-            (clickOutside)="closeDropdown()"
+            appClickOutside
+            (appClickOutside)="closeDropdown()"
         >
             <button class="dropdown-toggle" (click)="toggleDropdown($event)">
                 <span class="selected-icons">
                     @if (selectedValues().length === 0) {
-                        <app-svg-icon
-                            class="status-icon"
-                            [icon]="options[0].icon"
-                            size="16px"
-                        ></app-svg-icon>
+                        <app-svg-icon class="status-icon" [icon]="options[0].icon" size="16px"></app-svg-icon>
                         {{ options[0].label }}
                     } @else if (selectedValues().length === 1) {
                         <app-svg-icon
@@ -62,11 +59,7 @@ interface StatusOption {
                     }
                 </span>
                 <span class="dropdown-arrow-wrapper">
-                    <app-svg-icon
-                        icon="chevron-down"
-                        size="16px"
-                        class="dropdown-arrow"
-                    ></app-svg-icon>
+                    <app-svg-icon icon="chevron-down" size="16px" class="dropdown-arrow"></app-svg-icon>
                 </span>
             </button>
 
@@ -78,11 +71,7 @@ interface StatusOption {
                             [class.selected]="selectedValues().includes(option.value)"
                         >
                             <span [style.color]="option.color">
-                                <app-svg-icon
-                                    class="status-icon"
-                                    [icon]="option.icon"
-                                    size="16px"
-                                ></app-svg-icon>
+                                <app-svg-icon class="status-icon" [icon]="option.icon" size="16px"></app-svg-icon>
                                 {{ option.label }}
                             </span>
                             @if (selectedValues().includes(option.value)) {
