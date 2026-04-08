@@ -56,25 +56,13 @@ import { HelpTooltipComponent } from '../../../shared/components/help-tooltip/he
                                     (keydown.enter)="onEnterKey($event, i)"
                                 />
                             </div>
-                            <i class="ti ti-trash delete-icon" (click)="removePair(i)"></i>
+                            <app-svg-icon
+                                icon="trash"
+                                size="1rem"
+                                class="delete-icon"
+                                (click)="removePair(i)"
+                            ></app-svg-icon>
                         </div>
-                        <div class="equals-sign">=</div>
-                        <div class="input-wrapper">
-                            <input
-                                type="text"
-                                formControlName="value"
-                                placeholder="Domain Variable Name"
-                                [style.--active-color]="activeColor"
-                                autocomplete="off"
-                                (keydown.enter)="onEnterKey($event, i)"
-                            />
-                        </div>
-                        <app-svg-icon
-                            icon="trash"
-                            size="1rem"
-                            class="delete-icon"
-                            (click)="removePair(i)"
-                        ></app-svg-icon>
                     </div>
                 }
             </div>
