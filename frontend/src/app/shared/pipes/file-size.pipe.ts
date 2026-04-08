@@ -1,7 +1,7 @@
 import { Pipe, PipeTransform } from '@angular/core';
 
 @Pipe({
-    name: 'fileSize'
+    name: 'fileSize',
 })
 export class FileSizePipe implements PipeTransform {
     transform(bytes: number | null | undefined, decimalPlaces = 0): string {
@@ -16,8 +16,7 @@ export class FileSizePipe implements PipeTransform {
         const unitIndex = Math.min(i, units.length - 1);
         const value = b / Math.pow(k, unitIndex);
 
-        const formatted =
-            decimalPlaces > 0 ? value.toFixed(decimalPlaces) : Math.round(value).toString();
+        const formatted = decimalPlaces > 0 ? value.toFixed(decimalPlaces) : Math.round(value).toString();
 
         return `${formatted} ${units[unitIndex]}`;
     }

@@ -1,89 +1,73 @@
 <div class="dialog-container">
-  <div class="dialog-header">
-    <h2>Add Voice Configuration</h2>
-  </div>
-  <div class="dialog-content">
-    <form [formGroup]="form" (ngSubmit)="onSubmit()">
-      @if (errorMessage()) {
-        <div class="error-message">
-          <p>{{ errorMessage() }}</p>
-        </div>
-      }
-      <div class="form-field">
-        <label for="providerId">Provider</label>
-        <select id="providerId" formControlName="providerId">
-          @for (provider of providers(); track provider.id) {
-            <option [ngValue]="provider.id">
-              {{ provider.name }}
-            </option>
-          }
-        </select>
-        @if (form.get('providerId')?.invalid && form.get('providerId')?.touched) {
-          <div class="error-hint">
-            Please select a provider
-          </div>
-        }
-      </div>
-      <div class="form-field">
-        <label for="modelId">Model</label>
-        <select id="modelId" formControlName="modelId">
-          @if (models().length === 0) {
-            <option [ngValue]="null">
-              Select a model
-            </option>
-          }
-          @for (model of models(); track model.id) {
-            <option [ngValue]="model.id">
-              {{ model.name }}
-            </option>
-          }
-        </select>
-        @if (form.get('modelId')?.invalid && form.get('modelId')?.touched) {
-          <div class="error-hint">
-            Please select a model
-          </div>
-        }
-      </div>
-      <div class="form-field">
-        <label for="customName"
-          >Custom Name <span class="required">*</span></label
-        >
-        <app-custom-input
-          id="customName"
-          type="text"
-          placeholder="Enter a custom name"
-          formControlName="customName"
-        ></app-custom-input>
-        @if (form.get('customName')?.invalid && form.get('customName')?.touched) {
-          <div class="error-hint">
-            Custom name is required
-          </div>
-        }
-      </div>
-      <div class="form-field">
-        <label for="apiKey">API Key <span class="required">*</span></label>
-        <app-custom-input
-          id="apiKey"
-          type="password"
-          placeholder="Enter your API key"
-          formControlName="apiKey"
-        ></app-custom-input>
-        @if (form.get('apiKey')?.invalid && form.get('apiKey')?.touched) {
-          <div class="error-hint">
-            API key is required
-          </div>
-        }
-      </div>
-      <div class="dialog-actions">
-        <app-button type="ghost" (click)="onCancel()">Cancel</app-button>
-        <app-button
-          type="primary"
-          (click)="onSubmit()"
-          [disabled]="form.invalid || isSubmitting()"
-        >
-          {{ isSubmitting() ? "Adding..." : "Add" }}
-        </app-button>
-      </div>
-    </form>
-  </div>
+    <div class="dialog-header">
+        <h2>Add Voice Configuration</h2>
+    </div>
+    <div class="dialog-content">
+        <form [formGroup]="form" (ngSubmit)="onSubmit()">
+            @if (errorMessage()) {
+                <div class="error-message">
+                    <p>{{ errorMessage() }}</p>
+                </div>
+            }
+            <div class="form-field">
+                <label for="providerId">Provider</label>
+                <select id="providerId" formControlName="providerId">
+                    @for (provider of providers(); track provider.id) {
+                        <option [ngValue]="provider.id">
+                            {{ provider.name }}
+                        </option>
+                    }
+                </select>
+                @if (form.get('providerId')?.invalid && form.get('providerId')?.touched) {
+                    <div class="error-hint">Please select a provider</div>
+                }
+            </div>
+            <div class="form-field">
+                <label for="modelId">Model</label>
+                <select id="modelId" formControlName="modelId">
+                    @if (models().length === 0) {
+                        <option [ngValue]="null">Select a model</option>
+                    }
+                    @for (model of models(); track model.id) {
+                        <option [ngValue]="model.id">
+                            {{ model.name }}
+                        </option>
+                    }
+                </select>
+                @if (form.get('modelId')?.invalid && form.get('modelId')?.touched) {
+                    <div class="error-hint">Please select a model</div>
+                }
+            </div>
+            <div class="form-field">
+                <label for="customName">Custom Name <span class="required">*</span></label>
+                <app-custom-input
+                    id="customName"
+                    type="text"
+                    placeholder="Enter a custom name"
+                    formControlName="customName"
+                ></app-custom-input>
+                @if (form.get('customName')?.invalid && form.get('customName')?.touched) {
+                    <div class="error-hint">Custom name is required</div>
+                }
+            </div>
+            <div class="form-field">
+                <label for="apiKey">API Key <span class="required">*</span></label>
+                <app-custom-input
+                    id="apiKey"
+                    type="password"
+                    placeholder="Enter your API key"
+                    formControlName="apiKey"
+                ></app-custom-input>
+                @if (form.get('apiKey')?.invalid && form.get('apiKey')?.touched) {
+                    <div class="error-hint">API key is required</div>
+                }
+            </div>
+            <div class="dialog-actions">
+                <app-button type="ghost" (click)="onCancel()">Cancel</app-button>
+                <app-button type="primary" (click)="onSubmit()" [disabled]="form.invalid || isSubmitting()">
+                    {{ isSubmitting() ? 'Adding...' : 'Add' }}
+                </app-button>
+            </div>
+        </form>
+    </div>
 </div>

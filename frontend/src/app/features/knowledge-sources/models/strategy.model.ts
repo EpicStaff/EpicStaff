@@ -42,4 +42,4 @@ export type StrategyModel =
     | HtmlStrategyModel
     | TokenStrategyModel
     | JsonStrategyModel
-    | CsvStrategyModel
+    | CsvStrategyModel;

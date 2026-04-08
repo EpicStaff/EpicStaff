@@ -5,11 +5,8 @@
         </div>
         <p class="text">Session execution</p>
     </div>
-    <button
-        [disabled]="!hasNextSession"
-        (click)="goToNextSession()"
-        class="btn-switch-session"
-    >
+
+    <button [disabled]="!hasNextSession" (click)="goToNextSession()" class="btn-switch-session">
         <div class="icon-arrow">
             <app-svg-icon icon="chevron-down" size="20px" />
         </div>
@@ -17,17 +14,12 @@
 
     <div class="session-dropdown-wrapper">
         <button class="session-dropdown-trigger" (click)="toggleDropdown()">
-            <span class="session-dropdown-trigger__label">{{
-                selectedSessionLabel
-            }}</span>
+            <span class="session-dropdown-trigger__label">{{ selectedSessionLabel }}</span>
             <app-svg-icon icon="chevron-down" size="16px" />
         </button>
 
         @if (isDropdownOpen) {
-            <div
-                class="session-dropdown-overlay"
-                (click)="closeDropdown()"
-            ></div>
+            <div class="session-dropdown-overlay" (click)="closeDropdown()"></div>
             <div class="session-dropdown">
                 <div class="session-dropdown__search">
                     <input
@@ -42,34 +34,22 @@
                     @for (session of filteredSessions; track session.id) {
                         <button
                             class="session-dropdown__item"
-                            [class.active]="
-                                session.id.toString() === selectedSessionId
-                            "
+                            [class.active]="session.id.toString() === selectedSessionId"
                             (click)="onSessionChange(session.id.toString())"
                         >
-                            <span class="session-dropdown__item-id"
-                                >ID {{ session.id }}</span
-                            >
-                            <span class="session-dropdown__item-time">{{
-                                getTimeAgo(session.status_updated_at)
-                            }}</span>
+                            <span class="session-dropdown__item-id">ID {{ session.id }}</span>
+                            <span class="session-dropdown__item-time">{{ getTimeAgo(session.status_updated_at) }}</span>
                         </button>
                     }
                     @if (filteredSessions.length === 0) {
-                        <div class="session-dropdown__empty">
-                            No sessions found
-                        </div>
+                        <div class="session-dropdown__empty">No sessions found</div>
                     }
                 </div>
             </div>
         }
     </div>
 
-    <button
-        [disabled]="!hasPreviousSession"
-        (click)="goToPreviousSession()"
-        class="btn-switch-session"
-    >
+    <button [disabled]="!hasPreviousSession" (click)="goToPreviousSession()" class="btn-switch-session">
         <div class="icon-arrow">
             <app-svg-icon icon="chevron-up" size="20px" />
         </div>
@@ -86,10 +66,7 @@
         </div>
     </button>
 
-    <button
-        (click)="close.emit()"
-        class="btn-switch-session"
-    >
+    <button (click)="close.emit()" class="btn-switch-session">
         <div>
             <app-svg-icon icon="x" size="20px" />
         </div>
@@ -105,7 +82,12 @@
         ></app-graph-messages>
     } @else if (sessions.length === 0) {
         <div class="panel-body__empty">
-            Click <span class="panel-body__run-badge"><app-svg-icon icon="player-play-filled" size="0.875rem"></app-svg-icon>Run</span> button to see session messages
+            Click
+            <span class="panel-body__run-badge">
+                <app-svg-icon icon="player-play-filled" size="0.875rem" />
+                Run
+            </span>
+            button to see session messages
         </div>
     }
 </div>

@@ -14,6 +14,7 @@
         padding-right: 1.875rem;
         font-size: 0.875rem;
         font-weight: 130;
+        min-width: 0;
 
         &--count {
             color: var(--accent-color);
@@ -87,4 +88,10 @@
         transition: .3s;
         background-color: var(--color-ks-hover-row);
     }
+}
+
+::ng-deep .list__title > app-button {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 45%;
 }

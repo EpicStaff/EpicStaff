@@ -56,7 +56,6 @@
             [class.active]="activeLabelFilter() === item.node.id"
             [style.paddingLeft]="getIndentPadding(item.depth)"
             (click)="selectLabel(item.node.id)"
-            (mouseenter)="onTreeItemHover($event)"
         >
             <!-- Expand/collapse toggle -->
             <button

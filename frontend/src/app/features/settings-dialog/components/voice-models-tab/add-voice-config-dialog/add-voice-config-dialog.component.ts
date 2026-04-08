@@ -1,39 +1,23 @@
-import {
-    ChangeDetectionStrategy,
-    Component,
-    DestroyRef,
-    OnInit,
-    inject,
-    signal,
-} from '@angular/core';
+import { DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import {
-    FormBuilder,
-    FormGroup,
-    ReactiveFormsModule,
-    Validators,
-} from '@angular/forms';
-import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
-import { LLM_Provider, ModelTypes } from '../../../models/llm-provider.model';
-import { LLM_Providers_Service } from '../../../services/llm-providers.service';
-import { RealtimeModelsService } from '../../../services/realtime-llms/real-time-models.service';
-import { RealtimeModelConfigsService } from '../../../services/realtime-llms/real-time-model-config.service';
-import { finalize } from 'rxjs/operators';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { finalize } from 'rxjs/operators';
+
+import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
 import { CustomInputComponent } from '../../../../../shared/components/form-input/form-input.component';
+import { LLM_Provider, ModelTypes } from '../../../models/llm-provider.model';
 import { CreateRealtimeModelConfigRequest } from '../../../models/realtime-voice/realtime-llm-config.model';
 import { RealtimeModel } from '../../../models/realtime-voice/realtime-model.model';
+import { LLM_Providers_Service } from '../../../services/llm-providers.service';
+import { RealtimeModelConfigsService } from '../../../services/realtime-llms/real-time-model-config.service';
+import { RealtimeModelsService } from '../../../services/realtime-llms/real-time-models.service';
 
 @Component({
     selector: 'app-add-voice-config-dialog',
     standalone: true,
-    imports: [
-        CommonModule,
-        ReactiveFormsModule,
-        ButtonComponent,
-        CustomInputComponent,
-    ],
+    imports: [CommonModule, ReactiveFormsModule, ButtonComponent, CustomInputComponent],
     templateUrl: './add-voice-config-dialog.component.html',
     styleUrls: ['./add-voice-config-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -106,10 +90,8 @@ export class AddVoiceConfigDialogComponent implements OnInit {
                         this.updateCustomNameIfNeeded();
                     }
                 },
-                error: (error) => {
-                    this.errorMessage.set(
-                        'Failed to load providers. Please try again.'
-                    );
+                error: () => {
+                    this.errorMessage.set('Failed to load providers. Please try again.');
                 },
             });
     }
@@ -121,23 +103,17 @@ export class AddVoiceConfigDialogComponent implements OnInit {
             .pipe(finalize(() => this.isLoading.set(false)))
             .subscribe({
                 next: (models) => {
-                    const filteredModels = models.filter(
-                        (model) => model.provider === providerId
-                    );
+                    const filteredModels = models.filter((model) => model.provider === providerId);
                     this.models.set(filteredModels);
                     if (filteredModels.length > 0) {
-                        this.form
-                            .get('modelId')
-                            ?.setValue(filteredModels[0].id);
+                        this.form.get('modelId')?.setValue(filteredModels[0].id);
                         this.updateCustomNameIfNeeded();
                     } else {
                         this.form.get('modelId')?.setValue(null);
                     }
                 },
-                error: (error) => {
-                    this.errorMessage.set(
-                        'Failed to load models for the selected provider. Please try again.'
-                    );
+                error: () => {
+                    this.errorMessage.set('Failed to load models for the selected provider. Please try again.');
                 },
             });
     }
@@ -160,10 +136,8 @@ export class AddVoiceConfigDialogComponent implements OnInit {
                 next: () => {
                     this.dialogRef.close(true);
                 },
-                error: (error) => {
-                    this.errorMessage.set(
-                        'Failed to create configuration. Please try again.'
-                    );
+                error: () => {
+                    this.errorMessage.set('Failed to create configuration. Please try again.');
                 },
             });
     }

@@ -14,7 +14,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-    padding: 1.25rem;
+        padding: 1.25rem;
         border-bottom: 1px solid var(--color-ks-line, #2b2d30);
     }
 
@@ -54,7 +54,7 @@
     &__content {
         flex: 1;
         overflow-y: auto;
-    padding: 1.25rem;
+        padding: 1.25rem;
         display: flex;
         flex-direction: column;
         gap: 1.875rem;
@@ -75,8 +75,8 @@
 
     // Sections
     &__section {
-    display: flex;
-    flex-direction: column;
+        display: flex;
+        flex-direction: column;
         gap: 1.5rem;
     }
 
@@ -161,7 +161,7 @@
         position: relative;
         display: flex;
         align-items: center;
-        }
+    }
 
     &__input-action {
         position: absolute;
@@ -183,7 +183,7 @@
 
     // Model Selector Button
     &__model-selector {
-    display: flex;
+        display: flex;
         align-items: center;
         gap: 0.5rem;
         width: 100%;
@@ -197,7 +197,7 @@
 
         &:hover {
             border-color: var(--accent-color, #685fff);
-}
+        }
 
         app-icon:last-child {
             color: rgba(217, 217, 222, 0.6);

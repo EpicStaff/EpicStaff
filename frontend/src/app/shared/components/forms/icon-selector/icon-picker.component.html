@@ -1,28 +1,28 @@
 <div class="icon-picker-container">
-  <div class="icon-selector" (click)="toggleIconPicker()">
-    <div class="selected-icon" *ngIf="selectedIcon">
-      <app-icon [icon]="getIconPath(selectedIcon)" [size]="'20'"></app-icon>
+    <div class="icon-selector" (click)="toggleIconPicker()">
+        <div class="selected-icon" *ngIf="selectedIcon">
+            <app-icon [icon]="getIconPath(selectedIcon)" [size]="'20'"></app-icon>
+        </div>
+        <div class="icon-placeholder" *ngIf="!selectedIcon">
+            <app-icon [icon]="'ui/star'" [size]="'20'"></app-icon>
+        </div>
     </div>
-    <div class="icon-placeholder" *ngIf="!selectedIcon">
-      <app-icon [icon]="'ui/star'" [size]="'20'"></app-icon>
-    </div>
-  </div>
 
-  <!-- Icon Picker Popup -->
-  <div class="icon-picker-popup" *ngIf="showIconPicker" @fadeInOut>
-    <div class="icons-grid">
-      <div
-        class="icon-item"
-        *ngFor="let iconName of availableIcons"
-        (click)="selectIcon(iconName)"
-        [class.selected]="selectedIcon === iconName"
-      >
-        <app-icon [icon]="getIconPath(iconName)" [size]="'24'"></app-icon>
-      </div>
+    <!-- Icon Picker Popup -->
+    <div class="icon-picker-popup" *ngIf="showIconPicker" @fadeInOut>
+        <div class="icons-grid">
+            <div
+                class="icon-item"
+                *ngFor="let iconName of availableIcons"
+                (click)="selectIcon(iconName)"
+                [class.selected]="selectedIcon === iconName"
+            >
+                <app-icon [icon]="getIconPath(iconName)" [size]="'24'"></app-icon>
+            </div>
+        </div>
+        <div class="icon-picker-footer">
+            <button type="button" (click)="clearIcon()">Clear</button>
+            <button type="button" (click)="toggleIconPicker()">Close</button>
+        </div>
     </div>
-    <div class="icon-picker-footer">
-      <button type="button" (click)="clearIcon()">Clear</button>
-      <button type="button" (click)="toggleIconPicker()">Close</button>
-    </div>
-  </div>
 </div>

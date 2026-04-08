@@ -1,29 +1,29 @@
 .ngx-json-viewer {
-  font-family: "Courier New", monospace !important;
-  background-color: transparent !important;
-
-  .segment-key {
-    color: #e83e8c !important;
-  }
-
-  .segment-value {
-    color: #17a2b8 !important;
-  }
-
-  .segment-type-string > .segment-value {
-    color: #28a745 !important;
-  }
-
-  .segment-type-number > .segment-value {
-    color: #fd7e14 !important;
-  }
-
-  .segment-type-boolean > .segment-value {
-    color: #9370db !important;
-  }
-
-  .segment-type-null > .segment-value {
-    color: #6c757d !important;
+    font-family: 'Courier New', monospace !important;
     background-color: transparent !important;
-  }
+
+    .segment-key {
+        color: #e83e8c !important;
+    }
+
+    .segment-value {
+        color: #17a2b8 !important;
+    }
+
+    .segment-type-string > .segment-value {
+        color: #28a745 !important;
+    }
+
+    .segment-type-number > .segment-value {
+        color: #fd7e14 !important;
+    }
+
+    .segment-type-boolean > .segment-value {
+        color: #9370db !important;
+    }
+
+    .segment-type-null > .segment-value {
+        color: #6c757d !important;
+        background-color: transparent !important;
+    }
 }

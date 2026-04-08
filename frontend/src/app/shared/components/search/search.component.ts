@@ -1,11 +1,8 @@
-import {
-    Component,
-    ChangeDetectionStrategy,
-    model, input,
-} from '@angular/core';
-import {CommonModule} from '@angular/common';
+import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, input, model } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
-import {FormsModule} from "@angular/forms";
 
 @Component({
     selector: 'app-search',

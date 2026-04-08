@@ -116,7 +116,6 @@ export class CreateProjectComponent implements OnInit {
         this.isSubmitting.set(true);
 
         const formData = this.projectForm.value as ProjectFormData;
-        console.log('Form submitted:', formData);
 
         const createProjectRequest: CreateProjectRequest = {
             name: formData.name,
@@ -132,7 +131,6 @@ export class CreateProjectComponent implements OnInit {
         // Call the actual service
         this.projectsStorageService.createProject(createProjectRequest).subscribe({
             next: (newProject) => {
-                console.log('Project created successfully:', newProject);
                 this.isSubmitting.set(false);
                 // Close dialog and return the created project
                 this.dialogRef.close(newProject);
@@ -147,7 +145,6 @@ export class CreateProjectComponent implements OnInit {
     }
 
     onCancel(): void {
-        console.log('Form cancelled');
         // Close dialog without returning data
         this.dialogRef.close();
     }

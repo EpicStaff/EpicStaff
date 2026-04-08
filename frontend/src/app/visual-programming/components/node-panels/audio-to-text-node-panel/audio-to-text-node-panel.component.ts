@@ -1,16 +1,11 @@
+import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
-import {
-    ReactiveFormsModule,
-    FormGroup,
-    Validators,
-    FormArray,
-    FormBuilder,
-} from '@angular/forms';
+import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+
+import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { AudioToTextNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
-import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
-import { CommonModule } from '@angular/common';
 interface InputMapPair {
     key: string;
     value: string;
@@ -18,12 +13,7 @@ interface InputMapPair {
 @Component({
     standalone: true,
     selector: 'app-audio-to-text-node-panel',
-    imports: [
-        ReactiveFormsModule,
-        CustomInputComponent,
-        InputMapComponent,
-        CommonModule,
-    ],
+    imports: [ReactiveFormsModule, CustomInputComponent, InputMapComponent, CommonModule],
     template: `
         <div class="panel-container">
             <div class="panel-content">
@@ -40,9 +30,7 @@ interface InputMapPair {
 
                     <!-- Input Map Key-Value Pairs -->
                     <div class="input-map">
-                        <app-input-map
-                            [activeColor]="activeColor"
-                        ></app-input-map>
+                        <app-input-map [activeColor]="activeColor"></app-input-map>
                     </div>
 
                     <!-- Output Variable Path -->
@@ -131,10 +119,7 @@ export class AudioToTextNodePanelComponent extends BaseSidePanel<AudioToTextNode
     private initializeInputMap(form: FormGroup): void {
         const inputMapArray = form.get('input_map') as FormArray;
 
-        if (
-            this.node().input_map &&
-            Object.keys(this.node().input_map).length > 0
-        ) {
+        if (this.node().input_map && Object.keys(this.node().input_map).length > 0) {
             Object.entries(this.node().input_map).forEach(([key, value]) => {
                 inputMapArray.push(
                     this.fb.group({
@@ -153,15 +138,15 @@ export class AudioToTextNodePanelComponent extends BaseSidePanel<AudioToTextNode
         }
     }
 
-    private getValidInputPairs(): any[] {
+    private getValidInputPairs(): AbstractControl[] {
         return this.inputMapPairs.controls.filter((control) => {
-            const value = control.value;
+            const value = control.value as InputMapPair;
             return value.key?.trim() !== '' || value.value?.trim() !== '';
         });
     }
 
-    private createInputMapFromPairs(pairs: any[]): Record<string, string> {
-        return pairs.reduce((acc: Record<string, string>, curr: any) => {
+    private createInputMapFromPairs(pairs: AbstractControl[]): Record<string, string> {
+        return pairs.reduce((acc: Record<string, string>, curr: AbstractControl) => {
             const pair = curr.value as InputMapPair;
             if (pair.key?.trim()) {
                 acc[pair.key.trim()] = pair.value;

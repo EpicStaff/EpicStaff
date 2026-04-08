@@ -1,9 +1,8 @@
-import { GetPythonCodeToolRequest } from '../../tools/models/python-code-tool.model';
-import { GetMcpToolRequest } from '../../tools/models/mcp-tool.model';
-import { FullTask } from './full-task.model';
-import { GetToolRequest } from '../../tools/models/tool.model';
 import { ToolUniqueName } from '../../staff/models/agent.model';
+import { GetMcpToolRequest } from '../../tools/models/mcp-tool.model';
+import { GetPythonCodeToolRequest } from '../../tools/models/python-code-tool.model';
 import { GetToolConfigRequest } from '../../tools/models/tool-config.model';
+import { FullTask } from './full-task.model';
 
 export interface GetTaskRequest {
     id: number;
@@ -16,8 +15,8 @@ export interface GetTaskRequest {
     order: number | null;
     human_input: boolean;
     async_execution: boolean;
-    config: any | null;
-    output_model: any | null;
+    config: unknown | null;
+    output_model: unknown | null;
 
     crew: number | null;
     agent: number | null;
@@ -39,8 +38,8 @@ export interface CreateTaskRequest {
     order?: number | null;
     human_input?: boolean;
     async_execution?: boolean;
-    config?: any | null;
-    output_model?: any | null;
+    config?: unknown | null;
+    output_model?: unknown | null;
 
     crew?: number | null;
     agent?: number | null;
@@ -61,8 +60,8 @@ export interface UpdateTaskRequest {
     order?: number | null;
     human_input?: boolean;
     async_execution?: boolean;
-    config?: any | null;
-    output_model?: any | null;
+    config?: unknown | null;
+    output_model?: unknown | null;
 
     crew?: number | null;
     agent?: number | null;

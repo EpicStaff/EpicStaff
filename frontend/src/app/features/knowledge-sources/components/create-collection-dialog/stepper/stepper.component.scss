@@ -15,7 +15,7 @@
         align-items: center;
 
         &::before {
-            content: "";
+            content: '';
             position: absolute;
             top: 16px;
             left: 0;
@@ -26,13 +26,13 @@
         }
 
         &::after {
-            content: "";
+            content: '';
             position: absolute;
             top: 16px;
             right: 0;
             width: calc(50% - 25px);
             height: 2px;
-            background:  var(--color-divider-subtle);
+            background: var(--color-divider-subtle);
             z-index: 1;
         }
 

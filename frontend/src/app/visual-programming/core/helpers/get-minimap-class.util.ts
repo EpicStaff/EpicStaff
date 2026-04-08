@@ -6,9 +6,6 @@ export function getMinimapClassForNode(node: NodeModel): string[] {
         return [];
     }
 
-    const className: string = NODE_TYPE_PREFIXES[node.type].replace(
-        /\s+/g,
-        '-'
-    );
+    const className: string = NODE_TYPE_PREFIXES[node.type].replace(/\s+/g, '-');
     return [className];
 }

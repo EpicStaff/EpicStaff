@@ -8,176 +8,178 @@ $section-expanded-bg: rgba(255, 255, 255, 0.03);
 $inactive-tab-bg: #2a2a2a;
 
 .project-container {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  color: $text-color;
-  overflow: hidden;
-
-  .tabs-container {
-    position: relative;
-    width: 100%;
     display: flex;
     flex-direction: column;
-    padding: 0 3rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    height: 100%;
+    color: $text-color;
+    overflow: hidden;
 
-    .tabs-navigation {
-      display: flex;
-      height: 40px;
-      margin-top: -0.7rem;
-      .tab-item {
+    .tabs-container {
+        position: relative;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        padding: 0 3rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+
+        .tabs-navigation {
+            display: flex;
+            height: 40px;
+            margin-top: -0.7rem;
+            .tab-item {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0 20px;
+                min-width: 120px;
+                font-size: 14px;
+                user-select: none;
+                cursor: pointer;
+                background-color: transparent;
+                color: $muted-text-color;
+                position: relative;
+
+                &.active {
+                    background-color: transparent;
+                    color: $text-color;
+                    font-weight: 400;
+
+                    &::after {
+                        content: '';
+                        position: absolute;
+                        bottom: 0;
+                        left: 0;
+                        width: 100%;
+                        height: 2px;
+                        background-color: $accent-color;
+                    }
+                }
+
+                &:hover:not(.active) {
+                    color: rgba($text-color, 0.7);
+                }
+            }
+        }
+    }
+
+    .content-area {
+        flex: 1;
+        position: relative;
+        overflow: hidden; // Hide overflow at the container level
+    }
+
+    .loading-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100%;
+        width: 100%;
+    }
+
+    .section-list {
+        padding: 1rem 3rem;
+        padding-top: 0;
+        overflow-y: auto;
+        height: 100%;
+        scrollbar-gutter: stable; // Apply stable scrollbar gutter only to the Overview tab
+        overflow-anchor: none;
+    }
+
+    .section-item {
+        margin-bottom: 8px;
+        border-radius: 4px;
+
+        &.expanded {
+            background-color: $section-expanded-bg;
+
+            .section-header {
+                .toggle-icon {
+                    color: $accent-color;
+                    transform: rotate(90deg);
+                }
+            }
+
+            .section-content {
+                overflow: visible; // Allow content to be visible when expanded
+            }
+        }
+    }
+
+    .section-header {
+        display: flex;
+        align-items: center;
+        padding: 12px 28px;
+        cursor: pointer;
+        font-size: 1rem;
+        user-select: none;
+        transition: background-color 0.2s;
+        border-radius: 6px;
+
+        &:hover {
+            background-color: $hover-color;
+
+            .toggle-icon {
+                color: $accent-color;
+            }
+        }
+
+        .toggle-icon {
+            margin-right: 16px;
+            color: $muted-text-color;
+            transition:
+                color 0.2s,
+                transform 0.2s;
+        }
+
+        .section-title {
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+        }
+
+        .item-count {
+            margin-left: 8px;
+            font-size: 1rem;
+            color: $accent-color;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+    }
+
+    .section-content {
+        overflow: hidden; // Default is hidden
+        // The animation will handle the visibility
+    }
+
+    .add-button {
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 0 20px;
-        min-width: 120px;
-        font-size: 14px;
-        user-select: none;
-        cursor: pointer;
-        background-color: transparent;
+        padding: 2px;
+        margin-left: 12px;
+        border-radius: 3px;
         color: $muted-text-color;
-        position: relative;
+        margin-left: auto;
+        cursor: pointer;
+        transition: all 0.2s;
 
-        &.active {
-          background-color: transparent;
-          color: $text-color;
-          font-weight: 400;
-
-          &::after {
-            content: "";
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 2px;
+        &:hover {
+            color: white;
             background-color: $accent-color;
-          }
         }
-
-        &:hover:not(.active) {
-          color: rgba($text-color, 0.7);
-        }
-      }
-    }
-  }
-
-  .content-area {
-    flex: 1;
-    position: relative;
-    overflow: hidden; // Hide overflow at the container level
-  }
-
-  .loading-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100%;
-    width: 100%;
-  }
-
-  .section-list {
-    padding: 1rem 3rem;
-    padding-top: 0;
-    overflow-y: auto;
-    height: 100%;
-    scrollbar-gutter: stable; // Apply stable scrollbar gutter only to the Overview tab
-    overflow-anchor: none;
-  }
-
-  .section-item {
-    margin-bottom: 8px;
-    border-radius: 4px;
-
-    &.expanded {
-      background-color: $section-expanded-bg;
-
-      .section-header {
-        .toggle-icon {
-          color: $accent-color;
-          transform: rotate(90deg);
-        }
-      }
-
-      .section-content {
-        overflow: visible; // Allow content to be visible when expanded
-      }
-    }
-  }
-
-  .section-header {
-    display: flex;
-    align-items: center;
-    padding: 12px 28px;
-    cursor: pointer;
-    font-size: 1rem;
-    user-select: none;
-    transition: background-color 0.2s;
-    border-radius: 6px;
-
-    &:hover {
-      background-color: $hover-color;
-
-      .toggle-icon {
-        color: $accent-color;
-      }
     }
 
-    .toggle-icon {
-      margin-right: 16px;
-      color: $muted-text-color;
-      transition: color 0.2s, transform 0.2s;
+    .draft-content {
+        height: 100%;
+        width: 100%;
+
+        overflow-y: auto;
+        scrollbar-gutter: auto; // Use auto for the Draft tab
+        overflow-anchor: none;
     }
-
-    .section-title {
-      font-weight: 500;
-      display: flex;
-      align-items: center;
-    }
-
-    .item-count {
-      margin-left: 8px;
-      font-size: 1rem;
-      color: $accent-color;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-  }
-
-  .section-content {
-    overflow: hidden; // Default is hidden
-    // The animation will handle the visibility
-  }
-
-  .add-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2px;
-    margin-left: 12px;
-    border-radius: 3px;
-    color: $muted-text-color;
-    margin-left: auto;
-    cursor: pointer;
-    transition: all 0.2s;
-
-    &:hover {
-      color: white;
-      background-color: $accent-color;
-    }
-  }
-
-  .draft-content {
-    height: 100%;
-    width: 100%;
-
-    overflow-y: auto;
-    scrollbar-gutter: auto; // Use auto for the Draft tab
-    overflow-anchor: none;
-  }
 }
 
 .play-icon {
-  font-size: 12px;
+    font-size: 12px;
 }

@@ -1,22 +1,12 @@
-import {
-    ChangeDetectionStrategy,
-    Component,
-    input,
-    signal,
-} from '@angular/core';
-import {
-    ReactiveFormsModule,
-    FormGroup,
-    Validators,
-    FormArray,
-    FormBuilder,
-} from '@angular/forms';
+import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
+import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+
+import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
+import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { EdgeNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
-import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
-import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
-import { CommonModule } from '@angular/common';
 
 interface InputMapPair {
     key: string;
@@ -26,23 +16,15 @@ interface InputMapPair {
 @Component({
     standalone: true,
     selector: 'app-conditional-edge-node-panel',
-    imports: [
-        ReactiveFormsModule,
-        CustomInputComponent,
-        InputMapComponent,
-        CodeEditorComponent,
-        CommonModule,
-    ],
+    imports: [ReactiveFormsModule, CustomInputComponent, InputMapComponent, CodeEditorComponent, CommonModule],
     template: `
         <div class="panel-container">
             <div class="panel-content">
-                <form [formGroup]="form" class="form-container">                   
+                <form [formGroup]="form" class="form-container">
                     @if (!isExpanded() || isFormFieldsVisible()) {
                         <!-- Input Map Key-Value Pairs -->
                         <div class="input-map">
-                            <app-input-map
-                                [activeColor]="activeColor"
-                            ></app-input-map>
+                            <app-input-map [activeColor]="activeColor"></app-input-map>
                         </div>
 
                         <!-- Libraries Input -->
@@ -61,15 +43,9 @@ interface InputMapPair {
                             <button
                                 type="button"
                                 class="toggle-fields-button"
-                                [class.toggle-fields-button--inside]="
-                                    !isFormFieldsVisible()
-                                "
+                                [class.toggle-fields-button--inside]="!isFormFieldsVisible()"
                                 (click)="toggleFormFieldsVisibility()"
-                                [attr.aria-label]="
-                                    isFormFieldsVisible()
-                                        ? 'Hide form fields'
-                                        : 'Show form fields'
-                                "
+                                [attr.aria-label]="isFormFieldsVisible() ? 'Hide form fields' : 'Show form fields'"
                             >
                                 <svg
                                     width="20"
@@ -77,11 +53,7 @@ interface InputMapPair {
                                     viewBox="0 0 20 12"
                                     fill="none"
                                     xmlns="http://www.w3.org/2000/svg"
-                                    [style.transform]="
-                                        isFormFieldsVisible()
-                                            ? 'scaleY(1)'
-                                            : 'scaleY(-1)'
-                                    "
+                                    [style.transform]="isFormFieldsVisible() ? 'scaleY(1)' : 'scaleY(-1)'"
                                 >
                                     <path
                                         d="M1 11L10 1L19 11"
@@ -92,15 +64,10 @@ interface InputMapPair {
                                     />
                                 </svg>
                             </button>
-                            <div
-                                class="code-editor-section"
-                                [class.fields-hidden]="!isFormFieldsVisible()"
-                            >
+                            <div class="code-editor-section" [class.fields-hidden]="!isFormFieldsVisible()">
                                 <app-code-editor
                                     [pythonCode]="pythonCode"
-                                    (pythonCodeChange)="
-                                        onPythonCodeChange($event)
-                                    "
+                                    (pythonCodeChange)="onPythonCodeChange($event)"
                                     (errorChange)="onCodeErrorChange($event)"
                                 ></app-code-editor>
                             </div>
@@ -173,9 +140,9 @@ interface InputMapPair {
                 height: 28px;
                 display: flex;
                 align-items: center;
-                justify-content: center;               
+                justify-content: center;
                 background: transparent;
-                cursor: pointer;               
+                cursor: pointer;
                 transition: all 0.2s ease;
                 padding: 0;
                 color: #d9d9d999;
@@ -191,14 +158,14 @@ interface InputMapPair {
                 }
 
                 &:active:not(:disabled) {
-                    color: #d9d9d9;                   
+                    color: #d9d9d9;
                 }
 
                 &:disabled {
                     cursor: not-allowed;
                     opacity: 0.5;
                 }
-                
+
                 &:not(.toggle-fields-button--inside) {
                     align-self: center;
                     border-width: 1px 1px 0px 1px;
@@ -206,12 +173,12 @@ interface InputMapPair {
                     border-style: solid;
                     border-color: #2c2c2e;
                 }
-                
+
                 &.toggle-fields-button--inside {
                     position: absolute;
                     top: 0;
                     left: 50%;
-                    transform: translateX(-50%);                   
+                    transform: translateX(-50%);
                     border-width: 0 1px 1px 1px;
                     border-radius: 0 0 8px 8px;
                     border-style: solid;
@@ -274,9 +241,7 @@ export class ConditionalEdgeNodePanelComponent extends BaseSidePanel<EdgeNodeMod
         const form = this.fb.group({
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
-            libraries: [
-                this.node().data.python_code.libraries?.join(', ') || '',
-            ],
+            libraries: [this.node().data.python_code.libraries?.join(', ') || ''],
         });
 
         // Initialize input map with existing data
@@ -315,9 +280,7 @@ export class ConditionalEdgeNodePanelComponent extends BaseSidePanel<EdgeNodeMod
                 then: this.node().data.then,
                 python_code: {
                     ...this.node().data.python_code,
-                    name:
-                        this.node().data.python_code.name ||
-                        'Conditional Edge Code',
+                    name: this.node().data.python_code.name || 'Conditional Edge Code',
                     code: this.pythonCode,
                     entrypoint: 'main',
                     libraries: librariesArray,
@@ -329,16 +292,13 @@ export class ConditionalEdgeNodePanelComponent extends BaseSidePanel<EdgeNodeMod
     private initializeInputMap(form: FormGroup): void {
         const inputMapArray = form.get('input_map') as FormArray;
 
-        if (
-            this.node().input_map &&
-            Object.keys(this.node().input_map).length > 0
-        ) {
+        if (this.node().input_map && Object.keys(this.node().input_map).length > 0) {
             Object.entries(this.node().input_map).forEach(([key, value]) => {
                 inputMapArray.push(
                     this.fb.group({
                         key: [key, Validators.required],
                         value: [value, Validators.required],
-                    }),
+                    })
                 );
             });
         } else {
@@ -346,20 +306,20 @@ export class ConditionalEdgeNodePanelComponent extends BaseSidePanel<EdgeNodeMod
                 this.fb.group({
                     key: [''],
                     value: ['variables.'],
-                }),
+                })
             );
         }
     }
 
-    private getValidInputPairs(): any[] {
+    private getValidInputPairs(): AbstractControl[] {
         return this.inputMapPairs.controls.filter((control) => {
-            const value = control.value;
+            const value = control.value as InputMapPair;
             return value.key?.trim() !== '' || value.value?.trim() !== '';
         });
     }
 
-    private createInputMapFromPairs(pairs: any[]): Record<string, string> {
-        return pairs.reduce((acc: Record<string, string>, curr: any) => {
+    private createInputMapFromPairs(pairs: AbstractControl[]): Record<string, string> {
+        return pairs.reduce((acc: Record<string, string>, curr: AbstractControl) => {
             const pair = curr.value as InputMapPair;
             if (pair.key?.trim()) {
                 acc[pair.key.trim()] = pair.value;

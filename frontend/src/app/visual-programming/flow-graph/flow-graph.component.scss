@@ -229,8 +229,7 @@
         }
     }
     .f-connections-dragging {
-        .f-component.f-node-input.f-node-output.port-circle.f-connector-connectable
-            ~ .port-label {
+        .f-component.f-node-input.f-node-output.port-circle.f-connector-connectable ~ .port-label {
             display: block;
         }
 
@@ -240,7 +239,7 @@
             position: relative;
 
             &::before {
-                content: "";
+                content: '';
                 position: absolute;
                 top: -5px;
                 left: -5px;
@@ -285,8 +284,8 @@
 }
 
 .shortcuts-wrapper {
-  position: relative;
-  display: inline-block;
+    position: relative;
+    display: inline-block;
 }
 
 .domain-button {
@@ -302,7 +301,10 @@
     background: var(--color-surface-card, #232323);
     color: var(--color-text-primary, #fff);
     cursor: pointer;
-    transition: background 0.15s, color 0.15s, border 0.15s;
+    transition:
+        background 0.15s,
+        color 0.15s,
+        border 0.15s;
     outline: none;
     height: auto;
     margin-bottom: 1rem;
@@ -342,7 +344,10 @@
     background: var(--color-surface-card, #232323);
     color: var(--color-text-primary, #fff);
     cursor: pointer;
-    transition: background 0.15s, color 0.15s, border 0.15s;
+    transition:
+        background 0.15s,
+        color 0.15s,
+        border 0.15s;
     outline: none;
     height: auto;
 

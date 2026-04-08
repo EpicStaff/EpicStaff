@@ -1,30 +1,21 @@
-import {OnInit, Component, ChangeDetectionStrategy, signal, inject, DestroyRef} from '@angular/core'
-import {
-    CollectionDetailsComponent
-} from "./components/collection-details/collection-details.component";
-import {
-    CollectionsListItemSidebarComponent
-} from "./components/collections-list-sidebar/collections-list-sidebar.component";
-import {SpinnerComponent} from "../../../../shared/components/spinner/spinner.component";
-import {Dialog} from "@angular/cdk/dialog";
-import {
-    CreateCollectionDialogComponent
-} from "../../components/create-collection-dialog/create-collection-dialog.component";
-import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
-import {CollectionsStorageService} from "../../services/collections-storage.service";
-import {finalize, switchMap} from "rxjs/operators";
-import {ToastService} from "../../../../services/notifications/toast.service";
+import { Dialog } from '@angular/cdk/dialog';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { finalize, switchMap } from 'rxjs/operators';
+
+import { ToastService } from '../../../../services/notifications/toast.service';
+import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.component';
+import { CreateCollectionDialogComponent } from '../../components/create-collection-dialog/create-collection-dialog.component';
+import { CollectionsStorageService } from '../../services/collections-storage.service';
+import { CollectionDetailsComponent } from './components/collection-details/collection-details.component';
+import { CollectionsListItemSidebarComponent } from './components/collections-list-sidebar/collections-list-sidebar.component';
 
 @Component({
     selector: 'app-collections-list-page',
     templateUrl: './collections-list-page.component.html',
     styleUrls: ['./collections-list-page.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [
-        CollectionDetailsComponent,
-        CollectionsListItemSidebarComponent,
-        SpinnerComponent,
-    ]
+    imports: [CollectionDetailsComponent, CollectionsListItemSidebarComponent, SpinnerComponent],
 })
 export class CollectionsListPageComponent implements OnInit {
     private destroyRef = inject(DestroyRef);
@@ -43,10 +34,11 @@ export class CollectionsListPageComponent implements OnInit {
     getCollections(): void {
         this.isLoading.set(true);
 
-        this.collectionsStorageService.getCollections()
+        this.collectionsStorageService
+            .getCollections()
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
-                finalize(() => this.isLoading.set(false)),
+                finalize(() => this.isLoading.set(false))
             )
             .subscribe({
                 error: () => this.toastService.error('Failed to get collections.'),
@@ -54,14 +46,15 @@ export class CollectionsListPageComponent implements OnInit {
     }
 
     createCollection(): void {
-        this.collectionsStorageService.createCollection()
+        this.collectionsStorageService
+            .createCollection()
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: ({collection_id}) => {
-                        if (!collection_id) return;
-                        this.openCreateModal(collection_id)
+                next: ({ collection_id }) => {
+                    if (!collection_id) return;
+                    this.openCreateModal(collection_id);
                 },
-                error: () => this.toastService.error('Failed to create collection')
+                error: () => this.toastService.error('Failed to create collection'),
             });
     }
 
@@ -70,7 +63,7 @@ export class CollectionsListPageComponent implements OnInit {
             width: 'calc(100vw - 2rem)',
             height: 'calc(100vh - 2rem)',
             data: collection_id,
-            disableClose: true
+            disableClose: true,
         });
 
         // Update collection info after modal closed
@@ -78,7 +71,7 @@ export class CollectionsListPageComponent implements OnInit {
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 switchMap(() => {
-                    return this.collectionsStorageService.getFullCollection(collection_id, true)
+                    return this.collectionsStorageService.getFullCollection(collection_id, true);
                 })
             )
             .subscribe({
@@ -87,7 +80,7 @@ export class CollectionsListPageComponent implements OnInit {
                 },
                 error: () => {
                     this.toastService.error('Failed to get collection data');
-                }
+                },
             });
     }
 }

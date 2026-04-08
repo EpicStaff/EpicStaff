@@ -1,4 +1,4 @@
-import {BasePort} from "../../models/port.model";
+import { BasePort } from '../../models/port.model';
 
 export const DEFAULT_TELEGRAM_TRIGGER_NODE_PORTS: BasePort[] = [
     {

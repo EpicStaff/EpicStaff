@@ -1,4 +1,5 @@
-import { Component, Input, Output, EventEmitter } from '@angular/core';
+import { Component, EventEmitter, Input, Output } from '@angular/core';
+
 import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
 
 @Component({
@@ -15,10 +16,7 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
             [disabled]="disabled"
             [attr.aria-label]="ariaLabel"
         >
-            <app-svg-icon
-                [icon]="icon"
-                [size]="iconSize"
-            />
+            <app-svg-icon [icon]="icon" [size]="iconSize" />
         </button>
     `,
     styles: [

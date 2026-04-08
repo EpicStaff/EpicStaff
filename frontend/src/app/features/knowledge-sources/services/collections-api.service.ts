@@ -1,15 +1,19 @@
-import {inject, Injectable} from '@angular/core';
-import {HttpClient, HttpHeaders} from "@angular/common/http";
-import {ConfigService} from "../../../services/config/config.service";
-import {Observable} from "rxjs";
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { inject, Injectable } from '@angular/core';
+import { Observable } from 'rxjs';
+
+import { ConfigService } from '../../../services/config/config.service';
 import {
     CreateCollectionDtoRequest,
-    CreateCollectionDtoResponse, DeleteCollectionResponse, GetCollectionDocumentsResponse, GetCollectionRagsResponse,
-    GetCollectionRequest
-} from "../models/collection.model";
+    CreateCollectionDtoResponse,
+    DeleteCollectionResponse,
+    GetCollectionDocumentsResponse,
+    GetCollectionRagsResponse,
+    GetCollectionRequest,
+} from '../models/collection.model';
 
 @Injectable({
-    providedIn: 'root'
+    providedIn: 'root',
 })
 export class CollectionsApiService {
     private http = inject(HttpClient);
@@ -24,7 +28,7 @@ export class CollectionsApiService {
     }
 
     createCollection(): Observable<CreateCollectionDtoResponse> {
-        const data: CreateCollectionDtoRequest = { collection_name: "" };
+        const data: CreateCollectionDtoRequest = { collection_name: '' };
 
         return this.http.post<CreateCollectionDtoResponse>(this.apiUrl, data, {
             headers: this.httpHeaders,
@@ -47,7 +51,10 @@ export class CollectionsApiService {
         return this.http.get<GetCollectionDocumentsResponse>(`${this.apiUrl}${id}/documents/`);
     }
 
-    updateCollectionById(id: number, body: Partial<CreateCollectionDtoResponse>): Observable<CreateCollectionDtoResponse> {
+    updateCollectionById(
+        id: number,
+        body: Partial<CreateCollectionDtoResponse>
+    ): Observable<CreateCollectionDtoResponse> {
         return this.http.patch<CreateCollectionDtoResponse>(`${this.apiUrl}${id}/`, body);
     }
 

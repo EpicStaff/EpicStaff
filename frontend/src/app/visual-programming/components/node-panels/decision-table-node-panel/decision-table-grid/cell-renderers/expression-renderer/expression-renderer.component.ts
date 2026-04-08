@@ -1,7 +1,7 @@
-import { Component, ChangeDetectionStrategy, ViewEncapsulation } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { ICellRendererAngularComp } from 'ag-grid-angular';
 import { ICellRendererParams } from 'ag-grid-community';
-import { CommonModule } from '@angular/common';
 
 @Component({
     selector: 'app-expression-renderer',
@@ -49,4 +49,3 @@ export class ExpressionRendererComponent implements ICellRendererAngularComp {
         this.highlightedValue = escaped;
     }
 }
-

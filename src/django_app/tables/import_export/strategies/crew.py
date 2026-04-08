@@ -26,6 +26,9 @@ class CrewStrategy(EntityImportExportStrategy):
     def get_instance(self, entity_id: int):
         return Crew.objects.filter(id=entity_id).first()
 
+    def get_preview_data(self, instance: Crew) -> dict:
+        return {"id": instance.id, "name": instance.name}
+
     def extract_dependencies_from_instance(self, instance):
         deps = {}
         deps[EntityType.AGENT] = list(instance.agents.values_list("id", flat=True))

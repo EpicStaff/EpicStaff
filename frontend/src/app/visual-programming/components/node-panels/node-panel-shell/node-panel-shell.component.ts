@@ -1,20 +1,11 @@
-import {
-    Component,
-    Type,
-    input,
-    output,
-    effect,
-    signal,
-    computed,
-    viewChild,
-    ChangeDetectionStrategy,
-} from '@angular/core';
 import { NgComponentOutlet } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, effect, input, output, signal, viewChild } from '@angular/core';
+
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { NodePanel } from '../../../core/models/node-panel.interface';
-import { NodeModel } from '../../../core/models/node.model';
-import { PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
 import { ShortcutListenerDirective } from '../../../core/directives/shortcut-listener.directive';
+import { PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
+import { NodeModel } from '../../../core/models/node.model';
+import { NodePanel } from '../../../core/models/node-panel.interface';
 import { SidePanelService } from '../../../services/side-panel.service';
 
 @Component({
@@ -32,50 +23,38 @@ import { SidePanelService } from '../../../services/side-panel.service';
     },
     template: `
         @if (node() && panelComponent()) {
-        <aside
-            class="node-panel"
-            [class.shake-attention]="isShaking()"
-            [class.expanded]="isExpanded()"
-        >
-            <header class="dialog-header">
-                <div class="icon-and-title">
-                    <i [class]="node()!.icon" [style.color]="node()!.color || '#685fff'"></i>
-                    <span class="title">{{ nodeNameToDisplay() }}</span>
-                </div>
-                <div class="header-actions">
-                    @if (shouldShowExpandButton()) {
-                    <button
-                        class="expand-btn"
-                        aria-label="Toggle panel size"
-                        (click)="toggleExpanded()"
-                    >
-                        <app-svg-icon
-                            [icon]="isExpanded() ? 'arrows-minimize' : 'arrows-maximize'"
-                            size="1.25rem"
-                        ></app-svg-icon>
-                    </button>
-                    }
-                    <div class="close-action">
-                        <span class="esc-label">ESC</span>
-                        <button
-                            class="close-btn"
-                            aria-label="Close dialog"
-                            (click)="onCloseClick()"
-                        >
-                            <app-svg-icon icon="x"></app-svg-icon>
-                        </button>
+            <aside class="node-panel" [class.shake-attention]="isShaking()" [class.expanded]="isExpanded()">
+                <header class="dialog-header">
+                    <div class="icon-and-title">
+                        <i [class]="node()!.icon" [style.color]="node()!.color || '#685fff'"></i>
+                        <span class="title">{{ nodeNameToDisplay() }}</span>
                     </div>
-                </div>
-            </header>
+                    <div class="header-actions">
+                        @if (shouldShowExpandButton()) {
+                            <button class="expand-btn" aria-label="Toggle panel size" (click)="toggleExpanded()">
+                                <app-svg-icon
+                                    [icon]="isExpanded() ? 'arrows-minimize' : 'arrows-maximize'"
+                                    size="1.25rem"
+                                ></app-svg-icon>
+                            </button>
+                        }
+                        <div class="close-action">
+                            <span class="esc-label">ESC</span>
+                            <button class="close-btn" aria-label="Close dialog" (click)="onCloseClick()">
+                                <app-svg-icon icon="x"></app-svg-icon>
+                            </button>
+                        </div>
+                    </div>
+                </header>
 
-            <main>
-                <ng-container
-                    [ngComponentOutlet]="panelComponent()"
-                    [ngComponentOutletInputs]="componentInputs()"
-                    #outlet="ngComponentOutlet"
-                ></ng-container>
-            </main>
-        </aside>
+                <main>
+                    <ng-container
+                        [ngComponentOutlet]="panelComponent()"
+                        [ngComponentOutletInputs]="componentInputs()"
+                        #outlet="ngComponentOutlet"
+                    ></ng-container>
+                </main>
+            </aside>
         }
     `,
     styleUrls: ['./node-panel-shell.component.scss'],
@@ -90,7 +69,6 @@ export class NodePanelShellComponent {
     public readonly panelComponent = computed(() => {
         const node = this.node();
         if (!node) return null;
-        console.log("PANEL_COMPONENT_MAP[node.type]", PANEL_COMPONENT_MAP[node.type]);
 
         return PANEL_COMPONENT_MAP[node.type] || null;
     });
@@ -115,15 +93,13 @@ export class NodePanelShellComponent {
         return {
             node,
             isExpanded: this.isExpanded(),
-            ...(node?.type === 'subgraph'
-                ? { currentFlowId: this.currentFlowId() }
-                : {}),
+            ...(node?.type === 'subgraph' ? { currentFlowId: this.currentFlowId() } : {}),
         };
     });
 
     protected readonly isShaking = signal(false);
     protected readonly isExpanded = signal(false);
-    private panelInstance: any = null;
+    private panelInstance: (NodePanel & { onSaveSilently?: () => NodeModel | null }) | null = null;
     private previousNodeId: string | null = null;
     private isUpdatingNode = false;
     private isAutosaving = false;
@@ -132,7 +108,6 @@ export class NodePanelShellComponent {
         effect(() => {
             const trigger = this.sidePanelService.autosaveTrigger();
             if (trigger && this.panelInstance && !this.isAutosaving) {
-                console.log('External autosave triggered:', trigger);
                 this.isAutosaving = true;
                 this.performAutosave();
                 setTimeout(() => {
@@ -164,7 +139,9 @@ export class NodePanelShellComponent {
                 setTimeout(() => {
                     const outletRef = this.outlet();
                     if (outletRef?.componentInstance) {
-                        this.panelInstance = outletRef.componentInstance;
+                        this.panelInstance = outletRef.componentInstance as NodePanel & {
+                            onSaveSilently?: () => NodeModel | null;
+                        };
                         this.previousNodeId = node.id;
                         this.isUpdatingNode = false;
                     }
@@ -196,12 +173,7 @@ export class NodePanelShellComponent {
     }
 
     private saveSidePanel(): void {
-        console.log('Saving side panel');
-        if (
-            this.panelInstance &&
-            typeof this.panelInstance.onSave === 'function'
-        ) {
-            console.log('Panel instance found');
+        if (this.panelInstance && typeof this.panelInstance.onSave === 'function') {
             const updatedNode = this.panelInstance.onSave();
             if (updatedNode) {
                 this.save.emit(updatedNode);
@@ -210,11 +182,7 @@ export class NodePanelShellComponent {
     }
 
     private performAutosave(): void {
-        console.log('Auto-saving previous node');
-        if (
-            this.panelInstance &&
-            typeof this.panelInstance.onSave === 'function'
-        ) {
+        if (this.panelInstance && typeof this.panelInstance.onSave === 'function') {
             const updatedNode = this.panelInstance.onSave();
             if (updatedNode) {
                 this.autosave.emit(updatedNode);
@@ -223,10 +191,7 @@ export class NodePanelShellComponent {
     }
 
     public captureCurrentNodeState(): NodeModel | null {
-        if (
-            this.panelInstance &&
-            typeof this.panelInstance.onSaveSilently === 'function'
-        ) {
+        if (this.panelInstance && typeof this.panelInstance.onSaveSilently === 'function') {
             try {
                 return this.panelInstance.onSaveSilently();
             } catch (error) {

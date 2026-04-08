@@ -12,7 +12,7 @@
     z-index: 2;
     box-sizing: border-box;
     background: #212325;
-    border: 1px solid #2C2C2E;
+    border: 1px solid #2c2c2e;
     border-radius: 8px;
     width: min(1028px, calc(100vw - 32px));
     max-width: 1028px;
@@ -46,7 +46,7 @@
         padding-right: 24px;
         overscroll-behavior: contain;
         scrollbar-width: thin;
-        scrollbar-color: #2B2D30 transparent;
+        scrollbar-color: #2b2d30 transparent;
     }
 
     .shortcuts__content::-webkit-scrollbar {
@@ -73,7 +73,7 @@
     }
 
     .shortcuts__content::-webkit-scrollbar-thumb {
-        background: #2B2D30;
+        background: #2b2d30;
         border-radius: 999px;
     }
 
@@ -96,7 +96,7 @@
     @include shortcutsCustomScroll();
 }
 
-.shortcuts__modal--wide .shortcuts__grid {  
+.shortcuts__modal--wide .shortcuts__grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     transform: scale(1);
     opacity: 1;
@@ -113,7 +113,9 @@
     flex-direction: column;
     gap: 24px;
 
-    transition: padding 200ms ease, gap 200ms ease;
+    transition:
+        padding 200ms ease,
+        gap 200ms ease;
 }
 
 .shortcuts__content {
@@ -168,10 +170,12 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    color: #D9D9DE;
+    color: #d9d9de;
     border-radius: 6px;
     opacity: 0.8;
-    transition: background 0.2s ease, opacity 0.2s ease;
+    transition:
+        background 0.2s ease,
+        opacity 0.2s ease;
 }
 
 .shortcuts__size-btn:hover {
@@ -182,7 +186,7 @@
 .shortcuts__size-btn:disabled {
     cursor: default;
     opacity: 1;
-    color: #2B2D30;
+    color: #2b2d30;
     background: transparent;
 }
 
@@ -200,10 +204,12 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    color: #D9D9DE;
+    color: #d9d9de;
     border-radius: 6px;
     opacity: 0.85;
-    transition: background 0.2s ease, opacity 0.2s ease;
+    transition:
+        background 0.2s ease,
+        opacity 0.2s ease;
 }
 
 .shortcuts__close-btn:hover {
@@ -226,7 +232,9 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
     column-gap: 40px;
     row-gap: 30px;
-    transition: column-gap 200ms ease, row-gap 200ms ease;
+    transition:
+        column-gap 200ms ease,
+        row-gap 200ms ease;
 }
 
 .shortcuts__card {
@@ -241,7 +249,7 @@
     font-weight: 500;
     font-size: 14px;
     line-height: 1.3;
-    color: #D9D9DE;
+    color: #d9d9de;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -288,17 +296,17 @@
     height: 24px;
     padding: 4px 8px;
     border-radius: 2px;
-    border: 1px solid #2C2C2E;
+    border: 1px solid #2c2c2e;
     font-weight: 400;
     font-size: 12px;
     line-height: 1.3;
-    color: #D9D9DE;
+    color: #d9d9de;
 }
 
 @media (max-width: bp.$breakpoint-shortcuts) {
     @include shortcutsOneColumnLayout();
     @include shortcutsCustomScroll();
-  
+
     .shortcuts__modal {
         width: 332px;
         height: 640px;

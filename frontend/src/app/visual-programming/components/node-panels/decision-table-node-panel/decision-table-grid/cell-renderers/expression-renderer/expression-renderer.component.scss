@@ -13,7 +13,7 @@
     color: #d9d9de;
     width: 100%;
     height: 100%;
-    
+
     ::ng-deep .variable {
         background-color: rgba(104, 95, 255, 0.2);
         color: #a5a5ff;
@@ -24,9 +24,8 @@
     }
 
     ::ng-deep .keyword {
-        color: #c586c0; 
+        color: #c586c0;
         font-weight: bold;
         text-transform: uppercase;
     }
 }
-

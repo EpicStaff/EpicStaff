@@ -1,1 +1,1 @@
-export * from './animations-expand-collapse'
+export * from './animations-expand-collapse';

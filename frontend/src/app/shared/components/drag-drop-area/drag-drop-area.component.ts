@@ -1,16 +1,14 @@
-import {ChangeDetectionStrategy, Component, input, output, signal} from "@angular/core";
+import { UpperCasePipe } from '@angular/common';
+import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
+
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
-import {UpperCasePipe} from "@angular/common";
 
 @Component({
-    selector: "app-drag-drop-area",
-    templateUrl: "./drag-drop-area.component.html",
-    styleUrls: ["./drag-drop-area.component.scss"],
-    imports: [
-        AppSvgIconComponent,
-        UpperCasePipe
-    ],
-    changeDetection: ChangeDetectionStrategy.OnPush
+    selector: 'app-drag-drop-area',
+    templateUrl: './drag-drop-area.component.html',
+    styleUrls: ['./drag-drop-area.component.scss'],
+    imports: [AppSvgIconComponent, UpperCasePipe],
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DragDropAreaComponent {
     filesDropped = output<FileList>();
@@ -31,12 +29,7 @@ export class DragDropAreaComponent {
         const rect = target.getBoundingClientRect();
         const { clientX, clientY } = event;
 
-        if (
-            clientX <= rect.left ||
-            clientX >= rect.right ||
-            clientY <= rect.top ||
-            clientY >= rect.bottom
-        ) {
+        if (clientX <= rect.left || clientX >= rect.right || clientY <= rect.top || clientY >= rect.bottom) {
             this.isDragging.set(false);
         }
     }

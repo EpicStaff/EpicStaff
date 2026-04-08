@@ -1,18 +1,8 @@
 import { CommonModule } from '@angular/common';
-import {
-    AfterViewInit,
-    ChangeDetectionStrategy,
-    ChangeDetectorRef,
-    Component,
-    ElementRef,
-    Input,
-    OnDestroy,
-    ViewChild,
-} from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { EFResizeHandleType,FFlowModule } from '@foblex/flow';
+import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
 import { Subject } from 'rxjs';
-import { debounceTime, distinctUntilChanged, takeUntil } from 'rxjs/operators';
 
 import { GraphNoteModel } from '../../../core/models/node.model';
 import { FlowService } from '../../../services/flow.service';

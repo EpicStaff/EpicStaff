@@ -13,4 +13,3 @@ export interface GetNgrokConfigResponse {
     region: string;
     webhook_full_url: string | null;
 }
-

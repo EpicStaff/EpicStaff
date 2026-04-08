@@ -1,25 +1,13 @@
-import {
-    ChangeDetectionStrategy,
-    Component,
-    input,
-    output,
-} from '@angular/core';
 import { CommonModule } from '@angular/common';
-import {
-    IconButtonComponent,
-    ButtonComponent
-} from '@shared/components';
+import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ButtonComponent, IconButtonComponent } from '@shared/components';
+
 import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { GetNgrokConfigResponse } from "../../../models/ngrok-config.model";
+import { GetNgrokConfigResponse } from '../../../models/ngrok-config.model';
 
 @Component({
     selector: 'app-ngrok-config-item',
-    imports: [
-        CommonModule,
-        AppSvgIconComponent,
-        IconButtonComponent,
-        ButtonComponent,
-    ],
+    imports: [CommonModule, AppSvgIconComponent, IconButtonComponent, ButtonComponent],
     templateUrl: './ngrok-config-item.component.html',
     styleUrls: ['./ngrok-config-item.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

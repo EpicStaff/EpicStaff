@@ -1,7 +1,7 @@
-import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { forkJoin, Observable, of, throwError } from 'rxjs';
-import { catchError, shareReplay, tap } from 'rxjs/operators';
+import { Injectable } from '@angular/core';
+import { forkJoin, Observable, throwError } from 'rxjs';
+import { catchError, shareReplay } from 'rxjs/operators';
 
 @Injectable({
     providedIn: 'root',
@@ -15,7 +15,7 @@ export class IconService {
         if (!this.cache.has(path)) {
             const request$ = this.http.get(path, { responseType: 'text' }).pipe(
                 shareReplay(1),
-                catchError(error => {
+                catchError((error) => {
                     this.cache.delete(path);
                     return throwError(() => error);
                 })
@@ -27,7 +27,7 @@ export class IconService {
     }
 
     preloadIcons(paths: string[]): Observable<string[]> {
-        return forkJoin(paths.map(path => this.getIcon(path)));
+        return forkJoin(paths.map((path) => this.getIcon(path)));
     }
 
     clearCache(): void {

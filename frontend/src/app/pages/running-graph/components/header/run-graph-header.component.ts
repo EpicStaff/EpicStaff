@@ -1,17 +1,18 @@
-import { Component, Input, HostListener } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { Router, RouterModule } from '@angular/router';
 import { Dialog } from '@angular/cdk/dialog';
-import { MatButtonModule } from '@angular/material/button';
+import { CommonModule } from '@angular/common';
+import { Component, HostListener, Input } from '@angular/core';
 import { MatBadgeModule } from '@angular/material/badge';
+import { MatButtonModule } from '@angular/material/button';
+import { Router, RouterModule } from '@angular/router';
+
+import { FlowSessionsListComponent } from '../../../../features/flows/components/flow-sessions-dialog/flow-sessions-list.component';
+import { GraphDto } from '../../../../features/flows/models/graph.model';
+import { GraphSessionStatus } from '../../../../features/flows/services/flows-sessions.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { StatusBadgeComponent } from '../../../../shared/components/status-badge/status-badge.component';
-import { GraphSessionStatus } from '../../../../features/flows/services/flows-sessions.service';
 import { RunGraphPageService } from '../../services/run-graph-page.service';
 import { MemoriesSidebarComponent } from '../memory-sidebar/components/memory-sidebar/memory-sidebar.component';
 import { MemoryService } from '../memory-sidebar/service/memory.service';
-import { FlowSessionsListComponent } from '../../../../features/flows/components/flow-sessions-dialog/flow-sessions-list.component';
-import { GraphDto } from '../../../../features/flows/models/graph.model';
 
 @Component({
     selector: 'app-running-graph-header',
@@ -29,43 +30,22 @@ import { GraphDto } from '../../../../features/flows/models/graph.model';
         <div class="header">
             <div class="breadcrumbs">
                 <div class="flows-prefix" routerLink="/flows">
-                    <app-svg-icon
-                        icon="arrow-left"
-                        size="20"
-                        class="back-arrow"
-                    />
+                    <app-svg-icon icon="arrow-left" size="20" class="back-arrow" />
                     <span>Flows</span>
                 </div>
                 <span class="slash">/</span>
-                <span class="flow-name project-link" (click)="onFlowClick()">{{
-                    graphName || '...'
-                }}</span>
+                <span class="flow-name project-link" (click)="onFlowClick()">{{ graphName || '...' }}</span>
                 <span class="slash">/</span>
-                <app-status-badge
-                    [sessionStatus]="sessionStatus"
-                ></app-status-badge>
+                <app-status-badge [sessionStatus]="sessionStatus"></app-status-badge>
             </div>
             <div class="view-options"></div>
             <div class="actions">
-                <button
-                    mat-button
-                    class="sessions-button"
-                    (click)="openSessionsDialog()"
-                    [disabled]="!graphData"
-                >
+                <button mat-button class="sessions-button" (click)="openSessionsDialog()" [disabled]="!graphData">
                     <span>Sessions</span>
                 </button>
-                <button
-                    mat-button
-                    class="memories-button"
-                    (click)="toggleMemoriesSidebar()"
-                >
+                <button mat-button class="memories-button" (click)="toggleMemoriesSidebar()">
                     <span>Memories</span>
-                    <span
-                        matBadge="{{ memoriesCount }}"
-                        matBadgeColor="accent"
-                        *ngIf="memoriesCount > 0"
-                    ></span>
+                    <span matBadge="{{ memoriesCount }}" matBadgeColor="accent" *ngIf="memoriesCount > 0"></span>
                 </button>
             </div>
         </div>

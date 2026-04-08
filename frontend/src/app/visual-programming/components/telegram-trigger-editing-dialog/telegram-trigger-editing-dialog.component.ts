@@ -39,7 +39,10 @@ export class TelegramTriggerEditingDialogComponent implements OnInit {
     checkedItems = computed<DisplayedTelegramField[]>(() => {
         return this.tableItems()
             .filter((i) => i.checked)
-            .map(({ checked, ...rest }) => rest);
+            .map(({ checked: _checked, ...rest }) => {
+                void _checked;
+                return rest;
+            });
     });
 
     hasInvalidItems = computed(() => {

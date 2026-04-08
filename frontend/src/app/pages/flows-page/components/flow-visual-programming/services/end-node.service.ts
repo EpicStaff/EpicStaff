@@ -1,12 +1,9 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
-import {
-    EndNode,
-    UpdateEndNodeRequest,
-    CreateEndNodeRequest,
-} from '../models/end-node.model';
+
 import { ConfigService } from '../../../../../services/config/config.service';
+import { CreateEndNodeRequest, EndNode, UpdateEndNodeRequest } from '../models/end-node.model';
 
 @Injectable({
     providedIn: 'root',
@@ -31,19 +28,13 @@ export class EndNodeService {
         });
     }
 
-    partialUpdateEndNode(
-        id: number,
-        request: UpdateEndNodeRequest
-    ): Observable<EndNode> {
+    partialUpdateEndNode(id: number, request: UpdateEndNodeRequest): Observable<EndNode> {
         return this.http.patch<EndNode>(`${this.apiUrl}${id}/`, request, {
             headers: this.headers,
         });
     }
 
-    updateEndNode(
-        id: number,
-        request: CreateEndNodeRequest
-    ): Observable<EndNode> {
+    updateEndNode(id: number, request: CreateEndNodeRequest): Observable<EndNode> {
         return this.http.put<EndNode>(`${this.apiUrl}${id}/`, request, {
             headers: this.headers,
         });
@@ -55,8 +46,8 @@ export class EndNodeService {
         });
     }
 
-    deleteEndNode(id: number): Observable<any> {
-        return this.http.delete<any>(`${this.apiUrl}${id}/`, {
+    deleteEndNode(id: number): Observable<unknown> {
+        return this.http.delete<unknown>(`${this.apiUrl}${id}/`, {
             headers: this.headers,
         });
     }

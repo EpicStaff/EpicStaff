@@ -1,9 +1,9 @@
-import { Component, ChangeDetectionStrategy, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { DialogRef } from '@angular/cdk/dialog';
+import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
 
 export interface ImportFlowOptions {
     preserveUuids: boolean;

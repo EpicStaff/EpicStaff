@@ -29,6 +29,9 @@ class AgentStrategy(EntityImportExportStrategy):
     def get_instance(self, entity_id: int):
         return Agent.objects.filter(id=entity_id).first()
 
+    def get_preview_data(self, instance: Agent) -> dict:
+        return {"id": instance.id, "name": instance.role}
+
     def extract_dependencies_from_instance(self, instance: Agent):
         deps = {}
 

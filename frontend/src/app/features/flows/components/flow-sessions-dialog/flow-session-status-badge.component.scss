@@ -1,46 +1,46 @@
 .status-badge {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 8px;
-  font-size: 0.85em;
-  font-weight: 400;
-  color: #fff;
-  min-width: 60px;
-  text-align: center;
-  white-space: nowrap;
-  margin: 0 2px;
-  letter-spacing: 0.01em;
-  transition: background 0.18s;
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 8px;
+    font-size: 0.85em;
+    font-weight: 400;
+    color: #fff;
+    min-width: 60px;
+    text-align: center;
+    white-space: nowrap;
+    margin: 0 2px;
+    letter-spacing: 0.01em;
+    transition: background 0.18s;
 }
 .status-running {
-  background: rgba(94, 158, 255, 0.18);
-  color: #5e9eff;
+    background: rgba(94, 158, 255, 0.18);
+    color: #5e9eff;
 }
 .status-error {
-  background: rgba(224, 87, 91, 0.18);
-  color: #e0575b;
+    background: rgba(224, 87, 91, 0.18);
+    color: #e0575b;
 }
 .status-stop {
-  background: rgba(10, 8, 8, 0.18);
-  color: #eca6a8;
+    background: rgba(10, 8, 8, 0.18);
+    color: #eca6a8;
 }
 .status-completed {
-  background: rgba(107, 219, 154, 0.18);
-  color: #3bb77e;
+    background: rgba(107, 219, 154, 0.18);
+    color: #3bb77e;
 }
 .status-waiting {
-  background: rgba(255, 193, 77, 0.18);
-  color: #ffc14d;
+    background: rgba(255, 193, 77, 0.18);
+    color: #ffc14d;
 }
 .status-pending {
-  background: rgba(176, 184, 193, 0.18);
-  color: #b0b8c1;
+    background: rgba(176, 184, 193, 0.18);
+    color: #b0b8c1;
 }
 .status-expired {
-  background: rgba(136, 136, 136, 0.18);
-  color: #888888;
+    background: rgba(136, 136, 136, 0.18);
+    color: #888888;
 }
 .status-unknown {
-  background: rgba(68, 71, 79, 0.18);
-  color: #b0b8c1;
+    background: rgba(68, 71, 79, 0.18);
+    color: #b0b8c1;
 }

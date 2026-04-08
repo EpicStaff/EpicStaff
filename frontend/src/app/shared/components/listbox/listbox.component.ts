@@ -1,23 +1,14 @@
-import { ChangeDetectionStrategy, Component, forwardRef, input, model } from "@angular/core";
-import { CustomInputComponent, TooltipComponent } from "@shared/components";
+import { ChangeDetectionStrategy, Component, forwardRef, input, model } from '@angular/core';
+import { ControlValueAccessor, FormControl, NG_VALUE_ACCESSOR, ReactiveFormsModule } from '@angular/forms';
+import { CustomInputComponent, TooltipComponent } from '@shared/components';
+
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
-import {
-    ControlValueAccessor,
-    FormControl,
-    NG_VALUE_ACCESSOR,
-    ReactiveFormsModule
-} from "@angular/forms";
 
 @Component({
     selector: 'app-listbox',
     templateUrl: './listbox.component.html',
     styleUrls: ['./listbox.component.scss'],
-    imports: [
-        TooltipComponent,
-        CustomInputComponent,
-        AppSvgIconComponent,
-        ReactiveFormsModule
-    ],
+    imports: [TooltipComponent, CustomInputComponent, AppSvgIconComponent, ReactiveFormsModule],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -25,7 +16,7 @@ import {
             multi: true,
         },
     ],
-    changeDetection: ChangeDetectionStrategy.OnPush
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ListboxComponent implements ControlValueAccessor {
     icon = input<string>('help_outline');
@@ -34,10 +25,8 @@ export class ListboxComponent implements ControlValueAccessor {
     tooltipText = input<string>('');
     inputPlaceholder = input<string>('Type here...');
 
-    private onChange: (value: string[]) => void = () => {
-    };
-    private onTouched: () => void = () => {
-    };
+    private onChange: (value: string[]) => void = () => {};
+    private onTouched: () => void = () => {};
     private isDisabled = false;
 
     value = model<string[]>([]);

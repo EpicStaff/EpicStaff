@@ -39,7 +39,7 @@ export interface GetDecisionTableNodeRequest {
     condition_groups: ConditionGroupBackend[];
     default_next_node_id: number | null;
     next_error_node_id: number | null;
-    metadata: Record<string, any>;
+    metadata: Record<string, unknown>;
 }
 
 export interface CreateDecisionTableNodeRequest {
@@ -48,5 +48,5 @@ export interface CreateDecisionTableNodeRequest {
     condition_groups: CreateConditionGroupRequest[];
     default_next_node_id: number | null;
     next_error_node_id: number | null;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
 }

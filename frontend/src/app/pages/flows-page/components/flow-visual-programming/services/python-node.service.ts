@@ -1,42 +1,43 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
-import { CreatePythonNodeRequest } from '../models/python-node.model';
+
 import { ConfigService } from '../../../../../services/config/config.service';
+import { CreatePythonNodeRequest } from '../models/python-node.model';
 
 @Injectable({
-  providedIn: 'root',
+    providedIn: 'root',
 })
 export class PythonNodeService {
-  private headers = new HttpHeaders({
-    'Content-Type': 'application/json',
-  });
-
-  constructor(private http: HttpClient, private configService: ConfigService) {}
-
-  // Dynamically retrieve the API URL from ConfigService
-  private get apiUrl(): string {
-    return this.configService.apiUrl + 'pythonnodes/';
-  }
-
-  createPythonNode(request: CreatePythonNodeRequest): Observable<any> {
-    return this.http.post<any>(this.apiUrl, request, {
-      headers: this.headers,
+    private headers = new HttpHeaders({
+        'Content-Type': 'application/json',
     });
-  }
 
-  updatePythonNode(
-    id: number,
-    request: CreatePythonNodeRequest
-  ): Observable<any> {
-    return this.http.put<any>(`${this.apiUrl}${id}/`, request, {
-      headers: this.headers,
-    });
-  }
+    constructor(
+        private http: HttpClient,
+        private configService: ConfigService
+    ) {}
 
-  deletePythonNode(id: string): Observable<any> {
-    return this.http.delete(`${this.apiUrl}${id}/`, {
-      headers: this.headers,
-    });
-  }
+    // Dynamically retrieve the API URL from ConfigService
+    private get apiUrl(): string {
+        return this.configService.apiUrl + 'pythonnodes/';
+    }
+
+    createPythonNode(request: CreatePythonNodeRequest): Observable<Record<string, unknown>> {
+        return this.http.post<Record<string, unknown>>(this.apiUrl, request, {
+            headers: this.headers,
+        });
+    }
+
+    updatePythonNode(id: number, request: CreatePythonNodeRequest): Observable<Record<string, unknown>> {
+        return this.http.put<Record<string, unknown>>(`${this.apiUrl}${id}/`, request, {
+            headers: this.headers,
+        });
+    }
+
+    deletePythonNode(id: string): Observable<unknown> {
+        return this.http.delete<unknown>(`${this.apiUrl}${id}/`, {
+            headers: this.headers,
+        });
+    }
 }

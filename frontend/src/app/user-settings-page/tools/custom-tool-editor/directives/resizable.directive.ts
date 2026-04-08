@@ -1,3 +1,4 @@
+import { DOCUMENT } from '@angular/common';
 import {
     Directive,
     ElementRef,
@@ -9,8 +10,6 @@ import {
     Output,
     Renderer2,
 } from '@angular/core';
-
-import { DOCUMENT } from '@angular/common';
 
 @Directive({
     selector: '[appResizable]',
@@ -33,32 +32,21 @@ export class ResizableDirective implements OnInit, OnDestroy {
     ) {}
 
     ngOnInit(): void {
-        this.renderer.listen(
-            this.el.nativeElement,
-            'pointerdown',
-            (event: PointerEvent) => this.onResizeStart(event)
-        );
+        this.renderer.listen(this.el.nativeElement, 'pointerdown', (event: PointerEvent) => this.onResizeStart(event));
     }
 
     private onResizeStart(event: PointerEvent): void {
         this.isResizing = true;
         this.startY = event.clientY;
-        this.startHeight =
-            this.el.nativeElement.previousElementSibling.clientHeight;
+        this.startHeight = this.el.nativeElement.previousElementSibling.clientHeight;
 
         event.preventDefault();
 
         this.ngZone.runOutsideAngular(() => {
-            this.unlistenPointerMove = this.renderer.listen(
-                this.document,
-                'pointermove',
-                (event: PointerEvent) => this.onPointerMove(event)
+            this.unlistenPointerMove = this.renderer.listen(this.document, 'pointermove', (event: PointerEvent) =>
+                this.onPointerMove(event)
             );
-            this.unlistenPointerUp = this.renderer.listen(
-                this.document,
-                'pointerup',
-                () => this.onPointerUp()
-            );
+            this.unlistenPointerUp = this.renderer.listen(this.document, 'pointerup', () => this.onPointerUp());
         });
     }
 

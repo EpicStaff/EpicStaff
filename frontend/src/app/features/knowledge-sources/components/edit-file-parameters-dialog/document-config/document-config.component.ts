@@ -1,38 +1,39 @@
-import { NgComponentOutlet } from "@angular/common";
-import {
-    ChangeDetectionStrategy,
-    Component, computed,
-    input, OnChanges,
-    signal, SimpleChanges,
-} from "@angular/core";
-import { MATERIAL_FORMS } from "@shared/material-forms";
-import { SelectComponent } from "@shared/components";
-import { AppSvgIconComponent } from "../../../../../shared/components/app-svg-icon/app-svg-icon.component";
-import { CHUNK_STRATEGIES_SELECT_ITEMS } from "../../../constants/constants";
+import { NgComponentOutlet } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, input, OnChanges, signal } from '@angular/core';
+import { FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { SelectComponent } from '@shared/components';
+import { MATERIAL_FORMS } from '@shared/material-forms';
 
-import { FormGroup, ReactiveFormsModule } from "@angular/forms";
-import { ADDITIONAL_PARAMS_FORM_COMPONENT_MAP } from "../../../enums/additional-params-form.map";
-import { NaiveRagChunkStrategy } from "../../../enums/naive-rag-chunk-strategy";
-import { TableDocument } from "../../rag-configuration/configuration-table/configuration-table.interface";
+import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+
+import { CHUNK_STRATEGIES_SELECT_ITEMS } from '../../../constants/constants';
+import { ADDITIONAL_PARAMS_FORM_COMPONENT_MAP } from '../../../enums/additional-params-form.map';
+import { NaiveRagChunkStrategy } from '../../../enums/naive-rag-chunk-strategy';
+import { TableDocument } from '../../rag-configuration/configuration-table/configuration-table.interface';
 
 @Component({
     selector: 'app-document-config',
     templateUrl: './document-config.component.html',
     styleUrls: ['./document-config.component.scss'],
-    imports: [
-        AppSvgIconComponent,
-        MATERIAL_FORMS,
-        SelectComponent,
-        ReactiveFormsModule,
-        NgComponentOutlet,
-    ],
-    changeDetection: ChangeDetectionStrategy.OnPush
+    imports: [AppSvgIconComponent, MATERIAL_FORMS, SelectComponent, ReactiveFormsModule, NgComponentOutlet],
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DocumentConfigComponent implements OnChanges {
     document = input.required<TableDocument>();
     ragId = input.required<number>();
 
     selectedStrategy = signal<NaiveRagChunkStrategy | null>(null);
+
+    onSelectedStrategyChange(value: unknown): void {
+        if (value == null) {
+            this.selectedStrategy.set(null);
+            return;
+        }
+        const strategies = Object.values(NaiveRagChunkStrategy) as string[];
+        if (typeof value === 'string' && strategies.includes(value)) {
+            this.selectedStrategy.set(value as NaiveRagChunkStrategy);
+        }
+    }
 
     private additionalFormParams = computed(() => {
         const document = this.document();
@@ -51,32 +52,32 @@ export class DocumentConfigComponent implements OnChanges {
                 return {
                     chunk_size: document.chunk_size,
                     chunk_overlap: document.chunk_overlap,
-                    regex: additionalParams['character']?.regex,
+                    regex: additionalParams['character']?.['regex'],
                 };
             case 'csv':
                 return {
-                    rows_in_chunk: additionalParams['csv']?.rows_in_chunk,
-                    headers_level: additionalParams['csv']?.headers_level,
+                    rows_in_chunk: additionalParams['csv']?.['rows_in_chunk'],
+                    headers_level: additionalParams['csv']?.['headers_level'],
                 };
             case 'json':
                 return {
                     chunk_size: document.chunk_size,
                     chunk_overlap: document.chunk_overlap,
-                }
+                };
             case 'html':
                 return {
                     chunk_size: document.chunk_size,
                     chunk_overlap: document.chunk_overlap,
-                    preserve_links: additionalParams['html']?.preserve_links,
-                    normalize_text: additionalParams['html']?.normalize_text,
-                    external_metadata: additionalParams['html']?.external_metadata,
-                    denylist_tags: additionalParams['html']?.denylist_tags,
-                }
+                    preserve_links: additionalParams['html']?.['preserve_links'],
+                    normalize_text: additionalParams['html']?.['normalize_text'],
+                    external_metadata: additionalParams['html']?.['external_metadata'],
+                    denylist_tags: additionalParams['html']?.['denylist_tags'],
+                };
             case 'token':
                 return {
                     chunk_size: document.chunk_size,
                     chunk_overlap: document.chunk_overlap,
-                }
+                };
             default:
                 return;
         }
@@ -94,7 +95,7 @@ export class DocumentConfigComponent implements OnChanges {
 
     form: FormGroup = new FormGroup({});
 
-    ngOnChanges(changes: SimpleChanges) {
+    ngOnChanges() {
         const strategy = this.document().chunk_strategy;
         this.selectedStrategy.set(strategy);
     }

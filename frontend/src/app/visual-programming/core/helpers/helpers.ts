@@ -1,6 +1,5 @@
 import { NodeType } from '../enums/node-type';
 import { ConditionGroup } from '../models/decision-table.model';
-import { NodeModel } from '../models/node.model';
 import { BasePort, CustomPortId, ViewPort } from '../models/port.model';
 import { PORTS_DICTIONARY } from '../rules/all_ports';
 import { DEFAULT_AUDIO_TO_TEXT_NODE_PORTS } from '../rules/audio-to-text-node-ports/audio-to-text-node-ports';
@@ -231,9 +230,7 @@ export function generatePortsForNode(newNodeId: string, nodeType: NodeType, data
                 }
             )?.table ?? {};
         const conditionGroups: ConditionGroup[] = tableData?.condition_groups ?? [];
-        const hasDefault = Boolean(tableData?.default_next_node);
-        const hasError = Boolean(tableData?.next_error_node);
-        return generatePortsForDecisionTableNode(newNodeId, conditionGroups, hasDefault, hasError);
+        return generatePortsForDecisionTableNode(newNodeId, conditionGroups);
     }
     const portsConfig: BasePort[] = getPortsForType(nodeType);
     return portsConfig.map((config) => ({
@@ -242,12 +239,7 @@ export function generatePortsForNode(newNodeId: string, nodeType: NodeType, data
     }));
 }
 
-export function generatePortsForDecisionTableNode(
-    nodeId: string,
-    conditionGroups: ConditionGroup[],
-    _hasDefaultNode?: boolean,
-    _hasErrorNode?: boolean
-): ViewPort[] {
+export function generatePortsForDecisionTableNode(nodeId: string, conditionGroups: ConditionGroup[]): ViewPort[] {
     // Use the default input port from DEFAULT_TABLE_NODE_PORTS
     const inputPortConfig = DEFAULT_TABLE_NODE_PORTS.find((p) => p.port_type === 'input');
     const inputPort = {

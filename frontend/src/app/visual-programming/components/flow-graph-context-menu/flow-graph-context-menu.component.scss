@@ -1,102 +1,104 @@
 .context-menu {
-  position: absolute;
-  background: #181818;
+    position: absolute;
+    background: #181818;
 
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-  z-index: 1000;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
 
-  border-radius: 15px;
-  color: hsl(0, 0%, 94%);
-  height: auto;
-
-  .search-container {
-    display: flex;
-    align-items: center;
-    background: #1e1e1e; /* Darker background */
-    margin: 16px;
-    padding: 10px 10px; /* Smaller padding for compact size */
-    border-radius: 6px; /* Slightly rounded corners */
-    border: 1px solid #333; /* Thin, subtle border */
-
-    max-height: 40px; /* Reduce height */
-    margin-bottom: 8px;
-    &:focus-within {
-      border-color: #555; /* Softer focus effect */
-    }
-
-    i {
-      font-size: 14px; /* Make the icon smaller */
-      color: #888; /* Soft color */
-      margin-right: 6px;
-    }
-
-    input {
-      flex: 1;
-      background: transparent;
-      border: none;
-      color: #f0f0f0;
-      font-size: 13px; /* Slightly smaller text */
-      outline: none;
-      padding: 2px;
-      line-height: 1; /* Align text properly */
-
-      &::placeholder {
-        color: #666;
-        font-size: 13px;
-      }
-    }
-  }
-
-  .menu-header {
-    display: flex;
-    justify-content: flex-start; /* Keep buttons aligned */
-    padding: 0px 16px;
-    margin-bottom: 8px;
-
-    button {
-      background: transparent;
-      border: none;
-      color: #aaa;
-      font-size: 14px;
-      padding: 8px;
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      transition: border-bottom 0.2s, color 0.2s;
-      min-width: 70px; /* Prevent buttons from resizing */
-      text-align: center;
-
-      &:hover {
-        color: #fff;
-      }
-
-      &.active {
-        color: #fff;
-        border-bottom: 2px solid #fff;
-      }
-    }
-  }
-
-  .menu-content {
-    overflow-y: auto;
-    font-size: 14px;
-    padding-bottom: 16px;
+    border-radius: 15px;
+    color: hsl(0, 0%, 94%);
     height: auto;
-    max-height: 420px;
-    ul {
-      list-style: none;
-      padding: 0;
-      margin: 0;
 
-      li {
-        padding: 8px 0;
-        border-bottom: 1px solid #333;
-        &:last-child {
-          border-bottom: none;
+    .search-container {
+        display: flex;
+        align-items: center;
+        background: #1e1e1e; /* Darker background */
+        margin: 16px;
+        padding: 10px 10px; /* Smaller padding for compact size */
+        border-radius: 6px; /* Slightly rounded corners */
+        border: 1px solid #333; /* Thin, subtle border */
+
+        max-height: 40px; /* Reduce height */
+        margin-bottom: 8px;
+        &:focus-within {
+            border-color: #555; /* Softer focus effect */
         }
-        &:hover {
-          background: #2a2a2a;
+
+        i {
+            font-size: 14px; /* Make the icon smaller */
+            color: #888; /* Soft color */
+            margin-right: 6px;
         }
-      }
+
+        input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #f0f0f0;
+            font-size: 13px; /* Slightly smaller text */
+            outline: none;
+            padding: 2px;
+            line-height: 1; /* Align text properly */
+
+            &::placeholder {
+                color: #666;
+                font-size: 13px;
+            }
+        }
     }
-  }
+
+    .menu-header {
+        display: flex;
+        justify-content: flex-start; /* Keep buttons aligned */
+        padding: 0px 16px;
+        margin-bottom: 8px;
+
+        button {
+            background: transparent;
+            border: none;
+            color: #aaa;
+            font-size: 14px;
+            padding: 8px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition:
+                border-bottom 0.2s,
+                color 0.2s;
+            min-width: 70px; /* Prevent buttons from resizing */
+            text-align: center;
+
+            &:hover {
+                color: #fff;
+            }
+
+            &.active {
+                color: #fff;
+                border-bottom: 2px solid #fff;
+            }
+        }
+    }
+
+    .menu-content {
+        overflow-y: auto;
+        font-size: 14px;
+        padding-bottom: 16px;
+        height: auto;
+        max-height: 420px;
+        ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+
+            li {
+                padding: 8px 0;
+                border-bottom: 1px solid #333;
+                &:last-child {
+                    border-bottom: none;
+                }
+                &:hover {
+                    background: #2a2a2a;
+                }
+            }
+        }
+    }
 }

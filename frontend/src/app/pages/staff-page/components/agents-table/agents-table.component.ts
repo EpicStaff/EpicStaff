@@ -1,79 +1,64 @@
+import { Dialog, DialogModule } from '@angular/cdk/dialog';
+import { ConnectedPosition, Overlay, OverlayRef } from '@angular/cdk/overlay';
+import { ComponentPortal } from '@angular/cdk/portal';
+import { NgIf } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
-    Inject,
+    ElementRef,
+    EventEmitter,
+    HostListener,
     Input,
+    Output,
     Renderer2,
     signal,
     SimpleChanges,
     ViewChild,
-    EventEmitter,
-    Output,
-    HostListener,
-    ElementRef,
 } from '@angular/core';
-import { AgGridAngular, AgGridModule } from 'ag-grid-angular';
+import { AgGridModule } from 'ag-grid-angular';
 import {
     CellClickedEvent,
     CellContextMenuEvent,
-    CellEditingStartedEvent,
+    CellEditingStoppedEvent,
     CellKeyDownEvent,
-    CellMouseOutEvent,
-    CellMouseOverEvent,
     CellValueChangedEvent,
     ColDef,
     GridApi,
     GridOptions,
     GridReadyEvent,
-    ICellRendererParams,
     RowDragEndEvent,
+    SuppressKeyboardEventParams,
 } from 'ag-grid-community';
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
-
 import { themeQuartz } from 'ag-grid-community';
+import { catchError, concatMap, EMPTY, finalize, from, map, Observable, of, switchMap, tap, toArray } from 'rxjs';
 
-import { ConnectedPosition, Overlay, OverlayRef } from '@angular/cdk/overlay';
-import { ComponentPortal } from '@angular/cdk/portal';
-import { LLMPopupComponent } from '../cell-popups-and-modals/llm-selector-popup/llm-popup.component';
-
-import { ToolsPopupComponent } from '../cell-popups-and-modals/tools-selector-popup/tools-popup.component';
-import { TagsPopupComponent } from '../cell-popups-and-modals/tags-popup/tags-popup.component';
+import { CreateAgentRequest, ToolUniqueName, UpdateAgentRequest } from '../../../../features/staff/models/agent.model';
 import {
     FullAgent,
     FullAgentService,
+    MergedConfig,
     TableFullAgent,
 } from '../../../../features/staff/services/full-agent.service';
-import { IndexCellRendererComponent } from '../cell-renderers/index-row-cell-renderer/custom-row-height.component';
-import { MemoryHeaderComponent } from '../header-renderers/memory-header.component';
-import { DelegationHeaderComponent } from '../header-renderers/delegation-header.component';
+import { RealtimeAgentService } from '../../../../features/staff/services/realtime-agent.service';
+import { AgentsService } from '../../../../features/staff/services/staff.service';
+import { ToastService } from '../../../../services/notifications/toast.service';
+import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.component';
+import { ClickOutsideDirective } from '../../../../shared/directives/click-outside.directive';
+import { buildToolIdsArray } from '../../../../shared/utils/tool-ids-builder.util';
 import {
     AdvancedSettingsData,
     AdvancedSettingsDialogComponent,
 } from '../advanced-settings-dialog.component.ts/advanced-settings-dialog.component';
-import {
-    Dialog,
-    DIALOG_DATA,
-    DialogModule,
-    DialogRef,
-} from '@angular/cdk/dialog';
-import { AgentsService } from '../../../../features/staff/services/staff.service';
-import {
-    CreateAgentRequest,
-    ToolUniqueName,
-    UpdateAgentRequest,
-} from '../../../../features/staff/models/agent.model';
-import { NgClass, NgIf, NgStyle } from '@angular/common';
-import { PreventContextMenuDirective } from '../directives/prevent-context-menu.directive';
-import { AgGridContextMenuComponent } from '../context-menu/ag-grid-context-menu.component';
-import { ClickOutsideDirective } from '../../../../shared/directives/click-outside.directive';
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.component';
-import { buildToolIdsArray } from '../../../../shared/utils/tool-ids-builder.util';
+import { LLMPopupComponent } from '../cell-popups-and-modals/llm-selector-popup/llm-popup.component';
+import { TagsPopupComponent } from '../cell-popups-and-modals/tags-popup/tags-popup.component';
+import { ToolsPopupComponent } from '../cell-popups-and-modals/tools-selector-popup/tools-popup.component';
+import { IndexCellRendererComponent } from '../cell-renderers/index-row-cell-renderer/custom-row-height.component';
 import { ConfigCellRendererComponent } from '../cell-renderers/llm-cell-renderer/realtime-config-cell-renderer.component';
-import { map, switchMap, Observable, of, from, EMPTY, concatMap, catchError, finalize, tap, toArray } from 'rxjs';
-import { CreateRealtimeAgentRequest } from '../../../../features/staff/models/realtime-agent.model';
-import { RealtimeAgentService } from '../../../../features/staff/services/realtime-agent.service';
+import { AgGridContextMenuComponent } from '../context-menu/ag-grid-context-menu.component';
+import { PreventContextMenuDirective } from '../directives/prevent-context-menu.directive';
+import { DelegationHeaderComponent } from '../header-renderers/delegation-header.component';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -81,7 +66,10 @@ interface CellInfo {
     columnId: string;
     rowIndex: number;
 }
-type PopupEvent = CellClickedEvent<any, any> | CellKeyDownEvent<any, any>;
+type PopupEvent = CellClickedEvent<TableFullAgent, unknown> | CellKeyDownEvent<TableFullAgent, unknown>;
+type AgentRequiredField = 'role' | 'goal' | 'backstory';
+const isAgentRequiredField = (field: string): field is AgentRequiredField =>
+    field === 'role' || field === 'goal' || field === 'backstory';
 
 type PendingKind = 'create' | 'update' | 'delete';
 
@@ -124,7 +112,7 @@ export class AgentsTableComponent {
 
     //overlay
     private popupOverlayRef: OverlayRef | null = null;
-    private currentPopupCell: any = null;
+    private currentPopupCell: CellInfo | null = null;
     private currentCellElement: HTMLElement | null = null;
     private globalClickUnlistener: (() => void) | null = null;
     private globalKeydownUnlistener: (() => void) | null = null;
@@ -164,7 +152,6 @@ export class AgentsTableComponent {
                 }
 
                 this.ensureSingleSpareEmptyRow();
-                console.log(this.rowData);
 
                 this.cdr.markForCheck();
             },
@@ -181,13 +168,8 @@ export class AgentsTableComponent {
             this.gridApi?.stopEditing();
         }
 
-        if (
-            changes['newAgent'] &&
-            changes['newAgent'].currentValue &&
-            !changes['newAgent'].firstChange
-        ) {
+        if (changes['newAgent'] && changes['newAgent'].currentValue && !changes['newAgent'].firstChange) {
             const newAgent = changes['newAgent'].currentValue as FullAgent;
-            console.log('New agent detected:', newAgent);
 
             if (this.gridApi) {
                 this.rowData.unshift(newAgent);
@@ -209,9 +191,7 @@ export class AgentsTableComponent {
 
                 this.cdr.markForCheck();
             } else {
-                console.error(
-                    'Grid API not available when trying to add new agent'
-                );
+                console.error('Grid API not available when trying to add new agent');
 
                 this.rowData.unshift(newAgent);
                 this.cdr.markForCheck();
@@ -224,11 +204,9 @@ export class AgentsTableComponent {
         this.gridApi.refreshCells({ force: true, columns: ['index'] });
         this.cdr.markForCheck();
     }
-    
+
     private createEmptyFullAgent(): TableFullAgent {
-        const tempId = `temp_${Date.now()}_${Math.random()
-            .toString(36)
-            .substr(2, 9)}`;
+        const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
         return {
             id: tempId,
@@ -258,7 +236,7 @@ export class AgentsTableComponent {
                 naive: {
                     search_limit: 3,
                     similarity_threshold: 0.2,
-                }
+                },
             },
             // Replace realtime_config with realtime_agent object using provided defaults
             realtime_agent: {
@@ -326,8 +304,7 @@ export class AgentsTableComponent {
                     if (!value || value.trim() === '') {
                         return {
                             valid: false,
-                            message:
-                                'Role cannot be empty (cell will not be saved).',
+                            message: 'Role cannot be empty (cell will not be saved).',
                         };
                     }
                     return { valid: true };
@@ -487,7 +464,7 @@ export class AgentsTableComponent {
             flex: 1,
             minWidth: 200,
             maxWidth: 400,
-            cellRenderer: (params: { value: any[] }) => {
+            cellRenderer: (params: { value: { configName: string; toolName: string; type: string }[] }) => {
                 const tools = params.value || [];
 
                 if (!tools || tools.length === 0) {
@@ -495,7 +472,7 @@ export class AgentsTableComponent {
                 }
 
                 const toolsHtml = tools
-                    .map((tool: { configName: any; toolName: any; type: string }) => {
+                    .map((tool: { configName: string; toolName: string; type: string }) => {
                         // For MCP tools, display the configName (mcp.name) instead of toolName (mcp.tool_name)
                         const displayName = tool.type === 'mcp-tool' ? tool.configName : tool.toolName;
                         return `
@@ -532,7 +509,7 @@ export class AgentsTableComponent {
         {
             headerName: '',
             field: 'actions',
-            cellRenderer: (params: ICellRendererParams) => {
+            cellRenderer: () => {
                 return `<i class="ti ti-settings action-icon"></i>`;
             },
             width: 50,
@@ -545,7 +522,7 @@ export class AgentsTableComponent {
         {
             headerName: '',
             field: 'copy',
-            cellRenderer: (params: ICellRendererParams) => {
+            cellRenderer: () => {
                 return `<i class="ti ti-copy action-icon"></i>`;
             },
             width: 50,
@@ -584,7 +561,7 @@ export class AgentsTableComponent {
 
         onCellEditingStopped: (e) => this.onCellEditingStopped(e),
 
-        onFirstDataRendered: (params) => {
+        onFirstDataRendered: () => {
             this.isLoading.set(false);
         },
         getRowId: (params) => {
@@ -593,8 +570,7 @@ export class AgentsTableComponent {
             if (id !== null && id !== undefined) return String(id);
             return `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         },
-        onCellClicked: (event: CellClickedEvent<any, any>) =>
-            this.onCellClicked(event),
+        onCellClicked: (event: CellClickedEvent<TableFullAgent, unknown>) => this.onCellClicked(event),
         onCellKeyDown: (event: CellKeyDownEvent) => this.onCellKeyDown(event),
         onCellValueChanged: (event) => this.onCellValueChanged(event),
         onRowDragEnd: (event) => this.onRowDragEnd(event),
@@ -624,7 +600,7 @@ export class AgentsTableComponent {
     }
 
     // Function to parse the necessary fields (merged tools and config)
-    private parseAgentData = (agentData: any) => {
+    private parseAgentData = (agentData: TableFullAgent) => {
         // Extract LLM config ID and realtime config ID from mergedConfigs
         let llmConfigId = null;
         let realtimeConfigId = null;
@@ -632,17 +608,13 @@ export class AgentsTableComponent {
         // Check if mergedConfigs exist and process them
         if (agentData.mergedConfigs && Array.isArray(agentData.mergedConfigs)) {
             // Find LLM config
-            const llmConfig = agentData.mergedConfigs.find(
-                (config: any) => config.type === 'llm'
-            );
+            const llmConfig = agentData.mergedConfigs.find((config: MergedConfig) => config.type === 'llm');
             if (llmConfig) {
                 llmConfigId = llmConfig.id;
             }
 
             // Find realtime config
-            const realtimeConfig = agentData.mergedConfigs.find(
-                (config: any) => config.type === 'realtime'
-            );
+            const realtimeConfig = agentData.mergedConfigs.find((config: MergedConfig) => config.type === 'realtime');
             if (realtimeConfig) {
                 realtimeConfigId = realtimeConfig.id;
             }
@@ -662,62 +634,57 @@ export class AgentsTableComponent {
             wake_word: agentData.realtime_agent?.wake_word,
             stop_prompt: agentData.realtime_agent?.stop_prompt,
             language: agentData.realtime_agent?.language,
-            voice_recognition_prompt:
-                agentData.realtime_agent?.voice_recognition_prompt,
+            voice_recognition_prompt: agentData.realtime_agent?.voice_recognition_prompt,
             voice: agentData.realtime_agent?.voice,
-            realtime_transcription_config:
-                agentData.realtime_agent?.realtime_transcription_config,
+            realtime_transcription_config: agentData.realtime_agent?.realtime_transcription_config,
         };
 
         const parsed = {
             ...agentData,
             llm_config: llmConfigId,
-            fcm_llm_config: agentData.fullFcmLlmConfig?.id ??
-                agentData.fcm_llm_config ??
-                llmConfigId,
+            fcm_llm_config: agentData.fullFcmLlmConfig?.id ?? llmConfigId,
             realtime_agent: realtime_agent, // Use the properly structured realtime_agent object
             configured_tools: mergedTools
-                .filter((tool: any) => tool.type === 'tool-config')
-                .map((tool: any) => tool.id),
+                .filter((tool: { id: number; type: string }) => tool.type === 'tool-config')
+                .map((tool: { id: number; type: string }) => tool.id),
             python_code_tools: mergedTools
-                .filter((tool: any) => tool.type === 'python-tool')
-                .map((tool: any) => tool.id),
+                .filter((tool: { id: number; type: string }) => tool.type === 'python-tool')
+                .map((tool: { id: number; type: string }) => tool.id),
             mcp_tools: mergedTools
-                .filter((tool: any) => tool.type === 'mcp-tool')
-                .map((tool: any) => tool.id),
+                .filter((tool: { id: number; type: string }) => tool.type === 'mcp-tool')
+                .map((tool: { id: number; type: string }) => tool.id),
         };
 
         // Delete tools field to ensure it's never included in create/update requests
-        delete (parsed as any).tools;
-        delete (parsed as any).fullFcmLlmConfig;
-        delete (parsed as any).selected_knowledge_source;
+        delete (parsed as Record<string, unknown>)['tools'];
+        delete (parsed as Record<string, unknown>)['fullFcmLlmConfig'];
+        delete (parsed as Record<string, unknown>)['selected_knowledge_source'];
 
         return parsed;
     };
 
-    private onCellValueChanged(event: any): void {
+    private onCellValueChanged(event: CellValueChangedEvent<TableFullAgent>): void {
         if (this.shouldBlockInteraction()) {
             this.gridApi.stopEditing();
             return;
         }
         const colId = event.column.getColId();
-        const fieldsToValidate = ['role', 'goal', 'backstory']; // List of fields to validate
+        const fieldsToValidate: AgentRequiredField[] = ['role', 'goal', 'backstory'];
+        const row = event.data as TableFullAgent & Record<string, unknown>;
 
         // If the row has a temporary ID (starts with 'temp_') or null id, create a new agent after validation
-        const isTempRow =
-            !event.data.id ||
-            (typeof event.data.id === 'string' &&
-                event.data.id.startsWith('temp_'));
+        const isTempRow = !row.id || (typeof row.id === 'string' && row.id.startsWith('temp_'));
 
         if (isTempRow) {
-            if (fieldsToValidate.includes(colId)) {
-                const newValue = event.data[colId] ? event.data[colId].trim() : '';
-                event.data[`${colId}Warning`] = !newValue;
+            if (isAgentRequiredField(colId)) {
+                const value = row[colId];
+                const newValue = value ? String(value).trim() : '';
+                row[`${colId}Warning`] = !newValue;
             }
 
-            const rowId = String(event.data.id);
+            const rowId = String(row.id);
 
-            const touched = this.isTempRowTouched(event.data);
+            const touched = this.isTempRowTouched(row);
 
             if (!touched) {
                 this.draftTempRows.delete(rowId);
@@ -726,7 +693,11 @@ export class AgentsTableComponent {
                 this.emitDirty();
                 this.cdr.markForCheck();
                 this.requiredErrorsRows.delete(rowId);
-                this.gridApi.refreshCells({ rowNodes: [event.node], columns: ['role','goal','backstory'], force: true });
+                this.gridApi.refreshCells({
+                    rowNodes: [event.node],
+                    columns: ['role', 'goal', 'backstory'],
+                    force: true,
+                });
                 return;
             }
 
@@ -740,14 +711,12 @@ export class AgentsTableComponent {
             this.emitDirty();
 
             const isValid = fieldsToValidate.every((field) => {
-                const fieldValue = event.data[field] ? event.data[field].trim() : '';
+                const fieldValue = row[field] ? String(row[field]).trim() : '';
                 return fieldValue !== '';
             });
 
             if (!isValid) {
-                console.warn(
-                    'Warning: One or more required fields (role, goal, backstory) are empty.'
-                );
+                console.warn('Warning: One or more required fields (role, goal, backstory) are empty.');
 
                 if (this.pending.has(rowId)) this.pending.delete(rowId);
 
@@ -756,15 +725,11 @@ export class AgentsTableComponent {
                 return;
             }
 
-            const parsedData = this.parseAgentData(event.data);
+            const parsedData = this.parseAgentData(row);
             const configuredToolIds = parsedData.configured_tools || [];
             const pythonToolIds = parsedData.python_code_tools || [];
             const mcpToolIds = parsedData.mcp_tools || [];
-            const toolIds = buildToolIdsArray(
-                configuredToolIds,
-                pythonToolIds,
-                mcpToolIds
-            );
+            const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds);
 
             const createAgentData: CreateAgentRequest = {
                 ...parsedData,
@@ -792,10 +757,8 @@ export class AgentsTableComponent {
         // For rows with a valid id, validate all fields that require validation
         let allValid = true; // Flag to check if all fields are valid
         fieldsToValidate.forEach((field) => {
-            const fieldValue = event.data[field]
-                ? event.data[field].trim()
-                : '';
-            event.data[`${field}Warning`] = !fieldValue; // Dynamically set warning flag
+            const fieldValue = row[field] ? String(row[field]).trim() : '';
+            row[`${field}Warning`] = !fieldValue;
 
             // If any field is invalid, mark as invalid
             if (!fieldValue) {
@@ -818,29 +781,25 @@ export class AgentsTableComponent {
         }
 
         // Parse the agent data
-        const parsedUpdateData = this.parseAgentData(event.data);
-        console.log(parsedUpdateData);
+        const parsedUpdateData = this.parseAgentData(row);
 
         // Build tool_ids array for update
         const updateConfiguredToolIds = parsedUpdateData.configured_tools || [];
         const updatePythonToolIds = parsedUpdateData.python_code_tools || [];
         const updateMcpToolIds = parsedUpdateData.mcp_tools || [];
-        const updateToolIds = buildToolIdsArray(
-            updateConfiguredToolIds,
-            updatePythonToolIds,
-            updateMcpToolIds
-        );
+        const updateToolIds = buildToolIdsArray(updateConfiguredToolIds, updatePythonToolIds, updateMcpToolIds);
 
         // Update the agent using the id if all fields are valid
         const updateAgentData: UpdateAgentRequest = {
             ...parsedUpdateData,
+            id: Number(row.id),
             configured_tools: updateConfiguredToolIds,
             python_code_tools: updatePythonToolIds,
             mcp_tools: updateMcpToolIds,
             tool_ids: updateToolIds,
         };
 
-        const rowId = String(event.data.id);
+        const rowId = String(row.id);
 
         this.reconcilePendingUpdate(rowId, updateAgentData);
         this.cdr.markForCheck();
@@ -865,8 +824,7 @@ export class AgentsTableComponent {
                 cache: agentData.cache ?? false,
                 allow_code_execution: agentData.allow_code_execution ?? false,
                 max_retry_limit: agentData.max_retry_limit ?? null,
-                respect_context_window:
-                    agentData.respect_context_window ?? false,
+                respect_context_window: agentData.respect_context_window ?? false,
                 default_temperature: null,
                 knowledge_collection: agentData.knowledge_collection ?? null, // Changed parameter name
                 rag: agentData.rag ?? null,
@@ -874,7 +832,7 @@ export class AgentsTableComponent {
                     naive: {
                         similarity_threshold: agentData.search_configs?.naive?.similarity_threshold ?? null,
                         search_limit: agentData.search_configs?.naive?.search_limit ?? null,
-                    }
+                    },
                 },
                 memory: agentData.memory ?? true,
             },
@@ -883,7 +841,7 @@ export class AgentsTableComponent {
         dialogRef.closed.subscribe((updatedData: unknown) => {
             const data = updatedData as AdvancedSettingsData | undefined;
             if (!data) return;
-            const after = this.normalizeAdvancedSettings(data);
+            const after = this.normalizeAdvancedSettings(data as unknown as TableFullAgent);
             if (this.jsonEqual(before, after)) return;
             this.updateAgentDataInRow(data, agentData);
 
@@ -897,15 +855,10 @@ export class AgentsTableComponent {
         });
     }
 
-    updateAgentDataInRow(
-        updatedData: Partial<TableFullAgent>,
-        agentData: TableFullAgent
-    ): void {
+    updateAgentDataInRow(updatedData: Partial<TableFullAgent>, agentData: TableFullAgent): void {
         if (this.shouldBlockInteraction()) return;
 
-        const index = this.rowData.findIndex(
-            (agent) => agent.id === agentData.id
-        );
+        const index = this.rowData.findIndex((agent) => agent.id === agentData.id);
         if (index === -1) {
             console.error('Agent not found in rowData for update:', agentData);
             return;
@@ -916,7 +869,6 @@ export class AgentsTableComponent {
             ...this.rowData[index],
             ...updatedData,
         };
-
         // Update our local row data
         this.rowData[index] = updatedAgent;
 
@@ -927,22 +879,12 @@ export class AgentsTableComponent {
         this.cdr.markForCheck();
 
         // Check if this is a temporary row or one with a real ID
-        const isTempRow =
-            !updatedAgent.id ||
-            (typeof updatedAgent.id === 'string' &&
-                updatedAgent.id.startsWith('temp_'));
-
         // Get realtime config ID - check mergedConfigs FIRST as it's the source of truth
         let realtimeConfigId = null;
 
         // First check mergedConfigs if available (most up-to-date)
-        if (
-            updatedAgent.mergedConfigs &&
-            Array.isArray(updatedAgent.mergedConfigs)
-        ) {
-            const realtimeConfig = updatedAgent.mergedConfigs.find(
-                (config) => config.type === 'realtime'
-            );
+        if (updatedAgent.mergedConfigs && Array.isArray(updatedAgent.mergedConfigs)) {
+            const realtimeConfig = updatedAgent.mergedConfigs.find((config) => config.type === 'realtime');
             if (realtimeConfig) {
                 realtimeConfigId = realtimeConfig.id;
             }
@@ -971,29 +913,22 @@ export class AgentsTableComponent {
 
         const allToolsPreBuilding = {
             configured_tools: this.rowData[index].mergedTools
-                .filter((tool: any) => tool.type === 'tool-config')
-                .map((tool: any) => tool.id),
+                .filter((tool: { id: number; type: string }) => tool.type === 'tool-config')
+                .map((tool: { id: number; type: string }) => tool.id),
             python_code_tools: this.rowData[index].mergedTools
-                .filter((tool: any) => tool.type === 'python-tool')
-                .map((tool: any) => tool.id),
+                .filter((tool: { id: number; type: string }) => tool.type === 'python-tool')
+                .map((tool: { id: number; type: string }) => tool.id),
             mcp_tools: this.rowData[index].mergedTools
-                .filter((tool: any) => tool.type === 'mcp-tool')
-                .map((tool: any) => tool.id),
+                .filter((tool: { id: number; type: string }) => tool.type === 'mcp-tool')
+                .map((tool: { id: number; type: string }) => tool.id),
         };
 
         // Build tool_ids array for settings update
-        const settingsConfiguredToolIds =
-            allToolsPreBuilding.configured_tools || [];
-        const settingsPythonToolIds =
-            allToolsPreBuilding.python_code_tools || [];
-        const settingsMcpToolIds =
-            allToolsPreBuilding.mcp_tools || [];
+        const settingsConfiguredToolIds = allToolsPreBuilding.configured_tools || [];
+        const settingsPythonToolIds = allToolsPreBuilding.python_code_tools || [];
+        const settingsMcpToolIds = allToolsPreBuilding.mcp_tools || [];
 
-        const settingsToolIds = buildToolIdsArray(
-            settingsConfiguredToolIds,
-            settingsPythonToolIds,
-            settingsMcpToolIds
-        );
+        const settingsToolIds = buildToolIdsArray(settingsConfiguredToolIds, settingsPythonToolIds, settingsMcpToolIds);
 
         const parsedUpdateData = this.parseAgentData(this.rowData[index]);
 
@@ -1011,9 +946,8 @@ export class AgentsTableComponent {
                 tool_ids: settingsToolIds as ToolUniqueName[],
             };
 
-            this.setPending(rowId, { kind: 'create', rowId, payload: createAgentData });    
-        } 
-        else {
+            this.setPending(rowId, { kind: 'create', rowId, payload: createAgentData });
+        } else {
             const updateAgentData: UpdateAgentRequest = {
                 ...parsedUpdateData,
                 id: +updatedAgent.id,
@@ -1042,8 +976,6 @@ export class AgentsTableComponent {
 
         // Get the available space at the bottom of the screen
         const spaceBelow = window.innerHeight - mouseEvent.clientY;
-        const spaceAbove = mouseEvent.clientY;
-
         const menuHeight = 265; // Height of the context menu, you can adjust this based on the actual height
 
         // If there's not enough space below, position it above
@@ -1062,20 +994,12 @@ export class AgentsTableComponent {
 
         // Make sure we have a selected row
         if (!this.selectedRowData) {
-            console.log('No row selected');
             return;
         }
 
         const rowId = this.selectedRowData.id;
-        console.log(
-            'Selected row ID for deletion:',
-            rowId,
-            'Type:',
-            typeof rowId
-        );
 
-        const isTempRow =
-            typeof rowId === 'string' && rowId.startsWith('temp_');
+        const isTempRow = typeof rowId === 'string' && rowId.startsWith('temp_');
 
         const clearLocalPendingState = (id: string) => {
             this.pending.delete(id);
@@ -1087,8 +1011,6 @@ export class AgentsTableComponent {
         };
 
         if (isTempRow) {
-            console.log('Deleting temporary row:', rowId);
-
             const index = this.rowData.findIndex((row) => row.id === rowId);
 
             if (index !== -1) {
@@ -1104,7 +1026,6 @@ export class AgentsTableComponent {
                     columns: ['index'],
                 });
 
-                console.log('Temporary row removed from grid');
                 this.cdr.markForCheck();
             } else {
                 console.warn('Temporary row not found in data array');
@@ -1116,8 +1037,7 @@ export class AgentsTableComponent {
         }
 
         // For permanent rows (with numeric IDs)
-        const numericId =
-            typeof rowId === 'number' ? rowId : parseInt(rowId as string, 10);
+        const numericId = typeof rowId === 'number' ? rowId : parseInt(rowId as string, 10);
 
         if (isNaN(numericId)) {
             console.error('Invalid ID for deletion:', rowId);
@@ -1130,10 +1050,7 @@ export class AgentsTableComponent {
         clearLocalPendingState(idStr);
 
         const index = this.rowData.findIndex((row) => {
-            const rowIdNum =
-                typeof row.id === 'number'
-                    ? row.id
-                    : parseInt(row.id as string, 10);
+            const rowIdNum = typeof row.id === 'number' ? row.id : parseInt(row.id as string, 10);
             return rowIdNum === numericId;
         });
 
@@ -1157,16 +1074,13 @@ export class AgentsTableComponent {
         if (this.shouldBlockInteraction()) return;
         if (!this.selectedRowData) return;
         this.copiedRowData = JSON.parse(JSON.stringify(this.selectedRowData));
-        console.log('Copied row:', this.copiedRowData);
         this.closeContextMenu();
     }
 
     public handlePasteBelow(): void {
         if (this.shouldBlockInteraction()) return;
         if (!this.selectedRowData || !this.copiedRowData) return;
-        const index = this.rowData.findIndex(
-            (row) => row === this.selectedRowData
-        );
+        const index = this.rowData.findIndex((row) => row === this.selectedRowData);
         if (index === -1) return;
         this.pasteNewAgentAt(index + 1);
     }
@@ -1174,9 +1088,7 @@ export class AgentsTableComponent {
     public handlePasteAbove(): void {
         if (this.shouldBlockInteraction()) return;
         if (!this.selectedRowData || !this.copiedRowData) return;
-        const index = this.rowData.findIndex(
-            (row) => row === this.selectedRowData
-        );
+        const index = this.rowData.findIndex((row) => row === this.selectedRowData);
         if (index === -1) return;
         this.pasteNewAgentAt(index);
     }
@@ -1263,9 +1175,7 @@ export class AgentsTableComponent {
         if (this.shouldBlockInteraction()) return;
 
         if (!this.selectedRowData) return;
-        const index = this.rowData.findIndex(
-            (row) => row === this.selectedRowData
-        );
+        const index = this.rowData.findIndex((row) => row === this.selectedRowData);
         if (index === -1) return;
         this.insertEmptyAgentAt(index);
     }
@@ -1273,9 +1183,7 @@ export class AgentsTableComponent {
     public handleAddEmptyAgentBelow(): void {
         if (this.shouldBlockInteraction()) return;
         if (!this.selectedRowData) return;
-        const index = this.rowData.findIndex(
-            (row) => row === this.selectedRowData
-        );
+        const index = this.rowData.findIndex((row) => row === this.selectedRowData);
         if (index === -1) return;
         this.insertEmptyAgentAt(index + 1);
     }
@@ -1303,29 +1211,26 @@ export class AgentsTableComponent {
 
         this.closeContextMenu();
     }
-    private onCellClicked(event: CellClickedEvent<any, any>): void {
+    private onCellClicked(event: CellClickedEvent<TableFullAgent, unknown>): void {
         if (this.shouldBlockInteraction()) return;
-        if (event.colDef.field === 'actions') {
+        if (event.column.getColId() === 'actions') {
             const agentData = event.data;
+            if (!agentData) return;
             this.closePopup();
 
             this.openSettingsDialog(agentData);
         }
         const columnId = event.column.getColId();
 
-        if (event.colDef.field === 'copy') {
-            this.selectedRowData = event.data;
+        if (event.column.getColId() === 'copy') {
+            this.selectedRowData = event.data ?? null;
             this.copiedRowData = JSON.parse(JSON.stringify(event.data));
             const rowIndex = this.rowData.findIndex((row) => row === event.data);
             if (rowIndex !== -1) this.pasteNewAgentAt(rowIndex + 1);
             return;
         }
         // Process only specific columns.
-        if (
-            columnId !== 'mergedConfigs' &&
-            columnId !== 'mergedTools' &&
-            columnId !== 'tags'
-        ) {
+        if (columnId !== 'mergedConfigs' && columnId !== 'mergedTools' && columnId !== 'tags') {
             return;
         }
 
@@ -1347,7 +1252,7 @@ export class AgentsTableComponent {
         this.openPopup(event, cell);
     }
 
-    private onCellKeyDown(event: CellKeyDownEvent<any, any>): void {
+    private onCellKeyDown(event: CellKeyDownEvent<TableFullAgent, unknown>): void {
         if (this.shouldBlockInteraction()) return;
 
         const keyboardEvent = event.event as KeyboardEvent;
@@ -1355,52 +1260,52 @@ export class AgentsTableComponent {
         if (keyboardEvent?.key === 'Enter') {
             const { rowIndex, column } = event;
             const columnId = column.getColId();
-            if (event.colDef.field !== 'actions'
-                && columnId !== 'mergedConfigs'
-                && columnId !== 'mergedTools'
-                && columnId !== 'tags'
-                && rowIndex != null
+            if (
+                event.column.getColId() !== 'actions' &&
+                columnId !== 'mergedConfigs' &&
+                columnId !== 'mergedTools' &&
+                columnId !== 'tags' &&
+                rowIndex != null
             ) {
                 const rowNode = this.gridApi.getDisplayedRowAtIndex(rowIndex);
                 const data = rowNode?.data;
                 const rowId = String(data?.id ?? '');
 
-            if (this.isTempRowId(rowId)) {
-                const firstEmpty = (['role','goal','backstory'] as const).find((f) => this.isRequiredEmpty(data, f));
+                if (this.isTempRowId(rowId)) {
+                    const firstEmpty = (['role', 'goal', 'backstory'] as const).find((f) =>
+                        this.isRequiredEmpty(data, f)
+                    );
 
-                if (firstEmpty) {
-                    keyboardEvent.preventDefault();
-                    this.gridApi.stopEditing();
-                    this.gridApi.setFocusedCell(rowIndex, firstEmpty);
-                    this.gridApi.startEditingCell({ rowIndex, colKey: firstEmpty });
-                    return;
-                }
+                    if (firstEmpty) {
+                        keyboardEvent.preventDefault();
+                        this.gridApi.stopEditing();
+                        this.gridApi.setFocusedCell(rowIndex, firstEmpty);
+                        this.gridApi.startEditingCell({ rowIndex, colKey: firstEmpty });
+                        return;
+                    }
 
-                const order: Array<'role'|'goal'|'backstory'> = ['role','goal','backstory'];
-                const idx = order.indexOf(columnId as any);
-                if (idx >= 0 && idx < order.length - 1) {
-                    const next = order[idx + 1];
-                    keyboardEvent.preventDefault();
-                    this.gridApi.stopEditing();
-                    this.gridApi.setFocusedCell(rowIndex, next);
-                    this.gridApi.startEditingCell({ rowIndex, colKey: next });
-                    return;
+                    const order: Array<'role' | 'goal' | 'backstory'> = ['role', 'goal', 'backstory'];
+                    const idx = order.indexOf(columnId as 'role' | 'goal' | 'backstory');
+                    if (idx >= 0 && idx < order.length - 1) {
+                        const next = order[idx + 1];
+                        keyboardEvent.preventDefault();
+                        this.gridApi.stopEditing();
+                        this.gridApi.setFocusedCell(rowIndex, next);
+                        this.gridApi.startEditingCell({ rowIndex, colKey: next });
+                        return;
+                    }
                 }
             }
-        }
-            if (event.colDef.field === 'actions') {
+            if (event.column.getColId() === 'actions') {
                 const agentData = event.data;
+                if (!agentData) return;
                 this.closePopup();
 
                 this.openSettingsDialog(agentData);
                 return;
             }
             // Process only specific columns
-            if (
-                columnId === 'mergedConfigs' ||
-                columnId === 'mergedTools' ||
-                columnId === 'tags'
-            ) {
+            if (columnId === 'mergedConfigs' || columnId === 'mergedTools' || columnId === 'tags') {
                 if (rowIndex !== null) {
                     // If a popup is already open for the same cell, do nothing.
                     if (
@@ -1429,9 +1334,7 @@ export class AgentsTableComponent {
         this.currentPopupCell = cell;
 
         // Get the container cell element.
-        let target = (event.event!.target as HTMLElement).closest(
-            '.ag-cell'
-        ) as HTMLElement;
+        let target = (event.event!.target as HTMLElement).closest('.ag-cell') as HTMLElement;
         if (!target) {
             target = event.event!.target as HTMLElement;
         }
@@ -1555,137 +1458,112 @@ export class AgentsTableComponent {
             popupRef.instance.cellValue = event.data?.mergedConfigs || [];
 
             // Subscribe to the configsSelected event
-            popupRef.instance.configsSelected.subscribe(
-                (mergedConfigs: any[]) => {
-                    console.log('Selected configs:', mergedConfigs);
+            popupRef.instance.configsSelected.subscribe((mergedConfigs: MergedConfig[]) => {
+                if (this.currentPopupCell) {
+                    const rowIndex = this.currentPopupCell.rowIndex;
+                    const rowNode = this.gridApi.getDisplayedRowAtIndex(rowIndex);
 
-                    if (this.currentPopupCell) {
-                        const rowIndex = this.currentPopupCell.rowIndex;
-                        const rowNode =
-                            this.gridApi.getDisplayedRowAtIndex(rowIndex);
+                    if (rowNode) {
+                        const rowData = rowNode.data;
+                        const isTempRow =
+                            !rowData?.id || (typeof rowData.id === 'string' && rowData.id.startsWith('temp_'));
 
-                        if (rowNode) {
-                            const rowData = rowNode.data;
-                            const isTempRow =
-                                !rowData?.id ||
-                                (typeof rowData.id === 'string' && rowData.id.startsWith('temp_'));
+                        // Update the mergedConfigs in the row data
+                        rowNode.setDataValue('mergedConfigs', mergedConfigs);
 
+                        // Update related fullLlmConfig and fullRealtimeConfig properties
+                        const llmConfig = mergedConfigs.find((config) => config.type === 'llm');
+                        const realtimeConfig = mergedConfigs.find((config) => config.type === 'realtime');
 
-                            // Update the mergedConfigs in the row data
-                            rowNode.setDataValue(
-                                'mergedConfigs',
-                                mergedConfigs
-                            );
-
-                            // Update related fullLlmConfig and fullRealtimeConfig properties
-                            const llmConfig = mergedConfigs.find(
-                                (config) => config.type === 'llm'
-                            );
-                            const realtimeConfig = mergedConfigs.find(
-                                (config) => config.type === 'realtime'
-                            );
-
-                            if (llmConfig) {
-                                rowNode.setDataValue(
-                                    'llm_config',
-                                    llmConfig.id
-                                );
-                            } else {
-                                rowNode.setDataValue('llm_config', null);
-                                rowNode.setDataValue('fullLlmConfig', null);
-                            }
-
-                            if (realtimeConfig) {
-                                const realtime_agent = {
-                                    ...(rowData.realtime_agent || {}),
-                                    realtime_config: realtimeConfig.id,
-                                };
-                                rowNode.setDataValue(
-                                    'realtime_agent',
-                                    realtime_agent
-                                );
-                            } else {
-                                rowNode.setDataValue(
-                                    'fullRealtimeConfig',
-                                    null
-                                );
-                                if (rowData.realtime_agent) {
-                                    const realtime_agent = {
-                                        ...rowData.realtime_agent,
-                                        realtime_config: null,
-                                    };
-                                    rowNode.setDataValue(
-                                        'realtime_agent',
-                                        realtime_agent
-                                    );
-                                }
-                            }
-
-                            const freshRowData = rowNode.data;
-                            const tempRowId = String(freshRowData?.id ?? '');
-
-                            if (this.isTempRowId(tempRowId)) {
-                                if (this.isTempRowTouched(freshRowData)) {
-                                    this.draftTempRows.add(tempRowId);
-                                } else {
-                                    this.draftTempRows.delete(tempRowId);
-                                }
-                                this.emitDirty();
-                                this.updateRequiredErrorsForTempRow(tempRowId, freshRowData);
-                                const touched = this.isTempRowTouched(freshRowData);
-
-                                if (!touched) {
-                                    this.draftTempRows.delete(tempRowId);
-                                    this.pending.delete(tempRowId);
-                                    this.markRowInvalid(tempRowId, false);
-                                    this.emitDirty();
-                                    this.cdr.markForCheck();
-                                    this.closePopup();
-                                    return
-                                }
-
-                                const valid = this.isTempRowValid(freshRowData);
-                                this.markRowInvalid(tempRowId, touched && !valid);
-                            }
-
-                            const parsedData = this.parseAgentData(freshRowData);
-
-                            const configuredToolIds = parsedData.configured_tools || [];
-                            const pythonToolIds = parsedData.python_code_tools || [];
-                            const mcpToolIds = parsedData.mcp_tools || [];
-                            const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds);
-
-                            const rowId = String(freshRowData.id);
-
-                            if (isTempRow) {
-                                const createAgentData: CreateAgentRequest = {
-                                    ...parsedData,
-                                    configured_tools: configuredToolIds,
-                                    python_code_tools: pythonToolIds,
-                                    mcp_tools: mcpToolIds,
-                                    tool_ids: toolIds,
-                                };
-
-                                this.setPending(rowId, { kind: 'create', rowId, payload: createAgentData });
-                            } else {
-                                const updateAgentData: UpdateAgentRequest = {
-                                    ...parsedData,
-                                    configured_tools: configuredToolIds,
-                                    python_code_tools: pythonToolIds,
-                                    mcp_tools: mcpToolIds,
-                                    tool_ids: toolIds,
-                                };
-
-                                this.reconcilePendingUpdate(rowId, updateAgentData);
-                            }
-
-                            this.cdr.markForCheck();
+                        if (llmConfig) {
+                            rowNode.setDataValue('llm_config', llmConfig.id);
+                        } else {
+                            rowNode.setDataValue('llm_config', null);
+                            rowNode.setDataValue('fullLlmConfig', null);
                         }
+
+                        if (realtimeConfig) {
+                            const realtime_agent = {
+                                ...(rowData.realtime_agent || {}),
+                                realtime_config: realtimeConfig.id,
+                            };
+                            rowNode.setDataValue('realtime_agent', realtime_agent);
+                        } else {
+                            rowNode.setDataValue('fullRealtimeConfig', null);
+                            if (rowData.realtime_agent) {
+                                const realtime_agent = {
+                                    ...rowData.realtime_agent,
+                                    realtime_config: null,
+                                };
+                                rowNode.setDataValue('realtime_agent', realtime_agent);
+                            }
+                        }
+
+                        const freshRowData = rowNode.data;
+                        const tempRowId = String(freshRowData?.id ?? '');
+
+                        if (this.isTempRowId(tempRowId)) {
+                            if (this.isTempRowTouched(freshRowData)) {
+                                this.draftTempRows.add(tempRowId);
+                            } else {
+                                this.draftTempRows.delete(tempRowId);
+                            }
+                            this.emitDirty();
+                            this.updateRequiredErrorsForTempRow(tempRowId, freshRowData);
+                            const touched = this.isTempRowTouched(freshRowData);
+
+                            if (!touched) {
+                                this.draftTempRows.delete(tempRowId);
+                                this.pending.delete(tempRowId);
+                                this.markRowInvalid(tempRowId, false);
+                                this.emitDirty();
+                                this.cdr.markForCheck();
+                                this.closePopup();
+                                return;
+                            }
+
+                            const valid = this.isTempRowValid(freshRowData);
+                            this.markRowInvalid(tempRowId, touched && !valid);
+                        }
+
+                        const parsedData = this.parseAgentData(freshRowData);
+
+                        const configuredToolIds = parsedData.configured_tools || [];
+                        const pythonToolIds = parsedData.python_code_tools || [];
+                        const mcpToolIds = parsedData.mcp_tools || [];
+                        const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds);
+
+                        const rowId = String(freshRowData.id);
+
+                        if (isTempRow) {
+                            const createAgentData: CreateAgentRequest = {
+                                ...parsedData,
+                                configured_tools: configuredToolIds,
+                                python_code_tools: pythonToolIds,
+                                mcp_tools: mcpToolIds,
+                                tool_ids: toolIds,
+                            };
+
+                            this.setPending(rowId, { kind: 'create', rowId, payload: createAgentData });
+                        } else {
+                            const updateAgentData: UpdateAgentRequest = {
+                                ...parsedData,
+                                id: Number(freshRowData.id),
+                                configured_tools: configuredToolIds,
+                                python_code_tools: pythonToolIds,
+                                mcp_tools: mcpToolIds,
+                                tool_ids: toolIds,
+                            };
+
+                            this.reconcilePendingUpdate(rowId, updateAgentData);
+                        }
+
+                        this.cdr.markForCheck();
                     }
-                    // Close the popup after selection
-                    this.closePopup();
                 }
-            );
+                // Close the popup after selection
+                this.closePopup();
+            });
 
             // Handle cancel event
             popupRef.instance.cancel.subscribe(() => {
@@ -1698,45 +1576,35 @@ export class AgentsTableComponent {
             popupRef.instance.mergedTools = event.data?.mergedTools || [];
 
             // Subscribe to the mergedToolsSaved event
-            popupRef.instance.mergedToolsUpdated.subscribe(
-                (updatedMergedTools: string[]) => {
-                    console.log(
-                        'Returned from tools popup:',
-                        updatedMergedTools
-                    );
-                    if (this.currentPopupCell) {
-                        const rowIndex = this.currentPopupCell.rowIndex;
+            popupRef.instance.mergedToolsUpdated.subscribe((updatedMergedTools: string[]) => {
+                if (this.currentPopupCell) {
+                    const rowIndex = this.currentPopupCell.rowIndex;
 
-                        // Get the row node using the row index
-                        const rowNode =
-                            this.gridApi.getDisplayedRowAtIndex(rowIndex);
-                        if (rowNode) {
-                            // Use setDataValue to update the mergedTools cell
-                            rowNode.setDataValue(
-                                'mergedTools',
-                                updatedMergedTools
-                            );
+                    // Get the row node using the row index
+                    const rowNode = this.gridApi.getDisplayedRowAtIndex(rowIndex);
+                    if (rowNode) {
+                        // Use setDataValue to update the mergedTools cell
+                        rowNode.setDataValue('mergedTools', updatedMergedTools);
 
-                            const rowData = rowNode.data;
-                            const rowId = String(rowData?.id ?? '');
+                        const rowData = rowNode.data;
+                        const rowId = String(rowData?.id ?? '');
 
-                            if (this.isTempRowId(rowId)) {
-                                if (this.isTempRowTouched(rowData)) {
-                                    this.draftTempRows.add(rowId);
-                                } else {
-                                    this.draftTempRows.delete(rowId);
-                                }
-                                this.emitDirty();
-                                this.updateRequiredErrorsForTempRow(rowId, rowData);
-
-                                this.cdr.markForCheck();
+                        if (this.isTempRowId(rowId)) {
+                            if (this.isTempRowTouched(rowData)) {
+                                this.draftTempRows.add(rowId);
+                            } else {
+                                this.draftTempRows.delete(rowId);
                             }
+                            this.emitDirty();
+                            this.updateRequiredErrorsForTempRow(rowId, rowData);
+
+                            this.cdr.markForCheck();
                         }
                     }
-                    // Close the popup after saving
-                    this.closePopup();
                 }
-            );
+                // Close the popup after saving
+                this.closePopup();
+            });
 
             // Handle cancel event
             popupRef.instance.cancel.subscribe(() => {
@@ -1748,14 +1616,11 @@ export class AgentsTableComponent {
             popupRef.instance.cellTags = event.data?.tags || [];
 
             popupRef.instance.tagsSaved.subscribe((updatedTags: string[]) => {
-                console.log('Updated tags:', updatedTags);
-
                 if (this.currentPopupCell) {
                     const rowIndex = this.currentPopupCell.rowIndex;
 
                     // Get the row node using the row index
-                    const rowNode =
-                        this.gridApi.getDisplayedRowAtIndex(rowIndex);
+                    const rowNode = this.gridApi.getDisplayedRowAtIndex(rowIndex);
                     if (rowNode) {
                         // Use setDataValue to update the tags cell
                         rowNode.setDataValue('tags', updatedTags);
@@ -1779,22 +1644,16 @@ export class AgentsTableComponent {
             });
         }
         // Use Renderer2 to attach a global click listener.
-        this.globalClickUnlistener = this.renderer.listen(
-            'document',
-            'click',
-            (evt: MouseEvent) => this.onDocumentClick(evt)
+        this.globalClickUnlistener = this.renderer.listen('document', 'click', (evt: MouseEvent) =>
+            this.onDocumentClick(evt)
         );
 
         // Attach a global keydown listener to close the popup on Escape key.
-        this.globalKeydownUnlistener = this.renderer.listen(
-            'document',
-            'keydown',
-            (evt: KeyboardEvent) => {
-                if (evt.key === 'Escape') {
-                    this.closePopup();
-                }
+        this.globalKeydownUnlistener = this.renderer.listen('document', 'keydown', (evt: KeyboardEvent) => {
+            if (evt.key === 'Escape') {
+                this.closePopup();
             }
-        );
+        });
     }
 
     private onDocumentClick(event: MouseEvent): void {
@@ -1848,8 +1707,7 @@ export class AgentsTableComponent {
         const changes = Array.from(this.pending.values());
 
         const ordered = [...changes].sort((a, b) => {
-            const rank = (k: PendingKind) =>
-                k === 'delete' ? 0 : k === 'create' ? 1 : 2;
+            const rank = (k: PendingKind) => (k === 'delete' ? 0 : k === 'create' ? 1 : 2);
             return rank(a.kind) - rank(b.kind);
         });
 
@@ -1890,57 +1748,48 @@ export class AgentsTableComponent {
                             this.toastService.error('Failed to delete agent');
                             return EMPTY;
                         }),
-                        map(() => void 0),
+                        map(() => void 0)
                     );
                 }
 
                 if (change.kind === 'create') {
-                    return this.agentsService
-                        .createAgent(change.payload as CreateAgentRequest)
-                        .pipe(
-                            tap(() => {
-                                const rowId = change.rowId;
-                                this.pending.delete(rowId);
-                                this.requiredErrorsRows.delete(rowId);
-                                this.invalidTempRows.delete(rowId);
-                                this.draftTempRows.delete(rowId);
-                                this.deletedRows.delete(rowId);
-                                needsReload = true;
-                                this.emitDirty();
-                            }),
-                            catchError(() => {
-                                this.toastService.error('Failed to create agent');
-                                return EMPTY;
-                            }),
-                            map(() => void 0),
-                        );
-                }
-
-                return this.agentsService
-                    .updateAgent(change.payload as UpdateAgentRequest)
-                    .pipe(
+                    return this.agentsService.createAgent(change.payload as CreateAgentRequest).pipe(
                         tap(() => {
                             const rowId = change.rowId;
-                            const current = this.rowData.find(
-                                (r) => String(r.id) === rowId
-                            );
-
-                            if (current) {
-                                this.savedSnapshot.set(
-                                    rowId,
-                                    this.buildComparablePayload(current)
-                                );
-                            }
-
                             this.pending.delete(rowId);
+                            this.requiredErrorsRows.delete(rowId);
+                            this.invalidTempRows.delete(rowId);
+                            this.draftTempRows.delete(rowId);
+                            this.deletedRows.delete(rowId);
+                            needsReload = true;
                             this.emitDirty();
                         }),
                         catchError(() => {
-                            this.toastService.error('Failed to update agent');
+                            this.toastService.error('Failed to create agent');
                             return EMPTY;
                         }),
-                        map(() => void 0),
+                        map(() => void 0)
                     );
+                }
+
+                return this.agentsService.updateAgent(change.payload as UpdateAgentRequest).pipe(
+                    tap(() => {
+                        const rowId = change.rowId;
+                        const current = this.rowData.find((r) => String(r.id) === rowId);
+
+                        if (current) {
+                            this.savedSnapshot.set(rowId, this.buildComparablePayload(current));
+                        }
+
+                        this.pending.delete(rowId);
+                        this.emitDirty();
+                    }),
+                    catchError(() => {
+                        this.toastService.error('Failed to update agent');
+                        return EMPTY;
+                    }),
+                    map(() => void 0)
+                );
             }),
             toArray(),
             switchMap(() => {
@@ -1958,10 +1807,7 @@ export class AgentsTableComponent {
                         for (const a of this.rowData) {
                             const rowId = String(a.id);
                             if (!rowId.startsWith('temp_')) {
-                                this.savedSnapshot.set(
-                                    rowId,
-                                    this.buildComparablePayload(a)
-                                );
+                                this.savedSnapshot.set(rowId, this.buildComparablePayload(a));
                             }
                         }
 
@@ -1976,12 +1822,12 @@ export class AgentsTableComponent {
                         this.emitDirty();
                         this.cdr.markForCheck();
                     }),
-                    map(() => void 0),
+                    map(() => void 0)
                 );
             }),
             finalize(() => {
                 this.cdr.markForCheck();
-            }),
+            })
         );
     }
 
@@ -1991,8 +1837,7 @@ export class AgentsTableComponent {
 
     public discardPending(): void {
         if (this.deletedRows.size > 0) {
-            const restore = Array.from(this.deletedRows.values())
-                .sort((a, b) => a.index - b.index);
+            const restore = Array.from(this.deletedRows.values()).sort((a, b) => a.index - b.index);
 
             for (const item of restore) {
                 const idx = Math.min(Math.max(item.index, 0), this.rowData.length);
@@ -2073,7 +1918,6 @@ export class AgentsTableComponent {
             mcp_tools: payload.mcp_tools ?? [],
             search_configs: payload.search_configs ?? tempRow.search_configs,
             realtime_agent: payload.realtime_agent ?? tempRow.realtime_agent,
-            
         });
 
         this.rowData.unshift(tempRow);
@@ -2091,14 +1935,14 @@ export class AgentsTableComponent {
         const rowId = String(payload.id);
 
         if (rowId.startsWith('temp_')) {
-            this.setPending(rowId, { kind: 'create', rowId, payload: payload as any });
+            this.setPending(rowId, { kind: 'create', rowId, payload: payload as CreateAgentRequest });
             this.cdr.markForCheck();
             return;
         }
 
         const index = this.rowData.findIndex((r) => String(r.id) === rowId);
         if (index !== -1) {
-            this.rowData[index] = { ...this.rowData[index], ...payload } as any;
+            this.rowData[index] = { ...this.rowData[index], ...payload } as TableFullAgent;
             this.gridApi?.setGridOption('rowData', [...this.rowData]);
         }
 
@@ -2106,22 +1950,14 @@ export class AgentsTableComponent {
         this.cdr.markForCheck();
     }
 
-    private normalizeAdvancedSettings(input: any): Record<string, unknown> {
+    private normalizeAdvancedSettings(input: TableFullAgent): Record<string, unknown> {
+        const rawInput = input as TableFullAgent & Record<string, unknown>;
         const sl = input?.search_configs?.naive?.search_limit;
         const st = input?.search_configs?.naive?.similarity_threshold;
         return {
-            fcm_llm_config_id:
-                input?.fullFcmLlmConfig?.id ??
-                input?.fcm_llm_config ??
-                null,
-            knowledge_collection:
-                input?.knowledge_collection ??
-                input?.selected_knowledge_source ??
-                null,
-            rag_id:
-                input?.rag?.rag_id ??
-                input?.rag_id ??
-                null,
+            fcm_llm_config_id: input?.fullFcmLlmConfig?.id ?? null,
+            knowledge_collection: input?.knowledge_collection ?? rawInput['selected_knowledge_source'] ?? null,
+            rag_id: input?.rag?.rag_id ?? rawInput['rag_id'] ?? null,
             max_iter: input?.max_iter ?? 20,
             max_rpm: input?.max_rpm ?? 10,
             max_execution_time: input?.max_execution_time ?? 60,
@@ -2142,12 +1978,12 @@ export class AgentsTableComponent {
 
     private draftTempRows = new Set<string>();
     private invalidTempRows = new Set<string>();
-    
+
     private emitDirty(): void {
         this.dirtyChange.emit(this.pending.size > 0 || this.draftTempRows.size > 0);
     }
 
-    private isNonEmpty(v: any): boolean {
+    private isNonEmpty(v: unknown): boolean {
         return v !== null && v !== undefined && String(v).trim() !== '';
     }
 
@@ -2155,12 +1991,19 @@ export class AgentsTableComponent {
         return typeof id === 'string' && id.startsWith('temp_');
     }
 
-    private getByPath(obj: any, path: string): any {
-        return path.split('.').reduce((acc, key) => (acc ? acc[key] : undefined), obj);
+    private getByPath(obj: Record<string, unknown>, path: string): unknown {
+        return path
+            .split('.')
+            .reduce(
+                (acc: unknown, key: string) =>
+                    acc && typeof acc === 'object' ? (acc as Record<string, unknown>)[key] : undefined,
+                obj
+            );
     }
 
-    private isTempRowTouched(data: any): boolean {
-        if (!data) return false;
+    private isTempRowTouched(data: unknown): boolean {
+        if (!data || typeof data !== 'object') return false;
+        const row = data as Record<string, unknown>;
         const defaults = {
             role: '',
             goal: '',
@@ -2235,7 +2078,7 @@ export class AgentsTableComponent {
         ];
 
         return pathsToCheck.some((path) => {
-            const curRaw = this.getByPath(data, path);
+            const curRaw = this.getByPath(row, path);
             const defRaw = this.getByPath(defaults, path);
             const cur = this.normalizeTouchedValue(path, curRaw);
             const def = this.normalizeTouchedValue(path, defRaw);
@@ -2250,12 +2093,9 @@ export class AgentsTableComponent {
         });
     }
 
-    private isTempRowValid(data: any): boolean {
-        return (
-            this.isNonEmpty(data?.role) &&
-            this.isNonEmpty(data?.goal) &&
-            this.isNonEmpty(data?.backstory)
-        );
+    private isTempRowValid(data: unknown): boolean {
+        const row = (data ?? {}) as Record<string, unknown>;
+        return this.isNonEmpty(row['role']) && this.isNonEmpty(row['goal']) && this.isNonEmpty(row['backstory']);
     }
 
     private markRowInvalid(rowId: string, isInvalid: boolean): void {
@@ -2264,7 +2104,7 @@ export class AgentsTableComponent {
         this.gridApi?.redrawRows();
     }
 
-    private onCellEditingStopped(e: any): void {
+    private onCellEditingStopped(e: CellEditingStoppedEvent<TableFullAgent>): void {
         const data = e?.data;
         const rowId = String(data?.id ?? '');
         if (!this.isTempRowId(rowId)) return;
@@ -2301,7 +2141,7 @@ export class AgentsTableComponent {
 
     private lastFocusedRowIndex: number | null = null;
 
-    private onCellFocused(e: any): void {
+    private onCellFocused(e: { rowIndex?: number | null }): void {
         const rowIndex = typeof e?.rowIndex === 'number' ? e.rowIndex : null;
         if (rowIndex != null && rowIndex >= 0) {
             const node = this.gridApi?.getDisplayedRowAtIndex(rowIndex);
@@ -2309,10 +2149,7 @@ export class AgentsTableComponent {
         }
         const newRowIndex = typeof e?.rowIndex === 'number' ? e.rowIndex : null;
 
-        if (
-            this.lastFocusedRowIndex != null &&
-            this.lastFocusedRowIndex !== newRowIndex
-        ) {
+        if (this.lastFocusedRowIndex != null && this.lastFocusedRowIndex !== newRowIndex) {
             const prevNode = this.gridApi?.getDisplayedRowAtIndex(this.lastFocusedRowIndex);
             const prevRowId = prevNode?.data?.id != null ? String(prevNode.data.id) : null;
             if (prevRowId) this.applyRequiredErrorsOnRowExit(prevRowId);
@@ -2376,14 +2213,14 @@ export class AgentsTableComponent {
 
     private readonly requiredCols = ['role', 'goal', 'backstory'] as const;
 
-    private isRequiredEmpty(data: any, field: (typeof this.requiredCols)[number]): boolean {
+    private isRequiredEmpty(data: Record<string, unknown>, field: (typeof this.requiredCols)[number]): boolean {
         const v = (data?.[field] ?? '').toString().trim();
         return v.length === 0;
-    }      
+    }
 
     private enterJumpInProgress = false;
 
-    private handleEnterJumpWithinTempRow(params: any): boolean {
+    private handleEnterJumpWithinTempRow(params: SuppressKeyboardEventParams<TableFullAgent>): boolean {
         const e = params.event as KeyboardEvent | undefined;
         if (!e || e.key !== 'Enter') return false;
 
@@ -2414,7 +2251,7 @@ export class AgentsTableComponent {
 
         const requiredCols = ['role', 'goal', 'backstory'] as const;
         const curCol = params.column?.getColId?.() ?? '';
-        const curIdx = requiredCols.indexOf(curCol as any);
+        const curIdx = requiredCols.indexOf(curCol as 'role' | 'goal' | 'backstory');
 
         if (curIdx === -1) {
             this.enterJumpInProgress = false;
@@ -2462,7 +2299,7 @@ export class AgentsTableComponent {
         return clickedRowId === rowId;
     }
 
-    private updateRequiredErrorsForTempRow(rowId: string, data: any): void {
+    private updateRequiredErrorsForTempRow(rowId: string, data: unknown): void {
         if (!this.isTempRowId(rowId) || !data) return;
         const shouldShow = this.isTempRowTouched(data) && !this.isTempRowValid(data);
 
@@ -2479,7 +2316,7 @@ export class AgentsTableComponent {
         });
     }
 
-    private normalizeTouchedValue(path: string, v: any): any {
+    private normalizeTouchedValue(path: string, v: unknown): unknown {
         if (path === 'role' || path === 'goal' || path === 'backstory') {
             return (v ?? '').toString();
         }
@@ -2487,20 +2324,20 @@ export class AgentsTableComponent {
         return v;
     }
 
-    private buildComparablePayload(agent: TableFullAgent): any {
+    private buildComparablePayload(agent: TableFullAgent): Record<string, unknown> {
         const parsed = this.parseAgentData(agent);
 
         const configured = (agent.mergedTools ?? [])
-            .filter((t: any) => t.type === 'tool-config')
-            .map((t: any) => t.id);
+            .filter((t: { id: number; type: string }) => t.type === 'tool-config')
+            .map((t: { id: number; type: string }) => t.id);
 
         const python = (agent.mergedTools ?? [])
-            .filter((t: any) => t.type === 'python-tool')
-            .map((t: any) => t.id);
+            .filter((t: { id: number; type: string }) => t.type === 'python-tool')
+            .map((t: { id: number; type: string }) => t.id);
 
         const mcp = (agent.mergedTools ?? [])
-            .filter((t: any) => t.type === 'mcp-tool')
-            .map((t: any) => t.id);
+            .filter((t: { id: number; type: string }) => t.type === 'mcp-tool')
+            .map((t: { id: number; type: string }) => t.id);
 
         const tool_ids = buildToolIdsArray(configured, python, mcp);
 
@@ -2520,7 +2357,7 @@ export class AgentsTableComponent {
 
     private reconcilePendingUpdate(rowId: string, updatePayload: UpdateAgentRequest): void {
         const baseline = this.savedSnapshot.get(rowId);
-        const comparable = this.normalizeForCompare(updatePayload);
+        const comparable = this.normalizeForCompare(updatePayload as unknown as Record<string, unknown>);
 
         if (this.jsonEqual(baseline, comparable)) {
             this.pending.delete(rowId);
@@ -2531,28 +2368,28 @@ export class AgentsTableComponent {
         this.setPending(rowId, { kind: 'update', rowId, payload: updatePayload });
     }
 
-    private normalizeForCompare(payload: any): any {
+    private normalizeForCompare(payload: Record<string, unknown>): Record<string, unknown> {
         const p = structuredClone(payload);
-        delete p.id;
-        delete p.mergedTools;
-        delete p.mergedConfigs;
-        delete p.tools;
-        delete p.fullFcmLlmConfig;
-        delete p.fullLlmConfig;
-        delete p.selected_knowledge_source;
-        
+        delete p['id'];
+        delete p['mergedTools'];
+        delete p['mergedConfigs'];
+        delete p['tools'];
+        delete p['fullFcmLlmConfig'];
+        delete p['fullLlmConfig'];
+        delete p['selected_knowledge_source'];
+
         for (const k of Object.keys(p)) {
             if (k.endsWith('Warning')) delete p[k];
         }
 
-        p.configured_tools = (p.configured_tools ?? []).slice().sort();
-        p.python_code_tools = (p.python_code_tools ?? []).slice().sort();
-        p.mcp_tools = (p.mcp_tools ?? []).slice().sort();
-        p.tool_ids = (p.tool_ids ?? []).slice().sort();
-        p.tags = (p.tags ?? []).slice().sort();
-        p.cache = p.cache ?? false;
-        p.allow_code_execution = p.allow_code_execution ?? false;
-        p.respect_context_window = p.respect_context_window ?? false;
+        p['configured_tools'] = Array.isArray(p['configured_tools']) ? [...p['configured_tools']].sort() : [];
+        p['python_code_tools'] = Array.isArray(p['python_code_tools']) ? [...p['python_code_tools']].sort() : [];
+        p['mcp_tools'] = Array.isArray(p['mcp_tools']) ? [...p['mcp_tools']].sort() : [];
+        p['tool_ids'] = Array.isArray(p['tool_ids']) ? [...p['tool_ids']].sort() : [];
+        p['tags'] = Array.isArray(p['tags']) ? [...p['tags']].sort() : [];
+        p['cache'] = p['cache'] ?? false;
+        p['allow_code_execution'] = p['allow_code_execution'] ?? false;
+        p['respect_context_window'] = p['respect_context_window'] ?? false;
 
         return p;
     }

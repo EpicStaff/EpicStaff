@@ -1,5 +1,5 @@
 export interface RealtimeModel {
-  id: number;
-  name: string;
-  provider: number;
+    id: number;
+    name: string;
+    provider: number;
 }

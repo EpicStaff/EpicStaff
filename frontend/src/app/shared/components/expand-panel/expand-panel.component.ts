@@ -1,6 +1,7 @@
-import { ChangeDetectionStrategy, Component, input, signal } from "@angular/core";
-import { TooltipComponent } from "@shared/components";
-import { expandCollapseAnimation } from "@shared/animations";
+import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
+import { expandCollapseAnimation } from '@shared/animations';
+import { TooltipComponent } from '@shared/components';
+
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
@@ -8,11 +9,8 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
     templateUrl: './expand-panel.component.html',
     styleUrls: ['./expand-panel.component.scss'],
     animations: [expandCollapseAnimation],
-    imports: [
-        TooltipComponent,
-        AppSvgIconComponent
-    ],
-    changeDetection: ChangeDetectionStrategy.OnPush
+    imports: [TooltipComponent, AppSvgIconComponent],
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ExpandPanelComponent {
     icon = input<string>('help_outline');

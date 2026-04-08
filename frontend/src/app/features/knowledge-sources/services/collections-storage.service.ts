@@ -1,11 +1,16 @@
-import {inject, Injectable, signal} from '@angular/core';
-import {catchError, delay, Observable, of, tap, throwError} from "rxjs";
-import {CollectionsApiService} from "./collections-api.service";
-import {CreateCollectionDtoResponse, DeleteCollectionResponse, GetCollectionRequest} from "../models/collection.model";
-import {shareReplay} from "rxjs/operators";
+import { inject, Injectable, signal } from '@angular/core';
+import { catchError, delay, Observable, of, tap, throwError } from 'rxjs';
+import { shareReplay } from 'rxjs/operators';
+
+import {
+    CreateCollectionDtoResponse,
+    DeleteCollectionResponse,
+    GetCollectionRequest,
+} from '../models/collection.model';
+import { CollectionsApiService } from './collections-api.service';
 
 @Injectable({
-    providedIn: 'root'
+    providedIn: 'root',
 })
 export class CollectionsStorageService {
     // List of collection preview
@@ -54,9 +59,7 @@ export class CollectionsStorageService {
     }
 
     getFullCollection(id: number, forceRefresh = false): Observable<CreateCollectionDtoResponse | null> {
-        const cachedCollection = this.fullCollectionsSignal().find(
-            (c) => c.collection_id === id
-        );
+        const cachedCollection = this.fullCollectionsSignal().find((c) => c.collection_id === id);
         if (cachedCollection && !forceRefresh) {
             return of(cachedCollection);
         }
@@ -66,16 +69,19 @@ export class CollectionsStorageService {
                 this.updateOrCreateCollectionInCache(collection);
             }),
             delay(this.fullCollectionsLoaded() ? 0 : 300),
-            catchError(err => throwError(() => err))
+            catchError((err) => throwError(() => err))
         );
     }
 
-    updateCollectionById(id: number, body: Partial<CreateCollectionDtoResponse>): Observable<CreateCollectionDtoResponse> {
+    updateCollectionById(
+        id: number,
+        body: Partial<CreateCollectionDtoResponse>
+    ): Observable<CreateCollectionDtoResponse> {
         return this.collectionsApiService.updateCollectionById(id, body).pipe(
-            tap(updated => {
+            tap((updated) => {
                 this.updateOrCreateCollectionInCache(updated);
             }),
-            catchError(err => throwError(() => err))
+            catchError((err) => throwError(() => err))
         );
     }
 
@@ -83,17 +89,18 @@ export class CollectionsStorageService {
         return this.collectionsApiService.deleteCollectionById(id).pipe(
             tap(() => {
                 // this.toastService.success('Collection deleted');
-                this.deleteCollectionFromCache(id)
+                this.deleteCollectionFromCache(id);
             }),
-            catchError(err => throwError(() => err))
+            catchError((err) => throwError(() => err))
         );
     }
 
     private updateOrCreateCollectionInCache(updated: CreateCollectionDtoResponse): void {
-        const { rag_configurations, ...rest } = updated;
+        const rest = { ...updated };
+        delete (rest as Record<string, unknown>)['rag_configurations'];
 
-        this.collectionsSignal.update(collections => {
-            const index = collections.findIndex(c => c.collection_id === rest.collection_id);
+        this.collectionsSignal.update((collections) => {
+            const index = collections.findIndex((c) => c.collection_id === rest.collection_id);
             if (index >= 0) {
                 collections[index] = rest;
             } else {
@@ -102,8 +109,8 @@ export class CollectionsStorageService {
             return [...collections];
         });
 
-        this.fullCollectionsSignal.update(collections => {
-            const index = collections.findIndex(c => c.collection_id === updated.collection_id);
+        this.fullCollectionsSignal.update((collections) => {
+            const index = collections.findIndex((c) => c.collection_id === updated.collection_id);
             if (index >= 0) {
                 collections[index] = updated;
             } else {
@@ -115,15 +122,11 @@ export class CollectionsStorageService {
 
     private deleteCollectionFromCache(id: number) {
         const currentCollections = this.collectionsSignal();
-        const updatedCollections = currentCollections.filter(
-            (p) => p.collection_id !== id
-        );
+        const updatedCollections = currentCollections.filter((p) => p.collection_id !== id);
         this.collectionsSignal.set(updatedCollections);
 
         const currentFullCollections = this.fullCollectionsSignal();
-        const updatedFullCollections = currentFullCollections.filter(
-            (p) => p.collection_id !== id
-        );
+        const updatedFullCollections = currentFullCollections.filter((p) => p.collection_id !== id);
         this.fullCollectionsSignal.set(updatedFullCollections);
     }
 }

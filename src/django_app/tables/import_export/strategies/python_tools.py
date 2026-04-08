@@ -24,6 +24,9 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
     def get_instance(self, entity_id: int) -> PythonCodeTool:
         return PythonCodeTool.objects.filter(id=entity_id).first()
 
+    def get_preview_data(self, instance: PythonCodeTool) -> dict:
+        return {"id": instance.id, "name": instance.name}
+
     def extract_dependencies_from_instance(self, instance) -> dict[str, list[int]]:
         return {}
 

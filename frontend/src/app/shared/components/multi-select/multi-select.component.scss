@@ -12,7 +12,7 @@
 
     &__icon {
         &--active {
-            color: var(--accent-color)
+            color: var(--accent-color);
         }
     }
 
@@ -24,7 +24,7 @@
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
-        box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
         z-index: 1005;
         height: 475px;
         width: 338px;

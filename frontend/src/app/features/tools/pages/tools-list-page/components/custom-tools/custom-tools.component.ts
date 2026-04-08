@@ -1,7 +1,7 @@
 import { Dialog, DialogModule } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, Input, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationDialogService, LoadingSpinnerComponent } from '@shared/components';
 
@@ -75,7 +75,6 @@ export class CustomToolsComponent implements OnInit {
                 next: (tools) => {
                     this.allTools.set(tools);
                     this.isLoaded.set(true);
-                    console.log(`✅ Custom tools loaded: ${tools.length} tools available`);
                 },
                 error: (err: HttpErrorResponse) => {
                     this.error.set('Failed to load custom tools. Please try again later.');
@@ -125,7 +124,6 @@ export class CustomToolsComponent implements OnInit {
                                 this.allTools.set(currentTools.filter((t) => t.id !== tool.id));
 
                                 this.toastService.success(`Tool "${tool.name}" has been deleted successfully.`);
-                                console.log(`✅ Tool "${tool.name}" deleted successfully`);
                             },
                             error: (err: HttpErrorResponse) => {
                                 this.toastService.error(`Failed to delete tool "${tool.name}". Please try again.`);
@@ -140,6 +138,5 @@ export class CustomToolsComponent implements OnInit {
     public addNewTool(tool: GetPythonCodeToolRequest): void {
         const currentTools = this.allTools();
         this.allTools.set([tool, ...currentTools]);
-        console.log(`✅ New custom tool "${tool.name}" added to list`);
     }
 }

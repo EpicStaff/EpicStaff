@@ -1,44 +1,44 @@
 <div class="dialog-wrapper">
-  <div class="dialog-header">
-    <h2>Sessions for {{ flow.name }}</h2>
-    <button class="icon-btn" aria-label="Close dialog" (click)="dialogRef.close()">
-      <app-svg-icon icon="x" size="1.5rem"></app-svg-icon>
-    </button>
-  </div>
-
-  <div class="dialog-content">
-    <div class="filter-controls">
-      <app-flow-session-status-filter-dropdown
-        [value]="statusFilter()"
-        (valueChange)="onStatusFilterChange($event)"
-      >
-      </app-flow-session-status-filter-dropdown>
+    <div class="dialog-header">
+        <h2>Sessions for {{ flow.name }}</h2>
+        <button class="icon-btn" aria-label="Close dialog" (click)="dialogRef.close()">
+            <app-svg-icon icon="x" size="1.5rem"></app-svg-icon>
+        </button>
     </div>
 
-    <div class="table-container">
-      <app-flow-sessions-table
-        [sessions]="sessions()"
-        [flow]="flow"
-        [isLoading]="!isLoaded()"
-        [showEmptyState]="isLoaded() && sessions().length === 0"
-        (deleteSelected)="onDeleteSelected($event)"
-        (viewSession)="onViewSession($event)"
-        (stopSession)="onStopSession($event)"
-      >
-      </app-flow-sessions-table>
-    </div>
+    <div class="dialog-content">
+        <div class="filter-controls">
+            <app-flow-session-status-filter-dropdown
+                [value]="statusFilter()"
+                (valueChange)="onStatusFilterChange($event)"
+            >
+            </app-flow-session-status-filter-dropdown>
+        </div>
 
-    @if (isLoaded() && totalCount > pageSize()) {
-    <div class="pagination-container">
-      <app-pagination-controls
-        [pageSize]="pageSize()"
-        [totalCount]="totalCount"
-        [currentPage]="currentPage()"
-        [maxPagesToShow]="5"
-        (pageChange)="onPageChange($event)"
-      >
-      </app-pagination-controls>
+        <div class="table-container">
+            <app-flow-sessions-table
+                [sessions]="sessions()"
+                [flow]="flow"
+                [isLoading]="!isLoaded()"
+                [showEmptyState]="isLoaded() && sessions().length === 0"
+                (deleteSelected)="onDeleteSelected($event)"
+                (viewSession)="onViewSession($event)"
+                (stopSession)="onStopSession($event)"
+            >
+            </app-flow-sessions-table>
+        </div>
+
+        @if (isLoaded() && totalCount > pageSize()) {
+            <div class="pagination-container">
+                <app-pagination-controls
+                    [pageSize]="pageSize()"
+                    [totalCount]="totalCount"
+                    [currentPage]="currentPage()"
+                    [maxPagesToShow]="5"
+                    (pageChange)="onPageChange($event)"
+                >
+                </app-pagination-controls>
+            </div>
+        }
     </div>
-    }
-  </div>
 </div>

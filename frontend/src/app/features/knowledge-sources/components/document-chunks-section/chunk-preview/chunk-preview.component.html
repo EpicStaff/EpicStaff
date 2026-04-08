@@ -1,25 +1,17 @@
-<div
-    #scrollContainer
-    class="chunk__items"
-    (scroll)="onScroll($event)"
->
+<div #scrollContainer class="chunk__items" (scroll)="onScroll($event)">
     <div class="chunk__id-container">
         <!--space area for chunk IDs-->
     </div>
-    <p
-        class="chunk__text-container"
-    >
+    <p class="chunk__text-container">
         @if (loading() === 'up') {
-            <span
-                [style.z-index]="chunks().length"
-                class="chunk__loader chunk__id-item chunk__id-item--odd"
-            >
+            <span [style.z-index]="chunks().length" class="chunk__loader chunk__id-item chunk__id-item--odd">
                 <span class="dot"></span>
                 <span class="dot"></span>
                 <span class="dot"></span>
             </span>
-            <span class="chunk__item chunk__item--blurred chunk__id-item--odd chunk__item--first"
-            >{{ blurredChunk }}</span>
+            <span class="chunk__item chunk__item--blurred chunk__id-item--odd chunk__item--first">{{
+                blurredChunk
+            }}</span>
         }
         @for (chunk of chunks(); track chunk.chunkIndex) {
             <span
@@ -35,7 +27,8 @@
                     class="chunk__item chunk__item--overlap"
                     [class.chunk__item--last]="$last && !loading() && !chunk.text"
                     [matTooltip]="'Overlap for chunks ' + (chunk.chunkIndex - 1) + ' and ' + chunk.chunkIndex"
-                >{{ chunk.overlap }}</span>
+                    >{{ chunk.overlap }}</span
+                >
             }
             @if (chunk.text) {
                 <span
@@ -50,7 +43,8 @@
                         'chunk__item--last': $last && !loading(),
                         'chunk__item--single': $count === 1,
                     }"
-                >{{ chunk.text }}</span>
+                    >{{ chunk.text }}</span
+                >
             }
         }
 
@@ -67,9 +61,8 @@
             <span
                 class="chunk__item chunk__item--blurred chunk__item--last"
                 [ngClass]="chunks().length % 2 !== 0 ? 'chunk__item--odd' : 'chunk__item--even'"
-
-            >{{ blurredChunk }}</span>
+                >{{ blurredChunk }}</span
+            >
         }
     </p>
 </div>
-

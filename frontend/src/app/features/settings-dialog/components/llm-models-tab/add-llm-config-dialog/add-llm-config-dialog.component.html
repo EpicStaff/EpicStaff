@@ -12,11 +12,11 @@
     </div>
 
     <div class="llm-dialog__content">
-            @if (errorMessage()) {
+        @if (errorMessage()) {
             <div class="llm-dialog__error">
-                    <p>{{ errorMessage() }}</p>
-                </div>
-            }
+                <p>{{ errorMessage() }}</p>
+            </div>
+        }
 
         <form [formGroup]="form">
             <section class="llm-dialog__section">
@@ -28,11 +28,7 @@
                         <span class="llm-dialog__label-required">*</span>
                         <app-help-tooltip text="Select the LLM provider and model" />
                     </label>
-                    <button
-                        type="button"
-                        class="llm-dialog__model-selector"
-                        (click)="openModelSelector()"
-                    >
+                    <button type="button" class="llm-dialog__model-selector" (click)="openModelSelector()">
                         @if (selectedProvider()) {
                             <app-svg-icon
                                 [icon]="getProviderIcon(selectedProvider()!.name)"
@@ -67,11 +63,7 @@
                             placeholder="Enter provider's API key"
                             formControlName="apiKey"
                         />
-                        <button
-                            type="button"
-                            class="llm-dialog__input-action"
-                            (click)="toggleApiKeyVisibility()"
-                        >
+                        <button type="button" class="llm-dialog__input-action" (click)="toggleApiKeyVisibility()">
                             <app-svg-icon
                                 [icon]="showApiKey() ? 'eye-off' : 'eye'"
                                 size="1.25rem"
@@ -92,7 +84,7 @@
                         placeholder="Enter a custom name"
                         formControlName="customName"
                     />
-            </div>
+                </div>
 
                 <div class="llm-dialog__section-divider"></div>
             </section>
@@ -152,7 +144,7 @@
                             />
                         </div>
                     </div>
-            </div>
+                </div>
 
                 <div class="llm-dialog__section-divider"></div>
             </section>
@@ -199,7 +191,7 @@
                     [decimals]="1"
                     formControlName="frequencyPenalty"
                 />
-                
+
                 <div class="llm-dialog__section-divider"></div>
             </section>
 
@@ -270,22 +262,12 @@
                 </div>
             </section>
         </form>
-            </div>
+    </div>
 
     <div class="llm-dialog__footer">
-        <app-button
-            type="outline-primary"
-            (click)="onCancel()"
-            [disabled]="isSubmitting()"
-        >
-            Cancel
-        </app-button>
-                <app-button
-                    type="primary"
-                    (click)="onSubmit()"
-            [disabled]="!isFormValid() || isSubmitting()"
-                >
+        <app-button type="outline-primary" (click)="onCancel()" [disabled]="isSubmitting()"> Cancel </app-button>
+        <app-button type="primary" (click)="onSubmit()" [disabled]="!isFormValid() || isSubmitting()">
             {{ submitButtonText() }}
-                </app-button>
+        </app-button>
     </div>
 </div>

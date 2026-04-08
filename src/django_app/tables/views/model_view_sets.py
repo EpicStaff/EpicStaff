@@ -384,10 +384,7 @@ class AgentViewSet(CopyActionMixin, ModelViewSet):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.import_export_service = ViewSetImportExportService(
-            entity_type=EntityType.AGENT,
-            export_prefix="agent",
-            filename_attr="role",
-            response_serializer_class=AgentReadSerializer,
+            entity_type=EntityType.AGENT, export_prefix="agent", filename_attr="role"
         )
 
     def get_serializer_class(self):
@@ -462,7 +459,7 @@ class AgentViewSet(CopyActionMixin, ModelViewSet):
         file_serializer.is_valid(raise_exception=True)
 
         data = self.import_export_service.import_entity(
-            file_serializer.validated_data["file"], Agent
+            file_serializer.validated_data["file"]
         )
         return Response(data, status=status.HTTP_200_OK)
 
@@ -490,10 +487,7 @@ class CrewReadWriteViewSet(CopyActionMixin, ModelViewSet):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.import_export_service = ViewSetImportExportService(
-            entity_type=EntityType.CREW,
-            export_prefix="crew",
-            filename_attr="name",
-            response_serializer_class=CrewSerializer,
+            entity_type=EntityType.CREW, export_prefix="crew", filename_attr="name"
         )
 
     @action(detail=True, methods=["get"])
@@ -506,7 +500,7 @@ class CrewReadWriteViewSet(CopyActionMixin, ModelViewSet):
         file_serializer.is_valid(raise_exception=True)
 
         data = self.import_export_service.import_entity(
-            file_serializer.validated_data["file"], Crew
+            file_serializer.validated_data["file"]
         )
         return Response(data, status=status.HTTP_200_OK)
 
@@ -715,10 +709,7 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.import_export_service = ViewSetImportExportService(
-            entity_type=EntityType.GRAPH,
-            export_prefix="graph",
-            filename_attr="name",
-            response_serializer_class=GraphSerializer,
+            entity_type=EntityType.GRAPH, export_prefix="graph", filename_attr="name"
         )
 
     def get_queryset(self):

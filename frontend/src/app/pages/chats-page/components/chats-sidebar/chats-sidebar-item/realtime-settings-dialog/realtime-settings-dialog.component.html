@@ -5,24 +5,8 @@
             <h2 class="title">Realtime Settings for {{ data.agent.role }}</h2>
             <button class="close-btn" type="button" (click)="onCancel()">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                    <line
-                        x1="18"
-                        y1="6"
-                        x2="6"
-                        y2="18"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                    />
-                    <line
-                        x1="6"
-                        y1="6"
-                        x2="18"
-                        y2="18"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                    />
+                    <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                    <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
                 </svg>
             </button>
         </div>
@@ -57,10 +41,7 @@
                     <app-transcription-config-selector
                         label="Transcription Model"
                         [configs]="transcriptionConfigs"
-                        [selectedConfigId]="
-                            settingsForm.get('realtime_transcription_config')
-                                ?.value
-                        "
+                        [selectedConfigId]="settingsForm.get('realtime_transcription_config')?.value"
                         [loading]="loadingConfigs"
                         (configChange)="onTranscriptionConfigChange($event)"
                         (createNew)="openCreateTranscriptionConfigDialog()"
@@ -115,9 +96,7 @@
                     <app-language-selector
                         label="Preferred Language"
                         [languages]="languages"
-                        [selectedLanguage]="
-                            settingsForm.get('preferredLanguage')?.value
-                        "
+                        [selectedLanguage]="settingsForm.get('preferredLanguage')?.value"
                         (languageChange)="onLanguageChange($event)"
                     ></app-language-selector>
                 </div>
@@ -145,10 +124,7 @@
                     <div class="section-header">
                         <h3>Threshold</h3>
                         <span class="slider-value">
-                            {{
-                                settingsForm.get("threshold")?.value
-                                    | number : "1.2-2"
-                            }}
+                            {{ settingsForm.get('threshold')?.value | number: '1.2-2' }}
                         </span>
                         <app-help-tooltip
                             text="Sets the similarity threshold for knowledge retrieval. Lower values return more results but may be less relevant. Higher values are more precise but may miss useful information."
@@ -175,7 +151,7 @@
                     <div class="section-header">
                         <h3>Search Limit</h3>
                         <span class="slider-value">
-                            {{ settingsForm.get("searchLimit")?.value }}
+                            {{ settingsForm.get('searchLimit')?.value }}
                         </span>
                         <app-help-tooltip
                             text="The maximum number of items to retrieve when searching for relevant information. Higher values provide more context but may slow down responses."
@@ -201,9 +177,7 @@
 
         <!-- Footer -->
         <div class="dialog-footer">
-            <button class="btn close" type="button" (click)="onCancel()">
-                Cancel
-            </button>
+            <button class="btn close" type="button" (click)="onCancel()">Cancel</button>
             <button
                 class="btn create"
                 type="button"

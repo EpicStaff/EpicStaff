@@ -1,9 +1,10 @@
+import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { ReactiveFormsModule, FormGroup } from '@angular/forms';
+import { FormGroup, ReactiveFormsModule } from '@angular/forms';
+
+import { JsonEditorComponent } from '../../../../shared/components/json-editor/json-editor.component';
 import { EndNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
-import { JsonEditorComponent } from '../../../../shared/components/json-editor/json-editor.component';
-import { CommonModule } from '@angular/common';
 
 @Component({
     standalone: true,
@@ -97,11 +98,7 @@ export class EndNodePanelComponent extends BaseSidePanel<EndNodeModel> {
         const form = this.fb.group({});
 
         const existingOutputMap = this.node().data?.output_map;
-        if (
-            existingOutputMap &&
-            typeof existingOutputMap === 'object' &&
-            Object.keys(existingOutputMap).length > 0
-        ) {
+        if (existingOutputMap && typeof existingOutputMap === 'object' && Object.keys(existingOutputMap).length > 0) {
             try {
                 this.outputMapJson = JSON.stringify(existingOutputMap, null, 2);
             } catch {
@@ -118,11 +115,7 @@ export class EndNodePanelComponent extends BaseSidePanel<EndNodeModel> {
         let parsedOutputMap: Record<string, unknown> = {};
         try {
             const parsed = JSON.parse(this.outputMapJson);
-            if (
-                parsed &&
-                typeof parsed === 'object' &&
-                !Array.isArray(parsed)
-            ) {
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
                 parsedOutputMap = parsed as Record<string, unknown>;
             }
         } catch {}

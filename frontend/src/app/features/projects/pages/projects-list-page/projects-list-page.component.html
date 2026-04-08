@@ -1,13 +1,10 @@
 <div class="projects-list-page">
     <div class="sticky-header">
         <header class="header">
-            <div class="header-titles">
+            <div class="header-titles" appHideInlineSubtitleOnOverflow>
                 <h1 class="title">
                     Projects
-                    <span class="subtitle-inline"
-                        >A project is a workspace to organize your AI agents and
-                        tasks.</span
-                    >
+                    <span class="subtitle-inline">A project is a workspace to organize your AI agents and tasks.</span>
                 </h1>
             </div>
             <div class="header-actions">
@@ -24,14 +21,14 @@
         <nav class="tabs">
             <div class="tabs-left">
                 @for (tab of tabs; track tab.link) {
-                <app-tab-button
-                    routerLink="{{ tab.link }}"
-                    routerLinkActive="active"
-                    #rla="routerLinkActive"
-                    [active]="rla.isActive"
-                >
-                    {{ tab.label }}
-                </app-tab-button>
+                    <app-tab-button
+                        routerLink="{{ tab.link }}"
+                        routerLinkActive="active"
+                        #rla="routerLinkActive"
+                        [active]="rla.isActive"
+                    >
+                        {{ tab.label }}
+                    </app-tab-button>
                 }
             </div>
             <div class="tabs-right">
@@ -48,14 +45,14 @@
                         (ngModelChange)="onSearchTermChange($event)"
                     />
                     @if (searchTerm) {
-                    <button
-                        type="button"
-                        class="clear-btn"
-                        aria-label="Clear"
-                        (click)="clearSearch()"
-                    >
-                        <app-svg-icon icon="x" size="1.1rem" />
-                    </button>
+                        <button
+                            type="button"
+                            class="clear-btn"
+                            aria-label="Clear"
+                            (click)="clearSearch()"
+                        >
+                            <app-svg-icon icon="x" size="1.1rem" />
+                        </button>
                     }
                 </div>
             </div>

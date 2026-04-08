@@ -127,18 +127,6 @@ export class FlowsLabelSidebarComponent implements OnInit {
         this.scrollChildAddRowIntoView();
     }
 
-    onTreeItemHover(event: MouseEvent): void {
-        const treeItem = event.currentTarget as HTMLElement;
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                const actions = treeItem.querySelector('.item-actions') as HTMLElement;
-                if (actions) {
-                    actions.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-                }
-            });
-        });
-    }
-
     confirmAddLabel(): void {
         const name = this.newLabelNameValue().trim();
         if (!name) {
@@ -277,18 +265,15 @@ export class FlowsLabelSidebarComponent implements OnInit {
 
     private scrollChildAddRowIntoView(): void {
         setTimeout(() => {
-            const row = this.el.nativeElement.querySelector('.add-label-row.child-add') as HTMLElement;
-            if (!row) return;
-            const buttons = row.querySelectorAll('button');
-            const lastBtn = buttons[buttons.length - 1] as HTMLElement;
-            if (lastBtn) lastBtn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            const input = this.el.nativeElement.querySelector('.add-label-row.child-add input') as HTMLElement;
+            if (input) input.scrollIntoView({ block: 'nearest', inline: 'start' });
         }, 0);
     }
 
     private scrollRenameRowIntoView(): void {
         setTimeout(() => {
-            const btn = this.el.nativeElement.querySelector('.cancel-btn') as HTMLElement;
-            if (btn) btn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            const input = this.el.nativeElement.querySelector('.rename-input') as HTMLElement;
+            if (input) input.scrollIntoView({ block: 'nearest', inline: 'start' });
         }, 0);
     }
 

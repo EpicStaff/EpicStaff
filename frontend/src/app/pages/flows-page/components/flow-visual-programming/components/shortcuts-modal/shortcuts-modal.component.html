@@ -19,23 +19,23 @@
                                 aria-hidden="true"
                             />
                         }
-                    <div class="shortcuts__header-title">{{ title() }}</div>
-                </div>
+                        <div class="shortcuts__header-title">{{ title() }}</div>
+                    </div>
 
-                <div class="shortcuts__header-right">
-                    <button
-                        type="button"
-                        class="shortcuts__size-btn"
-                        (click)="toggleSize()"
-                        [disabled]="isMediaLocked()"
-                        [attr.aria-label]="size() === 'wide' ? 'Minimize' : 'Expand'"
-                        [attr.title]="size() === 'wide' ? 'Minimize' : 'Expand'"
-                    >
-                        <app-svg-icon
-                            [icon]="size() === 'wide' ? 'arrows-minimize' : 'arrows-maximize'"
-                            size="1.25rem"
-                        />
-                    </button>
+                    <div class="shortcuts__header-right">
+                        <button
+                            type="button"
+                            class="shortcuts__size-btn"
+                            (click)="toggleSize()"
+                            [disabled]="isMediaLocked()"
+                            [attr.aria-label]="size() === 'wide' ? 'Minimize' : 'Expand'"
+                            [attr.title]="size() === 'wide' ? 'Minimize' : 'Expand'"
+                        >
+                            <app-svg-icon
+                                [icon]="size() === 'wide' ? 'arrows-minimize' : 'arrows-maximize'"
+                                size="1.25rem"
+                            />
+                        </button>
 
                         @if (showClose()) {
                             <button
@@ -44,18 +44,7 @@
                                 (click)="closed.emit()"
                                 aria-label="Close"
                             >
-                                <svg
-                                    class="shortcuts__close-icon"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                                </svg>
+                                <app-svg-icon class="shortcuts__close-icon" icon="x" size="1.25rem" />
                             </button>
                         }
                     </div>

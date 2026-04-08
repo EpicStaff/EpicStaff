@@ -1,15 +1,7 @@
-import {
-    Component,
-    ChangeDetectionStrategy,
-    input,
-    output,
-    model,
-    signal,
-    computed,
-    forwardRef,
-} from '@angular/core';
-import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, forwardRef, input, model, output, signal } from '@angular/core';
+import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+
 import { FormFieldLabelComponent } from '../form-field-label/form-field-label.component';
 
 @Component({
@@ -100,4 +92,3 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
         this.isDisabled.set(isDisabled);
     }
 }
-

@@ -1,11 +1,7 @@
-import {
-    NormalizedDocumentErrors
-} from "../components/rag-configuration/configuration-table/configuration-table.interface";
-import { UpdateNaiveRagDocumentConfigError } from "../models/naive-rag-document.model";
+import { NormalizedDocumentErrors } from '../components/rag-configuration/configuration-table/configuration-table.interface';
+import { UpdateNaiveRagDocumentConfigError } from '../models/naive-rag-document.model';
 
-export function normalizeBulkUpdateErrors(
-    errors?: UpdateNaiveRagDocumentConfigError[]
-): NormalizedDocumentErrors {
+export function normalizeBulkUpdateErrors(errors?: UpdateNaiveRagDocumentConfigError[]): NormalizedDocumentErrors {
     if (!errors?.length) return {};
 
     return errors.reduce((acc, e) => {

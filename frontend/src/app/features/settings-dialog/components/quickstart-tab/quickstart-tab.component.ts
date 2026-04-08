@@ -1,38 +1,37 @@
+import { DialogRef } from '@angular/cdk/dialog';
+import { NgIf } from '@angular/common';
 import {
-    Component,
+    AfterViewInit,
     ChangeDetectionStrategy,
     ChangeDetectorRef,
+    Component,
     ElementRef,
     ViewChild,
-    AfterViewInit,
 } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { NgIf, NgFor } from '@angular/common';
-import { DialogRef } from '@angular/cdk/dialog';
-
-// RxJS imports
-import { forkJoin, Observable, of, switchMap } from 'rxjs';
-import { EmbeddingConfigsService } from '../../../settings-dialog/services/embeddings/embedding_configs.service';
-import { EmbeddingModelsService } from '../../../settings-dialog/services/embeddings/embeddings.service';
-import { LLM_Config_Service } from '../../services/llms/llm-config.service';
-import { LLM_Models_Service } from '../../services/llms/llm-models.service';
-import { ToastService } from '../../../../services/notifications/toast.service';
-import { TranscriptionConfigsService } from '../../../transcription/services/transcription-config.service';
-import {
-    EmbeddingConfig,
-    CreateEmbeddingConfigRequest,
-} from '../../../settings-dialog/models/embeddings/embedding-config.model';
-import { EmbeddingModel } from '../../../settings-dialog/models/embeddings/embedding.model';
-import { GetLlmModelRequest } from '../../../settings-dialog/models/llms/LLM.model';
-import { CreateLLMConfigRequest } from '../../../settings-dialog/models/llms/LLM_config.model';
-import { CreateTranscriptionConfigRequest, GetRealtimeTranscriptionModelRequest } from '../../../transcription/models/transcription-config.model';
-import { RealtimeModelConfigsService } from '../../../settings-dialog/services/realtime-llms/real-time-model-config.service';
-import { RealtimeModelsService } from '../../../settings-dialog/services/realtime-llms/real-time-models.service';
 import { Router } from '@angular/router';
-import { RealtimeModel } from '../../../settings-dialog/models/realtime-voice/realtime-model.model';
-import { CreateRealtimeModelConfigRequest } from '../../../settings-dialog/models/realtime-voice/realtime-llm-config.model';
+import { forkJoin, Observable, of, switchMap } from 'rxjs';
+
+import { ToastService } from '../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
+import { EmbeddingModel } from '../../../settings-dialog/models/embeddings/embedding.model';
+import { CreateEmbeddingConfigRequest } from '../../../settings-dialog/models/embeddings/embedding-config.model';
+import { GetLlmModelRequest } from '../../../settings-dialog/models/llms/LLM.model';
+import { CreateLLMConfigRequest } from '../../../settings-dialog/models/llms/LLM_config.model';
+import { CreateRealtimeModelConfigRequest } from '../../../settings-dialog/models/realtime-voice/realtime-llm-config.model';
+import { RealtimeModel } from '../../../settings-dialog/models/realtime-voice/realtime-model.model';
+import { EmbeddingConfigsService } from '../../../settings-dialog/services/embeddings/embedding_configs.service';
+import { EmbeddingModelsService } from '../../../settings-dialog/services/embeddings/embeddings.service';
+import { RealtimeModelConfigsService } from '../../../settings-dialog/services/realtime-llms/real-time-model-config.service';
+import { RealtimeModelsService } from '../../../settings-dialog/services/realtime-llms/real-time-models.service';
+import {
+    CreateTranscriptionConfigRequest,
+    GetRealtimeTranscriptionModelRequest,
+} from '../../../transcription/models/transcription-config.model';
+import { TranscriptionConfigsService } from '../../../transcription/services/transcription-config.service';
+import { LLM_Config_Service } from '../../services/llms/llm-config.service';
+import { LLM_Models_Service } from '../../services/llms/llm-models.service';
 
 @Component({
     selector: 'app-quickstart-tab',
@@ -42,9 +41,7 @@ import { ButtonComponent } from '../../../../shared/components/buttons/button/bu
         <div class="quick-start-container">
             <div class="quick-start-header">
                 <h3 class="title">Quickstart</h3>
-                <p class="subtitle">
-                    Quickly configure your environment with OpenAI
-                </p>
+                <p class="subtitle">Quickly configure your environment with OpenAI</p>
             </div>
 
             <form [formGroup]="quickStartForm">
@@ -91,52 +88,23 @@ import { ButtonComponent } from '../../../../shared/components/buttons/button/bu
                     <div class="api-key-description">
                         <p>This API key will be used to quickly auto create:</p>
                         <ul class="description-list">
-                            <li>
-                                <span class="bullet">•</span> Models and tools
-                                configurations
-                            </li>
-                            <li>
-                                <span class="bullet">•</span> Realtime configs
-                            </li>
-                            <li>
-                                <span class="bullet">•</span> Embeddings configs
-                            </li>
-                            <li>
-                                <span class="bullet">•</span> Model defaults for
-                                projects
-                            </li>
-                            <li>
-                                <span class="bullet">•</span> Model defaults for
-                                agents
-                            </li>
-                            <li>
-                                <span class="bullet">•</span> Model defaults for
-                                tools
-                            </li>
+                            <li><span class="bullet">•</span> Models and tools configurations</li>
+                            <li><span class="bullet">•</span> Realtime configs</li>
+                            <li><span class="bullet">•</span> Embeddings configs</li>
+                            <li><span class="bullet">•</span> Model defaults for projects</li>
+                            <li><span class="bullet">•</span> Model defaults for agents</li>
+                            <li><span class="bullet">•</span> Model defaults for tools</li>
                         </ul>
                     </div>
                 </div>
             </form>
 
             <div class="dialog-footer">
-                <app-button type="secondary" (click)="onCancel()">
-                    Cancel
-                </app-button>
-                <app-button
-                    type="primary"
-                    [disabled]="!quickStartForm.get('apiKey')?.value"
-                    (click)="onQuickStart()"
-                >
+                <app-button type="secondary" (click)="onCancel()"> Cancel </app-button>
+                <app-button type="primary" [disabled]="!quickStartForm.get('apiKey')?.value" (click)="onQuickStart()">
                     <div *ngIf="isSaving" class="loader-container">
                         <svg class="spinner" viewBox="0 0 50 50">
-                            <circle
-                                class="path"
-                                cx="25"
-                                cy="25"
-                                r="20"
-                                fill="none"
-                                stroke-width="5"
-                            ></circle>
+                            <circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle>
                         </svg>
                     </div>
                     Start Building
@@ -205,7 +173,9 @@ import { ButtonComponent } from '../../../../shared/components/buttons/button/bu
                 color: var(--color-text-primary);
                 font-size: 14px;
                 line-height: 20px;
-                transition: border-color 0.2s ease, box-shadow 0.2s ease;
+                transition:
+                    border-color 0.2s ease,
+                    box-shadow 0.2s ease;
             }
 
             .text-input::placeholder {
@@ -376,82 +346,43 @@ export class QuickstartTabComponent implements AfterViewInit {
             llmModels: this.llmModelsService.getLLMModels(),
             embeddingModels: this.embeddingModelsService.getEmbeddingModels(),
             realtimeModels: this.realtimeModelsService.getAllModels(),
-            realtimeTranscriptionModels:
-                this.realtimeModelsService.getAllModels(),
+            realtimeTranscriptionModels: this.realtimeModelsService.getAllModels(),
         })
             .pipe(
                 switchMap((modelResults) => {
                     // Find LLM model by name - "gpt-4o-mini"
                     const llmModel: GetLlmModelRequest | undefined =
-                        modelResults.llmModels.find(
-                            (model) => model.name === this.llmModelName
-                        ) ||
-                        modelResults.llmModels.find(
-                            (model) =>
-                                model.llm_provider === this.openAIProviderId
-                        );
+                        modelResults.llmModels.find((model) => model.name === this.llmModelName) ||
+                        modelResults.llmModels.find((model) => model.llm_provider === this.openAIProviderId);
 
                     // Find embedding model by name - "text-embedding-3-small"
                     const embeddingModel: EmbeddingModel | undefined =
+                        modelResults.embeddingModels.find((model) => model.name === this.embeddingModelName) ||
                         modelResults.embeddingModels.find(
-                            (model) => model.name === this.embeddingModelName
-                        ) ||
-                        modelResults.embeddingModels.find(
-                            (model) =>
-                                model.embedding_provider ===
-                                this.openAIProviderId
+                            (model) => model.embedding_provider === this.openAIProviderId
                         );
 
                     // Find realtime model by name - "gpt-4o-mini-realtime-preview-2024-12-17"
                     const realtimeModel: RealtimeModel | undefined =
-                        modelResults.realtimeModels.find(
-                            (model) => model.name === this.realtimeModelName
-                        ) ||
-                        modelResults.realtimeModels.find(
-                            (model) => model.provider === this.openAIProviderId
-                        );
+                        modelResults.realtimeModels.find((model) => model.name === this.realtimeModelName) ||
+                        modelResults.realtimeModels.find((model) => model.provider === this.openAIProviderId);
 
                     // Find transcription model that matches OpenAI
-                    const transcriptionModel:
-                        | GetRealtimeTranscriptionModelRequest
-                        | undefined =
+                    const transcriptionModel: GetRealtimeTranscriptionModelRequest | undefined =
                         modelResults.realtimeTranscriptionModels.find(
                             (model) => model.provider === this.openAIProviderId
                         );
 
-                    console.log('Found models for OpenAI:', {
-                        llmModel: llmModel
-                            ? `${llmModel.name} (ID: ${llmModel.id})`
-                            : 'None',
-                        embeddingModel: embeddingModel
-                            ? `${embeddingModel.name} (ID: ${embeddingModel.id})`
-                            : 'None',
-                        realtimeModel: realtimeModel
-                            ? `${realtimeModel.name} (ID: ${realtimeModel.id})`
-                            : 'None',
-                        transcriptionModel: transcriptionModel
-                            ? `${transcriptionModel.name} (ID: ${transcriptionModel.id})`
-                            : 'None',
-                    });
-
                     // Now fetch existing configurations to find unique names
                     return forkJoin({
-                        llmConfigs:
-                            this.llmConfigService.getConfigsByProviderId(
-                                this.openAIProviderId
-                            ),
-                        embeddingConfigs:
-                            this.embeddingConfigsService.getEmbeddingConfigsByProviderId(
-                                this.openAIProviderId
-                            ),
-                        realtimeConfigs:
-                            this.realtimeModelConfigsService.getConfigsByProviderId(
-                                this.openAIProviderId
-                            ),
-                        transcriptionConfigs:
-                            this.transcriptionConfigsService.getTranscriptionConfigsByProviderId(
-                                this.openAIProviderId
-                            ),
+                        llmConfigs: this.llmConfigService.getConfigsByProviderId(this.openAIProviderId),
+                        embeddingConfigs: this.embeddingConfigsService.getEmbeddingConfigsByProviderId(
+                            this.openAIProviderId
+                        ),
+                        realtimeConfigs: this.realtimeModelConfigsService.getConfigsByProviderId(this.openAIProviderId),
+                        transcriptionConfigs: this.transcriptionConfigsService.getTranscriptionConfigsByProviderId(
+                            this.openAIProviderId
+                        ),
                         models: of({
                             llm: llmModel,
                             embedding: embeddingModel,
@@ -467,27 +398,23 @@ export class QuickstartTabComponent implements AfterViewInit {
 
                     const configsToCreate: Array<{
                         type: string;
-                        observable: Observable<any>;
+                        observable: Observable<unknown>;
                     }> = [];
                     const missingModels: string[] = [];
 
                     const getUniqueCustomName = (
                         configType: string,
-                        existingConfigs: any[]
+                        existingConfigs: { custom_name?: string }[]
                     ): string => {
                         let baseCustomName = 'quickstart';
                         let customName = baseCustomName;
                         let counter = 2;
 
-                        let nameExists = existingConfigs.some(
-                            (config) => config.custom_name === customName
-                        );
+                        let nameExists = existingConfigs.some((config) => config.custom_name === customName);
 
                         while (nameExists) {
                             customName = `${baseCustomName}${counter}`;
-                            nameExists = existingConfigs.some(
-                                (config) => config.custom_name === customName
-                            );
+                            nameExists = existingConfigs.some((config) => config.custom_name === customName);
                             counter++;
                         }
 
@@ -495,10 +422,7 @@ export class QuickstartTabComponent implements AfterViewInit {
                     };
 
                     if (models.llm) {
-                        const llmCustomName = getUniqueCustomName(
-                            'LLM',
-                            results.llmConfigs
-                        );
+                        const llmCustomName = getUniqueCustomName('LLM', results.llmConfigs);
                         const llmConfig: CreateLLMConfigRequest = {
                             model: models.llm.id,
                             custom_name: llmCustomName,
@@ -507,18 +431,14 @@ export class QuickstartTabComponent implements AfterViewInit {
                         };
                         configsToCreate.push({
                             type: 'LLM',
-                            observable:
-                                this.llmConfigService.createConfig(llmConfig),
+                            observable: this.llmConfigService.createConfig(llmConfig),
                         });
                     } else {
                         missingModels.push('LLM');
                     }
 
                     if (models.embedding) {
-                        const embeddingCustomName = getUniqueCustomName(
-                            'Embedding',
-                            results.embeddingConfigs
-                        );
+                        const embeddingCustomName = getUniqueCustomName('Embedding', results.embeddingConfigs);
                         const embeddingConfig: CreateEmbeddingConfigRequest = {
                             model: models.embedding.id,
                             custom_name: embeddingCustomName,
@@ -528,32 +448,22 @@ export class QuickstartTabComponent implements AfterViewInit {
                         };
                         configsToCreate.push({
                             type: 'Embedding',
-                            observable:
-                                this.embeddingConfigsService.createEmbeddingConfig(
-                                    embeddingConfig
-                                ),
+                            observable: this.embeddingConfigsService.createEmbeddingConfig(embeddingConfig),
                         });
                     } else {
                         missingModels.push('Embedding');
                     }
 
                     if (models.realtime) {
-                        const realtimeCustomName = getUniqueCustomName(
-                            'Realtime',
-                            results.realtimeConfigs
-                        );
-                        const realtimeConfig: CreateRealtimeModelConfigRequest =
-                            {
-                                realtime_model: models.realtime.id,
-                                api_key: apiKey,
-                                custom_name: realtimeCustomName,
-                            };
+                        const realtimeCustomName = getUniqueCustomName('Realtime', results.realtimeConfigs);
+                        const realtimeConfig: CreateRealtimeModelConfigRequest = {
+                            realtime_model: models.realtime.id,
+                            api_key: apiKey,
+                            custom_name: realtimeCustomName,
+                        };
                         configsToCreate.push({
                             type: 'Realtime',
-                            observable:
-                                this.realtimeModelConfigsService.createConfig(
-                                    realtimeConfig
-                                ),
+                            observable: this.realtimeModelConfigsService.createConfig(realtimeConfig),
                         });
                     } else {
                         missingModels.push('Realtime');
@@ -564,19 +474,14 @@ export class QuickstartTabComponent implements AfterViewInit {
                             'Transcription',
                             results.transcriptionConfigs
                         );
-                        const transcriptionConfig: CreateTranscriptionConfigRequest =
-                            {
-                                realtime_transcription_model:
-                                    models.transcription.id,
-                                api_key: apiKey,
-                                custom_name: transcriptionCustomName,
-                            };
+                        const transcriptionConfig: CreateTranscriptionConfigRequest = {
+                            realtime_transcription_model: models.transcription.id,
+                            api_key: apiKey,
+                            custom_name: transcriptionCustomName,
+                        };
                         configsToCreate.push({
                             type: 'Transcription',
-                            observable:
-                                this.transcriptionConfigsService.createTranscriptionConfig(
-                                    transcriptionConfig
-                                ),
+                            observable: this.transcriptionConfigsService.createTranscriptionConfig(transcriptionConfig),
                         });
                     } else {
                         missingModels.push('Transcription');
@@ -586,39 +491,22 @@ export class QuickstartTabComponent implements AfterViewInit {
                         this.isSaving = false;
                         this.cdr.markForCheck();
 
-                        this.toastService.warning(
-                            `No available models found for OpenAI: ${missingModels.join(
-                                ', '
-                            )}`
-                        );
+                        this.toastService.warning(`No available models found for OpenAI: ${missingModels.join(', ')}`);
                         return;
                     }
 
-                    forkJoin(
-                        configsToCreate.map((item) => item.observable)
-                    ).subscribe({
-                        next: (createdResults) => {
+                    forkJoin(configsToCreate.map((item) => item.observable)).subscribe({
+                        next: () => {
                             this.isSaving = false;
                             this.cdr.markForCheck();
 
-                            console.log(
-                                'QuickStart configurations created:',
-                                createdResults
-                            );
-
                             if (missingModels.length > 0) {
                                 this.toastService.info(
-                                    `Some models not available for OpenAI: ${missingModels.join(
-                                        ', '
-                                    )}`
+                                    `Some models not available for OpenAI: ${missingModels.join(', ')}`
                                 );
                             }
 
-                            this.toastService.success(
-                                `QuickStart setup completed`,
-                                5000,
-                                'top-center'
-                            );
+                            this.toastService.success(`QuickStart setup completed`, 5000, 'top-center');
 
                             this.dialogRef.close('quickstart-complete');
                         },
@@ -626,13 +514,8 @@ export class QuickstartTabComponent implements AfterViewInit {
                             this.isSaving = false;
                             this.cdr.markForCheck();
 
-                            console.error(
-                                'Error creating QuickStart configurations:',
-                                error
-                            );
-                            this.toastService.error(
-                                'Failed to create QuickStart configurations'
-                            );
+                            console.error('Error creating QuickStart configurations:', error);
+                            this.toastService.error('Failed to create QuickStart configurations');
                         },
                     });
                 },
@@ -640,13 +523,8 @@ export class QuickstartTabComponent implements AfterViewInit {
                     this.isSaving = false;
                     this.cdr.markForCheck();
 
-                    console.error(
-                        'Error fetching models or checking existing configurations:',
-                        error
-                    );
-                    this.toastService.error(
-                        'Failed to set up QuickStart configurations'
-                    );
+                    console.error('Error fetching models or checking existing configurations:', error);
+                    this.toastService.error('Failed to set up QuickStart configurations');
                 },
             });
     }

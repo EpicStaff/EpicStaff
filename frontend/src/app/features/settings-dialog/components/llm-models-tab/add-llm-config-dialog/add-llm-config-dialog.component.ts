@@ -81,8 +81,8 @@ export class AddLlmConfigDialogComponent implements OnInit {
         topP: [LLM_FORM_DEFAULTS.topP, [Validators.min(0.1)]],
         presencePenalty: [LLM_FORM_DEFAULTS.presencePenalty],
         frequencyPenalty: [LLM_FORM_DEFAULTS.frequencyPenalty],
-        maxTokens: [LLM_FORM_DEFAULTS.maxTokens, [Validators.required, Validators.min(500)]],
-        timeout: [LLM_FORM_DEFAULTS.timeout, [Validators.required, Validators.min(1)]],
+        maxTokens: [LLM_FORM_DEFAULTS.maxTokens, [Validators.required, Validators.min(500), Validators.max(128000)]],
+        timeout: [LLM_FORM_DEFAULTS.timeout, [Validators.required, Validators.min(1), Validators.max(600)]],
         seed: [LLM_FORM_DEFAULTS.seed, [Validators.min(-2147483648), Validators.max(2147483647)]],
         headers: this.fb.array([this.createHeaderGroup()]),
     });

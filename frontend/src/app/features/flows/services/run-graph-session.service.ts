@@ -1,40 +1,40 @@
+import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { map, switchMap, tap } from 'rxjs/operators';
-import { FlowsApiService } from './flows-api.service';
+
 import { CrewNodeService } from '../../../pages/flows-page/components/flow-visual-programming/services/crew-node.service';
 import { ConfigService } from '../../../services/config/config.service';
+import { FlowsApiService } from './flows-api.service';
 
 interface RunGraphResponse {
-  session_id: number;
+    session_id: number;
 }
 
 @Injectable({
-  providedIn: 'root',
+    providedIn: 'root',
 })
 export class RunGraphService {
-  constructor(
-    private http: HttpClient,
-    private graphService: FlowsApiService,
-    private crewNodeService: CrewNodeService,
-    private configService: ConfigService
-  ) { }
+    constructor(
+        private http: HttpClient,
+        private graphService: FlowsApiService,
+        private crewNodeService: CrewNodeService,
+        private configService: ConfigService
+    ) {}
 
-  private get apiUrl(): string {
-    return this.configService.apiUrl;
-  }
+    private get apiUrl(): string {
+        return this.configService.apiUrl;
+    }
 
-  runGraph(graphId: number, initialState?: any): Observable<RunGraphResponse> {
-    const url = `${this.apiUrl}run-session/`;
-    const formData = new FormData();
-    formData.append('graph_id', graphId.toString());
-    formData.append('initial_state', JSON.stringify(initialState || {}));
+    runGraph(graphId: number, initialState?: Record<string, unknown>): Observable<RunGraphResponse> {
+        const url = `${this.apiUrl}run-session/`;
+        const formData = new FormData();
+        formData.append('graph_id', graphId.toString());
+        formData.append('initial_state', JSON.stringify(initialState || {}));
 
-    return this.http.post<RunGraphResponse>(url, formData);
-  }
+        return this.http.post<RunGraphResponse>(url, formData);
+    }
 
-  /*
+    /*
   runProject(projectId: number, initialState?: any): Observable<{ graphId: number; sessionId: number }> {
     // Create a new graph with the provided properties
     const graphRequest: CreateGraphDtoRequest = {

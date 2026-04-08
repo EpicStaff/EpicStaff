@@ -1,5 +1,5 @@
 export interface ToolCategory {
-  name: string;
-  icon: string;
-  toolIds: number[];
+    name: string;
+    icon: string;
+    toolIds: number[];
 }

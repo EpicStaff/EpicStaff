@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { AbstractControl, FormArray, FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -67,15 +67,19 @@ interface InputMapPair {
                                         [activeColor]="activeColor"
                                     ></app-custom-input>
 
-                                    <!-- <div class="stream-config-section" formGroupName="stream_config">
+                                    <div class="stream-config-section" formGroupName="stream_config">
                                         <span class="section-label">Streaming to EpicChat</span>
                                         <div class="checkbox-list">
                                             <label class="checkbox-item">
-                                                <input type="checkbox" formControlName="execution_status" [style.accent-color]="activeColor" />
+                                                <input
+                                                    type="checkbox"
+                                                    formControlName="execution_status"
+                                                    [style.accent-color]="activeColor"
+                                                />
                                                 <span>Execution status</span>
                                             </label>
                                         </div>
-                                    </div> -->
+                                    </div>
                                 </div>
                             }
 
@@ -139,15 +143,19 @@ interface InputMapPair {
                                 [activeColor]="activeColor"
                             ></app-custom-input>
 
-                            <!-- <div class="stream-config-section" formGroupName="stream_config">
+                            <div class="stream-config-section" formGroupName="stream_config">
                                 <span class="section-label">Streaming to EpicChat</span>
                                 <div class="checkbox-list">
                                     <label class="checkbox-item">
-                                        <input type="checkbox" formControlName="execution_status" [style.accent-color]="activeColor" />
+                                        <input
+                                            type="checkbox"
+                                            formControlName="execution_status"
+                                            [style.accent-color]="activeColor"
+                                        />
                                         <span>Execution status</span>
                                     </label>
                                 </div>
-                            </div> -->
+                            </div>
 
                             <!-- Code Editor Section -->
                             <div class="code-editor-section">
@@ -477,7 +485,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
     private getValidInputPairs(): AbstractControl[] {
         return this.inputMapPairs.controls.filter((control) => {
-            const value = control.value;
+            const value = control.value as InputMapPair;
             return value.key?.trim() !== '' || value.value?.trim() !== '';
         });
     }

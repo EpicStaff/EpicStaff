@@ -1,4 +1,4 @@
-import { WebhookTriggerModel } from "../../../../../visual-programming/core/models/webhook-trigger.model";
+import { WebhookTriggerModel } from '../../../../../visual-programming/core/models/webhook-trigger.model';
 
 export interface TelegramTriggerField {
     field_name: string;
@@ -7,7 +7,7 @@ export interface TelegramTriggerField {
 }
 
 export interface TelegramTriggerFieldWithModel extends TelegramTriggerField {
-    model: any;
+    model: unknown;
 }
 
 export type TelegramFieldParent = 'message' | 'callback_query';
@@ -30,7 +30,7 @@ export interface CreateTelegramTriggerNodeRequest {
     telegram_bot_api_key: string;
     webhook_trigger: WebhookTriggerModel | null;
     fields: CreateTelegramTriggerNodeField[];
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
 }
 
 export interface TelegramTriggerNodeField {
@@ -46,6 +46,6 @@ export interface GetTelegramTriggerNodeRequest {
     graph: number;
     telegram_bot_api_key: string;
     fields: TelegramTriggerNodeField[];
-    metadata: Record<string, any>;
+    metadata: Record<string, unknown>;
     webhook_trigger: WebhookTriggerModel | null;
 }

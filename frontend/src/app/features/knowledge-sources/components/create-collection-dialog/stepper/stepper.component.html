@@ -3,9 +3,9 @@
         <div
             class="stepper__step"
             [ngClass]="{
-        'stepper__step--active': i === currentStep(),
-        'stepper__step--completed': i < currentStep()
-      }"
+                'stepper__step--active': i === currentStep(),
+                'stepper__step--completed': i < currentStep(),
+            }"
             [ngStyle]="{ width: `calc(100% / ${steps().length})` }"
         >
             <div class="stepper__circle">

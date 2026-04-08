@@ -1,25 +1,32 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
+
+import { CollapseOnOverflowDirective } from '../../directives/collapse-on-overflow.directive';
 import { Spinner2Component } from '../spinner-type2/spinner.component';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
-  selector: 'app-save-with-indicator',
-  imports: [ CommonModule, Spinner2Component, AppSvgIconComponent ],
-  templateUrl: './save-with-indicator.component.html',
-  styleUrl: './save-with-indicator.component.scss',
-  changeDetection: ChangeDetectionStrategy.OnPush
+    selector: 'app-save-with-indicator',
+    imports: [CommonModule, Spinner2Component, AppSvgIconComponent, CollapseOnOverflowDirective],
+    templateUrl: './save-with-indicator.component.html',
+    styleUrl: './save-with-indicator.component.scss',
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SaveWithIndicatorComponent {
-  @Input() isSaving = false;
-  @Input() disabled = false;
-  @Input() hasUnsavedChanges = false;
-  @Input() label = 'Save';
+    @Input() isSaving = false;
+    @Input() disabled = false;
+    @Input() hasUnsavedChanges = false;
+    @Input() label = 'Save';
 
-  @Output() save = new EventEmitter<void>();
+    @Output() save = new EventEmitter<void>();
+    public collapseLabel = false;
 
-  onSave(): void {
-    if (this.disabled) return;
-    this.save.emit();
-  }
+    onSave(): void {
+        if (this.disabled) return;
+        this.save.emit();
+    }
+
+    public onCollapseChange(collapsed: boolean): void {
+        this.collapseLabel = collapsed;
+    }
 }

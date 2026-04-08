@@ -2,6 +2,7 @@ from tables.import_export.enums import EntityType
 
 
 MAIN_ENTITY_KEY = "main_entity"
+NODE_MAPPING_KEY = "node"
 
 # Entities will be imported from top to bottom based on this list
 DEPENDENCY_ORDER = (

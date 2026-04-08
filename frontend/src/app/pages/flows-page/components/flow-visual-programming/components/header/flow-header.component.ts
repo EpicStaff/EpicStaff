@@ -2,16 +2,14 @@ import { Dialog as CdkDialog } from '@angular/cdk/dialog';
 import { DialogModule } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output } from '@angular/core';
-import { RouterModule } from '@angular/router';
-import { Router } from '@angular/router';
+import { Router, RouterModule } from '@angular/router';
 
 import { FlowRenameDialogComponent } from '../../../../../../features/flows/components/flow-rename-dialog/flow-rename-dialog.component';
 import { GraphDto } from '../../../../../../features/flows/models/graph.model';
-import { RunGraphService } from '../../../../../../features/flows/services/run-graph-session.service';
-import { ToastService } from '../../../../../../services/notifications/toast.service';
+// import { RunGraphService } from '../../../../../../features/flows/services/run-graph-session.service';
+// import { ToastService } from '../../../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { Spinner2Component } from '../../../../../../shared/components/spinner-type2/spinner.component';
-import { FlowService } from '../../../../../../visual-programming/services/flow.service';
 
 @Component({
     selector: 'app-flow-header',

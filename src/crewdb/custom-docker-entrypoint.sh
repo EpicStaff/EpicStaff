@@ -153,15 +153,13 @@ grant_manager_permissions() {
 
     echo "[manager] Granting table permissions..."
     psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
--- Revoke stale permissions first
-REVOKE ALL ON ALL TABLES IN SCHEMA public FROM "${manager_user}";
-
 DO \$\$
 BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'tables_session'
     ) THEN
+        REVOKE ALL ON TABLE tables_session FROM "${manager_user}";
         GRANT SELECT ON TABLE tables_session TO "${manager_user}";
         RAISE NOTICE '[manager] Granted SELECT on tables_session';
     ELSE
@@ -179,12 +177,9 @@ grant_knowledge_permissions() {
 
     echo "[knowledge] Granting table permissions..."
     psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
-REVOKE ALL ON ALL TABLES IN SCHEMA public FROM "${knowledge_user}";
-
 DO \$\$
 DECLARE
     tbl  text;
-    seq  text;
 
     -- Read-only tables
     ro_tables text[] := ARRAY[
@@ -210,7 +205,22 @@ DECLARE
         'tables_naiveragembedding'
     ];
 
+    all_managed text[] := ARRAY[
+        'tables_provider','tables_embeddingmodel','tables_embeddingconfig',
+        'tables_sourcecollection','tables_documentmetadata',
+        'tables_documentcontent','tables_baseragtype',
+        'tables_naiverag','tables_naiveragdocumentconfig',
+        'tables_naiveragchunk','tables_naiveragpreviewchunk','tables_naiveragembedding'
+    ];
+
 BEGIN
+    -- Revoke stale permissions only on tables this function manages
+    FOREACH tbl IN ARRAY all_managed LOOP
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name=tbl) THEN
+            EXECUTE format('REVOKE ALL ON TABLE %I FROM %I', tbl, '${knowledge_user}');
+        END IF;
+    END LOOP;
+
     FOREACH tbl IN ARRAY ro_tables LOOP
         IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name=tbl) THEN
             EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl, '${knowledge_user}');
@@ -255,14 +265,13 @@ grant_realtime_permissions() {
 
     echo "[realtime] Granting table permissions..."
     psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
-REVOKE ALL ON ALL TABLES IN SCHEMA public FROM "${realtime_user}";
-
 DO \$\$
 BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'realtime_session_items'
     ) THEN
+        REVOKE ALL ON TABLE realtime_session_items FROM "${realtime_user}";
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE realtime_session_items TO "${realtime_user}";
         RAISE NOTICE '[realtime] CRUD granted on realtime_session_items';
 
@@ -285,14 +294,13 @@ grant_crew_permissions() {
 
     echo "[crew] Granting table permissions..."
     psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
-REVOKE ALL ON ALL TABLES IN SCHEMA public FROM "${crew_user}";
-
 DO \$\$
 BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'tables_memorydatabase'
     ) THEN
+        REVOKE ALL ON TABLE tables_memorydatabase FROM "${crew_user}";
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tables_memorydatabase TO "${crew_user}";
         RAISE NOTICE '[crew] CRUD granted on tables_memorydatabase';
     ELSE
@@ -328,10 +336,125 @@ all_tables_exist() {
     return 0
 }
 
+# EVENT TRIGGER SETUP
+# Creates PostgreSQL event triggers that auto-grant permissions when
+# Django migrations create tables/sequences. Eliminates the race condition
+# where Phase 2 polling could miss newly created objects.
+# Uses CREATE OR REPLACE so it is safe to call on every container start.
+
+install_event_triggers() {
+    local manager_user="${DB_MANAGER_USER}"
+    local knowledge_user="${DB_KNOWLEDGE_USER}"
+    local realtime_user="${DB_REALTIME_USER}"
+    local crew_user="${DB_CREW_USER}"
+
+    echo "[triggers] Installing event triggers for auto-grant..."
+    psql -U "${POSTGRES_USER:-postgres}" -d "$TARGET_DB" -p "${DB_PORT:-5432}" <<EOF
+-- Auto-grant table permissions on CREATE TABLE
+CREATE OR REPLACE FUNCTION auto_grant_table_permissions()
+RETURNS event_trigger
+LANGUAGE plpgsql
+AS \$func\$
+DECLARE
+    obj record;
+    tbl_name text;
+BEGIN
+    FOR obj IN SELECT * FROM pg_event_trigger_ddl_commands()
+                WHERE command_tag = 'CREATE TABLE'
+    LOOP
+        tbl_name := split_part(obj.object_identity, '.', 2);
+
+        -- manager: SELECT only
+        IF tbl_name = 'tables_session' THEN
+            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${manager_user}');
+            RAISE NOTICE '[auto-grant] SELECT on % to ${manager_user}', tbl_name;
+        END IF;
+
+        -- knowledge: read-only tables
+        IF tbl_name IN ('tables_provider','tables_embeddingmodel','tables_embeddingconfig',
+                         'tables_sourcecollection','tables_documentmetadata',
+                         'tables_documentcontent','tables_baseragtype') THEN
+            EXECUTE format('GRANT SELECT ON TABLE %I TO %I', tbl_name, '${knowledge_user}');
+            RAISE NOTICE '[auto-grant] SELECT on % to ${knowledge_user}', tbl_name;
+        END IF;
+
+        -- knowledge: SELECT + UPDATE
+        IF tbl_name IN ('tables_naiverag','tables_naiveragdocumentconfig') THEN
+            EXECUTE format('GRANT SELECT, UPDATE ON TABLE %I TO %I', tbl_name, '${knowledge_user}');
+            RAISE NOTICE '[auto-grant] SELECT,UPDATE on % to ${knowledge_user}', tbl_name;
+        END IF;
+
+        -- knowledge: full CRUD
+        IF tbl_name IN ('tables_naiveragchunk','tables_naiveragpreviewchunk','tables_naiveragembedding') THEN
+            EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %I TO %I', tbl_name, '${knowledge_user}');
+            RAISE NOTICE '[auto-grant] CRUD on % to ${knowledge_user}', tbl_name;
+        END IF;
+
+        -- realtime: full CRUD
+        IF tbl_name = 'realtime_session_items' THEN
+            EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %I TO %I', tbl_name, '${realtime_user}');
+            RAISE NOTICE '[auto-grant] CRUD on % to ${realtime_user}', tbl_name;
+        END IF;
+
+        -- crew: full CRUD
+        IF tbl_name = 'tables_memorydatabase' THEN
+            EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %I TO %I', tbl_name, '${crew_user}');
+            RAISE NOTICE '[auto-grant] CRUD on % to ${crew_user}', tbl_name;
+        END IF;
+    END LOOP;
+END;
+\$func\$;
+
+-- Auto-grant sequence permissions on CREATE SEQUENCE
+CREATE OR REPLACE FUNCTION auto_grant_sequence_permissions()
+RETURNS event_trigger
+LANGUAGE plpgsql
+AS \$func\$
+DECLARE
+    obj record;
+    seq_name text;
+BEGIN
+    FOR obj IN SELECT * FROM pg_event_trigger_ddl_commands()
+                WHERE command_tag = 'CREATE SEQUENCE'
+    LOOP
+        seq_name := split_part(obj.object_identity, '.', 2);
+
+        -- knowledge: naiveragchunk sequence
+        IF seq_name = 'tables_naiveragchunk_chunk_id_seq' THEN
+            EXECUTE format('GRANT USAGE, SELECT, UPDATE ON SEQUENCE %I TO %I', seq_name, '${knowledge_user}');
+            RAISE NOTICE '[auto-grant] USAGE,SELECT,UPDATE on % to ${knowledge_user}', seq_name;
+        END IF;
+
+        -- realtime: session_items sequence
+        IF seq_name = 'realtime_session_items_id_seq' THEN
+            EXECUTE format('GRANT USAGE ON SEQUENCE %I TO %I', seq_name, '${realtime_user}');
+            RAISE NOTICE '[auto-grant] USAGE on % to ${realtime_user}', seq_name;
+        END IF;
+    END LOOP;
+END;
+\$func\$;
+
+-- Create or replace event triggers (DROP + CREATE since ALTER is not supported)
+DROP EVENT TRIGGER IF EXISTS auto_grant_on_create_table;
+CREATE EVENT TRIGGER auto_grant_on_create_table
+    ON ddl_command_end
+    WHEN TAG IN ('CREATE TABLE')
+    EXECUTE FUNCTION auto_grant_table_permissions();
+
+DROP EVENT TRIGGER IF EXISTS auto_grant_on_create_sequence;
+CREATE EVENT TRIGGER auto_grant_on_create_sequence
+    ON ddl_command_end
+    WHEN TAG IN ('CREATE SEQUENCE')
+    EXECUTE FUNCTION auto_grant_sequence_permissions();
+EOF
+    echo "[triggers] Event triggers installed"
+}
+
 # BACKGROUND WORKER
-# Phase 1: Wait for postgres → create roles immediately.
-# Phase 2: Wait for tables (created by Django migrations) → grant permissions.
-# No dependency on Django health endpoint at all.
+# Phase 1: Wait for postgres → create roles + install event triggers.
+# Phase 2: Wait for tables (created by Django migrations) → grant permissions
+#           for tables that already exist (catch-up on restart).
+# Event triggers handle the race condition for newly created tables.
 
 background_setup() {
     (
@@ -352,7 +475,8 @@ background_setup() {
         create_knowledge_user
         create_realtime_user
         create_crew_user
-        echo "=== [setup] Phase 1 complete: all roles created ==="
+        install_event_triggers
+        echo "=== [setup] Phase 1 complete: all roles created, event triggers installed ==="
 
         # Phase 2 — wait for Django to run migrations, then grant permissions
         echo "=== [setup] Phase 2: Waiting for Django to create tables via migrations ==="

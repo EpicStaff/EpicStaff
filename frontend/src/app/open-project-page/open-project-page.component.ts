@@ -7,6 +7,7 @@ import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
+    computed,
     DestroyRef,
     HostListener,
     Input,
@@ -69,8 +70,8 @@ export const expandCollapseAnimation = trigger('expandCollapse', [
 interface SectionConfig {
     id: string;
     title: string;
-    component: Type<any>;
-    inputs?: Record<string, any>;
+    component: Type<unknown>;
+    inputs?: Record<string, unknown>;
     showCount?: boolean;
     count?: number;
     showAddButton?: boolean;
@@ -81,9 +82,16 @@ type TabType = 'overview' | 'draft';
 
 // Flow model interface
 interface FlowModel {
-    nodes: any[];
-    connections: any[];
-    groups: any[];
+    nodes: unknown[];
+    connections: unknown[];
+    groups: unknown[];
+}
+
+function asTaskPendingPayloadRecord(payload: unknown): Record<string, unknown> {
+    if (payload !== null && typeof payload === 'object' && !Array.isArray(payload)) {
+        return payload as Record<string, unknown>;
+    }
+    return {};
 }
 
 @Component({
@@ -116,6 +124,8 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
     public project!: GetProjectRequest;
     private subscription = new Subscription();
     public isLoading = signal(true);
+    public readonly agentCount = computed(() => this.projectStateService.agentCount());
+    public readonly taskCount = computed(() => this.projectStateService.taskCount());
 
     public activeTab: TabType = 'overview';
 
@@ -156,11 +166,9 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
     ngOnInit() {
         if (this.inputProjectId) {
             this.projectId = String(this.inputProjectId);
-            console.log('ngOnInit - using input projectId:', this.projectId);
             this.loadData();
         } else {
             this.projectId = this.route.snapshot.paramMap.get('projectId')!;
-            console.log('ngOnInit - projectId from route:', this.projectId);
 
             if (!this.projectId) {
                 console.error('No projectId found in route params or input!');
@@ -235,21 +243,9 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         ];
     }
 
-    // Get reactive count for agents
-    getAgentCount(): number {
-        return this.projectStateService.agentCount();
-    }
-
-    // Get reactive count for tasks
-    getTaskCount(): number {
-        return this.projectStateService.taskCount();
-    }
-
     private loadData(): void {
         const loadStartTime = Date.now();
         this.isLoading.set(true);
-
-        console.log('loadData - Starting to load project with ID:', this.projectId);
 
         const projectRequest = this.projectsService.getProjectById(+this.projectId);
 
@@ -271,7 +267,6 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                         const remainingTime = Math.max(0, 500 - loadTime);
 
                         setTimeout(() => {
-                            console.log('loadData - Finalizing, setting isLoading to false');
                             this.isLoading.set(false);
                             if (this.project) {
                                 this.setupSections();
@@ -282,10 +277,6 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                 )
                 .subscribe({
                     next: ({ project, tasks, agents }) => {
-                        console.log('loadData - Success! Project:', project);
-                        console.log('loadData - Tasks:', tasks);
-                        console.log('loadData - Agents:', agents);
-
                         this.projectStateService.setProject(project ?? null);
 
                         if (!project) {
@@ -294,7 +285,6 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                             );
                         }
                         this.project = project;
-                        console.log('project', this.project);
 
                         this.projectStateService.updateTasks(tasks);
                         this.projectStateService.updateAgents(agents);
@@ -394,9 +384,9 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
             const isSame = this.jsonEqual(next, cur);
 
             if (isSame) {
-                delete (nextPending as any)[key];
+                delete (nextPending as Partial<Record<string, unknown>>)[key];
             } else {
-                (nextPending as any)[key] = nextRaw;
+                (nextPending as Partial<Record<string, unknown>>)[key] = nextRaw;
             }
         }
 
@@ -458,7 +448,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         const next = this.normalizeDetails(change);
         const current = this.normalizeDetails({
             description: this.project.description ?? '',
-            tags: (this.project as any).tags ?? [], // якщо tags є в моделі
+            tags: ((this.project as unknown as Record<string, unknown>)['tags'] as string[]) ?? [], // якщо tags є в моделі
         });
 
         const isSame =
@@ -473,7 +463,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
 
         this.pendingProjectUpdate = {
             description: change.description ?? '',
-            tags: [...(change.tags ?? [])] as any,
+            tags: [...(change.tags ?? [])] as unknown as number[],
         };
 
         this.hasUnsavedChanges = true;
@@ -515,14 +505,16 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         const createEvents = taskUpdates.filter((ev) => ev.kind === 'create');
         const updateEvents = taskUpdates.filter((ev) => ev.kind === 'update');
         const deletedIds = new Set(
-            deleteEvents.map((ev) => Number(ev.payload?.id)).filter((id) => Number.isFinite(id))
+            deleteEvents
+                .map((ev) => Number(asTaskPendingPayloadRecord(ev.payload)['id']))
+                .filter((id) => Number.isFinite(id))
         );
 
         const delete$ =
             deleteEvents.length > 0
                 ? forkJoin(
                       deleteEvents.map((ev) =>
-                          this.tasksService.deleteTask(ev.payload.id).pipe(
+                          this.tasksService.deleteTask(Number(asTaskPendingPayloadRecord(ev.payload)['id'])).pipe(
                               map((res) => ({ ev, res })),
                               catchError((error) => {
                                   if (error instanceof HttpErrorResponse && error.status === 404) {
@@ -563,24 +555,30 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
 
         const flushTasks$ = delete$.pipe(
             switchMap(() => create$),
-            tap((createResults: any[]) => {
+            tap((createResults: unknown[]) => {
                 for (const item of createResults) {
-                    const ev = item?.ev;
-                    const res = item?.res;
+                    const ev = (item as { ev?: TaskPendingEvent })?.ev;
+                    const res = (item as { res?: { id?: number } })?.res;
 
                     if (ev?.kind === 'create' && res?.id != null) {
-                        this.tasksSection?.applyCreatedTask(ev.rowKey, res);
+                        this.tasksSection?.applyCreatedTask(
+                            ev.rowKey,
+                            res as Parameters<TasksSectionComponent['applyCreatedTask']>[1]
+                        );
                     }
                 }
             }),
             switchMap(() => update$),
-            tap((updateResults: any[]) => {
+            tap((updateResults: unknown[]) => {
                 for (const item of updateResults) {
-                    const ev = item?.ev;
-                    const res = item?.res;
+                    const ev = (item as { ev?: TaskPendingEvent })?.ev;
+                    const res = (item as { res?: Record<string, unknown> })?.res;
 
                     if (ev?.kind === 'update' && res != null) {
-                        this.tasksSection?.applyUpdatedTask(String(ev.rowKey), res);
+                        this.tasksSection?.applyUpdatedTask(
+                            String(ev.rowKey),
+                            res as Parameters<TasksSectionComponent['applyUpdatedTask']>[1]
+                        );
                     }
                 }
             }),
@@ -679,19 +677,19 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         return value;
     }
 
-    private jsonEqual(a: any, b: any): boolean {
+    private jsonEqual(a: unknown, b: unknown): boolean {
         return JSON.stringify(a) === JSON.stringify(b);
     }
 
     public onAgentsIdsChanged(nextIds: number[]): void {
         if (!this.project) return;
         const next = this.normalizeAgentIds(nextIds);
-        const cur = this.normalizeAgentIds((this.project as any).agents);
+        const cur = this.normalizeAgentIds((this.project as unknown as Record<string, unknown>)['agents'] as number[]);
         const isSame = JSON.stringify(next) === JSON.stringify(cur);
-        const draft: any = { ...(this.pendingProjectUpdate ?? {}) };
+        const draft: Partial<GetProjectRequest> = { ...(this.pendingProjectUpdate ?? {}) };
 
         if (isSame) {
-            delete draft.agents;
+            delete (draft as Record<string, unknown>)['agents'];
         } else {
             draft.agents = nextIds;
         }
@@ -702,7 +700,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
     }
 
     public onAgentUpdatePending(agent: FullAgent): void {
-        const id = Number((agent as any).id);
+        const id = Number((agent as unknown as Record<string, unknown>)['id']);
         if (!Number.isFinite(id)) return;
         const baseline = this.baselineAgentsById.get(id);
 
@@ -712,8 +710,8 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
             return;
         }
 
-        const nextNorm = this.normalizeAgentForCompare(agent as any);
-        const baseNorm = this.normalizeAgentForCompare(baseline as any);
+        const nextNorm = this.normalizeAgentForCompare(agent as unknown as Record<string, unknown>);
+        const baseNorm = this.normalizeAgentForCompare(baseline as unknown as Record<string, unknown>);
         const isSame = this.jsonEqual(nextNorm, baseNorm);
 
         if (isSame) {
@@ -725,7 +723,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         this.recomputeUnsaved();
     }
 
-    public onAgentsDirtyChange(_: boolean): void {
+    public onAgentsDirtyChange(): void {
         this.recomputeUnsaved();
     }
 
@@ -738,15 +736,16 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         }
 
         if (ev.kind === 'delete') {
-            const deletedId = Number(ev.payload.id);
+            const deletedId = Number(asTaskPendingPayloadRecord(ev.payload)['id']);
             for (const [rowKey, pendingEv] of this.pendingTaskUpdates.entries()) {
                 if (pendingEv.kind === 'create' || pendingEv.kind === 'update') {
-                    const ctxList = pendingEv.payload?.task_context_list;
+                    const payloadRec = asTaskPendingPayloadRecord(pendingEv.payload);
+                    const ctxList = payloadRec['task_context_list'];
                     if (Array.isArray(ctxList) && ctxList.some((id: unknown) => Number(id) === deletedId)) {
                         this.pendingTaskUpdates.set(rowKey, {
                             ...pendingEv,
                             payload: {
-                                ...pendingEv.payload,
+                                ...payloadRec,
                                 task_context_list: ctxList.filter((id: unknown) => Number(id) !== deletedId),
                             },
                         });
@@ -788,21 +787,29 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
 
         const flushAgents$ =
             agentUpdates.length > 0
-                ? forkJoin(agentUpdates.map((a) => this.agentsService.updateAgent(a as any)))
+                ? forkJoin(
+                      agentUpdates.map((a) =>
+                          this.agentsService.updateAgent(
+                              a as unknown as import('../features/staff/models/agent.model').UpdateAgentRequest
+                          )
+                      )
+                  )
                 : of([]);
 
         const deleteEvents = taskUpdates.filter((ev) => ev.kind === 'delete');
         const createEvents = taskUpdates.filter((ev) => ev.kind === 'create');
         const updateEvents = taskUpdates.filter((ev) => ev.kind === 'update');
         const deletedIds = new Set(
-            deleteEvents.map((ev) => Number(ev.payload?.id)).filter((id) => Number.isFinite(id))
+            deleteEvents
+                .map((ev) => Number(asTaskPendingPayloadRecord(ev.payload)['id']))
+                .filter((id) => Number.isFinite(id))
         );
 
         const delete$ =
             deleteEvents.length > 0
                 ? forkJoin(
                       deleteEvents.map((ev) =>
-                          this.tasksService.deleteTask(ev.payload.id).pipe(
+                          this.tasksService.deleteTask(Number(asTaskPendingPayloadRecord(ev.payload)['id'])).pipe(
                               map((res) => ({ ev, res })),
                               catchError((error) => {
                                   if (error instanceof HttpErrorResponse && error.status === 404) {
@@ -843,24 +850,30 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
 
         const flushTasks$ = delete$.pipe(
             switchMap(() => create$),
-            tap((createResults: any[]) => {
+            tap((createResults: unknown[]) => {
                 for (const item of createResults) {
-                    const ev = item?.ev;
-                    const res = item?.res;
+                    const ev = (item as { ev?: TaskPendingEvent; res?: { id?: number } })?.ev;
+                    const res = (item as { ev?: TaskPendingEvent; res?: { id?: number } })?.res;
 
                     if (ev?.kind === 'create' && res?.id != null) {
-                        this.tasksSection?.applyCreatedTask(ev.rowKey, res);
+                        this.tasksSection?.applyCreatedTask(
+                            ev.rowKey,
+                            res as Parameters<TasksSectionComponent['applyCreatedTask']>[1]
+                        );
                     }
                 }
             }),
             switchMap(() => update$),
-            tap((updateResults: any[]) => {
+            tap((updateResults: unknown[]) => {
                 for (const item of updateResults) {
-                    const ev = item?.ev;
-                    const res = item?.res;
+                    const ev = (item as { ev?: TaskPendingEvent; res?: Record<string, unknown> })?.ev;
+                    const res = (item as { ev?: TaskPendingEvent; res?: Record<string, unknown> })?.res;
 
                     if (ev?.kind === 'update' && res != null) {
-                        this.tasksSection?.applyUpdatedTask(String(ev.rowKey), res);
+                        this.tasksSection?.applyUpdatedTask(
+                            String(ev.rowKey),
+                            res as Parameters<TasksSectionComponent['applyUpdatedTask']>[1]
+                        );
                     }
                 }
             }),
@@ -884,12 +897,15 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         return flushAgents$.pipe(
             tap(() => this.pendingAgentUpdates.clear()),
             switchMap(() => flushTasks$),
-            tap((results: any[]) => {
+            tap((results: unknown[]) => {
                 for (const item of results) {
-                    const ev = item?.ev;
-                    const res = item?.res;
+                    const ev = (item as { ev?: TaskPendingEvent; res?: { id?: number } })?.ev;
+                    const res = (item as { ev?: TaskPendingEvent; res?: { id?: number } })?.res;
                     if (ev?.kind === 'create' && res?.id != null) {
-                        this.tasksSection?.applyCreatedTask(ev.rowKey, res);
+                        this.tasksSection?.applyCreatedTask(
+                            ev.rowKey,
+                            res as Parameters<TasksSectionComponent['applyCreatedTask']>[1]
+                        );
                     }
                 }
                 this.pendingTaskUpdates.clear();
@@ -901,7 +917,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                 if (!appliedUpdate) return of(null);
                 return this.projectsService.patchUpdateProject(this.project!.id, appliedUpdate);
             }),
-            map((updatedProject: any) => {
+            map((updatedProject: GetProjectRequest | null) => {
                 if (appliedUpdate) {
                     const serverPatch = updatedProject ?? {};
                     this.project = { ...this.project!, ...appliedUpdate, ...serverPatch };
@@ -977,7 +993,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         const deletedIds = new Set(
             Array.from(this.pendingTaskUpdates.values())
                 .filter((ev) => ev.kind === 'delete')
-                .map((ev) => Number(ev.payload?.id))
+                .map((ev) => Number(asTaskPendingPayloadRecord(ev.payload)['id']))
                 .filter((id) => Number.isFinite(id))
         );
 
@@ -986,7 +1002,8 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                 continue;
             }
 
-            const ctxList = ev.payload?.task_context_list;
+            const payloadRec = asTaskPendingPayloadRecord(ev.payload);
+            const ctxList = payloadRec['task_context_list'];
             if (!Array.isArray(ctxList)) {
                 continue;
             }
@@ -1000,7 +1017,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
             this.pendingTaskUpdates.set(rowKey, {
                 ...ev,
                 payload: {
-                    ...ev.payload,
+                    ...payloadRec,
                     task_context_list: sanitized,
                 },
             });
@@ -1053,27 +1070,27 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
             .sort((a, b) => a - b);
     }
 
-    private normalizeAgentForCompare(agent: any): any {
+    private normalizeAgentForCompare(agent: Record<string, unknown>): unknown {
         if (!agent) return agent;
 
-        const a = structuredClone(agent);
-        const llmId = a.fullFcmLlmConfig?.id ?? null;
-        if (llmId != null && a.fcm_llm_config == null) {
-            a.fcm_llm_config = llmId;
+        const a = structuredClone(agent) as Record<string, unknown>;
+        const llmId = (a['fullFcmLlmConfig'] as Record<string, unknown> | null)?.['id'] ?? null;
+        if (llmId != null && a['fcm_llm_config'] == null) {
+            a['fcm_llm_config'] = llmId;
         }
-        delete a.fullFcmLlmConfig;
-        delete a.selected_knowledge_source;
-        delete a.mergedTools;
+        delete a['fullFcmLlmConfig'];
+        delete a['selected_knowledge_source'];
+        delete a['mergedTools'];
 
-        if (a.fcm_llm_config != null) {
-            a.fcm_llm_config = Number(a.fcm_llm_config);
+        if (a['fcm_llm_config'] != null) {
+            a['fcm_llm_config'] = Number(a['fcm_llm_config']);
         }
 
-        const walk = (v: any): any => {
+        const walk = (v: unknown): unknown => {
             if (Array.isArray(v)) return v.map(walk);
             if (v && typeof v === 'object') {
                 const out: any = {};
-                for (const k of Object.keys(v).sort()) out[k] = walk(v[k]);
+                for (const k of Object.keys(v).sort()) out[k] = walk((v as Record<string, unknown>)[k]);
                 return out;
             }
             if (typeof v === 'number') return Number(v.toFixed(6));

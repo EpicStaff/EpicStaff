@@ -2,18 +2,21 @@
     border-radius: 10px;
     background-color: var(--color-ks-card-background);
     padding: 0.75rem 1rem;
-    width: 417px;
 
     &--selected {
-        border: 1px solid var(--color-ks-button-activated)
+        border: 1px solid var(--color-ks-button-activated);
     }
 
     &__header {
         display: flex;
         justify-content: space-between;
+        min-width: 0;
+        gap: 0.5rem;
     }
 
     &__name {
+        min-width: 0;
+        flex: 1 1 auto;
         overflow: hidden;
         white-space: nowrap;
         text-overflow: ellipsis;
@@ -22,7 +25,12 @@
     }
 
     &__rag-type {
-        flex-shrink: 0;
+        min-width: 0;
+        max-width: 45%;
+        flex: 0 1 auto;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
         font-size: 1rem;
         color: var(--color-ks-transparent-text-80);
     }
@@ -31,7 +39,9 @@
         margin-top: 0.75rem;
         font-size: 0.75rem;
         display: flex;
+        align-items: center;
         column-gap: 0.5rem;
+        min-width: 0;
         &--completed {
             color: var(--color-ks-status-completed);
         }
@@ -56,5 +66,13 @@
     &__status-icon {
         display: flex;
         align-items: center;
+        flex-shrink: 0;
+    }
+
+    &__status-text {
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
     }
 }

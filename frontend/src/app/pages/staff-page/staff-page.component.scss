@@ -1,4 +1,7 @@
+@use '../../../styles/header-layout' as header;
+
 .staff-page-container {
+    @include header.headerLayout();
     height: 100%;
     width: 100%;
     display: flex;

@@ -1,4 +1,4 @@
-@use "sass:color";
+@use 'sass:color';
 
 $accent-color: var(--accent-color, #685fff);
 $accent-light: var(--accent-light, #8c7fff);
@@ -11,368 +11,368 @@ $error-color: var(--red-500, #ff4444);
 $success-color: var(--green-500, #4caf50);
 
 @keyframes shake {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  10%,
-  30%,
-  50%,
-  70%,
-  90% {
-    transform: translateX(-4px);
-  }
-  20%,
-  40%,
-  60%,
-  80% {
-    transform: translateX(4px);
-  }
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+    10%,
+    30%,
+    50%,
+    70%,
+    90% {
+        transform: translateX(-4px);
+    }
+    20%,
+    40%,
+    60%,
+    80% {
+        transform: translateX(4px);
+    }
 }
 
 @keyframes subtle-glow {
-  0%,
-  100% {
-    box-shadow: 0 0 0 1px rgba($accent-color, 0.2);
-  }
-  50% {
-    box-shadow: 0 0 0 2px rgba($accent-color, 0.3);
-  }
+    0%,
+    100% {
+        box-shadow: 0 0 0 1px rgba($accent-color, 0.2);
+    }
+    50% {
+        box-shadow: 0 0 0 2px rgba($accent-color, 0.3);
+    }
 }
 
 .panel-content {
-  color: $text-color;
-  padding-inline: 3rem;
-  padding-top: 1.5rem;
-  padding-bottom: 2rem;
+    color: $text-color;
+    padding-inline: 3rem;
+    padding-top: 1.5rem;
+    padding-bottom: 2rem;
 
-  .variables-container {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 1rem;
-    width: 100%;
-
-    // Common styles for cards
-    %card-base {
-      display: inline-flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 16px;
-      background: $card-background;
-      border: 1px solid var(--gray-700);
-      border-radius: 8px;
-      transition: all 0.25s ease;
-      min-width: 280px;
-      max-width: 100%;
-      width: auto;
-      flex-grow: 0;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    }
-
-    // Variable card styling
-    .variable-card {
-      @extend %card-base;
-
-      &.duplicate {
-        border-color: $error-color;
-        animation: shake 0.8s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
-      }
-
-      &:hover {
-        border-color: var(--gray-600);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-      }
-
-      &.editing {
-        background: var(--gray-800);
-        border-color: $accent-color;
-        box-shadow: 0 0 0 1px rgba($accent-color, 0.3);
-        animation: subtle-glow 2s infinite;
-      }
-
-      .variable-content,
-      .variable-edit-form {
+    .variables-container {
         display: flex;
-        flex: 1;
-        min-width: 0;
-        overflow: hidden;
-      }
-
-      .variable-item {
-        display: flex;
-        align-items: center;
-        width: 100%;
-        min-width: 0;
-        flex-wrap: nowrap;
-
-        .variable-name,
-        .variable-value {
-          display: inline-block;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .variable-name {
-          font-size: 14px;
-          color: $text-color;
-          background: var(--gray-750);
-          padding: 6px 12px;
-          border-radius: 6px;
-          min-width: 60px;
-          max-width: 120px;
-          flex-shrink: 0;
-          font-weight: 500;
-        }
-
-        .chain-separator {
-          margin: 0 12px;
-          font-weight: bold;
-          color: var(--accent-color, #685fff);
-          flex-shrink: 0;
-          font-size: 16px;
-        }
-
-        .variable-value {
-          font-size: 14px;
-          color: $muted-text-color;
-          background: var(--gray-800);
-          padding: 6px 12px;
-          border-radius: 6px;
-          flex: 1;
-          min-width: 40px;
-
-          &.no-value {
-            font-style: italic;
-            color: var(--gray-600);
-          }
-        }
-      }
-
-      .variable-edit-form {
-        display: flex;
-        align-items: center;
-        width: 100%;
-        gap: 12px;
         flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 1rem;
+        width: 100%;
 
-        .variable-input {
-          background: var(--gray-800);
-          border: 1px solid var(--gray-600);
-          border-radius: 6px;
-          padding: 6px 12px;
-          color: $text-color;
-          font-size: 14px;
-          transition: all 0.25s ease;
-
-          &.name-input {
-            min-width: 60px;
-            max-width: 120px;
-            flex-shrink: 0;
-          }
-
-          &.value-input {
-            flex: 1;
-            min-width: 40px;
-          }
-
-          &:focus {
-            outline: none;
-            border-color: $accent-color;
-            box-shadow: 0 0 0 1px rgba($accent-color, 0.3);
-          }
-
-          &.invalid {
-            border-color: $error-color;
-            animation: shake 0.8s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
-          }
+        // Common styles for cards
+        %card-base {
+            display: inline-flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: $card-background;
+            border: 1px solid var(--gray-700);
+            border-radius: 8px;
+            transition: all 0.25s ease;
+            min-width: 280px;
+            max-width: 100%;
+            width: auto;
+            flex-grow: 0;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
         }
 
-        .chain-separator {
-          color: var(--accent-color, #685fff);
-          font-weight: bold;
-          font-size: 16px;
-        }
-      }
+        // Variable card styling
+        .variable-card {
+            @extend %card-base;
 
-      .variable-actions {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-left: 12px;
-        flex-shrink: 0;
-
-        .action-button {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: transparent;
-          border: none;
-          color: var(--gray-500);
-          cursor: pointer;
-          padding: 6px;
-          border-radius: 6px;
-          transition: all 0.25s ease;
-
-          i {
-            font-size: 16px;
-            width: 16px;
-            height: 16px;
-          }
-
-          &:hover {
-            color: var(--gray-300);
-            background: var(--gray-750);
-          }
-
-          &.edit-button:hover {
-            color: $accent-light;
-            background: rgba($accent-color, 0.1);
-          }
-
-          &.save-button {
-            color: var(--gray-300);
+            &.duplicate {
+                border-color: $error-color;
+                animation: shake 0.8s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+            }
 
             &:hover {
-              color: $success-color;
-              background: rgba($success-color, 0.1);
+                border-color: var(--gray-600);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
             }
-          }
 
-          &.cancel-button:hover {
-            color: $error-color;
-            background: rgba($error-color, 0.1);
-          }
+            &.editing {
+                background: var(--gray-800);
+                border-color: $accent-color;
+                box-shadow: 0 0 0 1px rgba($accent-color, 0.3);
+                animation: subtle-glow 2s infinite;
+            }
 
-          &.remove-button:hover {
-            color: $error-color;
-            background: rgba($error-color, 0.1);
-          }
+            .variable-content,
+            .variable-edit-form {
+                display: flex;
+                flex: 1;
+                min-width: 0;
+                overflow: hidden;
+            }
+
+            .variable-item {
+                display: flex;
+                align-items: center;
+                width: 100%;
+                min-width: 0;
+                flex-wrap: nowrap;
+
+                .variable-name,
+                .variable-value {
+                    display: inline-block;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+
+                .variable-name {
+                    font-size: 14px;
+                    color: $text-color;
+                    background: var(--gray-750);
+                    padding: 6px 12px;
+                    border-radius: 6px;
+                    min-width: 60px;
+                    max-width: 120px;
+                    flex-shrink: 0;
+                    font-weight: 500;
+                }
+
+                .chain-separator {
+                    margin: 0 12px;
+                    font-weight: bold;
+                    color: var(--accent-color, #685fff);
+                    flex-shrink: 0;
+                    font-size: 16px;
+                }
+
+                .variable-value {
+                    font-size: 14px;
+                    color: $muted-text-color;
+                    background: var(--gray-800);
+                    padding: 6px 12px;
+                    border-radius: 6px;
+                    flex: 1;
+                    min-width: 40px;
+
+                    &.no-value {
+                        font-style: italic;
+                        color: var(--gray-600);
+                    }
+                }
+            }
+
+            .variable-edit-form {
+                display: flex;
+                align-items: center;
+                width: 100%;
+                gap: 12px;
+                flex-wrap: wrap;
+
+                .variable-input {
+                    background: var(--gray-800);
+                    border: 1px solid var(--gray-600);
+                    border-radius: 6px;
+                    padding: 6px 12px;
+                    color: $text-color;
+                    font-size: 14px;
+                    transition: all 0.25s ease;
+
+                    &.name-input {
+                        min-width: 60px;
+                        max-width: 120px;
+                        flex-shrink: 0;
+                    }
+
+                    &.value-input {
+                        flex: 1;
+                        min-width: 40px;
+                    }
+
+                    &:focus {
+                        outline: none;
+                        border-color: $accent-color;
+                        box-shadow: 0 0 0 1px rgba($accent-color, 0.3);
+                    }
+
+                    &.invalid {
+                        border-color: $error-color;
+                        animation: shake 0.8s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+                    }
+                }
+
+                .chain-separator {
+                    color: var(--accent-color, #685fff);
+                    font-weight: bold;
+                    font-size: 16px;
+                }
+            }
+
+            .variable-actions {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-left: 12px;
+                flex-shrink: 0;
+
+                .action-button {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: transparent;
+                    border: none;
+                    color: var(--gray-500);
+                    cursor: pointer;
+                    padding: 6px;
+                    border-radius: 6px;
+                    transition: all 0.25s ease;
+
+                    i {
+                        font-size: 16px;
+                        width: 16px;
+                        height: 16px;
+                    }
+
+                    &:hover {
+                        color: var(--gray-300);
+                        background: var(--gray-750);
+                    }
+
+                    &.edit-button:hover {
+                        color: $accent-light;
+                        background: rgba($accent-color, 0.1);
+                    }
+
+                    &.save-button {
+                        color: var(--gray-300);
+
+                        &:hover {
+                            color: $success-color;
+                            background: rgba($success-color, 0.1);
+                        }
+                    }
+
+                    &.cancel-button:hover {
+                        color: $error-color;
+                        background: rgba($error-color, 0.1);
+                    }
+
+                    &.remove-button:hover {
+                        color: $error-color;
+                        background: rgba($error-color, 0.1);
+                    }
+                }
+            }
         }
-      }
+
+        // Add variable form styling
+        .add-variable-form {
+            @extend %card-base;
+            background: var(--gray-800);
+            border: 1px solid var(--gray-700);
+            transition: all 0.25s ease;
+
+            &:hover {
+                border-color: var(--gray-600);
+
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            }
+
+            &.submitted.invalid {
+                border-color: $error-color;
+                animation: shake 0.8s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+            }
+
+            .variable-item {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                flex: 1;
+                min-width: 0;
+
+                .variable-input {
+                    background: var(--gray-750);
+                    border: 1px solid var(--gray-700);
+                    border-radius: 6px;
+                    padding: 6px 12px;
+                    color: $text-color;
+                    transition: all 0.25s ease;
+                    font-size: 14px;
+                    font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+
+                    &.name-input {
+                        min-width: 80px;
+                        max-width: 120px;
+                        flex-shrink: 0;
+                    }
+
+                    &.value-input {
+                        flex: 1;
+                        min-width: 80px;
+                    }
+
+                    &::placeholder {
+                        color: var(--gray-500);
+                    }
+
+                    &:hover {
+                        border-color: var(--gray-600);
+                    }
+
+                    &:focus {
+                        outline: none;
+                        border-color: $accent-color;
+                        box-shadow: 0 0 0 1px rgba($accent-color, 0.3);
+                        background: var(--gray-725, #1e1e1e);
+                    }
+
+                    &.invalid {
+                        border-color: $error-color;
+                        animation: shake 0.8s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+                    }
+                }
+
+                .chain-separator {
+                    font-weight: bold;
+                    color: var(--accent-color, #685fff);
+                    flex-shrink: 0;
+                    font-size: 16px;
+                }
+            }
+
+            .add-variable-button {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 14px;
+                font-weight: 500;
+                padding: 6px 12px;
+                background-color: rgba($accent-color, 0.1);
+                color: var(--gray-200);
+                border: 1px solid var(--gray-700);
+                border-radius: 6px;
+                cursor: pointer;
+                transition: all 0.25s ease;
+                min-width: 80px;
+                flex-shrink: 0;
+                margin-left: 12px;
+
+                &:hover {
+                    background-color: rgba($accent-color, 0.2);
+                    border-color: $accent-color;
+                    color: $text-color;
+                    transform: translateY(-1px);
+                }
+
+                &:active {
+                    background-color: rgba($accent-color, 0.3);
+                }
+
+                i {
+                    font-size: 16px;
+                    width: 16px;
+                    height: 16px;
+                }
+            }
+        }
     }
 
-    // Add variable form styling
-    .add-variable-form {
-      @extend %card-base;
-      background: var(--gray-800);
-      border: 1px solid var(--gray-700);
-      transition: all 0.25s ease;
-
-      &:hover {
-        border-color: var(--gray-600);
-
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-      }
-
-      &.submitted.invalid {
-        border-color: $error-color;
-        animation: shake 0.8s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
-      }
-
-      .variable-item {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        flex: 1;
-        min-width: 0;
-
-        .variable-input {
-          background: var(--gray-750);
-          border: 1px solid var(--gray-700);
-          border-radius: 6px;
-          padding: 6px 12px;
-          color: $text-color;
-          transition: all 0.25s ease;
-          font-size: 14px;
-          font-family: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
-
-          &.name-input {
-            min-width: 80px;
-            max-width: 120px;
-            flex-shrink: 0;
-          }
-
-          &.value-input {
-            flex: 1;
-            min-width: 80px;
-          }
-
-          &::placeholder {
-            color: var(--gray-500);
-          }
-
-          &:hover {
-            border-color: var(--gray-600);
-          }
-
-          &:focus {
-            outline: none;
-            border-color: $accent-color;
-            box-shadow: 0 0 0 1px rgba($accent-color, 0.3);
-            background: var(--gray-725, #1e1e1e);
-          }
-
-          &.invalid {
-            border-color: $error-color;
-            animation: shake 0.8s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
-          }
+    // Responsive behavior
+    @media (max-width: 576px) {
+        .variables-container {
+            .variable-card,
+            .add-variable-form {
+                width: 100%;
+                max-width: 100%;
+            }
         }
-
-        .chain-separator {
-          font-weight: bold;
-          color: var(--accent-color, #685fff);
-          flex-shrink: 0;
-          font-size: 16px;
-        }
-      }
-
-      .add-variable-button {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 14px;
-        font-weight: 500;
-        padding: 6px 12px;
-        background-color: rgba($accent-color, 0.1);
-        color: var(--gray-200);
-        border: 1px solid var(--gray-700);
-        border-radius: 6px;
-        cursor: pointer;
-        transition: all 0.25s ease;
-        min-width: 80px;
-        flex-shrink: 0;
-        margin-left: 12px;
-
-        &:hover {
-          background-color: rgba($accent-color, 0.2);
-          border-color: $accent-color;
-          color: $text-color;
-          transform: translateY(-1px);
-        }
-
-        &:active {
-          background-color: rgba($accent-color, 0.3);
-        }
-
-        i {
-          font-size: 16px;
-          width: 16px;
-          height: 16px;
-        }
-      }
     }
-  }
-
-  // Responsive behavior
-  @media (max-width: 576px) {
-    .variables-container {
-      .variable-card,
-      .add-variable-form {
-        width: 100%;
-        max-width: 100%;
-      }
-    }
-  }
 }

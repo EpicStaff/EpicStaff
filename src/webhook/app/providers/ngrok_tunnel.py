@@ -1,4 +1,5 @@
 import os
+import shutil
 import tempfile
 import asyncio
 from loguru import logger
@@ -53,17 +54,32 @@ class NgrokTunnel(AbstractTunnelProvider):
             f"(Region: {self._region or 'eu'})..."
         )
 
-        default_conf = conf.get_default()
-        if not os.path.exists(default_conf.ngrok_path):
-            installer.install_ngrok(default_conf.ngrok_path)
+        # Prefer the APT-installed system ngrok binary to avoid a runtime download
+        # from equinox.io (which can fail).  pyngrok also installs its own Python
+        # shim at /usr/local/bin/ngrok, so shutil.which() is not reliable here —
+        # it finds the shim first.  Check known system binary paths explicitly.
+        _SYSTEM_NGROK_CANDIDATES = ["/usr/local/bin/ngrok", "/usr/bin/ngrok"]
+        system_ngrok = next(
+            (
+                p
+                for p in _SYSTEM_NGROK_CANDIDATES
+                if os.path.isfile(p) and os.access(p, os.X_OK)
+            ),
+            None,
+        )
+        if system_ngrok:
+            resolved_ngrok_path = system_ngrok
+        else:
+            default_conf = conf.get_default()
+            if not os.path.exists(default_conf.ngrok_path):
+                installer.install_ngrok(default_conf.ngrok_path)
+            resolved_ngrok_path = default_conf.ngrok_path
 
         if not os.path.exists(self._ngrok_path):
             try:
-                os.symlink(default_conf.ngrok_path, self._ngrok_path)
+                os.symlink(resolved_ngrok_path, self._ngrok_path)
             except OSError:
-                import shutil
-
-                shutil.copy2(default_conf.ngrok_path, self._ngrok_path)
+                shutil.copy2(resolved_ngrok_path, self._ngrok_path)
 
         self._config = PyngrokConfig(
             auth_token=self._auth_token,

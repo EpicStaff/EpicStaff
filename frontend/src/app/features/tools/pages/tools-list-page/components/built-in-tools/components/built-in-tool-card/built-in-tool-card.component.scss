@@ -1,169 +1,175 @@
 .tool-card {
-  background-color: var(--color-nodes-background);
-  border-radius: 8px;
-  padding: 1.25rem;
-  transition: all 0.2s ease-in-out;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  position: relative;
-  overflow: hidden;
-  border: 1.5px solid var(--color-components-card-border);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);
-
-  &:hover {
-    border-color: #3a3d45;
-    box-shadow: 0 12px 20px rgba(0, 0, 0, 0.18), 0 3px 6px rgba(0, 0, 0, 0.1);
-    .tool-footer {
-      opacity: 1;
-      pointer-events: auto;
-      transform: translateY(0);
-    }
-  }
-
-  &.disabled {
-    opacity: 0.7;
-    background-color: var(--color-nodes-background-disabled, #1a1a1c);
-    border-color: var(--color-components-card-border-disabled, #2a2a2c);
+    background-color: var(--color-nodes-background);
+    border-radius: 8px;
+    padding: 1.25rem;
+    transition: all 0.2s ease-in-out;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
     position: relative;
+    overflow: hidden;
+    border: 1.5px solid var(--color-components-card-border);
+    box-shadow:
+        0 8px 16px rgba(0, 0, 0, 0.12),
+        0 2px 4px rgba(0, 0, 0, 0.08);
 
-    &::after {
-      content: "";
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(32, 32, 36, 0.15);
-      pointer-events: none;
-      z-index: 1;
+    &:hover {
+        border-color: #3a3d45;
+        box-shadow:
+            0 12px 20px rgba(0, 0, 0, 0.18),
+            0 3px 6px rgba(0, 0, 0, 0.1);
+        .tool-footer {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(0);
+        }
     }
 
-    .tool-name,
+    &.disabled {
+        opacity: 0.7;
+        background-color: var(--color-nodes-background-disabled, #1a1a1c);
+        border-color: var(--color-components-card-border-disabled, #2a2a2c);
+        position: relative;
+
+        &::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(32, 32, 36, 0.15);
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .tool-name,
+        .tool-description {
+            color: var(--color-text-disabled, #8a8a8a);
+        }
+
+        .tool-icon-large {
+            opacity: 0.65;
+        }
+    }
+
+    .tool-header {
+        display: flex;
+        align-items: center;
+        gap: 1.1rem;
+
+        .tool-icon-large {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 2.6rem;
+            height: 2.6rem;
+            background: var(--color-secondary-btn-background);
+            border-radius: 10px;
+            flex-shrink: 0;
+            flex-grow: 0;
+        }
+
+        .tool-header-info {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 0.18rem;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .tool-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--color-text-primary);
+            margin-bottom: 0.1rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .tool-provider {
+            font-size: 12px;
+            font-style: italic;
+            color: var(--color-text-secondary);
+            font-weight: 400;
+            margin-top: 0.05rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    }
+
     .tool-description {
-      color: var(--color-text-disabled, #8a8a8a);
+        color: var(--color-text-secondary);
+        font-size: 12px;
+        line-height: 1.5;
+        margin-bottom: 0;
+        margin-top: 0.1rem;
+        min-height: 2.2em;
     }
 
-    .tool-icon-large {
-      opacity: 0.65;
+    .tool-footer {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(34, 34, 37, 0.98);
+        border-bottom-left-radius: 8px;
+        border-bottom-right-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.7rem 1.1rem;
+        border-top: 1.5px solid var(--color-components-card-border);
+        backdrop-filter: blur(2px);
+        opacity: 0;
+        pointer-events: none;
+
+        transition:
+            opacity 0.22s,
+            transform 0.22s;
+        z-index: 2;
+        box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+
+        .configure-btn {
+            background: var(--accent-color);
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 0.35rem 1.1rem;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.18s;
+            &:hover {
+                background: var(--accent-color-hover);
+            }
+        }
+
+        .footer-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
+        }
+
+        .star-btn {
+            background: none;
+            border: none;
+            padding: 0.2rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            color: var(--color-text-secondary);
+            transition: color 0.18s;
+            &.active {
+                color: var(--accent-color);
+            }
+            &:hover {
+                color: var(--accent-color-hover);
+            }
+        }
     }
-  }
-
-  .tool-header {
-    display: flex;
-    align-items: center;
-    gap: 1.1rem;
-
-    .tool-icon-large {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 2.6rem;
-      height: 2.6rem;
-      background: var(--color-secondary-btn-background);
-      border-radius: 10px;
-      flex-shrink: 0;
-      flex-grow: 0;
-    }
-
-    .tool-header-info {
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      gap: 0.18rem;
-      min-width: 0;
-      flex: 1;
-    }
-
-    .tool-name {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--color-text-primary);
-      margin-bottom: 0.1rem;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .tool-provider {
-      font-size: 12px;
-      font-style: italic;
-      color: var(--color-text-secondary);
-      font-weight: 400;
-      margin-top: 0.05rem;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-  }
-
-  .tool-description {
-    color: var(--color-text-secondary);
-    font-size: 12px;
-    line-height: 1.5;
-    margin-bottom: 0;
-    margin-top: 0.1rem;
-    min-height: 2.2em;
-  }
-
-  .tool-footer {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(34, 34, 37, 0.98);
-    border-bottom-left-radius: 8px;
-    border-bottom-right-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.7rem 1.1rem;
-    border-top: 1.5px solid var(--color-components-card-border);
-    backdrop-filter: blur(2px);
-    opacity: 0;
-    pointer-events: none;
-
-    transition: opacity 0.22s, transform 0.22s;
-    z-index: 2;
-    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
-
-    .configure-btn {
-      background: var(--accent-color);
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      padding: 0.35rem 1.1rem;
-      font-size: 0.95rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background 0.18s;
-      &:hover {
-        background: var(--accent-color-hover);
-      }
-    }
-
-    .footer-actions {
-      display: flex;
-      align-items: center;
-      gap: 0.7rem;
-    }
-
-    .star-btn {
-      background: none;
-      border: none;
-      padding: 0.2rem;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      color: var(--color-text-secondary);
-      transition: color 0.18s;
-      &.active {
-        color: var(--accent-color);
-      }
-      &:hover {
-        color: var(--accent-color-hover);
-      }
-    }
-  }
 }

@@ -1,13 +1,10 @@
 <aside class="chats-sidebar">
-  <div class="search-container">
-    <app-search
-      [(searchTerm)]="searchRole"
-      placeholder="Search by agent role..."
-    />
-  </div>
-  <ul>
-    <li *ngFor="let agent of filteredAgents; trackBy: trackByAgentId">
-      <app-chats-sidebar-item [agent]="agent"></app-chats-sidebar-item>
-    </li>
-  </ul>
+    <div class="search-container">
+        <app-search [(searchTerm)]="searchRole" placeholder="Search by agent role..." />
+    </div>
+    <ul>
+        <li *ngFor="let agent of filteredAgents; trackBy: trackByAgentId">
+            <app-chats-sidebar-item [agent]="agent"></app-chats-sidebar-item>
+        </li>
+    </ul>
 </aside>

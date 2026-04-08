@@ -1,28 +1,28 @@
 /* Firefox */
 html {
-  scrollbar-color: var(--color-scrollbar-thumb) var(--color-scrollbar-track);
-  scrollbar-width: thin;
+    scrollbar-color: var(--color-scrollbar-thumb) var(--color-scrollbar-track);
+    scrollbar-width: thin;
 }
 
 /* Chrome, Edge, Safari */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+    width: 6px;
+    height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-scrollbar-track);
+    background: var(--color-scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-scrollbar-thumb);
-  border-radius: 10px;
+    background: var(--color-scrollbar-thumb);
+    border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-scrollbar-thumb-hover);
+    background: var(--color-scrollbar-thumb-hover);
 }
 
 ::-webkit-scrollbar-corner {
-  background: var(--color-scrollbar-track);
+    background: var(--color-scrollbar-track);
 }

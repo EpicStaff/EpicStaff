@@ -1,4 +1,7 @@
+@use '../../../../../styles/header-layout' as header;
+
 .projects-list-page {
+    @include header.headerLayout();
     display: flex;
     flex-direction: column;
     width: 100%;
@@ -88,7 +91,6 @@
     // Search input styles
     .search-container {
         position: relative;
-        width: 20rem;
         height: 2.2rem;
 
         .search-icon {

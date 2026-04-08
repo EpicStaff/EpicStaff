@@ -1,15 +1,14 @@
-import {Component, ChangeDetectionStrategy, computed, input, output} from "@angular/core";
-import {FormsModule} from "@angular/forms";
-import {VARIABLE_PREFIX} from "../../../../core/constants/telegram-field-variable-path-prefix";
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+
+import { VARIABLE_PREFIX } from '../../../../core/constants/telegram-field-variable-path-prefix';
 
 @Component({
     selector: 'app-variables-input',
     templateUrl: './variables-input.component.html',
     styleUrls: ['./variables-input.component.scss'],
-    imports: [
-        FormsModule,
-    ],
-    changeDetection: ChangeDetectionStrategy.OnPush
+    imports: [FormsModule],
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class VariablesInputComponent {
     required = input<boolean>(false);

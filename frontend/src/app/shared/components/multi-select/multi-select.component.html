@@ -24,7 +24,6 @@
 
         <div class="multi-select__list">
             @for (group of groupedFiltered(); track group.group ?? 'default') {
-
                 @if (group.group) {
                     <label class="multi-select__group-label">
                         {{ group.group }}
@@ -41,27 +40,20 @@
                             {{ item.name }}
                             @if (item.tip) {
                                 <span class="multi-select__item-tip">
-                                    {{item.tip}}
+                                    {{ item.tip }}
                                 </span>
                             }
                         </span>
-                        <app-checkbox
-                            mod="multiselect"
-                            [checked]="isChecked(item.value)"
-                        />
+                        <app-checkbox mod="multiselect" [checked]="isChecked(item.value)" />
                     </div>
                 }
             }
         </div>
 
         <div class="multi-select__footer">
-            <app-button mod="default" type="outline-primary" (click)="cancel()">
-                Cancel
-            </app-button>
+            <app-button mod="default" type="outline-primary" (click)="cancel()"> Cancel </app-button>
 
-            <app-button mod="default" type="primary" (click)="save()">
-                Save Selection
-            </app-button>
+            <app-button mod="default" type="primary" (click)="save()"> Save Selection </app-button>
         </div>
     </div>
 </ng-template>

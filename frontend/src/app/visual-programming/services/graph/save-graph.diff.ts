@@ -9,7 +9,7 @@
  *   5. Payload builders      — convert UI nodes into API request bodies
  */
 
-import { isEqual } from 'lodash';
+import { isEqual } from 'lodash-es';
 
 import { GraphDto } from '../../../features/flows/models/graph.model';
 import { GetProjectRequest } from '../../../features/projects/models/project.model';
@@ -24,10 +24,7 @@ import {
 import { CreateEdgeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/edge.model';
 import { CreateEndNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/end-node.model';
 import { CreateFileExtractorNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/file-extractor.model';
-import {
-    CreateGraphNoteRequest,
-    GraphNote,
-} from '../../../pages/flows-page/components/flow-visual-programming/models/graph-note.model';
+import { CreateGraphNoteRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/graph-note.model';
 import { CreateLLMNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/llm-node.model';
 import { CreatePythonNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/python-node.model';
 import { CreateSubGraphNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/subgraph-node.model';
@@ -38,7 +35,6 @@ import { ConnectionModel } from '../../core/models/connection.model';
 import { FlowModel } from '../../core/models/flow.model';
 import {
     AudioToTextNodeModel,
-    BaseNodeModel,
     CodeAgentNodeModel,
     DecisionTableNodeModel,
     EdgeNodeModel,
@@ -89,7 +85,6 @@ import {
     GraphPreviousState,
     NodeDiff,
     NodeOnlyDiff,
-    NodeUIMetadata,
     ResolvedConditionalEdge,
     ResolvedUiEdge,
     UiEdge,
@@ -110,6 +105,7 @@ export function diffByKey<TBackend extends { id: number }, TUI>(
     toComparableFromUI: (node: TUI) => unknown,
     nodeTypeName: string = 'Node'
 ): NodeDiff<TBackend, TUI> {
+    void nodeTypeName;
     const backendMap = new Map<number, TBackend>();
     for (const node of backendNodes) {
         backendMap.set(node.id, node);

@@ -7,21 +7,19 @@ import {
     model,
     output,
     signal,
-    ViewChild
+    ViewChild,
 } from '@angular/core';
-import {FormsModule} from "@angular/forms";
-import { SelectItem } from "@shared/components";
+import { FormsModule } from '@angular/forms';
+import { SelectItem } from '@shared/components';
+
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-chips-input',
     templateUrl: './chips-input.component.html',
     styleUrls: ['./chips-input.component.scss'],
-    imports: [
-        FormsModule,
-        AppSvgIconComponent,
-    ],
-    changeDetection: ChangeDetectionStrategy.OnPush
+    imports: [FormsModule, AppSvgIconComponent],
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ChipsInputComponent {
     @ViewChild('inputRef') inputRef!: ElementRef<HTMLInputElement>;
@@ -38,11 +36,9 @@ export class ChipsInputComponent {
     filteredChips = computed(() => {
         const val = this.inputValue().toLowerCase();
 
-        return this.chips().filter(chip => {
-              return chip.name.toLowerCase().includes(val)
-                  && !this.selectedChips().some(s => s.name === chip.name);
-            }
-        );
+        return this.chips().filter((chip) => {
+            return chip.name.toLowerCase().includes(val) && !this.selectedChips().some((s) => s.name === chip.name);
+        });
     });
 
     addInput() {
@@ -62,8 +58,8 @@ export class ChipsInputComponent {
     }
 
     select(option: SelectItem) {
-        if (!this.selectedChips().some(s => s.value === option.value)) {
-            this.selectedChips.update(arr => [...arr, option]);
+        if (!this.selectedChips().some((s) => s.value === option.value)) {
+            this.selectedChips.update((arr) => [...arr, option]);
         }
         this.inputValue.set('');
         this.highlightedIndex.set(0);
@@ -71,18 +67,18 @@ export class ChipsInputComponent {
     }
 
     private emitChange() {
-        const values = this.selectedChips().map(chip => chip.value);
+        const values = this.selectedChips().map((chip) => chip.value);
         this.selectionChange.emit(values);
     }
 
     highlightNext() {
         if (!this.filteredChips().length) return;
-        this.highlightedIndex.update(curr => Math.min(curr + 1, this.filteredChips().length - 1));
+        this.highlightedIndex.update((curr) => Math.min(curr + 1, this.filteredChips().length - 1));
     }
 
     highlightPrev() {
         if (!this.filteredChips().length) return;
-        this.highlightedIndex.update(curr => Math.max(curr - 1, 0));
+        this.highlightedIndex.update((curr) => Math.max(curr - 1, 0));
     }
 
     onFocus() {

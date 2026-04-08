@@ -1,1 +1,1 @@
-export const VARIABLE_PREFIX = "variables.";
+export const VARIABLE_PREFIX = 'variables.';

@@ -1,17 +1,8 @@
-import {
-    Component,
-    Input,
-    Output,
-    EventEmitter,
-    forwardRef,
-} from '@angular/core';
 import { CommonModule } from '@angular/common';
-import {
-    ControlValueAccessor,
-    FormsModule,
-    NG_VALUE_ACCESSOR,
-} from '@angular/forms';
+import { Component, forwardRef, Input } from '@angular/core';
+import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
@@ -22,12 +13,7 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
         <div class="form-group">
             <div class="label-container" *ngIf="label">
                 <label [for]="id">{{ label }}</label>
-                <span
-                    *ngIf="required"
-                    class="required"
-                >
-                    *
-                </span>
+                <span *ngIf="required" class="required"> * </span>
                 <ng-container *ngIf="tooltipText">
                     <app-svg-icon
                         *ngIf="!isClassIcon"
@@ -176,8 +162,8 @@ export class CustomInputComponent implements ControlValueAccessor {
     private _value: string = '';
     private _disabled: boolean = false;
 
-    onChange: any = () => {};
-    onTouched: any = () => {};
+    onChange: (value: string) => void = () => {};
+    onTouched: () => void = () => {};
 
     get value(): string {
         return this._value;
@@ -205,11 +191,11 @@ export class CustomInputComponent implements ControlValueAccessor {
         this._value = value || '';
     }
 
-    registerOnChange(fn: any): void {
+    registerOnChange(fn: (value: string) => void): void {
         this.onChange = fn;
     }
 
-    registerOnTouched(fn: any): void {
+    registerOnTouched(fn: () => void): void {
         this.onTouched = fn;
     }
 

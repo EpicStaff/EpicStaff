@@ -1,127 +1,127 @@
 :host ::ng-deep .monaco-editor {
-  --vscode-focusBorder: transparent !important;
-  height: 100% !important;
-  width: 100% !important;
+    --vscode-focusBorder: transparent !important;
+    height: 100% !important;
+    width: 100% !important;
 }
 
 :host {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: visible;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
 }
 
 .editor-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.5rem 1rem;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1;
-  border-bottom: 1px solid #2b2b2b;
-  border-top-left-radius: 4px;
-  border-top-right-radius: 4px;
-
-  .left-section {
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    justify-content: center;
+    padding: 0.5rem 1rem;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1;
+    border-bottom: 1px solid #2b2b2b;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
 
-    .editor-title {
-      color: #e0e0e0;
-      font-weight: 500;
-      margin-right: 1rem;
-      display: flex;
-      align-items: center;
+    .left-section {
+        display: flex;
+        align-items: center;
+        justify-content: center;
 
-      .python-icon {
-        margin-right: 0.5rem;
-        color: #ffdd57;
-      }
+        .editor-title {
+            color: #e0e0e0;
+            font-weight: 500;
+            margin-right: 1rem;
+            display: flex;
+            align-items: center;
+
+            .python-icon {
+                margin-right: 0.5rem;
+                color: #ffdd57;
+            }
+        }
+
+        .entrypoint-main {
+            color: #999;
+            font-weight: 400;
+        }
+
+        .error-message {
+            margin-top: 2px;
+            display: block;
+            color: #ff5555;
+            font-size: 0.9rem;
+            font-weight: 300;
+            margin-left: 0.2rem;
+            line-height: 1;
+        }
     }
 
-    .entrypoint-main {
-      color: #999;
-      font-weight: 400;
+    .right-section {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+
+        app-icon-button {
+            color: #e0e0e0;
+            transition: color 0.2s ease;
+
+            &:hover {
+                color: #ffffff;
+            }
+        }
     }
-
-    .error-message {
-      margin-top: 2px;
-      display: block;
-      color: #ff5555;
-      font-size: 0.9rem;
-      font-weight: 300;
-      margin-left: 0.2rem;
-      line-height: 1;
-    }
-  }
-
-  .right-section {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-
-    app-icon-button {
-      color: #e0e0e0;
-      transition: color 0.2s ease;
-
-      &:hover {
-        color: #ffffff;
-      }
-    }
-  }
 }
 
 .editor-container {
-  position: relative;
-  background-color: #1b1b1b;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  width: 100%;
-  .monaco-editor {
+    position: relative;
+    background-color: #1b1b1b;
     flex: 1;
     min-height: 0;
-  }
-
-  .editor-loading-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(27, 27, 27, 0.9);
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    z-index: 10;
-    transition: opacity 0.3s;
-
-    span {
-      margin-top: 8px;
-      color: #e0e0e0;
-      font-size: 1rem;
+    height: 100%;
+    width: 100%;
+    .monaco-editor {
+        flex: 1;
+        min-height: 0;
     }
-  }
+
+    .editor-loading-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(27, 27, 27, 0.9);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 10;
+        transition: opacity 0.3s;
+
+        span {
+            margin-top: 8px;
+            color: #e0e0e0;
+            font-size: 1rem;
+        }
+    }
 }
 
 /* Spinner animation */
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .spinner {
-  border: 4px solid rgba(224, 224, 224, 0.3);
-  border-top: 4px solid #e0e0e0;
-  border-radius: 50%;
-  width: 30px;
-  height: 30px;
-  animation: spin 1s linear infinite;
+    border: 4px solid rgba(224, 224, 224, 0.3);
+    border-top: 4px solid #e0e0e0;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    animation: spin 1s linear infinite;
 }

@@ -1,5 +1,6 @@
+import { NgClass, NgStyle } from '@angular/common';
 import { Component, input } from '@angular/core';
-import {NgClass, NgStyle} from '@angular/common';
+
 import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({

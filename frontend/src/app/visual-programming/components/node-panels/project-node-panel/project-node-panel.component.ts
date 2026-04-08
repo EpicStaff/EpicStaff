@@ -1,7 +1,6 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, effect, signal } from '@angular/core';
-import { output } from '@angular/core';
-import { AbstractControl, FormArray, FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { ProjectNodeModel } from '../../../core/models/node.model';
@@ -42,31 +41,51 @@ interface InputMapPair {
                         [activeColor]="activeColor"
                     ></app-custom-input>
 
-                    <!-- <div class="stream-config-section" formGroupName="stream_config">
+                    <div class="stream-config-section" formGroupName="stream_config">
                         <span class="section-label">Streaming to EpicChat</span>
                         <div class="checkbox-list">
                             <label class="checkbox-item">
-                                <input type="checkbox" formControlName="agent_activity" [style.accent-color]="activeColor" />
+                                <input
+                                    type="checkbox"
+                                    formControlName="agent_activity"
+                                    [style.accent-color]="activeColor"
+                                />
                                 <span>Agent activity</span>
                             </label>
                             <label class="checkbox-item">
-                                <input type="checkbox" formControlName="task_progress" [style.accent-color]="activeColor" />
+                                <input
+                                    type="checkbox"
+                                    formControlName="task_progress"
+                                    [style.accent-color]="activeColor"
+                                />
                                 <span>Task progress</span>
                             </label>
                             <label class="checkbox-item">
-                                <input type="checkbox" formControlName="agent_reasoning" [style.accent-color]="activeColor" />
+                                <input
+                                    type="checkbox"
+                                    formControlName="agent_reasoning"
+                                    [style.accent-color]="activeColor"
+                                />
                                 <span>Agent reasoning</span>
                             </label>
                             <label class="checkbox-item">
-                                <input type="checkbox" formControlName="tool_calls" [style.accent-color]="activeColor" />
+                                <input
+                                    type="checkbox"
+                                    formControlName="tool_calls"
+                                    [style.accent-color]="activeColor"
+                                />
                                 <span>Tool calls</span>
                             </label>
                             <label class="checkbox-item">
-                                <input type="checkbox" formControlName="final_reply" [style.accent-color]="activeColor" />
+                                <input
+                                    type="checkbox"
+                                    formControlName="final_reply"
+                                    [style.accent-color]="activeColor"
+                                />
                                 <span>Final reply</span>
                             </label>
                         </div>
-                    </div> -->
+                    </div>
                 </form>
             </div>
         </div>
@@ -210,7 +229,7 @@ export class ProjectNodePanelComponent extends BaseSidePanel<ProjectNodeModel> {
 
     private getValidInputPairs(): AbstractControl[] {
         return this.inputMapPairs.controls.filter((control) => {
-            const value = control.value;
+            const value = control.value as InputMapPair;
             return value.key?.trim() !== '' || value.value?.trim() !== '';
         });
     }

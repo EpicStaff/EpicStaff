@@ -1,4 +1,7 @@
+@use '../../../../../styles/header-layout' as header;
+
 .flows-list-page {
+    @include header.headerLayout();
     display: flex;
     flex-direction: column;
     width: 100%;
@@ -67,6 +70,7 @@
             display: flex;
             align-items: center;
             gap: 1rem;
+            min-width: 0;
         }
     }
 
@@ -80,7 +84,8 @@
 
         .body-content {
             flex: 1;
-            overflow: auto;
+            overflow-y: auto;
+            overflow-x: hidden;
             display: flex;
             flex-direction: column;
 
@@ -132,6 +137,8 @@
                     display: flex;
                     align-items: center;
                     gap: 8px;
+                    min-width: 0;
+                    overflow: hidden;
 
                     .breadcrumb-home {
                         display: flex;
@@ -162,6 +169,9 @@
                         font-size: 14px;
                         font-weight: 400;
                         color: var(--color-text-primary);
+                        overflow: hidden;
+                        white-space: nowrap;
+                        text-overflow: ellipsis;
                     }
                 }
             }
@@ -180,6 +190,8 @@
     .search-container {
         position: relative;
         width: 20rem;
+        max-width: 100%;
+        flex: 0 1 20rem;
         height: 2.2rem;
 
         .search-icon {

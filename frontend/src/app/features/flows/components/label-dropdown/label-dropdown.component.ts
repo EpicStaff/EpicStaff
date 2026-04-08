@@ -199,28 +199,11 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
         return `${depth * 1 + 0.25}rem`;
     }
 
-    onTreeRowHover(event: MouseEvent): void {
-        const treeRow = event.currentTarget as HTMLElement;
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                const btn = treeRow.querySelector('.add-child-btn') as HTMLElement;
-                if (btn) {
-                    btn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-                }
-            });
-        });
-    }
-
     private scrollChildAddRowIntoView(): void {
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                const row = this.elementRef.nativeElement.querySelector('.add-label-row.child-add') as HTMLElement;
-                if (!row) return;
-                const buttons = row.querySelectorAll('button');
-                const lastBtn = buttons[buttons.length - 1] as HTMLElement;
-                if (lastBtn) lastBtn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-            });
-        });
+        setTimeout(() => {
+            const input = this.elementRef.nativeElement.querySelector('.add-label-row.child-add input') as HTMLElement;
+            if (input) input.scrollIntoView({ block: 'nearest', inline: 'start' });
+        }, 0);
     }
 
     private parseError(err: HttpErrorResponse): string {

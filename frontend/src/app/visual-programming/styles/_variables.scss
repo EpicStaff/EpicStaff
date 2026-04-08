@@ -1,77 +1,77 @@
 ::ng-deep :root {
-  --vp-line-alignment-color: #2c2c2c;
-  --vp-connection-selection-color: rgba(142, 150, 170, 0.14);
-  --vp-connection-for-create-path: #5672cd;
-  --vp-connection-text-color: rgba(60, 60, 67, 0.56);
-  --vp-selected-connection-color: #5672cd;
-  --vp-selection-area-color: rgba(100, 108, 255, 0.14);
+    --vp-line-alignment-color: #2c2c2c;
+    --vp-connection-selection-color: rgba(142, 150, 170, 0.14);
+    --vp-connection-for-create-path: #5672cd;
+    --vp-connection-text-color: rgba(60, 60, 67, 0.56);
+    --vp-selected-connection-color: #5672cd;
+    --vp-selection-area-color: rgba(100, 108, 255, 0.14);
 
-  --vp-minimap-color: #1a1d24;
-  --vp-minimap-node-color: #384152;
-  --vp-minimap-selected-node-color: #4d7cfe;
-  --vp-minimap-view-color: rgba(255, 255, 255, 0.1);
-
-  --vp-node-color: #242424;
-  --vp-node-border-color: #333;
-  --vp-node-selected-color: hsl(0, 0%, 57%);
-  //nodes
-  --agent-node-accent-color: #8e5cd9;
-  --task-node-accent-color: #30a46c;
-  --tool-node-accent-color: #9f6a00;
-  --llm-node-accent-color: #e0575b;
-  --project-node-accent-color: #5672cd;
-  --python-node-accent-color: #ffcf3f;
-  --edge-node-accent-color: #8e5cd9;
-  --default-node-accent-color: #9f6a00;
-
-  //connections:
-  --db-text-1: rgba(60, 60, 67);
-  --db-primary-1: #3e63dd;
-  --db-snap-connection: rgba(180, 180, 180);
-  //i used this for resize handle
-  --db-background: #000000;
-  --db-primary-1: #5672cd;
-
-  --vp-selected-node-background-color: rgba(142, 150, 170, 0.14);
-  --vp-hover-node-background-color: rgba(142, 150, 170, 0.14);
-  --vp-selected-node-border-color: #5672cd;
-  --vp-outlet-color: #ffffff;
-  --vp-outlet-border-color: rgba(60, 60, 67);
-
-  --vp-palette-border-color: #e2e2e3;
-  --vp-palette-node-color: #ffffff;
-
-  --vp-button-text-color: rgba(60, 60, 67);
-  --vp-button-default-bg: #ebebef;
-  --vp-button-default-hover-bg: #e4e4e9;
-  --vp-button-default-active-bg: #dddde3;
-
-  &.dark {
-    --vp-line-alignment-color: #2e2e32;
-    --vp-connection-selection-color: rgba(101, 117, 133, 0.16);
-    --vp-connection-for-create-path: #3e63dd;
-    --vp-connection-text-color: rgba(235, 235, 245, 0.38);
-    --vp-selected-connection-color: #3e63dd;
-    --vp-selection-area-color: rgba(100, 108, 255, 0.16);
-
-    --vp-minimap-color: #1b1b1f;
-    --vp-minimap-node-color: rgba(255, 255, 245, 0.86);
-    --vp-minimap-selected-node-color: #a8b1ff;
-    --vp-minimap-view-color: rgba(100, 108, 255, 0.16);
+    --vp-minimap-color: #1a1d24;
+    --vp-minimap-node-color: #384152;
+    --vp-minimap-selected-node-color: #4d7cfe;
+    --vp-minimap-view-color: rgba(255, 255, 255, 0.1);
 
     --vp-node-color: #242424;
-    --vp-selected-node-background-color: rgba(101, 117, 133, 0.16);
-    --vp-hover-node-background-color: rgba(101, 117, 133, 0.16);
-    --vp-selected-node-border-color: #3e63dd;
-    --vp-outlet-color: #1b1b1f;
-    --vp-outlet-border-color: rgba(255, 255, 245, 0.86);
+    --vp-node-border-color: #333;
+    --vp-node-selected-color: hsl(0, 0%, 57%);
+    //nodes
+    --agent-node-accent-color: #8e5cd9;
+    --task-node-accent-color: #30a46c;
+    --tool-node-accent-color: #9f6a00;
+    --llm-node-accent-color: #e0575b;
+    --project-node-accent-color: #5672cd;
+    --python-node-accent-color: #ffcf3f;
+    --edge-node-accent-color: #8e5cd9;
+    --default-node-accent-color: #9f6a00;
 
-    --vp-palette-border-color: #000000;
-    --vp-palette-node-color: #1b1b1f;
+    //connections:
+    --db-text-1: rgba(60, 60, 67);
+    --db-primary-1: #3e63dd;
+    --db-snap-connection: rgba(180, 180, 180);
+    //i used this for resize handle
+    --db-background: #000000;
+    --db-primary-1: #5672cd;
 
-    --vp-button-text-color: rgba(255, 255, 245, 0.86);
-    --vp-button-default-bg: #32363f;
-    --vp-button-default-hover-bg: #414853;
-    --vp-button-default-active-bg: #515c67;
-  }
+    --vp-selected-node-background-color: rgba(142, 150, 170, 0.14);
+    --vp-hover-node-background-color: rgba(142, 150, 170, 0.14);
+    --vp-selected-node-border-color: #5672cd;
+    --vp-outlet-color: #ffffff;
+    --vp-outlet-border-color: rgba(60, 60, 67);
+
+    --vp-palette-border-color: #e2e2e3;
+    --vp-palette-node-color: #ffffff;
+
+    --vp-button-text-color: rgba(60, 60, 67);
+    --vp-button-default-bg: #ebebef;
+    --vp-button-default-hover-bg: #e4e4e9;
+    --vp-button-default-active-bg: #dddde3;
+
+    &.dark {
+        --vp-line-alignment-color: #2e2e32;
+        --vp-connection-selection-color: rgba(101, 117, 133, 0.16);
+        --vp-connection-for-create-path: #3e63dd;
+        --vp-connection-text-color: rgba(235, 235, 245, 0.38);
+        --vp-selected-connection-color: #3e63dd;
+        --vp-selection-area-color: rgba(100, 108, 255, 0.16);
+
+        --vp-minimap-color: #1b1b1f;
+        --vp-minimap-node-color: rgba(255, 255, 245, 0.86);
+        --vp-minimap-selected-node-color: #a8b1ff;
+        --vp-minimap-view-color: rgba(100, 108, 255, 0.16);
+
+        --vp-node-color: #242424;
+        --vp-selected-node-background-color: rgba(101, 117, 133, 0.16);
+        --vp-hover-node-background-color: rgba(101, 117, 133, 0.16);
+        --vp-selected-node-border-color: #3e63dd;
+        --vp-outlet-color: #1b1b1f;
+        --vp-outlet-border-color: rgba(255, 255, 245, 0.86);
+
+        --vp-palette-border-color: #000000;
+        --vp-palette-node-color: #1b1b1f;
+
+        --vp-button-text-color: rgba(255, 255, 245, 0.86);
+        --vp-button-default-bg: #32363f;
+        --vp-button-default-hover-bg: #414853;
+        --vp-button-default-active-bg: #515c67;
+    }
 }

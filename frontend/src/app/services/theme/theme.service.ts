@@ -1,6 +1,6 @@
+import { DOCUMENT } from '@angular/common';
 import { Injectable, Renderer2, RendererFactory2 } from '@angular/core';
 import { Inject } from '@angular/core';
-import { DOCUMENT } from '@angular/common';
 import { BehaviorSubject } from 'rxjs';
 
 @Injectable({
@@ -37,23 +37,11 @@ export class ThemeService {
 
         // Update document class based on app.config.ts darkModeSelector
         if (isDark) {
-            this.renderer.addClass(
-                this.document.documentElement,
-                'my-app-dark'
-            );
-            this.renderer.removeClass(
-                this.document.documentElement,
-                'my-app-light'
-            );
+            this.renderer.addClass(this.document.documentElement, 'my-app-dark');
+            this.renderer.removeClass(this.document.documentElement, 'my-app-light');
         } else {
-            this.renderer.addClass(
-                this.document.documentElement,
-                'my-app-light'
-            );
-            this.renderer.removeClass(
-                this.document.documentElement,
-                'my-app-dark'
-            );
+            this.renderer.addClass(this.document.documentElement, 'my-app-light');
+            this.renderer.removeClass(this.document.documentElement, 'my-app-dark');
         }
     }
 

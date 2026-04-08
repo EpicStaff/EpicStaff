@@ -32,11 +32,12 @@ import {
 
 // ---- UI metadata stored in each node's backend `metadata` JSON field ----
 
-export interface NodeUIMetadata {
+export interface NodeUIMetadata extends Record<string, unknown> {
     position: { x: number; y: number };
     color: string;
     icon: string;
     size: { width: number; height: number };
+    nodeNumber?: number;
 }
 
 /**
@@ -50,6 +51,7 @@ export function getUIMetadataForComparison(node: BaseNodeModel): NodeUIMetadata 
         color: node.color,
         icon: node.icon,
         size: node.size,
+        nodeNumber: node.nodeNumber,
     };
 }
 

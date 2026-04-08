@@ -112,17 +112,19 @@
 
     // Custom scrollbar
     scrollbar-width: thin;
-    scrollbar-color: var(--color-input-background) transparent;
+    scrollbar-color: var(--color-text-secondary) transparent;
 
     &::-webkit-scrollbar {
-        width: 8px;
+        width: 6px;
+        height: 4px;
     }
     &::-webkit-scrollbar-track {
         background: transparent;
     }
     &::-webkit-scrollbar-thumb {
-        background: var(--color-input-background);
+        background: var(--color-text-secondary);
         border-radius: 4px;
+        opacity: 0.5;
     }
 }
 
@@ -170,8 +172,6 @@
 
     .label-name {
         flex: 1;
-        overflow: hidden;
-        text-overflow: ellipsis;
         white-space: nowrap;
         min-width: 0;
     }

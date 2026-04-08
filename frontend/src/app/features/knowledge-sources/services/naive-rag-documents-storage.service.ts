@@ -1,28 +1,32 @@
-import { HttpErrorResponse } from "@angular/common/http";
-import { inject, Injectable, signal } from "@angular/core";
-import { EMPTY, filter, Observable, throwError } from "rxjs";
-import { catchError, map, tap } from "rxjs/operators";
+import { HttpErrorResponse } from '@angular/common/http';
+import { inject, Injectable, signal } from '@angular/core';
+import { EMPTY, Observable, throwError } from 'rxjs';
+import { catchError, map, tap } from 'rxjs/operators';
+
 import {
-    DocFieldChange, TableDocument,
-} from "../components/rag-configuration/configuration-table/configuration-table.interface";
-import { calcLimit } from "../helpers/calculate-chunks-fetch-limit.util";
-import { normalizeBulkUpdateErrors } from "../helpers/normalize-bulk-update-errors.util";
-import { transformToTableDocuments } from "../helpers/transform-to-table-document.util";
+    DocFieldChange,
+    TableDocument,
+} from '../components/rag-configuration/configuration-table/configuration-table.interface';
+import { calcLimit } from '../helpers/calculate-chunks-fetch-limit.util';
+import { normalizeBulkUpdateErrors } from '../helpers/normalize-bulk-update-errors.util';
+import { transformToTableDocuments } from '../helpers/transform-to-table-document.util';
 import {
     DocumentChunkingState,
     DocumentWithChunksStatus,
-    GetNaiveRagDocumentChunksResponse, NaiveRagChunkingResponse, NaiveRagDocumentChunk
-} from "../models/naive-rag-chunk.model";
+    GetNaiveRagDocumentChunksResponse,
+    NaiveRagChunkingResponse,
+    NaiveRagDocumentChunk,
+} from '../models/naive-rag-chunk.model';
 import {
     BulkDeleteNaiveRagDocumentDtoResponse,
     BulkUpdateNaiveRagDocumentDtoResponse,
     UpdateNaiveRagDocumentDtoRequest,
-    UpdateNaiveRagDocumentResponse
-} from "../models/naive-rag-document.model";
-import { NaiveRagService } from "./naive-rag.service";
+    UpdateNaiveRagDocumentResponse,
+} from '../models/naive-rag-document.model';
+import { NaiveRagService } from './naive-rag.service';
 
 @Injectable({
-    providedIn: 'root'
+    providedIn: 'root',
 })
 export class NaiveRagDocumentsStorageService {
     private documentsSignal = signal<TableDocument[]>([]);
@@ -34,22 +38,18 @@ export class NaiveRagDocumentsStorageService {
     private readonly naiveRagService = inject(NaiveRagService);
 
     public fetchDocumentConfigs(naiveRagId: number): Observable<TableDocument[]> {
-        return this.naiveRagService.getDocumentConfigs(naiveRagId)
-            .pipe(
-                map(({ configs }) => transformToTableDocuments(configs)),
-                tap(documents => this.initDocumentStatesMap(documents)),
-                tap(documents => this.documentsSignal.set(documents)),
-                catchError((err) => throwError(() => err)),
-            );
+        return this.naiveRagService.getDocumentConfigs(naiveRagId).pipe(
+            map(({ configs }) => transformToTableDocuments(configs)),
+            tap((documents) => this.initDocumentStatesMap(documents)),
+            tap((documents) => this.documentsSignal.set(documents)),
+            catchError((err) => throwError(() => err))
+        );
     }
 
-    public fetchChunks(
-        naiveRagId: number,
-        documentId: number,
-    ): Observable<GetNaiveRagDocumentChunksResponse> {
-        this.updateDocState(documentId, s => ({ ...s, status: 'fetching_chunks' }));
+    public fetchChunks(naiveRagId: number, documentId: number): Observable<GetNaiveRagDocumentChunksResponse> {
+        this.updateDocState(documentId, (s) => ({ ...s, status: 'fetching_chunks' }));
 
-        const docChunkSize = this.documentsSignal().find(d => d.naive_rag_document_id === documentId)?.chunk_size;
+        const docChunkSize = this.documentsSignal().find((d) => d.naive_rag_document_id === documentId)?.chunk_size;
         const limit = docChunkSize ? calcLimit(docChunkSize) : 50;
 
         return this.naiveRagService.getChunkPreview(naiveRagId, documentId, 0, limit).pipe(
@@ -58,17 +58,17 @@ export class NaiveRagDocumentsStorageService {
                 // document was updated during fetching
                 if (state?.status === 'chunks_outdated') return;
 
-                const docData = this.documents().find(d => d.naive_rag_document_id === documentId);
+                const docData = this.documents().find((d) => d.naive_rag_document_id === documentId);
                 if (!docData) return;
 
-                this.updateDocState(documentId, s => ({
+                this.updateDocState(documentId, (s) => ({
                     ...s,
                     status: 'chunks_ready',
                     chunkStrategy: docData.chunk_strategy,
                     chunkOverlap: docData.chunk_overlap,
                     chunkSize: this.calcAvgChunkSize(chunks),
                     total: total_chunks,
-                    chunks
+                    chunks,
                 }));
             }),
             catchError((err) => throwError(() => err))
@@ -81,19 +81,19 @@ export class NaiveRagDocumentsStorageService {
         offset: number,
         limit: number,
         bufferLimit: number
-    ): Observable<{ removedCount: number, fetchedCount: number }> {
+    ): Observable<{ removedCount: number; fetchedCount: number }> {
         return this.naiveRagService.getChunkPreview(naiveRagId, documentId, offset, limit).pipe(
             map(({ chunks }) => {
                 let removedCount: number = 0;
                 // Update doc state in two steps prevents breaking scroll position
-                this.updateDocState(documentId, s => ({
+                this.updateDocState(documentId, (s) => ({
                     ...s,
                     removedCount,
                     chunkSize: this.calcAvgChunkSize([...s.chunks, ...chunks]),
-                    chunks: [...s.chunks, ...chunks]
+                    chunks: [...s.chunks, ...chunks],
                 }));
                 setTimeout(() => {
-                    this.updateDocState(documentId, s => {
+                    this.updateDocState(documentId, (s) => {
                         const updatedChunks = s.chunks;
                         if (updatedChunks.length > bufferLimit) {
                             removedCount = updatedChunks.length - bufferLimit;
@@ -101,7 +101,7 @@ export class NaiveRagDocumentsStorageService {
                         }
                         return { ...s, removedCount, chunks: updatedChunks };
                     });
-                }, 100)
+                }, 100);
 
                 return { removedCount, fetchedCount: chunks.length };
             }),
@@ -115,28 +115,27 @@ export class NaiveRagDocumentsStorageService {
         offset: number,
         limit: number,
         bufferLimit: number
-    ): Observable<{ removedCount: number, fetchedCount: number }> {
-        return this.naiveRagService.getChunkPreview(naiveRagId, documentId, offset, limit)
-            .pipe(
-                map(({ chunks }) => {
-                    let removedCount: number = 0;
-                    this.updateDocState(documentId, s => {
-                        let updatedChunks = [...chunks, ...s.chunks];
-                        if (updatedChunks.length > bufferLimit) {
-                            removedCount = updatedChunks.length - bufferLimit;
-                            updatedChunks.splice(updatedChunks.length - removedCount, removedCount);
-                        }
-                        return {
-                            ...s,
-                            removedCount,
-                            chunkSize: this.calcAvgChunkSize(updatedChunks),
-                            chunks: updatedChunks
-                        };
-                    });
-                    return { removedCount, fetchedCount: chunks.length };
-                }),
-                catchError((err) => throwError(() => err))
-            );
+    ): Observable<{ removedCount: number; fetchedCount: number }> {
+        return this.naiveRagService.getChunkPreview(naiveRagId, documentId, offset, limit).pipe(
+            map(({ chunks }) => {
+                let removedCount: number = 0;
+                this.updateDocState(documentId, (s) => {
+                    let updatedChunks = [...chunks, ...s.chunks];
+                    if (updatedChunks.length > bufferLimit) {
+                        removedCount = updatedChunks.length - bufferLimit;
+                        updatedChunks.splice(updatedChunks.length - removedCount, removedCount);
+                    }
+                    return {
+                        ...s,
+                        removedCount,
+                        chunkSize: this.calcAvgChunkSize(updatedChunks),
+                        chunks: updatedChunks,
+                    };
+                });
+                return { removedCount, fetchedCount: chunks.length };
+            }),
+            catchError((err) => throwError(() => err))
+        );
     }
 
     private calcAvgChunkSize(chunks: NaiveRagDocumentChunk[]): number {
@@ -145,7 +144,7 @@ export class NaiveRagDocumentsStorageService {
 
     public initDocumentStatesMap(documents: TableDocument[]): void {
         const docStateMap = new Map<number, DocumentChunkingState>();
-        documents.forEach(doc => {
+        documents.forEach((doc) => {
             let status: DocumentWithChunksStatus;
 
             switch (doc.status) {
@@ -177,7 +176,7 @@ export class NaiveRagDocumentsStorageService {
         const initialState = this.documentStates().get(documentId);
         if (!initialState) return EMPTY;
 
-        this.updateDocState(documentId, s => ({ ...s, status: 'chunking' }));
+        this.updateDocState(documentId, (s) => ({ ...s, status: 'chunking' }));
 
         return this.naiveRagService.runChunkingProcess(ragId, documentId).pipe(
             tap((res) => {
@@ -186,38 +185,34 @@ export class NaiveRagDocumentsStorageService {
 
                 switch (res.status) {
                     case 'completed': {
-                        this.updateDocState(documentId, s => ({ ...s, status: 'chunked' }));
+                        this.updateDocState(documentId, (s) => ({ ...s, status: 'chunked' }));
                         return;
                     }
                     case 'canceled': {
                         return;
                     }
                     case 'failed': {
-                        this.updateDocState(documentId, s => ({ ...s, status: 'chunking_failed' }));
+                        this.updateDocState(documentId, (s) => ({ ...s, status: 'chunking_failed' }));
                         return;
                     }
                     case 'timeout': {
-                        this.updateDocState(documentId, s => ({ ...s, status: 'chunking_failed' }));
+                        this.updateDocState(documentId, (s) => ({ ...s, status: 'chunking_failed' }));
                         return;
                     }
                 }
-            }),
-        )
+            })
+        );
     }
 
     public updateDocumentField(naiveRagId: number, change: DocFieldChange): Observable<UpdateNaiveRagDocumentResponse> {
         const { documentId, field, value } = change;
         if (value === null) return EMPTY;
 
-        return this.naiveRagService.updateDocumentConfigById(
-            naiveRagId,
-            documentId,
-            { [field]: value }
-        ).pipe(
-            tap(response => this.handleUpdateSuccess(response)),
-            catchError(err => {
-                this.handleUpdateError(err, field, documentId)
-                return throwError(() => err)
+        return this.naiveRagService.updateDocumentConfigById(naiveRagId, documentId, { [field]: value }).pipe(
+            tap((response) => this.handleUpdateSuccess(response)),
+            catchError((err) => {
+                this.handleUpdateError(err, field, documentId);
+                return throwError(() => err);
             })
         );
     }
@@ -225,28 +220,26 @@ export class NaiveRagDocumentsStorageService {
     public updateDocumentFields(
         naiveRagId: number,
         documentId: number,
-        data: UpdateNaiveRagDocumentDtoRequest,
+        data: UpdateNaiveRagDocumentDtoRequest
     ): Observable<UpdateNaiveRagDocumentResponse> {
-        return this.naiveRagService.updateDocumentConfigById(
-            naiveRagId,
-            documentId,
-            data
-        ).pipe(
-            tap(response => this.handleUpdateSuccess(response)),
-            catchError(err => {
-                return throwError(() => err)
+        return this.naiveRagService.updateDocumentConfigById(naiveRagId, documentId, data).pipe(
+            tap((response) => this.handleUpdateSuccess(response)),
+            catchError((err) => {
+                return throwError(() => err);
             })
         );
     }
 
     public toggleAll(all: boolean) {
-        this.documentsSignal.update(items => items.map(i => ({ ...i, checked: !all })));
+        this.documentsSignal.update((items) => items.map((i) => ({ ...i, checked: !all })));
     }
 
     public toggleDocument(id: number) {
-        this.documentsSignal.update(items => items.map(i => {
-            return i.naive_rag_document_id === id ? { ...i, checked: !i.checked } : i
-        }));
+        this.documentsSignal.update((items) =>
+            items.map((i) => {
+                return i.naive_rag_document_id === id ? { ...i, checked: !i.checked } : i;
+            })
+        );
     }
 
     public bulkEditDocConfigs(
@@ -256,12 +249,9 @@ export class NaiveRagDocumentsStorageService {
     ): Observable<BulkUpdateNaiveRagDocumentDtoResponse> {
         if (!config_ids.length) return EMPTY;
 
-        return this.naiveRagService.bulkUpdateDocumentConfigs(
-            ragId,
-            { config_ids, ...dto }
-        ).pipe(
+        return this.naiveRagService.bulkUpdateDocumentConfigs(ragId, { config_ids, ...dto }).pipe(
             tap((response) => this.hangleBulkEdit(response)),
-            catchError(err => throwError(() => err))
+            catchError((err) => throwError(() => err))
         );
     }
 
@@ -271,19 +261,14 @@ export class NaiveRagDocumentsStorageService {
     ): Observable<BulkDeleteNaiveRagDocumentDtoResponse> {
         if (!config_ids.length) return EMPTY;
 
-        return this.naiveRagService
-            .bulkDeleteDocumentConfigs(ragId, { config_ids })
-            .pipe(
-                tap(response => this.handleSuccessBulkDelete(response)),
-                catchError(err => throwError(() => err)),
-            );
+        return this.naiveRagService.bulkDeleteDocumentConfigs(ragId, { config_ids }).pipe(
+            tap((response) => this.handleSuccessBulkDelete(response)),
+            catchError((err) => throwError(() => err))
+        );
     }
 
-    private updateDocState(
-        ragDocId: number,
-        updater: (state: DocumentChunkingState) => DocumentChunkingState
-    ): void {
-        this.documentStatesSignal.update(prevMap => {
+    private updateDocState(ragDocId: number, updater: (state: DocumentChunkingState) => DocumentChunkingState): void {
+        this.documentStatesSignal.update((prevMap) => {
             const prevState = prevMap.get(ragDocId);
             if (!prevState) {
                 return prevMap;
@@ -300,7 +285,7 @@ export class NaiveRagDocumentsStorageService {
     private removeDocsFromState(ragDocIds: number[]): void {
         if (!ragDocIds.length) return;
 
-        this.documentStatesSignal.update(prevMap => {
+        this.documentStatesSignal.update((prevMap) => {
             const newMap = new Map(prevMap);
 
             for (const id of ragDocIds) {
@@ -315,13 +300,11 @@ export class NaiveRagDocumentsStorageService {
     private handleUpdateSuccess(response: UpdateNaiveRagDocumentResponse) {
         const { config } = response;
 
-        this.documentsSignal.update(items =>
-            items.map(i =>
-                i.document_id === config.document_id ? { ...i, ...config, errors: {} } : i
-            )
+        this.documentsSignal.update((items) =>
+            items.map((i) => (i.document_id === config.document_id ? { ...i, ...config, errors: {} } : i))
         );
 
-        this.updateDocState(config.naive_rag_document_id, s => ({
+        this.updateDocState(config.naive_rag_document_id, (s) => ({
             ...s,
             status: s.status !== 'new' ? 'chunks_outdated' : s.status,
             chunkStrategy: config.chunk_strategy,
@@ -332,45 +315,41 @@ export class NaiveRagDocumentsStorageService {
         }));
     }
 
-    private handleUpdateError(
-        error: HttpErrorResponse,
-        field: keyof TableDocument,
-        documentId: number
-    ) {
+    private handleUpdateError(error: HttpErrorResponse, field: keyof TableDocument, documentId: number) {
         // Update of one field will return array with 1 error
         const [err] = error.error.errors;
 
         if (!err) return;
 
-        this.documentsSignal.update(items =>
-            items.map(item => {
-                return item.naive_rag_document_id === documentId ? {
-                    ...item,
-                    errors: { [field]: { reason: err.reason } }
-                } : item;
+        this.documentsSignal.update((items) =>
+            items.map((item) => {
+                return item.naive_rag_document_id === documentId
+                    ? {
+                          ...item,
+                          errors: { [field]: { reason: err.reason } },
+                      }
+                    : item;
             })
         );
     }
 
     private hangleBulkEdit(res: BulkUpdateNaiveRagDocumentDtoResponse) {
-        const configMap = new Map(
-            res.configs.map(c => [c.naive_rag_document_id, c])
-        );
+        const configMap = new Map(res.configs.map((c) => [c.naive_rag_document_id, c]));
 
-        this.documentsSignal.update(items =>
-            items.map(item => {
+        this.documentsSignal.update((items) =>
+            items.map((item) => {
                 const updated = configMap.get(item.naive_rag_document_id);
                 if (!updated) return item;
 
                 return {
                     ...item,
                     ...updated,
-                    errors: normalizeBulkUpdateErrors(updated.errors)
+                    errors: normalizeBulkUpdateErrors(updated.errors),
                 };
             })
         );
 
-        this.documentStatesSignal.update(prevMap => {
+        this.documentStatesSignal.update((prevMap) => {
             const nextMap = new Map(prevMap);
 
             for (const [docId, updated] of configMap) {
@@ -394,9 +373,11 @@ export class NaiveRagDocumentsStorageService {
 
     private handleSuccessBulkDelete(res: BulkDeleteNaiveRagDocumentDtoResponse) {
         const deletedIds = res.deleted_config_ids;
-        this.documentsSignal.update(items => items.filter(i => {
-            return !deletedIds.includes(i.naive_rag_document_id);
-        }));
+        this.documentsSignal.update((items) =>
+            items.filter((i) => {
+                return !deletedIds.includes(i.naive_rag_document_id);
+            })
+        );
         this.removeDocsFromState(deletedIds);
     }
 }

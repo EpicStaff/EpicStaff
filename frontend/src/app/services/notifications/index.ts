@@ -1,2 +1,2 @@
-export * from './toast.service';
 export * from './notification/toast.component';
+export * from './toast.service';

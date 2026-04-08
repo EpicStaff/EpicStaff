@@ -34,13 +34,13 @@
                             tooltipText="Select the ngrok config. Full URL is shown below."
                             formControlName="ngrok_webhook_config"
                             [items]="ngrokConfigSelectItems()"
-                            (changed)="ngrokConfigId.set($event)"
+                            (changed)="onNgrokConfigChanged($event)"
                         />
                         <div class="webhook-url-display">
                             @if (webhookUrlDisplay(); as url) {
                                 <span class="webhook-url-text" [style.color]="activeColor">
-                                {{ url }}
-                            </span>
+                                    {{ url }}
+                                </span>
                                 <button
                                     type="button"
                                     class="copy-button"
@@ -52,13 +52,10 @@
                                     <span>Copy</span>
                                 </button>
                             } @else if (loadingTunnel()) {
-                                <div class="webhook-url-placeholder">
-                                    Fetching tunnel URL...
-                                </div>
+                                <div class="webhook-url-placeholder">Fetching tunnel URL...</div>
                             } @else {
                                 <div class="webhook-url-error">Ngrok config or path is empty</div>
                             }
-
                         </div>
                     </div>
 
@@ -76,11 +73,7 @@
                             type="button"
                             class="toggle-icon-button"
                             (click)="toggleCodeEditorFullWidth()"
-                            [attr.aria-label]="
-                                        isCodeEditorFullWidth()
-                                            ? 'Collapse code editor'
-                                            : 'Expand code editor'
-                                    "
+                            [attr.aria-label]="isCodeEditorFullWidth() ? 'Collapse code editor' : 'Expand code editor'"
                         >
                             <svg
                                 width="9"
@@ -88,11 +81,7 @@
                                 viewBox="0 0 9 22"
                                 fill="none"
                                 xmlns="http://www.w3.org/2000/svg"
-                                [style.transform]="
-                                            isCodeEditorFullWidth()
-                                                ? 'scaleX(1)'
-                                                : 'scaleX(-1)'
-                                        "
+                                [style.transform]="isCodeEditorFullWidth() ? 'scaleX(1)' : 'scaleX(-1)'"
                             >
                                 <path
                                     d="M7.16602 21.0001L1.16602 11.0001L7.16602 1.00012"
@@ -105,12 +94,8 @@
                         <div class="code-editor-section">
                             <app-code-editor
                                 [pythonCode]="pythonCode"
-                                (pythonCodeChange)="
-                                            onPythonCodeChange($event)
-                                        "
-                                (errorChange)="
-                                            onCodeErrorChange($event)
-                                        "
+                                (pythonCodeChange)="onPythonCodeChange($event)"
+                                (errorChange)="onCodeErrorChange($event)"
                             ></app-code-editor>
                         </div>
                     </div>
@@ -118,9 +103,7 @@
                     <div class="code-editor-section">
                         <app-code-editor
                             [pythonCode]="pythonCode"
-                            (pythonCodeChange)="
-                                        onPythonCodeChange($event)
-                                    "
+                            (pythonCodeChange)="onPythonCodeChange($event)"
                             (errorChange)="onCodeErrorChange($event)"
                         ></app-code-editor>
                     </div>

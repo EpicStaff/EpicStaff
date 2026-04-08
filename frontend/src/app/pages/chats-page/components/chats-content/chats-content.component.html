@@ -1,16 +1,16 @@
 <section class="chats-content">
-  <ng-container *ngIf="selectedAgent; else noAgentSelected">
-    <app-chat></app-chat>
-  </ng-container>
+    <ng-container *ngIf="selectedAgent; else noAgentSelected">
+        <app-chat></app-chat>
+    </ng-container>
 
-  <ng-template #noAgentSelected>
-    <div class="no-agent-message">
-      <h3>No Agents Available</h3>
-      <p>
-        There are currently no agents available for selection. Please visit the
-        Staff page to create a new agent and assign a realtime model.
-      </p>
-      <a routerLink="/staff" class="action-button">Go to Staff</a>
-    </div>
-  </ng-template>
+    <ng-template #noAgentSelected>
+        <div class="no-agent-message">
+            <h3>No Agents Available</h3>
+            <p>
+                There are currently no agents available for selection. Please visit the Staff page to create a new agent
+                and assign a realtime model.
+            </p>
+            <a routerLink="/staff" class="action-button">Go to Staff</a>
+        </div>
+    </ng-template>
 </section>
