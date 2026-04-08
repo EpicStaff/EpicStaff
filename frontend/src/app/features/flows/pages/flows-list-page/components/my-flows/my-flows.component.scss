@@ -13,6 +13,60 @@
     width: 100%;
 }
 
+.recent-section {
+    .section-title-no-tabs {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--color-ks-text);
+        margin: 0 0 0.5rem;
+        text-transform: uppercase;
+        letter-spacing: 0;
+    }
+
+    .empty-message-no-tabs {
+        margin-top: 13px;
+        font-weight: 400;
+        font-size: 14px;
+        color: rgba(217, 217, 222, 0.6);
+        font-size: 14px;
+        text-align: left;
+    }
+}
+
+.recent-flows-list {
+    display: flex;
+    gap: 8px;
+}
+
+.recent-flow-card {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 87px;
+    height: 28px;
+    padding: 0 8px;
+    background: var(--color-flow-card-bg);
+    border-radius: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+    box-shadow:
+        0px 2px 3px 0px #0000004d,
+        0px 6px 10px 4px #00000026;
+    &:hover {
+        background: #313438;
+    }
+
+    .recent-flow-name {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--color-text-primary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-decoration: none;
+    }
+}
+
 .empty-message {
     text-align: center;
     padding: 2rem;

@@ -9,6 +9,22 @@
             </div>
         } @else {
             <div class="grid">
+                <div class="recent-section" #recentSection>
+                    <h3 class="section-title-no-tabs">Last modified</h3>
+                    @if (recentFlows().length === 0) {
+                        <div class="empty-message-no-tabs">
+                            <p>Your recently opened flows will appear here</p>
+                        </div>
+                    } @else {
+                        <ul class="recent-flows-list">
+                            @for (flow of recentFlows(); track flow.id) {
+                                <li class="recent-flow-card">
+                                    <a class="recent-flow-name" [routerLink]="['/flows', flow.id]">{{ flow.name }}</a>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
                 @if (filteredFlows().length === 0) {
                     <div class="empty-message">
                         @if (activeLabelFilter() !== 'all' && activeLabelFilter() !== 'unlabeled') {

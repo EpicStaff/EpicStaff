@@ -644,7 +644,7 @@ export class AgentsTableComponent {
         const parsed = {
             ...agentData,
             llm_config: llmConfigId,
-            fcm_llm_config: agentData.fullFcmLlmConfig?.id ?? agentData.fcm_llm_config ?? llmConfigId,
+            fcm_llm_config: agentData.fullFcmLlmConfig?.id ?? llmConfigId,
             realtime_agent: realtime_agent, // Use the properly structured realtime_agent object
             configured_tools: mergedTools
                 .filter((tool: { id: number; type: string }) => tool.type === 'tool-config')
@@ -876,7 +876,6 @@ export class AgentsTableComponent {
             ...this.rowData[index],
             ...updatedData,
         };
-
         // Update our local row data
         this.rowData[index] = updatedAgent;
 
@@ -1986,7 +1985,7 @@ export class AgentsTableComponent {
         const sl = input?.search_configs?.naive?.search_limit;
         const st = input?.search_configs?.naive?.similarity_threshold;
         return {
-            fcm_llm_config_id: input?.fullFcmLlmConfig?.id ?? input?.fcm_llm_config ?? null,
+            fcm_llm_config_id: input?.fullFcmLlmConfig?.id ?? null,
             knowledge_collection: input?.knowledge_collection ?? rawInput['selected_knowledge_source'] ?? null,
             rag_id: input?.rag?.rag_id ?? rawInput['rag_id'] ?? null,
             max_iter: input?.max_iter ?? 20,

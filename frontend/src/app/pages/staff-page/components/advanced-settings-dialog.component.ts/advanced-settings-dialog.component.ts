@@ -20,7 +20,7 @@ import { MATERIAL_FORMS } from '../../../../shared/material-forms';
 
 export interface AdvancedSettingsData {
     id: number;
-    fullFcmLlmConfig?: FullLLMConfig;
+    fullFcmLlmConfig?: FullLLMConfig | null;
     agentRole: string;
     max_iter: number;
     max_rpm: number | null;
@@ -167,7 +167,8 @@ export class AdvancedSettingsDialogComponent implements OnInit, OnDestroy {
                                 this.cdr.markForCheck();
                             });
                         } else {
-                            console.log('No matching LLM config found');
+                            this.selectedLlmId = null;
+                            this.agentData.fullFcmLlmConfig = null;
                         }
                     }
 
@@ -226,7 +227,7 @@ export class AdvancedSettingsDialogComponent implements OnInit, OnDestroy {
 
         if (llmId === null) {
             // "Default to LLM" option selected
-            this.agentData.fullFcmLlmConfig = undefined;
+            this.agentData.fullFcmLlmConfig = null;
         } else {
             // Find the selected LLM config
             const selectedLlm = this.combinedLLMs.find((llm) => llm.id === llmId);

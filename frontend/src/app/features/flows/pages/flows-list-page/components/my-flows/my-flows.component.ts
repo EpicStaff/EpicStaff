@@ -1,8 +1,18 @@
 import { Dialog, DialogModule } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@angular/core';
-import { Router } from '@angular/router';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    effect,
+    ElementRef,
+    inject,
+    signal,
+    viewChild,
+} from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
 
 import { ImportExportService } from '../../../../../../core/services/import-export.service';
 import { ToastService } from '../../../../../../services/notifications/toast.service';
@@ -27,7 +37,7 @@ import { RunGraphService } from '../../../../services/run-graph-session.service'
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './my-flows.component.html',
     styleUrls: ['./my-flows.component.scss'],
-    imports: [CommonModule, FlowCardComponent, LoadingSpinnerComponent, DialogModule],
+    imports: [CommonModule, FlowCardComponent, LoadingSpinnerComponent, DialogModule, RouterLink],
 })
 export class MyFlowsComponent {
     private readonly flowsService = inject(FlowsStorageService);
@@ -40,6 +50,14 @@ export class MyFlowsComponent {
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly importExportService = inject(ImportExportService);
     private readonly labelsStorage = inject(LabelsStorageService);
+    private readonly destroyRef = inject(DestroyRef);
+
+    private readonly recentSection = viewChild<ElementRef<HTMLElement>>('recentSection');
+    private readonly containerWidth = signal(0);
+    private resizeObserver: ResizeObserver | null = null;
+
+    private static readonly CARD_WIDTH = 87;
+    private static readonly GAP = 8;
 
     public readonly activeLabelFilter = this.labelsStorage.activeLabelFilter;
 
@@ -48,6 +66,21 @@ export class MyFlowsComponent {
     public readonly isFlowsLoaded = this.flowsService.isFlowsLoaded;
     public readonly selectMode = this.flowsService.selectMode;
     public readonly selectedFlowIds = this.flowsService.selectedFlowIds;
+
+    private readonly maxVisibleRecent = computed(() => {
+        const width = this.containerWidth();
+        if (width <= 0) return 0;
+        return Math.floor((width + MyFlowsComponent.GAP) / (MyFlowsComponent.CARD_WIDTH + MyFlowsComponent.GAP));
+    });
+
+    public readonly recentFlows = computed(() => {
+        const max = this.maxVisibleRecent();
+        return this.filteredFlows()
+            .filter((filtered) => filtered.updated_at)
+            .slice()
+            .sort((a, b) => new Date(b.updated_at!).getTime() - new Date(a.updated_at!).getTime())
+            .slice(0, max);
+    });
 
     constructor() {
         effect(() => {
@@ -60,6 +93,21 @@ export class MyFlowsComponent {
                 },
             });
         });
+
+        effect(() => {
+            const el = this.recentSection()?.nativeElement;
+            if (!el) return;
+
+            this.resizeObserver?.disconnect();
+            this.containerWidth.set(el.clientWidth);
+            this.resizeObserver = new ResizeObserver((entries) => {
+                const width = entries[0]?.contentRect.width ?? 0;
+                this.containerWidth.set(width);
+            });
+            this.resizeObserver.observe(el);
+        });
+
+        this.destroyRef.onDestroy(() => this.resizeObserver?.disconnect());
     }
 
     public retryLoad(): void {
