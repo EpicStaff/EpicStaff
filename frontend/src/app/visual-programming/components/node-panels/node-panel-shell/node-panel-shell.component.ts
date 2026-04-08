@@ -168,7 +168,7 @@ export class NodePanelShellComponent {
     protected onShortcutSave(): void {
         if (!this.panelInstance || typeof this.panelInstance.onSaveSilently !== 'function') {
             return;
-        }  
+        }
         const updatedNode = this.panelInstance.onSaveSilently();
         if (!updatedNode) {
             return;
@@ -199,14 +199,22 @@ export class NodePanelShellComponent {
     }
 
     public captureCurrentNodeState(): NodeModel | null {
-        if (this.panelInstance && typeof this.panelInstance.onSaveSilently === 'function') {
+        if (!this.panelInstance) {
+            return null;
+        }
+        if (typeof this.panelInstance.onSaveSilently === 'function') {
             try {
                 return this.panelInstance.onSaveSilently();
             } catch (error) {
                 console.error('Failed to capture node panel state silently', error);
-                return null;
             }
         }
-        return null;
+        // Fall back to onSave() which is required by the NodePanel interface
+        try {
+            return this.panelInstance.onSave();
+        } catch (error) {
+            console.error('Failed to capture node panel state via onSave', error);
+            return null;
+        }
     }
 }

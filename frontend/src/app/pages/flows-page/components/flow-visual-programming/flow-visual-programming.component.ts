@@ -207,6 +207,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     return this.saveGraphDirectly(flowState, showNotif);
                 }
                 return this.saveGraphWithStartNode(flowState, startNodeInFlow, showNotif);
+            }),
+            finalize(() => {
+                if (this.isSaving) {
+                    this.isSaving = false;
+                    this.cdr.markForCheck();
+                }
             })
         );
     }
@@ -477,9 +483,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public handleCtrlS(event: KeyboardEvent): void {
         if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
             event.preventDefault();
-            if (this.hasUnsavedChanges()) {
-                this.handleSaveFlow(true).subscribe();
-            }
+            this.handleSaveFlow(true).subscribe();
         }
     }
 

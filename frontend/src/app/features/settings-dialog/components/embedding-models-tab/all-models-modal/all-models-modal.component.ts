@@ -1,6 +1,6 @@
 import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, HostListener, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 
@@ -51,6 +51,13 @@ export class AllModelsModalComponent implements OnInit {
 
     public ngOnInit(): void {
         this.models.set([...this.dialogData.models]);
+
+        this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
+            if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                event.preventDefault();
+                this.onClose();
+            }
+        });
     }
 
     public getProviderIcon(providerName: string): string {
@@ -97,14 +104,5 @@ export class AllModelsModalComponent implements OnInit {
 
     public onClose(): void {
         this.dialogRef.close(true);
-    }
-
-    @HostListener('document:keydown', ['$event'])
-    onKeydown(event: KeyboardEvent): void {
-        if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
-            event.preventDefault();
-            event.stopPropagation();
-            this.onClose();
-        }
     }
 }
