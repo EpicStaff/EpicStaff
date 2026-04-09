@@ -1,4 +1,3 @@
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
 from tables.models.graph_models import (
@@ -31,56 +30,12 @@ from tables.serializers.graph_bulk_save_serializers import (
     TelegramTriggerNodeBulkSerializer,
     WebhookTriggerNodeBulkSerializer,
 )
-from tables.services.graph_bulk_save_service.saveables import (
-    DecisionTableNodeSaveable,
-    _SerializerSaveable,
+from tables.services.graph_bulk_save_service.factories import (
+    DefaultNodeSaveableFactory,
+    DecisionTableNodeSaveableFactory,
+    NodeSaveableFactory,
 )
 
-
-#
-
-
-class NodeSaveableFactory(ABC):
-    """NodeSaveableFactory — strategy for building a saveable for one node type"""
-
-    def preprocess_data(self, data: dict) -> tuple[dict, dict]:
-        """
-        Override preprocess_data when a node type has fields that must be
-        extracted before the serializer runs (e.g. nested relations).
-        Returns (data_for_serializer, extra_data_for_build).
-        The default passes data through unchanged.
-        """
-        return data, {}
-
-    # Build the inner saveable from the validated serializer and extra data
-    # extracted in preprocess_data.
-    @abstractmethod
-    def build(self, serializer, extra: dict, instance=None): ...
-
-
-class DefaultNodeSaveableFactory(NodeSaveableFactory):
-    def build(self, serializer, extra: dict, instance=None):
-        """Standard node types: just wrap the serializer"""
-        return _SerializerSaveable(serializer)
-
-
-class DecisionTableNodeSaveableFactory(NodeSaveableFactory):
-    # DecisionTableNode has nested condition_groups that the serializer must
-    # not see. preprocess_data pops them out; build passes them to the saveable.
-    def preprocess_data(self, data: dict) -> tuple[dict, dict]:
-        condition_groups_data = data.pop("condition_groups", None)
-        return data, {"condition_groups": condition_groups_data}
-
-    def build(self, serializer, extra: dict, instance=None):
-        return DecisionTableNodeSaveable(
-            serializer, extra.get("condition_groups"), instance
-        )
-
-
-# Adding a future node type with nested write logic:
-# 1. Create a new XxxNodeSaveableFactory(NodeSaveableFactory) here.
-# 2. Add one NodeTypeConfig line to NODE_TYPE_REGISTRY below.
-# No changes to service.py.
 
 # Singletons — factories are stateless.
 _DEFAULT_FACTORY = DefaultNodeSaveableFactory()

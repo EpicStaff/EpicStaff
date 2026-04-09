@@ -162,23 +162,26 @@ SAVE_FLOW_SWAGGER = dict(
                 {
                     "graph": 12,
                     "node_name": "decision_1",
-                    "default_next_node": "crewnode_5",
-                    "next_error_node": None,
+                    "default_next_node_id": 5,
+                    "next_error_node_id": None,
                     "metadata": {"position": {"x": 250, "y": 400}},
                     "condition_groups": [
                         {
                             "group_name": "group_a",
                             "group_type": "simple",
                             "order": 0,
-                            "next_node": "crewnode_new",
-                            "conditions": [
-                                {
-                                    "condition_name": "cond_1",
-                                    "order": 0,
-                                    "condition": "variables.user_text != ''",
-                                }
-                            ],
-                        }
+                            "expression": None,
+                            "manipulation": None,
+                            "next_node_id": 9,
+                        },
+                        {
+                            "group_name": "group_b",
+                            "group_type": "complex",
+                            "order": 1,
+                            "expression": "score * 0.5",
+                            "manipulation": "round_down",
+                            "next_node_temp_id": "372b0d79-4cc2-464e-baf8-c4a982e63af3",
+                        },
                     ],
                 }
             ],

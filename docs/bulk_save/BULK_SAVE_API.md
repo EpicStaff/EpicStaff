@@ -182,24 +182,94 @@ Uses `crew_id` (integer, write-only) to assign the linked crew. Do **not** pass 
 
 ### DecisionTableNode
 
-`condition_groups` is a nested list. On **update**, the server replaces all existing condition groups and their conditions wholesale — it does not patch them individually.
+`condition_groups` is a nested list. On **update**, the server replaces all existing condition groups and their conditions wholesale — it does not patch them individually. Passing an empty list `[]` removes all groups.
+
+#### Node-Level Routing Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `default_next_node_id` | integer \| null | Real DB id of the default-path target node. |
+| `default_next_node_temp_id` | UUID string \| null | `temp_id` of a new node in this request. Resolved after all nodes are saved. |
+| `next_error_node_id` | integer \| null | Real DB id of the error-path target node. |
+| `next_error_node_temp_id` | UUID string \| null | `temp_id` of a new node in this request. |
+
+For each pair (`*_node_id` / `*_node_temp_id`), provide **at most one**. Providing both is a validation error. Providing neither leaves the field null.
+
+#### Condition Group Fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `group_name` | string | Yes | Unique name within this DTN. |
+| `group_type` | string | Yes | `"simple"` or `"complex"`. |
+| `order` | integer | Yes | Display/evaluation order. |
+| `expression` | string \| null | No | Expression to evaluate. |
+| `manipulation` | string \| null | No | Manipulation to apply. |
+| `next_node_id` | integer \| null | No | Real DB id of the target node for this group. |
+| `next_node_temp_id` | UUID string \| null | No | `temp_id` of a new node in this request. |
+
+Same mutual-exclusion rule applies: provide at most one of `next_node_id` or `next_node_temp_id` per group.
+
+#### Deferred Routing Resolution
+
+When any routing field uses a `*_temp_id`, the server writes `null` during the initial node save, then resolves all temp references to real DB ids after every node in the request has been created. This works regardless of the order nodes appear in the payload.
+
+#### Example — Create DTN routing to new nodes via temp_id
 
 ```json
 {
-  "graph": 12,
-  "node_name": "router",
-  "condition_groups": [
+  "python_node_list": [
     {
-      "group_name": "group_a",
-      "group_type": "simple",
-      "order": 0,
-      "conditions": [
+      "graph": 12,
+      "temp_id": "aaaa0001-0001-0001-0001-aaaaaaaaaaaa",
+      "python_code": { "code": "def main(): return 1", "entrypoint": "main", "libraries": [] }
+    },
+    {
+      "graph": 12,
+      "temp_id": "aaaa0002-0002-0002-0002-aaaaaaaaaaaa",
+      "python_code": { "code": "def main(): return 2", "entrypoint": "main", "libraries": [] }
+    }
+  ],
+  "decision_table_node_list": [
+    {
+      "graph": 12,
+      "node_name": "router",
+      "default_next_node_temp_id": "aaaa0001-0001-0001-0001-aaaaaaaaaaaa",
+      "next_error_node_temp_id": "aaaa0002-0002-0002-0002-aaaaaaaaaaaa",
+      "condition_groups": [
         {
-          "condition_name": "cond_1",
-          "condition": "variables.score > 50",
-          "order": 0
+          "group_name": "high_score",
+          "group_type": "simple",
+          "order": 0,
+          "expression": "score * 2",
+          "manipulation": null,
+          "next_node_temp_id": "aaaa0001-0001-0001-0001-aaaaaaaaaaaa"
+        },
+        {
+          "group_name": "low_score",
+          "group_type": "complex",
+          "order": 1,
+          "expression": null,
+          "manipulation": "round_down",
+          "next_node_temp_id": "aaaa0002-0002-0002-0002-aaaaaaaaaaaa"
         }
       ]
+    }
+  ]
+}
+```
+
+#### Example — Update DTN, clear groups and reroute default
+
+```json
+{
+  "decision_table_node_list": [
+    {
+      "id": 55,
+      "graph": 12,
+      "node_name": "router",
+      "default_next_node_id": 42,
+      "next_error_node_id": null,
+      "condition_groups": []
     }
   ]
 }
@@ -441,6 +511,10 @@ If any of the three operations fail validation, none of the writes happen.
 | Deleting a node id that belongs to a different graph | `"deleted": ["python_node_ids: IDs [42] not found in graph 12"]` |
 | Missing required nested field (e.g. `python_code.code`) | `{ "index": 0, "errors": { "python_code": { "code": ["This field is required."] } } }` |
 | `crew_id` instead of `crew` omitted / wrong field name | `{ "index": 0, "errors": { "crew_id": ["This field is required."] } }` |
+| DTN: both `default_next_node_id` and `default_next_node_temp_id` provided | `{ "index": 0, "errors": ["Provide at most one of default_next_node_id or default_next_node_temp_id, not both."] }` |
+| DTN: `default_next_node_temp_id` not matching any `temp_id` in node lists | `{ "index": 0, "errors": ["default_next_node_temp_id='...' does not match any temp_id in the node lists of this request."] }` |
+| DTN: condition group `next_node_temp_id` not matching any `temp_id` | `{ "index": 0, "errors": ["condition_groups[0]: next_node_temp_id='...' does not match any temp_id ..."] }` |
+| DTN: `default_next_node_id` references a node that does not exist | `"DecisionTableNode routing references node IDs that do not exist: [99999]"` |
 
 ---
 
@@ -458,6 +532,7 @@ All database writes for a single request execute inside one database transaction
 | `tables/serializers/graph_bulk_save_serializers.py` | `GraphBulkSaveInputSerializer`, per-node bulk serializers, `EdgeBulkSerializer`, `ConditionalEdgeBulkSerializer`, `DeletedEntitiesSerializer` |
 | `tables/services/graph_bulk_save_service/service.py` | `GraphBulkSaveService` — two-pass validation and atomic write orchestration |
 | `tables/services/graph_bulk_save_service/registry.py` | `NODE_TYPE_REGISTRY` — single source of truth mapping list keys, delete keys, models, and serializers |
+| `tables/services/graph_bulk_save_service/factories/` | `NodeSaveableFactory` ABC, `DefaultNodeSaveableFactory`, `DecisionTableNodeSaveableFactory` |
 | `tables/services/graph_bulk_save_service/saveables.py` | Saveable wrapper classes for deferred node and edge writes; temp_id resolution |
 | `tables/models/graph_models.py` | All graph model definitions (`CrewNode`, `PythonNode`, `Edge`, `ConditionalEdge`, etc.) |
 | `tables/exceptions.py` | `BulkSaveValidationError` — raised by the service, caught in the view |

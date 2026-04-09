@@ -25,10 +25,6 @@ from tables.models.crew_models import (
 from tables.services.config_service import YamlConfigService
 from tables.services.redis_service import RedisService
 from tables.services.session_manager_service import SessionManagerService
-from tables.services.import_services import (
-    RealtimeConfigsImportService,
-    RealtimeTranscriptionConfigsImportService,
-)
 
 from tables.models import (
     LLMConfig,
@@ -51,11 +47,7 @@ from tables.models import (
     PythonCode,
     RealtimeAgent,
 )
-from tables.serializers.export_serializers import (
-    AgentExportSerializer,
-    CrewExportSerializer,
-    GraphExportSerializer,
-)
+
 
 from tests.helpers import data_to_json_file
 
@@ -504,27 +496,6 @@ def seeded_db(wikipedia_tool):
 
 
 @pytest.fixture
-def agent_export(seeded_db):
-    agent = seeded_db["agents"][0]
-    data = AgentExportSerializer(agent).data
-    return {"file": data_to_json_file(data=data, filename=agent.role), "agent": agent}
-
-
-@pytest.fixture
-def crew_export(seeded_db):
-    crew = seeded_db["crews"][0]
-    data = CrewExportSerializer(crew).data
-    return {"file": data_to_json_file(data=data, filename=crew.name), "crew": crew}
-
-
-@pytest.fixture
-def graph_export(seeded_db):
-    graph = seeded_db["graph"]
-    data = GraphExportSerializer(graph).data
-    return {"file": data_to_json_file(data=data, filename=graph.name), "graph": graph}
-
-
-@pytest.fixture
 def python_tool_data():
     return {
         "id": 1,
@@ -606,28 +577,6 @@ def realtime_agent_data():
             "realtime_transcription_config": 1,
         }
     ]
-
-
-@pytest.fixture
-def rt_config_service(openai_realtime_model_config):
-    data = [
-        {
-            "id": 3,
-            "model": "Test Realtime Model",
-            "custom_name": "RealtimeTest",
-        }
-    ]
-    service = RealtimeConfigsImportService(data)
-    service.create_configs()
-    return service
-
-
-@pytest.fixture
-def rt_transcription_service(realtime_transcription_config):
-    data = [{"id": 1, "model": "whisper-1", "custom_name": "TranscriptionModel"}]
-    service = RealtimeTranscriptionConfigsImportService(data)
-    service.create_configs()
-    return service
 
 
 @pytest.fixture

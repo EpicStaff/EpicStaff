@@ -164,11 +164,14 @@ class YourNewNodeSaveable:
 
 ### Step 3 — Create a custom SaveableFactory
 
-File: `tables/services/graph_bulk_save_service/registry.py`
+File: `tables/services/graph_bulk_save_service/factories/your_new_node.py`
 
 ```python
+from tables.services.graph_bulk_save_service.factories.base import NodeSaveableFactory
+from tables.services.graph_bulk_save_service.saveables import YourNewNodeSaveable
+
 class YourNewNodeSaveableFactory(NodeSaveableFactory):
-    def preprocess_data(self, data: dict) -> tuple[dict, dict]:
+    def preprocess_data(self, data: dict, payload_temp_ids: set) -> tuple[dict, dict]:
         # Pop nested fields the serializer must not see.
         nested = data.pop("your_nested_field", None)
         return data, {"your_nested_field": nested}
@@ -179,7 +182,13 @@ class YourNewNodeSaveableFactory(NodeSaveableFactory):
         )
 ```
 
-Create a singleton at module level (factories are stateless):
+Re-export from `tables/services/graph_bulk_save_service/factories/__init__.py`:
+
+```python
+from .your_new_node import YourNewNodeSaveableFactory
+```
+
+Create a singleton in `registry.py` (factories are stateless):
 
 ```python
 _YOUR_NEW_FACTORY = YourNewNodeSaveableFactory()
@@ -215,7 +224,9 @@ Same as Case 1 Steps 3 and 4.
 ### Node with nested write logic (in addition to the above)
 
 - [ ] `saveables.py` — add `XxxNodeSaveable` class
-- [ ] `registry.py` — add `XxxNodeSaveableFactory` class and singleton, pass factory to `NodeTypeConfig`
+- [ ] `factories/xxx_node.py` — add `XxxNodeSaveableFactory` class
+- [ ] `factories/__init__.py` — re-export the new factory
+- [ ] `registry.py` — add factory singleton, pass to `NodeTypeConfig`
 
 ---
 
@@ -264,7 +275,9 @@ After these four changes the new node type is fully integrated: it can be create
 | File | Role |
 |---|---|
 | `tables/serializers/graph_bulk_save_serializers.py` | Bulk serializer definitions; `BulkSaveEntityMixin` adds `id` and `temp_id` |
-| `tables/services/graph_bulk_save_service/registry.py` | `NODE_TYPE_REGISTRY`, `NodeTypeConfig`, `NodeSaveableFactory` base class |
+| `tables/services/graph_bulk_save_service/registry.py` | `NODE_TYPE_REGISTRY`, `NodeTypeConfig`, factory singletons |
+| `tables/services/graph_bulk_save_service/factories/base.py` | `NodeSaveableFactory` ABC, `DefaultNodeSaveableFactory` |
+| `tables/services/graph_bulk_save_service/factories/decision_table.py` | `DecisionTableNodeSaveableFactory` |
 | `tables/services/graph_bulk_save_service/saveables.py` | `_SerializerSaveable`, `DecisionTableNodeSaveable`, `_NodeSaveable`, `_EdgeSaveable`, `_ConditionalEdgeSaveable` |
 | `tables/services/graph_bulk_save_service/service.py` | `GraphBulkSaveService` — two-pass validation and atomic write orchestration |
 | `tables/views/model_view_sets.py` | `GraphViewSet.get_queryset()` — prefetch for the read response after save |
