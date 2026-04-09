@@ -1,6 +1,7 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { finalize } from 'rxjs/operators';
 
@@ -30,6 +31,7 @@ export class EditVoiceConfigDialogComponent implements OnInit {
     private formBuilder = inject(FormBuilder);
     private configService = inject(RealtimeModelConfigsService);
     private dialogData = inject<FullRealtimeConfig>(DIALOG_DATA);
+    private readonly destroyRef = inject(DestroyRef);
 
     public form!: FormGroup;
     public isSubmitting = signal<boolean>(false);
@@ -38,6 +40,15 @@ export class EditVoiceConfigDialogComponent implements OnInit {
 
     ngOnInit(): void {
         this.initForm();
+
+        this.dialogRef.keydownEvents
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(event => {
+                if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                    event.preventDefault();
+                    this.onSubmit();
+                }
+            });
     }
 
     private initForm(): void {
@@ -52,6 +63,7 @@ export class EditVoiceConfigDialogComponent implements OnInit {
     }
 
     public onSubmit(): void {
+        this.form.markAllAsTouched();
         if (this.form.invalid) {
             return;
         }

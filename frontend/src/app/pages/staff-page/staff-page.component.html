@@ -32,6 +32,10 @@
         </header>
     </div>
     <section class="body">
-        <app-agents-table [isSaving]="isSaving" (dirtyChange)="hasUnsavedChanges = $event"> </app-agents-table>
+        <app-agents-table
+            [isSaving]="isSaving"
+            (dirtyChange)="hasUnsavedChanges = $event"
+            (autoSaveRequested)="onSave()"
+        ></app-agents-table>
     </section>
 </div>

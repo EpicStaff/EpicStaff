@@ -17,7 +17,9 @@ import { FormsModule } from '@angular/forms';
 
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
+import { LabelColor } from '../../models/label.model';
 import { LabelsStorageService, LabelTreeNode } from '../../services/labels-storage.service';
+import { LabelColorPickerComponent } from '../label-color-picker/label-color-picker.component';
 
 interface FlatLabelNode {
     node: LabelTreeNode;
@@ -26,7 +28,7 @@ interface FlatLabelNode {
 
 @Component({
     selector: 'app-label-dropdown',
-    imports: [CommonModule, FormsModule, AppSvgIconComponent, ButtonComponent],
+    imports: [CommonModule, FormsModule, AppSvgIconComponent, ButtonComponent, LabelColorPickerComponent],
     templateUrl: './label-dropdown.component.html',
     styleUrls: ['./label-dropdown.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -45,6 +47,7 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
     readonly addingRoot = signal<boolean>(false);
 
     readonly newLabelName = signal<string>('');
+    readonly newLabelColor = signal<LabelColor>(LabelColor.Default);
     readonly addLabelError = signal<string>('');
 
     readonly labelTree = this.labelsStorage.labelTree;
@@ -85,6 +88,23 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
             if (this.isOpen()) {
                 this.close();
             }
+        }
+    }
+
+    @HostListener('document:keydown', ['$event'])
+    onDocumentKeydown(event: KeyboardEvent): void {
+        if (!this.isOpen()) {
+            return;
+        }
+
+        if (this.addingRoot() || this.addingChildOf() !== null) {
+            return;
+        }
+
+        if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+            event.preventDefault();
+            event.stopPropagation();
+            this.save();
         }
     }
 
@@ -168,6 +188,7 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
         this.addingRoot.set(false);
         this.addingChildOf.set(null);
         this.newLabelName.set('');
+        this.newLabelColor.set(LabelColor.Default);
         this.addLabelError.set('');
     }
 
@@ -179,7 +200,7 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
         }
         this.addLabelError.set('');
         const parentId = this.addingChildOf();
-        this.labelsStorage.createLabel(name, parentId ?? undefined).subscribe({
+        this.labelsStorage.createLabel(name, parentId ?? undefined, this.newLabelColor()).subscribe({
             next: () => {
                 this.cancelAdd();
             },
@@ -197,6 +218,14 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
 
     getIndentPadding(depth: number): string {
         return `${depth * 1 + 0.25}rem`;
+    }
+
+    public saveIfOpen(): void {
+        if (!this.isOpen()) {
+            return;
+        }
+
+        this.save();
     }
 
     private scrollChildAddRowIntoView(): void {

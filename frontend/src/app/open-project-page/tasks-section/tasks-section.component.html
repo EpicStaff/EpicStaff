@@ -6,5 +6,6 @@
         [isSaving]="isSaving"
         (taskPending)="onTaskPending($event)"
         (dirtyChange)="onDirtyChange($event)"
+        (autoSaveRequested)="autoSaveRequested.emit()"
     ></app-tasks-table>
 </div>

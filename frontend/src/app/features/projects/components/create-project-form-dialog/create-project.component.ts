@@ -1,6 +1,7 @@
 import { DialogRef } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Subscription } from 'rxjs';
 import { ErrorStateMatcher } from '@angular/material/core';
 
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -34,7 +35,7 @@ interface ProjectFormData {
         },
     ],
 })
-export class CreateProjectComponent implements OnInit {
+export class CreateProjectComponent implements OnInit, OnDestroy {
     public projectForm!: FormGroup<{
         name: FormControl<string>;
         description: FormControl<string>;
@@ -47,6 +48,7 @@ export class CreateProjectComponent implements OnInit {
     }>;
     public isSubmitting = signal(false);
     public ProjectProcess = ProjectProcess;
+    private keydownSubscription?: Subscription;
 
     constructor(
         private fb: FormBuilder,
@@ -56,6 +58,18 @@ export class CreateProjectComponent implements OnInit {
 
     ngOnInit(): void {
         this.initializeForm();
+
+        this.keydownSubscription = this.dialogRef.keydownEvents.subscribe((event: KeyboardEvent) => {
+            if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                event.preventDefault();
+                event.stopPropagation();
+                this.onSubmit();
+            }
+        });
+    }
+
+    ngOnDestroy(): void {
+        this.keydownSubscription?.unsubscribe();
     }
 
     private initializeForm(): void {
@@ -110,6 +124,7 @@ export class CreateProjectComponent implements OnInit {
 
     onSubmit(): void {
         if (this.projectForm.invalid || this.isSubmitting()) {
+            this.projectForm.markAllAsTouched();
             return;
         }
 

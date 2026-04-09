@@ -113,6 +113,7 @@ export class TasksTableComponent implements OnChanges {
 
     @Output() taskPending = new EventEmitter<TaskPendingEvent>();
     @Output() dirtyChange = new EventEmitter<boolean>();
+    @Output() autoSaveRequested = new EventEmitter<void>();
 
     public rowData: TableFullTask[] = [];
 
@@ -131,6 +132,7 @@ export class TasksTableComponent implements OnChanges {
 
     //overlay
     private popupOverlayRef: OverlayRef | null = null;
+    private _activePopupCommitFn: (() => void) | null = null;
     private currentPopupCell: CellInfo | null = null;
     private currentCellElement: HTMLElement | null = null;
     private globalClickUnlistener: (() => void) | null = null;
@@ -979,7 +981,6 @@ export class TasksTableComponent implements OnChanges {
             columns: [colId],
         });
 
-        if (!allValid) return;
         this.upsertPendingForExistingTask(event.data as TableFullTask);
         this.cdr.markForCheck();
     }
@@ -1056,6 +1057,10 @@ export class TasksTableComponent implements OnChanges {
                 },
                 taskData
             );
+
+            if (data._saveAfterClose) {
+                this.autoSaveRequested.emit();
+            }
         });
     }
 
@@ -1624,7 +1629,10 @@ export class TasksTableComponent implements OnChanges {
         if (cell.columnId === 'mergedTools') {
             const portal = new ComponentPortal(ToolsPopupComponent);
             const popupRef = this.popupOverlayRef.attach(portal);
+            this._activePopupCommitFn = () => popupRef.instance.save();
             const rowNode = event.node;
+            const taskData = rowNode.data as TableFullTask;
+
             popupRef.instance.mergedTools = event.data?.mergedTools || [];
 
             popupRef.instance.mergedToolsUpdated.subscribe((updatedMergedTools) => {
@@ -1669,6 +1677,7 @@ export class TasksTableComponent implements OnChanges {
             this.popupOverlayRef.dispose();
             this.popupOverlayRef = null;
         }
+        this._activePopupCommitFn = null;
         this.currentPopupCell = null;
 
         // Remove the custom CSS class from the cell.
@@ -2032,6 +2041,17 @@ export class TasksTableComponent implements OnChanges {
                 }
             }
         }
+
+        for (const row of this.rowData) {
+            const id = String(row?.id ?? '');
+            if (this.isTempRowId(id)) continue;
+            if (!this.localPendingKeys.has(id)) continue;
+            const rowWithWarnings = row as TableFullTask & Record<string, unknown>;
+            if (this.requiredTaskFields.some(f => Boolean(rowWithWarnings[`${f}Warning`]))) {
+                ok = false;
+            }
+        }
+
         return ok;
     }
 
@@ -2249,5 +2269,13 @@ export class TasksTableComponent implements OnChanges {
 
     public getCurrentRows(): TableFullTask[] {
         return [...this.rowData];
+    }
+
+    public stopEditing(): void {
+        this.gridApi?.stopEditing();
+    }
+
+    public commitPopupIfOpen(): void {
+        this._activePopupCommitFn?.();
     }
 }

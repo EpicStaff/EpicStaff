@@ -1,6 +1,7 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { Component, Inject } from '@angular/core';
+import { Component, DestroyRef, inject, Inject, OnInit } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 
 @Component({
@@ -109,11 +110,22 @@ import { FormsModule } from '@angular/forms';
         `,
     ],
 })
-export class EditTitleDialogComponent {
+export class EditTitleDialogComponent implements OnInit {
+    private readonly destroyRef = inject(DestroyRef);
+
     constructor(
         public dialogRef: DialogRef<string>,
         @Inject(DIALOG_DATA) public data: { title: string }
     ) {}
+
+    ngOnInit(): void {
+        this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event: KeyboardEvent) => {
+            if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                event.preventDefault();
+                this.save();
+            }
+        });
+    }
 
     isValid(): boolean {
         return !!(this.data.title && this.data.title.trim());

@@ -1,6 +1,7 @@
 import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { Component, Inject, OnInit } from '@angular/core';
+import { Component, DestroyRef, inject, Inject, OnInit } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { finalize } from 'rxjs';
 
@@ -40,6 +41,7 @@ export class RealtimeSettingsDialogComponent implements OnInit {
     errorMessage: string | null = null;
     transcriptionConfigs: EnhancedTranscriptionConfig[] = [];
     loadingConfigs = false;
+    private readonly destroyRef = inject(DestroyRef);
 
     // Language options from constants
     languages = AVAILABLE_LANGUAGES;
@@ -76,6 +78,15 @@ export class RealtimeSettingsDialogComponent implements OnInit {
             voice_recognition_prompt: [this.data.agent.realtime_agent.voice_recognition_prompt],
             realtime_transcription_config: [this.data.agent.realtime_agent.realtime_transcription_config],
         });
+
+        this.dialogRef.keydownEvents
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((event: KeyboardEvent) => {
+                if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                    event.preventDefault();
+                    this.onConfirm();
+                }
+            });
     }
 
     loadTranscriptionConfigs(): void {
@@ -232,6 +243,8 @@ export class RealtimeSettingsDialogComponent implements OnInit {
                         this.toastService.error('Failed to update settings. Please try again.');
                     },
                 });
+        } else {
+            this.settingsForm.markAllAsTouched();
         }
     }
 }

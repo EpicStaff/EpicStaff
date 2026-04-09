@@ -16,6 +16,7 @@ export interface AdvancedTaskSettingsData {
     taskName: string;
     taskId: number | string | null;
     availableTasks?: { id: number; order: number | null; name?: string }[];
+    _saveAfterClose?: boolean;
 }
 
 @Component({
@@ -43,6 +44,7 @@ export class AdvancedTaskSettingsDialogComponent implements OnInit {
     public readonly availableTasks: { id: number; order: number | null; name?: string }[];
     public useOutputModel = signal<boolean>(false);
     private readonly destroyRef = inject(DestroyRef);
+    private _closeWithPageSave = false;
 
     constructor(
         public dialogRef: DialogRef<AdvancedTaskSettingsData>,
@@ -85,6 +87,12 @@ export class AdvancedTaskSettingsDialogComponent implements OnInit {
         this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event: KeyboardEvent) => {
             if (event.key === 'Escape') {
                 event.preventDefault();
+                this.requestClose();
+            }
+            if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                event.preventDefault();
+                event.stopPropagation();
+                this._closeWithPageSave = true;
                 this.requestClose();
             }
         });
@@ -196,8 +204,9 @@ export class AdvancedTaskSettingsDialogComponent implements OnInit {
                 config: null,
                 output_model: outputModel,
                 task_context_list: this.selectedTaskIds(),
+                _saveAfterClose: this._closeWithPageSave,
             };
-
+            this._closeWithPageSave = false;
             this.dialogRef.close(result);
         } catch {
             this.isJsonValid.set(false);

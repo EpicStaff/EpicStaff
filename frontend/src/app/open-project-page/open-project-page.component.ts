@@ -989,6 +989,24 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         event.returnValue = '';
     }
 
+    @HostListener('document:keydown', ['$event'])
+    public handleCtrlS(event: KeyboardEvent): void {
+        if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+            event.preventDefault();
+
+            if (this.isSaving) {
+                return;
+            }
+
+            this.tasksSection?.commitPopupIfOpen();
+            this.tasksSection?.stopEditing();
+
+            if (this.hasUnsavedChanges) {
+                this.onSaveAll();
+            }
+        }
+    }
+
     private sanitizePendingTaskContexts(): void {
         const deletedIds = new Set(
             Array.from(this.pendingTaskUpdates.values())

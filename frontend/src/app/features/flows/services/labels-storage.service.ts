@@ -2,7 +2,7 @@ import { computed, inject, Injectable, signal } from '@angular/core';
 import { Observable, of } from 'rxjs';
 import { catchError, shareReplay, tap } from 'rxjs/operators';
 
-import { LabelDto } from '../models/label.model';
+import { LabelColor, LabelDto, PatchLabelRequest } from '../models/label.model';
 import { LabelsApiService } from './labels-api.service';
 
 export interface LabelTreeNode extends LabelDto {
@@ -59,21 +59,43 @@ export class LabelsStorageService {
     }
 
     // --- CRUD Methods ---
-    public createLabel(name: string, parentId?: number | null): Observable<LabelDto> {
-        return this.labelsApiService.createLabel({ name, parent: parentId ?? null }).pipe(
-            tap((newLabel) => {
-                this.labelsSignal.set([...this.labelsSignal(), newLabel]);
+    public createLabel(name: string, parentId?: number | null, color?: LabelColor): Observable<LabelDto> {
+        return this.labelsApiService
+            .createLabel({
+                name,
+                parent: parentId ?? null,
+                metadata: { color: color ?? LabelColor.Default },
             })
-        );
+            .pipe(
+                tap((newLabel) => {
+                    this.labelsSignal.set([...this.labelsSignal(), newLabel]);
+                })
+            );
     }
 
-    public renameLabel(id: number, name: string): Observable<LabelDto> {
+    public renameLabel(id: number, name: string, color?: LabelColor): Observable<LabelDto> {
         const label = this.labelsSignal().find((l) => l.id === id);
         if (!label) {
             throw new Error(`Label with id ${id} not found`);
         }
 
-        return this.labelsApiService.updateLabel(id, { name, parent: label.parent }).pipe(
+        const patchData: PatchLabelRequest = {
+            metadata: { color: color ?? LabelColor.Default },
+        };
+        if (name !== label.name) {
+            patchData.name = name;
+        }
+
+        return this.labelsApiService.patchLabel(id, patchData).pipe(
+            tap((updatedLabel) => {
+                const current = this.labelsSignal();
+                this.labelsSignal.set(current.map((l) => (l.id === id ? updatedLabel : l)));
+            })
+        );
+    }
+
+    public updateLabelColor(id: number, color: LabelColor): Observable<LabelDto> {
+        return this.labelsApiService.patchLabel(id, { metadata: { color } }).pipe(
             tap((updatedLabel) => {
                 const current = this.labelsSignal();
                 this.labelsSignal.set(current.map((l) => (l.id === id ? updatedLabel : l)));

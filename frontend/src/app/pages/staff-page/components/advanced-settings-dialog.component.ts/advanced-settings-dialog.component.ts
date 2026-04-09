@@ -43,6 +43,7 @@ export interface AdvancedSettingsData {
     memory: boolean;
     cache: boolean;
     respect_context_window: boolean;
+    _saveAfterClose?: boolean;
 }
 
 @Component({
@@ -74,6 +75,7 @@ export class AdvancedSettingsDialogComponent implements OnInit, OnDestroy {
     public knowledgeSourcesError: string | null = null;
 
     private readonly _destroyed$ = new Subject<void>();
+    private _closeWithPageSave = false;
     public search_limit = 3;
 
     // Form controls for sliders
@@ -211,6 +213,12 @@ export class AdvancedSettingsDialogComponent implements OnInit, OnDestroy {
                 e.preventDefault();
                 this.closeAndApply();
             }
+            if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') {
+                e.preventDefault();
+                e.stopPropagation();
+                this._closeWithPageSave = true;
+                this.closeAndApply();
+            }
         });
     }
 
@@ -326,7 +334,9 @@ export class AdvancedSettingsDialogComponent implements OnInit, OnDestroy {
         // Create a deep copy to prevent any unintended references
         const result = JSON.parse(JSON.stringify(this.agentData));
 
-        this.dialogRef.close(result);
+        const closeWithSave = this._closeWithPageSave;
+        this._closeWithPageSave = false;
+        this.dialogRef.close({ ...result, _saveAfterClose: closeWithSave } as AdvancedSettingsData);
     }
 
     public ngOnDestroy(): void {

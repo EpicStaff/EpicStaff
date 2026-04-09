@@ -57,6 +57,15 @@ export class AddEmbeddingConfigDialogComponent implements OnInit {
         this.form.statusChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.formValid.set(this.form.valid);
         });
+
+        this.dialogRef.keydownEvents
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(event => {
+                if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                    event.preventDefault();
+                    this.onSubmit();
+                }
+            });
     }
 
     private initForm(): void {

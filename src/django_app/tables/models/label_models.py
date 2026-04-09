@@ -1,7 +1,8 @@
 from django.db import models
+from .base_models import MetadataMixin
 
 
-class Label(models.Model):
+class Label(MetadataMixin):
     name = models.CharField(max_length=100)
     parent = models.ForeignKey(
         "self", null=True, blank=True, on_delete=models.CASCADE, related_name="children"

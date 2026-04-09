@@ -48,6 +48,12 @@ export class AddTranscriptionConfigDialogComponent implements OnInit {
         this.loadModels();
         this.initForm();
         this.setupModelSubscription();
+        this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event: KeyboardEvent) => {
+            if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                event.preventDefault();
+                this.onConfirm();
+            }
+        });
     }
 
     private initForm(): void {

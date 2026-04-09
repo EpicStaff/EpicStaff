@@ -58,6 +58,13 @@ export class AllModelsModalComponent implements OnInit {
 
     ngOnInit(): void {
         this.models.set([...this.dialogData.models]);
+
+        this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
+            if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                event.preventDefault();
+                this.onClose();
+            }
+        });
     }
 
     getProviderIcon(providerName: string): string {
