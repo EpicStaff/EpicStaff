@@ -22,11 +22,10 @@
 .icon-and-title {
     display: flex;
     align-items: center;
+    gap: 0.75rem;
     min-width: 0;
 
-    i {
-        font-size: 1.5rem;
-        margin-right: 1.5rem;
+    app-svg-icon {
         color: var(--project-node-accent-color, #5c8be5);
     }
 

@@ -70,12 +70,12 @@
                             matTooltipClass="create-agent__tooltip"
                         >
                             <div class="create-agent__llm-option">
-                                <app-icon
+                                <app-svg-icon
                                     [icon]="getProviderIcon(config)"
                                     size="20px"
                                     [ariaLabel]="config.providerDetails?.name || ''"
                                     class="create-agent__llm-icon"
-                                ></app-icon>
+                                />
                                 <span class="create-agent__llm-name">{{
                                     config.modelDetails?.name || 'Unknown Model'
                                 }}</span>
@@ -115,12 +115,12 @@
                             matTooltipClass="create-agent__tooltip"
                         >
                             <div class="create-agent__llm-option">
-                                <app-icon
+                                <app-svg-icon
                                     [icon]="getProviderIcon(config)"
                                     size="20px"
                                     [ariaLabel]="config.providerDetails?.name || ''"
                                     class="create-agent__llm-icon"
-                                ></app-icon>
+                                />
                                 <span class="create-agent__llm-name">{{
                                     config.modelDetails?.name || 'Unknown Model'
                                 }}</span>

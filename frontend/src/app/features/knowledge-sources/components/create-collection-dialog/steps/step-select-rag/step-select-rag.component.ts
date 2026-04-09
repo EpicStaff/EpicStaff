@@ -5,6 +5,7 @@ import { MATERIAL_FORMS } from '@shared/material-forms';
 import { map } from 'rxjs/operators';
 
 import { ToastService } from '../../../../../../services/notifications';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { EmbeddingConfig } from '../../../../../settings-dialog/models/embeddings/embedding-config.model';
 import { EmbeddingConfigsService } from '../../../../../settings-dialog/services/embeddings/embedding_configs.service';
 import { RAG_TYPES } from '../../../../constants/constants';
@@ -15,7 +16,7 @@ import { RagTypeComponent } from './rag-type/rag-type.component';
     selector: 'app-step-select-rag',
     templateUrl: './step-select-rag.component.html',
     styleUrls: ['./step-select-rag.component.scss'],
-    imports: [RagTypeComponent, SelectComponent, MATERIAL_FORMS],
+    imports: [RagTypeComponent, SelectComponent, MATERIAL_FORMS, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class StepSelectRagComponent implements OnInit {

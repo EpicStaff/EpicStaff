@@ -32,7 +32,7 @@ import { UnsavedIndicatorComponent } from '../../../shared/components/unsaved-in
         <div class="project-dialog-wrapper">
             <div class="dialog-header">
                 <div class="icon-and-title">
-                    <app-svg-icon icon="folder"></app-svg-icon>
+                    <app-svg-icon icon="folder" size="1.5rem"></app-svg-icon>
                     <span class="title">{{ data.projectName }}</span>
                     <app-unsaved-indicator [show]="openProjectPage?.hasUnsavedChanges ?? false"></app-unsaved-indicator>
                 </div>

@@ -205,4 +205,17 @@
             }
         }
     }
+
+    // Fix mat-option text color for dropdowns opened by the agent form
+    .mat-mdc-option .mdc-list-item__primary-text {
+        color: var(--color-text-primary);
+    }
+
+    .mat-mdc-option.mdc-list-item--selected .mdc-list-item__primary-text {
+        color: var(--accent-color);
+    }
+
+    .mat-mdc-option .mat-pseudo-checkbox-minimal {
+        --mat-minimal-pseudo-checkbox-selected-checkmark-color: var(--accent-color);
+    }
 }
