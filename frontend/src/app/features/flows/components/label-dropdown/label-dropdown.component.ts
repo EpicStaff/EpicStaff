@@ -17,7 +17,9 @@ import { FormsModule } from '@angular/forms';
 
 import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
+import { LabelColor } from '../../models/label.model';
 import { LabelsStorageService, LabelTreeNode } from '../../services/labels-storage.service';
+import { LabelColorPickerComponent } from '../label-color-picker/label-color-picker.component';
 
 interface FlatLabelNode {
     node: LabelTreeNode;
@@ -26,7 +28,7 @@ interface FlatLabelNode {
 
 @Component({
     selector: 'app-label-dropdown',
-    imports: [CommonModule, FormsModule, AppIconComponent, ButtonComponent],
+    imports: [CommonModule, FormsModule, AppIconComponent, ButtonComponent, LabelColorPickerComponent],
     templateUrl: './label-dropdown.component.html',
     styleUrls: ['./label-dropdown.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -45,6 +47,7 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
     readonly addingRoot = signal<boolean>(false);
 
     readonly newLabelName = signal<string>('');
+    readonly newLabelColor = signal<LabelColor>(LabelColor.Default);
     readonly addLabelError = signal<string>('');
 
     readonly labelTree = this.labelsStorage.labelTree;
@@ -185,6 +188,7 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
         this.addingRoot.set(false);
         this.addingChildOf.set(null);
         this.newLabelName.set('');
+        this.newLabelColor.set(LabelColor.Default);
         this.addLabelError.set('');
     }
 
@@ -196,7 +200,7 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
         }
         this.addLabelError.set('');
         const parentId = this.addingChildOf();
-        this.labelsStorage.createLabel(name, parentId ?? undefined).subscribe({
+        this.labelsStorage.createLabel(name, parentId ?? undefined, this.newLabelColor()).subscribe({
             next: () => {
                 this.cancelAdd();
             },

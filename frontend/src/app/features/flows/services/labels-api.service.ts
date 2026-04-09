@@ -5,7 +5,7 @@ import { map } from 'rxjs/operators';
 
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config/config.service';
-import { CreateLabelRequest, LabelDto, UpdateLabelRequest } from '../models/label.model';
+import { CreateLabelRequest, LabelDto, PatchLabelRequest, UpdateLabelRequest } from '../models/label.model';
 
 @Injectable({ providedIn: 'root' })
 export class LabelsApiService {
@@ -26,6 +26,10 @@ export class LabelsApiService {
 
     updateLabel(id: number, data: UpdateLabelRequest): Observable<LabelDto> {
         return this.http.put<LabelDto>(`${this.apiUrl}${id}/`, data);
+    }
+
+    patchLabel(id: number, data: PatchLabelRequest): Observable<LabelDto> {
+        return this.http.patch<LabelDto>(`${this.apiUrl}${id}/`, data);
     }
 
     deleteLabel(id: number): Observable<void> {

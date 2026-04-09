@@ -48,7 +48,7 @@
             @for (labelId of flow.label_ids || []; track labelId) {
                 @let labelName = getLabelName(labelId);
                 @if (labelName) {
-                    <span class="label-chip">{{ labelName }}</span>
+                    <span class="label-chip" [ngStyle]="getLabelChipStyles(labelId)">{{ labelName }}</span>
                 }
             }
         </div>
@@ -83,7 +83,9 @@
                             @for (labelId of subflow.label_ids || []; track labelId) {
                                 @let labelName = getLabelName(labelId);
                                 @if (labelName) {
-                                    <span class="label-chip">{{ labelName }}</span>
+                                    <span class="label-chip" [ngStyle]="getLabelChipStyles(labelId)">{{
+                                        labelName
+                                    }}</span>
                                 }
                             }
                         </div>

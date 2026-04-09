@@ -157,7 +157,7 @@
 .add-label-row {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: 8px;
     padding: 0.3rem 0.5rem;
     margin: 0.1rem 0.5rem;
     min-width: max-content;
@@ -349,17 +349,12 @@
 
 .label-item {
     ::ng-deep .label-icon svg path {
-        fill: var(--color-ks-text);
+        fill: var(--label-color, var(--color-ks-text));
         transition: fill 0.15s ease;
     }
 
     &:hover ::ng-deep .label-icon svg path {
-        fill: var(--color-ks-text);
-    }
-
-    &:active ::ng-deep .label-icon svg path,
-    &.active ::ng-deep .label-icon svg path {
-        fill: var(--accent-color);
+        fill: var(--label-color, var(--color-ks-text));
     }
 }
 

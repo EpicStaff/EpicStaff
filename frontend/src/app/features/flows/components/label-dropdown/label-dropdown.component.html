@@ -39,6 +39,10 @@
                         (keyup.escape)="cancelAdd()"
                         autofocus
                     />
+                    <app-label-color-picker
+                        [selectedColor]="newLabelColor()"
+                        (colorChange)="newLabelColor.set($event)"
+                    ></app-label-color-picker>
                     <button type="button" class="cancel-btn-icon" (click)="cancelAdd()" title="Cancel">
                         <app-icon icon="ui/x" size="0.85rem"></app-icon>
                     </button>
@@ -109,6 +113,10 @@
                                 (keyup.escape)="cancelAdd()"
                                 autofocus
                             />
+                            <app-label-color-picker
+                                [selectedColor]="newLabelColor()"
+                                (colorChange)="newLabelColor.set($event)"
+                            ></app-label-color-picker>
                             <button type="button" class="cancel-btn-icon" (click)="cancelAdd()" title="Cancel">
                                 <app-icon icon="ui/x" size="0.85rem"></app-icon>
                             </button>

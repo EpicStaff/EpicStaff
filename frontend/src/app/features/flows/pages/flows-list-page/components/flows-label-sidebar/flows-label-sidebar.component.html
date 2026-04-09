@@ -36,6 +36,10 @@
                 (keyup.escape)="cancelAddLabel()"
                 autofocus
             />
+            <app-label-color-picker
+                [selectedColor]="newLabelColor()"
+                (colorChange)="newLabelColor.set($event)"
+            ></app-label-color-picker>
             <button class="confirm-btn" (click)="confirmAddLabel()" title="Confirm">
                 <app-icon icon="ui/check" size="0.85rem"></app-icon>
             </button>
@@ -55,6 +59,7 @@
             class="tree-item label-item"
             [class.active]="activeLabelFilter() === item.node.id"
             [style.paddingLeft]="getIndentPadding(item.depth)"
+            [style.--label-color]="getLabelIconColor(item.node)"
             (click)="selectLabel(item.node.id)"
         >
             <!-- Expand/collapse toggle -->
@@ -85,6 +90,10 @@
                     (click)="$event.stopPropagation()"
                     autofocus
                 />
+                <app-label-color-picker
+                    [selectedColor]="editingLabelColor()"
+                    (colorChange)="editingLabelColor.set($event)"
+                ></app-label-color-picker>
                 <button
                     class="confirm-btn"
                     (click)="$event.stopPropagation(); confirmRename(item.node.id)"
@@ -148,6 +157,10 @@
                     (keyup.escape)="cancelAddLabel()"
                     autofocus
                 />
+                <app-label-color-picker
+                    [selectedColor]="newLabelColor()"
+                    (colorChange)="newLabelColor.set($event)"
+                ></app-label-color-picker>
                 <button class="confirm-btn" (click)="confirmAddLabel()" title="Confirm">
                     <app-icon icon="ui/check" size="1rem"></app-icon>
                 </button>

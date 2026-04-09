@@ -18,7 +18,8 @@ import {
     ConfirmationDialogComponent,
     DialogResult,
 } from '../../../../../../shared/components/cofirm-dialog/confirmation-dialog.component';
-import { LabelDto } from '../../../../models/label.model';
+import { LabelColorPickerComponent } from '../../../../components/label-color-picker/label-color-picker.component';
+import { getLabelColorOption, LabelColor, LabelDto } from '../../../../models/label.model';
 import { FlowsStorageService } from '../../../../services/flows-storage.service';
 import { LabelsStorageService, LabelTreeNode } from '../../../../services/labels-storage.service';
 
@@ -29,7 +30,7 @@ interface FlatLabelNode {
 
 @Component({
     selector: 'app-flows-label-sidebar',
-    imports: [CommonModule, FormsModule, DialogModule, AppIconComponent],
+    imports: [CommonModule, FormsModule, DialogModule, AppIconComponent, LabelColorPickerComponent],
     templateUrl: './flows-label-sidebar.component.html',
     styleUrls: ['./flows-label-sidebar.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -55,6 +56,10 @@ export class FlowsLabelSidebarComponent implements OnInit {
     // Plain properties for ngModel bindings
     readonly newLabelNameValue = signal<string>('');
     readonly editingLabelNameValue = signal<string>('');
+
+    // Color picker state
+    readonly newLabelColor = signal<LabelColor>(LabelColor.Default);
+    readonly editingLabelColor = signal<LabelColor>(LabelColor.Default);
 
     // Validation error messages
     readonly newLabelError = signal<string>('');
@@ -107,22 +112,27 @@ export class FlowsLabelSidebarComponent implements OnInit {
     }
 
     startAddRootLabel(): void {
+        this.cancelRename();
         this.addingRootLabel.set(true);
         this.addingChildOf.set(null);
         this.newLabelNameValue.set('');
+        this.newLabelError.set('');
     }
 
     cancelAddLabel(): void {
         this.addingRootLabel.set(false);
         this.addingChildOf.set(null);
         this.newLabelNameValue.set('');
+        this.newLabelColor.set(LabelColor.Default);
         this.newLabelError.set('');
     }
 
     startAddChildLabel(parentId: number): void {
+        this.cancelRename();
         this.addingChildOf.set(parentId);
         this.addingRootLabel.set(false);
         this.newLabelNameValue.set('');
+        this.newLabelError.set('');
         this.expandedNodes.update((s) => new Set([...s, parentId]));
         this.scrollChildAddRowIntoView();
     }
@@ -135,7 +145,7 @@ export class FlowsLabelSidebarComponent implements OnInit {
         }
         this.newLabelError.set('');
         const parentId = this.addingChildOf();
-        this.labelsStorage.createLabel(name, parentId ?? undefined).subscribe({
+        this.labelsStorage.createLabel(name, parentId ?? undefined, this.newLabelColor()).subscribe({
             next: () => {
                 this.cancelAddLabel();
             },
@@ -152,14 +162,18 @@ export class FlowsLabelSidebarComponent implements OnInit {
     }
 
     startRename(label: LabelDto): void {
+        this.cancelAddLabel();
         this.editingLabelId.set(label.id);
         this.editingLabelNameValue.set(label.name);
+        this.renameLabelError.set('');
         this.scrollRenameRowIntoView();
+        this.editingLabelColor.set(label.metadata?.color ?? LabelColor.Default);
     }
 
     cancelRename(): void {
         this.editingLabelId.set(null);
         this.editingLabelNameValue.set('');
+        this.editingLabelColor.set(LabelColor.Default);
         this.renameLabelError.set('');
     }
 
@@ -170,7 +184,7 @@ export class FlowsLabelSidebarComponent implements OnInit {
             return;
         }
         this.renameLabelError.set('');
-        this.labelsStorage.renameLabel(id, name).subscribe({
+        this.labelsStorage.renameLabel(id, name, this.editingLabelColor()).subscribe({
             next: () => {
                 this.cancelRename();
             },
@@ -257,6 +271,12 @@ export class FlowsLabelSidebarComponent implements OnInit {
         };
         collect(node);
         return ids;
+    }
+
+    getLabelIconColor(node: LabelTreeNode): string {
+        const color = node.metadata?.color;
+        if (!color || color === LabelColor.Default) return '';
+        return getLabelColorOption(color).circleBg;
     }
 
     getIndentPadding(depth: number): string {

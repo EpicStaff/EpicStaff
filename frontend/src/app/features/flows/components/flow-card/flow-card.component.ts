@@ -5,6 +5,7 @@ import { AppIconComponent } from '../../../../shared/components/app-icon/app-ico
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
 import { CheckboxComponent } from '../../../../shared/components/checkbox/checkbox.component';
 import { GetGraphLightRequest, SubflowLightDto } from '../../models/graph.model';
+import { getLabelColorOption } from '../../models/label.model';
 import { LabelsStorageService } from '../../services/labels-storage.service';
 import { FlowMenuComponent } from './flow-menu/flow-menu.component';
 
@@ -50,6 +51,12 @@ export class FlowCardComponent {
         const label = this.labelsStorage.labels().find((l) => l.id === id);
         if (!label) return '';
         return !label.parent ? label.name : `/${label.name}`;
+    }
+
+    getLabelChipStyles(id: number): { background: string; color: string } {
+        const label = this.labelsStorage.labels().find((l) => l.id === id);
+        const option = getLabelColorOption(label?.metadata?.color);
+        return { background: option.chipBg, color: option.chipColor };
     }
 
     formatDate(dateStr?: string): string {
