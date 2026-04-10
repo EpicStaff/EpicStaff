@@ -27,7 +27,11 @@
         </f-background>
         <f-magnetic-lines></f-magnetic-lines>
         <f-canvas fZoom>
-            <f-snap-connection fBehavior="fixed" fType="segment" [fSnapThreshold]="100">
+            <f-snap-connection
+                fBehavior="fixed"
+                fType="segment"
+                [fSnapThreshold]="100"
+            >
                 <svg
                     viewBox="0 0 10 10"
                     fMarker
@@ -37,13 +41,32 @@
                     [refX]="5"
                     [refY]="5"
                 >
-                    <circle cx="5" cy="5" r="2" stroke="none"></circle>
+                    <circle
+                        cx="5"
+                        cy="5"
+                        r="2"
+                        stroke="none"
+                    ></circle>
                 </svg>
-                <svg viewBox="0 0 6 6" fMarker [type]="eMarkerType.END" [height]="6" [width]="6" [refX]="5" [refY]="3">
-                    <path d="M0,0 L6,3 0,6Z" stroke="none"></path>
+                <svg
+                    viewBox="0 0 6 6"
+                    fMarker
+                    [type]="eMarkerType.END"
+                    [height]="6"
+                    [width]="6"
+                    [refX]="5"
+                    [refY]="3"
+                >
+                    <path
+                        d="M0,0 L6,3 0,6Z"
+                        stroke="none"
+                    ></path>
                 </svg>
             </f-snap-connection>
-            <f-connection-for-create fBehavior="floating" fType="straight">
+            <f-connection-for-create
+                fBehavior="floating"
+                fType="straight"
+            >
                 <svg
                     viewBox="0 0 10 10"
                     fMarker
@@ -53,10 +76,26 @@
                     [refX]="5"
                     [refY]="5"
                 >
-                    <circle cx="5" cy="5" r="2" stroke="none"></circle>
+                    <circle
+                        cx="5"
+                        cy="5"
+                        r="2"
+                        stroke="none"
+                    ></circle>
                 </svg>
-                <svg viewBox="0 0 6 6" fMarker [type]="eMarkerType.END" [height]="6" [width]="6" [refX]="5" [refY]="3">
-                    <path d="M0,0 L6,3 0,6Z" stroke="none"></path>
+                <svg
+                    viewBox="0 0 6 6"
+                    fMarker
+                    [type]="eMarkerType.END"
+                    [height]="6"
+                    [width]="6"
+                    [refX]="5"
+                    [refY]="3"
+                >
+                    <path
+                        d="M0,0 L6,3 0,6Z"
+                        stroke="none"
+                    ></path>
                 </svg>
             </f-connection-for-create>
             @for (node of flowService.nodes(); track node.id) {
@@ -80,12 +119,15 @@
             @for (connection of flowService.visibleConnections(); track connection.id) {
                 <f-connection
                     [fBehavior]="connection.behavior || 'fixed'"
-                    [fType]="connection.type || 'segment'"
+                    [fType]="backwardConnectionIds().has(connection.id) ? 'backward-arc' : connection.type || 'segment'"
                     [fOffset]="30"
+                    [fStartColor]="connection.startColor || '#555'"
+                    [fEndColor]="connection.endColor || '#555'"
                     [fOutputId]="connection.sourcePortId"
                     [fInputId]="connection.targetPortId"
                     [fConnectionId]="connection.id"
                     [class.dashed-connection]="connection.category === 'virtual'"
+                    [class.is-backward]="backwardConnectionIds().has(connection.id)"
                 >
                     <f-connection-gradient
                         [fStartColor]="connection.startColor || '#555'"
@@ -117,7 +159,11 @@
                         [refX]="5"
                         [refY]="3"
                     >
-                        <path d="M0,0 L6,3 0,6Z" stroke="none" [attr.fill]="connection.endColor || '#555'"></path>
+                        <path
+                            d="M0,0 L6,3 0,6Z"
+                            stroke="none"
+                            [attr.fill]="connection.endColor || '#555'"
+                        ></path>
                     </svg>
                     <svg
                         viewBox="0 0 10 10"
@@ -128,7 +174,12 @@
                         [refX]="5"
                         [refY]="5"
                     >
-                        <circle cx="5" cy="5" r="2" stroke="none"></circle>
+                        <circle
+                            cx="5"
+                            cy="5"
+                            r="2"
+                            stroke="none"
+                        ></circle>
                     </svg>
                     <svg
                         viewBox="0 0 6 6"
@@ -139,9 +190,16 @@
                         [refX]="5"
                         [refY]="3"
                     >
-                        <path d="M0,0 L6,3 0,6Z" stroke="none"></path>
+                        <path
+                            d="M0,0 L6,3 0,6Z"
+                            stroke="none"
+                        ></path>
                     </svg>
-                    <div fConnectionContent class="connection-center" [position]="0.5">
+                    <div
+                        fConnectionContent
+                        class="connection-center"
+                        [position]="0.5"
+                    >
                         <button
                             type="button"
                             class="icon-button delete-icon"
@@ -160,7 +218,12 @@
     </f-flow>
     <div class="top-left-actions">
         <div class="top-left-actions__column">
-            <button class="domain-button" (click)="onDomainClick()">Domain</button>
+            <button
+                class="domain-button"
+                (click)="onDomainClick()"
+            >
+                Domain
+            </button>
 
             <div
                 #shortcutsAnchor
@@ -179,7 +242,11 @@
         ></app-nodes-search>
     </div>
 
-    <button class="show-inputs-btn standalone" [class.active]="showVariables()" (click)="toggleShowVariables()">
+    <button
+        class="show-inputs-btn standalone"
+        [class.active]="showVariables()"
+        (click)="toggleShowVariables()"
+    >
         {{ showVariables() ? 'Hide Inputs/Output' : 'Show Inputs/Output' }}
     </button>
     <app-flow-action-panel></app-flow-action-panel>

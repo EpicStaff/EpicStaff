@@ -114,6 +114,18 @@
             }
         }
 
+        &.is-backward {
+            .f-connection-path {
+                stroke-dasharray: 6 4;
+            }
+            .f-marker {
+                path,
+                circle {
+                    fill: #555;
+                }
+            }
+        }
+
         .connection-center {
             display: none;
             align-items: center;

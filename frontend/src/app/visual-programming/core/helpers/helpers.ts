@@ -1,5 +1,7 @@
 import { NodeType } from '../enums/node-type';
+import { ConnectionModel } from '../models/connection.model';
 import { ConditionGroup } from '../models/decision-table.model';
+import { BaseNodeModel } from '../models/node.model';
 import { BasePort, CustomPortId, ViewPort } from '../models/port.model';
 import { PORTS_DICTIONARY } from '../rules/all_ports';
 import { DEFAULT_AUDIO_TO_TEXT_NODE_PORTS } from '../rules/audio-to-text-node-ports/audio-to-text-node-ports';
@@ -313,4 +315,130 @@ export function generatePortsForDecisionTableNode(nodeId: string, conditionGroup
     }
 
     return [inputPort, ...outputPorts, ...specialPorts];
+}
+
+type ConnectionLayout = 'horizontal' | 'vertical' | 'mixed';
+
+const LAYOUT_DOMINANCE_RATIO = 1.2;
+const MIN_VERTICAL_GAP = 25;
+const MIN_OVERLAP_RATIO_FOR_VERTICAL = 0.1;
+
+function isHorizontalPort(position?: string): boolean {
+    return position === 'left' || position === 'right';
+}
+
+function isVerticalPort(position?: string): boolean {
+    return position === 'top' || position === 'bottom';
+}
+
+function getNodeCenter(node: BaseNodeModel): { x: number; y: number } {
+    return {
+        x: node.position.x + node.size.width / 2,
+        y: node.position.y + node.size.height / 2,
+    };
+}
+
+function getHorizontalOverlap(source: BaseNodeModel, target: BaseNodeModel): number {
+    const sourceLeft = source.position.x;
+    const sourceRight = source.position.x + source.size.width;
+    const targetLeft = target.position.x;
+    const targetRight = target.position.x + target.size.width;
+
+    return Math.max(0, Math.min(sourceRight, targetRight) - Math.max(sourceLeft, targetLeft));
+}
+
+function getConnectionLayout(
+    source: BaseNodeModel,
+    target: BaseNodeModel,
+    sourcePort?: ViewPort,
+    targetPort?: ViewPort
+): ConnectionLayout {
+    const sourceCenter = getNodeCenter(source);
+    const targetCenter = getNodeCenter(target);
+
+    const dx = Math.abs(targetCenter.x - sourceCenter.x);
+    const dy = Math.abs(targetCenter.y - sourceCenter.y);
+
+    const overlapX = getHorizontalOverlap(source, target);
+    const minWidth = Math.min(source.size.width, target.size.width);
+    const overlapRatio = minWidth > 0 ? overlapX / minWidth : 0;
+
+    if (dy >= MIN_VERTICAL_GAP && overlapRatio >= MIN_OVERLAP_RATIO_FOR_VERTICAL) {
+        return 'vertical';
+    }
+
+    if (dx > dy * LAYOUT_DOMINANCE_RATIO) {
+        return 'horizontal';
+    }
+
+    if (dy > dx * LAYOUT_DOMINANCE_RATIO) {
+        return 'vertical';
+    }
+
+    const bothVerticalPorts = isVerticalPort(sourcePort?.position) && isVerticalPort(targetPort?.position);
+
+    const bothHorizontalPorts = isHorizontalPort(sourcePort?.position) && isHorizontalPort(targetPort?.position);
+
+    if (bothVerticalPorts) {
+        return 'vertical';
+    }
+
+    if (bothHorizontalPorts) {
+        return 'horizontal';
+    }
+
+    return 'mixed';
+}
+
+export function isBackwardConnection(connection: ConnectionModel, nodes: BaseNodeModel[]): boolean {
+    const source = nodes.find((n) => n.id === connection.sourceNodeId);
+    const target = nodes.find((n) => n.id === connection.targetNodeId);
+    if (!source || !target) return false;
+
+    const sourcePort = source.ports?.find((p) => p.id === connection.sourcePortId);
+    const targetPort = target.ports?.find((p) => p.id === connection.targetPortId);
+
+    const layout = getConnectionLayout(source, target, sourcePort, targetPort);
+
+    if (layout === 'horizontal') {
+        const sourceExitX = sourcePort?.position === 'left' ? source.position.x : source.position.x + source.size.width;
+
+        const targetEntryX =
+            targetPort?.position === 'right' ? target.position.x + target.size.width : target.position.x;
+
+        return sourceExitX > targetEntryX;
+    }
+
+    if (layout === 'vertical') {
+        const sourceExitY = sourcePort?.position === 'top' ? source.position.y : source.position.y + source.size.height;
+
+        const targetEntryY =
+            targetPort?.position === 'bottom' ? target.position.y + target.size.height : target.position.y;
+
+        return sourceExitY > targetEntryY;
+    }
+
+    const bothHorizontalPorts = isHorizontalPort(sourcePort?.position) && isHorizontalPort(targetPort?.position);
+
+    const bothVerticalPorts = isVerticalPort(sourcePort?.position) && isVerticalPort(targetPort?.position);
+
+    if (bothHorizontalPorts) {
+        const sourceExitX = sourcePort?.position === 'left' ? source.position.x : source.position.x + source.size.width;
+
+        const targetEntryX =
+            targetPort?.position === 'right' ? target.position.x + target.size.width : target.position.x;
+
+        return sourceExitX > targetEntryX;
+    }
+
+    if (bothVerticalPorts) {
+        const sourceExitY = sourcePort?.position === 'top' ? source.position.y : source.position.y + source.size.height;
+
+        const targetEntryY =
+            targetPort?.position === 'bottom' ? target.position.y + target.size.height : target.position.y;
+
+        return sourceExitY > targetEntryY;
+    }
+
+    return false;
 }

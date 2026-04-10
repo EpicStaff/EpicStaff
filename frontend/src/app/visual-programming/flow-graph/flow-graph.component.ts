@@ -4,6 +4,7 @@ import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
+    computed,
     EventEmitter,
     inject,
     Injector,
@@ -23,6 +24,7 @@ import {
     EFMarkerType,
     EFResizeHandleType,
     EFZoomDirection,
+    F_CONNECTION_BUILDERS,
     FCanvasComponent,
     FCreateConnectionEvent,
     FCreateNodeEvent,
@@ -37,6 +39,8 @@ import {
 import { Subject } from 'rxjs';
 
 import { ToastService } from '../../services/notifications/toast.service';
+import { AppSvgIconComponent } from '../../shared/components/app-svg-icon/app-svg-icon.component';
+import { ClickOutsideDirective } from '../../shared/directives/click-outside.directive';
 import { DomainDialogComponent } from '../components/domain-dialog/domain-dialog.component';
 import { FlowActionPanelComponent } from '../components/flow-action-panel/flow-action-panel.component';
 import { FlowBaseNodeComponent } from '../components/flow-base-node/flow-base-node.component';
@@ -49,8 +53,9 @@ import { ProjectDialogComponent } from '../components/project-dialog/project-dia
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { ShortcutListenerDirective } from '../core/directives/shortcut-listener.directive';
 import { NodeType } from '../core/enums/node-type';
+import { BackwardArcPathBuilder } from '../core/helpers/backward-arc.path-builder';
 import { getMinimapClassForNode } from '../core/helpers/get-minimap-class.util';
-import { defineSourceTargetPair, isConnectionValid } from '../core/helpers/helpers';
+import { defineSourceTargetPair, isBackwardConnection, isConnectionValid } from '../core/helpers/helpers';
 import {
     findNearestFreePosition,
     getCollisionBounds,
@@ -78,6 +83,7 @@ import { normalizeFlowPorts } from '../utils/load';
     styleUrls: ['../styles/_variables.scss', './flow-graph.component.scss'],
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
+    providers: [{ provide: F_CONNECTION_BUILDERS, useValue: { 'backward-arc': new BackwardArcPathBuilder() } }],
     imports: [
         FFlowModule,
         FZoomDirective,
@@ -90,6 +96,8 @@ import { normalizeFlowPorts } from '../utils/load';
         NodesSearchComponent,
         NodePanelShellComponent,
         FlowShortcutsButtonComponent,
+        AppSvgIconComponent,
+        ClickOutsideDirective,
     ],
 })
 export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
@@ -123,6 +131,18 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     protected isLoaded = signal(false);
     protected showContextMenu = signal(false);
     protected showVariables = signal(false);
+
+    protected readonly backwardConnectionIds = computed<Set<string>>(() => {
+        const nodes = this.flowService.nodes();
+        const connections = this.flowService.visibleConnections();
+        const ids = new Set<string>();
+        for (const conn of connections) {
+            if (isBackwardConnection(conn, nodes)) {
+                ids.add(conn.id);
+            }
+        }
+        return ids;
+    });
 
     private readonly destroy$ = new Subject<void>();
     private draggedNodeIds = new Set<string>();
