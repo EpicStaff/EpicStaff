@@ -13,29 +13,17 @@ import {
     ViewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-<<<<<<< HEAD
+
 import { AppSvgIconComponent } from '../../shared/components/app-svg-icon/app-svg-icon.component';
-import { Variable } from '../models/variable.model';
-
-@Component({
-  selector: 'app-variables-content',
-  standalone: true,
-  imports: [CommonModule, FormsModule, AppSvgIconComponent],
-  templateUrl: './variables-content.component.html',
-  styleUrls: ['./variables-content.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
-=======
-
 import { Variable } from '../models/variable.model';
 
 @Component({
     selector: 'app-variables-content',
     standalone: true,
-    imports: [CommonModule, FormsModule],
+    imports: [CommonModule, FormsModule, AppSvgIconComponent],
     templateUrl: './variables-content.component.html',
     styleUrls: ['./variables-content.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
->>>>>>> main
 })
 export class VariablesContentComponent implements OnInit, OnChanges {
     @Input() public variables: Variable[] = [];
