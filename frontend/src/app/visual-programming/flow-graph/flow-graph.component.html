@@ -121,8 +121,16 @@
                     [fBehavior]="connection.behavior || 'fixed'"
                     [fType]="backwardConnectionIds().has(connection.id) ? 'backward-arc' : connection.type || 'segment'"
                     [fOffset]="30"
-                    [fStartColor]="connection.startColor || '#555'"
-                    [fEndColor]="connection.endColor || '#555'"
+                    [fStartColor]="
+                        smartRoutingEnabled()
+                            ? nodeColorMap().get(connection.sourceNodeId) || '#555'
+                            : connection.startColor || '#555'
+                    "
+                    [fEndColor]="
+                        smartRoutingEnabled()
+                            ? nodeColorMap().get(connection.targetNodeId) || '#555'
+                            : connection.endColor || '#555'
+                    "
                     [fOutputId]="connection.sourcePortId"
                     [fInputId]="connection.targetPortId"
                     [fConnectionId]="connection.id"
@@ -242,13 +250,26 @@
         ></app-nodes-search>
     </div>
 
-    <button
-        class="show-inputs-btn standalone"
-        [class.active]="showVariables()"
-        (click)="toggleShowVariables()"
-    >
-        {{ showVariables() ? 'Hide Inputs/Output' : 'Show Inputs/Output' }}
-    </button>
+    <div class="top-right-controls">
+        <button
+            class="show-inputs-btn"
+            [class.active]="showVariables()"
+            (click)="toggleShowVariables()"
+        >
+            {{ showVariables() ? 'Hide Inputs/Output' : 'Show Inputs/Output' }}
+        </button>
+        <div class="routing-toggle-block">
+            <app-svg-icon
+                icon="routing-arrow"
+                size="22px"
+            ></app-svg-icon>
+            <app-toggle-switch
+                [checked]="smartRoutingEnabled()"
+                (checkedChange)="onSmartRoutingToggle($event)"
+            ></app-toggle-switch>
+        </div>
+    </div>
+
     <app-flow-action-panel></app-flow-action-panel>
     <!-- <app-flow-zoom-controls></app-flow-zoom-controls> -->
     @if (showContextMenu()) {

@@ -40,6 +40,7 @@ import { Subject } from 'rxjs';
 
 import { ToastService } from '../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../shared/components/app-svg-icon/app-svg-icon.component';
+import { ToggleSwitchComponent } from '../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 import { ClickOutsideDirective } from '../../shared/directives/click-outside.directive';
 import { DomainDialogComponent } from '../components/domain-dialog/domain-dialog.component';
 import { FlowActionPanelComponent } from '../components/flow-action-panel/flow-action-panel.component';
@@ -98,6 +99,7 @@ import { normalizeFlowPorts } from '../utils/load';
         FlowShortcutsButtonComponent,
         AppSvgIconComponent,
         ClickOutsideDirective,
+        ToggleSwitchComponent,
     ],
 })
 export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
@@ -132,6 +134,14 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     protected showContextMenu = signal(false);
     protected showVariables = signal(false);
 
+    protected readonly nodeColorMap = computed<Map<string, string>>(() => {
+        const map = new Map<string, string>();
+        for (const node of this.flowService.nodes()) {
+            map.set(node.id, node.color);
+        }
+        return map;
+    });
+
     protected readonly backwardConnectionIds = computed<Set<string>>(() => {
         const nodes = this.flowService.nodes();
         const connections = this.flowService.visibleConnections();
@@ -148,6 +158,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private draggedNodeIds = new Set<string>();
     private draggingElements = new Set<string>();
     private isDragging = false;
+    public smartRoutingEnabled = signal<boolean>(false);
 
     protected readonly flowService = inject(FlowService);
     protected readonly sidePanelService = inject(SidePanelService);
@@ -517,6 +528,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public updateMouseTrackerPosition(event: IPoint): void {
         this.mouseCursorPosition = event;
     }
+
+    public onSmartRoutingToggle(value: boolean): void {
+        this.smartRoutingEnabled.set(value);
+    }
+
     public onDomainClick(): void {
         const startNodeInitialState = this.flowService.startNodeInitialState();
 
