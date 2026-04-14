@@ -136,6 +136,7 @@
                     [fConnectionId]="connection.id"
                     [class.dashed-connection]="connection.category === 'virtual'"
                     [class.is-backward]="backwardConnectionIds().has(connection.id)"
+                    [style.z-index]="backwardConnectionIds().has(connection.id) ? 0 : 1"
                 >
                     <f-connection-gradient
                         [fStartColor]="connection.startColor || '#555'"
@@ -155,7 +156,11 @@
                             cy="5"
                             r="2"
                             stroke="none"
-                            [attr.fill]="connection.startColor || '#555'"
+                            [attr.fill]="
+                                smartRoutingEnabled()
+                                    ? nodeColorMap().get(connection.sourceNodeId) || '#555'
+                                    : connection.startColor || '#555'
+                            "
                         ></circle>
                     </svg>
                     <svg
@@ -170,7 +175,11 @@
                         <path
                             d="M0,0 L6,3 0,6Z"
                             stroke="none"
-                            [attr.fill]="connection.endColor || '#555'"
+                            [attr.fill]="
+                                smartRoutingEnabled()
+                                    ? nodeColorMap().get(connection.targetNodeId) || '#555'
+                                    : connection.endColor || '#555'
+                            "
                         ></path>
                     </svg>
                     <svg
