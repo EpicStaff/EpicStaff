@@ -9,7 +9,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
 import { CHUNK_STRATEGIES_SELECT_ITEMS } from '../../../constants/constants';
 import { ADDITIONAL_PARAMS_FORM_COMPONENT_MAP } from '../../../enums/additional-params-form.map';
 import { NaiveRagChunkStrategy } from '../../../enums/naive-rag-chunk-strategy';
-import { TableDocument } from '../../rag-configuration/configuration-table/configuration-table.interface';
+import { TableDocument } from '../../naive-rag-configuration/configuration-table/configuration-table.interface';
 
 @Component({
     selector: 'app-document-config',

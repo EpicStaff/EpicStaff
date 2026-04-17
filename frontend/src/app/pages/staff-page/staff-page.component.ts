@@ -47,8 +47,7 @@ export class StaffPageComponent implements CanComponentDeactivate {
             maxHeight: '90vh',
             autoFocus: true,
             data: {
-                toolConfigs: [],
-                toolsData: [],
+                isEditMode: false,
             },
         });
 

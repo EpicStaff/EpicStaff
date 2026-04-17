@@ -18,14 +18,15 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { isEqual } from 'lodash';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
-export interface SelectItem {
+export interface SelectItem<T = unknown> {
     name: string;
     tip?: string;
-    value: unknown;
+    value: T;
     group?: string;
     icon?: string;
 }
@@ -63,7 +64,7 @@ export class SelectComponent implements ControlValueAccessor {
         const value = this.selectedValue();
         if (value === undefined || value === null) return null;
 
-        return this.items().find((i) => i.value === value) ?? null;
+        return this.items().find((i) => isEqual(i.value, value)) ?? null;
     });
 
     changed = output<unknown>();

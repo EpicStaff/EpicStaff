@@ -2,18 +2,16 @@
     <app-tooltip [required]="required()" [tooltipText]="tooltipText()" [label]="label()" [icon]="icon()" />
 }
 
-<div class="segmented" [ngClass]="'segmented--mod-' + mod()">
-    @for (option of options(); track option.value) {
-        <button
-            type="button"
-            class="segmented__item"
-            [class.segmented__item--active]="option.value === value()"
+<div class="radio" [class.small]="mod() === 'small'" [class.default]="mod() === 'default'">
+    @for (option of options(); track option.value; let count = $count) {
+        <div
+            class="item"
+            [style.width]="`calc(100% / ${count})`"
+            [class.active]="option.value === value()"
+            [class.disabled]="disabled()"
             (click)="select(option)"
         >
-            <span class="segmented__radio" [class.segmented__radio--active]="option.value === value()"></span>
-            <span class="segmented__label">
-                {{ option.label }}
-            </span>
-        </button>
+            {{ option.name }}
+        </div>
     }
 </div>

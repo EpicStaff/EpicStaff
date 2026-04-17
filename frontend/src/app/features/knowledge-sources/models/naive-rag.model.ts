@@ -1,31 +1,4 @@
-import { RagName, RagTypeLevel } from '../enums/rag';
-
-export type RagValueMap = {
-    [RagName.NAIVE_RAG]: 'naive';
-    [RagName.GRAPH_RAG]: 'graph';
-    [RagName.HYBRID_RAG]: 'hybrid';
-};
-
-export type Rag = {
-    [K in RagName]: {
-        name: K;
-        value: RagValueMap[K];
-        description: string;
-        tip: string;
-        icon: string;
-        level: RagTypeLevel;
-        stars: number;
-        disabled?: boolean;
-    };
-}[RagName];
-
-export type RagType = RagValueMap[keyof RagValueMap];
-
-export interface BaseRagType {
-    rag_type_id: number;
-    rag_type: 'naive';
-    source_collection: number;
-}
+import { BaseRagType, RagStatus, RagType } from "./base-rag.model";
 
 export interface CollectionNaiveRag {
     chunks_count: number;
@@ -44,15 +17,15 @@ export interface CollectionNaiveRag {
 
 export interface CreateNaiveRag {
     naive_rag_id: number;
-    base_rag_type: BaseRagType;
+    base_rag_type: BaseRagType<'naive'>;
     embedder: number;
-    rag_status: 'new';
+    rag_status: RagStatus;
     collection_id: number;
     created_at: string;
     updated_at: string;
 }
 
-export interface CreateRagForCollectionResponse {
+export interface CreateNaiveRagForCollectionResponse {
     message: string;
     naive_rag: CreateNaiveRag;
 }

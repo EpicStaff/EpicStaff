@@ -1,5 +1,5 @@
-import { TableDocument } from '../components/rag-configuration/configuration-table/configuration-table.interface';
-import { NaiveRagDocumentConfig } from '../models/naive-rag-document.model';
+import { TableDocument } from "../components/naive-rag-configuration/configuration-table/configuration-table.interface";
+import { NaiveRagDocumentConfig } from "../models/naive-rag-document.model";
 
 /**
  * Transforms NaiveRagDocumentConfigs to TableDocuments

@@ -277,6 +277,9 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
     `,
     styles: [
         `
+            :host {
+                width: 100%;
+            }
             // Tools selector
             .tools-selector {
                 width: 100%;
@@ -685,6 +688,9 @@ export class ToolsSelectorComponent implements OnInit, OnDestroy {
     @Output() configuredToolsChange = new EventEmitter<number[]>();
     @Output() pythonCodeToolsChange = new EventEmitter<number[]>();
     @Output() mcpToolsChange = new EventEmitter<number[]>();
+    @Output() mergedToolsChange = new EventEmitter<
+        { id: number; configName: string; toolName: string; type: string }[]
+    >();
 
     public pythonTools: GetPythonCodeToolRequest[] = [];
     public mcpTools: GetMcpToolRequest[] = [];
@@ -831,6 +837,17 @@ export class ToolsSelectorComponent implements OnInit, OnDestroy {
         this.configuredToolsChange.emit(Array.from(this.selectedToolConfigIds));
         this.pythonCodeToolsChange.emit(Array.from(this.selectedPythonToolIds));
         this.mcpToolsChange.emit(Array.from(this.selectedMcpToolIds));
+
+        const merged = [
+            ...this.pythonTools
+                .filter((t) => this.selectedPythonToolIds.has(t.id))
+                .map((t) => ({ id: t.id, configName: t.name, toolName: t.name, type: 'python-tool' })),
+            ...this.mcpTools
+                .filter((t) => this.selectedMcpToolIds.has(t.id))
+                .map((t) => ({ id: t.id, configName: t.name, toolName: t.tool_name, type: 'mcp-tool' })),
+        ];
+        this.mergedToolsChange.emit(merged);
+
         this.closeToolsDialog();
     }
 

@@ -1,13 +1,17 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { ComponentType } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, input } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AppSvgIconComponent } from '@shared/components';
 import { throwError } from 'rxjs';
 import { catchError, switchMap } from 'rxjs/operators';
 
-import { AppSvgIconComponent } from '../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ToastService } from '../../../../../../../services/notifications';
 import { CreateCollectionDialogComponent } from '../../../../../components/create-collection-dialog/create-collection-dialog.component';
-import { NaiveRagConfigurationDialog } from '../../../../../components/naive-rag-configuration-dialog/naive-rag-configuration-dialog.component';
+import { GraphRagConfigurationDialog } from '../../../../../components/rag-configuration-dialog/graph-rag-configuration-dialog/graph-rag-configuration-dialog.component';
+import { NaiveRagConfigurationDialog } from '../../../../../components/rag-configuration-dialog/naive-rag-configuration-dialog/naive-rag-configuration-dialog.component';
+import { RagConfigurationDialogComponent } from '../../../../../components/rag-configuration-dialog/rag-configuration-dialog.component';
+import { RagType } from '../../../../../models/base-rag.model';
 import { CreateCollectionDtoResponse } from '../../../../../models/collection.model';
 import { CollectionsStorageService } from '../../../../../services/collections-storage.service';
 
@@ -26,34 +30,31 @@ export class CollectionRagsComponent {
 
     collection = input.required<CreateCollectionDtoResponse>();
 
-    onConfigureNaiveRag() {
-        if (!this.collection().rag_configurations.length) {
-            this.openCollectionModal();
+    onConfigureNaiveRag(type: RagType): void {
+        const ragConfigurations = this.collection().rag_configurations;
+        const ragConfig = ragConfigurations.find((i) => i.rag_type === type);
+
+        if (!ragConfigurations.length || !ragConfig) {
+            this.openCollectionModal(type);
             return;
         }
 
-        const naiveRag = this.collection().rag_configurations.find((i) => i.rag_type === 'naive');
+        if (type === 'naive') {
+            this.openRagConfigurationDialog(ragConfig.rag_id, NaiveRagConfigurationDialog);
+            return;
+        }
 
-        if (!naiveRag) return;
-
-        const dialog = this.dialog.open(NaiveRagConfigurationDialog, {
-            width: 'calc(100vw - 2rem)',
-            height: 'calc(100vh - 2rem)',
-            data: {
-                collection: this.collection(),
-                ragId: naiveRag.rag_id,
-            },
-            disableClose: true,
-        });
-
-        dialog.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+        if (type === 'graph') {
+            this.openRagConfigurationDialog(ragConfig.rag_id, GraphRagConfigurationDialog);
+            return;
+        }
     }
 
-    private openCollectionModal(): void {
+    private openCollectionModal(forceType: RagType): void {
         const dialog = this.dialog.open(CreateCollectionDialogComponent, {
             width: 'calc(100vw - 2rem)',
             height: 'calc(100vh - 2rem)',
-            data: this.collection().collection_id,
+            data: { collection_id: this.collection().collection_id, forceType },
             disableClose: true,
         });
 
@@ -69,5 +70,19 @@ export class CollectionRagsComponent {
                 })
             )
             .subscribe();
+    }
+
+    private openRagConfigurationDialog(
+        ragId: number,
+        dialogComponent: ComponentType<RagConfigurationDialogComponent>
+    ): void {
+        const dialog = this.dialog.open(dialogComponent, {
+            width: 'calc(100vw - 2rem)',
+            height: 'calc(100vh - 2rem)',
+            data: { ragId },
+            disableClose: true,
+        });
+
+        dialog.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 }

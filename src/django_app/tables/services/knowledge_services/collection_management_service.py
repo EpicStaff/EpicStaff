@@ -3,7 +3,7 @@ from django.db import transaction, models
 from loguru import logger
 
 from tables.models import SourceCollection, DocumentMetadata, DocumentContent
-from tables.models.knowledge_models import BaseRagType, NaiveRag
+from tables.models.knowledge_models import BaseRagType, NaiveRag, GraphRag
 from tables.exceptions import CollectionNotFoundException
 
 
@@ -342,19 +342,12 @@ class CollectionManagementService:
                     rag_configurations.append(naive_rag_config)
 
             elif base_rag_type.rag_type == BaseRagType.RagType.GRAPH:
-                # Future: Get GraphRag configuration
-                # For now, return basic info
-                rag_configurations.append(
-                    {
-                        "rag_id": None,
-                        "rag_type": "graph",
-                        "status": "not_implemented",
-                        "is_ready_for_indexing": False,
-                        "message": "GraphRag is not yet implemented",
-                        "created_at": base_rag_type.created_at,
-                        "updated_at": base_rag_type.updated_at,
-                    }
+                # Get GraphRag configuration
+                graph_rag_config = CollectionManagementService._get_graph_rag_summary(
+                    base_rag_type
                 )
+                if graph_rag_config:
+                    rag_configurations.append(graph_rag_config)
 
         return rag_configurations
 
@@ -410,4 +403,55 @@ class CollectionManagementService:
             "embeddings_count": embeddings_count,
             "created_at": naive_rag.created_at,
             "updated_at": naive_rag.updated_at,
+        }
+
+    @staticmethod
+    def _get_graph_rag_summary(base_rag_type: BaseRagType) -> Optional[Dict[str, Any]]:
+        """
+        Get summary data for a GraphRag configuration.
+
+        Args:
+            base_rag_type: BaseRagType instance
+
+        Returns:
+            Dict with GraphRag summary or None if not found
+        """
+        try:
+            graph_rag = (
+                GraphRag.objects.select_related(
+                    "embedder",
+                    "llm",
+                    "index_config",
+                )
+                .prefetch_related("graph_rag_documents")
+                .get(base_rag_type=base_rag_type)
+            )
+        except GraphRag.DoesNotExist:
+            return None
+
+        # Count documents linked to GraphRag
+        documents_count = graph_rag.graph_rag_documents.count()
+
+        # Determine if ready for indexing
+        is_ready_for_indexing = (
+            graph_rag.embedder is not None
+            and graph_rag.llm is not None
+            and documents_count > 0
+        )
+
+        return {
+            "rag_id": graph_rag.graph_rag_id,
+            "rag_type": "graph",
+            "status": graph_rag.rag_status,
+            "is_ready_for_indexing": is_ready_for_indexing,
+            "embedder_name": (
+                graph_rag.embedder.custom_name if graph_rag.embedder else None
+            ),
+            "embedder_id": graph_rag.embedder.id if graph_rag.embedder else None,
+            "llm_name": graph_rag.llm.custom_name if graph_rag.llm else None,
+            "llm_id": graph_rag.llm.id if graph_rag.llm else None,
+            "documents_count": documents_count,
+            "indexed_at": graph_rag.indexed_at,
+            "created_at": graph_rag.created_at,
+            "updated_at": graph_rag.updated_at,
         }

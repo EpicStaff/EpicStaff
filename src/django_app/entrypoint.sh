@@ -19,6 +19,59 @@ python manage.py fix_sequences
 echo "Uploading models..."
 python manage.py upload_models
 
+# Create default admin user if not exists
+GENERATED_ADMIN_PASSWORD=""
+if [ "${DJANGO_AUTO_CREATE_ADMIN:-0}" = "1" ]; then
+  if [ -n "${DJANGO_ADMIN_USERNAME}" ] && [ -n "${DJANGO_ADMIN_PASSWORD}" ]; then
+    if [ "${DJANGO_ADMIN_PASSWORD}" = "epicstaff_password" ]; then
+      GENERATED_ADMIN_PASSWORD=$(python - <<'PY'
+import secrets
+print(secrets.token_urlsafe(18))
+PY
+)
+      export DJANGO_ADMIN_PASSWORD="${GENERATED_ADMIN_PASSWORD}"
+    fi
+    echo "Ensuring default Django admin user exists..."
+    python manage.py shell -c "
+from django.contrib.auth import get_user_model
+import os
+User = get_user_model()
+username = os.getenv('DJANGO_ADMIN_USERNAME')
+password = os.getenv('DJANGO_ADMIN_PASSWORD')
+email = os.getenv('DJANGO_ADMIN_EMAIL', '')
+if username and password and not User.objects.filter(username=username).exists():
+    User.objects.create_superuser(username=username, password=password, email=email)
+"
+  fi
+fi
+
+# Create default API key for realtime if not exists
+if [ -n "${DJANGO_API_KEY}" ]; then
+  echo "Ensuring default API key exists..."
+  python manage.py shell -c "
+import os
+from tables.models.auth_models import ApiKey
+raw_key = os.getenv('DJANGO_API_KEY')
+if raw_key:
+    prefix = raw_key[:8]
+    existing = ApiKey.objects.filter(prefix=prefix, revoked_at__isnull=True).first()
+    if not existing:
+        key = ApiKey(name='realtime-default')
+        key.set_key(raw_key)
+        key.save()
+"
+fi
+
+# Warn on default credentials
+if [ "${DJANGO_ADMIN_USERNAME}" = "epicstaff_admin" ] || [ "${DJANGO_ADMIN_PASSWORD}" = "epicstaff_password" ] || [ "${DJANGO_API_KEY}" = "epicstaff_realtime_api_key" ]; then
+  echo "WARNING: Default admin/API credentials detected. Please change them after first launch."
+fi
+
+if [ -n "${GENERATED_ADMIN_PASSWORD}" ]; then
+  echo "WARNING: Generated admin password for first launch: ${GENERATED_ADMIN_PASSWORD}"
+  echo "Please change it after logging in."
+fi
+
 # Collect static files for production server
 echo "Collects static"
 python manage.py collectstatic --noinput

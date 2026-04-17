@@ -4,8 +4,8 @@ import uuid
 from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter, inline_serializer
+from rest_framework import serializers as drf_serializers
 from django.http import Http404
 from rest_framework.exceptions import ValidationError
 from asgiref.sync import async_to_sync
@@ -213,17 +213,16 @@ class NaiveRagViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @swagger_auto_schema(
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={},
-            description="No body required - send empty JSON object {}",
+    @extend_schema(
+        request=inline_serializer(
+            name="InitializeConfigsRequest",
+            fields={},
         ),
         responses={
-            201: "Configs created successfully",
-            200: "All documents already have configs",
-            404: "NaiveRag not found",
-            500: "Internal server error",
+            201: OpenApiResponse(description="Configs created successfully"),
+            200: OpenApiResponse(description="All documents already have configs"),
+            404: OpenApiResponse(description="NaiveRag not found"),
+            500: OpenApiResponse(description="Internal server error"),
         },
     )
     def initialize_configs(self, request, naive_rag_id=None):
@@ -614,13 +613,13 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
     5. Return result (completed, failed, cancelled, or timeout)
     """
 
-    @swagger_auto_schema(
-        operation_description="Trigger document chunking and wait for completion",
+    @extend_schema(
+        description="Trigger document chunking and wait for completion",
         responses={
             200: ChunkingResponseSerializer,
-            202: "Chunking is still in progress (timeout)",
-            404: "NaiveRag or DocumentConfig not found",
-            500: "Internal server error",
+            202: OpenApiResponse(description="Chunking is still in progress (timeout)"),
+            404: OpenApiResponse(description="NaiveRag or DocumentConfig not found"),
+            500: OpenApiResponse(description="Internal server error"),
         },
     )
     def post(self, request, naive_rag_id: int, document_config_id: int):
@@ -731,27 +730,25 @@ class NaiveRagChunkPreviewView(APIView):
     DEFAULT_LIMIT = 50
     MAX_LIMIT = 500
 
-    @swagger_auto_schema(
-        operation_description="Get chunks for a document config (preview or indexed)",
-        manual_parameters=[
-            openapi.Parameter(
-                "limit",
-                openapi.IN_QUERY,
+    @extend_schema(
+        description="Get chunks for a document config (preview or indexed)",
+        parameters=[
+            OpenApiParameter(
+                name="limit",
+                location=OpenApiParameter.QUERY,
                 description="Number of chunks to return (max 500)",
-                type=openapi.TYPE_INTEGER,
-                default=50,
+                type=drf_serializers.IntegerField(),
             ),
-            openapi.Parameter(
-                "offset",
-                openapi.IN_QUERY,
+            OpenApiParameter(
+                name="offset",
+                location=OpenApiParameter.QUERY,
                 description="Number of chunks to skip",
-                type=openapi.TYPE_INTEGER,
-                default=0,
+                type=drf_serializers.IntegerField(),
             ),
         ],
         responses={
             200: ChunkPreviewResponseSerializer,
-            404: "NaiveRag or DocumentConfig not found",
+            404: OpenApiResponse(description="NaiveRag or DocumentConfig not found"),
         },
     )
     def get(self, request, naive_rag_id: int, document_config_id: int):

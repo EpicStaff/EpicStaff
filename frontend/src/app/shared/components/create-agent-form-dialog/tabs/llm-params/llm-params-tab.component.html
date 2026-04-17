@@ -1,0 +1,18 @@
+<div [formGroup]="form()">
+    <div class="form-section">
+        <h3 class="section-title">
+            MAP LLM PARAMS
+        </h3>
+        <div class="form-group">
+            <app-slider-with-stepper
+                formControlName="default_temperature"
+                label="Temparature"
+                tooltipText="Temparature"
+                [min]="0"
+                [max]="100"
+                [step]="0.5"
+                [decimals]="1"
+            />
+        </div>
+    </div>
+</div>

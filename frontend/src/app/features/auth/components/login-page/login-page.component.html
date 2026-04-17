@@ -1,0 +1,38 @@
+<div class="page">
+    <div class="card">
+        <app-svg-icon icon="logo" size="120px" />
+
+        <div class="title-section">
+            <h1 class="title">Welcome to <span>EpicStaff</span></h1>
+            <p class="subtitle">Login to account</p>
+        </div>
+
+        <form [formGroup]="form" class="form">
+            <div>
+                <app-custom-input label="Username" placeholder="Enter username" formControlName="username" />
+                <app-validation-errors [control]="form.get('username')!" />
+            </div>
+
+            <div>
+                <app-custom-input
+                    label="Password"
+                    type="password"
+                    placeholder="Enter password"
+                    formControlName="password"
+                />
+                <app-validation-errors [control]="form.get('password')!" />
+            </div>
+
+            <div class="remember-row">
+                <app-checkbox formControlName="rememberMe" />
+                <span>Remember me</span>
+            </div>
+        </form>
+
+        <div *ngIf="serverError()" class="server-error">{{ serverError() }}</div>
+
+        <app-button class="btn" (click)="onSubmit()" [disabled]="loading || form.invalid"> Login </app-button>
+    </div>
+
+    <p class="prompt">Don’t have an account yet? <span (click)="navToSignUp()">Sign Up</span></p>
+</div>

@@ -73,7 +73,7 @@ export class RealtimeSettingsDialogComponent implements OnInit {
                 [Validators.required, Validators.min(0), Validators.max(1)],
             ],
             searchLimit: [
-                this.data.agent.search_configs.naive.search_limit,
+                this.data.agent.search_configs?.naive?.search_limit || 3,
                 [Validators.required, Validators.min(0), Validators.max(1000)],
             ],
             wakeword: [this.data.agent.realtime_agent.wake_word],

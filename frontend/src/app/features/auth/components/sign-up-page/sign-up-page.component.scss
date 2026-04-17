@@ -1,0 +1,22 @@
+.terms-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+
+    .terms-text {
+        font-size: 14px;
+        color: rgba(255, 255, 255, 0.7);
+        margin: 0;
+
+        .terms-link {
+            color: var(--accent-color);
+            text-decoration: none;
+            cursor: pointer;
+
+            &:hover {
+                text-decoration: underline;
+            }
+        }
+    }
+}

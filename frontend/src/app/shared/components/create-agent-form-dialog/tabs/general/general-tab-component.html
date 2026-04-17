@@ -1,0 +1,55 @@
+<div class="form-section" [formGroup]="form()">
+    <h3 class="section-title">BASE CONFIGURATION</h3>
+
+    <div class="form-group">
+        <app-tooltip
+            tooltipText="Select a language model specifically for function calling. This can be different from the main agent LLM."
+            label="Function Calling LLM"
+        />
+        <app-llm-model-selector
+            formControlName="fcm_llm_config"
+            placeholder="Select function LLM"
+            [llmConfigs]="combinedLLMs()"
+            [loading]="loadingLLMs()"
+        ></app-llm-model-selector>
+    </div>
+
+    @if (form().get('llm_config')) {
+    <div class="form-group">
+        <app-tooltip
+            tooltipText="Select the language model that will power this agent's reasoning and responses."
+            label="Agent LLM"
+        />
+        <app-llm-model-selector
+            formControlName="llm_config"
+            placeholder="Select agent LLM"
+            [llmConfigs]="combinedLLMs()"
+            [loading]="loadingLLMs()"
+        ></app-llm-model-selector>
+    </div>
+    } @if (form().get('configured_tools') && form().get('python_code_tools')) {
+    <div class="form-group">
+        <app-tooltip
+            tooltipText="Select the tools this agent will have access to. Tools provide additional capabilities for the agent."
+            label="Tools"
+        />
+        <app-tools-selector
+            [selectedConfiguredTools]="form().get('configured_tools')?.value || []"
+            [selectedPythonCodeTools]="form().get('python_code_tools')?.value || []"
+            [selectedMcpTools]="form().get('mcp_tools')?.value || [] "
+            (configuredToolsChange)="onConfiguredToolsChange($event)"
+            (pythonCodeToolsChange)="onPythonToolsChange($event)"
+            (mcpToolsChange)="onMcpToolsChange($event)"
+            (mergedToolsChange)="mergedToolsChange.emit($event)"
+        ></app-tools-selector>
+    </div>
+    } @if (form().get('allow_delegation')) {
+    <div class="form-group">
+        <app-toggle-switch
+            formControlName="allow_delegation"
+            label="Allow Delegation"
+            tooltipText="When enabled, this agent can delegate tasks to other agents in the project."
+        />
+    </div>
+    }
+</div>

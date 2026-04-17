@@ -1,0 +1,26 @@
+<div
+    class="form-section"
+    [formGroup]="form()"
+>
+    <h3 class="section-title">
+        ADVANCED OPTIONS
+    </h3>
+
+    <div class="form-group-container">
+        <div class="form-group">
+            <app-toggle-switch
+                formControlName="cache"
+                label="Cache"
+                tooltipText="Enable caching to store and reuse previous responses for better performance and cost efficiency."
+            />
+        </div>
+
+        <div class="form-group">
+            <app-toggle-switch
+                formControlName="respect_context_window"
+                label="Respect Context Window"
+                tooltipText="Enable to respect the LLM's context window limits and manage conversation length automatically."
+            />
+        </div>
+    </div>
+</div>

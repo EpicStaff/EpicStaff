@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 
 from tables.models.graph_models import (
     AudioTranscriptionNode,
+    CodeAgentNode,
     ConditionalEdge,
     CrewNode,
     DecisionTableNode,
@@ -18,6 +19,7 @@ from tables.models.graph_models import (
 )
 from tables.serializers.graph_bulk_save_serializers import (
     AudioTranscriptionNodeBulkSerializer,
+    CodeAgentNodeBulkSerializer,
     CrewNodeBulkSerializer,
     DecisionTableNodeBulkSerializer,
     EndNodeBulkSerializer,
@@ -76,6 +78,12 @@ To add a new node type:
 """
 
 NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
+    NodeTypeConfig(
+        "code_agent_node_list",
+        "code_agent_node_ids",
+        CodeAgentNode,
+        CodeAgentNodeBulkSerializer,
+    ),
     NodeTypeConfig(
         "crew_node_list",
         "crew_node_ids",

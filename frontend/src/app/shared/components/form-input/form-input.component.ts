@@ -13,7 +13,9 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
         <div class="form-group">
             <div class="label-container" *ngIf="label">
                 <label [for]="id">{{ label }}</label>
-                <span *ngIf="required" class="required"> * </span>
+                @if (required) {
+                    <span class="required">*</span>
+                }
                 <ng-container *ngIf="tooltipText">
                     <app-svg-icon
                         *ngIf="!isClassIcon"
@@ -98,7 +100,7 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
                     transition: color 0.2s ease;
 
                     &:hover {
-                        color: var(--accent-color-hover);
+                        opacity: 0.7;
                     }
 
                     &.class-icon {

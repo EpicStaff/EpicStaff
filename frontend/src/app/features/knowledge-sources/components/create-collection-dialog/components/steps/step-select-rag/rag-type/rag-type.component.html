@@ -1,0 +1,22 @@
+<div class="rag" [class.rag--selected]="selected()">
+    <div class="rag__header">
+        <app-svg-icon [icon]="rag().icon" [size]="'40px'" />
+        <div class="rag__header-level">
+            <p class="rag__level">{{ rag().level }}</p>
+            <div class="rag__stars">
+                <app-svg-icon [icon]="'star-filled'" [size]="'20px'" />
+                <app-svg-icon [icon]="rag().stars >= 2 ? 'star-filled' : 'star'" [size]="'20px'" />
+                <app-svg-icon [icon]="rag().stars >= 3 ? 'star-filled' : 'star'" [size]="'20px'" />
+            </div>
+        </div>
+    </div>
+    <h4 class="rag__name">
+        {{ rag().name }}
+    </h4>
+    <span class="rag__description">
+        {{ rag().description }}
+    </span>
+    <p class="rag__tip">
+        {{ rag().tip }}
+    </p>
+</div>

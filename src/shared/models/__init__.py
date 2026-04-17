@@ -38,6 +38,8 @@ from .knowledge import (
     BaseRagSearchConfig,
     NaiveRagSearchConfig,
     GraphRagSearchConfig,
+    GraphRagBasicSearchParams,
+    GraphRagLocalSearchParams,
     RagSearchConfig,  # anotation
     BaseKnowledgeSearchMessage,
     KnowledgeChunkResponse,
@@ -105,6 +107,8 @@ __all__ = [
     "BaseRagSearchConfig",
     "NaiveRagSearchConfig",
     "GraphRagSearchConfig",
+    "GraphRagBasicSearchParams",
+    "GraphRagLocalSearchParams",
     "RagSearchConfig",  # anotation
     "BaseKnowledgeSearchMessage",
     "KnowledgeChunkResponse",

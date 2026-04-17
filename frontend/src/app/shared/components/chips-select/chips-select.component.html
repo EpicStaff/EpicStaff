@@ -1,0 +1,42 @@
+<div class="chips" (click)="inputRef.focus()">
+    <div class="chips__items">
+        @for (chip of selectedChips(); let i = $index; track $index) {
+            <span class="chips__item">
+                {{ chip.name }}
+                <app-icon
+                    [icon]="'ui/close'"
+                    class="chips__item-remove"
+                    [size]="'1rem'"
+                    (click)="remove($event, i)"
+                />
+            </span>
+        }
+    </div>
+
+    <input
+        #inputRef
+        type="text"
+        [placeholder]="placeholder()"
+        [(ngModel)]="inputValue"
+        (keydown.enter)="addInput()"
+        (keydown.tab)="addInput()"
+        (keydown.arrowDown)="highlightNext()"
+        (keydown.arrowUp)="highlightPrev()"
+        (focus)="onFocus()"
+        (blur)="onBlur()"
+    />
+
+    @if (isAutocompleteOpen() && filteredChips().length > 0) {
+        <ul class="chips__autocomplete">
+            @for (option of filteredChips(); let i = $index; track $index) {
+                <li
+                    [class.highlighted]="i === highlightedIndex()"
+                    (mousedown)="select(option)"
+                    (mouseenter)="highlightedIndex.set(i)"
+                >
+                    {{ option.name }}
+                </li>
+            }
+        </ul>
+    }
+</div>

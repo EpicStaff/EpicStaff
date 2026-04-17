@@ -18,10 +18,10 @@
             <app-button
                 type="primary"
                 [rightIcon]="currentStepIndex() < 2 ? 'arrow-right' : ''"
-                [disabled]="nextStepDisabled()"
+                [disabled]="nextDisabled()"
                 (click)="nextStep()"
             >
-                {{ nextButtonText() }}
+                {{ nextText() }}
             </app-button>
             <app-svg-icon
                 icon="x"
@@ -41,10 +41,21 @@
             />
         }
         @case (CreateCollectionStep.SELECT_RAG) {
-            <app-step-select-rag [(selectedRag)]="selectedRagType" [(selectedEmbedder)]="selectedEmbedder" />
+            <app-step-select-rag
+                [forceType]="data.forceType"
+                [(selectedRag)]="selectedRagType"
+                [(selectedEmbedder)]="selectedEmbedder"
+                [(selectedLLM)]="selectedLLM"
+            />
         }
         @case (CreateCollectionStep.CONFIGURE) {
-            <app-rag-configuration class="dialog__content" [naiveRagId]="naiveRagId()!" [collection]="collection()" />
+            <div class="dialog__content">
+                @if (configurationComponent()) {
+                    <ng-container
+                        *ngComponentOutlet="configurationComponent(); inputs: configurationInputs()"
+                    ></ng-container>
+                }
+            </div>
         }
     }
 </div>

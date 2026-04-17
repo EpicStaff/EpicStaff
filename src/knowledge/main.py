@@ -400,6 +400,8 @@ async def main():
     )
     try:
         await asyncio.gather(task1, task2, task3, return_exceptions=True)
+    except Exception as e:
+        logger.exception(e)
     finally:
         # Wait for all background tasks to complete
         if background_tasks:

@@ -34,6 +34,7 @@ from infrastructure.transcription.transcription_client_factory import (
 )
 from utils.instructions_concatenator import generate_instruction
 from core.config import settings
+from utils.auth import introspect_token
 
 
 from infrastructure.persistence.database import get_db, engine
@@ -193,6 +194,22 @@ async def root(
     connection_key: str | None = None,
     db_session: AsyncSession = Depends(get_db),
 ):
+    token = websocket.query_params.get("token")
+    logger.info(
+        f"WebSocket connect attempt path={websocket.url.path} "
+        f"query_params={websocket.query_params}"
+    )
+    if not token:
+        logger.warning("WebSocket auth missing token")
+        await websocket.close(code=1008)
+        return
+
+    user_info = introspect_token(token)
+    if not user_info:
+        logger.warning("WebSocket auth failed: token invalid or introspection failed")
+        await websocket.close(code=1008)
+        return
+
     if connection_key is None:
         logger.error("Invalid connection_key. Connection refused!")
         await websocket.close(code=1008)
@@ -223,6 +240,7 @@ async def root(
         transcription_client_factory=transcription_client_factory,
     )
 
+    websocket.state.user = user_info
     await service.execute()
 
 

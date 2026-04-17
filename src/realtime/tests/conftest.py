@@ -1,2 +1,3 @@
 CONNECTION_KEY = "mock_key"
-CONNECTION_URL = f"/?connection_key={CONNECTION_KEY}"
+TOKEN = "mock_token"
+CONNECTION_URL = f"/realtime/?connection_key={CONNECTION_KEY}&token={TOKEN}"

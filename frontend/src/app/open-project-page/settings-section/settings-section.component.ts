@@ -105,10 +105,6 @@ export class SettingsSectionComponent implements OnInit, OnChanges {
         }
     }
 
-    public getParsedThreshold(value: string): number {
-        return parseFloat(value);
-    }
-
     private initializeBasicSettings(): void {
         if (this.project) {
             this.memory.set(this.project.memory ?? false);

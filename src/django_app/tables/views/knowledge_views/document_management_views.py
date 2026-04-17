@@ -2,8 +2,8 @@ from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter
+from rest_framework import serializers as drf_serializers
 
 from tables.models import DocumentMetadata
 from tables.serializers.knowledge_serializers import (
@@ -180,21 +180,21 @@ class DocumentViewSet(
             return DocumentDetailSerializer
         return DocumentMetadataSerializer
 
-    @swagger_auto_schema(
-        operation_description="List all documents or filter by collection ID",
-        manual_parameters=[
-            openapi.Parameter(
-                "collection_id",
-                openapi.IN_QUERY,
+    @extend_schema(
+        description="List all documents or filter by collection ID",
+        parameters=[
+            OpenApiParameter(
+                name="collection_id",
+                location=OpenApiParameter.QUERY,
                 description="Filter documents by collection ID",
-                type=openapi.TYPE_INTEGER,
+                type=drf_serializers.IntegerField(),
                 required=False,
             )
         ],
         responses={
             200: DocumentListSerializer(many=True),
-            400: "Invalid collection_id parameter",
-            404: "Collection not found",
+            400: OpenApiResponse(description="Invalid collection_id parameter"),
+            404: OpenApiResponse(description="Collection not found"),
         },
     )
     def list(self, request, *args, **kwargs):

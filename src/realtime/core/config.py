@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     MANAGER_HOST: str
     MANAGER_PORT: int
 
+    # --- Django Auth ---
+    DJANGO_AUTH_URL: str
+    DJANGO_API_KEY: str
+    DJANGO_AUTH_TIMEOUT: int = 5
+
     # --- Database (PostgreSQL) ---
     DB_HOST_NAME: str
     DB_PORT: int = 5432

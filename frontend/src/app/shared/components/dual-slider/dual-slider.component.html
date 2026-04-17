@@ -1,0 +1,96 @@
+@if (firstLabel() && secondLabel()) {
+    <div class="tooltip-container">
+        <app-tooltip
+            [required]="firstRequired()"
+            [tooltipText]="firstTooltipText()"
+            [label]="firstLabel()"
+            [icon]="icon()"
+        />
+
+        <app-tooltip
+            [required]="secondRequired()"
+            [tooltipText]="secondTooltipText()"
+            [label]="secondLabel()"
+            [icon]="icon()"
+        />
+    </div>
+}
+<div class="dual-slider">
+    <div class="controls">
+        <button
+            type="button"
+            class="btn"
+            (click)="onFirstStepDown()"
+            [disabled]="firstValue() <= min()"
+        >
+            <svg width="10" height="2" viewBox="0 0 10 2" fill="none">
+                <path d="M0 1H10" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+        </button>
+
+        <span class="value">{{ firstDisplayValue() }}</span>
+
+        <button
+            type="button"
+            class="btn"
+            (click)="onFirstStepUp()"
+            [disabled]="firstValue() >= max()"
+        >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M5 0V10M0 5H10" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+        </button>
+    </div>
+    <div class="track">
+        <input
+            type="range"
+            class="slider left-slider"
+            [class.active]="activeThumb() === 'left'"
+            [style.--slider-percentage]="firstPercentage() + '%'"
+            [min]="min()"
+            [max]="max()"
+            [step]="step()"
+            [ngModel]="firstValue()"
+            (input)="updateFirst($any($event.target).valueAsNumber)"
+            (mousedown)="activeThumb.set('left')"
+        />
+
+        <input
+            type="range"
+            class="slider right-slider"
+            [class.active]="activeThumb() === 'right'"
+            [style.--slider-percentage]="secondPercentage() + '%'"
+            [min]="min()"
+            [max]="max()"
+            [step]="step()"
+            [ngModel]="secondValue()"
+            (input)="updateSecond($any($event.target).valueAsNumber)"
+            (mousedown)="activeThumb.set('right')"
+        />
+    </div>
+    <div class="controls">
+        <button
+            type="button"
+            class="btn"
+            (click)="onSecondStepDown()"
+            [disabled]="secondValue() <= min()"
+        >
+            <svg width="10" height="2" viewBox="0 0 10 2" fill="none">
+                <path d="M0 1H10" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+        </button>
+
+        <span class="value">{{ secondDisplayValue() }}</span>
+
+        <button
+            type="button"
+            class="btn"
+            (click)="onSecondStepUp()"
+            [disabled]="secondValue() >= max()"
+        >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M5 0V10M0 5H10" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+        </button>
+    </div>
+</div>

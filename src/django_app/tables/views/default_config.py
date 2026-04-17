@@ -5,8 +5,7 @@ from tables.models.crew_models import (
 )
 from tables.models.default_models import DefaultModels
 
-from drf_yasg import openapi
-from drf_yasg.utils import swagger_auto_schema
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -49,13 +48,11 @@ class BaseDefaultConfigAPIView(APIView):
 
 
 class DefaultConfigAPIView(APIView):
-    @swagger_auto_schema(
-        operation_summary="Get default config",
+    @extend_schema(
+        summary="Get default config",
         responses={
-            200: openapi.Response(
-                description="Default config retrieved", schema=DefaultConfigSerializer()
-            ),
-            404: openapi.Response(description="Not found"),
+            200: DefaultConfigSerializer,
+            404: OpenApiResponse(description="Not found"),
         },
     )
     def get(self, request, *args, **kwargs):
@@ -81,23 +78,23 @@ class DefaultRealtimeAgentConfigAPIView(BaseDefaultConfigAPIView):
     model = DefaultRealtimeAgentConfig
     serializer = DefaultRealtimeAgentConfigSerializer
 
-    @swagger_auto_schema(
-        operation_summary="Get default realtime config",
+    @extend_schema(
+        summary="Get default realtime config",
         responses={
             200: DefaultRealtimeAgentConfigSerializer,
-            404: openapi.Response(description="Not found"),
+            404: OpenApiResponse(description="Not found"),
         },
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_summary="Update default realtime config",
-        request_body=DefaultRealtimeAgentConfigSerializer,
+    @extend_schema(
+        summary="Update default realtime config",
+        request=DefaultRealtimeAgentConfigSerializer,
         responses={
             200: DefaultRealtimeAgentConfigSerializer,
-            404: openapi.Response(description="Not found"),
-            400: openapi.Response(description="Validation Error"),
+            404: OpenApiResponse(description="Not found"),
+            400: OpenApiResponse(description="Validation Error"),
         },
     )
     def put(self, request, *args, **kwargs):
@@ -108,23 +105,23 @@ class DefaultAgentConfigAPIView(BaseDefaultConfigAPIView):
     model = DefaultAgentConfig
     serializer = DefaultAgentConfigSerializer
 
-    @swagger_auto_schema(
-        operation_summary="Get default agent config",
+    @extend_schema(
+        summary="Get default agent config",
         responses={
             200: DefaultAgentConfigSerializer,
-            404: openapi.Response(description="Not found"),
+            404: OpenApiResponse(description="Not found"),
         },
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_summary="Update default agent config",
-        request_body=DefaultAgentConfigSerializer,
+    @extend_schema(
+        summary="Update default agent config",
+        request=DefaultAgentConfigSerializer,
         responses={
             200: DefaultAgentConfigSerializer,
-            404: openapi.Response(description="Not found"),
-            400: openapi.Response(description="Validation Error"),
+            404: OpenApiResponse(description="Not found"),
+            400: OpenApiResponse(description="Validation Error"),
         },
     )
     def put(self, request, *args, **kwargs):
@@ -135,23 +132,23 @@ class DefaultCrewConfigAPIView(BaseDefaultConfigAPIView):
     model = DefaultCrewConfig
     serializer = DefaultCrewConfigSerializer
 
-    @swagger_auto_schema(
-        operation_summary="Get default crew config",
+    @extend_schema(
+        summary="Get default crew config",
         responses={
             200: DefaultCrewConfigSerializer,
-            404: openapi.Response(description="Not found"),
+            404: OpenApiResponse(description="Not found"),
         },
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_summary="Update default crew config",
-        request_body=DefaultCrewConfigSerializer,
+    @extend_schema(
+        summary="Update default crew config",
+        request=DefaultCrewConfigSerializer,
         responses={
             200: DefaultCrewConfigSerializer,
-            404: openapi.Response(description="Not found"),
-            400: openapi.Response(description="Validation Error"),
+            404: OpenApiResponse(description="Not found"),
+            400: OpenApiResponse(description="Validation Error"),
         },
     )
     def put(self, request, *args, **kwargs):
@@ -165,23 +162,23 @@ class DefaultModelsAPIView(BaseDefaultConfigAPIView):
     def get_object(self):
         return DefaultModels.load()
 
-    @swagger_auto_schema(
-        operation_summary="Get default models",
+    @extend_schema(
+        summary="Get default models",
         responses={
             200: DefaultModelsSerializer,
-            404: openapi.Response(description="Not found"),
+            404: OpenApiResponse(description="Not found"),
         },
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_summary="Set default models",
-        request_body=DefaultModelsSerializer,
+    @extend_schema(
+        summary="Set default models",
+        request=DefaultModelsSerializer,
         responses={
             200: DefaultModelsSerializer,
-            404: openapi.Response(description="Not found"),
-            400: openapi.Response(description="Validation Error"),
+            404: OpenApiResponse(description="Not found"),
+            400: OpenApiResponse(description="Validation Error"),
         },
     )
     def put(self, request, *args, **kwargs):
@@ -192,23 +189,23 @@ class DefaultToolConfigAPIView(BaseDefaultConfigAPIView):
     model = DefaultToolConfig
     serializer = DefaultToolConfigSerializer
 
-    @swagger_auto_schema(
-        operation_summary="Get default tool config",
+    @extend_schema(
+        summary="Get default tool config",
         responses={
             200: DefaultToolConfigSerializer,
-            404: openapi.Response(description="Not found"),
+            404: OpenApiResponse(description="Not found"),
         },
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_summary="Update default tool config",
-        request_body=DefaultToolConfigSerializer,
+    @extend_schema(
+        summary="Update default tool config",
+        request=DefaultToolConfigSerializer,
         responses={
             200: DefaultToolConfigSerializer,
-            404: openapi.Response(description="Not found"),
-            400: openapi.Response(description="Validation Error"),
+            404: OpenApiResponse(description="Not found"),
+            400: OpenApiResponse(description="Validation Error"),
         },
     )
     def put(self, request, *args, **kwargs):

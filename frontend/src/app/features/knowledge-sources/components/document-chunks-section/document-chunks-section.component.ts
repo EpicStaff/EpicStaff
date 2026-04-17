@@ -1,10 +1,9 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input } from '@angular/core';
-import { ButtonComponent, SpinnerComponent } from '@shared/components';
+import { AppSvgIconComponent, ButtonComponent, SpinnerComponent } from '@shared/components';
 import { EMPTY } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { NaiveRagDocumentsStorageService } from '../../services/naive-rag-documents-storage.service';
 import { ChunkPreviewComponent } from './chunk-preview/chunk-preview.component';
 

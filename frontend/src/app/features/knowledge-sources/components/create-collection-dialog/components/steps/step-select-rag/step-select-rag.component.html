@@ -1,0 +1,60 @@
+<div class="select-rag">
+    <div class="select-rag__header">
+        <h2 class="select-rag__title">Select RAG Type</h2>
+        <p class="select-rag__description">Below are three main types of Retrieval-Augmented Generation (RAG).</p>
+        <p class="select-rag__description">Choose the one that best suits your task.</p>
+    </div>
+    <section class="select-rag__items">
+        @for (rag of RAG_TYPES; track rag.name) {
+            <app-rag-type
+                class="select-rag__item"
+                [class.select-rag__item--disabled]="rag.disabled || (forceType() && forceType() !== rag.value)"
+                [rag]="rag"
+                [selected]="selectedRag() === rag.value"
+                (click)="onSelectRag(rag)"
+            />
+        }
+    </section>
+    <section class="select-rag__config">
+        <h3 class="select-rag__config-title">AI Model Configuration</h3>
+
+        <div class="select-rag__config-row">
+            <label for="collection-name" class="select-rag__config-label"> Embedder </label>
+
+            <app-svg-icon
+                icon="help"
+                class="select-rag__config-tooltip"
+                matTooltip="Select the embedding model that will convert your documents into vector representations. Different models have different capabilities and performance characteristics."
+                matTooltipPosition="above"
+                matTooltipClass="dialog__label-tooltip"
+            />
+
+            <app-select [items]="embeddingConfigs()" [(selectedValue)]="selectedEmbedder" />
+        </div>
+
+        @if (selectedRag() === 'graph') {
+            <div class="select-rag__config-row">
+                <label
+                    for="collection-name"
+                    class="select-rag__config-label"
+                >
+                    LLM Model
+                </label>
+
+                <mat-icon
+                    class="select-rag__config-tooltip"
+                    matTooltip="Select LLM Model"
+                    matTooltipPosition="above"
+                    matTooltipClass="dialog__label-tooltip"
+                >
+                    help_outline
+                </mat-icon>
+
+                <app-select
+                    [items]="llmModels()"
+                    [(selectedValue)]="selectedLLM"
+                />
+            </div>
+        }
+    </section>
+</div>

@@ -70,6 +70,9 @@ services:
       MANAGER_PORT: ${MANAGER_PORT:-8001}
       DB_REALTIME_USER: ${DB_REALTIME_USER}
       DB_REALTIME_PASSWORD: ${DB_REALTIME_PASSWORD}
+      DJANGO_AUTH_URL: ${DJANGO_AUTH_URL}
+      DJANGO_API_KEY: ${DJANGO_API_KEY}
+      DJANGO_AUTH_TIMEOUT: ${DJANGO_AUTH_TIMEOUT:-5}
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       VOICE_AGENT_ID: ${VOICE_AGENT_ID:-2}
@@ -297,6 +300,9 @@ services:
       KNOWLEDGE_SOURCES_CHANNEL: knowledge_sources
       DB_KNOWLEDGE_USER: ${DB_KNOWLEDGE_USER}
       DB_KNOWLEDGE_PASSWORD: ${DB_KNOWLEDGE_PASSWORD}
+      GRAPH_DATA_DIR: /home/user/root/app/graph_data
+    volumes:
+      - graph_data:/home/user/root/app/graph_data
     networks:
       - backend-network
     tty: true
@@ -404,6 +410,9 @@ volumes:
     external: true
   redis_data: {}
   code_instances: {}
+
+  graph_data:
+    external: true
 
 networks:
   backend-network:

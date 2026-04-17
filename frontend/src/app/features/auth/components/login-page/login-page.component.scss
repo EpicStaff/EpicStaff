@@ -1,0 +1,80 @@
+.page {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2rem;
+
+    .card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2.5rem;
+        width: 480px;
+        background: #212325;
+        padding: 1.875rem 1.875rem 2.5rem 1.875rem;
+        border-radius: 10px;
+        border: 1px solid #2b2d30;
+
+        .title-section {
+            text-align: center;
+
+            .title {
+                color: #d9d9de;
+                font-size: 2rem;
+                font-weight: 700;
+
+                span {
+                    color: var(--accent-color);
+                }
+            }
+
+            .subtitle {
+                font-size: 1.125rem;
+                color: var(--color-ks-secondary);
+            }
+        }
+
+        .form {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .btn {
+            width: 100%;
+        }
+
+        .remember-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+
+            span {
+                font-size: 0.875rem;
+                color: var(--color-ks-secondary);
+            }
+        }
+    }
+
+    .prompt {
+        font-size: 1.125rem;
+        color: var(--color-ks-secondary);
+
+        span {
+            cursor: pointer;
+            color: var(--accent-color);
+        }
+    }
+}
+
+.server-error {
+    color: var(--color-ks-status-failed);
+    font-size: 0.875rem;
+    text-align: center;
+    padding: 0.5rem 0.75rem;
+    background: var(--color-ks-transparent-red);
+    border-radius: 6px;
+}

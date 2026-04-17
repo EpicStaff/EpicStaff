@@ -2,7 +2,7 @@ from typing import Dict, Optional, Type
 
 from loguru import logger
 from sqlalchemy.orm import Session, joinedload
-from models.orm import NaiveRag, EmbeddingModel
+from models.orm import NaiveRag, GraphRag, EmbeddingModel
 
 
 class BaseORMStorage:
@@ -23,7 +23,7 @@ class BaseORMStorage:
 
         rag_tables = {
             "naive": NaiveRag,
-            # "graph": GraphRag,
+            "graph": GraphRag,
         }
 
         rag_table = rag_tables.get(rag_type)

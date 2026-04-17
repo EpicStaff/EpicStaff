@@ -44,13 +44,14 @@ import {
 import { RealtimeAgentService } from '../../../../features/staff/services/realtime-agent.service';
 import { AgentsService } from '../../../../features/staff/services/staff.service';
 import { ToastService } from '../../../../services/notifications/toast.service';
+import { EnrichedCreateAgentPayload } from '../../../../shared/components/create-agent-form-dialog/create-agent-form-dialog.component';
 import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.component';
 import { ClickOutsideDirective } from '../../../../shared/directives/click-outside.directive';
 import { buildToolIdsArray } from '../../../../shared/utils/tool-ids-builder.util';
 import {
     AdvancedSettingsData,
     AdvancedSettingsDialogComponent,
-} from '../advanced-settings-dialog.component.ts/advanced-settings-dialog.component';
+} from '../advanced-settings-dialog/advanced-settings-dialog.component';
 import { LLMPopupComponent } from '../cell-popups-and-modals/llm-selector-popup/llm-popup.component';
 import { TagsPopupComponent } from '../cell-popups-and-modals/tags-popup/tags-popup.component';
 import { ToolsPopupComponent } from '../cell-popups-and-modals/tools-selector-popup/tools-popup.component';
@@ -234,12 +235,7 @@ export class AgentsTableComponent {
             knowledge_collection: null,
             rag: null,
             tools: [],
-            search_configs: {
-                naive: {
-                    search_limit: 3,
-                    similarity_threshold: 0.2,
-                },
-            },
+            search_configs: null,
             // Replace realtime_config with realtime_agent object using provided defaults
             realtime_agent: {
                 wake_word: '',
@@ -644,7 +640,7 @@ export class AgentsTableComponent {
         const parsed = {
             ...agentData,
             llm_config: llmConfigId,
-            fcm_llm_config: agentData.fullFcmLlmConfig?.id ?? llmConfigId,
+            fcm_llm_config: agentData.fcm_llm_config ?? agentData.fullFcmLlmConfig?.id ?? llmConfigId,
             realtime_agent: realtime_agent, // Use the properly structured realtime_agent object
             configured_tools: mergedTools
                 .filter((tool: { id: number; type: string }) => tool.type === 'tool-config')
@@ -818,8 +814,8 @@ export class AgentsTableComponent {
             disableClose: true,
             data: {
                 id: agentData.id,
-                agentRole: agentData.role,
-                fullFcmLlmConfig: agentData.fullFcmLlmConfig,
+                role: agentData.role,
+                fcm_llm_config: agentData.fcm_llm_config,
                 max_iter: agentData.max_iter ?? 20,
                 max_rpm: agentData.max_rpm ?? 10,
                 max_execution_time: agentData.max_execution_time ?? 60,
@@ -828,16 +824,12 @@ export class AgentsTableComponent {
                 max_retry_limit: agentData.max_retry_limit ?? null,
                 respect_context_window: agentData.respect_context_window ?? false,
                 default_temperature: null,
-                knowledge_collection: agentData.knowledge_collection ?? null, // Changed parameter name
+                knowledge_collection: agentData.knowledge_collection ?? null,
                 rag: agentData.rag ?? null,
-                search_configs: {
-                    naive: {
-                        similarity_threshold: agentData.search_configs?.naive?.similarity_threshold ?? null,
-                        search_limit: agentData.search_configs?.naive?.search_limit ?? null,
-                    },
-                },
+                search_configs: agentData.search_configs ?? null,
                 memory: agentData.memory ?? true,
             },
+            height: '80vh',
         });
 
         dialogRef.closed.subscribe((updatedData: unknown) => {
@@ -1584,57 +1576,55 @@ export class AgentsTableComponent {
 
             popupRef.instance.mergedTools = event.data?.mergedTools || [];
 
-            popupRef.instance.mergedToolsUpdated.subscribe((updatedMergedTools: { id: number; configName: string; toolName: string; type: string }[]) => {
-                if (this.currentPopupCell) {
-                    const rowIndex = this.currentPopupCell.rowIndex;
-                    const rowNode = this.gridApi.getDisplayedRowAtIndex(rowIndex);
+            popupRef.instance.mergedToolsUpdated.subscribe(
+                (updatedMergedTools: { id: number; configName: string; toolName: string; type: string }[]) => {
+                    if (this.currentPopupCell) {
+                        const rowIndex = this.currentPopupCell.rowIndex;
+                        const rowNode = this.gridApi.getDisplayedRowAtIndex(rowIndex);
 
-                    if (rowNode) {
-                        const mergedToolsClone = (updatedMergedTools ?? []).map((t) => ({ ...t }));
+                        if (rowNode) {
+                            const mergedToolsClone = (updatedMergedTools ?? []).map((t) => ({ ...t }));
 
-                        rowNode.setDataValue('mergedTools', mergedToolsClone);
-                        const rowData = rowNode.data;
-                        const rowId = String(rowData?.id ?? '');
+                            rowNode.setDataValue('mergedTools', mergedToolsClone);
+                            const rowData = rowNode.data;
+                            const rowId = String(rowData?.id ?? '');
 
-                        if (this.isTempRowId(rowId)) {
-                            if (this.isTempRowTouched(rowData)) {
-                                this.draftTempRows.add(rowId);
+                            if (this.isTempRowId(rowId)) {
+                                if (this.isTempRowTouched(rowData)) {
+                                    this.draftTempRows.add(rowId);
+                                } else {
+                                    this.draftTempRows.delete(rowId);
+                                }
+
+                                this.emitDirty();
+                                this.updateRequiredErrorsForTempRow(rowId, rowData);
+
+                                this.cdr.markForCheck();
                             } else {
-                                this.draftTempRows.delete(rowId);
+                                const parsedData = this.parseAgentData(rowData);
+                                const configuredToolIds = parsedData.configured_tools || [];
+                                const pythonToolIds = parsedData.python_code_tools || [];
+                                const mcpToolIds = parsedData.mcp_tools || [];
+                                const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds);
+
+                                const updateAgentData: UpdateAgentRequest = {
+                                    ...parsedData,
+                                    id: Number(rowData.id),
+                                    configured_tools: configuredToolIds,
+                                    python_code_tools: pythonToolIds,
+                                    mcp_tools: mcpToolIds,
+                                    tool_ids: toolIds,
+                                };
+                                this.reconcilePendingUpdate(rowId, updateAgentData);
                             }
 
-                            this.emitDirty();
-                            this.updateRequiredErrorsForTempRow(rowId, rowData);
-
                             this.cdr.markForCheck();
-                        } else {
-                            const parsedData = this.parseAgentData(rowData);
-                            const configuredToolIds = parsedData.configured_tools || [];
-                            const pythonToolIds = parsedData.python_code_tools || [];
-                            const mcpToolIds = parsedData.mcp_tools || [];
-                            const toolIds = buildToolIdsArray(
-                                configuredToolIds,
-                                pythonToolIds,
-                                mcpToolIds
-                            );
-
-                            const updateAgentData: UpdateAgentRequest = {
-                                ...parsedData,
-                                id: Number(rowData.id),
-                                configured_tools: configuredToolIds,
-                                python_code_tools: pythonToolIds,
-                                mcp_tools: mcpToolIds,
-                                tool_ids: toolIds,
-                            };
-                            this.reconcilePendingUpdate(rowId, updateAgentData);
                         }
-
-                        this.cdr.markForCheck();
                     }
-                }
 
-                this.closePopup();
-            });
+                    this.closePopup();
+                }
+            );
 
             popupRef.instance.cancel.subscribe(() => {
                 this.closePopup();
@@ -1883,8 +1873,27 @@ export class AgentsTableComponent {
         this.cdr.markForCheck();
     }
 
-    public addPendingCreateFromDialog(payload: CreateAgentRequest): void {
+    public addPendingCreateFromDialog(payload: EnrichedCreateAgentPayload): void {
         if (this.shouldBlockInteraction()) return;
+
+        const mergedConfigs: MergedConfig[] = [];
+        if (payload.fullLlmConfig) {
+            mergedConfigs.push({
+                id: payload.fullLlmConfig.id,
+                custom_name: payload.fullLlmConfig.custom_name,
+                model_name: payload.fullLlmConfig.modelDetails?.name ?? 'Unknown Model',
+                type: 'llm',
+                provider_id: payload.fullLlmConfig.modelDetails?.llm_provider,
+                provider_name: payload.fullLlmConfig.providerDetails?.name ?? 'Unknown Provider',
+            });
+        }
+
+        const enrichedFields = {
+            fullLlmConfig: payload.fullLlmConfig ?? null,
+            fullFcmLlmConfig: payload.fullFcmLlmConfig ?? null,
+            mergedTools: payload.mergedTools ?? [],
+            mergedConfigs,
+        };
 
         if (!this.gridApi) {
             const tempRow = this.createEmptyFullAgent();
@@ -1912,6 +1921,7 @@ export class AgentsTableComponent {
                 mcp_tools: payload.mcp_tools ?? [],
                 search_configs: payload.search_configs ?? tempRow.search_configs,
                 realtime_agent: payload.realtime_agent ?? tempRow.realtime_agent,
+                ...enrichedFields,
             });
 
             this.rowData.unshift(tempRow);
@@ -1948,6 +1958,7 @@ export class AgentsTableComponent {
             mcp_tools: payload.mcp_tools ?? [],
             search_configs: payload.search_configs ?? tempRow.search_configs,
             realtime_agent: payload.realtime_agent ?? tempRow.realtime_agent,
+            ...enrichedFields,
         });
 
         this.rowData.unshift(tempRow);
@@ -1982,12 +1993,11 @@ export class AgentsTableComponent {
 
     private normalizeAdvancedSettings(input: TableFullAgent): Record<string, unknown> {
         const rawInput = input as TableFullAgent & Record<string, unknown>;
-        const sl = input?.search_configs?.naive?.search_limit;
-        const st = input?.search_configs?.naive?.similarity_threshold;
         return {
-            fcm_llm_config_id: input?.fullFcmLlmConfig?.id ?? null,
+            fcm_llm_config_id: input?.fcm_llm_config ?? input?.fullFcmLlmConfig?.id ?? null,
             knowledge_collection: input?.knowledge_collection ?? rawInput['selected_knowledge_source'] ?? null,
             rag_id: input?.rag?.rag_id ?? rawInput['rag_id'] ?? null,
+            rag_type: input?.rag?.rag_type ?? null,
             max_iter: input?.max_iter ?? 20,
             max_rpm: input?.max_rpm ?? 10,
             max_execution_time: input?.max_execution_time ?? 60,
@@ -1997,8 +2007,7 @@ export class AgentsTableComponent {
             cache: !!input?.cache,
             respect_context_window: !!input?.respect_context_window,
 
-            search_limit: sl == null ? null : Number(sl),
-            similarity_threshold: st == null ? null : Number(st),
+            search_configs: JSON.stringify(input?.search_configs ?? null),
         };
     }
 

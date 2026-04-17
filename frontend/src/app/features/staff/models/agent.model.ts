@@ -1,3 +1,4 @@
+import { AgentSearchConfigs } from "../../../shared/models";
 import { GetMcpToolRequest } from '../../tools/models/mcp-tool.model';
 import { GetPythonCodeToolRequest } from '../../tools/models/python-code-tool.model';
 import { GetToolRequest } from '../../tools/models/tool.model';
@@ -75,23 +76,14 @@ export interface GetAgentRequest {
     default_temperature: number | null;
 
     knowledge_collection: number | null;
-    rag: {
-        rag_id: number;
-        rag_type: string;
-        rag_status?: string;
-    } | null;
+    rag: AgentRag | null;
     realtime_agent: RealtimeAgentConfig;
     tools: {
         unique_name: ToolUniqueName;
         data: GetToolConfigRequest | GetPythonCodeToolRequest | GetMcpToolRequest;
     }[];
 
-    search_configs: {
-        naive: {
-            search_limit: number | null;
-            similarity_threshold: number | null;
-        };
-    };
+    search_configs: AgentSearchConfigs | null;
 }
 
 // Create Agent Request
@@ -118,23 +110,11 @@ export interface CreateAgentRequest {
     max_retry_limit?: number | null;
     respect_context_window?: boolean | null;
     default_temperature?: number | null;
-    // search_limit: number | null;
-    // similarity_threshold: string | null; // float between 0.00 and 1.00 for knowledge
-
     knowledge_collection?: number | null;
-    rag: {
-        rag_id: number;
-        rag_type: string;
-    } | null;
+    rag: AgentRag | null;
     realtime_agent?: RealtimeAgentConfig;
     tool_ids: ToolUniqueName[];
-
-    search_configs: {
-        naive: {
-            search_limit: number | null;
-            similarity_threshold: number | null;
-        };
-    };
+    search_configs: AgentSearchConfigs | null;
 }
 
 // partialUpdate Agent Request
@@ -167,21 +147,17 @@ export interface UpdateAgentRequest {
     default_temperature: number | null;
 
     knowledge_collection: number | null;
-    rag: {
-        rag_id: number;
-        rag_type: string;
-    } | null;
-    // search_limit: number | null;
-    // similarity_threshold: string | null;
+    rag: AgentRag | null;
     realtime_agent: RealtimeAgentConfig;
     tool_ids: ToolUniqueName[];
 
-    search_configs: {
-        naive: {
-            search_limit: number | null;
-            similarity_threshold: number | null;
-        };
-    };
+    search_configs: AgentSearchConfigs | null;
+}
+
+export interface AgentRag {
+    rag_id: number;
+    rag_type: string;
+    rag_status?: string
 }
 
 export type AgentTableItem = Omit<Agent, 'id'> & {

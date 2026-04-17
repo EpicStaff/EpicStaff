@@ -189,7 +189,9 @@ DECLARE
         'tables_sourcecollection',
         'tables_documentmetadata',
         'tables_documentcontent',
-        'tables_baseragtype'
+        'tables_baseragtype',
+        'tables_llmconfig',
+        'tables_llmmodel'
     ];
 
     -- Select + Update only
@@ -202,7 +204,10 @@ DECLARE
     crud_tables text[] := ARRAY[
         'tables_naiveragchunk',
         'tables_naiveragpreviewchunk',
-        'tables_naiveragembedding'
+        'tables_naiveragembedding',
+        'graph_rag',
+        'graph_rag_index_config',
+        'graph_rag_document'
     ];
 
     all_managed text[] := ARRAY[
@@ -316,11 +321,20 @@ EOF
 # Returns 0 only when ALL required tables are present.
 
 REQUIRED_TABLES=(
+    # manager
     "tables_session"
+    # knowledge
+    "tables_naiverag"
     "tables_naiveragchunk"
     "tables_naiveragembedding"
-    "tables_memorydatabase"
+    "tables_naiveragdocumentconfig"
+    "graph_rag"
+    "graph_rag_index_config"
+    "graph_rag_document"
+    # realtime
     "realtime_session_items"
+    # crew
+    "tables_memorydatabase"
 )
 
 all_tables_exist() {

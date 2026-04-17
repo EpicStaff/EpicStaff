@@ -1,7 +1,11 @@
 from rest_framework import serializers
 from loguru import logger
 
-from tables.models.knowledge_models import SourceCollection, DocumentMetadata
+from tables.models.knowledge_models import (
+    SourceCollection,
+    DocumentMetadata,
+    BaseRagType,
+)
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
 )
@@ -52,6 +56,19 @@ class RagConfigurationSummarySerializer(serializers.Serializer):
     updated_at = serializers.DateTimeField(
         help_text="When this RAG configuration was last updated"
     )
+
+
+class BaseRagTypeSerializer(serializers.ModelSerializer):
+    """Serializer for BaseRagType."""
+
+    class Meta:
+        model = BaseRagType
+        fields = [
+            "rag_type_id",
+            "rag_type",
+            "source_collection",
+        ]
+        read_only_fields = fields
 
 
 class DocumentMetadataSerializer(serializers.ModelSerializer):
@@ -296,29 +313,46 @@ class CopySourceCollectionSerializer(serializers.Serializer):
     new_collection_name = serializers.CharField(required=False)
 
 
-# class CollectionStatusSerializer(serializers.ModelSerializer):
+class RagInputSerializer(serializers.Serializer):
+    """
+    Input serializer for rag field in Agent create/update.
+    """
 
-#     class Meta:
-#         model = SourceCollection
-#         fields = ["collection_id", "collection_name", "status"]
+    rag_type = serializers.ChoiceField(
+        choices=["naive", "graph"], help_text="Type of RAG implementation"
+    )
+    rag_id = serializers.IntegerField(min_value=1, help_text="ID of the RAG instance")
 
-#     def to_representation(self, obj):
-#         """Custom representation to control response structure"""
-#         return {
-#             "collection_id": obj.collection_id,
-#             "collection_name": obj.collection_name,
-#             "collection_status": obj.status,
-#             "total_documents": obj.total_documents,
-#             "new_documents": obj.new_documents,
-#             "completed_documents": obj.completed_documents,
-#             "processing_documents": obj.processing_documents,
-#             "failed_documents": obj.failed_documents,
-#             "documents": [
-#                 {
-#                     "document_id": doc.document_id,
-#                     "file_name": doc.file_name,
-#                     "status": doc.status,
-#                 }
-#                 for doc in obj.document_metadata.all()
-#             ],
-#         }
+
+class NestedSearchConfigSerializer(serializers.Serializer):
+    """
+    Nested search config serializer
+    Handles multiple RAG types: {"naive": {...}, "graph": {...}}
+
+    Uses get_fields() for lazy imports to avoid circular dependencies
+    """
+
+    def get_fields(self):
+        from tables.serializers.naive_rag_serializers import (
+            NaiveSearchConfigInputSerializer,
+        )
+        from tables.serializers.graph_rag_serializers import (
+            GraphSearchConfigInputSerializer,
+        )
+
+        fields = super().get_fields()
+        fields["naive"] = NaiveSearchConfigInputSerializer(
+            required=False, help_text="Naive RAG search config"
+        )
+        fields["graph"] = GraphSearchConfigInputSerializer(
+            required=False, help_text="Graph RAG search config"
+        )
+        return fields
+
+    def validate(self, attrs):
+        """Ensure at least one RAG type is provided."""
+        if not attrs:
+            raise serializers.ValidationError(
+                "At least one RAG type must be provided (e.g., 'naive', 'graph')"
+            )
+        return attrs

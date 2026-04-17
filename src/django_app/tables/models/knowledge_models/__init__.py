@@ -15,11 +15,24 @@ from .naive_rag_models import (
     NaiveRagPreviewChunk,
 )
 
+from .graphrag_models import (
+    GraphRag,
+    AgentGraphRag,
+    GraphRagDocument,
+    GraphRagInputFileType,
+    GraphRagChunkStrategyType,
+    GraphRagIndexConfig,
+    GraphRagBasicSearchConfig,
+    GraphRagLocalSearchConfig,
+)
+
 __all__ = [
+    # Collection models
     "SourceCollection",
     "DocumentMetadata",
     "DocumentContent",
     "BaseRagType",
+    # Naive RAG models
     "NaiveRag",
     "NaiveRagDocumentConfig",
     "NaiveRagChunk",
@@ -27,4 +40,13 @@ __all__ = [
     "AgentNaiveRag",
     "NaiveRagSearchConfig",
     "NaiveRagPreviewChunk",
+    # Graph RAG models
+    "GraphRag",
+    "AgentGraphRag",
+    "GraphRagDocument",
+    "GraphRagInputFileType",
+    "GraphRagChunkStrategyType",
+    "GraphRagIndexConfig",
+    "GraphRagBasicSearchConfig",
+    "GraphRagLocalSearchConfig",
 ]

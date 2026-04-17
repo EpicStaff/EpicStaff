@@ -10,12 +10,17 @@
         color 0.2s,
         border-bottom 0.2s;
     text-decoration: none;
-    display: inline-flex;
+    display: inline-block;
     align-items: center;
     min-width: 0;
     flex: 0 1 auto;
     max-width: 100%;
     outline: none;
+
+    &.sm {
+        padding: 0.5rem;
+        font-size: 0.875rem;
+    }
 
     &:hover {
         color: #ffffff;

@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, model } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AppSvgIconComponent } from '@shared/components';
 
-import { AppSvgIconComponent } from '../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ListComponent } from '../../../../../../../shared/components/list/list.component';
 import { ListActionsComponent } from '../../../../../../../shared/components/list/list-actions/list-actions.component';
 import { ListRowComponent } from '../../../../../../../shared/components/list/list-row/list-row.component';

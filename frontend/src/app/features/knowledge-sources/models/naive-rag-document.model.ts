@@ -1,5 +1,4 @@
 import { NaiveRagChunkStrategy } from '../enums/naive-rag-chunk-strategy';
-import { RagType } from './naive-rag.model';
 
 export type NaiveRagDocumentStatus = 'new' | 'chunking' | 'chunked' | 'indexing' | 'completed' | 'warning' | 'failed';
 
@@ -76,16 +75,4 @@ export interface BulkDeleteNaiveRagDocumentDtoResponse {
 export interface UpdateNaiveRagDocumentResponse {
     message: string;
     config: NaiveRagDocumentConfig;
-}
-
-export interface StartIndexingDtoRequest {
-    rag_id: number;
-    rag_type: RagType;
-}
-
-export interface StartIndexingDtoResponse {
-    detail: string;
-    rag_id: number;
-    rag_type: string;
-    collection_id: number;
 }

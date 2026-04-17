@@ -1,0 +1,125 @@
+.dialog-container {
+    display: flex;
+    flex-direction: column;
+    background-color: var(--color-modals-background);
+    color: var(--color-text-primary);
+    border-radius: 12px;
+    overflow: hidden;
+    width: 590px;
+    max-width: 90vw;
+    max-height: 90vh;
+    height: 100%;
+    box-shadow:
+        0 12px 28px rgba(0, 0, 0, 0.4),
+        0 4px 8px rgba(0, 0, 0, 0.2);
+    transform: none !important;
+}
+
+/* Header Section */
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--color-divider-subtle);
+
+    .icon-and-title {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+
+        i,
+        app-svg-icon {
+            font-size: 1.5rem;
+            margin-right: 1rem;
+            color: var(--accent-color);
+        }
+
+        .dialog-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin: 0;
+            padding: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: calc(100% - 30px);
+        }
+    }
+}
+
+.tabs {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 1.5rem;
+    border-bottom: 1px solid var(--color-divider-subtle);
+
+    .divider {
+        font-size: 1.5rem;
+        color: var(--color-divider-subtle);
+    }
+}
+
+/* Scrollable Content */
+.scrollable-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.5rem;
+    min-height: 250px;
+
+    .tab-content {
+        display: block;
+        height: 0;
+        overflow: hidden;
+    }
+
+    .visible-tab {
+        height: 100%;
+        overflow: auto;
+    }
+}
+
+/* Actions Section */
+.actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 1rem 1.5rem;
+    gap: 0.75rem;
+    border-top: 1px solid var(--color-divider-subtle);
+
+    button {
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+
+        &.btn-cancel {
+            background-color: transparent;
+            border: 1px solid var(--color-divider);
+            color: var(--color-text-secondary);
+
+            &:hover {
+                border-color: var(--color-text-primary);
+                color: var(--color-text-primary);
+            }
+        }
+
+        &.btn-save {
+            background-color: var(--accent-color);
+            border: 1px solid var(--accent-color);
+            color: white;
+
+            &:hover {
+                filter: brightness(1.1);
+            }
+
+            &:disabled {
+                cursor: not-allowed;
+                opacity: 0.6;
+            }
+        }
+    }
+}

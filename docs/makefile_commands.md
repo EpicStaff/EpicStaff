@@ -297,6 +297,44 @@ make django-manage CMD="collectstatic --noinput"
 
 ---
 
+---
+
+## User Management
+
+### Reset user (console)
+
+Deletes **all** existing users and API keys, then creates a fresh superuser and a new `realtime-default` API key. Use this when you are locked out or need to start fresh without wiping the entire database.
+
+#### Inside Docker
+
+```bash
+docker exec -it django_app python manage.py reset_user --username admin --password secret
+docker exec -it django_app python manage.py reset_user --username admin --password secret --email admin@example.com
+```
+
+#### Locally (outside Docker)
+
+```bash
+make django-manage CMD="reset_user --username admin --password secret"
+```
+
+The command prints the new API key to stdout — copy it immediately.
+
+> **Warning:** This irreversibly deletes all users and API keys. All active JWT tokens and API keys will stop working.
+
+### Reset user (REST API)
+
+`POST /api/auth/reset-user/` — same effect, but requires a valid JWT or API key in the `Authorization` header.
+
+```bash
+curl -X POST http://localhost:8000/api/auth/reset-user/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "secret"}'
+```
+
+---
+
 ## Typical Workflows
 
 ### Start the development environment
@@ -353,4 +391,10 @@ make django-migrate
 ```bash
 make clean
 make dev
+```
+
+### Reset user (locked out or fresh credentials needed)
+
+```bash
+docker exec -it django_app python manage.py reset_user --username admin --password secret
 ```

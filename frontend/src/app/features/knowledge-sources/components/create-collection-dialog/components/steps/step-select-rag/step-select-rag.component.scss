@@ -1,0 +1,78 @@
+.select-rag {
+    padding: 4.125rem 2.5rem;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    row-gap: 3rem;
+
+    &__header {
+        width: 40%;
+    }
+
+    &__title {
+        margin-bottom: 1rem;
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: var(--color-ks-text);
+        text-align: center;
+    }
+
+    &__description {
+        font-size: 0.875rem;
+        line-height: 130%;
+        color: var(--color-ks-transparent-text-80);
+        text-align: center;
+    }
+
+    &__items {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        column-gap: 1rem;
+    }
+
+    &__item {
+        cursor: pointer;
+
+        &--disabled {
+            cursor: not-allowed;
+        }
+    }
+
+    &__config {
+        width: 100%;
+        padding: 1.5rem 1rem 1.5rem 1.5rem;
+        border-radius: 10px;
+        row-gap: 1.5rem;
+        background-color: var(--color-ks-line);
+        display: flex;
+        flex-direction: column;
+    }
+
+    &__config-title {
+        font-size: 1.125rem;
+        color: var(--color-ks-text);
+    }
+
+    &__config-row {
+        display: flex;
+        align-items: center;
+    }
+
+    &__config-label {
+        width: 75px;
+        flex-shrink: 0;
+        text-align: right;
+        font-size: 0.875rem;
+        line-height: 130%;
+        color: var(--color-ks-text);
+    }
+
+    &__config-tooltip {
+        flex-shrink: 0;
+        margin-left: 1rem;
+        color: var(--accent-color);
+        margin-right: 1.875rem;
+    }
+}

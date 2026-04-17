@@ -1,72 +1,50 @@
-:host {
-    width: 100%;
-}
-
-.chips {
-    position: relative;
-    border: 1px solid var(--color-divider-subtle);
-    border-radius: 8px;
-    padding: 0.5rem;
+.wrapper {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
+    flex-direction: column;
 
-    input {
-        flex: 1 1 auto;
-        border: none;
-        outline: none;
-        background: transparent;
-        min-width: 100px;
-        padding: 0.25rem 0.5rem;
-        color: var(--color-ks-text);
+    .input {
+        display: flex;
+        column-gap: 0.5rem;
+
+        .input-icon {
+            height: 40px;
+            width: 40px;
+            border-radius: 8px;
+            background-color: var(--accent-color);
+            color: #ffffff;
+            cursor: pointer;
+
+            &.disabled {
+                opacity: 0.7;
+                cursor: not-allowed;
+            }
+
+            &:hover {
+                background-color: var(--accent-color-hover);
+            }
+        }
     }
 
-    &__items {
+    .chips {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.25rem;
-    }
+        margin-top: 0.5rem;
+        gap: 0.5rem;
 
-    &__item {
-        border: 1px solid var(--color-input-border);
-        background: var(--color-ks-line);
-        color: var(--color-ks-text);
-        border-radius: 4px;
-        padding: 0.25rem 0.5rem;
-        display: flex;
-        align-items: center;
-        column-gap: 0.5rem;
-    }
+        .chip {
+            display: flex;
+            align-items: center;
+            column-gap: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            height: 40px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background-color: var(--color-input-background);
+            color: var(--color-ks-text);
+            font-size: 0.875rem;
 
-    &__item-remove {
-        background: transparent;
-        border: none;
-        color: var(--color-ks-text);
-        cursor: pointer;
-    }
-
-    &__autocomplete {
-        position: absolute;
-        top: 100%;
-        left: 0;
-        right: 0;
-        max-height: 150px;
-        overflow-y: auto;
-        border-radius: 8px;
-        margin-top: 0.25rem;
-        z-index: 1005;
-        list-style: none;
-        padding: 0;
-        background: var(--color-input-background);
-        border: 1px solid var(--color-divider-subtle);
-
-        li {
-            padding: 0.5rem 1rem;
-            cursor: pointer;
-            border-bottom: 1px solid var(--color-divider-subtle);
-
-            &.highlighted {
-                background: var(--color-ks-transparent-black-72);
+            .action {
+                cursor: pointer;
             }
         }
     }

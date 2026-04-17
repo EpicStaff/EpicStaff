@@ -1,0 +1,186 @@
+<div [formGroup]="form()">
+    <div class="form-section">
+        <h3 class="section-title">RETRIEVAL SETTINGS</h3>
+        <div class="form-group">
+            <app-select
+                formControlName="knowledge_collection"
+                label="Select Knowledge Source"
+                tooltipText="Choose a knowledge source to provide additional context and information for this agent."
+                placeholder="Select Knowledge Source"
+                [items]="knowledgeSelectItems()"
+                [loading]="loadingKnowledgeSources()"
+            />
+        </div>
+
+        <div class="form-group">
+            <app-select
+                formControlName="rag"
+                label="Select Agent Rags"
+                placeholder="Select Rag"
+                tooltipText="Choose a agent rag to provide additional context and information for this agent."
+                [invalid]="isKnowledgeControlInvalid() && isRagControlInvalid()"
+                [items]="agentRagSelectItems()"
+                [loading]="loadingRags()"
+            />
+            <app-validation-errors [control]="form().get('rag')!" />
+        </div>
+
+        @if (searchConfigsFormGroup) {
+            <div [formGroup]="searchConfigsFormGroup">
+                @if (selectedRagType() === 'naive') {
+                    <div class="form-group">
+                        <app-slider-with-stepper
+                            formControlName="similarity_threshold"
+                            label="Similarity Threshold"
+                            tooltipText="Sets the similarity threshold for knowledge retrieval. Lower values return more results but may be less relevant. Higher values are more precise but may miss useful information."
+                            [min]="0"
+                            [max]="1"
+                            [step]="0.1"
+                            [decimals]="1"
+                        />
+                    </div>
+
+                    <div class="form-group">
+                        <app-slider-with-stepper
+                            formControlName="search_limit"
+                            label="Search Limit"
+                            tooltipText="The maximum number of items to retrieve when searching for relevant information. Higher values provide more context but may slow down responses."
+                            [min]="1"
+                            [max]="1000"
+                            [step]="1"
+                            [decimals]="0"
+                        />
+                    </div>
+                } @else if (selectedRagType() === 'graph') {
+                    <div class="form-group">
+                        <app-radio-button
+                            formControlName="search_method"
+                            label="Search Type"
+                            tooltipText="Basic Search - uses vector-based RAG to find relevant information and generate accurate responses. Local search generates answers by combining relevant data from the AI-extracted knowledge-graph with text chunks of the raw documents. This method is suitable for questions that require an understanding of specific entities mentioned in the documents"
+                            [options]="searchTypes"
+                        />
+                    </div>
+
+                    @switch (searchConfigsFormGroup.get('search_method')?.value) {
+                        @case ('basic') {
+                            <div formGroupName="basic">
+                                <div class="form-group">
+                                    <app-textarea
+                                        formControlName="prompt"
+                                        label="Prompt"
+                                        tooltipText="Prompt"
+                                        placeholder="Custom general knowledge instruction... Leave empty for default."
+                                    />
+                                </div>
+                                <div class="form-group-container">
+                                    <div class="form-group">
+                                        <app-input-number
+                                            formControlName="k"
+                                            label="K"
+                                            tooltipText="Number of text units to retrieve from the vector store for context building"
+                                            [alwaysShowSteps]="true"
+                                            [min]="1"
+                                            [max]="100"
+                                        />
+                                    </div>
+                                    <div class="form-group">
+                                        <app-input-number
+                                            formControlName="max_context_tokens"
+                                            label="Max Context Tokens"
+                                            tooltipText="The maximum context size to create, in tokens"
+                                            [alwaysShowSteps]="true"
+                                            [min]="100"
+                                            [max]="100000"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                        @case ('local') {
+                            <div formGroupName="local">
+                                <div class="form-group">
+                                    <app-textarea
+                                        formControlName="prompt"
+                                        label="Prompt"
+                                        tooltipText="Prompt"
+                                        placeholder="Custom general knowledge instruction... Leave empty for default."
+                                    />
+                                </div>
+
+                                @if (textUnitProportionControl && communityProportionControl) {
+                                    <div class="form-group">
+                                        <app-dual-slider
+                                            firstLabel="Text Unit Proportion"
+                                            firstTooltipText="The text unit proportion"
+                                            secondLabel="Community Proportion"
+                                            secondTooltipText="The community proportion"
+                                            [firstValue]="textUnitProportionControl.value"
+                                            [secondValue]="communityProportionControl.value"
+                                            (firstValueChange)="onTextUnitPropUpdate($event)"
+                                            (secondValueChange)="onCommunityPropUpdate($event)"
+                                            [min]="0"
+                                            [max]="1"
+                                            [step]="0.01"
+                                        />
+                                    </div>
+                                }
+
+                                <div class="form-group-container">
+                                    <div class="form-group">
+                                        <app-input-number
+                                            formControlName="conversation_history_max_turns"
+                                            label="Conversation History max Turns"
+                                            tooltipText="The conversation history maximum turns"
+                                            [alwaysShowSteps]="true"
+                                            [min]="1"
+                                            [max]="50"
+                                        />
+                                    </div>
+                                    <div class="form-group">
+                                        <app-input-number
+                                            formControlName="max_context_tokens"
+                                            label="Max Context Tokens"
+                                            tooltipText="The maximum tokens to use building the request context"
+                                            [alwaysShowSteps]="true"
+                                            [min]="100"
+                                            [max]="100000"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div class="form-group-container">
+                                    <div class="form-group">
+                                        <app-input-number
+                                            formControlName="top_k_entities"
+                                            label="Top K Entities"
+                                            tooltipText="The top k mapped entities"
+                                            [alwaysShowSteps]="true"
+                                            [min]="1"
+                                            [max]="100"
+                                        />
+                                    </div>
+                                    <div class="form-group">
+                                        <app-input-number
+                                            formControlName="top_k_relationships"
+                                            label="Top K Relationships"
+                                            tooltipText="The top k mapped relations"
+                                            [alwaysShowSteps]="true"
+                                            [min]="1"
+                                            [max]="100"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                        @case ('global') {
+                            <h3>Not available yet</h3>
+                        }
+                        @case ('drift') {
+                            <h3>Not available yet</h3>
+                        }
+                    }
+                }
+            </div>
+        }
+    </div>
+</div>

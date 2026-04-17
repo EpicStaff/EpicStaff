@@ -15,7 +15,6 @@ from loguru import logger
 from tables.models.knowledge_models.collection_models import DocumentMetadata
 from tables.services.redis_service import RedisService
 
-
 ALLOWED_FILE_TYPES = {choice[0] for choice in DocumentMetadata.DocumentFileType.choices}
 MAX_FILE_SIZE = 12 * 1024 * 1024  # 12MB
 

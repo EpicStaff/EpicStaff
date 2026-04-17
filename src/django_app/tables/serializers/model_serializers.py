@@ -126,7 +126,7 @@ from tables.services.rag_assignment_service import (
     RagAssignmentService,
     SearchConfigService,
 )
-from tables.serializers.naive_rag_serializers import (
+from tables.serializers.knowledge_serializers import (
     RagInputSerializer,
     NestedSearchConfigSerializer,
 )
@@ -638,11 +638,10 @@ class AgentReadSerializer(serializers.ModelSerializer):
 
     def get_search_configs(self, agent: Agent) -> dict | None:
         """
-        Get all RAG search configurations in nested format.
-        Returns: {"naive": {"search_limit": 3, "similarity_threshold": 0.2}, "graph": {...}}
-        Returns None if no configs exist.
+        Get all RAG search configurations in unified nested format
+        Delegates to SearchConfigService for business logic
         """
-        return agent.get_search_configs()
+        return SearchConfigService.get_search_configs(agent)
 
 
 class AgentWriteSerializer(serializers.ModelSerializer):
@@ -778,14 +777,13 @@ class AgentWriteSerializer(serializers.ModelSerializer):
 
         # Handle search configs
         if search_configs_data:
-            for rag_type, config in search_configs_data.items():
-                if rag_type == "naive":
-                    SearchConfigService.update_search_config(agent, **config)
-                # Future: elif rag_type == "graph": ...
+            SearchConfigService.apply_search_configs(agent, search_configs_data)
         elif rag_data:
             # RAG assigned but no config provided - create defaults
             if rag_data["rag_type"] == "naive":
                 SearchConfigService.create_default_search_config(agent)
+            elif rag_data["rag_type"] == "graph":
+                SearchConfigService.create_default_graph_search_configs(agent)
 
         # Handle realtime agent
         if realtime_agent_data:
@@ -878,10 +876,7 @@ class AgentWriteSerializer(serializers.ModelSerializer):
 
         # Handle search configs (independent from RAG assignment)
         if search_configs_data:
-            for rag_type, config in search_configs_data.items():
-                if rag_type == "naive":
-                    SearchConfigService.update_search_config(instance, **config)
-                # Future: elif rag_type == "graph": ...
+            SearchConfigService.apply_search_configs(instance, search_configs_data)
 
         # Handle realtime agent
         if realtime_agent_data:

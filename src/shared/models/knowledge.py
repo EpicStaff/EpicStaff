@@ -19,15 +19,36 @@ class NaiveRagSearchConfig(BaseRagSearchConfig):
     search_limit: int = 3
     similarity_threshold: float = 0.2
 
-    model_config = ConfigDict(from_attributes=True)
+
+class GraphRagBasicSearchParams(BaseModel):
+    search_method: Literal["basic"] = "basic"
+    prompt: str | None = None
+    k: int = 10
+    max_context_tokens: int = 12000
+
+
+class GraphRagLocalSearchParams(BaseModel):
+    search_method: Literal["local"] = "local"
+    prompt: str | None = None
+    text_unit_prop: float = 0.5
+    community_prop: float = 0.15
+    conversation_history_max_turns: int = 5
+    top_k_entities: int = 10
+    top_k_relationships: int = 10
+    max_context_tokens: int = 12000
+
+
+GraphSearchParams = Annotated[
+    Union[GraphRagBasicSearchParams, GraphRagLocalSearchParams],
+    Field(discriminator="search_method"),
+]
 
 
 class GraphRagSearchConfig(BaseRagSearchConfig):
     """Search parameters specific to graph RAG implementation"""
 
     rag_type: Literal["graph"] = "graph"
-
-    model_config = ConfigDict(from_attributes=True)
+    search_params: GraphSearchParams
 
 
 RagSearchConfig = Annotated[

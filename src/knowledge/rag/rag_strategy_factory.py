@@ -1,4 +1,5 @@
 from rag.naive_rag_strategy import NaiveRAGStrategy
+from rag.graph_rag.graph_rag_strategy import GraphRAGStrategy
 
 
 class RAGStrategyFactory:
@@ -6,7 +7,7 @@ class RAGStrategyFactory:
 
     _strategies = {
         "naive": NaiveRAGStrategy(),
-        # "graphrag": GraphRAGStrategy(),
+        "graph": GraphRAGStrategy(),
     }
 
     @classmethod

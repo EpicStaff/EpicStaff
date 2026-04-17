@@ -1,0 +1,92 @@
+# Python Artifacts
+python/*/lib/
+dist/
+build/
+*.egg-info/
+
+# Test Output
+.coverage
+coverage/
+licenses.txt
+examples_notebooks/*/data
+tests/fixtures/cache
+tests/fixtures/*/cache
+tests/fixtures/*/output
+output/lancedb
+
+
+# Random
+.DS_Store
+*.log*
+.venv
+venv/
+.conda
+.tmp
+
+.env
+build.zip
+
+.turbo
+
+__pycache__
+
+.pipeline
+
+# Azurite
+temp_azurite/
+__azurite*.json
+__blobstorage*.json
+__blobstorage__/
+
+# Getting started example
+ragtest/
+.ragtest/
+.pipelines
+.pipeline
+
+
+# mkdocs
+site/
+
+# Docs migration
+docsite/
+.yarn/
+.pnp*
+
+# PyCharm
+.idea/
+
+# Jupyter notebook
+.ipynb_checkpoints/
+
+
+
+
+#-----Epicstaff-----#
+
+# mkdocs config (uses Python YAML tags incompatible with standard YAML linters)
+mkdocs.yaml
+
+# Not needed in our repo — CI, dev tooling, docs, examples
+.github/
+.vscode/
+.semversioner/
+.vsts-ci.yml
+.gitattributes
+docs/
+examples_notebooks/
+tests/
+unified-search-app/
+scripts/
+breaking-changes.md
+CHANGELOG.md
+CODE_OF_CONDUCT.md
+CODEOWNERS
+CONTRIBUTING.md
+DEVELOPING.md
+RAI_TRANSPARENCY.md
+SECURITY.md
+SUPPORT.md
+cspell.config.yaml
+dictionary.txt
+uv.lock

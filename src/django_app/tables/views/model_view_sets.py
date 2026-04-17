@@ -83,8 +83,7 @@ from tables.models.llm_models import (
     RealtimeTranscriptionConfig,
     RealtimeTranscriptionModel,
 )
-from drf_yasg import openapi
-from drf_yasg.utils import swagger_auto_schema
+from drf_spectacular.utils import extend_schema
 from tables.swagger_schemas.graph_bulk_save_schema import (
     SAVE_FLOW_SWAGGER as _SAVE_FLOW_SWAGGER,
 )
@@ -846,7 +845,7 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
         return Response(data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="save")
-    @swagger_auto_schema(**_SAVE_FLOW_SWAGGER)
+    @extend_schema(**_SAVE_FLOW_SWAGGER)
     def save_flow(self, request, pk=None):
         input_serializer = GraphBulkSaveInputSerializer(data=request.data)
         if not input_serializer.is_valid():

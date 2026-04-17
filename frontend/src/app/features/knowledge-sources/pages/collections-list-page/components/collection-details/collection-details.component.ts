@@ -21,8 +21,8 @@ import {
 import { EMPTY, filter, throwError } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, finalize, switchMap } from 'rxjs/operators';
 
-import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ToastService } from '../../../../../../services/notifications';
+import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { FILE_TYPES } from '../../../../constants/constants';
 import { CreateCollectionDtoResponse } from '../../../../models/collection.model';
 import { DisplayedListDocument } from '../../../../models/document.model';
@@ -38,7 +38,6 @@ import { CollectionRagsComponent } from './collection-rags/collection-rags.compo
     styleUrls: ['./collection-details.component.scss'],
     templateUrl: './collection-details.component.html',
     imports: [
-        AppSvgIconComponent,
         FormsModule,
         ReactiveFormsModule,
         DragDropAreaComponent,
@@ -47,6 +46,7 @@ import { CollectionRagsComponent } from './collection-rags/collection-rags.compo
         CollectionInfoComponent,
         SpinnerComponent,
         ValidationErrorsComponent,
+        AppSvgIconComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

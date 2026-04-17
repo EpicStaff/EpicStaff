@@ -26,6 +26,9 @@ ENV PEP517_BUILD_BACKEND=setuptools.build_meta
 # Copy lockfiles first (better layer caching)
 COPY ./knowledge/pyproject.toml ./knowledge/poetry.lock ./
 
+# Copy local libraries before install (required if pyproject.toml references them)
+COPY ./knowledge/libraries/ ./libraries
+
 # Install dependencies inside project .venv
 RUN poetry install --no-ansi --no-root
 

@@ -5,14 +5,16 @@ from loguru import logger
 from tables.models.knowledge_models import (
     NaiveRag,
     DocumentMetadata,
+    GraphRag,
+    GraphRagDocument,
 )
 from tables.exceptions import (
     NaiveRagNotFoundException,
+    GraphRagNotFoundException,
     CollectionNotFoundException,
     DocumentsNotFoundException,
     RagException,
     RagNotReadyForIndexingException,
-    GraphRagNotImplementedException,
 )
 
 
@@ -46,7 +48,7 @@ class IndexingService:
         if rag_type == "naive":
             return IndexingService._prepare_naive_rag_indexing(rag_id)
         elif rag_type == "graph":
-            raise GraphRagNotImplementedException()
+            return IndexingService._prepare_graph_rag_indexing(rag_id)
         else:
             raise RagException(f"Unknown rag_type: {rag_type}")
 
@@ -112,6 +114,87 @@ class IndexingService:
         }
 
     @staticmethod
+    def _prepare_graph_rag_indexing(graph_rag_id: int) -> Dict[str, Any]:
+        """
+        Validates and prepares GraphRag for indexing.
+
+        Args:
+            graph_rag_id: The GraphRag primary key
+
+        Returns:
+            Dict with rag_id, rag_type, collection_id, base_rag_type_id
+        """
+        # Get GraphRag instance
+        try:
+            graph_rag = GraphRag.objects.select_related(
+                "base_rag_type",
+                "base_rag_type__source_collection",
+                "embedder",
+                "llm",
+                "index_config",
+            ).get(graph_rag_id=graph_rag_id)
+        except GraphRag.DoesNotExist:
+            raise GraphRagNotFoundException(graph_rag_id)
+
+        # Get related objects
+        base_rag_type = graph_rag.base_rag_type
+        collection = base_rag_type.source_collection
+
+        # Validate collection exists
+        if not collection:
+            raise CollectionNotFoundException(
+                f"Collection not found for BaseRagType {base_rag_type.rag_type_id}"
+            )
+
+        # Validate GraphRag has documents linked
+        document_count = GraphRagDocument.objects.filter(
+            graph_rag=graph_rag
+        ).count()
+
+        if document_count == 0:
+            raise RagNotReadyForIndexingException(
+                f"GraphRag {graph_rag_id} has no documents. "
+                "Please add documents before indexing."
+            )
+
+        # Validate embedder is configured
+        if not graph_rag.embedder:
+            raise RagNotReadyForIndexingException(
+                f"GraphRag {graph_rag_id} has no embedder configured. "
+                "Please configure an embedder before indexing."
+            )
+
+        # Validate LLM is configured (required for entity extraction)
+        if not graph_rag.llm:
+            raise RagNotReadyForIndexingException(
+                f"GraphRag {graph_rag_id} has no LLM configured. "
+                "Please configure an LLM before indexing."
+            )
+
+        # Validate index config exists
+        if not graph_rag.index_config:
+            raise RagNotReadyForIndexingException(
+                f"GraphRag {graph_rag_id} has no index configuration. "
+                "Please configure index settings before indexing."
+            )
+
+        # Log preparation
+        logger.info(
+            f"Prepared GraphRag {graph_rag_id} for indexing: "
+            f"collection_id={collection.collection_id}, "
+            f"documents={document_count}, "
+            f"embedder={graph_rag.embedder.id}, "
+            f"llm={graph_rag.llm.id}"
+        )
+
+        return {
+            "rag_id": graph_rag_id,
+            "rag_type": "graph",
+            "collection_id": collection.collection_id,
+            "base_rag_type_id": base_rag_type.rag_type_id,
+        }
+
+    @staticmethod
     def get_rag_status(rag_id: int, rag_type: str) -> str:
         """
         Get current status of RAG implementation.
@@ -130,6 +213,10 @@ class IndexingService:
             except NaiveRag.DoesNotExist:
                 raise NaiveRagNotFoundException(rag_id)
         elif rag_type == "graph":
-            raise GraphRagNotImplementedException()
+            try:
+                graph_rag = GraphRag.objects.get(graph_rag_id=rag_id)
+                return graph_rag.rag_status
+            except GraphRag.DoesNotExist:
+                raise GraphRagNotFoundException(rag_id)
         else:
             raise RagException(f"Unknown rag_type: {rag_type}")

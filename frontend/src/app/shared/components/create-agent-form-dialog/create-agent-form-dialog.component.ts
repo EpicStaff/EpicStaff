@@ -4,18 +4,17 @@ import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
-    OnDestroy,
+    DestroyRef,
+    inject,
     OnInit,
     signal,
-    ViewChild,
 } from '@angular/core';
-import { FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ErrorStateMatcher } from '@angular/material/core';
+import { ButtonComponent, CustomInputComponent, TabButtonComponent, TextareaComponent } from '@shared/components';
 import { FullLLMConfig, FullLLMConfigService } from '@shared/services';
-import { getProviderIconPath } from '@shared/utils';
-import { of, Subscription, switchMap, takeUntil } from 'rxjs';
-import { Subject } from 'rxjs';
-import { tap } from 'rxjs/operators';
+import { buildToolIdsArray, getProviderIconPath } from '@shared/utils';
 
 import {
     GetCollectionRagsResponse,
@@ -23,40 +22,23 @@ import {
 } from '../../../features/knowledge-sources/models/collection.model';
 import { CollectionsApiService } from '../../../features/knowledge-sources/services/collections-api.service';
 import { CreateAgentRequest, GetAgentRequest, ToolUniqueName } from '../../../features/staff/models/agent.model';
-import { RealtimeAgentService } from '../../../features/staff/services/realtime-agent.service';
-import { ToolsSelectorComponent } from '../../components/tools-selector/tools-selector.component';
-import { CustomErrorStateMatcher } from '../../error-state-matcher/custom-error-state-matcher';
+import { CustomErrorStateMatcher } from '../../error-state-matcher';
 import { MATERIAL_FORMS } from '../../material-forms';
-import { buildToolIdsArray } from '../../utils/tool-ids-builder.util';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { ValidationErrorsComponent } from '../app-validation-errors/validation-errors.component';
+import { AdvancedTabComponent, ExecutionTabComponent, GeneralTabComponent, RagTabComponent } from './tabs';
+import { Tab, TabId } from './tabs';
 
-interface AgentFormData {
-    role: string;
-    goal: string;
-    backstory: string;
-    allow_delegation: boolean;
-    memory: boolean;
-    max_iter: number;
-    max_rpm: number;
-    max_execution_time: number;
-    max_retry_limit: number;
-    default_temperature: number | null;
-    llm_config: number | null;
-    fcm_llm_config: number | null;
-    knowledge_collection: number | null;
-    rag_id: number | null;
-    configured_tools: number[];
-    python_code_tools: number[];
-    mcp_tools: number[];
-    search_limit: number;
-    similarity_threshold: number;
-    cache: boolean;
-    respect_context_window: boolean;
-}
+export type MergedToolItem = { id: number; configName: string; toolName: string; type: string };
+
+export type EnrichedCreateAgentPayload = CreateAgentRequest & {
+    fullLlmConfig?: FullLLMConfig | null;
+    fullFcmLlmConfig?: FullLLMConfig | null;
+    mergedTools?: MergedToolItem[];
+};
 
 export type AgentDialogResult =
-    | { kind: 'create'; payload: CreateAgentRequest }
+    | { kind: 'create'; payload: EnrichedCreateAgentPayload }
     | { kind: 'update'; payload: GetAgentRequest };
 
 @Component({
@@ -68,9 +50,16 @@ export type AgentDialogResult =
         FormsModule,
         ReactiveFormsModule,
         ...MATERIAL_FORMS,
-        ToolsSelectorComponent,
         AppSvgIconComponent,
         ValidationErrorsComponent,
+        CustomInputComponent,
+        TextareaComponent,
+        AdvancedTabComponent,
+        ExecutionTabComponent,
+        GeneralTabComponent,
+        RagTabComponent,
+        TabButtonComponent,
+        ButtonComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     providers: [
@@ -80,75 +69,48 @@ export type AgentDialogResult =
         },
     ],
 })
-export class CreateAgentFormComponent implements OnInit, OnDestroy {
-    public agentForm!: FormGroup<{
-        role: FormControl<string>;
-        goal: FormControl<string>;
-        backstory: FormControl<string>;
-        allow_delegation: FormControl<boolean>;
-        memory: FormControl<boolean>;
-        max_iter: FormControl<number>;
-        max_rpm: FormControl<number>;
-        max_execution_time: FormControl<number>;
-        max_retry_limit: FormControl<number>;
-        default_temperature: FormControl<number | null>;
-        llm_config: FormControl<number | null>;
-        fcm_llm_config: FormControl<number | null>;
-        knowledge_collection: FormControl<number | null>;
-        rag_id: FormControl<number | null>;
-        configured_tools: FormControl<number[]>;
-        python_code_tools: FormControl<number[]>;
-        mcp_tools: FormControl<number[]>;
-        search_limit: FormControl<number>;
-        similarity_threshold: FormControl<number>;
-        cache: FormControl<boolean>;
-        respect_context_window: FormControl<boolean>;
-    }>;
+export class CreateAgentFormComponent implements OnInit {
+    private destroyRef = inject(DestroyRef);
+    private fb = inject(FormBuilder);
+    private cdr = inject(ChangeDetectorRef);
+    private fullLLMConfigService = inject(FullLLMConfigService);
+    private collectionsService = inject(CollectionsApiService);
+    public dialogRef = inject(DialogRef<AgentDialogResult | undefined>);
 
     public isSubmitting = signal(false);
+    public activeTab = signal<TabId>(TabId.GENERAL);
 
-    @ViewChild(ToolsSelectorComponent)
-    private toolsSelector?: ToolsSelectorComponent;
+    public agentForm!: FormGroup;
 
     // Edit mode properties
     public isEditMode: boolean = false;
     public agentToEdit?: GetAgentRequest;
 
-    private subscriptions: Subscription = new Subscription();
-    private destroy$ = new Subject<void>();
-
-    // Icon Picker property
-    public selectedIcon: string | null = null;
-
     // LLM configurations
-    public availableLLMConfigs: FullLLMConfig[] = [];
     public llmConfigs: FullLLMConfig[] = [];
+    public isLoadingLLMs = true;
+    public selectedMergedTools: MergedToolItem[] = [];
 
     // Knowledge sources
     public allKnowledgeSources: GetCollectionRequest[] = [];
-    public collectionRags = signal<GetCollectionRagsResponse[]>([]);
+    public agentRags: GetCollectionRagsResponse[] = [];
     public isLoadingKnowledgeSources = false;
-    public selectedKnowledgeSourceId: number | null = null;
+    public isLoadingRags = false;
 
-    // Active color for consistency with python-node design
-    public get activeColor(): string {
-        return '#685fff'; // Default accent color
-    }
+    public tabs: Tab[] = [
+        { id: TabId.GENERAL, label: 'General' },
+        { id: TabId.RAG, label: 'RAG' },
+        // { id: TabId.LLM_PARAMS, label: 'LLM Params' },
+        { id: TabId.EXECUTION, label: 'Execution' },
+        { id: TabId.ADVANCED, label: 'Advanced' },
+    ];
 
-    constructor(
-        private fb: FormBuilder,
-        private cdr: ChangeDetectorRef,
-        private realtimeAgentService: RealtimeAgentService,
-        private fullLLMConfigService: FullLLMConfigService,
-        private collectionsService: CollectionsApiService,
-        public dialogRef: DialogRef<AgentDialogResult | undefined>
-    ) {
+    constructor() {
         // Check edit mode
         const data = this.dialogRef.config?.data as { agent: GetAgentRequest; isEditMode: boolean } | undefined;
         if (data?.isEditMode && data?.agent) {
             this.isEditMode = true;
             this.agentToEdit = data.agent;
-            this.selectedKnowledgeSourceId = data.agent.knowledge_collection;
         }
     }
 
@@ -156,232 +118,129 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
         this.initializeForm();
         this.loadLLMConfigs();
         this.loadKnowledgeSources();
+        if (this.isEditMode && this.agentToEdit?.knowledge_collection) {
+            this.getRagsByCollectionId(this.agentToEdit.knowledge_collection);
+        }
 
-        this.trackKnowledgeSourceChange();
+        this.agentForm
+            .get('knowledge_collection')
+            ?.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((id) => this.onKnowledgeSourceChange(id));
 
-        this.subscriptions.add(
-            this.dialogRef.keydownEvents.subscribe((event: KeyboardEvent) => {
-                if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
-                    if (this.toolsSelector?.isOpen()) {
-                        return;
-                    }
-                    event.preventDefault();
-                    event.stopPropagation();
-                    this.onSubmitForm();
-                }
-            })
-        );
+        this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event: KeyboardEvent) => {
+            if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                event.preventDefault();
+                event.stopPropagation();
+                this.onSubmitForm();
+            }
+        });
     }
 
-    private trackKnowledgeSourceChange(): void {
-        const ragCtrl = this.agentForm.get('rag_id');
+    private onKnowledgeSourceChange(collectionId: number | null): void {
+        const ragControl = this.agentForm.get('rag');
+        if (collectionId === null) {
+            this.agentRags = [];
+            ragControl?.clearValidators();
+        } else {
+            this.getRagsByCollectionId(collectionId);
+            ragControl?.markAsTouched();
+            ragControl?.setValidators([Validators.required]);
+        }
+        ragControl?.patchValue(null);
+        ragControl?.updateValueAndValidity();
+    }
 
-        this.agentForm.controls['knowledge_collection'].valueChanges
-            .pipe(
-                tap((value) => {
-                    if (value !== null) {
-                        ragCtrl?.setValidators(Validators.required);
-                    } else {
-                        ragCtrl?.clearValidators();
-                    }
-
-                    ragCtrl?.setValue(null);
-                    ragCtrl?.markAsTouched();
-                    ragCtrl?.updateValueAndValidity();
-                }),
-                takeUntil(this.destroy$),
-                switchMap((id) => (id ? this.collectionsService.getRagsByCollectionId(id) : of([])))
-            )
-            .subscribe((rags) => {
-                this.collectionRags.set(rags);
+    private getRagsByCollectionId(id: number): void {
+        this.isLoadingRags = true;
+        this.collectionsService
+            .getRagsByCollectionId(id)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (rags) => {
+                    this.agentRags = rags;
+                    this.isLoadingRags = false;
+                    this.cdr.markForCheck();
+                },
+                error: () => {
+                    this.isLoadingRags = false;
+                    this.cdr.markForCheck();
+                },
             });
     }
 
     private initializeForm(): void {
-        if (this.isEditMode && this.agentToEdit) {
-            const agent = this.agentToEdit;
+        const agent = this.agentToEdit;
+        const editMode = this.isEditMode;
+        const ragValidators = editMode && agent?.knowledge_collection ? [Validators.required] : [];
 
-            this.agentForm = new FormGroup({
-                role: new FormControl<string>(agent.role, Validators.required),
-                goal: new FormControl<string>(agent.goal, Validators.required),
-                backstory: new FormControl<string>(agent.backstory, Validators.required),
-                allow_delegation: new FormControl<boolean>(agent.allow_delegation),
-                memory: new FormControl<boolean>(agent.memory ?? false),
-                max_iter: new FormControl<number>(agent.max_iter, [Validators.min(1), Validators.max(30)]),
-                max_rpm: new FormControl<number>(agent.max_rpm || 10, [Validators.min(1), Validators.max(30)]),
-                max_execution_time: new FormControl<number>(agent.max_execution_time || 60, [
-                    Validators.min(1),
-                    Validators.max(300),
-                ]),
-                max_retry_limit: new FormControl<number>(agent.max_retry_limit ?? 3, [
-                    Validators.min(0),
-                    Validators.max(10),
-                ]),
-                default_temperature: new FormControl<number | null>(null), // Set to null as requested
-                llm_config: new FormControl<number | null>(agent.llm_config),
-                fcm_llm_config: new FormControl<number | null>(agent.fcm_llm_config),
-                knowledge_collection: new FormControl<number | null>(agent.knowledge_collection),
-                rag_id: new FormControl<number | null>(agent.rag?.rag_id || null),
-                configured_tools: new FormControl<number[]>(agent.configured_tools || []),
-                python_code_tools: new FormControl<number[]>(agent.python_code_tools || []),
-                mcp_tools: new FormControl<number[]>(agent.mcp_tools || []),
-                search_limit: new FormControl<number>(agent.search_configs.naive.search_limit ?? 3, [
-                    Validators.min(1),
-                    Validators.max(1000),
-                ]),
-                similarity_threshold: new FormControl<number>(
-                    Number(agent.search_configs.naive.similarity_threshold ?? 0.2),
-                    [Validators.min(0), Validators.max(1.0)]
-                ),
-                cache: new FormControl<boolean>(agent.cache ?? true),
-                respect_context_window: new FormControl<boolean>(agent.respect_context_window ?? true),
-            }) as FormGroup<{
-                role: FormControl<string>;
-                goal: FormControl<string>;
-                backstory: FormControl<string>;
-                allow_delegation: FormControl<boolean>;
-                memory: FormControl<boolean>;
-                max_iter: FormControl<number>;
-                max_rpm: FormControl<number>;
-                max_execution_time: FormControl<number>;
-                max_retry_limit: FormControl<number>;
-                default_temperature: FormControl<number | null>;
-                llm_config: FormControl<number | null>;
-                fcm_llm_config: FormControl<number | null>;
-                knowledge_collection: FormControl<number | null>;
-                rag_id: FormControl<number | null>;
-                configured_tools: FormControl<number[]>;
-                python_code_tools: FormControl<number[]>;
-                mcp_tools: FormControl<number[]>;
-                search_limit: FormControl<number>;
-                similarity_threshold: FormControl<number>;
-                cache: FormControl<boolean>;
-                respect_context_window: FormControl<boolean>;
-            }>;
+        this.agentForm = this.fb.group({
+            role: [editMode ? agent?.role : '', [Validators.required]],
+            goal: [editMode ? agent?.goal : '', [Validators.required]],
+            backstory: [editMode ? agent?.backstory : '', [Validators.required]],
+            llm_config: [editMode ? agent?.llm_config : null],
+            fcm_llm_config: [editMode ? agent?.fcm_llm_config : null],
 
-            this.selectedKnowledgeSourceId = agent.knowledge_collection;
-        } else {
-            // Create new form with defaults
-            this.agentForm = new FormGroup({
-                role: new FormControl<string>('', Validators.required),
-                goal: new FormControl<string>('', Validators.required),
-                backstory: new FormControl<string>('', Validators.required),
-                allow_delegation: new FormControl<boolean>(true),
-                memory: new FormControl<boolean>(false),
-                max_iter: new FormControl<number>(10, [Validators.min(1), Validators.max(30)]),
-                max_rpm: new FormControl<number>(10, [Validators.min(1), Validators.max(30)]),
-                max_execution_time: new FormControl<number>(60, [Validators.min(1), Validators.max(300)]),
-                max_retry_limit: new FormControl<number>(3, [Validators.min(0), Validators.max(10)]),
-                default_temperature: new FormControl<number | null>(null),
-                llm_config: new FormControl<number | null>(null),
-                fcm_llm_config: new FormControl<number | null>(null),
-                knowledge_collection: new FormControl<number | null>(null),
-                rag_id: new FormControl<number | null>(null),
-                configured_tools: new FormControl<number[]>([]),
-                python_code_tools: new FormControl<number[]>([]),
-                mcp_tools: new FormControl<number[]>([]),
-                search_limit: new FormControl<number>(3, [Validators.min(1), Validators.max(1000)]),
-                similarity_threshold: new FormControl<number>(0.2, [Validators.min(0), Validators.max(1.0)]),
-                cache: new FormControl<boolean>(true),
-                respect_context_window: new FormControl<boolean>(true),
-            }) as FormGroup<{
-                role: FormControl<string>;
-                goal: FormControl<string>;
-                backstory: FormControl<string>;
-                allow_delegation: FormControl<boolean>;
-                memory: FormControl<boolean>;
-                max_iter: FormControl<number>;
-                max_rpm: FormControl<number>;
-                max_execution_time: FormControl<number>;
-                max_retry_limit: FormControl<number>;
-                default_temperature: FormControl<number | null>;
-                llm_config: FormControl<number | null>;
-                fcm_llm_config: FormControl<number | null>;
-                knowledge_collection: FormControl<number | null>;
-                rag_id: FormControl<number | null>;
-                configured_tools: FormControl<number[]>;
-                python_code_tools: FormControl<number[]>;
-                mcp_tools: FormControl<number[]>;
-                search_limit: FormControl<number>;
-                similarity_threshold: FormControl<number>;
-                cache: FormControl<boolean>;
-                respect_context_window: FormControl<boolean>;
-            }>;
-        }
+            max_iter: [editMode ? agent?.max_iter : 10, [Validators.min(1), Validators.max(30)]],
+            max_rpm: [editMode ? agent?.max_rpm : 10, [Validators.min(1), Validators.max(30)]],
+            max_execution_time: [editMode ? agent?.max_execution_time : 60, [Validators.min(1), Validators.max(600)]],
+            max_retry_limit: [editMode ? agent?.max_retry_limit : 3, [Validators.min(0), Validators.max(10)]],
+            cache: [editMode ? agent?.cache : false],
+            respect_context_window: [editMode ? agent?.respect_context_window : false],
+            knowledge_collection: [editMode ? agent?.knowledge_collection : null],
+
+            rag: [
+                editMode
+                    ? {
+                          rag_id: agent?.rag?.rag_id || null,
+                          rag_type: agent?.rag?.rag_type || null,
+                      }
+                    : null,
+                ragValidators,
+            ],
+            search_configs: [editMode ? agent?.search_configs : null],
+
+            allow_delegation: [editMode ? agent?.allow_delegation : true],
+            memory: [editMode ? agent?.memory : false],
+            configured_tools: [editMode ? agent?.configured_tools : []],
+            python_code_tools: [editMode ? agent?.python_code_tools : []],
+            mcp_tools: [editMode ? agent?.mcp_tools : []],
+        });
     }
 
     private loadLLMConfigs(): void {
-        this.fullLLMConfigService.getFullLLMConfigs().subscribe((configs: FullLLMConfig[]) => {
-            this.availableLLMConfigs = configs;
-            this.llmConfigs = configs;
-            this.cdr.markForCheck();
-        });
+        this.fullLLMConfigService
+            .getFullLLMConfigs()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (configs: FullLLMConfig[]) => {
+                    this.llmConfigs = configs;
+                    this.isLoadingLLMs = false;
+                    this.cdr.markForCheck();
+                },
+                error: () => {
+                    this.isLoadingLLMs = false;
+                    this.cdr.markForCheck();
+                },
+            });
     }
 
     private loadKnowledgeSources(): void {
         this.isLoadingKnowledgeSources = true;
-        this.collectionsService.getCollections().subscribe({
-            next: (collections) => {
-                this.allKnowledgeSources = collections;
-                this.isLoadingKnowledgeSources = false;
-                this.cdr.markForCheck();
-            },
-            error: (error) => {
-                console.error('Error loading knowledge sources:', error);
-                this.isLoadingKnowledgeSources = false;
-                this.cdr.markForCheck();
-            },
-        });
-    }
-
-    public onIconSelected(icon: string | null): void {
-        this.selectedIcon = icon;
-    }
-
-    public onKnowledgeSourceChange(collectionId: number | null): void {
-        this.selectedKnowledgeSourceId = collectionId;
-        this.agentForm.patchValue({ knowledge_collection: collectionId });
-    }
-
-    // Tool selection handlers
-    public onConfiguredToolsChange(toolConfigIds: number[]): void {
-        this.agentForm.patchValue({ configured_tools: toolConfigIds });
-        this.cdr.markForCheck();
-    }
-
-    public onPythonToolsChange(pythonToolIds: number[]): void {
-        this.agentForm.patchValue({ python_code_tools: pythonToolIds });
-        this.cdr.markForCheck();
-    }
-
-    public onMcpToolsChange(mcpToolIds: number[]): void {
-        this.agentForm.patchValue({ mcp_tools: mcpToolIds });
-        this.cdr.markForCheck();
-    }
-
-    // Helper methods for slider labels
-    formatIterationLabel(value: number): string {
-        return `${value}`;
-    }
-
-    formatExecutionTimeLabel(value: number): string {
-        return `${value}s`;
-    }
-
-    formatRetryLimitLabel(value: number): string {
-        return `${value}`;
-    }
-
-    formatRpmLabel(value: number): string {
-        return `${value}`;
-    }
-
-    formatSearchLimitLabel(value: number): string {
-        return `${value}`;
-    }
-
-    formatThresholdLabel(value: number): string {
-        return `${value}`;
+        this.collectionsService
+            .getCollections()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (collections) => {
+                    this.allKnowledgeSources = collections;
+                    this.isLoadingKnowledgeSources = false;
+                    this.cdr.markForCheck();
+                },
+                error: (error) => {
+                    console.error('Error loading knowledge sources:', error);
+                    this.isLoadingKnowledgeSources = false;
+                    this.cdr.markForCheck();
+                },
+            });
     }
 
     // Helper method to get provider icon
@@ -392,155 +251,72 @@ export class CreateAgentFormComponent implements OnInit, OnDestroy {
         return getProviderIconPath(config.providerDetails.name);
     }
 
-    // Helper method to get LLM tooltip text
-    getLLMTooltipText(config: FullLLMConfig): string {
-        if (!config) {
-            return 'Unknown Model';
-        }
-
-        const modelName = config.modelDetails?.name || 'Unknown Model';
-        const customName = config.custom_name;
-        const providerName = config.providerDetails?.name;
-
-        let tooltip = modelName;
-
-        if (customName) {
-            tooltip += ` (${customName})`;
-        }
-
-        if (providerName) {
-            tooltip += ` - ${providerName}`;
-        }
-
-        return tooltip;
-    }
-
-    // Helper method to format temperature for display
-    getFormattedTemperature(config: FullLLMConfig): string {
-        if (config && typeof config.temperature === 'number') {
-            // Convert 0-1 to 1-100, ensuring it's at least 1 if original is 0
-            const temp = Math.max(1, Math.round(config.temperature * 100));
-            return `${temp}°`;
-        }
-        return 'N/A';
-    }
-
     public onSubmitForm(): void {
         if (this.agentForm.invalid) {
-            this.markFormGroupTouched(this.agentForm);
+            this.agentForm.markAllAsTouched();
             return;
         }
-
         this.isSubmitting.set(true);
 
-        const formData = this.agentForm.value as AgentFormData;
+        const formData = this.agentForm.value;
+        const configuredToolIds = formData.configured_tools ?? [];
+        const pythonToolIds = formData.python_code_tools ?? [];
+        const mcpToolIds = formData.mcp_tools ?? [];
 
-        // Build tool_ids array
-        const configuredToolIds = formData.configured_tools || [];
-        const pythonToolIds = formData.python_code_tools || [];
-        const mcpToolIds = formData.mcp_tools || [];
-        const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds);
+        const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds) as ToolUniqueName[];
+
+        const searchConfigs = formData.rag?.rag_type ? { [formData.rag.rag_type]: formData.search_configs } : null;
+
+        const basePayload = {
+            role: formData.role,
+            goal: formData.goal,
+            backstory: formData.backstory,
+            allow_delegation: formData.allow_delegation,
+            memory: formData.memory,
+            max_iter: formData.max_iter,
+            max_rpm: formData.max_rpm,
+            max_execution_time: formData.max_execution_time,
+            max_retry_limit: formData.max_retry_limit,
+            default_temperature: formData.default_temperature,
+            llm_config: formData.llm_config,
+            fcm_llm_config: formData.fcm_llm_config,
+            knowledge_collection: formData.knowledge_collection,
+            rag: formData.rag,
+            configured_tools: configuredToolIds,
+            python_code_tools: pythonToolIds,
+            mcp_tools: mcpToolIds,
+            tool_ids: toolIds,
+            cache: formData.cache,
+            respect_context_window: formData.respect_context_window,
+            search_configs: searchConfigs,
+        };
 
         if (this.isEditMode && this.agentToEdit) {
-            // Edit mode - update existing agent
             const updateRequest = {
                 ...this.agentToEdit,
-                role: formData.role,
-                goal: formData.goal,
-                backstory: formData.backstory,
-                allow_delegation: formData.allow_delegation,
-                memory: formData.memory,
-                max_iter: formData.max_iter,
-                max_rpm: formData.max_rpm,
-                max_execution_time: formData.max_execution_time,
-                max_retry_limit: formData.max_retry_limit,
-                default_temperature: formData.default_temperature,
-                llm_config: formData.llm_config,
-                fcm_llm_config: formData.fcm_llm_config,
-                knowledge_collection: formData.knowledge_collection,
-                rag: formData.rag_id
-                    ? {
-                          rag_type: 'naive',
-                          rag_id: formData.rag_id,
-                      }
-                    : null,
-                configured_tools: configuredToolIds,
-                python_code_tools: pythonToolIds,
-                mcp_tools: mcpToolIds,
-                tool_ids: toolIds as ToolUniqueName[],
-                // search_limit: formData.search_limit,
-                // similarity_threshold: formData.similarity_threshold.toString(),
-                cache: formData.cache,
-                respect_context_window: formData.respect_context_window,
-                search_configs: {
-                    naive: {
-                        search_limit: formData.search_limit,
-                        similarity_threshold: formData.similarity_threshold,
-                    },
-                },
+                ...basePayload,
             };
-
-            this.isSubmitting.set(false);
             this.dialogRef.close({ kind: 'update', payload: updateRequest });
         } else {
-            // Create mode - add new agent
-            const agentRequest: CreateAgentRequest = {
-                role: formData.role,
-                goal: formData.goal,
-                backstory: formData.backstory,
-                allow_delegation: formData.allow_delegation,
-                memory: formData.memory,
-                max_iter: formData.max_iter,
-                max_rpm: formData.max_rpm,
-                max_execution_time: formData.max_execution_time,
-                max_retry_limit: formData.max_retry_limit,
-                default_temperature: formData.default_temperature,
-                llm_config: formData.llm_config,
-                fcm_llm_config: formData.fcm_llm_config,
-                knowledge_collection: formData.knowledge_collection,
-                rag: formData.rag_id
-                    ? {
-                          rag_type: 'naive',
-                          rag_id: formData.rag_id,
-                      }
-                    : null,
-                configured_tools: configuredToolIds,
-                python_code_tools: pythonToolIds,
-                mcp_tools: mcpToolIds,
-                tool_ids: toolIds as ToolUniqueName[],
-                // search_limit: formData.search_limit,
-                // similarity_threshold: formData.similarity_threshold.toString(),
-                cache: formData.cache,
-                respect_context_window: formData.respect_context_window,
-                search_configs: {
-                    naive: {
-                        search_limit: Number(formData.search_limit ?? 3),
-                        similarity_threshold: Number(formData.similarity_threshold ?? 0.2),
-                    },
+            this.dialogRef.close({
+                kind: 'create',
+                payload: {
+                    ...basePayload,
+                    fullLlmConfig: this.llmConfigs.find((c) => c.id === formData.llm_config) ?? null,
+                    fullFcmLlmConfig: this.llmConfigs.find((c) => c.id === formData.fcm_llm_config) ?? null,
+                    mergedTools: this.selectedMergedTools,
                 },
-            };
-
-            this.isSubmitting.set(false);
-            this.dialogRef.close({ kind: 'create', payload: agentRequest });
+            });
         }
+    }
+
+    public onMergedToolsChange(tools: MergedToolItem[]): void {
+        this.selectedMergedTools = tools;
     }
 
     public onCancelForm(): void {
         this.dialogRef.close();
     }
 
-    private markFormGroupTouched(formGroup: FormGroup): void {
-        Object.values(formGroup.controls).forEach((control) => {
-            control.markAsTouched();
-            if (control instanceof FormGroup) {
-                this.markFormGroupTouched(control);
-            }
-        });
-    }
-
-    public ngOnDestroy(): void {
-        this.destroy$.next();
-        this.destroy$.complete();
-        this.subscriptions.unsubscribe();
-    }
+    protected readonly TabId = TabId;
 }

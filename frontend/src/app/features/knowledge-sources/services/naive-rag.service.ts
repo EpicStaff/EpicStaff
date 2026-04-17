@@ -1,10 +1,11 @@
-import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
-import { inject, Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
+import { HttpClient, HttpHeaders, HttpParams } from "@angular/common/http";
+import { inject, Injectable } from "@angular/core";
+import { Observable } from "rxjs";
 
-import { ConfigService } from '../../../services/config';
-import { CreateRagForCollectionResponse } from '../models/naive-rag.model';
-import { GetNaiveRagDocumentChunksResponse, NaiveRagChunkingResponse } from '../models/naive-rag-chunk.model';
+import { ConfigService } from "../../../services/config";
+import { StartIndexingDtoRequest, StartIndexingDtoResponse } from "../models/base-rag.model";
+import { CreateNaiveRagForCollectionResponse } from "../models/naive-rag.model";
+import { GetNaiveRagDocumentChunksResponse, NaiveRagChunkingResponse } from "../models/naive-rag-chunk.model";
 import {
     BulkDeleteNaiveRagDocumentDtoRequest,
     BulkDeleteNaiveRagDocumentDtoResponse,
@@ -12,11 +13,9 @@ import {
     BulkUpdateNaiveRagDocumentDtoResponse,
     GetNaiveRagDocumentConfigsResponse,
     InitNaiveRagDocumentsResponse,
-    StartIndexingDtoRequest,
-    StartIndexingDtoResponse,
     UpdateNaiveRagDocumentDtoRequest,
-    UpdateNaiveRagDocumentResponse,
-} from '../models/naive-rag-document.model';
+    UpdateNaiveRagDocumentResponse
+} from "../models/naive-rag-document.model";
 
 @Injectable({
     providedIn: 'root',
@@ -33,10 +32,10 @@ export class NaiveRagService {
         return `${this.configService.apiUrl}naive-rag/`;
     }
 
-    createRagForCollection(collectionId: number, embedderId: number): Observable<CreateRagForCollectionResponse> {
+    createRagForCollection(collectionId: number, embedderId: number): Observable<CreateNaiveRagForCollectionResponse> {
         const body = { embedder_id: embedderId };
 
-        return this.http.post<CreateRagForCollectionResponse>(
+        return this.http.post<CreateNaiveRagForCollectionResponse>(
             `${this.apiUrl}collections/${collectionId}/naive-rag/`,
             body
         );

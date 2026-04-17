@@ -35,8 +35,14 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
     ],
     template: `
         <div class="llm-selector-container">
-            <div class="selected-model" [class.placeholder]="!selectedConfig" (click)="toggleDropdown($event)">
-                <div *ngIf="selectedConfig; else placeholderTemplate" class="model-info">
+            <div
+                class="selected-model"
+                [class.placeholder]="!selectedConfig"
+                [class.loading]="loading"
+                (click)="!loading && toggleDropdown($event)"
+            >
+                <div *ngIf="loading" class="loading-spinner"></div>
+                <div *ngIf="selectedConfig && !loading; else placeholderTemplate" class="model-info">
                     <app-svg-icon
                         [icon]="getProviderIcon(selectedConfig)"
                         size="20px"
@@ -51,7 +57,7 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
                     </div>
                 </div>
                 <ng-template #placeholderTemplate>
-                    <div class="placeholder-text">{{ placeholder }}</div>
+                    <div *ngIf="!loading" class="placeholder-text">{{ placeholder }}</div>
                 </ng-template>
                 <div class="dropdown-icon">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -97,6 +103,9 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
     `,
     styles: [
         `
+            :host {
+                width: 100%;
+            }
             .llm-selector-container {
                 position: relative;
                 width: 100%;
@@ -115,8 +124,32 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
                 min-height: 42px;
             }
 
-            .selected-model:hover {
+            .selected-model:hover:not(.loading) {
                 border-color: var(--accent-color);
+            }
+
+            .selected-model.loading {
+                cursor: default;
+                opacity: 0.6;
+            }
+
+            .loading-spinner {
+                width: 24px;
+                height: 24px;
+                border: 3px solid #44474f;
+                border-top: 3px solid #b0b8c1;
+                border-radius: 50%;
+                animation: llm-spin 1s linear infinite;
+                flex-shrink: 0;
+            }
+
+            @keyframes llm-spin {
+                0% {
+                    transform: rotate(0deg);
+                }
+                100% {
+                    transform: rotate(360deg);
+                }
             }
 
             .selected-model.placeholder {
@@ -236,6 +269,7 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
 export class LlmModelSelectorComponent implements OnInit, OnDestroy, OnChanges, ControlValueAccessor {
     @Input() placeholder: string = 'Select LLM model';
     @Input() llmConfigs: FullLLMConfig[] = [];
+    @Input() loading: boolean = false;
 
     @Output() modelSelected = new EventEmitter<number>();
 

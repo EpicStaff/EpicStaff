@@ -5,8 +5,8 @@ import copy
 
 from loguru import logger
 from rest_framework.views import APIView
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter, inline_serializer
+from rest_framework import serializers as drf_serializers
 from asgiref.sync import sync_to_async
 
 from tables.utils.mixins import SSEMixin
@@ -20,9 +20,9 @@ redis_service = RedisService()
 
 
 class RunSessionSSEViewSwagger(APIView):
-    @swagger_auto_schema(
-        operation_summary="Subscribe to real-time updates via SSE",
-        operation_description="""
+    @extend_schema(
+        summary="Subscribe to real-time updates via SSE",
+        description="""
             Starts a **Server-Sent Events (SSE)** stream for a given run session.
 
             This endpoint continuously pushes the following event types:
@@ -34,24 +34,18 @@ class RunSessionSSEViewSwagger(APIView):
             Note: This is a streaming endpoint and won't produce a visible response in Swagger UI.
             For testing, use the `?test=true` query param to receive a few finite sample events.
         """,
-        manual_parameters=[
-            openapi.Parameter(
+        parameters=[
+            OpenApiParameter(
                 name="test",
-                in_=openapi.IN_QUERY,
-                type=openapi.TYPE_BOOLEAN,
+                location=OpenApiParameter.QUERY,
+                type=drf_serializers.BooleanField(),
                 description="If true, returns 3 sample events and closes the stream. Useful for Swagger.",
                 required=False,
             )
         ],
-        produces=["text/event-stream"],
         responses={
-            200: openapi.Response(
+            200: OpenApiResponse(
                 description="SSE stream of real-time events (text/event-stream)",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="SSE-formatted text stream. Events include `messages`, `status`, and `memory`.",
-                    example="event: messages\ndata: {...}\n\n",
-                ),
             )
         },
     )

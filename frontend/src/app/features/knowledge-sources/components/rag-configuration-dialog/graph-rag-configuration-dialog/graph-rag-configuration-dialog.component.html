@@ -1,0 +1,30 @@
+<div class="dialog">
+    <div class="dialog__header">
+        <span class="dialog__header-title">
+            Graph RAG Configuration
+        </span>
+
+        <div class="dialog__actions">
+            <app-button
+                type="outline-primary"
+                (click)="onClose()"
+            >
+                Close
+            </app-button>
+
+            <app-button
+                type="primary"
+                (click)="runIndexing()"
+            >
+                Run indexing
+            </app-button>
+        </div>
+    </div>
+
+    @if (graphRag()) {
+        <app-graph-rag-configuration
+            class="dialog__content"
+            [graphRag]="graphRag()!"
+        />
+    }
+</div>

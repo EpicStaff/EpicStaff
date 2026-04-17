@@ -21,6 +21,8 @@ export type StepperSize = 'sm' | 'md' | 'lg';
         },
     ],
 })
+
+//TODO can be replaced with app-input-number
 export class NumberStepperComponent implements ControlValueAccessor {
     label = input<string>('');
     tooltipText = input<string>('');

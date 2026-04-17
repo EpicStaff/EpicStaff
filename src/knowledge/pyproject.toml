@@ -28,9 +28,14 @@ dependencies = [
     "pgvector (>=0.4.1,<0.5.0)",
     "pymupdf (>=1.25.1,<2.0.0)",
     "python-docx (>=1.1.2,<2.0.0)",
-    "chonkie (>=1.5.4,<2.0.0)",
+    "chonkie (>=1.2.1,<1.4.0)",
     "watchfiles (>=0.22.0)",
+    "numpy (<2.4)",
 ]
+
+[tool.poetry.group.graphrag.dependencies]
+graphrag = {path = "libraries/graphrag"}
+
 
 
 [build-system]

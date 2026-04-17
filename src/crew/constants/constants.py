@@ -1,0 +1,4 @@
+# Knowledge search timeouts (seconds) per RAG type
+DEFAULT_RAG_SEARCH_TIMEOUT = 20
+NAIVE_RAG_SEARCH_TIMEOUT = 20
+GRAPH_RAG_SEARCH_TIMEOUT = 120

@@ -9,6 +9,11 @@ from langgraph.types import StreamWriter
 from src.crew.models.graph_models import GraphMessage
 from src.crew.services.graph.events import StopEvent
 from src.crew.services.redis_service import RedisService, SyncPubsubSubscriber
+from src.crew.constants.constants import (
+    NAIVE_RAG_SEARCH_TIMEOUT,
+    GRAPH_RAG_SEARCH_TIMEOUT,
+    DEFAULT_RAG_SEARCH_TIMEOUT,
+)
 from src.shared.models import (
     RagSearchConfig,
     NaiveRagSearchConfig,
@@ -34,7 +39,11 @@ class RagSearchConfigFactory:
     _config_builders = {
         "naive": lambda config: NaiveRagSearchConfig(**config),
         "graph": lambda config: GraphRagSearchConfig(**config),
-        # Future RAG types
+    }
+
+    _timeouts = {
+        "naive": NAIVE_RAG_SEARCH_TIMEOUT,
+        "graph": GRAPH_RAG_SEARCH_TIMEOUT,
     }
 
     @classmethod
@@ -57,6 +66,13 @@ class RagSearchConfigFactory:
             )
 
         return builder(config_dict)
+
+    @classmethod
+    def get_timeout(cls, rag_type: str) -> int:
+        """
+        Get timeout for a given RAG type.
+        """
+        return cls._timeouts.get(rag_type, DEFAULT_RAG_SEARCH_TIMEOUT)
 
 
 class KnowledgeSearchService:
@@ -90,7 +106,7 @@ class KnowledgeSearchService:
         query: str,
         rag_search_config: Dict[str, Any],
         stop_event: Optional[StopEvent] = None,
-        timeout: int = 15,
+        timeout: Optional[int] = None,
     ) -> list[str]:
         """
         Search knowledge using specified RAG implementation.
@@ -101,13 +117,16 @@ class KnowledgeSearchService:
             query: Search query text
             rag_search_config: RAG-specific search parameters dict
             stop_event: Optional event to stop execution
-            timeout: Timeout in seconds for waiting response
+            timeout: Timeout in seconds. If None, resolved automatically by rag_type.
 
         Returns:
             List of knowledge results (strings)
         """
 
         rag_type, rag_id = self._parse_rag_type_id(rag_type_id)
+
+        if timeout is None:
+            timeout = RagSearchConfigFactory.get_timeout(rag_type)
 
         search_config = RagSearchConfigFactory.build(rag_type, rag_search_config)
 

@@ -1,0 +1,66 @@
+.list {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+
+    .title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 1.875rem 1rem 0;
+        width: 100%;
+        font-size: 0.875rem;
+        font-weight: 130;
+
+        .count {
+            color: var(--accent-color);
+        }
+
+        .reinclude-btn {
+            width: 133px;
+        }
+    }
+
+    .files-wrapper {
+        overflow: auto;
+        margin-right: 0.7rem;
+        padding-bottom: 2rem;
+    }
+
+    .file {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        column-gap: 1rem;
+        font-size: 0.625rem;
+    }
+
+    .name-column {
+        display: flex;
+        column-gap: 0.5rem;
+        min-width: 0;
+        flex: 1;
+        align-items: center;
+    }
+
+    .file-name {
+        display: block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .size-column {
+        display: flex;
+        align-items: center;
+        column-gap: 1rem;
+        flex-shrink: 0;
+
+        .size {
+            color: var(--color-ks-transparent-text-80);
+            text-align: center;
+        }
+    }
+
+}

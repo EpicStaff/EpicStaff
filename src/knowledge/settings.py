@@ -6,7 +6,7 @@ from dotenv import find_dotenv, load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session, Session
 
-from storage import ORMNaiveRagStorage
+from storage import ORMNaiveRagStorage, ORMGraphRagStorage
 
 
 def get_required_env_var(key: str) -> str:
@@ -79,8 +79,8 @@ class UnitOfWork:
 
     def __init__(self):
         self.session: Session | None = None
-        self.document_storage = None
-        self.naive_rag_storage = None
+        self.naive_rag_storage: ORMNaiveRagStorage | None = None
+        self.graph_rag_storage: ORMGraphRagStorage | None = None
 
     @contextmanager
     def start(self):
@@ -95,8 +95,8 @@ class UnitOfWork:
         """
         self.session = SessionLocal()
         try:
-            # self.document_storage = ORMDocumentStorage(session=self.session)
             self.naive_rag_storage = ORMNaiveRagStorage(session=self.session)
+            self.graph_rag_storage = ORMGraphRagStorage(session=self.session)
 
             yield self
 

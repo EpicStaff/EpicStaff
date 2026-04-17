@@ -1,15 +1,7 @@
-import {
-    ChangeDetectionStrategy,
-    Component,
-    forwardRef,
-    input,
-    signal,
-} from '@angular/core';
-import {
-    ControlValueAccessor,
-    NG_VALUE_ACCESSOR
-} from '@angular/forms';
-import { TooltipComponent } from "@shared/components";
+import { ChangeDetectionStrategy, Component, forwardRef, input, signal } from '@angular/core';
+import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+
+import { TooltipComponent } from '../tooltip/tooltip.component';
 
 @Component({
     selector: 'app-textarea',
@@ -20,10 +12,10 @@ import { TooltipComponent } from "@shared/components";
         {
             provide: NG_VALUE_ACCESSOR,
             useExisting: forwardRef(() => TextareaComponent),
-            multi: true
-        }
+            multi: true,
+        },
     ],
-    changeDetection: ChangeDetectionStrategy.OnPush
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TextareaComponent implements ControlValueAccessor {
     label = input<string>('');
@@ -52,7 +44,9 @@ export class TextareaComponent implements ControlValueAccessor {
         this.onTouched = fn;
     }
 
-    setDisabledState(isDisabled: boolean): void {}
+    setDisabledState(isDisabled: boolean): void {
+        void isDisabled;
+    }
 
     handleInput(event: Event): void {
         const val = (event.target as HTMLTextAreaElement).value;

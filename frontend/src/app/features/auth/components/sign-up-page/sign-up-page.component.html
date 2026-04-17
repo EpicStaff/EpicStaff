@@ -1,0 +1,46 @@
+<div class="page">
+    <div class="card">
+        <app-svg-icon icon="logo" size="120px" />
+
+        <div class="title-section">
+            <h1 class="title">Welcome to <span>EpicStaff</span></h1>
+            <p class="subtitle">Create your account</p>
+        </div>
+
+        <form [formGroup]="form" class="form">
+            <div>
+                <app-custom-input label="Username" placeholder="Enter username" formControlName="username" />
+                <app-validation-errors [control]="form.get('username')!" />
+            </div>
+
+            <div>
+                <app-custom-input
+                    label="Password"
+                    type="password"
+                    placeholder="Enter password"
+                    formControlName="password"
+                />
+                <app-password-strength [password]="password" />
+                <app-validation-errors [control]="form.get('password')!" />
+            </div>
+        </form>
+
+        <div class="terms-row">
+            <app-checkbox [formControl]="termsControl" />
+            <p class="terms-text">
+                I agree to the
+                <span class="terms-link">Terms of Service</span>
+                and
+                <span class="terms-link">Privacy Policy</span>
+            </p>
+        </div>
+
+        <div *ngIf="serverError()" class="server-error">{{ serverError() }}</div>
+
+        <app-button class="btn" [disabled]="form.invalid || !termsControl.value || loading" (click)="onSubmit()">
+            Create account
+        </app-button>
+    </div>
+
+    <p class="prompt">Already have an account? <span (click)="navToLogin()">Log in</span></p>
+</div>

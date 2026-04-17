@@ -1,6 +1,6 @@
 from rest_framework import viewsets, status
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter, inline_serializer
+from rest_framework import serializers as drf_serializers
 from utils.logger import logger
 from rest_framework.response import Response
 from rest_framework.decorators import action
@@ -165,18 +165,13 @@ class SourceCollectionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @swagger_auto_schema(
-        method="post",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            required=["collection_ids"],
-            properties={
-                "collection_ids": openapi.Schema(
-                    type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(type=openapi.TYPE_INTEGER),
-                    description="List of collection IDs to delete",
-                    example=[1, 2, 3],
-                )
+    @extend_schema(
+        request=inline_serializer(
+            name="CollectionBulkDeleteRequest",
+            fields={
+                "collection_ids": drf_serializers.ListField(
+                    child=drf_serializers.IntegerField(),
+                ),
             },
         ),
     )
@@ -260,35 +255,20 @@ class SourceCollectionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @swagger_auto_schema(
-        method="get",
-        operation_description="Get all RAG configurations available for this collection",
-        manual_parameters=[
-            openapi.Parameter(
-                "status",
-                openapi.IN_QUERY,
+    @extend_schema(
+        description="Get all RAG configurations available for this collection",
+        parameters=[
+            OpenApiParameter(
+                name="status",
+                location=OpenApiParameter.QUERY,
                 description="Filter by RAG status (comma-separated). Example: 'completed,warning'",
-                type=openapi.TYPE_STRING,
+                type=drf_serializers.CharField(),
                 required=False,
             )
         ],
         responses={
-            200: openapi.Response(
-                description="List of available RAG configurations",
-                examples={
-                    "application/json": [
-                        {
-                            "rag_id": 9,
-                            "rag_type": "naive",
-                            "rag_status": "completed",
-                            "collection_id": 29,
-                            "created_at": "2025-12-17T14:17:01.594229Z",
-                            "indexed_at": "2025-12-17T15:30:00Z",
-                        }
-                    ]
-                },
-            ),
-            404: "Collection not found",
+            200: OpenApiResponse(description="List of available RAG configurations"),
+            404: OpenApiResponse(description="Collection not found"),
         },
     )
     @action(detail=True, methods=["get"], url_path="available-rags")

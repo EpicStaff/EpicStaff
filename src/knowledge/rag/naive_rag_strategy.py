@@ -263,7 +263,7 @@ class NaiveRAGStrategy(BaseRAGStrategy):
     def update_naive_rag_status(self, naive_rag_id: int):
         """
         Update NaiveRag status based on document config statuses.
-
+        #TODO: refactor statuces
         Status Logic:
         - NEW: all configs are New OR no configs
         - COMPLETED: all configs are Completed
@@ -286,6 +286,7 @@ class NaiveRAGStrategy(BaseRAGStrategy):
             config_statuses = set(config.status for config in doc_configs)
 
         # Determine RAG status based on config statuses
+        # TODO: refactor statuces
         if not config_statuses or config_statuses == {"new"}:
             current_status = "new"
         elif config_statuses == {"completed"}:

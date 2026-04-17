@@ -12,19 +12,7 @@ from tables.models.knowledge_models.naive_rag_models import (
     NaiveRag,
     NaiveRagSearchConfig,
 )
-
-
-class BaseRagTypeSerializer(serializers.ModelSerializer):
-    """Serializer for BaseRagType."""
-
-    class Meta:
-        model = BaseRagType
-        fields = [
-            "rag_type_id",
-            "rag_type",
-            "source_collection",
-        ]
-        read_only_fields = fields
+from tables.serializers.knowledge_serializers import BaseRagTypeSerializer
 
 
 class NaiveRagSerializer(serializers.ModelSerializer):
@@ -414,42 +402,3 @@ class NaiveSearchConfigInputSerializer(serializers.Serializer):
         max_value=1.0,
         help_text="Similarity threshold for search (0.0-1.0)",
     )
-
-
-class NestedSearchConfigSerializer(serializers.Serializer):
-    """
-    Nested search config serializer for PATCH requests.
-    Handles multiple RAG types: {"naive": {...}, "graph": {...}}
-    """
-
-    naive = NaiveSearchConfigInputSerializer(
-        required=False, help_text="Naive RAG search config"
-    )
-    # Future: graph = GraphSearchConfigInputSerializer(required=False)
-
-    def validate(self, attrs):
-        """Ensure at least one RAG type is provided."""
-        if not attrs:
-            raise serializers.ValidationError(
-                "At least one RAG type must be provided (e.g., 'naive', 'graph')"
-            )
-        return attrs
-
-
-class RagInputSerializer(serializers.Serializer):
-    """
-    Input serializer for rag field in Agent create/update.
-
-    Used in request body:
-    {
-        "rag": {
-            "rag_type": "naive",
-            "rag_id": 9
-        }
-    }
-    """
-
-    rag_type = serializers.ChoiceField(
-        choices=["naive", "graph"], help_text="Type of RAG implementation"
-    )
-    rag_id = serializers.IntegerField(min_value=1, help_text="ID of the RAG instance")

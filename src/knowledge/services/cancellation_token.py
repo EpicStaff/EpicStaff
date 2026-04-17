@@ -16,7 +16,7 @@ class CancellationToken:
         token.cancel()
     """
 
-    __slots__ = ('_event', '_job_id')
+    __slots__ = ("_event", "_job_id")
 
     def __init__(self, job_id: str):
         """

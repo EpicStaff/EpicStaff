@@ -76,15 +76,15 @@ Choose your operating system below, open your **Terminal** (or PowerShell on Win
 
 #### 🪟 Windows (PowerShell)
 ```
-git clone [https://github.com/EpicStaff/EpicStaff.git](https://github.com/EpicStaff/EpicStaff.git); cd EpicStaff/src; $savefiles = "$HOME/savefiles"; $file = ".env"; (Get-Content $file) -replace "CREW_SAVEFILES_PATH=/c/savefiles", "CREW_SAVEFILES_PATH=$savefiles" | Set-Content $file; docker volume create sandbox_venvs; docker volume create sandbox_executions; docker volume create crew_pgdata; docker volume create media_data; docker network create mcp-network; docker-compose up --build
+git clone [https://github.com/EpicStaff/EpicStaff.git](https://github.com/EpicStaff/EpicStaff.git); cd EpicStaff/src; $savefiles = "$HOME/savefiles"; $file = ".env"; (Get-Content $file) -replace "CREW_SAVEFILES_PATH=/c/savefiles", "CREW_SAVEFILES_PATH=$savefiles" | Set-Content $file; docker volume create sandbox_venvs; docker volume create sandbox_executions; docker volume create crew_pgdata; docker volume create graph_data; docker volume create crew_config; docker volume create media_data; docker network create mcp-network; docker-compose up --build
 ```
 #### 🍎 macOS (Terminal)
 ```
-git clone -b main [https://github.com/EpicStaff/EpicStaff.git](https://github.com/EpicStaff/EpicStaff.git) && cd EpicStaff && savefiles="$HOME/savefiles" && sed -i '' "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && docker volume create sandbox_venvs && docker volume create sandbox_executions && docker volume create crew_pgdata && docker volume create crew_config && docker volume create media_data && docker network create mcp-network && cd src && docker-compose up --build
+git clone -b main [https://github.com/EpicStaff/EpicStaff.git](https://github.com/EpicStaff/EpicStaff.git) && cd EpicStaff && savefiles="$HOME/savefiles" && sed -i '' "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && docker volume create sandbox_venvs && docker volume create sandbox_executions && docker volume create crew_pgdata && docker volume create graph_data && docker volume create crew_config && docker volume create media_data && docker network create mcp-network && cd src && docker-compose up --build
 ```
 #### 🐧 Linux (Terminal)
 ```
-git clone -b main [https://github.com/EpicStaff/EpicStaff.git](https://github.com/EpicStaff/EpicStaff.git) && cd EpicStaff && savefiles="$HOME/savefiles" && sed -i "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && docker volume create sandbox_venvs && docker volume create sandbox_executions && docker volume create crew_pgdata && docker volume create media_data && docker network create mcp-network && cd src && docker-compose up --build
+git clone -b main [https://github.com/EpicStaff/EpicStaff.git](https://github.com/EpicStaff/EpicStaff.git) && cd EpicStaff && savefiles="$HOME/savefiles" && sed -i "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && docker volume create sandbox_venvs && docker volume create sandbox_executions && docker volume create crew_pgdata && docker volume create graph_data && docker volume create crew_config && docker volume create media_data && docker network create mcp-network && cd src && docker-compose up --build
 ```
 
 Once running, open http://localhost to start building.
@@ -163,5 +163,4 @@ Our visual-first agentic system leverages the innovative work of the open-source
 * Foblex helps us spread the word by featuring EpicStaff in his articles and educational materials. You can check out his work at **[flow.foblex.com](https://flow.foblex.com/)**.
 
 We believe in the power of collaboration and are grateful for such a great partnership.
-
 

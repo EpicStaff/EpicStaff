@@ -19,7 +19,7 @@ export interface GetProjectRequest {
     full_output: boolean;
     default_temperature: number | null;
     planning: boolean;
-    similarity_threshold?: string | null;
+    similarity_threshold?: number | null;
     search_limit?: number | null;
 
     planning_llm_config: number | null;

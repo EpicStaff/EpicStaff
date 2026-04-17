@@ -1,91 +1,97 @@
-import {
-    ChangeDetectionStrategy,
-    Component,
-    computed,
-    ElementRef,
-    input,
-    model,
-    output,
-    signal,
-    ViewChild,
-} from '@angular/core';
-import { FormsModule } from '@angular/forms';
-import { SelectItem } from '@shared/components';
+import { ChangeDetectionStrategy, Component, effect, forwardRef, input, model } from '@angular/core';
+import { ControlValueAccessor, FormControl, NG_VALUE_ACCESSOR, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
+import { ValidationErrorsComponent } from '../app-validation-errors/validation-errors.component';
+import { CustomInputComponent } from '../form-input/form-input.component';
+import { TooltipComponent } from '../tooltip/tooltip.component';
 
 @Component({
     selector: 'app-chips-input',
     templateUrl: './chips-input.component.html',
     styleUrls: ['./chips-input.component.scss'],
-    imports: [FormsModule, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    imports: [
+        TooltipComponent,
+        CustomInputComponent,
+        ReactiveFormsModule,
+        ValidationErrorsComponent,
+        AppSvgIconComponent,
+    ],
+    providers: [
+        {
+            provide: NG_VALUE_ACCESSOR,
+            useExisting: forwardRef(() => ChipsInputComponent),
+            multi: true,
+        },
+    ],
 })
-export class ChipsInputComponent {
-    @ViewChild('inputRef') inputRef!: ElementRef<HTMLInputElement>;
+export class ChipsInputComponent implements ControlValueAccessor {
+    icon = input<string>('help_outline');
+    label = input<string>('');
+    required = input<boolean>(false);
+    tooltipText = input<string>('');
+    inputPlaceholder = input<string>('Type here...');
+    minItemLength = input<number | null>(null);
+    maxItemLength = input<number | null>(null);
 
-    placeholder = input<string>('');
-    chips = input<SelectItem[]>([]);
+    private onChange: (value: string[]) => void = () => {};
+    private onTouched: () => void = () => {};
+    private isDisabled = false;
 
-    inputValue = signal('');
-    highlightedIndex = signal(0);
-    isAutocompleteOpen = signal(false);
-    selectedChips = model<SelectItem[]>([]);
-    selectionChange = output<unknown[]>();
+    value = model<string[]>([]);
+    inputControl = new FormControl<string>('', []);
 
-    filteredChips = computed(() => {
-        const val = this.inputValue().toLowerCase();
+    constructor() {
+        effect(() => {
+            const min = this.minItemLength();
+            const max = this.maxItemLength();
 
-        return this.chips().filter((chip) => {
-            return chip.name.toLowerCase().includes(val) && !this.selectedChips().some((s) => s.name === chip.name);
+            const validators = [];
+
+            if (min !== null) validators.push(Validators.minLength(min));
+            if (max !== null) validators.push(Validators.maxLength(max));
+
+            this.inputControl.setValidators(validators);
+            this.inputControl.updateValueAndValidity();
         });
-    });
-
-    addInput() {
-        const option = this.filteredChips()[this.highlightedIndex()];
-        if (option) {
-            this.select(option);
-        }
     }
 
-    remove(event: Event, index: number) {
-        event.stopPropagation();
+    onAdd() {
+        const raw = this.inputControl.value?.trim();
+        if (!raw || this.isDisabled || this.inputControl.invalid) return;
 
-        const updated = [...this.selectedChips()];
-        updated.splice(index, 1);
-        this.selectedChips.set(updated);
-        this.emitChange();
+        const next = [...this.value(), raw];
+        this.updateValue(next);
+
+        this.inputControl.reset('');
     }
 
-    select(option: SelectItem) {
-        if (!this.selectedChips().some((s) => s.value === option.value)) {
-            this.selectedChips.update((arr) => [...arr, option]);
-        }
-        this.inputValue.set('');
-        this.highlightedIndex.set(0);
-        this.emitChange();
+    onRemove(index: number) {
+        if (this.isDisabled) return;
+
+        const next = this.value().filter((_, i) => i !== index);
+        this.updateValue(next);
     }
 
-    private emitChange() {
-        const values = this.selectedChips().map((chip) => chip.value);
-        this.selectionChange.emit(values);
+    private updateValue(next: string[]) {
+        this.value.set(next);
+        this.onChange(next);
     }
 
-    highlightNext() {
-        if (!this.filteredChips().length) return;
-        this.highlightedIndex.update((curr) => Math.min(curr + 1, this.filteredChips().length - 1));
+    writeValue(value: string[] | null): void {
+        this.value.set(value ?? []);
     }
 
-    highlightPrev() {
-        if (!this.filteredChips().length) return;
-        this.highlightedIndex.update((curr) => Math.max(curr - 1, 0));
+    registerOnChange(fn: (value: string[]) => void): void {
+        this.onChange = fn;
     }
 
-    onFocus() {
-        this.isAutocompleteOpen.set(true);
+    registerOnTouched(fn: () => void): void {
+        this.onTouched = fn;
     }
 
-    onBlur() {
-        this.isAutocompleteOpen.set(false);
+    setDisabledState(isDisabled: boolean): void {
+        this.isDisabled = isDisabled;
     }
 }

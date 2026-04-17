@@ -23,6 +23,15 @@ from .naive_rag_models import (
     NaiveRagEmbedding,
 )
 
+# Graph RAG models
+from .graph_rag_models import (
+    LLMModel,
+    LLMConfig,
+    GraphRag,
+    GraphRagDocument,
+    GraphRagIndexConfig,
+)
+
 # Export all models
 __all__ = [
     # SQLAlchemy Base
@@ -42,4 +51,10 @@ __all__ = [
     "NaiveRagChunk",
     "NaiveRagPreviewChunk",
     "NaiveRagEmbedding",
+    # Graph RAG models
+    "LLMModel",
+    "LLMConfig",
+    "GraphRag",
+    "GraphRagDocument",
+    "GraphRagIndexConfig",
 ]

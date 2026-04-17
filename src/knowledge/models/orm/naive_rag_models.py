@@ -127,7 +127,7 @@ class NaiveRagDocumentConfig(Base):
 
     status = Column(
         String(20), default="new"
-    )  # new, chunked, processing, completed, warning, failed
+    )  # new, chunking, chunked, indexing, completed, warning, failed
 
     created_at = Column(DateTime, default=datetime.utcnow)
     processed_at = Column(DateTime, nullable=True)
@@ -329,4 +329,6 @@ class NaiveRagPreviewChunk(Base):
     )
 
     def __str__(self):
-        return f"NaiveRagPreviewChunk {self.preview_chunk_id} (index: {self.chunk_index})"
+        return (
+            f"NaiveRagPreviewChunk {self.preview_chunk_id} (index: {self.chunk_index})"
+        )
