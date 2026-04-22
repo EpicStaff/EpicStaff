@@ -85,7 +85,7 @@ export class RunningGraphComponent implements OnInit, OnDestroy {
             // Only reload graph data if graphId changed
             if (newGraphId !== this.graphId) {
                 this.graphId = newGraphId;
-                if (this.graphId) {
+                if (isFinite(this.graphId)) {
                     this.loadGraphData(this.graphId);
                 }
             } else {

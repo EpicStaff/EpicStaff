@@ -321,7 +321,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     }
 
     private loadData(): void {
-        if (!this.sessionId || !this.graphId) return;
+        if (!this.sessionId || !isFinite(this.graphId)) return;
 
         this.sseService.startStream(this.sessionId!);
 
@@ -445,7 +445,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
     private buildMessageGraphContexts(messages: GraphMessage[]): void {
         this.messageGraphIdByKey.clear();
-        if (!this.graphId) return;
+        if (!isFinite(this.graphId)) return;
         const graphStack: number[] = [this.graphId];
 
         messages.forEach((message) => {

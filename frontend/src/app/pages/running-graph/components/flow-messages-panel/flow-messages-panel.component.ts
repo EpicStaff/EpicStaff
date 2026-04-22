@@ -165,7 +165,7 @@ export class FlowMessagesPanelComponent implements OnInit, OnChanges, OnDestroy 
     }
 
     private loadSessions(): void {
-        if (!this.graphId) return;
+        if (!isFinite(this.graphId)) return;
 
         this.graphSessionService
             .getSessionsByGraphId(this.graphId, false)
