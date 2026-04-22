@@ -77,11 +77,14 @@
                 >
                 </app-flow-base-node>
             }
-            @for (connection of sortedConnections(); track connection.id) {
+            @for (
+                connection of sortedConnections();
+                track connection.id + '-' + (connectionRenderVersions()[connection.id] ?? 0)
+            ) {
                 <f-connection
                     [fBehavior]="connection.behavior || 'fixed'"
                     [fType]="backwardConnectionIds().has(connection.id) ? 'backward-arc' : connection.type || 'segment'"
-                    [fOffset]="30"
+                    [fOffset]="connection.waypoints?.length ? 0 : 30"
                     [fOutputId]="connection.sourcePortId"
                     [fInputId]="connection.targetPortId"
                     [fConnectionId]="connection.id"

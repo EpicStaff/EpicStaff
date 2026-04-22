@@ -59,7 +59,7 @@ import { ShortcutListenerDirective } from '../core/directives/shortcut-listener.
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
 import { NODE_COLORS, NODE_ICONS } from '../core/enums/node-config';
 import { NodeType } from '../core/enums/node-type';
-import { BackwardArcPathBuilder } from '../core/helpers/backward-arc.path-builder';
+import { BackwardArcPathBuilder, computeBackwardArcPoints } from '../core/helpers/backward-arc.path-builder';
 import { generateNodeDisplayName } from '../core/helpers/generate-node-display-name.util';
 import { getMinimapClassForNode } from '../core/helpers/get-minimap-class.util'; // Adjust path
 import {
@@ -73,6 +73,7 @@ import {
     computeSegmentAvoidanceWaypoints,
     getConnectionIntersectingNodes,
     getConnectionRenderedPath,
+    getPortPosition,
     normalizeConnectionWaypoints,
 } from '../core/helpers/segment-avoidance.helper';
 import { ConnectionModel } from '../core/models/connection.model';
@@ -194,6 +195,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public showVariables = signal<boolean>(false);
     public smartRoutingEnabled = signal<boolean>(false);
     protected contextMenuPosition = signal<IPoint>({ x: 0, y: 0 });
+    protected readonly connectionRenderVersions = signal<Record<string, number>>({});
 
     public NodeType = NodeType;
 
@@ -330,6 +332,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public onInitialized(): void {
         // this.fCanvasComponent.fitToScreen(new Point(140, 140), false);
         this.isLoaded.set(true);
+        setTimeout(() => {
+            this.rerouteSegmentConnections();
+            this.cd.detectChanges();
+        }, 0);
     }
     public updateMouseTrackerPosition(event: { x: number; y: number }) {
         this.mouseCursorPosition = event;
@@ -441,11 +447,17 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const nodes = this.flowService.nodes();
         const intersects = getConnectionIntersectingNodes(newConnection, nodes);
 
-        if (intersects.length > 0) {
+        const newConnTargetNode = nodes.find((n) => n.id === newConnection.targetNodeId);
+        const newConnTargetPort = newConnTargetNode?.ports?.find((p) => p.id === newConnection.targetPortId);
+        const isTableInTarget =
+            newConnTargetNode?.type === NodeType.TABLE && newConnTargetPort?.id?.includes('table-in');
+
+        if (intersects.length > 0 || isTableInTarget) {
             const avoidWaypoints = computeSegmentAvoidanceWaypoints(newConnection, nodes);
             if (avoidWaypoints) {
                 const normalizedWaypoints = this.normalizeWaypointsForConnection(newConnection, avoidWaypoints);
                 this.flowService.updateConnectionWaypoints(newConnection.id, normalizedWaypoints);
+                this.bumpConnectionRenderVersion(newConnection.id);
             }
         }
     }
@@ -876,7 +888,45 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const backwardIds = this.backwardConnectionIds();
 
         for (const conn of connections) {
-            if (backwardIds.has(conn.id)) continue;
+            if (backwardIds.has(conn.id)) {
+                // Backward connections are not handled by the segment router.
+                // Re-compute the arc fresh (ignoring stored waypoints so the arc
+                // always finds the current optimal avoidance position) and persist
+                // the result so foblex re-renders it even when only a blocking
+                // intermediate node has moved.
+                if (this.userAdjustedConnectionIds.has(conn.id)) continue;
+
+                const bwSource = nodes.find((n) => n.id === conn.sourceNodeId);
+                const bwTarget = nodes.find((n) => n.id === conn.targetNodeId);
+                if (!bwSource || !bwTarget) continue;
+
+                const bwSourcePort = bwSource.ports?.find((p) => p.id === conn.sourcePortId);
+                const bwTargetPort = bwTarget.ports?.find((p) => p.id === conn.targetPortId);
+
+                const bwSourcePt = getPortPosition(bwSource, bwSourcePort);
+                const bwTargetPt = getPortPosition(bwTarget, bwTargetPort);
+
+                // Pass undefined waypoints so avoidance is computed from scratch,
+                // not biased by a previously stored position.
+                const arcPts = computeBackwardArcPoints(bwSourcePt, bwTargetPt, undefined, nodes);
+                const newWaypoint = {
+                    x: (arcPts[1].x + arcPts[4].x) / 2,
+                    y: arcPts[2].y,
+                };
+
+                const existing = conn.waypoints?.[0];
+                const changed =
+                    !existing ||
+                    Math.abs(existing.y - newWaypoint.y) > 0.5 ||
+                    Math.abs(existing.x - newWaypoint.x) > 0.5;
+
+                if (changed) {
+                    this.flowService.updateConnectionWaypoints(conn.id, [newWaypoint]);
+                    this.bumpConnectionRenderVersion(conn.id);
+                }
+                continue;
+            }
+
             if (this.userAdjustedConnectionIds.has(conn.id)) continue;
 
             const MAX_ATTEMPTS = 3;
@@ -884,15 +934,25 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             if (!current) continue;
             const currentIntersections = getConnectionIntersectingNodes(current, nodes);
             if (currentIntersections.length === 0) {
-                if (!current.waypoints || current.waypoints.length === 0) continue;
+                const rerouteTargetNode = nodes.find((n) => n.id === current!.targetNodeId);
+                const rerouteTargetPort = rerouteTargetNode?.ports?.find((p) => p.id === current!.targetPortId);
+                const isTableInConn =
+                    rerouteTargetNode?.type === NodeType.TABLE && rerouteTargetPort?.id?.includes('table-in');
 
-                const restoreResult = computeSegmentAvoidanceWaypoints(current, nodes, current.waypoints);
+                if (!isTableInConn && (!current.waypoints || current.waypoints.length === 0)) continue;
+
+                const restoreResult = computeSegmentAvoidanceWaypoints(
+                    current,
+                    nodes,
+                    current.waypoints?.length ? current.waypoints : undefined
+                );
 
                 if (restoreResult !== null) {
                     const normalizedRestore = this.normalizeWaypointsForConnection(current, restoreResult);
 
                     if (!waypointsEqual(current.waypoints ?? [], normalizedRestore)) {
                         this.flowService.updateConnectionWaypoints(current.id, normalizedRestore);
+                        this.bumpConnectionRenderVersion(current.id);
                     }
                 }
                 continue;
@@ -906,6 +966,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 if (waypointsEqual(current.waypoints ?? [], normalizedWaypoints)) break;
 
                 this.flowService.updateConnectionWaypoints(current.id, normalizedWaypoints);
+                this.bumpConnectionRenderVersion(current.id);
                 current = { ...current, waypoints: normalizedWaypoints };
 
                 // Post-apply diagnostic
@@ -941,8 +1002,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
         this.draggedNodeIds.clear();
 
-        // Recompute avoidance waypoints for all auto-routed segment connections
-        this.rerouteSegmentConnections();
+        // Defer rerouting so foblex can finish its own drag-end render cycle first.
+        // Without this, waypoint handles and the SVG path are updated in different
+        // render cycles, causing handles to appear floating off the line.
+        setTimeout(() => {
+            this.rerouteSegmentConnections();
+            this.cd.detectChanges();
+        }, 0);
 
         // Reset all tracking
         setTimeout(() => {
@@ -1287,5 +1353,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     private normalizeWaypointsForConnection(connection: ConnectionModel, waypoints: IPoint[] | undefined): IPoint[] {
         return normalizeConnectionWaypoints(connection, this.flowService.nodes(), waypoints);
+    }
+
+    private bumpConnectionRenderVersion(connectionId: string): void {
+        this.connectionRenderVersions.update((v) => ({
+            ...v,
+            [connectionId]: (v[connectionId] ?? 0) + 1,
+        }));
     }
 }
