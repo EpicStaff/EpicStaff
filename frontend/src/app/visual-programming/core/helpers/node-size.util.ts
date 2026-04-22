@@ -4,7 +4,7 @@ import { DecisionTableNodeModel, NodeModel } from '../models/node.model';
 const HEADER_HEIGHT = 62;
 const ROW_HEIGHT = 46;
 const BASE_ROWS = 2;
-const MIN_TABLE_HEIGHT = 170;
+const MIN_TABLE_HEIGHT = 200;
 
 export function getDecisionTableVisualHeight(conditionGroups: { valid?: boolean }[]): number {
     const validGroupsCount = conditionGroups.filter((g) => g.valid !== false).length;

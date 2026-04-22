@@ -34,19 +34,19 @@ export function getCollisionBounds(node: Pick<NodeModel, 'type' | 'size' | 'data
         case NodeType.TABLE: {
             const conditionGroups = (node as DecisionTableNodeModel).data.table?.condition_groups ?? [];
             return {
-                width: node.size.width + 8,
+                width: node.size.width + 40,
                 height: getDecisionTableVisualHeight(conditionGroups) + 68,
-                offsetX: -4,
-                offsetY: -4,
+                offsetX: -20,
+                offsetY: -15,
             };
         }
 
         default:
             return {
-                width: node.size.width + 10,
-                height: node.size.height + 10,
-                offsetX: -5,
-                offsetY: -5,
+                width: node.size.width + 30,
+                height: node.size.height + 30,
+                offsetX: -15,
+                offsetY: -15,
             };
     }
 }

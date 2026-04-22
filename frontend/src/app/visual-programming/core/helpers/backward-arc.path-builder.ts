@@ -1,7 +1,8 @@
 import { IPoint } from '@foblex/2d';
 import { IFConnectionBuilder, IFConnectionBuilderRequest, IFConnectionBuilderResponse } from '@foblex/flow';
 
-import { BaseNodeModel } from '../models/node.model';
+import { NodeModel } from '../models/node.model';
+import { getCollisionBounds } from './node-placement.utils';
 
 // ─── tuning constants ────────────────────────────────────────────────────────
 const EXIT_OFFSET = 40; // Minimum horizontal stub on exit  (right of source)
@@ -14,6 +15,136 @@ const V_CLEARANCE = 15; // Gap beside a blocking node for a vertical segment
 const MAX_TOTAL_LIFT = 260; // Hard cap: routeY can never go more than this far
 // above min(source.y, target.y), regardless of obstacles.
 // ─────────────────────────────────────────────────────────────────────────────
+
+function getNodeRect(node: NodeModel) {
+    const b = getCollisionBounds(node);
+    return {
+        nLeft: node.position.x + b.offsetX,
+        nTop: node.position.y + b.offsetY,
+        nRight: node.position.x + b.offsetX + b.width,
+        nBottom: node.position.y + b.offsetY + b.height,
+    };
+}
+
+/**
+ * Pushes a vertical-segment x-coordinate past any node whose bounding
+ * box contains it within the segment's Y-range.
+ *
+ * direction 'right' — for the exit stub; expands away from the source node.
+ * direction 'left'  — for the entry stub; expands away from the target node.
+ *
+ * Iterates up to 8 times to handle chains of adjacent nodes.
+ */
+function avoidVertical(
+    x: number,
+    routeY: number,
+    portY: number,
+    direction: 'right' | 'left',
+    nodes: NodeModel[]
+): number {
+    const yTop = Math.min(routeY, portY);
+    const yBottom = Math.max(routeY, portY);
+    let adjusted = x;
+
+    for (let pass = 0; pass < 8; pass++) {
+        let moved = false;
+        for (const node of nodes) {
+            const { nLeft, nTop, nRight, nBottom } = getNodeRect(node);
+
+            if (
+                nLeft < adjusted &&
+                nRight > adjusted && // x inside node
+                nTop < yBottom &&
+                nBottom > yTop // y-range overlaps
+            ) {
+                adjusted = direction === 'right' ? nRight + V_CLEARANCE : nLeft - V_CLEARANCE;
+                moved = true;
+            }
+        }
+        if (!moved) break;
+    }
+    return adjusted;
+}
+
+/**
+ * Pushes routeY upward (smaller Y) past any node that straddles it
+ * within the horizontal corridor [min(sx2,tx2), max(sx2,tx2)].
+ *
+ * Iterates up to 8 times so that nodes stacked in multiple rows are all
+ * cleared: pushing past a lower node can expose a higher node that was
+ * previously entirely above the old routeY but now straddles the new one.
+ *
+ * Result is capped at MAX_TOTAL_LIFT above the higher port.
+ */
+function avoidHorizontal(
+    routeY: number,
+    sx2: number,
+    tx2: number,
+    source: IPoint,
+    target: IPoint,
+    nodes: NodeModel[]
+): number {
+    const corridorLeft = Math.min(sx2, tx2);
+    const corridorRight = Math.max(sx2, tx2);
+    const cap = Math.min(source.y, target.y) - MAX_TOTAL_LIFT;
+
+    let adjusted = routeY;
+    for (let pass = 0; pass < 8; pass++) {
+        let moved = false;
+        for (const node of nodes) {
+            const { nLeft, nTop, nRight, nBottom } = getNodeRect(node);
+
+            // Skip: no horizontal overlap with corridor
+            if (nLeft >= corridorRight || nRight <= corridorLeft) continue;
+
+            // Skip: node entirely above or entirely below the segment
+            if (nBottom < adjusted || nTop > adjusted) continue;
+
+            // Node straddles the planned segment — push just above it
+            const candidate = nTop - H_CLEARANCE;
+            if (candidate < adjusted) {
+                adjusted = candidate;
+                moved = true;
+            }
+        }
+        if (!moved) break;
+    }
+
+    // Never go above the hard cap
+    return Math.max(cap, adjusted);
+}
+
+export function computeBackwardArcPoints(
+    source: IPoint,
+    target: IPoint,
+    waypoints: IPoint[] | undefined,
+    nodes: NodeModel[]
+): IPoint[] {
+    let sx2 = source.x + EXIT_OFFSET;
+    let tx2 = target.x - ENTRY_OFFSET;
+    let routeY: number;
+
+    if (waypoints && waypoints.length > 0) {
+        const baseRouteY = waypoints[0].y;
+        sx2 = avoidVertical(sx2, baseRouteY, source.y, 'right', nodes);
+        tx2 = avoidVertical(tx2, baseRouteY, target.y, 'left', nodes);
+        routeY = baseRouteY;
+    } else {
+        const baseRouteY = Math.min(source.y, target.y) - ROUTE_MARGIN;
+        sx2 = avoidVertical(sx2, baseRouteY, source.y, 'right', nodes);
+        tx2 = avoidVertical(tx2, baseRouteY, target.y, 'left', nodes);
+        routeY = avoidHorizontal(baseRouteY, sx2, tx2, source, target, nodes);
+    }
+
+    return [
+        { x: source.x, y: source.y },
+        { x: sx2, y: source.y },
+        { x: sx2, y: routeY },
+        { x: tx2, y: routeY },
+        { x: tx2, y: target.y },
+        { x: target.x, y: target.y },
+    ];
+}
 
 /**
  * Renders backward (right-to-left) connections as a clean U-shaped arc
@@ -32,144 +163,20 @@ const MAX_TOTAL_LIFT = 260; // Hard cap: routeY can never go more than this far
  * routing (fType changes from 'backward-arc' to 'segment').
  */
 export class BackwardArcPathBuilder implements IFConnectionBuilder {
-    constructor(private readonly getNodes: () => BaseNodeModel[] = () => []) {}
+    constructor(private readonly getNodes: () => NodeModel[] = () => []) {}
 
     public handle(request: IFConnectionBuilderRequest): IFConnectionBuilderResponse {
         const { source, target, radius, waypoints } = request;
         const nodes = this.getNodes();
-
-        // Step 1 — initial coordinates (compact defaults)
-        let sx2 = source.x + EXIT_OFFSET;
-        let tx2 = target.x - ENTRY_OFFSET;
-
-        let routeY: number;
-        let candidates: IPoint[];
-
-        if (waypoints && waypoints.length > 0) {
-            // User has positioned the arc — honour their chosen Y directly.
-            // Vertical stubs still auto-avoid nodes so they don't clip.
-            const baseRouteY = waypoints[0].y;
-            sx2 = this.avoidVertical(sx2, baseRouteY, source.y, 'right', nodes);
-            tx2 = this.avoidVertical(tx2, baseRouteY, target.y, 'left', nodes);
-            routeY = baseRouteY;
-            candidates = [];
-        } else {
-            // No user override — auto-route above both endpoints.
-            const baseRouteY = Math.min(source.y, target.y) - ROUTE_MARGIN;
-            sx2 = this.avoidVertical(sx2, baseRouteY, source.y, 'right', nodes);
-            tx2 = this.avoidVertical(tx2, baseRouteY, target.y, 'left', nodes);
-            routeY = this.avoidHorizontal(baseRouteY, sx2, tx2, source, target, nodes);
-            candidates = [{ x: (sx2 + tx2) / 2, y: routeY }];
-        }
-
-        const points: IPoint[] = [
-            { x: source.x, y: source.y },
-            { x: sx2, y: source.y },
-            { x: sx2, y: routeY },
-            { x: tx2, y: routeY },
-            { x: tx2, y: target.y },
-            { x: target.x, y: target.y },
-        ];
+        const points = computeBackwardArcPoints(source, target, waypoints, nodes);
 
         return {
             path: this.buildPath(points, radius),
-            penultimatePoint: { x: tx2, y: target.y },
-            secondPoint: { x: sx2, y: source.y },
+            penultimatePoint: points[4],
+            secondPoint: points[1],
             points,
-            candidates,
+            candidates: waypoints?.length ? [] : [{ x: (points[1].x + points[4].x) / 2, y: points[2].y }],
         };
-    }
-
-    // ─── segment-local avoidance helpers ─────────────────────────────────────
-
-    /**
-     * Pushes a vertical-segment x-coordinate past any node whose bounding
-     * box contains it within the segment's Y-range.
-     *
-     * direction 'right' — for the exit stub; expands away from the source node.
-     * direction 'left'  — for the entry stub; expands away from the target node.
-     *
-     * Iterates up to 8 times to handle chains of adjacent nodes.
-     */
-    private avoidVertical(
-        x: number,
-        routeY: number,
-        portY: number,
-        direction: 'right' | 'left',
-        nodes: BaseNodeModel[]
-    ): number {
-        const yTop = Math.min(routeY, portY);
-        const yBottom = Math.max(routeY, portY);
-        let adjusted = x;
-
-        for (let pass = 0; pass < 8; pass++) {
-            let moved = false;
-            for (const node of nodes) {
-                const nRight = node.position.x + node.size.width;
-                const nBottom = node.position.y + node.size.height;
-
-                if (
-                    node.position.x < adjusted &&
-                    nRight > adjusted && // x inside node
-                    node.position.y < yBottom &&
-                    nBottom > yTop // y-range overlaps
-                ) {
-                    adjusted = direction === 'right' ? nRight + V_CLEARANCE : node.position.x - V_CLEARANCE;
-                    moved = true;
-                }
-            }
-            if (!moved) break;
-        }
-        return adjusted;
-    }
-
-    /**
-     * Pushes routeY upward (smaller Y) past any node that straddles it
-     * within the horizontal corridor [min(sx2,tx2), max(sx2,tx2)].
-     *
-     * Iterates up to 8 times so that nodes stacked in multiple rows are all
-     * cleared: pushing past a lower node can expose a higher node that was
-     * previously entirely above the old routeY but now straddles the new one.
-     *
-     * Result is capped at MAX_TOTAL_LIFT above the higher port.
-     */
-    private avoidHorizontal(
-        routeY: number,
-        sx2: number,
-        tx2: number,
-        source: IPoint,
-        target: IPoint,
-        nodes: BaseNodeModel[]
-    ): number {
-        const corridorLeft = Math.min(sx2, tx2);
-        const corridorRight = Math.max(sx2, tx2);
-        const cap = Math.min(source.y, target.y) - MAX_TOTAL_LIFT;
-
-        let adjusted = routeY;
-        for (let pass = 0; pass < 8; pass++) {
-            let moved = false;
-            for (const node of nodes) {
-                const nRight = node.position.x + node.size.width;
-                const nBottom = node.position.y + node.size.height;
-
-                // Skip: no horizontal overlap with corridor
-                if (node.position.x >= corridorRight || nRight <= corridorLeft) continue;
-
-                // Skip: node entirely above or entirely below the segment
-                if (nBottom < adjusted || node.position.y > adjusted) continue;
-
-                // Node straddles the planned segment — push just above it
-                const candidate = node.position.y - H_CLEARANCE;
-                if (candidate < adjusted) {
-                    adjusted = candidate;
-                    moved = true;
-                }
-            }
-            if (!moved) break;
-        }
-
-        // Never go above the hard cap
-        return Math.max(cap, adjusted);
     }
 
     // ─── path geometry ────────────────────────────────────────────────────────

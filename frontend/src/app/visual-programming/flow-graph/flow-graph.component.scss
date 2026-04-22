@@ -310,6 +310,17 @@
     }
 }
 
+.connection-hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.custom-connection-path {
+    fill: none;
+    stroke: #8b8b8b;
+    stroke-width: 2;
+}
+
 .top-left-actions {
     position: absolute;
     top: 1rem;
