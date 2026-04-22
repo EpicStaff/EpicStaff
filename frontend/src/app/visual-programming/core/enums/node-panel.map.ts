@@ -13,6 +13,7 @@ import { TelegramTriggerNodePanelComponent } from '../../components/node-panels/
 import { WebhookTriggerNodePanelComponent } from '../../components/node-panels/webhook-trigger-node-panel/webhook-trigger-node-panel.component';
 import { NodeModel } from '../models/node.model';
 import { NodePanel } from '../models/node-panel.interface';
+import { ClassificationDecisionTableNodePanelComponent } from '../../components/node-panels/classification-decision-table-node-panel/classification-decision-table-node-panel.component';
 import { NodeType } from './node-type';
 
 const asNodePanelComponent = <T extends NodeModel>(component: Type<NodePanel<T>>): Type<NodePanel<NodeModel>> =>
@@ -28,6 +29,7 @@ export const PANEL_COMPONENT_MAP: Record<string, Type<NodePanel<NodeModel>>> = {
     end: asNodePanelComponent(EndNodePanelComponent),
     subgraph: asNodePanelComponent(SubGraphNodePanelComponent),
     table: asNodePanelComponent(DecisionTableNodePanelComponent),
+    'classification-decision-table': asNodePanelComponent(ClassificationDecisionTableNodePanelComponent),
     [NodeType.AUDIO_TO_TEXT]: asNodePanelComponent(AudioToTextNodePanelComponent),
     [NodeType.CODE_AGENT]: asNodePanelComponent(CodeAgentNodePanelComponent),
     // start: StartNodePanelComponent,

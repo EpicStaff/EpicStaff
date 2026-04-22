@@ -15,6 +15,10 @@ import { isEqual } from 'lodash-es';
 import { GraphDto } from '../../../features/flows/models/graph.model';
 import { GetProjectRequest } from '../../../features/projects/models/project.model';
 import { CreateAudioToTextNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/audio-to-text.model';
+import {
+    CreateClassificationDecisionTableNodeRequest,
+    CreatePromptConfigRequest,
+} from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { CreateCodeAgentNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/code-agent-node.model';
 import { CreateConditionalEdgeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
 import { CreateCrewNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/crew-node.model';
@@ -35,10 +39,13 @@ import { CreateSubGraphNodeRequest } from '../../../pages/flows-page/components/
 import { CreateTelegramTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
 import { CreateWebhookTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/webhook-trigger';
 import { NodeType } from '../../core/enums/node-type';
+import { PromptConfig } from '../../core/models/classification-decision-table.model';
 import { ConnectionModel } from '../../core/models/connection.model';
+import { ConditionGroup } from '../../core/models/decision-table.model';
 import { FlowModel } from '../../core/models/flow.model';
 import {
     AudioToTextNodeModel,
+    ClassificationDecisionTableNodeModel,
     CodeAgentNodeModel,
     DecisionTableNodeModel,
     EdgeNodeModel,
@@ -56,6 +63,8 @@ import {
 import {
     getAudioToTextNodeForComparisonFromBackend,
     getAudioToTextNodeForComparisonFromUI,
+    getClassificationDecisionTableNodeForComparisonFromBackend,
+    getClassificationDecisionTableNodeForComparisonFromUI,
     getCodeAgentNodeForComparisonFromBackend,
     getCodeAgentNodeForComparisonFromUI,
     getConditionalEdgeForComparisonFromBackend,
@@ -172,6 +181,7 @@ export function extractPreviousState(graph: GraphDto): GraphPreviousState {
         decisionTableNodes: graph.decision_table_node_list ?? [],
         graphNotes: graph.graph_note_list ?? [],
         codeAgentNodes: graph.code_agent_node_list ?? [],
+        classificationDecisionTableNodes: graph.classification_decision_table_node_list ?? [],
     };
 }
 
@@ -225,6 +235,7 @@ function resolveEdges(connections: ConnectionModel[], allNodes: NodeModel[]): Ui
         if (!source || !target) continue;
         if (source.type === NodeType.EDGE || target.type === NodeType.EDGE) continue;
         if (source.type === NodeType.TABLE) continue;
+        if (source.type === NodeType.CLASSIFICATION_TABLE) continue;
         result.push({
             sourceNodeUuid: source.id,
             targetNodeUuid: target.id,
@@ -257,6 +268,9 @@ export function extractNewState(flowState: FlowModel): GraphNewState {
         endNodes: nodes.filter((n) => n.type === NodeType.END) as EndNodeModel[],
         codeAgentNodes: nodes.filter((n) => n.type === NodeType.CODE_AGENT) as CodeAgentNodeModel[],
         decisionTableNodes: nodes.filter((n) => n.type === NodeType.TABLE) as DecisionTableNodeModel[],
+        classificationDecisionTableNodes: nodes.filter(
+            (n) => n.type === NodeType.CLASSIFICATION_TABLE
+        ) as ClassificationDecisionTableNodeModel[],
         allNodes: nodes,
     };
 }
@@ -364,6 +378,14 @@ export function getNodeOnlyDiff(previous: GraphPreviousState, current: GraphNewS
         getCodeAgentNodeForComparisonFromUI
     );
 
+    const classificationDecisionTableNodes = diffByKey(
+        previous.classificationDecisionTableNodes,
+        current.classificationDecisionTableNodes,
+        (n) => n.backendId,
+        getClassificationDecisionTableNodeForComparisonFromBackend,
+        (n) => getClassificationDecisionTableNodeForComparisonFromUI(n, allNodes)
+    );
+
     return {
         crewNodes,
         pythonNodes,
@@ -377,6 +399,7 @@ export function getNodeOnlyDiff(previous: GraphPreviousState, current: GraphNewS
         endNodes,
         graphNotes,
         codeAgentNodes,
+        classificationDecisionTableNodes,
     };
 }
 
@@ -678,5 +701,103 @@ export function buildCodeAgentPayload(node: CodeAgentNodeModel, graphId: number)
         output_schema: node.data?.output_schema ?? {},
         metadata: getUIMetadataForComparison(node),
         use_storage: node.data?.use_storage,
+    };
+}
+
+function resolveNodeNameFromNodes(uuid: string | null, allNodes: NodeModel[]): string | null {
+    if (!uuid) return null;
+    const match = allNodes.find((n) => n.id === uuid);
+    return match?.node_name ?? null;
+}
+
+function serializeCDTFieldExpressions(fieldExpressions: Record<string, unknown>): Record<string, string> {
+    const result: Record<string, string> = {};
+    for (const [key, value] of Object.entries(fieldExpressions)) {
+        if (typeof value === 'object' && value !== null && 'operator' in value) {
+            const expr = value as { field?: string; operator?: string; value?: unknown };
+            const field = expr.field || key;
+            const op = expr.operator || '==';
+            const val = expr.value;
+            result[field] = typeof val === 'string' ? `${op} "${val}"` : `${op} ${val}`;
+        } else {
+            result[key] = String(value);
+        }
+    }
+    return result;
+}
+
+export function buildClassificationDecisionTablePayload(
+    node: ClassificationDecisionTableNodeModel,
+    graphId: number,
+    allNodes: NodeModel[],
+    idMap?: Map<string, number>
+): CreateClassificationDecisionTableNodeRequest {
+    const tableData = node.data?.table;
+    const preComp = tableData?.pre_computation || {};
+    const postComp = tableData?.post_computation || {};
+
+    const preCodeValue = preComp.code || tableData?.pre_computation_code || '';
+    const postCodeValue = postComp.code || tableData?.post_computation_code || '';
+
+    const conditionGroups = (tableData?.condition_groups || [])
+        .sort(
+            (a: ConditionGroup & { continue_flag?: boolean }, b: ConditionGroup & { continue_flag?: boolean }) =>
+                (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER)
+        )
+        .map((g: ConditionGroup & { continue_flag?: boolean }, idx: number) => ({
+            group_name: g.group_name,
+            order: typeof g.order === 'number' ? g.order : idx + 1,
+            expression: g.expression || null,
+            prompt_id: g.prompt_id || null,
+            manipulation: g.manipulation || null,
+            continue_flag: !!(g.continue_flag ?? g.continue),
+            next_node_id: resolveBackendIdWithMap(g.next_node, allNodes, idMap),
+            // route_code: g.route_code || null,  // TEMP: testing without route_code
+            dock_visible: g.dock_visible !== false,
+            field_expressions: serializeCDTFieldExpressions(g.field_expressions || {}),
+            field_manipulations: g.field_manipulations || {},
+        }));
+
+    return {
+        graph: graphId,
+        node_name: node.node_name,
+        pre_python_code:
+            preCodeValue.trim() === ''
+                ? null
+                : {
+                      code: preCodeValue,
+                      libraries: preComp.libraries || [],
+                      entrypoint: 'main',
+                      global_kwargs: {},
+                  },
+        pre_input_map: preComp.input_map || tableData?.pre_input_map || {},
+        pre_output_variable_path: preComp.output_variable_path || tableData?.pre_output_variable_path || null,
+        post_python_code:
+            postCodeValue.trim() === ''
+                ? null
+                : {
+                      code: postCodeValue,
+                      libraries: postComp.libraries || [],
+                      entrypoint: 'main',
+                      global_kwargs: {},
+                  },
+        post_input_map: postComp.input_map || tableData?.post_input_map || {},
+        post_output_variable_path: postComp.output_variable_path || tableData?.post_output_variable_path || null,
+        prompt_configs: Object.entries((tableData?.prompts || {}) as Record<string, PromptConfig>).map(
+            ([key, cfg]) =>
+                ({
+                    prompt_key: key,
+                    prompt_text: cfg.prompt_text ?? '',
+                    llm_config: cfg.llm_config ?? null,
+                    output_schema: cfg.output_schema ?? null,
+                    result_variable: cfg.result_variable ?? '',
+                    variable_mappings: cfg.variable_mappings ?? {},
+                }) as CreatePromptConfigRequest
+        ),
+        default_llm_config: tableData?.default_llm_config ?? null,
+        default_next_node: resolveNodeNameFromNodes(tableData?.default_next_node, allNodes),
+        next_error_node: resolveNodeNameFromNodes(tableData?.next_error_node, allNodes),
+        condition_groups: conditionGroups,
+        metadata: getUIMetadataForComparison(node),
     };
 }

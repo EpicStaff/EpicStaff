@@ -4,6 +4,8 @@ from src.shared.models import (
     AgentData,
     AudioTranscriptionNodeData,
     BaseToolData,
+    ClassificationConditionGroupData,
+    ClassificationDecisionTableNodeData,
     ConditionalEdgeData,
     ConditionData,
     ConditionGroupData,
@@ -26,6 +28,7 @@ from src.shared.models import (
     PythonCodeData,
     PythonCodeToolData,
     PythonNodeData,
+    PromptConfigData,
     RagSearchConfig,
     RealtimeAgentChatData,
     SubGraphNodeData,
@@ -61,6 +64,8 @@ from tables.models.knowledge_models.naive_rag_models import AgentNaiveRag
 from tables.models.graph_models import (
     AudioTranscriptionNode,
     Condition,
+    ClassificationConditionGroup,
+    ClassificationDecisionTableNode,
     ConditionalEdge,
     ConditionGroup,
     CrewNode,
@@ -724,6 +729,72 @@ class ConverterService(metaclass=SingletonMeta):
                 for condition in condition_group.conditions.all()
             ],
             next_node=resolver(condition_group.next_node_id),
+        )
+
+    def convert_classification_decision_table_node_to_pydantic(
+        self,
+        node: ClassificationDecisionTableNode,
+        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+    ):
+        condition_groups = [
+            ClassificationConditionGroupData(
+                group_name=cg.group_name,
+                expression=cg.expression,
+                prompt_id=cg.prompt_id,
+                manipulation=cg.manipulation,
+                continue_flag=cg.continue_flag,
+                next_node=resolver(cg.next_node_id) if cg.next_node_id else None,
+                dock_visible=cg.dock_visible,
+                order=cg.order,
+                field_expressions=cg.field_expressions or {},
+                field_manipulations=cg.field_manipulations or {},
+            )
+            for cg in node.condition_groups.all()
+        ]
+
+        prompts_dict = {}
+        default_llm_config = node.default_llm_config
+
+        for pc in node.prompt_configs.all():
+            llm_config_obj = pc.llm_config or default_llm_config
+            llm_data = None
+            llm_id = None
+            if llm_config_obj:
+                llm_id = llm_config_obj.id
+                llm_data = self.convert_llm_config_to_pydantic(llm_config_obj)
+            prompts_dict[pc.prompt_key] = PromptConfigData(
+                prompt_text=pc.prompt_text,
+                llm_id=llm_id,
+                output_schema=pc.output_schema or {},
+                result_variable=pc.result_variable or "prompt_result",
+                variable_mappings=pc.variable_mappings or {},
+                llm_data=llm_data,
+            )
+
+        pre_python_code_data = None
+        if node.pre_python_code is not None:
+            pre_python_code_data = self.convert_python_code_to_pydantic(
+                node.pre_python_code
+            )
+
+        post_python_code_data = None
+        if node.post_python_code is not None:
+            post_python_code_data = self.convert_python_code_to_pydantic(
+                node.post_python_code
+            )
+
+        return ClassificationDecisionTableNodeData(
+            node_name=resolver(node.id),
+            pre_python_code=pre_python_code_data,
+            pre_input_map=node.pre_input_map or {},
+            pre_output_variable_path=node.pre_output_variable_path,
+            post_python_code=post_python_code_data,
+            post_input_map=node.post_input_map or {},
+            post_output_variable_path=node.post_output_variable_path,
+            condition_groups=condition_groups,
+            prompts=prompts_dict,
+            default_next_node=node.default_next_node,
+            next_error_node=node.next_error_node,
         )
 
     def convert_decision_table_node_to_pydantic(

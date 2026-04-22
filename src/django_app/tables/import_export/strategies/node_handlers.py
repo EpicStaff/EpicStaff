@@ -8,8 +8,13 @@ from tables.models import (
     WebhookTrigger,
     DecisionTableNode,
     SubGraphNode,
+    ClassificationDecisionTableNode,
 )
-from tables.models.graph_models import GraphNote
+from tables.models.graph_models import (
+    GraphNote,
+    ClassificationConditionGroup,
+    ClassificationDecisionTablePrompt,
+)
 from tables.import_export.enums import NodeType, EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
@@ -31,6 +36,8 @@ from tables.import_export.serializers.graph import (
     ConditionImportSerializer,
     SubgraphNodeImportSerializer,
     GraphNoteImportSerializer,
+    ClassificationDecisionTableNodeImportSerializer,
+    ClassificationConditionGroupImportSerializer,
 )
 
 
@@ -120,6 +127,63 @@ def import_decision_table_node(
     return decision_table_node
 
 
+def import_classification_decision_table_node(
+    graph: Graph, node_data: dict, id_mapper: IDMapper
+) -> ClassificationDecisionTableNode:
+    condition_groups_data = node_data.pop("condition_groups", [])
+    prompt_configs_data = node_data.pop("prompt_configs", [])
+
+    pre_python_code_data = node_data.pop("pre_python_code", None)
+
+    if pre_python_code_data:
+        pre_serializer = PythonCodeImportSerializer(data=pre_python_code_data)
+        pre_serializer.is_valid(raise_exception=True)
+        node_data["pre_python_code_id"] = pre_serializer.save().id
+
+    post_python_code_data = node_data.pop("post_python_code", None)
+
+    if post_python_code_data:
+        post_serializer = PythonCodeImportSerializer(data=post_python_code_data)
+        post_serializer.is_valid(raise_exception=True)
+        node_data["post_python_code_id"] = post_serializer.save().id
+
+    default_llm_config_id = node_data.pop("default_llm_config", None)
+    node_data["default_llm_config"] = id_mapper.get_or_none(
+        EntityType.LLM_CONFIG, default_llm_config_id
+    )
+
+    serializer = ClassificationDecisionTableNodeImportSerializer(
+        data={**node_data, "graph": graph.id}
+    )
+    serializer.is_valid(raise_exception=True)
+    cdt_node = serializer.save()
+
+    for group_data in condition_groups_data:
+        group_data["classification_decision_table_node_id"] = cdt_node.id
+        group_serializer = ClassificationConditionGroupImportSerializer(data=group_data)
+        group_serializer.is_valid(raise_exception=True)
+        group_serializer.save()
+
+    ClassificationDecisionTablePrompt.objects.bulk_create(
+        [
+            ClassificationDecisionTablePrompt(
+                cdt_node=cdt_node,
+                prompt_key=pc["prompt_key"],
+                prompt_text=pc.get("prompt_text", ""),
+                llm_config_id=id_mapper.get_or_none(
+                    EntityType.LLM_CONFIG, pc.get("llm_config")
+                ),
+                output_schema=pc.get("output_schema", {}),
+                result_variable=pc.get("result_variable", "prompt_result"),
+                variable_mappings=pc.get("variable_mappings", {}),
+            )
+            for pc in prompt_configs_data
+        ]
+    )
+
+    return cdt_node
+
+
 def import_telegram_trigger_node(
     graph: Graph, node_data: dict, id_mapper: IDMapper
 ) -> TelegramTriggerNode:
@@ -204,6 +268,11 @@ NODE_HANDLERS = {
         "serializer": DecisionTableNodeImportSerializer,
         "relation": "decision_table_node_list",
         "import_hook": import_decision_table_node,
+    },
+    NodeType.CLASSIFICATION_DECISION_TABLE_NODE: {
+        "serializer": ClassificationDecisionTableNodeImportSerializer,
+        "relation": "classification_decision_table_node_list",
+        "import_hook": import_classification_decision_table_node,
     },
     NodeType.TELEGRAM_TRIGGER_NODE: {
         "serializer": TelegramTriggerNodeImportSerializer,

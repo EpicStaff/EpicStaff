@@ -8,6 +8,9 @@ from tables.import_export.enums import NodeType
 from tables.models import Graph
 from tables.models.graph_models import (
     AudioTranscriptionNode,
+    ClassificationConditionGroup,
+    ClassificationDecisionTableNode,
+    ClassificationDecisionTablePrompt,
     ConditionGroup,
     Condition,
     CrewNode,
@@ -207,6 +210,63 @@ def copy_decision_table_node(
     return new_node
 
 
+def copy_classification_decision_table_node(
+    graph: Graph, node: ClassificationDecisionTableNode
+) -> ClassificationDecisionTableNode:
+    new_pre_code = (
+        copy_python_code(node.pre_python_code) if node.pre_python_code else None
+    )
+    new_post_code = (
+        copy_python_code(node.post_python_code) if node.post_python_code else None
+    )
+
+    new_node = ClassificationDecisionTableNode.objects.create(
+        graph=graph,
+        node_name=node.node_name,
+        pre_python_code=new_pre_code,
+        pre_input_map=node.pre_input_map,
+        pre_output_variable_path=node.pre_output_variable_path,
+        post_python_code=new_post_code,
+        post_input_map=node.post_input_map,
+        post_output_variable_path=node.post_output_variable_path,
+        default_llm_config=node.default_llm_config,
+        default_next_node=node.default_next_node,
+        next_error_node=node.next_error_node,
+        metadata=node.metadata,
+    )
+
+    for group in node.condition_groups.all():
+        ClassificationConditionGroup.objects.create(
+            classification_decision_table_node=new_node,
+            group_name=group.group_name,
+            order=group.order,
+            expression=group.expression,
+            prompt_id=group.prompt_id,
+            manipulation=group.manipulation,
+            continue_flag=group.continue_flag,
+            dock_visible=group.dock_visible,
+            field_expressions=group.field_expressions,
+            field_manipulations=group.field_manipulations,
+        )
+
+    ClassificationDecisionTablePrompt.objects.bulk_create(
+        [
+            ClassificationDecisionTablePrompt(
+                cdt_node=new_node,
+                prompt_key=pc.prompt_key,
+                prompt_text=pc.prompt_text,
+                llm_config=pc.llm_config,
+                output_schema=pc.output_schema,
+                result_variable=pc.result_variable,
+                variable_mappings=pc.variable_mappings,
+            )
+            for pc in node.prompt_configs.all()
+        ]
+    )
+
+    return new_node
+
+
 # Maps each NodeType to (relation_name, handler_function).
 # relation_name is the Graph reverse accessor used to iterate existing nodes.
 # To add a new node type: write a copy_<name> function above and add one entry here.
@@ -237,6 +297,10 @@ NODE_COPY_HANDLERS: dict[NodeType, tuple[str, Callable]] = {
     NodeType.DECISION_TABLE_NODE: (
         "decision_table_node_list",
         copy_decision_table_node,
+    ),
+    NodeType.CLASSIFICATION_DECISION_TABLE_NODE: (
+        "classification_decision_table_node_list",
+        copy_classification_decision_table_node,
     ),
     NodeType.CODE_AGENT_NODE: (
         "code_agent_node_list",

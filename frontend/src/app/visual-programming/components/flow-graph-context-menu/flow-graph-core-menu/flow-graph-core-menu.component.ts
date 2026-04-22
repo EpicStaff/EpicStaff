@@ -132,6 +132,12 @@ export class FlowGraphCoreMenuComponent {
             color: NODE_COLORS[NodeType.TABLE],
         },
         {
+            label: 'Classification Decision Table',
+            type: NodeType.CLASSIFICATION_TABLE,
+            icon: NODE_ICONS[NodeType.CLASSIFICATION_TABLE],
+            color: NODE_COLORS[NodeType.CLASSIFICATION_TABLE],
+        },
+        {
             label: 'Webhook Trigger',
             type: NodeType.WEBHOOK_TRIGGER,
             icon: NODE_ICONS[NodeType.WEBHOOK_TRIGGER],

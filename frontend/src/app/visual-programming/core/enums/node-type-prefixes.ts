@@ -10,6 +10,7 @@ export const NODE_TYPE_PREFIXES: Record<NodeType, string> = {
     [NodeType.EDGE]: 'Edge-Node',
     [NodeType.START]: 'Start-Node',
     [NodeType.TABLE]: 'Decision-Table',
+    [NodeType.CLASSIFICATION_TABLE]: 'Classification Decision Table',
     [NodeType.NOTE]: 'Note',
     [NodeType.FILE_EXTRACTOR]: 'File Extractor',
     [NodeType.AUDIO_TO_TEXT]: 'Audio-to-text',

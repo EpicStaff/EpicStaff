@@ -9,6 +9,7 @@
 
 import { GetProjectRequest } from '../../../features/projects/models/project.model';
 import { GetAudioToTextNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/audio-to-text.model';
+import { GetClassificationDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { GetCodeAgentNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/code-agent-node.model';
 import { ConditionalEdge } from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
 import { CrewNode } from '../../../pages/flows-page/components/flow-visual-programming/models/crew-node.model';
@@ -20,8 +21,11 @@ import { PythonNode } from '../../../pages/flows-page/components/flow-visual-pro
 import { SubGraphNode } from '../../../pages/flows-page/components/flow-visual-programming/models/subgraph-node.model';
 import { GetTelegramTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
 import { GetWebhookTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/webhook-trigger';
+import { PromptConfig } from '../../core/models/classification-decision-table.model';
+import { ConditionGroup } from '../../core/models/decision-table.model';
 import {
     AudioToTextNodeModel,
+    ClassificationDecisionTableNodeModel,
     CodeAgentNodeModel,
     DecisionTableNodeModel,
     FileExtractorNodeModel,
@@ -448,5 +452,105 @@ export function getCodeAgentNodeForComparisonFromUI(node: CodeAgentNodeModel) {
         output_schema: node.data?.output_schema ?? {},
         use_storage: node.data?.use_storage ?? false,
         metadata: getUIMetadataForComparison(node),
+    };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ClassificationDecisionTableNode
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function getClassificationDecisionTableNodeForComparisonFromBackend(
+    node: GetClassificationDecisionTableNodeRequest
+) {
+    return {
+        node_name: node.node_name,
+        pre_computation_code: node.pre_python_code?.code || null,
+        condition_groups: node.condition_groups.map((g) => ({
+            group_name: g.group_name,
+            order: g.order,
+            expression: g.expression,
+            prompt_id: g.prompt_id,
+            manipulation: g.manipulation,
+            continue_flag: g.continue_flag,
+            next_node_id: g.next_node_id,
+            // route_code: g.route_code,  // TEMP: testing without route_code
+            dock_visible: g.dock_visible,
+            field_expressions: g.field_expressions,
+            field_manipulations: g.field_manipulations,
+        })),
+        prompt_configs: [...(node.prompt_configs ?? [])]
+            .sort((a, b) => a.prompt_key.localeCompare(b.prompt_key))
+            .map((p) => ({
+                prompt_key: p.prompt_key,
+                prompt_text: p.prompt_text ?? '',
+                llm_config: p.llm_config ?? null,
+                output_schema: p.output_schema ?? null,
+                result_variable: p.result_variable ?? '',
+                variable_mappings: p.variable_mappings ?? {},
+            })),
+        default_llm_config: node.default_llm_config ?? null,
+        default_next_node: node.default_next_node,
+        next_error_node: node.next_error_node,
+        pre_input_map: node.pre_input_map || {},
+        pre_output_variable_path: node.pre_output_variable_path || null,
+        post_computation_code: node.post_python_code?.code || null,
+        post_input_map: node.post_input_map || {},
+        post_output_variable_path: node.post_output_variable_path || null,
+        pre_libraries: node.pre_python_code?.libraries || [],
+        post_libraries: node.post_python_code?.libraries || [],
+    };
+}
+
+export function getClassificationDecisionTableNodeForComparisonFromUI(
+    node: ClassificationDecisionTableNodeModel,
+    allNodes: NodeModel[] = []
+) {
+    const tableData = node.data?.table;
+    const preCode = tableData?.pre_computation?.code || tableData?.pre_computation_code || null;
+    const groups = (tableData?.condition_groups || [])
+        .sort(
+            (a: ConditionGroup & { continue_flag?: boolean }, b: ConditionGroup & { continue_flag?: boolean }) =>
+                (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER)
+        )
+        .map((g: ConditionGroup & { continue_flag?: boolean }, idx: number) => ({
+            group_name: g.group_name,
+            order: typeof g.order === 'number' ? g.order : idx + 1,
+            expression: g.expression || null,
+            prompt_id: g.prompt_id || null,
+            manipulation: g.manipulation || null,
+            continue_flag: !!(g.continue_flag ?? g.continue),
+            next_node_id: resolveBackendId(g.next_node, allNodes),
+            // route_code: g.route_code || null,  // TEMP: testing without route_code
+            dock_visible: g.dock_visible !== false,
+            field_expressions: g.field_expressions || {},
+            field_manipulations: g.field_manipulations || {},
+        }));
+
+    return {
+        node_name: node.node_name,
+        pre_computation_code: preCode,
+        condition_groups: groups,
+        prompt_configs: Object.entries((tableData?.prompts || {}) as Record<string, PromptConfig>)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([key, cfg]) => ({
+                prompt_key: key,
+                prompt_text: cfg.prompt_text ?? '',
+                llm_config: cfg.llm_config ?? null,
+                output_schema: cfg.output_schema ?? null,
+                result_variable: cfg.result_variable ?? '',
+                variable_mappings: cfg.variable_mappings ?? {},
+            })),
+        default_llm_config: tableData?.default_llm_config ?? null,
+        default_next_node: tableData?.default_next_node || null,
+        next_error_node: tableData?.next_error_node || null,
+        pre_input_map: tableData?.pre_computation?.input_map || tableData?.pre_input_map || {},
+        pre_output_variable_path:
+            tableData?.pre_computation?.output_variable_path || tableData?.pre_output_variable_path || null,
+        post_computation_code: tableData?.post_computation?.code || tableData?.post_computation_code || null,
+        post_input_map: tableData?.post_computation?.input_map || tableData?.post_input_map || {},
+        post_output_variable_path:
+            tableData?.post_computation?.output_variable_path || tableData?.post_output_variable_path || null,
+        pre_libraries: tableData?.pre_computation?.libraries || [],
+        post_libraries: tableData?.post_computation?.libraries || [],
     };
 }

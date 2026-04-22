@@ -20,8 +20,14 @@ from tables.models import (
     ConditionGroup,
     Condition,
     SubGraphNode,
+    ClassificationDecisionTableNode,
+    ClassificationConditionGroup,
 )
-from tables.models.graph_models import CodeAgentNode, GraphNote
+from tables.models.graph_models import (
+    CodeAgentNode,
+    GraphNote,
+    ClassificationDecisionTablePrompt,
+)
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
 
 
@@ -92,6 +98,67 @@ class DecisionTableNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = DecisionTableNode
         exclude = ["created_at", "updated_at"]
+
+
+class ClassificationConditionGroupImportSerializer(serializers.ModelSerializer):
+    classification_decision_table_node = serializers.PrimaryKeyRelatedField(
+        read_only=True
+    )
+    classification_decision_table_node_id = serializers.PrimaryKeyRelatedField(
+        queryset=ClassificationDecisionTableNode.objects.all(),
+        source="classification_decision_table_node",
+        write_only=True,
+    )
+
+    class Meta:
+        model = ClassificationConditionGroup
+        fields = "__all__"
+
+
+class ClassificationDecisionTablePromptImportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ClassificationDecisionTablePrompt
+        fields = [
+            "prompt_key",
+            "prompt_text",
+            "llm_config",
+            "output_schema",
+            "result_variable",
+            "variable_mappings",
+        ]
+
+
+class ClassificationDecisionTableNodeImportSerializer(BaseNodeImportSerializer):
+    condition_groups = ClassificationConditionGroupImportSerializer(
+        many=True, required=False, read_only=True
+    )
+    prompt_configs = ClassificationDecisionTablePromptImportSerializer(
+        many=True, required=False, read_only=True
+    )
+    pre_python_code = PythonCodeImportSerializer(
+        read_only=True, required=False, allow_null=True
+    )
+    pre_python_code_id = serializers.PrimaryKeyRelatedField(
+        queryset=PythonCode.objects.all(),
+        source="pre_python_code",
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+    post_python_code = PythonCodeImportSerializer(
+        read_only=True, required=False, allow_null=True
+    )
+    post_python_code_id = serializers.PrimaryKeyRelatedField(
+        queryset=PythonCode.objects.all(),
+        source="post_python_code",
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+
+    class Meta(BaseNodeImportSerializer.Meta):
+        model = ClassificationDecisionTableNode
+        exclude = ["created_at", "updated_at", "prompts"]
 
 
 class TelegramTriggerNodeFieldImportSerializer(serializers.ModelSerializer):

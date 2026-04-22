@@ -558,6 +558,99 @@ class TelegramTriggerNodeField(ContentHashMixin, models.Model):
         ]
 
 
+class ClassificationDecisionTableNode(BaseGraphEntity, BaseGlobalNode):
+    graph = models.ForeignKey(
+        "Graph",
+        on_delete=models.CASCADE,
+        related_name="classification_decision_table_node_list",
+    )
+    node_name = models.CharField(max_length=255, blank=True)
+    pre_python_code = models.ForeignKey(
+        "PythonCode",
+        on_delete=models.CASCADE,
+        null=True,
+        default=None,
+        related_name="cdt_pre_nodes",
+    )
+    pre_input_map = models.JSONField(default=dict, blank=True)
+    pre_output_variable_path = models.CharField(
+        max_length=512, null=True, default=None, blank=True
+    )
+    post_python_code = models.ForeignKey(
+        "PythonCode",
+        on_delete=models.CASCADE,
+        null=True,
+        default=None,
+        related_name="cdt_post_nodes",
+    )
+    post_input_map = models.JSONField(default=dict, blank=True)
+    post_output_variable_path = models.CharField(
+        max_length=512, null=True, default=None, blank=True
+    )
+    prompts = models.JSONField(default=dict, blank=True)
+    default_llm_config = models.ForeignKey(
+        "LLMConfig",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cdt_nodes_as_default",
+    )
+    default_next_node = models.CharField(max_length=255, null=True, default=None)
+    next_error_node = models.CharField(max_length=255, null=True, default=None)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["graph", "node_name"],
+                name="unique_graph_node_name_for_classification_dt_node",
+            )
+        ]
+
+
+class ClassificationDecisionTablePrompt(TimestampMixin, models.Model):
+    cdt_node = models.ForeignKey(
+        "ClassificationDecisionTableNode",
+        on_delete=models.CASCADE,
+        related_name="prompt_configs",
+    )
+    prompt_key = models.CharField(max_length=255)
+    prompt_text = models.TextField(blank=True, default="")
+    llm_config = models.ForeignKey(
+        "LLMConfig",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cdt_prompts",
+    )
+    output_schema = models.JSONField(default=dict, blank=True, null=True)
+    result_variable = models.CharField(max_length=255, default="prompt_result")
+    variable_mappings = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        unique_together = ("cdt_node", "prompt_key")
+
+
+class ClassificationConditionGroup(BaseGraphEntity, models.Model):
+    classification_decision_table_node = models.ForeignKey(
+        "ClassificationDecisionTableNode",
+        on_delete=models.CASCADE,
+        related_name="condition_groups",
+    )
+    group_name = models.CharField(max_length=255, blank=False)
+    order = models.PositiveIntegerField(blank=False, default=0)
+    expression = models.TextField(null=True, default=None, blank=True)
+    prompt_id = models.CharField(max_length=255, null=True, default=None, blank=True)
+    manipulation = models.TextField(null=True, default=None, blank=True)
+    continue_flag = models.BooleanField(default=False)
+    next_node_id = models.BigIntegerField(null=True, default=None)
+    dock_visible = models.BooleanField(default=True)
+    field_expressions = models.JSONField(default=dict, blank=True)
+    field_manipulations = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["order"]
+
+
 class GraphNote(BaseGraphEntity, BaseGlobalNode):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="graph_note_list"

@@ -48,6 +48,7 @@
         "ag-grid-angular": "^33.1.1",
         "ag-grid-community": "^33.1.1",
         "lodash-es": "^4.18.0",
+        "mammoth": "^1.12.0",
         "monaco-editor": "^0.52.2",
         "ngx-color": "^10.0.0",
         "ngx-json-viewer": "^3.2.1",

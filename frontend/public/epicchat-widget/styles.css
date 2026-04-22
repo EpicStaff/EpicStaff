@@ -479,7 +479,7 @@ html {
     0px 3px 14px 2px rgba(0, 0, 0, 0.12);
 }
 html {
-  --mat-select-panel-background-color: #27272b;
+  --mat-select-panel-background-color: white;
   --mat-select-enabled-trigger-text-color: rgba(0, 0, 0, 0.87);
   --mat-select-disabled-trigger-text-color: color-mix(in srgb, rgba(0, 0, 0, 0.87) 38%, transparent);
   --mat-select-placeholder-text-color: rgba(0, 0, 0, 0.54);

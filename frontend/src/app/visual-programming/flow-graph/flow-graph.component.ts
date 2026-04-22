@@ -54,6 +54,7 @@ import { NodePanelShellComponent } from '../components/node-panels/node-panel-sh
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent } from '../components/note-edit-dialog/note-edit-dialog.component';
 import { ProjectDialogComponent } from '../components/project-dialog/project-dialog.component';
+import { BackwardConnectionBuilder } from '../core/connection-builders/backward-connection.builder';
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { ShortcutListenerDirective } from '../core/directives/shortcut-listener.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
@@ -68,6 +69,9 @@ import {
     generatePortsForNode,
     isBackwardConnection,
     isConnectionValid,
+} from '../core/helpers/helpers';
+import {
+    generatePortsForClassificationDecisionTableNode,
 } from '../core/helpers/helpers';
 import {
     computeSegmentAvoidanceWaypoints,
@@ -322,6 +326,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 if (node.ports.length !== expectedPortCount) {
                     node.ports = generatePortsForDecisionTableNode(node.id, conditionGroups);
                 }
+            } else if (node.type === NodeType.CLASSIFICATION_TABLE) {
+                (node as any).ports = generatePortsForClassificationDecisionTableNode(
+                    node.id,
+                    (node as any)?.data?.table?.condition_groups ?? [],
+                    true,
+                    true
+                );
             }
             return node;
         });

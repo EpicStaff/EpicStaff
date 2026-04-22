@@ -78,7 +78,9 @@ export class SessionFilesButtonComponent implements OnInit {
     readonly visibleNodes = computed(() => {
         const query = this.searchQuery().toLowerCase().trim();
         if (query) {
-            return this.flatNodes().filter((n) => n.name.toLowerCase().includes(query));
+            const filtered = this.flatNodes().filter((n) => n.name.toLowerCase().includes(query));
+            const minLevel = filtered.reduce((min, n) => Math.min(min, n.level), Infinity);
+            return filtered.map((n) => ({ ...n, level: n.level - minLevel }));
         }
         return this.buildVisible(this.rootNodes());
     });

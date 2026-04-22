@@ -5,6 +5,7 @@ import { catchError, map, switchMap } from 'rxjs/operators';
 import { GraphDto, UpdateGraphDtoRequest } from '../../../features/flows/models/graph.model';
 import { FlowsApiService } from '../../../features/flows/services/flows-api.service';
 import { AudioToTextService } from '../../../pages/flows-page/components/flow-visual-programming/services/audio-to-text-node';
+import { ClassificationDecisionTableNodeService } from '../../../pages/flows-page/components/flow-visual-programming/services/classification-decision-table-node.service';
 import { CodeAgentNodeService } from '../../../pages/flows-page/components/flow-visual-programming/services/code-agent-node.service';
 import { ConditionalEdgeService } from '../../../pages/flows-page/components/flow-visual-programming/services/conditional-edge.service';
 import { CrewNodeService } from '../../../pages/flows-page/components/flow-visual-programming/services/crew-node.service';
@@ -23,6 +24,7 @@ import { FlowModel } from '../../core/models/flow.model';
 import { DecisionTableNodeModel, NodeModel } from '../../core/models/node.model';
 import {
     buildAudioToTextPayload,
+    buildClassificationDecisionTablePayload,
     buildCodeAgentPayload,
     buildCondEdgePayload,
     buildCrewPayload,
@@ -62,6 +64,7 @@ export class GraphUpdateService {
         private endNodeService: EndNodeService,
         private subGraphNodeService: SubGraphNodeService,
         private decisionTableNodeService: DecisionTableNodeService,
+        private classificationDecisionTableNodeService: ClassificationDecisionTableNodeService,
         private graphNoteService: GraphNoteService,
         private codeAgentNodeService: CodeAgentNodeService,
         private toastService: ToastService
@@ -319,6 +322,20 @@ export class GraphUpdateService {
                 (n) => this.codeAgentNodeService.createCodeAgentNode(buildCodeAgentPayload(n, graphId)),
                 (id, n) =>
                     this.codeAgentNodeService.updateCodeAgentNode(id.toString(), buildCodeAgentPayload(n, graphId)),
+                (n) => n.id
+            ),
+            classificationDecisionTableNodes: this.executeNodeDiff(
+                diff.classificationDecisionTableNodes,
+                (n) => this.classificationDecisionTableNodeService.deleteNode(n.id.toString()),
+                (n) =>
+                    this.classificationDecisionTableNodeService.createNode(
+                        buildClassificationDecisionTablePayload(n, graphId, allNodes)
+                    ),
+                (id, n) =>
+                    this.classificationDecisionTableNodeService.updateNode(
+                        id,
+                        buildClassificationDecisionTablePayload(n, graphId, allNodes)
+                    ),
                 (n) => n.id
             ),
         });

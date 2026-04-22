@@ -19,6 +19,8 @@ export const DEFAULT_PROJECT_NODE_PORTS: BasePort[] = [
             'webhook-trigger-out',
             'telegram-trigger-out',
             'code-agent-out',
+            'decision-default',
+            'decision-error',
         ],
         position: 'left',
         color: '#5672cd',

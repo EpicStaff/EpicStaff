@@ -1,7 +1,9 @@
 import uuid
 from copy import deepcopy
 
-from tables.models import Graph, Crew
+from tables.models import Graph, Crew, Organization, GraphOrganization
+from tables.models.graph_models import ClassificationDecisionTablePrompt
+from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from tables.serializers.model_serializers import (
     CrewSerializer,
 )
@@ -47,6 +49,17 @@ class GraphStrategy(EntityImportExportStrategy):
         deps[EntityType.LLM_CONFIG] = set(
             instance.code_agent_node_list.values_list("llm_config_id", flat=True)
         )
+        deps[EntityType.LLM_CONFIG] |= set(
+            instance.classification_decision_table_node_list.values_list(
+                "default_llm_config_id", flat=True
+            )
+        )
+        deps[EntityType.LLM_CONFIG] |= set(
+            ClassificationDecisionTablePrompt.objects.filter(
+                cdt_node__graph=instance
+            ).values_list("llm_config_id", flat=True)
+        )
+        deps[EntityType.LLM_CONFIG].discard(None)
         return deps
 
     def export_entity(self, instance: Graph) -> dict:
@@ -80,6 +93,11 @@ class GraphStrategy(EntityImportExportStrategy):
         serializer = self.serializer_class(data=import_data)
         serializer.is_valid(raise_exception=True)
         graph = serializer.save()
+
+        organization, _ = Organization.objects.get_or_create(
+            name=DEFAULT_ORGANIZATION_NAME
+        )
+        GraphOrganization.objects.get_or_create(graph=graph, organization=organization)
 
         node_mapper = IDMapper()
 
@@ -192,6 +210,31 @@ class GraphStrategy(EntityImportExportStrategy):
                 )
 
             for group in dt_node.condition_groups.all():
+                if group.next_node_id:
+                    new_id = id_mapper.get_or_none(NODE_MAPPING_KEY, group.next_node_id)
+                    if new_id:
+                        group.next_node_id = new_id
+                        group.save(update_fields=["next_node_id"])
+
+        def _remap_char_node_ref(old_value):
+            if not old_value:
+                return None
+            new_id = id_mapper.get_or_none(NODE_MAPPING_KEY, int(old_value))
+            return str(new_id) if new_id else None
+
+        for cdt_node in graph.classification_decision_table_node_list.all():
+            updated = False
+            new_default = _remap_char_node_ref(cdt_node.default_next_node)
+            if new_default:
+                cdt_node.default_next_node = new_default
+                updated = True
+            new_error = _remap_char_node_ref(cdt_node.next_error_node)
+            if new_error:
+                cdt_node.next_error_node = new_error
+                updated = True
+            if updated:
+                cdt_node.save(update_fields=["default_next_node", "next_error_node"])
+            for group in cdt_node.condition_groups.all():
                 if group.next_node_id:
                     new_id = id_mapper.get_or_none(NODE_MAPPING_KEY, group.next_node_id)
                     if new_id:

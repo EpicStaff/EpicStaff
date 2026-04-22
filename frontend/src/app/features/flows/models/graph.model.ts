@@ -13,6 +13,9 @@ import { StartNode } from '../../../pages/flows-page/components/flow-visual-prog
 import { SubGraphNode } from '../../../pages/flows-page/components/flow-visual-programming/models/subgraph-node.model';
 import { GetTelegramTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
 import { GetWebhookTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/webhook-trigger';
+import {
+    GetClassificationDecisionTableNodeRequest
+} from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { FlowModel } from '../../../visual-programming/core/models/flow.model';
 
 export interface SubflowLightDto {
@@ -51,6 +54,7 @@ export interface GraphDto extends GetGraphLightRequest {
     end_node_list: EndNode[];
     subgraph_node_list: SubGraphNode[];
     decision_table_node_list: GetDecisionTableNodeRequest[];
+    classification_decision_table_node_list: GetClassificationDecisionTableNodeRequest[];
     metadata: FlowModel;
     audio_transcription_node_list: GetAudioToTextNodeRequest[];
     graph_note_list: GraphNote[];

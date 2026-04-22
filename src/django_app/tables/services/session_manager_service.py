@@ -1,6 +1,7 @@
 from tables.exceptions import GraphEntryPointException
 from tables.models import (
     AudioTranscriptionNode,
+    CodeAgentNode,
     CrewNode,
     Edge,
     FileExtractorNode,
@@ -10,6 +11,7 @@ from tables.models import (
     Session,
 )
 from tables.models.graph_models import (
+    ClassificationDecisionTableNode,
     ConditionalEdge,
     ConditionGroup,
     DecisionTableNode,
@@ -82,6 +84,36 @@ class SessionManagerService(metaclass=SingletonMeta):
         session: Session = self.get_session(session_id=session_id)
         return session.status
 
+    def _resolve_template_variables(self, obj, context: dict):
+        """Recursively resolve {variable} or {variable:default} templates in nested structures"""
+        if isinstance(obj, str):
+            import re
+
+            pattern = r"\{([^}:]+)(?::([^}]*))?\}"
+
+            def replace_template(match):
+                var_name = match.group(1)
+                default_value = match.group(2)
+                if var_name in context:
+                    return str(context[var_name])
+                elif default_value is not None:
+                    return default_value
+                else:
+                    return match.group(0)
+
+            return re.sub(pattern, replace_template, obj)
+        elif isinstance(obj, dict):
+            return {
+                self._resolve_template_variables(
+                    k, context
+                ): self._resolve_template_variables(v, context)
+                for k, v in obj.items()
+            }
+        elif isinstance(obj, list):
+            return [self._resolve_template_variables(item, context) for item in obj]
+        else:
+            return obj
+
     def create_session(
         self,
         graph_id: int,
@@ -94,20 +126,29 @@ class SessionManagerService(metaclass=SingletonMeta):
         # it might not exist if graph has no start node
         start_node = StartNode.objects.filter(graph_id=graph_id).first()
 
-        if variables and start_node.variables:
-            start_node_variables = self._get_actual_variables(start_node.variables)
-            variables = self._deep_merge_dicts(start_node_variables, variables)
-        elif start_node.variables:
-            variables = start_node.variables
+        if start_node is not None:
+            if start_node.variables:
+                # Resolve template variables in start_node config using user-provided variables
+                resolved_start_vars = self._resolve_template_variables(
+                    start_node.variables, variables
+                )
+                start_node_variables = self._get_actual_variables(resolved_start_vars)
+                if variables:
+                    variables = self._deep_merge_dicts(start_node_variables, variables)
+                else:
+                    variables = start_node_variables
 
         variables = self._get_actual_variables(variables)
+
+        # Remove 'shared' initialization dict - it's for Redis proxy, not storage
+        variables_for_db = {k: v for k, v in variables.items() if k != "shared"}
 
         time_to_live = Graph.objects.get(pk=graph_id).time_to_live
         graph_user = GraphOrganizationUser.objects.filter(user__name=username).first()
         session = Session.objects.create(
             graph_id=graph_id,
             status=Session.SessionStatus.PENDING,
-            variables=variables,
+            variables=variables_for_db,
             time_to_live=time_to_live,
             graph_user=graph_user,
             entrypoint=entrypoint,
@@ -245,9 +286,12 @@ class SessionManagerService(metaclass=SingletonMeta):
                 )
                 prev_session_vars = message.message_data["state"]["variables"]
                 logger.info(f"prev_session_var: {prev_session_vars}")
+                # Merge: previous session vars as base, incoming trigger vars override
+                if variables:
+                    prev_session_vars.update(variables)
                 variables = prev_session_vars
                 logger.info(
-                    f"Variables from previous session are set to current run: {variables}"
+                    f"Variables from previous session merged with trigger vars: {list(variables.keys())}"
                 )
             except Exception as e:
                 logger.error(
@@ -316,6 +360,11 @@ class SessionManagerService(metaclass=SingletonMeta):
         ).select_related("python_code")
         telegram_trigger_node_list = TelegramTriggerNode.objects.filter(graph=graph.pk)
         code_agent_node_list = CodeAgentNode.objects.filter(graph=graph.pk)
+        classification_decision_table_node_list = (
+            ClassificationDecisionTableNode.objects.filter(
+                graph=graph.pk
+            ).prefetch_related("condition_groups")
+        )
 
         if file_extractor_node_list:
             self.file_node_validator.validate_file_nodes(file_extractor_node_list)
@@ -338,6 +387,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             audio_transcription_node_list,
             llm_node_list,
             decision_table_node_list,
+            classification_decision_table_node_list,
             subgraph_node_list,
             webhook_trigger_node_list,
             telegram_trigger_node_list,
@@ -493,6 +543,14 @@ class SessionManagerService(metaclass=SingletonMeta):
                 )
             )
 
+        classification_dt_node_data_list = []
+        for item in classification_decision_table_node_list:
+            classification_dt_node_data_list.append(
+                cv.convert_classification_decision_table_node_to_pydantic(
+                    node=item, resolver=resolver
+                )
+            )
+
         end_node = self.end_node_validator.validate(graph_id=graph.pk)
 
         # TODO: remove validation
@@ -519,4 +577,5 @@ class SessionManagerService(metaclass=SingletonMeta):
             entrypoint=entrypoint,
             end_node=end_node_data,
             telegram_trigger_node_data_list=telegram_trigger_node_data_list,
+            classification_decision_table_node_list=classification_dt_node_data_list,
         )

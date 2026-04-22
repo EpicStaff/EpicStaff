@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from tables.serializers.model_serializers import (
     AudioTranscriptionNodeSerializer,
+    ClassificationDecisionTableNodeSerializer,
     ConditionalEdgeSerializer,
     CrewNodeSerializer,
     DecisionTableNodeSerializer,
@@ -68,6 +69,12 @@ class EndNodeBulkSerializer(BulkSaveEntityMixin, EndNodeSerializer):
 
 
 class SubGraphNodeBulkSerializer(BulkSaveEntityMixin, SubGraphNodeSerializer):
+    pass
+
+
+class ClassificationDecisionTableNodeBulkSerializer(
+    BulkSaveEntityMixin, ClassificationDecisionTableNodeSerializer
+):
     pass
 
 

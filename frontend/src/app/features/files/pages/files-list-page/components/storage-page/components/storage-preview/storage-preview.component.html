@@ -170,6 +170,11 @@
                                 </div>
                             }
                         }
+                        @case ('docx') {
+                            @if (docxHtml()) {
+                                <div class="storage-preview__docx" [innerHTML]="docxHtml()"></div>
+                            }
+                        }
                         @case ('unsupported') {
                             <div class="storage-preview__unsupported">
                                 <app-svg-icon icon="file-empty-state" size="66px"></app-svg-icon>

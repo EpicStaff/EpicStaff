@@ -1,7 +1,8 @@
 import { DecimalPipe, JsonPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { DomSanitizer, SafeHtml, SafeResourceUrl } from '@angular/platform-browser';
+import * as mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 
 import { AppSvgIconComponent } from '../../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -10,7 +11,7 @@ import { StorageItem } from '../../../../../../models/storage.models';
 import { StorageApiService } from '../../../../../../services/storage-api.service';
 import { getFileExtension } from '../../../../../../utils/storage-file.utils';
 
-type PreviewType = 'text' | 'json' | 'pdf' | 'image' | 'sheet' | 'unsupported';
+type PreviewType = 'text' | 'json' | 'pdf' | 'image' | 'sheet' | 'docx' | 'unsupported';
 
 export interface SheetData {
     sheetNames: string[];
@@ -44,6 +45,7 @@ export class StoragePreviewComponent {
     pdfUrl = signal<SafeResourceUrl | null>(null);
     imageUrl = signal<string | null>(null);
     sheetData = signal<SheetData | null>(null);
+    docxHtml = signal<SafeHtml | null>(null);
     isLoadingPreview = signal<boolean>(false);
     previewError = signal<string | null>(null);
     csvDelimiter = signal<string>('auto');
@@ -152,6 +154,7 @@ export class StoragePreviewComponent {
         this.pdfUrl.set(null);
         this.imageUrl.set(null);
         this.sheetData.set(null);
+        this.docxHtml.set(null);
         this.currentWorkbook = null;
         this.currentCsvText = null;
         this.csvDelimiter.set('auto');
@@ -214,6 +217,15 @@ export class StoragePreviewComponent {
                 this.isLoadingPreview.set(false);
                 break;
             }
+            case 'docx': {
+                blob.arrayBuffer().then((buf) => {
+                    mammoth.convertToHtml({ arrayBuffer: buf }).then((result) => {
+                        this.docxHtml.set(this.sanitizer.bypassSecurityTrustHtml(result.value));
+                        this.isLoadingPreview.set(false);
+                    });
+                });
+                break;
+            }
             case 'sheet': {
                 if (this.isCsv) {
                     blob.text().then((text) => {
@@ -254,12 +266,14 @@ export class StoragePreviewComponent {
         const pdfExts = ['pdf'];
         const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'];
         const sheetExts = ['xlsx', 'xls', 'xlsm', 'ods', 'csv'];
+        const docxExts = ['docx'];
 
         if (textExts.includes(ext)) return 'text';
         if (jsonExts.includes(ext)) return 'json';
         if (pdfExts.includes(ext)) return 'pdf';
         if (imageExts.includes(ext)) return 'image';
         if (sheetExts.includes(ext)) return 'sheet';
+        if (docxExts.includes(ext)) return 'docx';
         return 'unsupported';
     }
 

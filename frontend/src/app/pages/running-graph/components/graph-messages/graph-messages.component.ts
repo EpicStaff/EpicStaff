@@ -39,14 +39,9 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
 import { CodeAgentStreamMessageData, GraphMessage, MessageType } from '../../models/graph-session-message.model';
 import { SessionStatusMessageData } from '../../models/update-session-status.model';
 import { AnswerToLLMService } from '../../services/answer-to-llm.service';
-import { RunSessionSSEService } from '../../services/graph-session-sse.service';
-import { RunGraphPageService } from '../../services/run-graph-page.service';
-import { WarningMessagesComponent } from '../warning-messages/warning-messages.component';
 import { AgentFinishMessageComponent } from './components/agent-finish/agent-finish.component';
 import { AgentMessageComponent } from './components/agent-message/agent-message.component';
-import { CodeAgentStreamMessageComponent } from './components/code-agent-stream-message/code-agent-stream-message.component';
 import { ErrorMessageComponent } from './components/error-message/error-message.component';
-import { ExtractedChunksMessageComponent } from './components/extracted-chunks/extracted-chunks-message.component';
 import { FinishMessageComponent } from './components/finish-message/finish-message.component';
 import { LlmMessageComponent } from './components/llm-message/llm-message.component';
 import { LoadingDotsComponent } from './components/loading-animation/loading-animation.component';
@@ -59,6 +54,13 @@ import { ProjectTransitionComponent } from './components/transition/project-tran
 import { WaitForUserInputComponent } from './components/user-input-component/user-input-component.component';
 import { UserMessageComponent } from './components/user-message/user-message.component';
 import { isMessageType } from './helper_functions/message-helper';
+import { RunGraphPageService } from '../../services/run-graph-page.service';
+import { RunSessionSSEService } from '../../services/graph-session-sse.service';
+
+import { ExtractedChunksMessageComponent } from './components/extracted-chunks/extracted-chunks-message.component';
+import { ClassificationDtMessageComponent } from './components/classification-dt-message/classification-dt-message.component';
+import { WarningMessagesComponent } from '../warning-messages/warning-messages.component';
+import { CodeAgentStreamMessageComponent } from './components/code-agent-stream-message/code-agent-stream-message.component';
 
 interface MessageContext {
     key: string;
@@ -114,6 +116,7 @@ interface RootDrilldownView {
         WaitForUserInputComponent,
         UserMessageComponent,
         ExtractedChunksMessageComponent,
+        ClassificationDtMessageComponent,
         WarningMessagesComponent,
         SubgraphStartMessageComponent,
         SubgraphFinishMessageComponent,
@@ -219,7 +222,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             this.sessionStatusChanged.emit(status);
             this.statusWaitForUser = status === GraphSessionStatus.WAITING_FOR_USER;
             this.showUserInputWithDelay = this.statusWaitForUser;
-
+            this.checkIfFinish();
             this.cdr.markForCheck();
         });
 

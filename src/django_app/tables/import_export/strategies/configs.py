@@ -75,6 +75,7 @@ class BaseConfigStrategy(EntityImportExportStrategy):
     def find_existing(self, data, id_mapper):
         data_copy = deepcopy(data)
         data_copy.pop("id", None)
+        data_copy.pop("tags", None)
 
         fk_filters = self.resolve_fk_filters(data_copy, id_mapper)
         filters, null_filters = create_filters(data_copy)

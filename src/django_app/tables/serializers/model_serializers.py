@@ -71,6 +71,9 @@ from tables.models.graph_models import (
     CodeAgentNode,
     Condition,
     ConditionGroup,
+    ClassificationConditionGroup,
+    ClassificationDecisionTableNode,
+    ClassificationDecisionTablePrompt,
     DecisionTableNode,
     EndNode,
     LLMNode,
@@ -1560,6 +1563,15 @@ class SessionSerializer(serializers.ModelSerializer):
             "parent_session",
         ]
 
+    def to_representation(self, instance):
+        """Remove 'shared' proxy from variables for UI display"""
+        data = super().to_representation(instance)
+        if data.get("variables") and isinstance(data["variables"], dict):
+            data["variables"] = {
+                k: v for k, v in data["variables"].items() if k != "shared"
+            }
+        return data
+
 
 class SessionLightSerializer(serializers.ModelSerializer):
     has_output_files = serializers.BooleanField(read_only=True)
@@ -1706,6 +1718,160 @@ class DecisionTableNodeSerializer(
         fields = "__all__"
 
 
+class ClassificationConditionGroupSerializer(serializers.ModelSerializer):
+    classification_decision_table_node = serializers.PrimaryKeyRelatedField(
+        read_only=True
+    )
+
+    class Meta:
+        model = ClassificationConditionGroup
+        fields = "__all__"
+
+
+class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ClassificationDecisionTablePrompt
+        fields = [
+            "id",
+            "prompt_key",
+            "prompt_text",
+            "llm_config",
+            "output_schema",
+            "result_variable",
+            "variable_mappings",
+        ]
+
+
+class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
+    condition_groups = ClassificationConditionGroupSerializer(many=True, required=False)
+    prompt_configs = ClassificationDecisionTablePromptSerializer(
+        many=True, required=False
+    )
+    pre_python_code = PythonCodeSerializer(required=False, allow_null=True)
+    post_python_code = PythonCodeSerializer(required=False, allow_null=True)
+    default_llm_config = serializers.PrimaryKeyRelatedField(
+        queryset=LLMConfig.objects.all(), required=False, allow_null=True
+    )
+
+    class Meta:
+        model = ClassificationDecisionTableNode
+        fields = [
+            "id",
+            "graph",
+            "node_name",
+            "pre_python_code",
+            "pre_input_map",
+            "pre_output_variable_path",
+            "post_python_code",
+            "post_input_map",
+            "post_output_variable_path",
+            "default_llm_config",
+            "default_next_node",
+            "next_error_node",
+            "created_at",
+            "updated_at",
+            "metadata",
+            "condition_groups",
+            "prompt_configs",
+        ]
+
+    def create(self, validated_data):
+        condition_groups_data = validated_data.pop("condition_groups", [])
+        prompt_configs_data = validated_data.pop("prompt_configs", [])
+        pre_python_code_data = validated_data.pop("pre_python_code", None)
+        post_python_code_data = validated_data.pop("post_python_code", None)
+
+        pre_python_code = None
+        if pre_python_code_data is not None:
+            pre_python_code = PythonCode.objects.create(**pre_python_code_data)
+
+        post_python_code = None
+        if post_python_code_data is not None:
+            post_python_code = PythonCode.objects.create(**post_python_code_data)
+
+        node = ClassificationDecisionTableNode.objects.create(
+            pre_python_code=pre_python_code,
+            post_python_code=post_python_code,
+            **validated_data,
+        )
+
+        for group_data in condition_groups_data:
+            ClassificationConditionGroup.objects.create(
+                classification_decision_table_node=node, **group_data
+            )
+
+        ClassificationDecisionTablePrompt.objects.bulk_create(
+            [
+                ClassificationDecisionTablePrompt(cdt_node=node, **prompt_data)
+                for prompt_data in prompt_configs_data
+            ]
+        )
+
+        return node
+
+    def update(self, instance, validated_data):
+        condition_groups_data = validated_data.pop("condition_groups", None)
+        prompt_configs_data = validated_data.pop("prompt_configs", None)
+
+        if "pre_python_code" in validated_data:
+            pre_python_code_data = validated_data.pop("pre_python_code")
+
+            if pre_python_code_data is None:
+                instance.pre_python_code = None
+            elif instance.pre_python_code is not None:
+                python_code = instance.pre_python_code
+                expected_hash = pre_python_code_data.pop("content_hash", None)
+                if expected_hash is not None:
+                    python_code._expected_hash = expected_hash
+                for attr, value in pre_python_code_data.items():
+                    setattr(python_code, attr, value)
+                python_code.save()
+            else:
+                instance.pre_python_code = PythonCode.objects.create(
+                    **pre_python_code_data
+                )
+
+        if "post_python_code" in validated_data:
+            post_python_code_data = validated_data.pop("post_python_code")
+
+            if post_python_code_data is None:
+                instance.post_python_code = None
+            elif instance.post_python_code is not None:
+                python_code = instance.post_python_code
+                expected_hash = post_python_code_data.pop("content_hash", None)
+                if expected_hash is not None:
+                    python_code._expected_hash = expected_hash
+                for attr, value in post_python_code_data.items():
+                    setattr(python_code, attr, value)
+                python_code.save()
+            else:
+                instance.post_python_code = PythonCode.objects.create(
+                    **post_python_code_data
+                )
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if condition_groups_data is not None:
+            instance.condition_groups.all().delete()
+            for group_data in condition_groups_data:
+                ClassificationConditionGroup.objects.create(
+                    classification_decision_table_node=instance, **group_data
+                )
+
+        if prompt_configs_data is not None:
+            instance.prompt_configs.all().delete()
+            ClassificationDecisionTablePrompt.objects.bulk_create(
+                [
+                    ClassificationDecisionTablePrompt(cdt_node=instance, **prompt_data)
+                    for prompt_data in prompt_configs_data
+                ]
+            )
+
+        return instance
+
+
 class WebhookTriggerSerializer(serializers.ModelSerializer):
     class Meta:
         model = WebhookTrigger
@@ -1844,6 +2010,9 @@ class GraphSerializer(serializers.ModelSerializer):
     webhook_trigger_node_list = WebhookTriggerNodeSerializer(many=True, read_only=True)
     start_node_list = StartNodeSerializer(many=True, read_only=True)
     decision_table_node_list = DecisionTableNodeSerializer(many=True, read_only=True)
+    classification_decision_table_node_list = ClassificationDecisionTableNodeSerializer(
+        many=True, read_only=True
+    )
     subgraph_node_list = SubGraphNodeSerializer(many=True, read_only=True)
     code_agent_node_list = CodeAgentNodeSerializer(many=True, read_only=True)
     end_node_list = EndNodeSerializer(many=True, read_only=True, source="end_node")
@@ -1872,6 +2041,7 @@ class GraphSerializer(serializers.ModelSerializer):
             "llm_node_list",
             "webhook_trigger_node_list",
             "decision_table_node_list",
+            "classification_decision_table_node_list",
             "subgraph_node_list",
             "code_agent_node_list",
             "start_node_list",

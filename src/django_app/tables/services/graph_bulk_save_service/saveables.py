@@ -1,4 +1,9 @@
-from tables.models.graph_models import Condition, ConditionGroup, DecisionTableNode
+from tables.models.graph_models import (
+    ClassificationConditionGroup,
+    Condition,
+    ConditionGroup,
+    DecisionTableNode,
+)
 from tables.services.graph_bulk_save_service.data_types import NodeRef
 
 
@@ -207,6 +212,51 @@ class DecisionTableNodeSaveable:
             Condition.objects.bulk_create(conditions_to_create)
 
         return created_groups
+
+
+class ClassificationDecisionTableNodeSaveable:
+    """
+    Wraps a validated ClassificationDecisionTableNodeBulkSerializer and its condition_groups data.
+    On update, deletes old ClassificationConditionGroup records and bulk_creates new ones.
+    """
+
+    def __init__(self, serializer, condition_groups_data, instance=None):
+        self._serializer = serializer
+        self._condition_groups_data = condition_groups_data
+        self._instance = instance
+
+    _GROUP_EXCLUDED_FIELDS = frozenset({"id", "classification_decision_table_node"})
+
+    def save(self):
+        s = self._serializer
+        validated = dict(s.validated_data)
+        _clean_for_write(validated)
+        node = (
+            s.create(validated)
+            if s.instance is None
+            else s.update(s.instance, validated)
+        )
+
+        if self._instance is not None and self._condition_groups_data is not None:
+            ClassificationConditionGroup.objects.filter(
+                classification_decision_table_node=node
+            ).delete()
+
+        if self._condition_groups_data:
+            excluded = self._GROUP_EXCLUDED_FIELDS
+            groups_to_create = []
+
+            for group_data in self._condition_groups_data:
+                gd = {k: v for k, v in group_data.items() if k not in excluded}
+                groups_to_create.append(
+                    ClassificationConditionGroup(
+                        classification_decision_table_node=node, **gd
+                    )
+                )
+
+            ClassificationConditionGroup.objects.bulk_create(groups_to_create)
+
+        return node
 
 
 class _NodeSaveable:

@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 
 from tables.models.graph_models import (
     AudioTranscriptionNode,
+    ClassificationDecisionTableNode,
     ConditionalEdge,
     CrewNode,
     DecisionTableNode,
@@ -18,6 +19,7 @@ from tables.models.graph_models import (
 )
 from tables.serializers.graph_bulk_save_serializers import (
     AudioTranscriptionNodeBulkSerializer,
+    ClassificationDecisionTableNodeBulkSerializer,
     CrewNodeBulkSerializer,
     DecisionTableNodeBulkSerializer,
     EndNodeBulkSerializer,
@@ -31,6 +33,7 @@ from tables.serializers.graph_bulk_save_serializers import (
     WebhookTriggerNodeBulkSerializer,
 )
 from tables.services.graph_bulk_save_service.factories import (
+    ClassificationDecisionTableNodeSaveableFactory,
     DefaultNodeSaveableFactory,
     DecisionTableNodeSaveableFactory,
     NodeSaveableFactory,
@@ -39,6 +42,7 @@ from tables.services.graph_bulk_save_service.factories import (
 
 # Singletons — factories are stateless.
 _DEFAULT_FACTORY = DefaultNodeSaveableFactory()
+_CLASSIFICATION_DT_FACTORY = ClassificationDecisionTableNodeSaveableFactory()
 _DECISION_TABLE_FACTORY = DecisionTableNodeSaveableFactory()
 
 
@@ -123,6 +127,13 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         "subgraph_node_ids",
         SubGraphNode,
         SubGraphNodeBulkSerializer,
+    ),
+    NodeTypeConfig(
+        "classification_decision_table_node_list",
+        "classification_decision_table_node_ids",
+        ClassificationDecisionTableNode,
+        ClassificationDecisionTableNodeBulkSerializer,
+        saveable_factory=_CLASSIFICATION_DT_FACTORY,
     ),
     NodeTypeConfig(
         "decision_table_node_list",

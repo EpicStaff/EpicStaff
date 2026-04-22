@@ -63,6 +63,15 @@
                     @case ('task') {
                         <app-task-message [message]="entry.message"></app-task-message>
                     }
+                    @case ('condition_group') {
+                        <app-classification-dt-message [message]="entry.message"></app-classification-dt-message>
+                    }
+                    @case ('classification_prompt') {
+                        <app-classification-dt-message [message]="entry.message"></app-classification-dt-message>
+                    }
+                    @case ('condition_group_manipulation') {
+                        <app-classification-dt-message [message]="entry.message"></app-classification-dt-message>
+                    }
                     @case ('finish') {
                         <app-finish-message [message]="entry.message" [project]="entry.project"></app-finish-message>
                     }
@@ -215,6 +224,21 @@
                                                     <app-task-message
                                                         [message]="nestedEntry.message"
                                                     ></app-task-message>
+                                                }
+                                                @case ('condition_group') {
+                                                    <app-classification-dt-message
+                                                        [message]="nestedEntry.message"
+                                                    ></app-classification-dt-message>
+                                                }
+                                                @case ('classification_prompt') {
+                                                    <app-classification-dt-message
+                                                        [message]="nestedEntry.message"
+                                                    ></app-classification-dt-message>
+                                                }
+                                                @case ('condition_group_manipulation') {
+                                                    <app-classification-dt-message
+                                                        [message]="nestedEntry.message"
+                                                    ></app-classification-dt-message>
                                                 }
                                                 @case ('finish') {
                                                     <app-finish-message

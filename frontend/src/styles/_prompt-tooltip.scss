@@ -1,0 +1,112 @@
+// ── Code tooltip (Expression / Manipulation hover) ──
+.code-tooltip-popover {
+    position: fixed;
+    z-index: 10000;
+    border: 1px solid rgba(104, 95, 255, 0.35);
+    border-radius: 3px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    animation: ptp-fade-in 0.08s ease-out;
+}
+
+.ctp-editor-container {
+    min-width: 300px;
+    min-height: 40px;
+}
+
+// ── Prompt tooltip (Prompt ID hover) ──
+.prompt-tooltip-popover {
+    position: fixed;
+    z-index: 10000;
+    width: 420px;
+    max-height: 480px;
+    overflow-y: auto;
+    background: #1e1e1e;
+    border: 1px solid rgba(104, 95, 255, 0.4);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    animation: ptp-fade-in 0.12s ease-out;
+
+    &::-webkit-scrollbar {
+        width: 5px;
+    }
+    &::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 4px;
+    }
+}
+
+@keyframes ptp-fade-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.ptp-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ptp-title {
+    font-weight: 600;
+    font-size: 13px;
+    color: #e0e0e0;
+    font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+}
+
+.ptp-badge {
+    font-size: 11px;
+    color: rgba(104, 95, 255, 0.9);
+    background: rgba(104, 95, 255, 0.12);
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.ptp-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ptp-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.5);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.ptp-textarea {
+    width: 100%;
+    background: #141414;
+    color: #d4d4d4;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.15s ease;
+    box-sizing: border-box;
+
+    &:focus {
+        border-color: rgba(104, 95, 255, 0.5);
+    }
+
+    &::placeholder {
+        color: rgba(255, 255, 255, 0.2);
+    }
+}

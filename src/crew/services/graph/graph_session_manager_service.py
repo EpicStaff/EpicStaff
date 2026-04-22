@@ -20,6 +20,11 @@ from src.crew.utils.singleton_meta import SingletonMeta
 
 from src.shared.models import SessionData, StopSessionMessage
 from src.crew.models.graph_models import GraphMessage
+from src.crew.services.graph.shared_variables import (
+    SharedVariables,
+    SharedVariableScope,
+    cleanup_session,
+)
 
 
 @dataclass
@@ -87,22 +92,87 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             )
 
             graph = session_graph_builder.compile_from_schema(session_data=session_data)
+
+            shared_vars = SharedVariables(
+                session_id=session_id,
+                redis_service=self.redis_service,
+            )
+
             state = {
                 "state_history": [],
                 "variables": DotDict(initial_state),
                 "system_variables": {"nodes": {}},
                 "execution_counts": {},
             }
+
+            # Add shared variables to state
+            state["variables"]["shared"] = shared_vars
+
             await self.redis_service.aupdate_session_status(
-                session_id=session_id, status="run"
+                session_id=session_id,
+                status="run",
+                variables=state["variables"].model_dump(),
             )
+            final_state = state  # Will be updated with last 'values' chunk
             async for stream_mode, chunk in graph.astream(
                 input=state,
                 config={"recursion_limit": 1000},
                 stream_mode=["values", "custom"],
             ):  # TODO: change hardcoded recursion limit
-                if stream_mode == "custom":
-                    data = asdict(chunk)
+                if stream_mode == "values":
+                    final_state = chunk
+                elif stream_mode == "custom":
+                    # Clean SharedVariable objects from chunk before serialization
+                    import dataclasses
+
+                    def deep_clean(obj):
+                        if isinstance(obj, (SharedVariables, SharedVariableScope)):
+                            return None
+                        elif isinstance(obj, dict):
+                            cleaned = {}
+                            for k, v in obj.items():
+                                if k == "shared" and isinstance(
+                                    v, (SharedVariables, SharedVariableScope)
+                                ):
+                                    continue
+                                cleaned_v = deep_clean(v)
+                                if cleaned_v is not None or not isinstance(
+                                    v, (SharedVariables, SharedVariableScope)
+                                ):
+                                    cleaned[k] = cleaned_v
+                            return cleaned
+                        elif isinstance(obj, (list, tuple)):
+                            return [deep_clean(item) for item in obj]
+                        elif dataclasses.is_dataclass(obj) and not isinstance(
+                            obj, type
+                        ):
+                            cleaned_fields = {}
+                            for field in dataclasses.fields(obj):
+                                value = getattr(obj, field.name)
+                                cleaned_fields[field.name] = deep_clean(value)
+                            return dataclasses.replace(obj, **cleaned_fields)
+                        else:
+                            return obj
+
+                    try:
+                        cleaned_chunk = deep_clean(chunk)
+                        data = asdict(cleaned_chunk)
+                    except Exception as e:
+                        logger.error(
+                            f"Error during chunk cleaning/serialization: {e}",
+                            exc_info=True,
+                        )
+                        data = {
+                            "session_id": chunk.session_id
+                            if hasattr(chunk, "session_id")
+                            else None,
+                            "name": chunk.name if hasattr(chunk, "name") else None,
+                            "execution_order": chunk.execution_order
+                            if hasattr(chunk, "execution_order")
+                            else None,
+                            "message_data": {"message_type": "error", "error": str(e)},
+                        }
+
                     assert isinstance(data, dict), "custom chunk must be a dict"
                     data["uuid"] = str(uuid.uuid4())
                     self.redis_service.publish("graph:messages", data)
@@ -114,13 +184,29 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
             await asyncio.sleep(0.01)
 
+            end_node_result = session_graph_builder.end_node_result
+
+            def _clean_result(obj):
+                if isinstance(obj, (SharedVariables, SharedVariableScope)):
+                    return None
+                elif isinstance(obj, dict):
+                    return {
+                        k: _clean_result(v)
+                        for k, v in obj.items()
+                        if not isinstance(v, (SharedVariables, SharedVariableScope))
+                    }
+                elif isinstance(obj, (list, tuple)):
+                    return [_clean_result(i) for i in obj]
+                return obj
+
+            end_node_result = _clean_result(end_node_result)
             graph_end_data = GraphMessage(
                 session_id=session_id,
                 name="",
                 execution_order=0,
                 message_data={
                     "message_type": "graph_end",
-                    "end_node_result": session_graph_builder.end_node_result,
+                    "end_node_result": end_node_result,
                 },
             )
             graph_end_message_data = asdict(graph_end_data)
@@ -134,6 +220,9 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 status="end",
                 variables=final_state["variables"].model_dump(),
             )
+
+            # Cleanup shared variables
+            await cleanup_session(session_id, self.redis_service, status="completed")
 
         except asyncio.CancelledError:
             # Status updated in _handle_session_timeout
@@ -149,20 +238,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             await self.redis_service.aupdate_session_status(
                 session_id=session_id, status="error", error=f"Unhandled error. \n{e}"
             )
-        finally:
-            graph_end_data = GraphMessage(
-                session_id=session_id,
-                name="",
-                execution_order=0,
-                message_data={
-                    "message_type": "graph_end",
-                    "end_node_result": session_graph_builder.end_node_result,
-                },
-            )
-            graph_end_message_data = asdict(graph_end_data)
-            graph_end_message_data["uuid"] = str(uuid.uuid4())
-
-            self.redis_service.publish("graph:messages", graph_end_message_data)
 
     async def _listen_callback(self, message: dict[str, Any]):
         try:

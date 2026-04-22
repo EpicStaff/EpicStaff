@@ -9,6 +9,7 @@ from src.crew.models.graph_models import (
     ErrorMessageData,
     ConditionGroupMessageData,
     ConditonGroupManipulationMessageData,
+    ClassificationPromptMessageData,
 )
 from src.crew.models.state import State
 
@@ -17,11 +18,7 @@ class CustomSessionMessageWriter:
     @classmethod
     def _convert_state(cls, state: State):
         return {
-            "variables": (
-                state["variables"].model_dump()
-                if state["variables"] is not None
-                else {}
-            ),
+            "variables": state["variables"].model_dump(),
             "state_history": state["state_history"],
         }
 
@@ -52,6 +49,7 @@ class CustomSessionMessageWriter:
             message_data=start_message_data,
         )
         writer(graph_message)
+        return graph_message
 
     @classmethod
     def add_finish_message(
@@ -94,6 +92,7 @@ class CustomSessionMessageWriter:
             message_data=finish_message_data,
         )
         writer(graph_message)
+        return graph_message
 
     @classmethod
     def add_error_message(
@@ -128,6 +127,7 @@ class CustomSessionMessageWriter:
             message_data=error_message_data,
         )
         writer(graph_message)
+        return graph_message
 
     @classmethod
     def add_custom_message(
@@ -145,6 +145,7 @@ class CustomSessionMessageWriter:
             message_data=message_data,
         )
         writer(graph_message)
+        return graph_message
 
     @classmethod
     def add_condition_group_message(
@@ -155,18 +156,21 @@ class CustomSessionMessageWriter:
         result: bool,
         writer: StreamWriter,
         execution_order: int,
+        expression: str | None = None,
     ):
-        error_message_data = ConditionGroupMessageData(
+        condition_message_data = ConditionGroupMessageData(
             group_name=group_name,
             result=result,
+            expression=expression,
         )
         graph_message = GraphMessage(
             session_id=session_id,
             name=node_name,
             execution_order=execution_order,
-            message_data=error_message_data,
+            message_data=condition_message_data,
         )
         writer(graph_message)
+        return graph_message
 
     @classmethod
     def add_condition_group_manipulation_message(
@@ -177,14 +181,49 @@ class CustomSessionMessageWriter:
         state: dict,
         writer: StreamWriter,
         execution_order: int,
+        changed_variables: dict | None = None,
     ):
-        error_message_data = ConditonGroupManipulationMessageData(
-            group_name=group_name, state=cls._convert_state(state=state)
+        manipulation_message_data = ConditonGroupManipulationMessageData(
+            group_name=group_name,
+            state=cls._convert_state(state=state),
+            changed_variables=changed_variables or {},
         )
         graph_message = GraphMessage(
             session_id=session_id,
             name=node_name,
             execution_order=execution_order,
-            message_data=error_message_data,
+            message_data=manipulation_message_data,
         )
         writer(graph_message)
+        return graph_message
+
+    @classmethod
+    def add_classification_prompt_message(
+        cls,
+        session_id: int,
+        node_name: str,
+        writer: StreamWriter,
+        execution_order: int,
+        prompt_id: str,
+        prompt_text: str,
+        raw_response: str,
+        parsed_result: Any,
+        result_variable: str,
+        usage: dict,
+    ):
+        prompt_message_data = ClassificationPromptMessageData(
+            prompt_id=prompt_id,
+            prompt_text=prompt_text,
+            raw_response=raw_response,
+            parsed_result=parsed_result,
+            result_variable=result_variable,
+            usage=usage,
+        )
+        graph_message = GraphMessage(
+            session_id=session_id,
+            name=node_name,
+            execution_order=execution_order,
+            message_data=prompt_message_data,
+        )
+        writer(graph_message)
+        return graph_message

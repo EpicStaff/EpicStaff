@@ -1,0 +1,487 @@
+:host {
+    display: block;
+}
+
+.decision-table-grid-container {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.grid-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 0.5rem;
+    flex-shrink: 0;
+
+    h3 {
+        margin: 0;
+        color: #ffffffb3;
+        font-size: 1rem;
+        font-weight: 400;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+
+        .tooltip-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            color: #a89fff;
+            background: rgba(104, 95, 255, 0.2);
+            border: 1px solid rgba(104, 95, 255, 0.35);
+            font-size: 0.75rem;
+            cursor: help;
+            transition:
+                background 0.2s ease,
+                color 0.2s ease;
+
+            &:hover {
+                color: #fff;
+                background: rgba(104, 95, 255, 0.45);
+                border-color: rgba(104, 95, 255, 0.6);
+            }
+        }
+    }
+}
+
+.grid-header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.add-condition-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: #685fff;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    padding: 0.4rem 0.85rem;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+
+    &:hover {
+        background: #7a6fff;
+    }
+
+    i {
+        font-size: 0.9rem;
+    }
+}
+
+.field-column-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.field-controls-divider {
+    width: 1px;
+    height: 18px;
+    background: rgba(255, 255, 255, 0.15);
+    margin: 0 0.2rem;
+}
+
+.field-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.75rem;
+    font-family: 'Menlo', 'Monaco', monospace;
+
+    .field-chip-prefix {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 15px;
+        height: 15px;
+        border-radius: 3px;
+        font-size: 0.6rem;
+        font-weight: 700;
+        font-family: system-ui, sans-serif;
+        flex-shrink: 0;
+    }
+
+    &--expr {
+        background: rgba(104, 95, 255, 0.2);
+        border: 1px solid rgba(104, 95, 255, 0.4);
+
+        .field-chip-prefix {
+            background: rgba(104, 95, 255, 0.6);
+            color: #fff;
+        }
+    }
+
+    &--manip {
+        background: rgba(255, 165, 0, 0.15);
+        border: 1px solid rgba(255, 165, 0, 0.4);
+
+        .field-chip-prefix {
+            background: rgba(255, 165, 0, 0.6);
+            color: #fff;
+        }
+    }
+
+    .field-chip-remove {
+        font-size: 0.65rem;
+        cursor: pointer;
+        opacity: 0.6;
+        transition: opacity 0.15s ease;
+
+        &:hover {
+            opacity: 1;
+            color: #ff5449;
+        }
+    }
+
+    &--hidden {
+        opacity: 0.45;
+        border-style: dashed;
+        border-color: rgba(255, 165, 0, 0.4);
+        background: rgba(255, 165, 0, 0.08);
+        cursor: pointer;
+        transition:
+            opacity 0.15s ease,
+            background 0.15s ease;
+
+        i {
+            font-size: 0.75rem;
+            color: rgba(255, 165, 0, 0.7);
+        }
+
+        &:hover {
+            opacity: 0.8;
+            background: rgba(255, 165, 0, 0.15);
+        }
+    }
+}
+
+.field-picker-wrapper {
+    position: relative;
+}
+
+.add-field-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.6rem;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &--expr:hover {
+        background: rgba(104, 95, 255, 0.15);
+        border-color: rgba(104, 95, 255, 0.4);
+        color: #fff;
+    }
+
+    &--manip:hover {
+        background: rgba(255, 165, 0, 0.12);
+        border-color: rgba(255, 165, 0, 0.4);
+        color: #fff;
+    }
+}
+
+.field-picker-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 100;
+    min-width: 200px;
+    max-height: 300px;
+    overflow-y: auto;
+    background: #27272b;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.field-picker-overlay {
+    z-index: 1000;
+    max-width: 350px;
+}
+
+.field-search-input {
+    width: 100%;
+    padding: 0.45rem 0.6rem;
+    background: #1e1e1e;
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    color: #d4d4d4;
+    font-size: 0.8rem;
+    outline: none;
+    box-sizing: border-box;
+
+    &::placeholder {
+        color: rgba(255, 255, 255, 0.3);
+    }
+}
+
+.field-picker-group-label {
+    padding: 0.35rem 0.6rem 0.2rem;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: rgba(104, 95, 255, 0.8);
+    user-select: none;
+}
+
+.field-picker-item {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.8rem;
+    font-family: 'Menlo', 'Monaco', monospace;
+    color: rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+    transition: background 0.1s ease;
+
+    &:hover {
+        background: rgba(104, 95, 255, 0.2);
+        color: #fff;
+    }
+}
+
+.field-picker-item--hidden {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+
+    i {
+        font-size: 0.85rem;
+        color: rgba(255, 165, 0, 0.6);
+    }
+
+    &:hover i {
+        color: rgba(255, 165, 0, 0.9);
+    }
+}
+
+.field-picker-empty {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.35);
+    text-align: center;
+}
+
+.col-overlay-add-btn {
+    position: fixed;
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    background: #27272b;
+    border: 1px solid rgba(104, 95, 255, 0.5);
+    color: #a89fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    z-index: 20;
+    padding: 0;
+    box-sizing: border-box;
+    transition:
+        background 0.15s ease,
+        color 0.15s ease;
+
+    &:hover {
+        background: rgba(104, 95, 255, 0.5);
+        color: #fff;
+        border-color: #685fff;
+    }
+
+    i {
+        font-size: 0.75rem;
+        line-height: 1;
+    }
+}
+
+.context-menu {
+    position: fixed;
+    z-index: 10000;
+    background: #27272b;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    min-width: 160px;
+    padding: 4px 0;
+}
+
+.context-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.85);
+    cursor: pointer;
+    transition: background 0.1s ease;
+
+    i {
+        font-size: 1rem;
+        color: rgba(255, 255, 255, 0.5);
+    }
+
+    &:hover {
+        background: rgba(104, 95, 255, 0.2);
+        color: #fff;
+
+        i {
+            color: rgba(104, 95, 255, 0.9);
+        }
+    }
+
+    &--danger {
+        color: var(--error-color, #ff3b30);
+
+        i {
+            color: var(--error-color, #ff3b30);
+            opacity: 0.8;
+        }
+
+        &:hover {
+            background: rgba(255, 59, 48, 0.15);
+            color: var(--error-color, #ff3b30);
+
+            i {
+                color: var(--error-color, #ff3b30);
+                opacity: 1;
+            }
+        }
+    }
+}
+
+.context-menu-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 3px 0;
+}
+
+:host ::ng-deep {
+    .decision-grid {
+        .ag-checkbox-input-wrapper {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px !important;
+
+            &.ag-checked {
+                background-color: #ffffff !important;
+
+                &::after {
+                    color: #685fff !important;
+                    font-size: 10px !important;
+                }
+            }
+
+            &:not(.ag-checked) {
+                background-color: transparent !important;
+                border-color: rgba(255, 255, 255, 0.3) !important;
+            }
+        }
+
+        flex: 1;
+        min-height: 0;
+        .ag-root-wrapper,
+        .ag-root {
+            overflow: visible !important;
+        }
+
+        .ag-header {
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .ti-x:hover {
+            color: rgba(255, 255, 255, 0.9) !important;
+        }
+
+        [col-id='actions'] .icon-header i {
+            color: #685fff !important;
+        }
+
+        .cell-warning {
+            background-color: rgba(255, 59, 48, 0.15) !important;
+            border: 1px solid #ff3b30 !important;
+        }
+
+        .ag-header-cell-resize::after {
+            height: 100% !important;
+            top: 0 !important;
+        }
+
+        // Fix for "No Rows To Show" message being cut off - only when empty
+        &.empty-state {
+            .ag-center-cols-container,
+            .ag-center-cols-viewport {
+                min-height: 150px !important;
+            }
+
+            .ag-overlay {
+                overflow: visible !important;
+            }
+
+            .ag-overlay-no-rows-wrapper {
+                padding: 3rem 1rem !important;
+                min-height: 150px !important;
+                height: auto !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                overflow: visible !important;
+                position: relative !important;
+                box-sizing: border-box !important;
+
+                .ag-overlay-no-rows-center {
+                    overflow: visible !important;
+                    text-overflow: unset !important;
+                    white-space: normal !important;
+                    word-wrap: break-word !important;
+                    line-height: 1.6 !important;
+                    padding: 1rem 0 !important;
+                    margin: 0 !important;
+                    height: auto !important;
+                }
+            }
+        }
+    }
+
+    // Handle autoHeight layout - let AG Grid handle overflow naturally
+    .ag-layout-auto-height {
+        .ag-center-cols-container,
+        .ag-center-cols-viewport {
+            min-height: 0px !important;
+        }
+    }
+
+    // When empty: min-height 150px
+    .decision-grid.empty-state {
+        .ag-layout-auto-height {
+            .ag-center-cols-container,
+            .ag-center-cols-viewport {
+                min-height: 150px !important;
+            }
+        }
+    }
+}

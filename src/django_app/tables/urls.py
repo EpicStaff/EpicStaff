@@ -2,6 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from tables.views.model_view_sets import (
+    ClassificationDecisionTableNodeModelViewSet,
     ConditionalEdgeViewSet,
     CrewNodeViewSet,
     DecisionTableNodeModelViewSet,
@@ -172,6 +173,9 @@ router.register(r"realtime-session-items", RealtimeSessionItemViewSet)
 router.register(r"realtime-agents", RealtimeAgentViewSet)
 router.register(r"realtime-agent-chats", RealtimeAgentChatViewSet)
 router.register(r"decision-table-node", DecisionTableNodeModelViewSet)
+router.register(
+    r"classification-decision-table-node", ClassificationDecisionTableNodeModelViewSet
+)
 
 router.register(r"sessions", SessionViewSet, basename="session")
 router.register(r"mcp-tools", McpToolViewSet)
