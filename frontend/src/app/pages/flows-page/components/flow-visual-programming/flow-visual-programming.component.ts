@@ -141,7 +141,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
         effect(() => {
             const graphId = Number(this.routeParamMap().get('id'));
-            if (!graphId) return;
+            if (!isFinite(graphId)) return;
             this.fetchGraph(graphId);
         });
     }
@@ -152,9 +152,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public refreshCurrentFlow(): void {
         const graphId = Number(this.route.snapshot.paramMap.get('id'));
-        if (!graphId) {
-            return;
-        }
+        if (!isFinite(graphId)) return;
         this.fetchGraph(graphId, true, true);
     }
 
