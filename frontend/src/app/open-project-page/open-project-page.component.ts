@@ -247,20 +247,21 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         const loadStartTime = Date.now();
         this.isLoading.set(true);
 
-        const projectRequest = this.projectsService.getProjectById(+this.projectId);
-
-        const tasksRequest = this.fullTaskService.getFullTasksByProject(+this.projectId);
-        const agentsRequest = this.fullAgentService.getFullAgentsByProject(+this.projectId);
-
-        const combinedRequest = forkJoin({
-            project: projectRequest,
-            tasks: tasksRequest,
-            agents: agentsRequest,
-        });
-
         this.subscription.add(
-            combinedRequest
+            this.projectsService
+                .getProjectById(+this.projectId)
                 .pipe(
+                    switchMap((project) => {
+                        if (!project) {
+                            throw new Error(
+                                `Project with ID ${this.projectId} not found or essential data is missing.`
+                            );
+                        }
+                        return forkJoin({
+                            tasks: this.fullTaskService.getFullTasksByProject(+this.projectId),
+                            agents: this.fullAgentService.getFullAgentsByProject(+this.projectId),
+                        }).pipe(map(({ tasks, agents }) => ({ project, tasks, agents })));
+                    }),
                     finalize(() => {
                         // Ensure minimum loading time of 500ms
                         const loadTime = Date.now() - loadStartTime;
@@ -277,13 +278,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                 )
                 .subscribe({
                     next: ({ project, tasks, agents }) => {
-                        this.projectStateService.setProject(project ?? null);
-
-                        if (!project) {
-                            throw new Error(
-                                `Project with ID ${this.projectId} not found or essential data is missing.`
-                            );
-                        }
+                        this.projectStateService.setProject(project);
                         this.project = project;
 
                         this.projectStateService.updateTasks(tasks);
