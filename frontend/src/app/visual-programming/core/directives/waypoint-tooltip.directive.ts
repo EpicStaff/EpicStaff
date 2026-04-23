@@ -19,9 +19,9 @@ export class WaypointTooltipDirective implements OnDestroy {
         let text: string | null = null;
 
         if (target.classList.contains('f-candidate')) {
-            text = 'Move';
+            text = 'Move, Add';
         } else if (target.classList.contains('f-waypoint')) {
-            text = 'LMB: straighten';
+            text = 'Move, LMB: straighten';
         }
 
         if (text) {
