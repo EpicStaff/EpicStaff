@@ -19,32 +19,34 @@
     }
     .f-connection {
         z-index: 2;
-        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
         .f-connection-drag-handle {
             fill: transparent;
         }
 
         .f-connection-selection {
             fill: none;
-            stroke: #1d1d1d;
+            stroke: transparent;
             stroke-width: 5;
             cursor: pointer;
         }
 
         .f-connection-path {
             fill: none;
-            stroke-width: 2;
+            stroke-width: 2.7;
+        }
+
+        .f-connection-waypoints {
+            visibility: hidden;
         }
 
         &.f-selected {
             .f-connection-selection {
-                stroke: var(--db-primary-1);
-                opacity: 0.35;
-                stroke-width: 8;
+                stroke: transparent;
             }
 
             .f-connection-path {
                 stroke: var(--db-primary-1) !important;
+                stroke-dasharray: 6 4;
             }
 
             .f-marker {
@@ -57,23 +59,27 @@
             .connection-center {
                 display: flex;
             }
+
+            .f-connection-waypoints {
+                visibility: visible;
+            }
         }
 
-        &:hover {
-            .f-connection-selection {
-                stroke: var(--db-primary-1);
-                opacity: 0.1;
+        &:hover:not(.f-selected) {
+            .f-connection-path {
+                stroke: var(--db-primary-1) !important;
             }
 
-            .connection-center {
-                display: flex;
+            .start-marker circle,
+            .end-marker path {
+                fill: var(--db-primary-1) !important;
             }
         }
 
         &.f-snap-connection {
             .f-connection-path {
                 stroke: var(--db-snap-connection);
-                stroke-width: 2px;
+                stroke-width: 3px;
                 stroke-dasharray: 6 3;
                 animation: dashOffset 0.5s linear infinite;
             }
@@ -94,7 +100,7 @@
         &.f-connection-for-create {
             .f-connection-path {
                 stroke: var(--db-primary-1);
-                stroke-width: 2px;
+                stroke-width: 2.5px;
             }
             .f-marker {
                 path,
@@ -125,6 +131,7 @@
             align-items: center;
             justify-content: center;
             pointer-events: all;
+            transform: translate(-30px, -8px);
 
             .icon-button {
                 width: 24px;
@@ -183,6 +190,31 @@
                     cursor: not-allowed;
                     pointer-events: none;
                 }
+            }
+        }
+
+        .f-connection-waypoints {
+            .f-candidate,
+            .f-waypoint {
+                vector-effect: non-scaling-stroke;
+                transform-box: fill-box;
+                transform-origin: center;
+                stroke-width: 1.5;
+
+                &:hover {
+                    transform: scale(1.1);
+                }
+            }
+
+            .f-candidate {
+                fill: #d9d9de99;
+                stroke: #d9d9de99;
+                cursor: move;
+            }
+
+            .f-waypoint {
+                fill: transparent;
+                stroke: #d9d9de99;
             }
         }
     }

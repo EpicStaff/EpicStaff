@@ -137,10 +137,28 @@
                     [class.dashed-connection]="connection.category === 'virtual'"
                     [class.is-backward]="backwardConnectionIds().has(connection.id)"
                     [style.z-index]="backwardConnectionIds().has(connection.id) ? 0 : 1"
+                    [style.--marker-start-color]="
+                        smartRoutingEnabled()
+                            ? nodeColorMap().get(connection.sourceNodeId) || '#555'
+                            : '#555'
+                    "
+                    [style.--marker-end-color]="
+                        smartRoutingEnabled()
+                            ? nodeColorMap().get(connection.targetNodeId) || '#555'
+                            : '#555'
+                    "
                 >
                     <f-connection-gradient
-                        [fStartColor]="connection.startColor || '#555'"
-                        [fEndColor]="connection.endColor || '#555'"
+                        [fStartColor]="
+                            smartRoutingEnabled()
+                                ? nodeColorMap().get(connection.sourceNodeId) || '#555'
+                                : '#555'
+                        "
+                        [fEndColor]="
+                            smartRoutingEnabled()
+                                ? nodeColorMap().get(connection.targetNodeId) || '#555'
+                                : '#555'
+                        "
                     ></f-connection-gradient>
                     <svg
                         viewBox="0 0 10 10"
@@ -215,7 +233,7 @@
                     <div
                         fConnectionContent
                         class="connection-center"
-                        [position]="0.5"
+                        [position]="0.3"
                     >
                         <button
                             type="button"
@@ -227,6 +245,13 @@
                             <i class="ti ti-trash"></i>
                         </button>
                     </div>
+                    <f-connection-waypoints
+                        appWaypointTooltip
+                        [waypoints]="connection.waypoints ?? []"
+                        (waypointsChange)="onWaypointsChanged(connection.id, $event)"
+                        [radius]="5"
+                        [visibility]="true"
+                    ></f-connection-waypoints>
                 </f-connection>
             }
         </f-canvas>
