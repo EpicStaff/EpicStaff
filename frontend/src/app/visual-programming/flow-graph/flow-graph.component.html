@@ -126,16 +126,6 @@
                     [fBehavior]="connection.behavior || 'fixed'"
                     [fType]="backwardConnectionIds().has(connection.id) ? 'backward-arc' : connection.type || 'segment'"
                     [fOffset]="connection.waypoints?.length ? 0 : 30"
-                    [fStartColor]="
-                        smartRoutingEnabled()
-                            ? nodeColorMap().get(connection.sourceNodeId) || '#555'
-                            : connection.startColor || '#555'
-                    "
-                    [fEndColor]="
-                        smartRoutingEnabled()
-                            ? nodeColorMap().get(connection.targetNodeId) || '#555'
-                            : connection.endColor || '#555'
-                    "
                     [fOutputId]="connection.sourcePortId"
                     [fInputId]="connection.targetPortId"
                     [fConnectionId]="connection.id"

@@ -190,6 +190,18 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         return ids;
     });
 
+    protected readonly sortedConnections = computed(() => {
+        const backwardIds = this.backwardConnectionIds();
+        const connections = [...this.flowService.visibleConnections()];
+
+        return connections.sort((a, b) => {
+            const aBackward = backwardIds.has(a.id) ? 1 : 0;
+            const bBackward = backwardIds.has(b.id) ? 1 : 0;
+
+            return aBackward - bBackward;
+        });
+    });
+
     private readonly destroy$ = new Subject<void>();
     private readonly userAdjustedConnectionIds = new Set<string>();
     private draggedNodeIds = new Set<string>();
