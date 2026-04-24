@@ -158,8 +158,9 @@ export class DecisionTableGridComponent implements OnInit {
 
     private createEmptyGroup(index?: number): ConditionGroup {
         const position = index !== undefined ? index + 1 : this.rowData().length + 1;
+        const uniqueName = this.resolveUniqueName(`Condition ${position}`, -1);
         return {
-            group_name: `Condition ${position}`,
+            group_name: uniqueName,
             group_type: 'complex',
             expression: null,
             conditions: [],
