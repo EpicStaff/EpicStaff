@@ -142,13 +142,10 @@ export class DecisionTableGridComponent implements OnInit {
             const normalizedGroups = [...groups]
                 .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER))
                 .map((group, index) => {
-                    // Update group name if it matches the default pattern "Condition X" to reflect current position
-                    const groupNameMatch = group.group_name?.match(/^(Condition|Group) (\d+)$/);
                     const normalizedGroup = {
                         ...group,
-                        group_name: groupNameMatch ? `Condition ${index + 1}` : group.group_name,
                         order: index + 1,
-                        next_node: findNodeId(group.next_node, group.group_name), // Ensure we use ID with fallback
+                        next_node: findNodeId(group.next_node, group.group_name),
                     };
                     this.updateGroupValidFlag(normalizedGroup, index);
                     return normalizedGroup;
@@ -370,21 +367,10 @@ export class DecisionTableGridComponent implements OnInit {
     public removeConditionGroup(index: number): void {
         const updated = this.rowData()
             .filter((_, i) => i !== index)
-            .map((group, newIndex) => {
-                // Update group name if it matches the default pattern "Condition X" or "Group X"
-                const groupNameMatch = group.group_name?.match(/^(Condition|Group) (\d+)$/);
-                if (groupNameMatch) {
-                    return {
-                        ...group,
-                        group_name: `Condition ${newIndex + 1}`,
-                        order: newIndex + 1,
-                    };
-                }
-                return {
-                    ...group,
-                    order: newIndex + 1,
-                };
-            });
+            .map((group, newIndex) => ({
+                ...group,
+                order: newIndex + 1,
+            }));
         this.rowData.set(updated);
 
         if (this.gridApi) {
