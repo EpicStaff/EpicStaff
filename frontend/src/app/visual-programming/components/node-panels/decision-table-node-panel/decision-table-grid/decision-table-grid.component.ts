@@ -312,12 +312,20 @@ export class DecisionTableGridComponent implements OnInit {
         const rowIndex = event.rowIndex!;
 
         if (colId === 'group_name') {
-            const newName = event.newValue?.trim();
-            const isEmpty = !newName;
-            const isDuplicate =
-                !isEmpty && this.rowData().some((row, idx) => idx !== rowIndex && row.group_name === newName);
+            const typedName = (event.newValue ?? '').trim();
+            const isEmpty = !typedName;
 
-            event.data.group_nameWarning = isEmpty || isDuplicate;
+            if (!isEmpty) {
+                const resolvedName = this.resolveUniqueName(typedName, rowIndex);
+                if (resolvedName !== typedName) {
+                    event.data.group_name = resolvedName;
+                    setTimeout(() => {
+                        this.gridApi.refreshCells({ rowNodes: [event.node], columns: ['group_name'], force: true });
+                    });
+                }
+            }
+
+            event.data.group_nameWarning = isEmpty;
         } else if (colId === 'expression') {
             event.data.expressionWarning = !event.newValue?.trim();
         } else if (colId === 'manipulation') {
@@ -339,6 +347,28 @@ export class DecisionTableGridComponent implements OnInit {
         const hasExpression = !!group.expression?.trim();
 
         group.valid = hasValidName && hasNoDuplicateName && hasExpression;
+    }
+
+    private resolveUniqueName(name: string, excludeIndex: number): string {
+        const trimmedName = name.trim();
+        if (!trimmedName) return trimmedName;
+
+        const otherNames = new Set(
+            this.rowData()
+                .filter((_, i) => i !== excludeIndex)
+                .map((g) => g.group_name?.trim())
+                .filter((n): n is string => !!n)
+        );
+
+        if (!otherNames.has(trimmedName)) {
+            return trimmedName;
+        }
+
+        let counter = 2;
+        while (otherNames.has(`${trimmedName} (${counter})`)) {
+            counter++;
+        }
+        return `${trimmedName} (${counter})`;
     }
 
     public onCellClicked(event: CellClickedEvent): void {
