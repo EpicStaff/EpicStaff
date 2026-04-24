@@ -238,10 +238,10 @@ export class DecisionTableGridComponent implements OnInit {
             editable: true,
             flex: 1,
             minWidth: 200,
-            cellEditor: 'agLargeTextCellEditor',
-            cellEditorParams: {
-                maxLength: 2000,
-            },
+            cellEditor: ExpressionEditorComponent,
+            cellEditorPopup: true,
+            cellEditorParams: { mode: 'manipulation' },
+            cellRenderer: ExpressionRendererComponent,
             cellStyle: {
                 fontSize: '14px',
             },

@@ -1,7 +1,13 @@
 <div class="expression-editor-container">
-    <app-editor-toolbar (tokenInserted)="insertToken($event)"></app-editor-toolbar>
+    <app-editor-toolbar
+        [mode]="editorMode()"
+        (tokenInserted)="insertToken($event)"
+    />
     <div class="editor-wrapper">
-        <div class="editor-backdrop" #backdrop></div>
+        <div
+            class="editor-backdrop"
+            #backdrop
+        ></div>
         <textarea
             #input
             [(ngModel)]="value"
@@ -14,7 +20,10 @@
             (click)="onInput($event)"
             (blur)="onBlur($event)"
         ></textarea>
-        <div class="python-badge" title="Python expression syntax">
+        <div
+            class="python-badge"
+            title="Python expression syntax"
+        >
             <app-svg-icon icon="python"></app-svg-icon>
         </div>
     </div>

@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
 @Component({
     selector: 'app-editor-toolbar',
@@ -10,6 +10,7 @@ import { ChangeDetectionStrategy, Component, output } from '@angular/core';
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class EditorToolbarComponent {
+    public mode = input<'condition' | 'manipulation'>('condition');
     public tokenInserted = output<string>();
 
     public insertToken(token: string): void {

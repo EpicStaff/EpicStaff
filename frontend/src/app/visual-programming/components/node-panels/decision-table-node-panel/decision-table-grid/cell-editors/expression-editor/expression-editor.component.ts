@@ -46,6 +46,8 @@ export class ExpressionEditorComponent implements ICellEditorAngularComp, AfterV
     public value: string = '';
     private params!: ICellEditorParams;
 
+    public editorMode = signal<'condition' | 'manipulation'>('condition');
+
     // Autocomplete state
     public showAutocomplete = signal<boolean>(false);
     public filterText = signal<string>('');
@@ -251,6 +253,9 @@ export class ExpressionEditorComponent implements ICellEditorAngularComp, AfterV
     agInit(params: ICellEditorParams): void {
         this.params = params;
         this.value = params.value || '';
+        if ((params as ICellEditorParams & { mode?: string }).mode === 'manipulation') {
+            this.editorMode.set('manipulation');
+        }
         this.updateHighlighting();
     }
 
@@ -390,6 +395,8 @@ export class ExpressionEditorComponent implements ICellEditorAngularComp, AfterV
     public insertToken(token: string): void {
         if (token === '@') {
             this.insertTextAtCursor('@');
+        } else if (this.editorMode() === 'manipulation') {
+            this.insertTextAtCursor(token);
         } else {
             this.insertTextAtCursor(` ${token} `);
         }
