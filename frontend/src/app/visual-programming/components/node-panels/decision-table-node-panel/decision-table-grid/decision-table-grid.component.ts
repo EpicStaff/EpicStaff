@@ -142,10 +142,12 @@ export class DecisionTableGridComponent implements OnInit {
             const normalizedGroups = [...groups]
                 .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER))
                 .map((group, index) => {
+                    const trimmedName = group.group_name?.trim() ?? group.group_name;
                     const normalizedGroup = {
                         ...group,
+                        group_name: trimmedName,
                         order: index + 1,
-                        next_node: findNodeId(group.next_node, group.group_name),
+                        next_node: findNodeId(group.next_node, trimmedName),
                     };
                     this.updateGroupValidFlag(normalizedGroup, index);
                     return normalizedGroup;
@@ -317,7 +319,7 @@ export class DecisionTableGridComponent implements OnInit {
 
             if (!isEmpty) {
                 const resolvedName = this.resolveUniqueName(typedName, rowIndex);
-                if (resolvedName !== typedName) {
+                if (resolvedName !== event.newValue) {
                     event.data.group_name = resolvedName;
                     setTimeout(() => {
                         this.gridApi.refreshCells({ rowNodes: [event.node], columns: ['group_name'], force: true });
