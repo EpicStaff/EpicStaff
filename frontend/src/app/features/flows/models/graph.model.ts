@@ -85,3 +85,18 @@ export interface UpdateGraphDtoRequest {
     metadata: FlowModel | Record<string, unknown>;
     tags?: string[];
 }
+
+export interface GraphVersionCreateRequest {
+    graph_id: number;
+    name: string;
+    description?: string;
+}
+
+export interface GraphVersionDto {
+    id: number;
+    graph: number;
+    name: string;
+    description: string;
+    dependencies: Record<string, unknown>;
+    created_at: string;
+}

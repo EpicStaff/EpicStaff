@@ -23,7 +23,7 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
             graph: null,
             condition_groups: [
                 {
-                    group_name: 'Group 1',
+                    group_name: 'Condition 1',
                     group_type: 'complex',
                     expression: null,
                     conditions: [],

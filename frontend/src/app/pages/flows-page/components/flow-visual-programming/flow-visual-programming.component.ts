@@ -16,11 +16,27 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
-import { catchError, defaultIfEmpty, EMPTY, finalize, forkJoin, map, Observable, of, switchMap, tap } from 'rxjs';
+import {
+    catchError,
+    defaultIfEmpty,
+    EMPTY,
+    filter,
+    finalize,
+    forkJoin,
+    map,
+    Observable,
+    of,
+    switchMap,
+    tap,
+} from 'rxjs';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { EpicChatService } from '../../../../features/epic-chat/epic-chat.service';
 import { FlowSessionsListComponent } from '../../../../features/flows/components/flow-sessions-dialog/flow-sessions-list.component';
+import {
+    SaveVersionDialogComponent,
+    SaveVersionDialogResult,
+} from '../../../../features/flows/components/save-version-dialog/save-version-dialog.component';
 import { GetGraphLightRequest, GraphDto } from '../../../../features/flows/models/graph.model';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
@@ -141,7 +157,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
         effect(() => {
             const graphId = Number(this.routeParamMap().get('id'));
-            if (!graphId) return;
+            if (!isFinite(graphId)) return;
             this.fetchGraph(graphId);
         });
     }
@@ -152,9 +168,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public refreshCurrentFlow(): void {
         const graphId = Number(this.route.snapshot.paramMap.get('id'));
-        if (!graphId) {
-            return;
-        }
+        if (!isFinite(graphId)) return;
         this.fetchGraph(graphId, true, true);
     }
 
@@ -580,5 +594,72 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public onFlowEdited(updatedFlow: GraphDto): void {
         this.graphState.set(updatedFlow);
         this.cdr.markForCheck();
+    }
+
+    public onViewVersionHistory(): void {
+        // TODO: implement version history panel/dialog
+    }
+
+    public onSaveVersion(): void {
+        if (!this.graph.id) return;
+
+        const openVersionDialog = () => {
+            const dialogRef = this.dialog.open<SaveVersionDialogResult>(SaveVersionDialogComponent, {
+                width: '560px',
+                data: {},
+            });
+
+            dialogRef.closed
+                .pipe(
+                    takeUntilDestroyed(this.destroyRef),
+                    filter((result): result is SaveVersionDialogResult => !!result),
+                    switchMap((result) =>
+                        this.flowApiService
+                            .saveGraphVersion({
+                                graph_id: this.graph.id,
+                                name: result.name,
+                                description: result.description,
+                            })
+                            .pipe(
+                                tap(() => this.toastService.success(`Version '${result.name}' saved`)),
+                                catchError(() => {
+                                    this.toastService.error('Failed to save version');
+                                    return EMPTY;
+                                })
+                            )
+                    )
+                )
+                .subscribe();
+        };
+
+        if (!this.hasUnsavedChanges()) {
+            openVersionDialog();
+            return;
+        }
+
+        this.unsavedChangesDialog
+            .confirm({
+                title: 'Your flow has unsaved changes',
+                message:
+                    'Your flow has unsaved changes. <strong>Save</strong> the flow first to include them in the version, or <strong>continue</strong> to version the last saved state.',
+                saveText: 'Save',
+                dontSaveText: 'Continue',
+                cancelText: 'Cancel',
+                type: 'warning',
+                showDontSave: true,
+            })
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                switchMap((result) => {
+                    if (result === 'save') {
+                        return this.saveFlowState(this.currentFlowState(), false).pipe(map(() => void 0));
+                    }
+                    if (result === 'dont-save') {
+                        return of(void 0);
+                    }
+                    return EMPTY;
+                })
+            )
+            .subscribe(() => openVersionDialog());
     }
 }

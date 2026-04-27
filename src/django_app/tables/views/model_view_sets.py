@@ -34,6 +34,11 @@ from tables.exceptions import (
 )
 from tables.serializers.graph_bulk_save_serializers import GraphBulkSaveInputSerializer
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
+from tables.graph_versioning.services import GraphVersioningService
+from tables.graph_versioning.serializers import (
+    GraphVersionCreateSerializer,
+    GraphVersionReadSerializer,
+)
 
 from tables.import_export.enums import EntityType
 from tables.models import (
@@ -50,6 +55,7 @@ from tables.models import (
     Graph,
     GraphFile,
     GraphSessionMessage,
+    GraphVersion,
     LLMConfig,
     LLMModel,
     Provider,
@@ -876,6 +882,33 @@ class GraphLightViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         return Graph.objects.only("id", "name", "description").prefetch_related(
             "tags", "labels"
+        )
+
+
+class GraphVersionViewSet(viewsets.ModelViewSet):
+    queryset = GraphVersion.objects.all()
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["graph_id"]
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return GraphVersionCreateSerializer
+        return GraphVersionReadSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer_class = self.get_serializer_class()
+        write_serializer = serializer_class(data=request.data)
+        write_serializer.is_valid(raise_exception=True)
+
+        version = GraphVersioningService().save_version(
+            graph=write_serializer.validated_data["graph"],
+            name=write_serializer.validated_data["name"],
+            description=write_serializer.validated_data.get("description", ""),
+        )
+
+        return Response(
+            GraphVersionReadSerializer(version).data,
+            status=status.HTTP_201_CREATED,
         )
 
 

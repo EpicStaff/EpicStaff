@@ -165,10 +165,11 @@ export class FlowMessagesPanelComponent implements OnInit, OnChanges, OnDestroy 
     }
 
     private loadSessions(): void {
-        if (!this.graphId) return;
+        const graphId = this.graphId;
+        if (graphId == null || !isFinite(graphId)) return;
 
         this.graphSessionService
-            .getSessionsByGraphId(this.graphId, false)
+            .getSessionsByGraphId(graphId, false)
             .pipe(takeUntil(this.destroy$))
             .subscribe({
                 next: (response) => {

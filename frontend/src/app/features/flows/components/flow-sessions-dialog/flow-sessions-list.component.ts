@@ -13,6 +13,7 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { IconButtonComponent, PaginationControlsComponent } from '@shared/components';
+import { Subject, takeUntil } from 'rxjs';
 import { NodeGroup } from 'src/app/shared/models/node-group.model';
 
 import { GraphDto } from '../../models/graph.model';
@@ -48,6 +49,7 @@ export class FlowSessionsListComponent implements OnInit {
     private reloadTrigger = signal(0);
     public availableNodeGroups = signal<NodeGroup[]>([]);
     public selectedIds = signal<Set<number>>(new Set());
+    private cancelLoad$ = new Subject<void>();
 
     @ViewChild('sessionSearchInput')
     sessionSearchInput!: ElementRef<HTMLInputElement>;
@@ -167,10 +169,12 @@ export class FlowSessionsListComponent implements OnInit {
         nodeName: string | null = null,
         isErrorCause: boolean = false
     ): void {
+        this.cancelLoad$.next();
         this.isLoaded.set(false);
         if (this.flow && this.flow.id) {
             this.graphSessionService
                 .getSessionsByGraphId(this.flow.id, false, limit, offset, status, nodeName, isErrorCause)
+                .pipe(takeUntil(this.cancelLoad$))
                 .subscribe({
                     next: (sessions) => {
                         this.sessions.set(sessions.results);
@@ -225,7 +229,11 @@ export class FlowSessionsListComponent implements OnInit {
         this.graphSessionService.stopSessionById(sessionId).subscribe({
             next: () => {
                 this.sessions.update((sessions) =>
-                    sessions.map((s) => (s.id === sessionId ? { ...s, status: GraphSessionStatus.STOP } : s))
+                    sessions.map((s) =>
+                        s.id === sessionId
+                            ? { ...s, status: GraphSessionStatus.STOP, finished_at: new Date().toISOString() }
+                            : s
+                    )
                 );
             },
             error: (err) => {
@@ -244,6 +252,7 @@ export class FlowSessionsListComponent implements OnInit {
     }
 
     public ngOnDestroy() {
+        this.cancelLoad$.complete();
         this.sessions.set([]);
     }
 

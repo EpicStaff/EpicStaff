@@ -5,7 +5,14 @@ import { map } from 'rxjs/operators';
 
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config/config.service';
-import { CreateGraphDtoRequest, GetGraphLightRequest, GraphDto, UpdateGraphDtoRequest } from '../models/graph.model';
+import {
+    CreateGraphDtoRequest,
+    GetGraphLightRequest,
+    GraphDto,
+    GraphVersionCreateRequest,
+    GraphVersionDto,
+    UpdateGraphDtoRequest,
+} from '../models/graph.model';
 
 @Injectable({
     providedIn: 'root',
@@ -95,5 +102,11 @@ export class FlowsApiService {
 
     getGraphStatus(runId: string): Observable<Record<string, unknown>> {
         return this.http.get<Record<string, unknown>>(`${this.configService.apiUrl}graph_runs/${runId}/status/`);
+    }
+
+    saveGraphVersion(payload: GraphVersionCreateRequest): Observable<GraphVersionDto> {
+        return this.http.post<GraphVersionDto>(`${this.configService.apiUrl}graph-versions/`, payload, {
+            headers: this.httpHeaders,
+        });
     }
 }

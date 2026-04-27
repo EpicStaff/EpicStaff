@@ -5,8 +5,6 @@ from tables.models import (
     EmbeddingConfig,
     RealtimeConfig,
     RealtimeTranscriptionConfig,
-    LLMModel,
-    EmbeddingModel,
     RealtimeModel,
     RealtimeTranscriptionModel,
 )
@@ -25,6 +23,7 @@ from tables.import_export.utils import ensure_unique_identifier, create_filters
 class BaseConfigStrategy(EntityImportExportStrategy):
     entity_type: EntityType
     model_entity_type: EntityType
+    tag_entity: EntityType | None = None
 
     config_model = None
     serializer_class = None
@@ -52,9 +51,19 @@ class BaseConfigStrategy(EntityImportExportStrategy):
         return {"id": instance.id, "name": instance.custom_name}
 
     def extract_dependencies_from_instance(self, instance):
-        return {self.model_entity_type: [getattr(instance, self.model_fk_field).id]}
+        deps: dict[str, list[int]] = {
+            self.model_entity_type: [getattr(instance, self.model_fk_field).id]
+        }
 
-    def create_entity(self, data, id_mapper: IDMapper):
+        if self.tag_entity:
+            tag_ids = list(instance.tags.values_list("id", flat=True))
+
+            if tag_ids:
+                deps[self.tag_entity] = tag_ids
+
+        return deps
+
+    def create_entity(self, data, id_mapper: IDMapper, **kwargs):
         if "custom_name" in data:
             existing_names = self.config_model.objects.values_list(
                 "custom_name", flat=True
@@ -64,8 +73,19 @@ class BaseConfigStrategy(EntityImportExportStrategy):
                 existing_names=existing_names,
             )
 
+        old_tag_ids = data.pop("tags", [])
+        tag_overrides = {}
+
+        if self.tag_entity and old_tag_ids:
+            new_tag_ids = [
+                id_mapper.get_or_none(self.tag_entity, oid) for oid in old_tag_ids
+            ]
+            tag_overrides["tags"] = [nid for nid in new_tag_ids if nid is not None]
+
         resolved_fks = self.remap_foreign_keys(data, id_mapper)
-        serializer = self.serializer_class(data={**data, **resolved_fks})
+        serializer = self.serializer_class(
+            data={**data, **resolved_fks, **tag_overrides}
+        )
         serializer.is_valid(raise_exception=True)
         return serializer.save()
 
@@ -75,6 +95,7 @@ class BaseConfigStrategy(EntityImportExportStrategy):
     def find_existing(self, data, id_mapper):
         data_copy = deepcopy(data)
         data_copy.pop("id", None)
+        data_copy.pop("tags", None)
 
         fk_filters = self.resolve_fk_filters(data_copy, id_mapper)
         filters, null_filters = create_filters(data_copy)
@@ -104,6 +125,7 @@ class BaseConfigStrategy(EntityImportExportStrategy):
 class LLMConfigStrategy(BaseConfigStrategy):
     entity_type = EntityType.LLM_CONFIG
     model_entity_type = EntityType.LLM_MODEL
+    tag_entity = EntityType.LLM_CONFIG_TAG
     config_model = LLMConfig
     serializer_class = LLMConfigImportSerializer
 

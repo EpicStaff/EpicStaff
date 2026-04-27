@@ -1,19 +1,27 @@
 .dialog-container {
     background: var(--color-modals-background);
     border-radius: 8px;
-    padding: 24px;
-    min-width: 320px;
-    max-width: 400px;
+    border: 1px solid var(--color-divider-regular);
+    width: 485px;
+    max-width: 100%;
     color: var(--color-text-primary);
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    overflow: hidden;
+    gap: 0;
+}
+
+.dialog-divider {
+    height: 1px;
+    background: var(--color-divider-regular);
+    flex-shrink: 0;
 }
 
 .dialog-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    padding: 20px 24px;
 }
 
 .close-button {
@@ -32,12 +40,13 @@
     font-size: 0.875rem;
     color: var(--color-text-secondary);
     margin: 0;
+    padding: 20px 24px;
     line-height: 1.5;
     word-wrap: break-word;
     overflow-wrap: break-word;
     max-width: 100%;
 
-    strong {
+    ::ng-deep strong {
         color: var(--color-text-primary);
         font-weight: 600;
         word-wrap: break-word;
@@ -51,7 +60,7 @@
     justify-content: space-between;
     align-items: center;
     gap: 8px;
-    margin-top: 8px;
+    padding: 16px 24px;
 }
 
 .dialog-actions .right-buttons {
@@ -163,7 +172,7 @@
     color: #f44336;
 }
 .dialog-container.warning .dialog-icon {
-    color: var(--accent-color);
+    color: #ffb400;
 }
 .dialog-container.info .dialog-icon {
     color: var(--accent-color);

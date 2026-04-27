@@ -11,6 +11,7 @@ from tables.views.model_view_sets import (
     SubGraphNodeModelViewSet,
     GraphLightViewSet,
     GraphViewSet,
+    GraphVersionViewSet,
     McpToolViewSet,
     NgrokWebhookConfigViewSet,
     PythonCodeToolConfigFieldViewSet,
@@ -163,6 +164,7 @@ router.register(r"crew-tags", CrewTagViewSet)
 router.register(r"agent-tags", AgentTagViewSet)
 router.register(r"graph-tags", GraphTagViewSet)
 router.register(r"graph-light", GraphLightViewSet, basename="graphs-light")
+router.register(r"graph-versions", GraphVersionViewSet)
 router.register(r"realtime-models", RealtimeModelViewSet)
 router.register(r"realtime-model-configs", RealtimeConfigModelViewSet)
 router.register(r"realtime-transcription-models", RealtimeTranscriptionModelViewSet)

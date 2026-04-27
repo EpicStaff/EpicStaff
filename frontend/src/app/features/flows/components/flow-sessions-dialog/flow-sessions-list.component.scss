@@ -11,7 +11,7 @@
     height: 90vh;
     max-height: 800px;
     width: 100%;
-    max-width: 1100px;
+    max-width: 1300px;
 
     .dialog-header {
         display: flex;
@@ -40,12 +40,12 @@
         min-height: 0;
         overflow-y: auto;
 
-    .filter-controls {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 16px;
-      flex-shrink: 0;
-    }
+        .filter-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+            flex-shrink: 0;
+        }
 
         .table-container {
             flex: 1;
@@ -65,48 +65,48 @@
 }
 
 .error-cause-filter {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--color-text-primary, #fff);
-  user-select: none;
-  padding: 5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--color-text-primary, #fff);
+    user-select: none;
+    padding: 5px;
 
-  span {
-    white-space: nowrap;
-  }
+    span {
+        white-space: nowrap;
+    }
 }
 
 .toggle-switch {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  border-radius: 5px;
-  background: var(--color-divider-regular, #444);
-  transition: background 0.2s;
-  cursor: pointer;
-  flex-shrink: 0;
+    position: relative;
+    width: 36px;
+    height: 20px;
+    border-radius: 5px;
+    background: var(--color-divider-regular, #444);
+    transition: background 0.2s;
+    cursor: pointer;
+    flex-shrink: 0;
 
-  &.active {
-    background: var(--accent-color, #5e9eff);
-  }
+    &.active {
+        background: var(--accent-color, #5e9eff);
+    }
 }
 
 .toggle-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 30%;
-  background: #fff;
-  transition: transform 0.2s;
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 30%;
+    background: #fff;
+    transition: transform 0.2s;
 
-  .toggle-switch.active & {
-    transform: translateX(16px);
-  }
+    .toggle-switch.active & {
+        transform: translateX(16px);
+    }
 }
 
 .delete-btn {

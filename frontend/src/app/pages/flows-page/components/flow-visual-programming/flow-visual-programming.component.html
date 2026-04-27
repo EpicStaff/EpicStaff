@@ -8,6 +8,8 @@
         [isRunning]="isRunning()"
         [hasUnsavedChanges]="hasUnsavedChanges()"
         (save)="onHeaderSave()"
+        (saveVersion)="onSaveVersion()"
+        (viewVersionHistory)="onViewVersionHistory()"
         (viewSessions)="handleViewSessions()"
         (run)="handleRunFlow()"
         (getCurl)="handleGetCurl()"

@@ -1563,11 +1563,14 @@ class SessionSerializer(serializers.ModelSerializer):
 
 
 class SessionLightSerializer(serializers.ModelSerializer):
+    graph_name = serializers.CharField(source="graph.name", read_only=True)
+
     class Meta:
         model = Session
         fields = (
             "id",
             "graph_id",
+            "graph_name",
             "status",
             "status_updated_at",
             "created_at",
