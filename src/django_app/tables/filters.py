@@ -64,11 +64,12 @@ class SessionFilter(filters.FilterSet):
     node_name = filters.CharFilter(
         field_name="graphsessionmessage__name", lookup_expr="exact", distinct=True
     )
+    graph_name = filters.CharFilter(field_name="graph__name", lookup_expr="iexact")
     is_error_cause = filters.BooleanFilter(method="filter_by_error_cause")
 
     class Meta:
         model = Session
-        fields = ["graph_id", "status", "node_name"]
+        fields = ["graph_id", "graph_name", "status", "node_name"]
 
     def filter_by_error_cause(self, queryset, name, value):
         """Returns sessions that finished with error on specific node"""

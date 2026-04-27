@@ -14,6 +14,7 @@
             class="close-button"
         ></app-icon-button>
     </div>
+    <div class="dialog-divider"></div>
     <p class="dialog-message" [innerHTML]="data.message"></p>
 
     <div class="dialog-actions">
@@ -21,7 +22,12 @@
             {{ data.cancelText || 'Cancel' }}
         </button>
         <div class="right-buttons">
-            <button type="button" class="button dont-save-button" (click)="onDontSave()">
+            <button
+                *ngIf="data.showDontSave !== false"
+                type="button"
+                class="button dont-save-button"
+                (click)="onDontSave()"
+            >
                 {{ data.dontSaveText || "Don't Save" }}
             </button>
             <button

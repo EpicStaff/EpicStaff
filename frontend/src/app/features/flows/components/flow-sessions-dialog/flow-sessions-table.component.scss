@@ -29,7 +29,8 @@
 
 .sessions-table-wrapper {
     flex: 1 1 auto;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
     border: 1px solid var(--color-divider-regular);
     background: var(--color-nodes-actionbar-bg);
     min-height: 300px;
@@ -37,6 +38,7 @@
 
 table {
     width: 100%;
+    min-width: 1200px;
     border-collapse: collapse;
     margin-bottom: 0;
     table-layout: fixed;
@@ -92,7 +94,8 @@ table {
         padding: 12px 8px;
     }
 
-    td[colspan='7'] {
+    td[colspan='7'],
+    td[colspan='8'] {
         border-bottom: none;
     }
 
@@ -125,7 +128,8 @@ table {
         display: table-row;
     }
 
-    td[colspan='7'] {
+    td[colspan='7'],
+    td[colspan='8'] {
         padding: 40px;
         vertical-align: middle;
     }
@@ -134,6 +138,30 @@ table {
         background-color: var(--color-sidenav-background);
         color: var(--color-text-primary);
         font-weight: 600;
+
+        &.sortable {
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+
+            &:hover {
+                color: var(--accent-color);
+            }
+
+            .sort-icon {
+                margin-left: 4px;
+                font-size: 0.85em;
+                opacity: 0.8;
+                position: relative;
+                top: -2px;
+            }
+        }
+    }
+
+    .flow-link-td {
+        .flow-link {
+            cursor: pointer;
+        }
     }
 
     td {

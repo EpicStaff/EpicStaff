@@ -1,7 +1,16 @@
 import { Dialog as CdkDialog } from '@angular/cdk/dialog';
 import { DialogModule } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    EventEmitter,
+    HostListener,
+    inject,
+    Input,
+    Output,
+    signal,
+} from '@angular/core';
 import { Router, RouterModule } from '@angular/router';
 
 import { FlowRenameDialogComponent } from '../../../../../../features/flows/components/flow-rename-dialog/flow-rename-dialog.component';
@@ -34,10 +43,24 @@ export class FlowHeaderComponent {
     @Output() getCurl = new EventEmitter<void>();
     @Output() connectChat = new EventEmitter<void>();
     @Output() flowEdited = new EventEmitter<GraphDto>();
+    @Output() saveVersion = new EventEmitter<void>();
+    @Output() viewVersionHistory = new EventEmitter<void>();
+
+    public isSaveDropdownOpen = signal(false);
 
     private readonly dialog = inject(CdkDialog);
 
     constructor(private router: Router) {}
+
+    @HostListener('document:click')
+    onDocumentClick(): void {
+        this.isSaveDropdownOpen.set(false);
+    }
+
+    toggleSaveDropdown(event: Event): void {
+        event.stopPropagation();
+        this.isSaveDropdownOpen.update((v) => !v);
+    }
 
     onSave() {
         this.save.emit();

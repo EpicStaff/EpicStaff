@@ -14,6 +14,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
+
 import { ImportExportService } from '../../../../core/services/import-export.service';
 import { ToastService } from '../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -281,5 +282,9 @@ export class FlowsListPageComponent implements OnDestroy {
 
     public isAllSelected(): boolean {
         return this.flowStorageService.isAllFlowsSelected();
+    }
+
+    public navigateToSessions() {
+        this.router.navigate(['/sessions']);
     }
 }

@@ -1,0 +1,110 @@
+.dialog-container {
+    background: var(--color-sidenav-background);
+    border-radius: 12px;
+    width: 560px;
+    max-width: 100%;
+    color: var(--color-text-primary);
+    overflow: hidden;
+}
+
+.dialog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.25rem 1.5rem;
+
+    .dialog-title {
+        margin: 0;
+        font-size: 1.125rem;
+        font-weight: 400;
+        color: var(--color-text-primary);
+    }
+
+    .close-button {
+        background: none;
+        border: none;
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+
+        &:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: var(--color-text-primary);
+        }
+    }
+}
+
+.dialog-divider {
+    height: 1px;
+    background: var(--color-divider-regular);
+}
+
+.dialog-content {
+    padding: 1.25rem 1.5rem;
+
+    .form-group {
+        margin-bottom: 1rem;
+
+        &:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--color-text-primary);
+
+            .required {
+                color: var(--accent-color);
+                margin-left: 2px;
+            }
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.625rem 0.75rem;
+            background-color: var(--color-input-background);
+            border: 1px solid var(--color-input-border);
+            border-radius: 6px;
+            color: var(--color-text-primary);
+            font-size: 0.875rem;
+            transition: border-color 0.2s;
+            resize: vertical;
+            box-sizing: border-box;
+            font-family: inherit;
+
+            &:focus {
+                outline: none;
+                border-color: var(--accent-color);
+            }
+
+            &::placeholder {
+                color: var(--color-input-text-placeholder);
+            }
+
+            &--error {
+                border-color: var(--color-error, #e0575b);
+            }
+        }
+
+        .error-message {
+            font-size: 0.75rem;
+            color: var(--color-error, #e0575b);
+            margin-top: 0.25rem;
+        }
+    }
+}
+
+.dialog-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem 1.5rem;
+}

@@ -25,7 +25,7 @@ export class UnsavedChangesDialogService {
 
     confirm(options: UnsavedChangesDialogData): Observable<UnsavedChangesResult> {
         const dialogRef = this.dialog.open<UnsavedChangesDialogResult>(UnsavedChangesDialogComponent, {
-            width: '400px',
+            width: '485px',
             data: options,
         });
 

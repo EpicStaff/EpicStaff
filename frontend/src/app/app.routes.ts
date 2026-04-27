@@ -146,6 +146,13 @@ export const routes: Routes = [
                         loadComponent: () =>
                             import('./pages/chats-page/chats-page.component').then((m) => m.ChatsPageComponent),
                     },
+                    {
+                        path: 'sessions',
+                        loadComponent: () =>
+                            import('./features/flows/pages/global-sessions-list/global-sessions-list.component').then(
+                                (m) => m.GlobalSessionsListComponent
+                            ),
+                    },
                 ],
             },
             {

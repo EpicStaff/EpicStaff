@@ -30,14 +30,38 @@
         @if (isEpicChatEnabled) {
             <button class="connect-chat-button" (click)="onConnectChat()">Connect chat</button>
         }
-        <button class="save-button" [disabled]="isSaving || isRunning" (click)="onSave()">
-            @if (isSaving) {
-                <app-spinner2 [size]="16"></app-spinner2>
-            } @else {
-                <app-svg-icon icon="floppy" size="1.25rem" />
+        <div class="save-split-btn" [class.disabled]="isSaving || isRunning">
+            <button class="save-split-btn__main" [disabled]="isSaving || isRunning" (click)="onSave()">
+                @if (isSaving) {
+                    <app-spinner2 [size]="16"></app-spinner2>
+                } @else {
+                    <app-svg-icon icon="floppy" size="1.25rem" />
+                }
+                Save
+            </button>
+            <button
+                class="save-split-btn__chevron"
+                [disabled]="isSaving || isRunning"
+                (click)="toggleSaveDropdown($event)"
+            >
+                <app-svg-icon icon="chevron-down" size="1rem" />
+            </button>
+            @if (isSaveDropdownOpen()) {
+                <div class="save-dropdown" (click)="$event.stopPropagation()">
+                    <button class="save-dropdown__item" (click)="onSave(); isSaveDropdownOpen.set(false)">Save</button>
+                    <button class="save-dropdown__item" (click)="saveVersion.emit(); isSaveDropdownOpen.set(false)">
+                        Save Version
+                    </button>
+                    <button
+                        class="save-dropdown__item"
+                        (click)="viewVersionHistory.emit(); isSaveDropdownOpen.set(false)"
+                    >
+                        Version History
+                        <app-svg-icon icon="arrow-up-right" size="1rem" />
+                    </button>
+                </div>
             }
-            Save
-        </button>
+        </div>
         <button class="run-button" [disabled]="isSaving || isRunning" (click)="onRun()">
             @if (isRunning) {
                 <app-spinner2 [size]="16"></app-spinner2>
