@@ -40,7 +40,6 @@ import {
     ICurrentSelection,
 } from '@foblex/flow';
 import { Subject } from 'rxjs';
-import { v4 as uuidv4 } from 'uuid';
 
 import { ToastService } from '../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -57,17 +56,10 @@ import { ProjectDialogComponent } from '../components/project-dialog/project-dia
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { ShortcutListenerDirective } from '../core/directives/shortcut-listener.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
-import { NODE_COLORS, NODE_ICONS } from '../core/enums/node-config';
 import { NodeType } from '../core/enums/node-type';
 import { BackwardArcPathBuilder, computeBackwardArcPoints } from '../core/helpers/backward-arc.path-builder';
-import { generateNodeDisplayName } from '../core/helpers/generate-node-display-name.util';
 import { getMinimapClassForNode } from '../core/helpers/get-minimap-class.util';
-import {
-    defineSourceTargetPair,
-    generatePortsForNode,
-    isBackwardConnection,
-    isConnectionValid,
-} from '../core/helpers/helpers';
+import { defineSourceTargetPair, isBackwardConnection, isConnectionValid } from '../core/helpers/helpers';
 import {
     findNearestFreePosition,
     getCollisionBounds,
@@ -87,9 +79,10 @@ import { ConnectionModel } from '../core/models/connection.model';
 import { FlowModel } from '../core/models/flow.model';
 import { GraphNoteModel, NodeModel, ProjectNodeModel, StartNodeModel } from '../core/models/node.model';
 import { CreateNodeRequest } from '../core/models/node-creation.types';
-import { CustomPortId, ViewPort } from '../core/models/port.model';
+import { CustomPortId } from '../core/models/port.model';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
+import { NodeFactoryService } from '../services/node-factory.service';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
 import { createFlowConnection } from '../utils/connection.factory';
@@ -213,6 +206,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     protected readonly sidePanelService = inject(SidePanelService);
     private readonly undoRedoService = inject(UndoRedoService);
     private readonly clipboardService = inject(ClipboardService);
+    private readonly nodeFactory = inject(NodeFactoryService);
     private readonly cd = inject(ChangeDetectorRef);
     private readonly dialog = inject(Dialog);
     private readonly toastService = inject(ToastService);
@@ -487,108 +481,14 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             return;
         }
 
-        const data = event.overrides?.data;
+        if (this.isDialogOpen()) {
+            return;
+        }
 
-        const newNodeId = uuidv4();
-        const nodeColor = NODE_COLORS[event.type] || '#ddd';
-        const nodeIcon = NODE_ICONS[event.type] || 'help';
         const position = this.fFlowComponent.getPositionInFlow(
             PointExtensions.initialize(this.contextMenuPosition().x, this.contextMenuPosition().y)
         );
-
-        let nodeSize: { width: number; height: number };
-        if (event.type === NodeType.NOTE) {
-            nodeSize = {
-                width: 200,
-                height: 150,
-            };
-        } else if (event.type === NodeType.TABLE) {
-            nodeSize = {
-                width: 330,
-                height: this.getDecisionTableVisualHeight({
-                    id: newNodeId,
-                    backendId: null,
-                    position: { x: 0, y: 0 },
-                    ports: [],
-                    type: NodeType.TABLE as NodeModel['type'],
-                    node_name: '',
-                    data: data as never,
-                    color: nodeColor,
-                    icon: nodeIcon,
-                    input_map: {},
-                    output_variable_path: null,
-                    size: { width: 330, height: 152 },
-                }),
-            };
-        } else if (event.type === NodeType.EDGE) {
-            nodeSize = { width: 300, height: 180 };
-        } else {
-            nodeSize = {
-                width: 330,
-                height: 60,
-            };
-        }
-
-        const ports: ViewPort[] = event.type === NodeType.NOTE ? [] : generatePortsForNode(newNodeId, event.type, data);
-
-        const nodeNumber = this.flowService.getNextNodeNumber();
-        const newNodeName = generateNodeDisplayName(event.type, data, nodeNumber);
-
-        let nodeData = data as NodeModel['data'];
-
-        if (event.type === NodeType.END) {
-            const baseData = data && typeof data === 'object' ? data : {};
-            nodeData = {
-                ...baseData,
-                output_map: {
-                    context: 'variables',
-                },
-            } as NodeModel['data'];
-        }
-
-        const nodePreview = {
-            id: newNodeId,
-            backendId: null,
-            position: {
-                x: this.snapToGrid(position.x),
-                y: this.snapToGrid(position.y),
-            },
-            ports: [],
-            type: event.type as NodeModel['type'],
-            node_name: newNodeName,
-            data: nodeData,
-            color: nodeColor,
-            icon: nodeIcon,
-            input_map: {},
-            output_variable_path: null,
-            size: nodeSize,
-        } as NodeModel;
-
-        const nodeBounds = this.getCollisionBounds(nodePreview);
-
-        const newNode = {
-            id: newNodeId,
-            backendId: null,
-            position: this.findNearestFreePosition(
-                {
-                    x: this.snapToGrid(position.x),
-                    y: this.snapToGrid(position.y),
-                },
-                nodeBounds,
-                this.flowService.nodes()
-            ),
-            ports,
-            type: event.type as NodeModel['type'],
-            node_name: newNodeName,
-            nodeNumber,
-            data: nodeData,
-            color: nodeColor,
-            icon: nodeIcon,
-            input_map: {},
-            output_variable_path: null,
-            size: nodeSize,
-        } as NodeModel;
-
+        const newNode = this.nodeFactory.createNode(event.type, { ...event.overrides, position });
         this.flowService.addNode(newNode);
     }
 
