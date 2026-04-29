@@ -414,6 +414,63 @@ function buildVDetour(
     return validCandidates.sort((a, b) => a.dist - b.dist)[0].result;
 }
 
+function buildForwardVerticalStackRoute(
+    sourcePt: IPoint,
+    targetPt: IPoint,
+    sourceNode: NodeModel,
+    targetNode: NodeModel,
+    sourcePort: ViewPort | undefined,
+    targetPort: ViewPort | undefined,
+    allNodes: NodeModel[],
+    excludeIds: string[]
+): IPoint[] | null {
+    const sourceRect = getNodeRect(sourceNode);
+    const targetRect = getNodeRect(targetNode);
+
+    const sourceIsRightPort = sourcePort?.position === 'right';
+    const targetIsLeftPort = targetPort?.position !== 'right';
+    const targetIsBelowSource = targetPt.y > sourcePt.y;
+
+    if (!sourceIsRightPort || !targetIsLeftPort || !targetIsBelowSource) {
+        return null;
+    }
+
+    const defaultMidX = (sourcePt.x + targetPt.x) / 2;
+    const ya = Math.min(sourcePt.y, targetPt.y);
+    const yb = Math.max(sourcePt.y, targetPt.y);
+
+    const blockers = allNodes.filter((node) => {
+        if (excludeIds.includes(node.id)) return false;
+        if (node.type === NodeType.NOTE) return false;
+
+        const rect = getNodeRect(node);
+
+        return rect.nLeft < defaultMidX && rect.nRight > defaultMidX && rect.nTop < yb && rect.nBottom > ya;
+    });
+
+    if (blockers.length === 0) {
+        return null;
+    }
+
+    const blockerTop = Math.min(...blockers.map((node) => getNodeRect(node).nTop));
+    const exitX = sourceRect.nRight + GAP;
+    const entryX = targetRect.nLeft - GAP;
+    const routeY = Math.min(sourceRect.nTop, blockerTop) - GAP;
+
+    const candidate = simplifyRoute([
+        sourcePt,
+        { x: exitX, y: sourcePt.y },
+        { x: exitX, y: routeY },
+        { x: entryX, y: routeY },
+        { x: entryX, y: targetPt.y },
+        targetPt,
+    ]);
+
+    const score = countPathIntersections(candidate, allNodes, excludeIds);
+
+    return score === 0 ? candidate : null;
+}
+
 export function computeSegmentAvoidanceWaypoints(
     connection: ConnectionModel,
     allNodes: NodeModel[],
@@ -443,6 +500,21 @@ export function computeSegmentAvoidanceWaypoints(
 
     const sourceRect = getNodeRect(sourceNode);
     const targetRect = getNodeRect(targetNode);
+
+    const forwardVerticalStackRoute = buildForwardVerticalStackRoute(
+        sourcePt,
+        targetPt,
+        sourceNode,
+        targetNode,
+        sourcePort,
+        targetPort,
+        allNodes,
+        excludeIds
+    );
+
+    if (forwardVerticalStackRoute) {
+        return forwardVerticalStackRoute.slice(1, -1);
+    }
 
     const intersectsTableTopProtectedZone = (points: IPoint[]): boolean => {
         if (targetNode.type !== NodeType.TABLE) return false;
@@ -575,6 +647,16 @@ export function computeSegmentAvoidanceWaypoints(
         }
     }
 
+    const tag = `[SAW ${connection.sourceNodeId.slice(-4)}→${connection.targetNodeId.slice(-4)}]`;
+    console.log(tag, 'enter', {
+        sourcePt,
+        targetPt,
+        defaultMidX,
+        vertBlockerIds: vertBlockers.map((n) => n.id),
+        existingWaypoints: existingWaypoints ?? [],
+        yBounds: { ya, yb },
+    });
+
     const scoreBasePath: IPoint[] =
         existingWaypoints && existingWaypoints.length > 0
             ? simplifyRoute([sourcePt, ...existingWaypoints, targetPt])
@@ -587,6 +669,13 @@ export function computeSegmentAvoidanceWaypoints(
         return findSegmentNearBlockers(arr[idx], arr[idx + 1], allNodes, excludeIds, NODE_CLEARANCE).length > 0;
     });
 
+    console.log(tag, 'scoreBasePath', {
+        pts: scoreBasePath,
+        startScore,
+        startHasNearBlockers,
+        earlyExitWouldFire: startScore === 0 && !startHasNearBlockers,
+    });
+
     if (startScore === 0 && !startHasNearBlockers) {
         if (existingWaypoints && existingWaypoints.length > 0) {
             const defaultPath = simplifyRoute([
@@ -596,8 +685,19 @@ export function computeSegmentAvoidanceWaypoints(
                 targetPt,
             ]);
             const defaultScore = countPathIntersections(defaultPath, allNodes, excludeIds);
-            return defaultScore === 0 ? [] : null;
+            console.log(
+                tag,
+                'early-exit: defaultScore',
+                defaultScore,
+                _allowFreshFallback ? '→ fresh fallback' : '→ null'
+            );
+            if (defaultScore === 0) return [];
+            if (_allowFreshFallback) {
+                return computeSegmentAvoidanceWaypoints(connection, allNodes, undefined, false);
+            }
+            return null;
         }
+        console.log(tag, 'early-exit: no existingWaypoints → null');
         return null;
     }
 
@@ -607,6 +707,8 @@ export function computeSegmentAvoidanceWaypoints(
     } else {
         path = simplifyRoute([sourcePt, { x: midX, y: sourcePt.y }, { x: midX, y: targetPt.y }, targetPt]);
     }
+
+    console.log(tag, 'detour-loop initial path', path);
 
     let hadDetour = (existingWaypoints && existingWaypoints.length > 0) || proactiveShift;
 
@@ -638,6 +740,13 @@ export function computeSegmentAvoidanceWaypoints(
                 a.y === b.y
                     ? buildHDetour(path, i, segBlockers, allNodes, segmentExcludeIds)
                     : buildVDetour(path, i, segBlockers, allNodes, segmentExcludeIds);
+
+            console.log(tag, `seg[${i}] (${a.x.toFixed(0)},${a.y.toFixed(0)})→(${b.x.toFixed(0)},${b.y.toFixed(0)})`, {
+                kind: a.y === b.y ? 'H' : 'V',
+                blockerIds: segBlockers.map((n) => n.id),
+                detourAccepted: !!detourPts,
+                detourPts,
+            });
 
             if (detourPts) {
                 path = detourPts;
@@ -723,19 +832,15 @@ export function computeSegmentAvoidanceWaypoints(
         if (!changed) break;
     }
 
-    if (!hadDetour) return null;
+    console.log(tag, 'post-loop', { hadDetour, pathPts: path });
+
+    if (!hadDetour) {
+        console.log(tag, 'return: hadDetour=false → null');
+        return null;
+    }
 
     const interiorWaypoints = path.slice(1, -1);
     const fullPath = [sourcePt, ...interiorWaypoints, targetPt];
-
-    fullPath.forEach((p, idx) => {
-        if (idx < fullPath.length - 1) {
-            const q = fullPath[idx + 1];
-            console.log(
-                `  p${idx}→p${idx + 1} : (${p.x.toFixed(1)},${p.y.toFixed(1)}) → (${q.x.toFixed(1)},${q.y.toFixed(1)})`
-            );
-        }
-    });
 
     // ── Score the final path and return only if it improves on startScore ────────────
     const finalScore = countPathIntersections(
@@ -748,34 +853,70 @@ export function computeSegmentAvoidanceWaypoints(
     const sourceExitSafe = isSourceExitSafe(fullPath);
     const sourceTableTopSafe = isSourceTableTopSafe(fullPath);
 
+    const isVerticalStackWithBlocker =
+        sourcePort?.position === 'right' &&
+        targetPort?.position !== 'right' &&
+        targetPt.y > sourcePt.y &&
+        sourceRect.nLeft < targetRect.nRight &&
+        sourceRect.nRight > targetRect.nLeft &&
+        vertBlockers.length > 0;
+
+    const second = interiorWaypoints[0];
+    const penultimate = interiorWaypoints[interiorWaypoints.length - 1];
+
+    console.log(tag, 'final', {
+        finalScore,
+        tableTargetTopSafe,
+        sourceExitSafe,
+        sourceTableTopSafe,
+        isVerticalStackWithBlocker,
+        interiorWaypoints,
+        second,
+        penultimate,
+        secondYMatchesSource: second?.y === sourcePt.y,
+        penultimateYMatchesTarget: penultimate?.y === targetPt.y,
+    });
+
     if (finalScore === 0 && tableTargetTopSafe && sourceExitSafe && sourceTableTopSafe) {
         if (interiorWaypoints.length > 0) {
-            const penultimate = interiorWaypoints[interiorWaypoints.length - 1];
             if (penultimate.y === targetPt.y) {
                 const targetIsLeftPort = targetPort?.position !== 'right';
-                if (targetIsLeftPort ? penultimate.x > targetPt.x : penultimate.x < targetPt.x) {
+                if (
+                    !isVerticalStackWithBlocker &&
+                    (targetIsLeftPort ? penultimate.x > targetPt.x : penultimate.x < targetPt.x)
+                ) {
+                    console.log(tag, 'return: penultimate direction rejected → null');
                     return null;
                 }
             }
 
-            const second = interiorWaypoints[0];
             if (second.y === sourcePt.y) {
                 const sourceIsRightPort = sourcePort?.position === 'right';
-                if (sourceIsRightPort ? second.x < sourcePt.x : second.x > sourcePt.x) {
+                if (
+                    !isVerticalStackWithBlocker &&
+                    (sourceIsRightPort ? second.x < sourcePt.x : second.x > sourcePt.x)
+                ) {
+                    console.log(tag, 'return: second direction rejected → null');
                     return null;
                 }
             }
         }
+        console.log(tag, 'return: interiorWaypoints', interiorWaypoints);
         return interiorWaypoints;
     }
 
     if (_allowFreshFallback && existingWaypoints && existingWaypoints.length > 0) {
         const defaultPath = simplifyRoute([sourcePt, { x: midX, y: sourcePt.y }, { x: midX, y: targetPt.y }, targetPt]);
         const defaultPathScore = countPathIntersections(defaultPath, allNodes, excludeIds);
-        if (defaultPathScore === 0) return []; // blocker moved off the default spine; restore it
+        if (defaultPathScore === 0) {
+            console.log(tag, 'return: fallback → [] (default spine clear)');
+            return [];
+        }
+        console.log(tag, 'return: fallback → fresh reroute');
         return computeSegmentAvoidanceWaypoints(connection, allNodes, undefined, false);
     }
 
+    console.log(tag, 'return: no improvement → null');
     return null; // no improvement — caller must keep existing waypoints unchanged
 }
 

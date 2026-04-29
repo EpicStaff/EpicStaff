@@ -196,6 +196,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     private readonly destroy$ = new Subject<void>();
     private readonly userAdjustedConnectionIds = new Set<string>();
+    private readonly previousBackwardConnectionIds = new Set<string>();
     private draggedNodeIds = new Set<string>();
     private draggingElements = new Set<string>();
     private isDragging = false;
@@ -429,13 +430,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const connection = this.flowService.connections().find((c) => c.id === connectionId);
         if (!connection) return;
 
-        // Foblex's insert() fires waypointsChange with one more waypoint than the store
-        // currently holds. Normalizing here would call simplifyRoute which removes a
-        // collinear candidate, causing connection.waypoints in the store to diverge from
-        // _waypoints. Angular CD then writes the shorter array back into the model signal,
-        // breaking the _waypoints/waypoints() reference invariant and freezing live drag.
-        // Store the original array (which _waypoints points to) and defer normalization
-        // until mouseup, when update() fires waypointsChange at the same count.
         const existingCount = connection.waypoints?.length ?? 0;
         if (waypoints.length > existingCount) {
             this.userAdjustedConnectionIds.add(connectionId);
@@ -655,7 +649,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const backwardIds = this.backwardConnectionIds();
 
         for (const conn of connections) {
-            if (backwardIds.has(conn.id)) {
+            const wasBackward = this.previousBackwardConnectionIds.has(conn.id);
+            const isBackward = backwardIds.has(conn.id);
+            const changedFromBackwardToForward = wasBackward && !isBackward;
+
+            if (isBackward) {
                 if (this.userAdjustedConnectionIds.has(conn.id)) continue;
 
                 const bwSource = nodes.find((n) => n.id === conn.sourceNodeId);
@@ -684,6 +682,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     this.flowService.updateConnectionWaypoints(conn.id, [newWaypoint]);
                     this.bumpConnectionRenderVersion(conn.id);
                 }
+
                 continue;
             }
 
@@ -695,6 +694,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
             const currentConnection = current;
             const currentIntersections = getConnectionIntersectingNodes(currentConnection, nodes);
+
             if (currentIntersections.length === 0) {
                 const rerouteTargetNode = nodes.find((n) => n.id === currentConnection.targetNodeId);
                 const rerouteTargetPort = rerouteTargetNode?.ports?.find(
@@ -703,13 +703,22 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 const isTableInConn =
                     rerouteTargetNode?.type === NodeType.TABLE && rerouteTargetPort?.id?.includes('table-in');
 
-                if (!isTableInConn && (!currentConnection.waypoints || currentConnection.waypoints.length === 0))
+                if (
+                    !changedFromBackwardToForward &&
+                    !isTableInConn &&
+                    (!currentConnection.waypoints || currentConnection.waypoints.length === 0)
+                ) {
                     continue;
+                }
 
                 const restoreResult = computeSegmentAvoidanceWaypoints(
                     currentConnection,
                     nodes,
-                    currentConnection.waypoints?.length ? currentConnection.waypoints : undefined
+                    changedFromBackwardToForward
+                        ? undefined
+                        : currentConnection.waypoints?.length
+                          ? currentConnection.waypoints
+                          : undefined
                 );
 
                 if (restoreResult !== null) {
@@ -720,11 +729,17 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                         this.bumpConnectionRenderVersion(currentConnection.id);
                     }
                 }
+
                 continue;
             }
 
             for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-                const waypoints = computeSegmentAvoidanceWaypoints(current, nodes, current.waypoints);
+                const waypoints = computeSegmentAvoidanceWaypoints(
+                    current,
+                    nodes,
+                    changedFromBackwardToForward ? undefined : current.waypoints
+                );
+
                 if (waypoints === null) break;
 
                 const normalizedWaypoints = this.normalizeWaypointsForConnection(current, waypoints);
@@ -734,6 +749,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 this.bumpConnectionRenderVersion(current.id);
                 current = { ...current, waypoints: normalizedWaypoints };
             }
+        }
+
+        this.previousBackwardConnectionIds.clear();
+
+        for (const id of backwardIds) {
+            this.previousBackwardConnectionIds.add(id);
         }
     }
 
@@ -763,15 +784,21 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
         setTimeout(() => {
             this.rerouteSegmentConnections();
+
             if (autoAlignedNodeIds.size > 0) {
+                this.cd.detectChanges();
+
                 const connections = this.flowService.connections();
                 for (const conn of connections) {
                     if (autoAlignedNodeIds.has(conn.sourceNodeId) || autoAlignedNodeIds.has(conn.targetNodeId)) {
                         this.bumpConnectionRenderVersion(conn.id);
                     }
                 }
+                this.cd.detectChanges();
+                this.fFlowComponent?.redraw();
+            } else {
+                this.cd.detectChanges();
             }
-            this.cd.detectChanges();
         }, 0);
 
         setTimeout(() => {
