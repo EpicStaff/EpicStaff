@@ -1,4 +1,8 @@
-<div #agGridWrap class="wrapper" [class.agents-table-wrap--saving]="isSaving">
+<div
+    #agGridWrap
+    class="wrapper"
+    [class.agents-table-wrap--saving]="isSaving"
+>
     <app-spinner
         *ngIf="isLoading()"
         [text]="'Agents coming...'"

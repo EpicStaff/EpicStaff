@@ -9,13 +9,22 @@
         </div>
     } @else if (!loadingCollection() && !fullCollection()) {
         <div class="details__empty">
-            <app-svg-icon icon="folder" class="details__empty-icon" size="3.125rem"/>
+            <app-svg-icon
+                icon="folder"
+                class="details__empty-icon"
+                size="3.125rem"
+            />
             <p class="details__empty-text">Select a collection to view files</p>
         </div>
     } @else {
         <div class="details__header">
             <div class="details__header-name">
-                <label for="collection-name" class="details__header-label"> Collection Name </label>
+                <label
+                    for="collection-name"
+                    class="details__header-label"
+                >
+                    Collection Name
+                </label>
                 <input
                     [formControl]="collectionName"
                     type="text"
@@ -106,7 +115,10 @@
                 </div>
             </app-drag-drop-area>
 
-            <app-collection-details-info [collection]="fullCollection()!" [documents]="documents()" />
+            <app-collection-details-info
+                [collection]="fullCollection()!"
+                [documents]="documents()"
+            />
         </section>
     }
 </div>

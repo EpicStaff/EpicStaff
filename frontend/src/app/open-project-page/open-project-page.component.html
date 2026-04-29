@@ -1,11 +1,19 @@
 <div class="project-container">
     @if (isLoading()) {
         <div class="loading-container">
-            <app-spinner [text]="'Loading project...'" [accentColor]="'#685fff'" [isOverlay]="false"></app-spinner>
+            <app-spinner
+                [text]="'Loading project...'"
+                [accentColor]="'#685fff'"
+                [isOverlay]="false"
+            ></app-spinner>
         </div>
     } @else {
         @if (!showHeader) {
-            <app-header [hasUnsavedChanges]="hasUnsavedChanges" [isSaving]="isSaving" (save)="onSaveAll()"></app-header>
+            <app-header
+                [hasUnsavedChanges]="hasUnsavedChanges"
+                [isSaving]="isSaving"
+                (save)="onSaveAll()"
+            ></app-header>
         }
 
         <!-- <div class="tabs-container">
@@ -31,9 +39,19 @@
             @if (activeTab === 'overview') {
                 <div class="section-list">
                     @for (section of sections; track section.id) {
-                        <div class="section-item" [class.expanded]="isSectionExpanded(section.id)">
-                            <div class="section-header" (click)="toggleSection(section.id)">
-                                <app-svg-icon icon="play" size="16px" class="toggle-icon play-icon" />
+                        <div
+                            class="section-item"
+                            [class.expanded]="isSectionExpanded(section.id)"
+                        >
+                            <div
+                                class="section-header"
+                                (click)="toggleSection(section.id)"
+                            >
+                                <app-svg-icon
+                                    icon="play"
+                                    size="16px"
+                                    class="toggle-icon play-icon"
+                                />
                                 <span class="section-title">
                                     {{ section.title }}
                                     @if (section.showCount) {
@@ -46,8 +64,14 @@
                                     }
                                 </span>
                                 @if (section.showAddButton) {
-                                    <span class="add-button" (click)="onAddAction($event, section.id)">
-                                        <app-svg-icon icon="plus" size="16px" />
+                                    <span
+                                        class="add-button"
+                                        (click)="onAddAction($event, section.id)"
+                                    >
+                                        <app-svg-icon
+                                            icon="plus"
+                                            size="16px"
+                                        />
                                     </span>
                                 }
                             </div>

@@ -12,8 +12,16 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
         <div class="wait-for-user-container">
             <div class="options-row">
                 <div class="quick-options">
-                    <button class="done-btn" (click)="markAsDone()" [disabled]="isSubmitting" title="Mark as Done">
-                        <app-svg-icon icon="check" size="1rem" />Mark as Done
+                    <button
+                        class="done-btn"
+                        (click)="markAsDone()"
+                        [disabled]="isSubmitting"
+                        title="Mark as Done"
+                    >
+                        <app-svg-icon
+                            icon="check"
+                            size="1rem"
+                        />Mark as Done
                     </button>
                     <div class="feedback-message">Please provide a feedback for the agent</div>
                 </div>
@@ -25,9 +33,15 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                     title="Send"
                 >
                     <ng-container *ngIf="!isSubmitting">
-                        <app-svg-icon icon="send" size="1rem" />Send
+                        <app-svg-icon
+                            icon="send"
+                            size="1rem"
+                        />Send
                     </ng-container>
-                    <div *ngIf="isSubmitting" class="spinner"></div>
+                    <div
+                        *ngIf="isSubmitting"
+                        class="spinner"
+                    ></div>
                 </button>
             </div>
 

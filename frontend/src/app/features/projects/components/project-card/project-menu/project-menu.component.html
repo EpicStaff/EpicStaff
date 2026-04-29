@@ -1,4 +1,7 @@
-<div class="menu-container" [ngClass]="{ 'menu-active': isMenuOpen() }">
+<div
+    class="menu-container"
+    [ngClass]="{ 'menu-active': isMenuOpen() }"
+>
     <button
         class="menu-button"
         [class.active]="isMenuOpen()"
@@ -7,9 +10,17 @@
         (mouseenter)="onButtonEnter()"
         (mouseleave)="onButtonLeave()"
     >
-        <app-svg-icon icon="dots-vertical" size="1rem" />
+        <app-svg-icon
+            icon="dots-vertical"
+            size="1rem"
+        />
     </button>
-    <div class="context-menu" *ngIf="isMenuOpen()" (mouseenter)="onMenuEnter()" (mouseleave)="onMenuLeave()">
+    <div
+        class="context-menu"
+        *ngIf="isMenuOpen()"
+        (mouseenter)="onMenuEnter()"
+        (mouseleave)="onMenuLeave()"
+    >
         <!-- <app-project-menu-item
             icon="ti-tags"
             label="Manage Tags"

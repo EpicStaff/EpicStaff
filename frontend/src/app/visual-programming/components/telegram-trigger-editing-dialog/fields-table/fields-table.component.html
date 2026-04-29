@@ -2,8 +2,14 @@
     <!-- HEADER ROW -->
     <div class="table__row table__header">
         <!-- 1. Checkbox -->
-        <div class="table__col" (click)="toggleAll()">
-            <app-checkbox [checked]="allChecked()" [indeterminate]="indeterminate()" />
+        <div
+            class="table__col"
+            (click)="toggleAll()"
+        >
+            <app-checkbox
+                [checked]="allChecked()"
+                [indeterminate]="indeterminate()"
+            />
         </div>
 
         <!-- 2. Default Name -->
@@ -24,11 +30,17 @@
         <ol class="table__rows">
             <label class="table__list-title"> Message items </label>
             @for (item of messageTableItems(); track $index; let odd = $odd) {
-                <div class="table__row-wrapper" [class.table__row-wrapper--dark]="odd">
+                <div
+                    class="table__row-wrapper"
+                    [class.table__row-wrapper--dark]="odd"
+                >
                     <li class="table__row">
                         <!-- checkbox -->
                         <div class="table__col table__col--small">
-                            <app-checkbox [checked]="item.checked" (changed)="toggleItem(item)" />
+                            <app-checkbox
+                                [checked]="item.checked"
+                                (changed)="toggleItem(item)"
+                            />
                         </div>
 
                         <!-- default name -->
@@ -63,11 +75,17 @@
 
             <label class="table__list-title"> Callback query items </label>
             @for (item of callbackQueryTableItems(); track $index; let even = $even) {
-                <div class="table__row-wrapper" [class.table__row-wrapper--dark]="even">
+                <div
+                    class="table__row-wrapper"
+                    [class.table__row-wrapper--dark]="even"
+                >
                     <li class="table__row">
                         <!-- checkbox -->
                         <div class="table__col table__col--small">
-                            <app-checkbox [checked]="item.checked" (changed)="toggleItem(item)" />
+                            <app-checkbox
+                                [checked]="item.checked"
+                                (changed)="toggleItem(item)"
+                            />
                         </div>
 
                         <!-- default name -->

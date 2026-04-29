@@ -31,13 +31,30 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
     template: `
         <!-- Tools Selection Button -->
         <div class="tools-selector">
-            <div class="tools-display" (click)="openToolsDialog()">
-                <div *ngIf="totalSelectedTools === 0" class="no-tools-selected">Select tools</div>
-                <div *ngIf="totalSelectedTools > 0" class="tools-summary">
+            <div
+                class="tools-display"
+                (click)="openToolsDialog()"
+            >
+                <div
+                    *ngIf="totalSelectedTools === 0"
+                    class="no-tools-selected"
+                >
+                    Select tools
+                </div>
+                <div
+                    *ngIf="totalSelectedTools > 0"
+                    class="tools-summary"
+                >
                     {{ totalSelectedTools }} tool(s) selected
                 </div>
                 <div class="tools-selector-icon">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                    >
                         <path
                             d="M19 9L12 16L5 9"
                             stroke="currentColor"
@@ -51,12 +68,18 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
         </div>
 
         <!-- Tools Dialog -->
-        <div class="tools-dialog-overlay" *ngIf="showToolsDialog">
+        <div
+            class="tools-dialog-overlay"
+            *ngIf="showToolsDialog"
+        >
             <div class="tools-dialog">
                 <!-- Header -->
                 <div class="tools-dialog-header">
                     <div class="header-title">
-                        <app-svg-icon icon="tools" size="0.1rem" />
+                        <app-svg-icon
+                            icon="tools"
+                            size="0.1rem"
+                        />
                         <span>Select Tools</span>
                     </div>
                     <app-icon-button
@@ -70,13 +93,23 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                 <!-- Search and Tabs -->
                 <div class="tools-header">
                     <div class="search-bar">
-                        <input type="text" [(ngModel)]="toolsSearchTerm" placeholder="Search tools..." />
+                        <input
+                            type="text"
+                            [(ngModel)]="toolsSearchTerm"
+                            placeholder="Search tools..."
+                        />
                     </div>
                     <div class="tools-tabs">
-                        <button [class.active]="currentToolType === 'python'" (click)="toggleToolType('python')">
+                        <button
+                            [class.active]="currentToolType === 'python'"
+                            (click)="toggleToolType('python')"
+                        >
                             Custom Tools
                         </button>
-                        <button [class.active]="currentToolType === 'mcp'" (click)="toggleToolType('mcp')">
+                        <button
+                            [class.active]="currentToolType === 'mcp'"
+                            (click)="toggleToolType('mcp')"
+                        >
                             MCP Tools
                         </button>
                     </div>
@@ -85,7 +118,10 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                 <!-- Body -->
                 <div class="tools-dialog-body">
                     <!-- Loading State -->
-                    <div *ngIf="isLoadingTools" class="tools-loading">
+                    <div
+                        *ngIf="isLoadingTools"
+                        class="tools-loading"
+                    >
                         <div class="spinner">
                             <div class="bounce1"></div>
                             <div class="bounce2"></div>
@@ -213,9 +249,17 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                     <!--                    </div>-->
 
                     <!-- Python Tools List -->
-                    <div *ngIf="!isLoadingTools && currentToolType === 'python'" class="tools-list">
+                    <div
+                        *ngIf="!isLoadingTools && currentToolType === 'python'"
+                        class="tools-list"
+                    >
                         <!-- Empty State -->
-                        <div *ngIf="filteredPythonTools.length === 0" class="empty-state">No custom tools found</div>
+                        <div
+                            *ngIf="filteredPythonTools.length === 0"
+                            class="empty-state"
+                        >
+                            No custom tools found
+                        </div>
 
                         <!-- Tools List -->
                         <div
@@ -241,9 +285,17 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                     </div>
 
                     <!-- MCP Tools List -->
-                    <div *ngIf="!isLoadingTools && currentToolType === 'mcp'" class="tools-list">
+                    <div
+                        *ngIf="!isLoadingTools && currentToolType === 'mcp'"
+                        class="tools-list"
+                    >
                         <!-- Empty State -->
-                        <div *ngIf="filteredMcpTools.length === 0" class="empty-state">No MCP tools found</div>
+                        <div
+                            *ngIf="filteredMcpTools.length === 0"
+                            class="empty-state"
+                        >
+                            No MCP tools found
+                        </div>
 
                         <!-- Tools List -->
                         <div
@@ -269,8 +321,18 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
 
                 <!-- Footer -->
                 <div class="tools-dialog-footer">
-                    <button class="cancel-btn" (click)="closeToolsDialog()">Cancel</button>
-                    <button class="save-btn" (click)="saveToolSelection()">Save Selection</button>
+                    <button
+                        class="cancel-btn"
+                        (click)="closeToolsDialog()"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        class="save-btn"
+                        (click)="saveToolSelection()"
+                    >
+                        Save Selection
+                    </button>
                 </div>
             </div>
         </div>

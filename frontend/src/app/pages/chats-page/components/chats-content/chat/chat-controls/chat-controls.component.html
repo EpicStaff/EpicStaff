@@ -1,20 +1,32 @@
 <!-- chat-controls.component.html -->
 <div class="chat-controls">
     <!-- Text input area that shows when keyboard mode is active -->
-    <div class="text-input-container" *ngIf="isKeyboardMode() && isConversationSetuped">
+    <div
+        class="text-input-container"
+        *ngIf="isKeyboardMode() && isConversationSetuped"
+    >
         <textarea
             class="message-input"
             placeholder="Enter your message..."
             [(ngModel)]="messageText"
             (keydown.enter)="$event.preventDefault(); sendMessage()"
         ></textarea>
-        <button class="send-btn" (click)="sendMessage()">
-            <app-svg-icon icon="send" size="1.25rem" />
+        <button
+            class="send-btn"
+            (click)="sendMessage()"
+        >
+            <app-svg-icon
+                icon="send"
+                size="1.25rem"
+            />
         </button>
     </div>
 
     <!-- Initial controls for starting conversation -->
-    <div class="controls-container" *ngIf="!isConversationSetuped">
+    <div
+        class="controls-container"
+        *ngIf="!isConversationSetuped"
+    >
         <button
             class="start-speaking-btn"
             [appCollapseOnOverflow]="true"
@@ -25,34 +37,66 @@
             (click)="onStartSpeaking()"
             [disabled]="!canStartSpeaking()"
         >
-            <app-svg-icon icon="microphone" size="1.25rem" *ngIf="!isConnecting()" />
-            <app-svg-icon icon="loader" size="1.25rem" class="ti-spin" *ngIf="isConnecting()" />
+            <app-svg-icon
+                icon="microphone"
+                size="1.25rem"
+                *ngIf="!isConnecting()"
+            />
+            <app-svg-icon
+                icon="loader"
+                size="1.25rem"
+                class="ti-spin"
+                *ngIf="isConnecting()"
+            />
             <span class="start-speaking-btn__label">{{ isConnecting() ? 'Connecting...' : 'Start Speaking' }}</span>
         </button>
         <app-microphone-selector></app-microphone-selector>
     </div>
 
     <!-- Controls when conversation is active -->
-    <div class="controls-container active-recording" *ngIf="isConversationSetuped">
+    <div
+        class="controls-container active-recording"
+        *ngIf="isConversationSetuped"
+    >
         <app-voice-visualizer></app-voice-visualizer>
 
         <div class="recording-controls">
             <!-- Switch to keyboard/mic button -->
-            <button class="control-btn" [class.active]="isKeyboardMode()" (click)="toggleInputMode()">
-                <app-svg-icon icon="keyboard" size="1.25rem" />
+            <button
+                class="control-btn"
+                [class.active]="isKeyboardMode()"
+                (click)="toggleInputMode()"
+            >
+                <app-svg-icon
+                    icon="keyboard"
+                    size="1.25rem"
+                />
             </button>
 
             <!-- Pause/Resume microphone button -->
-            <button class="control-btn" [class.active]="isMicrophoneMuted()" (click)="toggleRecording()">
-                <app-svg-icon icon="microphone-off" size="1.25rem" />
+            <button
+                class="control-btn"
+                [class.active]="isMicrophoneMuted()"
+                (click)="toggleRecording()"
+            >
+                <app-svg-icon
+                    icon="microphone-off"
+                    size="1.25rem"
+                />
             </button>
 
             <!-- Divider -->
             <span class="control-divider"></span>
 
             <!-- End conversation button -->
-            <button class="control-btn end-btn" (click)="stopConversation()">
-                <app-svg-icon icon="x" size="1.25rem" />
+            <button
+                class="control-btn end-btn"
+                (click)="stopConversation()"
+            >
+                <app-svg-icon
+                    icon="x"
+                    size="1.25rem"
+                />
             </button>
         </div>
     </div>

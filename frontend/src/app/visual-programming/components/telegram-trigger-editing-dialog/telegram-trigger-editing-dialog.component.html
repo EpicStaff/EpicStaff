@@ -3,18 +3,35 @@
         <span class="dialog__header-title"> Editing Fields </span>
 
         <div class="dialog__actions">
-            <app-svg-icon icon="close" size="1.5rem" class="dialog__action" (click)="onCancel()" />
-            <app-svg-icon icon="check" size="1.5rem" class="dialog__action dialog__action--save" (click)="onSave()" />
+            <app-svg-icon
+                icon="close"
+                size="1.5rem"
+                class="dialog__action"
+                (click)="onCancel()"
+            />
+            <app-svg-icon
+                icon="check"
+                size="1.5rem"
+                class="dialog__action dialog__action--save"
+                (click)="onSave()"
+            />
         </div>
     </div>
 
     <div class="main">
         <div class="main__fields-section">
             <div class="main__fields-searchbar">
-                <app-search class="main__input" placeholder="Search fields..." [(searchTerm)]="searchTerm" />
+                <app-search
+                    class="main__input"
+                    placeholder="Search fields..."
+                    [(searchTerm)]="searchTerm"
+                />
                 <label>Activate checkbox near variable to save its value</label>
             </div>
-            <app-telegram-fields-table [searchTerm]="searchTerm()" [(tableItems)]="tableItems" />
+            <app-telegram-fields-table
+                [searchTerm]="searchTerm()"
+                [(tableItems)]="tableItems"
+            />
         </div>
 
         <div class="main__mock-data-section">

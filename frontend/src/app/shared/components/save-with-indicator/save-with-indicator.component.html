@@ -13,7 +13,10 @@
     @if (isSaving) {
         <app-spinner2 [size]="16"></app-spinner2>
     } @else {
-        <app-svg-icon icon="floppy" size="1rem" />
+        <app-svg-icon
+            icon="floppy"
+            size="1rem"
+        />
     }
     <span class="save-button__label">{{ label }}</span>
 </button>

@@ -13,9 +13,18 @@ import { MergedConfig } from '../../../../../features/staff/services/full-agent.
     imports: [CommonModule, AppSvgIconComponent],
     template: `
         <div class="configs-cell-wrapper">
-            <div *ngIf="!configs || configs.length === 0" class="no-configs">No configurations assigned</div>
+            <div
+                *ngIf="!configs || configs.length === 0"
+                class="no-configs"
+            >
+                No configurations assigned
+            </div>
 
-            <div *ngFor="let config of configs" class="config-item" [ngClass]="config.type">
+            <div
+                *ngFor="let config of configs"
+                class="config-item"
+                [ngClass]="config.type"
+            >
                 <app-svg-icon
                     [icon]="getProviderIcon(config)"
                     size="20px"
@@ -26,7 +35,12 @@ import { MergedConfig } from '../../../../../features/staff/services/full-agent.
                 <div class="item-content">
                     <div class="item-text">
                         {{ config.model_name }}
-                        <span *ngIf="config.custom_name" class="custom-name"> ({{ config.custom_name }}) </span>
+                        <span
+                            *ngIf="config.custom_name"
+                            class="custom-name"
+                        >
+                            ({{ config.custom_name }})
+                        </span>
                     </div>
                 </div>
             </div>

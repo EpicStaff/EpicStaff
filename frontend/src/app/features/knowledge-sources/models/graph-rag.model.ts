@@ -1,4 +1,4 @@
-import { BaseRagType, RagStatus } from "./base-rag.model";
+import { BaseRagType, RagStatus } from './base-rag.model';
 
 export type GraphRagFileType = 'csv' | 'text' | 'json';
 export type GraphRagChunkStrategy = 'tokens' | 'sentence';

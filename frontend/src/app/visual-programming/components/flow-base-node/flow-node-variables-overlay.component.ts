@@ -8,14 +8,24 @@ import { BaseNodeModel, NodeModel } from '../../core/models/node.model';
     selector: 'app-flow-node-variables-overlay',
     template: `
         @if (showInputsOverlay) {
-            <div class="inputs-overlay" [ngStyle]="{ '--node-overlay-color': node.color || '#23272e' }">
+            <div
+                class="inputs-overlay"
+                [ngStyle]="{ '--node-overlay-color': node.color || '#23272e' }"
+            >
                 <div class="inputs-title">Inputs</div>
                 <div class="inputs-list">
                     @for (key of inputKeys; track key) {
                         <div class="input-item">
-                            <span class="input-key" [title]="key">{{ key }}</span>
+                            <span
+                                class="input-key"
+                                [title]="key"
+                                >{{ key }}</span
+                            >
                             <span class="equals-sign">=</span>
-                            <span class="input-value" [title]="baseNode?.input_map?.[key] ?? ''">
+                            <span
+                                class="input-value"
+                                [title]="baseNode?.input_map?.[key] ?? ''"
+                            >
                                 {{ baseNode?.input_map?.[key] }}
                             </span>
                         </div>
@@ -25,7 +35,10 @@ import { BaseNodeModel, NodeModel } from '../../core/models/node.model';
         }
 
         @if (showOutputOverlay) {
-            <div class="output-overlay" [ngStyle]="{ '--node-overlay-color': node.color || '#23272e' }">
+            <div
+                class="output-overlay"
+                [ngStyle]="{ '--node-overlay-color': node.color || '#23272e' }"
+            >
                 <div class="output-title">Output</div>
                 <span class="output-label">
                     {{ baseNode?.output_variable_path }}

@@ -6,8 +6,14 @@
     (scroll)="onMessagesScroll()"
 >
     <!-- Connection status indicator -->
-    <div class="connection-status" *ngIf="connectionStatus === 'reconnecting' || connectionStatus === 'disconnected'">
-        <div class="status-indicator" [class]="connectionStatus">
+    <div
+        class="connection-status"
+        *ngIf="connectionStatus === 'reconnecting' || connectionStatus === 'disconnected'"
+    >
+        <div
+            class="status-indicator"
+            [class]="connectionStatus"
+        >
             <span class="status-icon">
                 <app-svg-icon
                     [icon]="connectionStatus === 'reconnecting' ? 'loader' : 'alert-triangle'"
@@ -25,7 +31,10 @@
     </div>
 
     <!-- Messages list -->
-    <div class="messages-list" *ngIf="messages.length > 0">
+    <div
+        class="messages-list"
+        *ngIf="messages.length > 0"
+    >
         <!-- Warnings -->
         <app-warning-messages [messages]="warningMessages" />
         @for (entry of visibleMessageEntries; track entry.key; let i = $index) {
@@ -40,7 +49,10 @@
                         <app-user-message [message]="entry.message"></app-user-message>
                     }
                     @case ('agent') {
-                        <app-agent-message [message]="entry.message" [agent]="entry.agent"></app-agent-message>
+                        <app-agent-message
+                            [message]="entry.message"
+                            [agent]="entry.agent"
+                        ></app-agent-message>
                     }
                     @case ('agent_finish') {
                         <app-agent-finish-message
@@ -64,7 +76,10 @@
                         <app-task-message [message]="entry.message"></app-task-message>
                     }
                     @case ('finish') {
-                        <app-finish-message [message]="entry.message" [project]="entry.project"></app-finish-message>
+                        <app-finish-message
+                            [message]="entry.message"
+                            [project]="entry.project"
+                        ></app-finish-message>
                     }
                     @case ('code_agent_stream') {
                         <app-code-agent-stream-message
@@ -74,7 +89,10 @@
                     }
                     @case ('subgraph_start') {
                         <ng-container *ngIf="entry.rootView as rootView">
-                            <div class="subgraph-drilldown" [class.is-closing]="rootView.isClosing">
+                            <div
+                                class="subgraph-drilldown"
+                                [class.is-closing]="rootView.isClosing"
+                            >
                                 <div class="subgraph-drilldown__breadcrumbs">
                                     <div class="breadcrumbs-control breadcrumbs-control--left">
                                         <button
@@ -84,7 +102,10 @@
                                             (click)="scrollBreadcrumbs(breadcrumbsScroller, 'left')"
                                             *ngIf="rootView.hasBreadcrumbOverflow"
                                         >
-                                            <app-svg-icon icon="chevron-left" size="23px" />
+                                            <app-svg-icon
+                                                icon="chevron-left"
+                                                size="23px"
+                                            />
                                         </button>
                                         <div
                                             class="breadcrumbs-search"
@@ -96,7 +117,11 @@
                                                 aria-label="Search subflow"
                                                 (click)="toggleBreadcrumbSearch(rootView.rootKey)"
                                             >
-                                                <app-svg-icon icon="search" size="19px" class="search-icon" />
+                                                <app-svg-icon
+                                                    icon="search"
+                                                    size="19px"
+                                                    class="search-icon"
+                                                />
                                             </button>
                                             <input
                                                 type="text"
@@ -128,12 +153,21 @@
                                                 {{ crumb.label }}
                                             </button>
 
-                                            <span class="breadcrumb-separator icon-container" *ngIf="!isLast">
-                                                <app-svg-icon icon="chevron-right" size="23px" />
+                                            <span
+                                                class="breadcrumb-separator icon-container"
+                                                *ngIf="!isLast"
+                                            >
+                                                <app-svg-icon
+                                                    icon="chevron-right"
+                                                    size="23px"
+                                                />
                                             </span>
                                         </span>
                                         <div class="icon-container">
-                                            <app-svg-icon icon="corner-right-down" size="23px" />
+                                            <app-svg-icon
+                                                icon="corner-right-down"
+                                                size="23px"
+                                            />
                                         </div>
                                     </div>
                                     <div
@@ -146,7 +180,10 @@
                                             aria-label="Scroll breadcrumbs right"
                                             (click)="scrollBreadcrumbs(breadcrumbsScroller, 'right')"
                                         >
-                                            <app-svg-icon icon="chevron-right" size="23px" />
+                                            <app-svg-icon
+                                                icon="chevron-right"
+                                                size="23px"
+                                            />
                                         </button>
                                     </div>
                                 </div>
@@ -267,10 +304,18 @@
         }
     </div>
 
-    <div class="empty-list" *ngIf="messages.length === 0">No messages to show</div>
+    <div
+        class="empty-list"
+        *ngIf="messages.length === 0"
+    >
+        No messages to show
+    </div>
 
     <!-- Loading dots for running session -->
-    <app-loading-dots *ngIf="isProcessing" class="loading-indicator"></app-loading-dots>
+    <app-loading-dots
+        *ngIf="isProcessing"
+        class="loading-indicator"
+    ></app-loading-dots>
 
     <!-- Waiting for user input component -->
     <app-wait-for-user-input
@@ -279,8 +324,15 @@
     ></app-wait-for-user-input>
 
     @if (showScrollToTop) {
-        <button class="scroll-to-top-btn" (click)="scrollToTop()" aria-label="Scroll to top">
-            <app-svg-icon icon="arrow-up" size="1rem"></app-svg-icon>
+        <button
+            class="scroll-to-top-btn"
+            (click)="scrollToTop()"
+            aria-label="Scroll to top"
+        >
+            <app-svg-icon
+                icon="arrow-up"
+                size="1rem"
+            ></app-svg-icon>
         </button>
     }
 </div>

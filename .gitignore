@@ -272,6 +272,7 @@ CLAUDE.local.md
 !prod/prod.env.manifest
 .claude/settings.local.json
 /personal_files
+pyrightconfig.json
 
 # Self — local gitignore tweaks should not be tracked
 .gitignore

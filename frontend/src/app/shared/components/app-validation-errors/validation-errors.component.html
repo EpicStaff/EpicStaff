@@ -1,9 +1,10 @@
-@if (control().invalid && (control().dirty || control().touched)) {
+@if (effectiveServerError() || (control().invalid && (control().dirty || control().touched))) {
     <div class="validation-errors">
+        @if (effectiveServerError()) {
+            <label class="validation-errors__item">{{ effectiveServerError() }}</label>
+        }
         @for (error of errors; track $index) {
-            <label class="validation-errors__item">
-                {{ error }}
-            </label>
+            <label class="validation-errors__item">{{ error }}</label>
         }
     </div>
 }

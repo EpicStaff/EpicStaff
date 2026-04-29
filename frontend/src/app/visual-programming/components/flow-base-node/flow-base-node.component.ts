@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
 
+import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { GoToButtonComponent } from '../../../shared/components/go-to-button/go-to-button.component';
 import { flowUrl } from '../../../shared/utils/flow-links';
 import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
@@ -37,7 +38,6 @@ import { ConditionalEdgeNodeComponent } from '../nodes-components/conditional-ed
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
 import { GraphNoteComponent } from '../nodes-components/graph-note/graph-note.component';
 import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay.component';
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-flow-base-node',

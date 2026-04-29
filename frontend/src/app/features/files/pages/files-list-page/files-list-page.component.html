@@ -1,0 +1,72 @@
+<div class="files-list-page">
+    <div class="sticky-header">
+        <header class="header">
+            <div
+                class="header-titles"
+                appHideInlineSubtitleOnOverflow
+            >
+                <h1 class="title">
+                    Files
+                    <span class="subtitle-inline"> Organize files centrally or enable RAG for AI-powered search. </span>
+                </h1>
+            </div>
+            <div class="header-actions">
+                <app-button
+                    type="primary"
+                    class="btn-primary create-btn"
+                    [leftIcon]="'plus'"
+                    [style.visibility]="isStorageTabActive ? 'visible' : 'hidden'"
+                    (click)="onCreateFolderClick()"
+                >
+                    Add files
+                </app-button>
+            </div>
+        </header>
+        <nav class="tabs">
+            <div class="tabs-left">
+                @for (tab of tabs; track tab.link) {
+                    <app-tab-button
+                        routerLink="{{ tab.link }}"
+                        routerLinkActive="active"
+                        #rla="routerLinkActive"
+                        [active]="rla.isActive"
+                    >
+                        {{ tab.label }}
+                    </app-tab-button>
+                }
+            </div>
+            <div class="tabs-right">
+                <div class="search-container">
+                    <app-svg-icon
+                        icon="search"
+                        class="search-icon"
+                        size="1rem"
+                    ></app-svg-icon>
+                    <input
+                        type="text"
+                        class="search-input"
+                        placeholder="Search collections, folders, files..."
+                        [ngModel]="searchTerm()"
+                        (ngModelChange)="filesSearchService.setSearchTerm($event)"
+                    />
+                    @if (searchTerm()) {
+                        <button
+                            type="button"
+                            class="clear-btn"
+                            aria-label="Clear"
+                            (click)="filesSearchService.clear()"
+                        >
+                            <app-svg-icon
+                                icon="x"
+                                size="1.1rem"
+                            ></app-svg-icon>
+                        </button>
+                    }
+                </div>
+            </div>
+        </nav>
+    </div>
+    <section class="body">
+        <router-outlet></router-outlet>
+    </section>
+</div>

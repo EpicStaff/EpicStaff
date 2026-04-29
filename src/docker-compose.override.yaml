@@ -24,3 +24,8 @@ services:
   frontend:
     ports:
       - "${FRONTEND_PORT:-4201}:80"
+
+  minio:
+    ports:
+      - "${MINIO_PORT:-9000}:${MINIO_PORT:-9000}"
+      - "${MINIO_CONSOLE_PORT:-9001}:${MINIO_CONSOLE_PORT:-9001}"

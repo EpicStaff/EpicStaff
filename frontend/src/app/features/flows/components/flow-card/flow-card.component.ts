@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output, signal } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
@@ -19,7 +20,14 @@ export interface FlowCardAction {
 @Component({
     selector: 'app-flow-card',
     standalone: true,
-    imports: [CommonModule, ButtonComponent, FlowMenuComponent, CheckboxComponent, AppSvgIconComponent],
+    imports: [
+        CommonModule,
+        ButtonComponent,
+        FlowMenuComponent,
+        CheckboxComponent,
+        AppSvgIconComponent,
+        MatTooltipModule,
+    ],
     templateUrl: './flow-card.component.html',
     styleUrls: ['./flow-card.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -51,6 +59,12 @@ export class FlowCardComponent {
         const label = this.labelsStorage.labels().find((l) => l.id === id);
         if (!label) return '';
         return !label.parent ? label.name : `/${label.name}`;
+    }
+
+    getLabelFullPath(id: number): string {
+        const label = this.labelsStorage.labels().find((l) => l.id === id);
+        if (!label || !label.parent) return '';
+        return label.full_path;
     }
 
     getLabelChipStyles(id: number): { background: string; color: string } {

@@ -84,7 +84,7 @@
         height: 28px;
         font-weight: 200;
         font-size: 0.625rem;
-        padding: 0.625rem 0.5rem;
+        padding: 0.625rem 1rem;
     }
 
     &--icon-left {
@@ -93,7 +93,7 @@
         }
 
         &-small {
-            padding-left: 1.5rem;
+            padding-left: 2rem;
         }
     }
 
@@ -103,7 +103,7 @@
         }
 
         &-small {
-            padding-left: 1.5rem;
+            padding-right: 2rem;
         }
     }
 }

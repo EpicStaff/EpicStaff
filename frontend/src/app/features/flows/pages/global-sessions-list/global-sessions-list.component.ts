@@ -25,7 +25,11 @@ import { GraphSessionLight, GraphSessionService, GraphSessionStatus } from '../.
     template: ` <div class="global-sessions-wrapper">
         <div class="global-sessions-header">
             <div class="flows-prefix">
-                <app-svg-icon icon="arrow-left" size="20px" class="back-arrow" />
+                <app-svg-icon
+                    icon="arrow-left"
+                    size="20px"
+                    class="back-arrow"
+                />
                 <span routerLink="/flows">Flows</span>
                 <span class="slash">/All sessions</span>
             </div>
@@ -39,14 +43,25 @@ import { GraphSessionLight, GraphSessionService, GraphSessionStatus } from '../.
                 ></app-flow-name-filter-dropdown>
                 <label class="error-cause-filter">
                     <span>Show first failed</span>
-                    <div class="toggle-switch" [class.active]="isErrorCauseFilter()" (click)="onIsErrorCauseChange()">
+                    <div
+                        class="toggle-switch"
+                        [class.active]="isErrorCauseFilter()"
+                        (click)="onIsErrorCauseChange()"
+                    >
                         <div class="toggle-thumb"></div>
                     </div>
                 </label>
-                <button class="delete-btn" [class.invisible]="selectedIds().size === 0" (click)="onBulkDelete()">
+                <button
+                    class="delete-btn"
+                    [class.invisible]="selectedIds().size === 0"
+                    (click)="onBulkDelete()"
+                >
                     Delete Selected ({{ selectedIds().size }})
                 </button>
-                <span [class.invisible]="selectedIds().size > 0" class="results-length">
+                <span
+                    [class.invisible]="selectedIds().size > 0"
+                    class="results-length"
+                >
                     {{ totalCount() }} Results
                 </span>
             </div>

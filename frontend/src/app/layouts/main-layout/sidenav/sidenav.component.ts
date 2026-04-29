@@ -5,14 +5,23 @@ import {
     ChangeDetectionStrategy,
     Component,
     CUSTOM_ELEMENTS_SCHEMA,
+    DestroyRef,
     ElementRef,
+    signal,
     ViewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink, RouterLinkActive } from '@angular/router';
+import { ClickOutsideDirective } from '@shared/directives';
+import { GetMeResponse } from '@shared/models';
+import { EMPTY } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 import { environment } from 'src/environments/environment';
 
 import { ConfigureModelsDialogService } from '../../../features/configure-models/services/configure-models-dialog.service';
 import { EpicChatService } from '../../../features/epic-chat/epic-chat.service';
+import { UserAvatarComponent } from '../../../features/role-base-access/components/user-avatar/user-avatar.component';
+import { UserMenuComponent } from '../../../features/role-base-access/components/user-sidebar-menu/user-menu.component';
 import { AuthService } from '../../../services/auth/auth.service';
 import { ConfigService } from '../../../services/config/config.service';
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -31,7 +40,17 @@ interface NavItem {
 @Component({
     selector: 'app-left-sidebar',
     standalone: true,
-    imports: [TooltipComponent, RouterLinkActive, RouterLink, OverlayModule, PortalModule, AppSvgIconComponent],
+    imports: [
+        TooltipComponent,
+        RouterLinkActive,
+        RouterLink,
+        OverlayModule,
+        PortalModule,
+        UserMenuComponent,
+        AppSvgIconComponent,
+        UserAvatarComponent,
+        ClickOutsideDirective,
+    ],
     templateUrl: './sidenav.component.html',
     styleUrls: ['./sidenav.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -102,6 +121,10 @@ export class LeftSidebarComponent implements AfterViewInit {
             shadowMd: 'rgba(0, 0, 0, 0.6)',
         },
     };
+
+    public user = signal<GetMeResponse | null>(null);
+    public isUserMenuOpen = signal<boolean>(false);
+
     @ViewChild('epicChat', { static: false })
     private epicChat?: ElementRef<HTMLElement>;
 
@@ -109,7 +132,8 @@ export class LeftSidebarComponent implements AfterViewInit {
         public epicChatService: EpicChatService,
         private configService: ConfigService,
         private configureModelsDialogService: ConfigureModelsDialogService,
-        private authService: AuthService
+        private authService: AuthService,
+        private destroyRef: DestroyRef
     ) {
         this.isEpicChatEnabled = this.configService.isEpicChatEnabled;
         // COMMIT_COMMENTS: Derive apiBaseUrl from browser origin so the EpicChat widget's
@@ -151,10 +175,10 @@ export class LeftSidebarComponent implements AfterViewInit {
                 showTooltip: false,
             },
             {
-                id: 'knowledge-sources',
-                routeLink: 'knowledge-sources',
+                id: 'files',
+                routeLink: 'files',
                 icon: 'sources',
-                label: 'Knowledge Sources',
+                label: 'Files',
                 showTooltip: false,
             },
             {
@@ -177,6 +201,16 @@ export class LeftSidebarComponent implements AfterViewInit {
         });
     }
 
+    public ngOnInit() {
+        this.authService
+            .getCurrentUser()
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                catchError(() => EMPTY)
+            )
+            .subscribe((user) => this.user.set(user));
+    }
+
     public ngAfterViewInit(): void {
         // COMMIT_COMMENTS: Widget's internal syncAgentsFromApi does not reliably fire in
         // custom-element mode. Instead, we use AGENT_REMOVE + AGENT_CREATE per flow —
@@ -192,6 +226,15 @@ export class LeftSidebarComponent implements AfterViewInit {
 
     public toggleEpicChat(): void {
         this.epicChatService.toggleChat(this.epicChat?.nativeElement);
+    }
+
+    public closeUserMenu(): void {
+        this.isUserMenuOpen.set(false);
+    }
+
+    public toggleUserMenu(event: MouseEvent): void {
+        event.stopPropagation();
+        this.isUserMenuOpen.update((prev) => !prev);
     }
 
     public onEpChatCommandResult(event: Event): void {

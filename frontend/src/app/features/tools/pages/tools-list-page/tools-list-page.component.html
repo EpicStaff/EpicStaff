@@ -1,7 +1,10 @@
 <div class="tools-list-page">
     <div class="sticky-header">
         <header class="header">
-            <div class="header-titles" appHideInlineSubtitleOnOverflow>
+            <div
+                class="header-titles"
+                appHideInlineSubtitleOnOverflow
+            >
                 <h1 class="title">
                     Tools
                     <span class="subtitle-inline"> Manage your built-in and custom tools here. </span>
@@ -34,7 +37,11 @@
             </div>
             <div class="tabs-right">
                 <div class="search-container">
-                    <app-svg-icon icon="search" class="search-icon" size="1.1rem" />
+                    <app-svg-icon
+                        icon="search"
+                        class="search-icon"
+                        size="1.1rem"
+                    />
                     <input
                         type="text"
                         class="search-input"
@@ -43,8 +50,16 @@
                         (ngModelChange)="onSearchTermChange($event)"
                     />
                     @if (searchTerm) {
-                        <button type="button" class="clear-btn" aria-label="Clear" (click)="clearSearch()">
-                            <app-svg-icon icon="x" size="1.1rem" />
+                        <button
+                            type="button"
+                            class="clear-btn"
+                            aria-label="Clear"
+                            (click)="clearSearch()"
+                        >
+                            <app-svg-icon
+                                icon="x"
+                                size="1.1rem"
+                            />
                         </button>
                     }
                 </div>

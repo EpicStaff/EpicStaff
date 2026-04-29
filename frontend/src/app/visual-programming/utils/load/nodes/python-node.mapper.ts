@@ -18,6 +18,7 @@ export function mapPythonNodeToModel(pn: PythonNode): PythonNodeModel {
             libraries: pn.python_code.libraries,
             code: pn.python_code.code,
             entrypoint: pn.python_code.entrypoint,
+            use_storage: pn.use_storage ?? false,
         },
         position: ui.position,
         ports: null,

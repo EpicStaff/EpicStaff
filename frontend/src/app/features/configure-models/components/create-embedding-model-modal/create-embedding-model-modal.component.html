@@ -1,16 +1,33 @@
 <div class="create-model">
     <div class="create-model__header">
         <h3 class="create-model__title">{{ isEditMode ? 'Edit Embedding Model' : 'Add Embedding Model' }}</h3>
-        <button type="button" class="create-model__close-btn" (click)="onClose()">
-            <app-svg-icon icon="x" size="0.875rem" />
+        <button
+            type="button"
+            class="create-model__close-btn"
+            (click)="onClose()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="0.875rem"
+            />
         </button>
     </div>
 
-    <div class="create-model__content" [formGroup]="form">
+    <div
+        class="create-model__content"
+        [formGroup]="form"
+    >
         <div class="create-model__field">
-            <app-tooltip [required]="true" [tooltipText]="'Provider'" [label]="'Provider'" />
+            <app-tooltip
+                [required]="true"
+                [tooltipText]="'Provider'"
+                [label]="'Provider'"
+            />
             <div class="create-model__provider">
-                <app-svg-icon [icon]="getProviderIcon(provider.name)" size="1rem" />
+                <app-svg-icon
+                    [icon]="getProviderIcon(provider.name)"
+                    size="1rem"
+                />
                 <span>{{ provider.name | uppercase }}</span>
             </div>
         </div>
@@ -46,13 +63,27 @@
         </div>
 
         <div class="create-model__field create-model__field--inline">
-            <app-toggle-switch label="Visible" tooltipText="Visible" formControlName="isVisible" />
+            <app-toggle-switch
+                label="Visible"
+                tooltipText="Visible"
+                formControlName="isVisible"
+            />
         </div>
     </div>
 
     <div class="create-model__footer">
-        <app-button type="outline-primary" (click)="onClose()" [disabled]="isSubmitting()"> Cancel </app-button>
-        <app-button type="primary" (click)="onSubmit()" [disabled]="form.invalid || isSubmitting()">
+        <app-button
+            type="outline-primary"
+            (click)="onClose()"
+            [disabled]="isSubmitting()"
+        >
+            Cancel
+        </app-button>
+        <app-button
+            type="primary"
+            (click)="onSubmit()"
+            [disabled]="form.invalid || isSubmitting()"
+        >
             {{
                 isSubmitting()
                     ? isEditMode

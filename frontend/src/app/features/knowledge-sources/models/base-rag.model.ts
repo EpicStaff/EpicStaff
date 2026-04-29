@@ -1,10 +1,10 @@
-import { RagName, RagTypeLevel } from "../enums/rag";
+import { RagName, RagTypeLevel } from '../enums/rag';
 
 export type RagValueMap = {
     [RagName.NAIVE_RAG]: 'naive';
     [RagName.GRAPH_RAG]: 'graph';
     [RagName.HYBRID_RAG]: 'hybrid';
-}
+};
 
 export interface BaseRagType<T extends RagType> {
     rag_type_id: number;
@@ -22,7 +22,7 @@ export type Rag = {
         level: RagTypeLevel;
         stars: number;
         disabled?: boolean;
-    }
+    };
 }[RagName];
 
 export type RagStatus = 'new' | 'processing' | 'completed' | 'warning' | 'failed';

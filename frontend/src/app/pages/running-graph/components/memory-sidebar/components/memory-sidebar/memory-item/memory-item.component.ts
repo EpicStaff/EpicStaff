@@ -19,8 +19,14 @@ import {
                 <span class="memory-type">{{ memory.payload.type }}</span>
                 <div class="memory-header-right">
                     <span class="memory-date">{{ memory.payload.created_at | date: 'short' }}</span>
-                    <button class="delete-button" (click)="onDelete()">
-                        <app-svg-icon icon="x" size="1rem" />
+                    <button
+                        class="delete-button"
+                        (click)="onDelete()"
+                    >
+                        <app-svg-icon
+                            icon="x"
+                            size="1rem"
+                        />
                     </button>
                 </div>
             </div>
@@ -35,7 +41,10 @@ import {
             </div>
 
             @if (memory.payload.type !== 'user') {
-                <button class="details-toggle" (click)="toggleDetails(memory.id)">
+                <button
+                    class="details-toggle"
+                    (click)="toggleDetails(memory.id)"
+                >
                     <div class="toggle-left">
                         <app-svg-icon
                             icon="player-play-filled"
@@ -47,7 +56,10 @@ import {
                 </button>
 
                 <!-- Expandable Details Section -->
-                <div class="memory-details" *ngIf="isExpanded(memory.id)">
+                <div
+                    class="memory-details"
+                    *ngIf="isExpanded(memory.id)"
+                >
                     <!-- Entity Memory Details -->
                     @if (memory.payload.type === 'entity') {
                         <div class="memory-relationships">

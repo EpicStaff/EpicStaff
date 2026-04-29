@@ -1,17 +1,31 @@
-<div class="breadcrumbs" (click)="$event.stopPropagation()" (mousedown)="$event.preventDefault()">
+<div
+    class="breadcrumbs"
+    (click)="$event.stopPropagation()"
+    (mousedown)="$event.preventDefault()"
+>
     @if (currentPath().length > 0) {
-        <span class="back-btn" (click)="onBackClick($event)" (mousedown)="$event.preventDefault()">
+        <span
+            class="back-btn"
+            (click)="onBackClick($event)"
+            (mousedown)="$event.preventDefault()"
+        >
             <app-svg-icon icon="arrow-left"></app-svg-icon>
         </span>
     }
-    <span class="crumb" (click)="onCrumbClick($event, -1)" (mousedown)="$event.preventDefault()">{{
-        rootLabel()
-    }}</span>
+    <span
+        class="crumb"
+        (click)="onCrumbClick($event, -1)"
+        (mousedown)="$event.preventDefault()"
+        >{{ rootLabel() }}</span
+    >
     @for (part of currentPath(); track $index) {
         <span class="separator">/</span>
-        <span class="crumb" (click)="onCrumbClick($event, $index)" (mousedown)="$event.preventDefault()">{{
-            part
-        }}</span>
+        <span
+            class="crumb"
+            (click)="onCrumbClick($event, $index)"
+            (mousedown)="$event.preventDefault()"
+            >{{ part }}</span
+        >
     }
 </div>
 <ul

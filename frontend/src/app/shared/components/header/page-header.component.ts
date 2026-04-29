@@ -19,10 +19,17 @@ import { ProjectSortButtonComponent } from './header-components/header-sort/head
         ProjectCreateButtonComponent,
     ],
     template: `
-        <div class="header" (document:click)="onDocumentClick()">
+        <div
+            class="header"
+            (document:click)="onDocumentClick()"
+        >
             <div class="title-search">
                 <div class="title">{{ headerTitle }}</div>
-                <span *ngIf="projectCount !== 0" class="projects-page-project-count-badge">({{ projectCount }})</span>
+                <span
+                    *ngIf="projectCount !== 0"
+                    class="projects-page-project-count-badge"
+                    >({{ projectCount }})</span
+                >
             </div>
             <div class="header-actions">
                 <app-project-search
@@ -35,7 +42,10 @@ import { ProjectSortButtonComponent } from './header-components/header-sort/head
                     *ngIf="showFilter"
                     (filterEvent)="toggleTagsMenu()"
                 ></app-project-filter-button>
-                <app-project-sort-button *ngIf="showSort" (sortEvent)="onSort()"></app-project-sort-button>
+                <app-project-sort-button
+                    *ngIf="showSort"
+                    (sortEvent)="onSort()"
+                ></app-project-sort-button>
                 <app-project-favorite-button
                     *ngIf="showFavoriteToggle"
                     [active]="showFavorites"

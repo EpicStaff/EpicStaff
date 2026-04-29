@@ -1,23 +1,45 @@
 <div class="create-project">
     <div class="create-project__header">
         <h2 class="create-project__title">Create New Project</h2>
-        <button mat-icon-button class="create-project__close-button" (click)="onCancel()" [disabled]="isSubmitting()">
-            <app-svg-icon icon="close" size="24px" />
+        <button
+            mat-icon-button
+            class="create-project__close-button"
+            (click)="onCancel()"
+            [disabled]="isSubmitting()"
+        >
+            <app-svg-icon
+                icon="close"
+                size="24px"
+            />
         </button>
     </div>
 
-    <form [formGroup]="projectForm" class="create-project__form">
+    <form
+        [formGroup]="projectForm"
+        class="create-project__form"
+    >
         <div class="create-project__body">
             <div class="create-project__content">
-                <mat-form-field appearance="outline" class="create-project__field create-project__field--full-width">
+                <mat-form-field
+                    appearance="outline"
+                    class="create-project__field create-project__field--full-width"
+                >
                     <mat-label>Project Name</mat-label>
-                    <input matInput formControlName="name" placeholder="Enter project name" required />
+                    <input
+                        matInput
+                        formControlName="name"
+                        placeholder="Enter project name"
+                        required
+                    />
                     @if (nameField.hasError('required')) {
                         <mat-error> Project name is required </mat-error>
                     }
                 </mat-form-field>
 
-                <mat-form-field appearance="outline" class="create-project__field create-project__field--full-width">
+                <mat-form-field
+                    appearance="outline"
+                    class="create-project__field create-project__field--full-width"
+                >
                     <mat-label>Description</mat-label>
                     <textarea
                         matInput
@@ -35,7 +57,9 @@
                         class="create-project__process-group"
                     >
                         <mat-radio-button [value]="ProjectProcess.SEQUENTIAL">Sequential</mat-radio-button>
-                        <mat-radio-button [value]="ProjectProcess.HIERARCHICAL" [disabled]="true"
+                        <mat-radio-button
+                            [value]="ProjectProcess.HIERARCHICAL"
+                            [disabled]="true"
                             >Hierarchical
                             <span class="create-project__coming-soon-title">Coming Soon</span>
                         </mat-radio-button>
@@ -56,7 +80,10 @@
                                 size="18px"
                             />
                         </div>
-                        <mat-slide-toggle formControlName="memory" class="create-project__setting-toggle">
+                        <mat-slide-toggle
+                            formControlName="memory"
+                            class="create-project__setting-toggle"
+                        >
                         </mat-slide-toggle>
                     </div>
 
@@ -71,7 +98,10 @@
                                 size="18px"
                             />
                         </div>
-                        <mat-slide-toggle formControlName="cache" class="create-project__setting-toggle">
+                        <mat-slide-toggle
+                            formControlName="cache"
+                            class="create-project__setting-toggle"
+                        >
                         </mat-slide-toggle>
                     </div>
 
@@ -90,8 +120,17 @@
                             <div class="create-project__setting-value">{{ maxRpmField.value }} RPM</div>
                         </div>
                         <div class="create-project__rpm-container">
-                            <mat-slider min="1" max="50" step="1" discrete [displayWith]="formatRpmLabel">
-                                <input matSliderThumb formControlName="max_rpm" />
+                            <mat-slider
+                                min="1"
+                                max="50"
+                                step="1"
+                                discrete
+                                [displayWith]="formatRpmLabel"
+                            >
+                                <input
+                                    matSliderThumb
+                                    formControlName="max_rpm"
+                                />
                             </mat-slider>
                         </div>
                     </div>

@@ -36,8 +36,8 @@ export interface StepConfig {
         StepperComponent,
         StepUploadFilesComponent,
         StepSelectRagComponent,
-        NgComponentOutlet,
         AppSvgIconComponent,
+        NgComponentOutlet,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

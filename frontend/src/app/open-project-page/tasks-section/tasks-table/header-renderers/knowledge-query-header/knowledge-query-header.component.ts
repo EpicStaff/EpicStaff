@@ -2,13 +2,12 @@ import { CommonModule } from '@angular/common';
 import { Component } from '@angular/core';
 import { IHeaderParams } from 'ag-grid-community';
 
-import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { HelpTooltipComponent } from '../../../../../shared/components/help-tooltip/help-tooltip.component';
 
 @Component({
     selector: 'app-knowledge-query-header',
     standalone: true,
-    imports: [CommonModule, AppSvgIconComponent, HelpTooltipComponent],
+    imports: [CommonModule, HelpTooltipComponent],
     template: `
         <div class="knowledge-header">
             <span class="knowledge-label">Knowledge Query</span>

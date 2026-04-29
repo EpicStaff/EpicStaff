@@ -1,7 +1,12 @@
 <div class="agent-card">
     <div class="header">
         <div class="header-left">
-            <h3 class="role-title" [title]="agent.role">{{ agent.role }}</h3>
+            <h3
+                class="role-title"
+                [title]="agent.role"
+            >
+                {{ agent.role }}
+            </h3>
         </div>
         <div class="header-icons">
             <!-- <div
@@ -47,7 +52,11 @@
                     title="Add Agent"
                     (click)="onAddAgentClick()"
                 >
-                    <app-svg-icon icon="plus" size="20px" class="plus-icon" />
+                    <app-svg-icon
+                        icon="plus"
+                        size="20px"
+                        class="plus-icon"
+                    />
                 </div>
 
                 <div
@@ -56,7 +65,11 @@
                     title="Remove Agent"
                     (click)="onRemoveAgentClick()"
                 >
-                    <app-svg-icon icon="x" size="20px" class="close-icon" />
+                    <app-svg-icon
+                        icon="x"
+                        size="20px"
+                        class="close-icon"
+                    />
                 </div>
             </ng-container>
         </div>
@@ -66,7 +79,10 @@
         <div class="section">
             <h4 class="section-title">GOAL</h4>
             <div class="collapsible-content">
-                <p class="section-content" [class.truncated]="!goalExpanded">
+                <p
+                    class="section-content"
+                    [class.truncated]="!goalExpanded"
+                >
                     {{ agent.goal }}
                 </p>
                 <button
@@ -83,7 +99,10 @@
         <div class="section">
             <h4 class="section-title">BACKSTORY</h4>
             <div class="collapsible-content">
-                <p class="section-content" [class.truncated]="!backstoryExpanded">
+                <p
+                    class="section-content"
+                    [class.truncated]="!backstoryExpanded"
+                >
                     {{ agent.backstory }}
                 </p>
                 <button
@@ -98,7 +117,10 @@
 
         <!-- DETAILS SECTION (Model, Tools, Tags) -->
         <div class="section">
-            <div class="section-header" (click)="toggleSection('details')">
+            <div
+                class="section-header"
+                (click)="toggleSection('details')"
+            >
                 <h4 class="section-title">DETAILS</h4>
                 <app-svg-icon
                     icon="chevron-down"
@@ -116,7 +138,10 @@
                 <!-- MODEL SECTION -->
                 <div class="details-subsection">
                     <h5 class="subsection-title">MODEL</h5>
-                    <div *ngIf="agent.fullLlmConfig; else noModel" class="model-info-container">
+                    <div
+                        *ngIf="agent.fullLlmConfig; else noModel"
+                        class="model-info-container"
+                    >
                         <app-svg-icon
                             [icon]="getProviderIcon(agent.fullLlmConfig.providerDetails?.name)"
                             size="1.7rem"
@@ -126,7 +151,10 @@
                             <p class="model-name">
                                 {{ agent.fullLlmConfig.modelDetails?.name }}
                             </p>
-                            <p class="model-custom-name" *ngIf="agent.fullLlmConfig.custom_name">
+                            <p
+                                class="model-custom-name"
+                                *ngIf="agent.fullLlmConfig.custom_name"
+                            >
                                 {{ agent.fullLlmConfig.custom_name }}
                             </p>
                         </div>
@@ -140,11 +168,18 @@
                 <div class="details-subsection">
                     <h5 class="subsection-title">
                         TOOLS
-                        <span class="tool-count" *ngIf="getTotalToolsCount() > 0">({{ getTotalToolsCount() }})</span>
+                        <span
+                            class="tool-count"
+                            *ngIf="getTotalToolsCount() > 0"
+                            >({{ getTotalToolsCount() }})</span
+                        >
                     </h5>
                     <div *ngIf="agent.mergedTools && agent.mergedTools.length > 0; else noTools">
                         <div class="tools-container">
-                            <div class="tool-item" *ngFor="let tool of getDisplayedTools()">
+                            <div
+                                class="tool-item"
+                                *ngFor="let tool of getDisplayedTools()"
+                            >
                                 <app-svg-icon
                                     *ngIf="tool.type === 'python-tool'"
                                     icon="python"

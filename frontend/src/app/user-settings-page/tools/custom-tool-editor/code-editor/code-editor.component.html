@@ -12,12 +12,20 @@
         </span>
     </div>
     <div class="right-section">
-        <app-icon-button icon="copy" size="2rem" ariaLabel="Copy code" (onClick)="copyCode()"></app-icon-button>
+        <app-icon-button
+            icon="copy"
+            size="2rem"
+            ariaLabel="Copy code"
+            (onClick)="copyCode()"
+        ></app-icon-button>
     </div>
 </div>
 
 <!-- Editor Container -->
-<div class="editor-container" #editorContainer>
+<div
+    class="editor-container"
+    #editorContainer
+>
     <ngx-monaco-editor
         [options]="editorOptions"
         [ngModel]="pythonCode"
@@ -27,7 +35,10 @@
     ></ngx-monaco-editor>
 
     <!-- Loading Overlay -->
-    <div class="editor-loading-overlay" *ngIf="!editorLoaded">
+    <div
+        class="editor-loading-overlay"
+        *ngIf="!editorLoaded"
+    >
         <div class="spinner"></div>
         <span>Loading editor...</span>
     </div>

@@ -1,9 +1,17 @@
 <!-- agent-popup.component.html -->
 <div class="agent-list-container">
     <div class="list-header">
-        <input #searchInput type="text" [(ngModel)]="searchTerm" placeholder="Search agents..." />
+        <input
+            #searchInput
+            type="text"
+            [(ngModel)]="searchTerm"
+            placeholder="Search agents..."
+        />
         <button class="filter-button">
-            <app-svg-icon icon="filter-outline" size="14px" />
+            <app-svg-icon
+                icon="filter-outline"
+                size="14px"
+            />
             Filter
         </button>
     </div>
@@ -20,7 +28,10 @@
                 tabindex="0"
             >
                 <div class="agent-avatar">
-                    <app-svg-icon icon="agent" size="16px" />
+                    <app-svg-icon
+                        icon="agent"
+                        size="16px"
+                    />
                 </div>
 
                 <div class="item-content">
@@ -33,14 +44,23 @@
                     class="select-button"
                     [title]="agent.id === selectedAgentId ? 'Deselect this agent' : 'Select this agent'"
                 >
-                    <app-svg-icon [icon]="agent.id === selectedAgentId ? 'x' : 'plus'" size="14px" />
+                    <app-svg-icon
+                        [icon]="agent.id === selectedAgentId ? 'x' : 'plus'"
+                        size="14px"
+                    />
                 </button>
             </li>
 
             <!-- No results message -->
-            <li class="no-results" *ngIf="filteredAgents.length === 0">
+            <li
+                class="no-results"
+                *ngIf="filteredAgents.length === 0"
+            >
                 <div class="empty-state">
-                    <app-svg-icon icon="search" size="24px" />
+                    <app-svg-icon
+                        icon="search"
+                        size="24px"
+                    />
                     <p>No matching agents found</p>
                 </div>
             </li>

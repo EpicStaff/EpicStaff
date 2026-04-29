@@ -8,11 +8,17 @@
 >
     <ul>
         <li (click)="onAddEmptyAgentAbove()">
-            <app-svg-icon icon="row-insert-top" size="1rem" />
+            <app-svg-icon
+                icon="row-insert-top"
+                size="1rem"
+            />
             <span>Add Empty Row Above</span>
         </li>
         <li (click)="onAddEmptyAgentBelow()">
-            <app-svg-icon icon="row-insert-bottom" size="1rem" />
+            <app-svg-icon
+                icon="row-insert-bottom"
+                size="1rem"
+            />
             <span>Add Empty Row Below</span>
         </li>
         <!-- <li class="divider"></li>
@@ -29,8 +35,14 @@
             <span>Paste Copied Row Above</span>
         </li> -->
         <li class="divider"></li>
-        <li (click)="onDelete()" class="delete-option">
-            <app-svg-icon icon="trash" size="1rem" />
+        <li
+            (click)="onDelete()"
+            class="delete-option"
+        >
+            <app-svg-icon
+                icon="trash"
+                size="1rem"
+            />
             <span>Delete Row({{ parent }})</span>
         </li>
     </ul>

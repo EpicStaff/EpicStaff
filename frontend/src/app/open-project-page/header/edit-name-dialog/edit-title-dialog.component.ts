@@ -1,6 +1,6 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, inject, Inject, OnInit } from '@angular/core';
+import { Component, DestroyRef, Inject, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 
@@ -24,8 +24,19 @@ import { FormsModule } from '@angular/forms';
             </div>
 
             <div class="dialog-actions">
-                <button class="cancel-button" (click)="close()">Cancel</button>
-                <button class="save-button" (click)="save()" [disabled]="!isValid()">Save</button>
+                <button
+                    class="cancel-button"
+                    (click)="close()"
+                >
+                    Cancel
+                </button>
+                <button
+                    class="save-button"
+                    (click)="save()"
+                    [disabled]="!isValid()"
+                >
+                    Save
+                </button>
             </div>
         </div>
     `,

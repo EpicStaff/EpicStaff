@@ -11,7 +11,11 @@ interface AudioAnalysisOutputType {
     selector: 'app-tiny-audio-visualizer',
     standalone: true,
     imports: [CommonModule],
-    template: `<canvas #canvas width="20" height="20"></canvas>`,
+    template: `<canvas
+        #canvas
+        width="20"
+        height="20"
+    ></canvas>`,
     styles: [
         `
             :host {

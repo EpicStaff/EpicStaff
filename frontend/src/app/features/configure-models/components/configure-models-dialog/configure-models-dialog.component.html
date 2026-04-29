@@ -1,11 +1,19 @@
 <div class="configure-models-dialog">
     <header class="configure-models-dialog__header">
         <div class="configure-models-dialog__header-left">
-            <i class="configure-models-dialog__title-icon ti ti-brain" aria-hidden="true"></i>
+            <i
+                class="configure-models-dialog__title-icon ti ti-brain"
+                aria-hidden="true"
+            ></i>
             <div class="configure-models-dialog__title">Settings</div>
         </div>
 
-        <app-svg-icon class="configure-models-dialog__close-btn" icon="close" size="1.25rem" (click)="close()" />
+        <app-svg-icon
+            class="configure-models-dialog__close-btn"
+            icon="close"
+            size="1.25rem"
+            (click)="close()"
+        />
     </header>
 
     <nav class="configure-models-dialog__tabs">
@@ -16,7 +24,11 @@
                 [class.configure-models-dialog__tab--active]="activeTabId() === tab.id"
                 (click)="selectTab(tab.id)"
             >
-                <i class="configure-models-dialog__tab-icon" [ngClass]="tab.iconClass" aria-hidden="true"></i>
+                <i
+                    class="configure-models-dialog__tab-icon"
+                    [ngClass]="tab.iconClass"
+                    aria-hidden="true"
+                ></i>
                 {{ tab.label }}
             </button>
             @if (!isLast) {

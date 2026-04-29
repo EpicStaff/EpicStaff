@@ -1,9 +1,8 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { InputNumberComponent, ValidationErrorsComponent } from '@shared/components';
+import { HelpTooltipComponent, InputNumberComponent, ValidationErrorsComponent } from '@shared/components';
 import { MATERIAL_FORMS } from '@shared/material-forms';
 
-import { HelpTooltipComponent } from '../../../../../../../shared/components/help-tooltip/help-tooltip.component';
 import { JsonStrategyModel } from '../../../../../models/strategy.model';
 import { StrategyForm } from '../strategy-config-form.abstract';
 
@@ -14,10 +13,10 @@ import { StrategyForm } from '../strategy-config-form.abstract';
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
         InputNumberComponent,
-        HelpTooltipComponent,
         MATERIAL_FORMS,
         ReactiveFormsModule,
         ValidationErrorsComponent,
+        HelpTooltipComponent,
     ],
 })
 export class JsonFormComponent extends StrategyForm<JsonStrategyModel> {

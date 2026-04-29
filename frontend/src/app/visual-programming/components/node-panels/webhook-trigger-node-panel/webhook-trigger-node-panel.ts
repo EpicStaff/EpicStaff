@@ -29,7 +29,10 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
     template: `
         <div class="panel-container">
             <div class="panel-content">
-                <form [formGroup]="form" class="form-container">
+                <form
+                    [formGroup]="form"
+                    class="form-container"
+                >
                     <div
                         class="form-layout"
                         [class.expanded]="isExpanded()"
@@ -56,7 +59,10 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
                             ></app-custom-input>
                             <div class="webhook-url-display">
                                 @if (webhookUrlDisplay; as url) {
-                                    <span class="webhook-url-text" [style.color]="activeColor">
+                                    <span
+                                        class="webhook-url-text"
+                                        [style.color]="activeColor"
+                                    >
                                         {{ url }}
                                     </span>
                                     <button
@@ -66,7 +72,10 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
                                         [disabled]="!url"
                                         aria-label="Copy webhook URL"
                                     >
-                                        <span class="copy-icon" aria-hidden="true"></span>
+                                        <span
+                                            class="copy-icon"
+                                            aria-hidden="true"
+                                        ></span>
                                         <span>Copy</span>
                                     </button>
                                 } @else {
@@ -103,7 +112,7 @@ const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
                                         viewBox="0 0 9 22"
                                         fill="none"
                                         xmlns="http://www.w3.org/2000/svg"
-                                        [style.transform]="isCodeEditorFullWidth() ? 'scaleX(1)' : 'scaleX(-1)'"
+                                        [style.transform]="isCodeEditorFullWidth() ? 'scaleX(-1)' : 'scaleX(1)'"
                                     >
                                         <path
                                             d="M7.16602 21.0001L1.16602 11.0001L7.16602 1.00012"

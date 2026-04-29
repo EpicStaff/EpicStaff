@@ -17,14 +17,27 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                 [ngClass]="{ 'selected-item': isSelected }"
                 (click)="tool.tool_fields.length > 0 ? toggleToolConfigs() : onToolToggle()"
             >
-                <app-svg-icon icon="tools" size="16px" />
+                <app-svg-icon
+                    icon="tools"
+                    size="16px"
+                />
                 <div class="tool-name">
                     {{ tool.name }}
                 </div>
 
                 <!-- Chevron visible only for tools with non-empty tool_fields -->
-                <span *ngIf="tool.tool_fields.length > 0" class="chevron-icon" [ngClass]="{ expanded: isExpanded }">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <span
+                    *ngIf="tool.tool_fields.length > 0"
+                    class="chevron-icon"
+                    [ngClass]="{ expanded: isExpanded }"
+                >
+                    <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                    >
                         <path
                             d="M6 9L12 15L18 9"
                             stroke="currentColor"
@@ -45,7 +58,11 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
             </div>
 
             <!-- Expanded tool configs section shown only for tools with non-empty tool_fields -->
-            <div class="tool-configs" *ngIf="isExpanded && tool.tool_fields.length > 0" @expandCollapse>
+            <div
+                class="tool-configs"
+                *ngIf="isExpanded && tool.tool_fields.length > 0"
+                @expandCollapse
+            >
                 <div
                     class="tool-config-item"
                     *ngFor="let config of tool.toolConfigs"
@@ -55,14 +72,22 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                     (click)="onConfigToggle(config)"
                 >
                     <span class="config-name">{{ config.name }}</span>
-                    <span class="status-indicator" [ngClass]="config.is_completed ? 'green' : 'red'"></span>
+                    <span
+                        class="status-indicator"
+                        [ngClass]="config.is_completed ? 'green' : 'red'"
+                    ></span>
                     <input
                         type="checkbox"
                         [checked]="selectedConfigIds.has(config.id)"
                         (click)="$event.stopPropagation(); onConfigToggle(config)"
                     />
                 </div>
-                <div *ngIf="tool.toolConfigs.length === 0" class="no-config-message">No configurations available</div>
+                <div
+                    *ngIf="tool.toolConfigs.length === 0"
+                    class="no-config-message"
+                >
+                    No configurations available
+                </div>
             </div>
         </div>
     `,

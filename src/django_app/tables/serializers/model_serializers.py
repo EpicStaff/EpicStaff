@@ -49,7 +49,6 @@ from tables.models import (
     FileExtractorNode,
     SubGraphNode,
     AudioTranscriptionNode,
-    GraphFile,
 )
 from rest_framework import serializers
 from tables.exceptions import (
@@ -76,12 +75,11 @@ from tables.models.graph_models import (
     EndNode,
     LLMNode,
     StartNode,
-    Organization,
-    OrganizationUser,
     GraphOrganization,
     GraphOrganizationUser,
     WebhookTriggerNode,
 )
+from tables.models.rbac_models import Organization, OrganizationUser
 from tables.models.llm_models import (
     DefaultLLMConfig,
     RealtimeModel,
@@ -1563,6 +1561,7 @@ class SessionSerializer(serializers.ModelSerializer):
 
 
 class SessionLightSerializer(serializers.ModelSerializer):
+    has_output_files = serializers.BooleanField(read_only=True)
     graph_name = serializers.CharField(source="graph.name", read_only=True)
 
     class Meta:
@@ -1576,6 +1575,7 @@ class SessionLightSerializer(serializers.ModelSerializer):
             "created_at",
             "finished_at",
             "parent_session",
+            "has_output_files",
         )
 
 
@@ -1912,35 +1912,18 @@ class GraphSerializer(serializers.ModelSerializer):
         return instance
 
 
-class GraphFileReadSerializer(serializers.ModelSerializer):
-    file = serializers.FileField(use_url=True)
-
-    class Meta:
-        model = GraphFile
-        fields = [
-            "id",
-            "graph",
-            "domain_key",
-            "name",
-            "content_type",
-            "size",
-            "file",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = fields
-
-
 class OrganizationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization
-        fields = ["id", "name"]
+        fields = ["id", "name", "is_active", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class OrganizationUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrganizationUser
-        fields = ["id", "organization", "name"]
+        fields = ["id", "user", "org", "role", "joined_at"]
+        read_only_fields = ["id", "joined_at"]
 
 
 class GraphOrganizationSerializer(serializers.ModelSerializer):
@@ -1997,7 +1980,7 @@ class GraphOrganizationSerializer(serializers.ModelSerializer):
 class GraphOrganizationUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = GraphOrganizationUser
-        fields = ["id", "graph", "user", "persistent_variables"]
+        fields = ["id", "graph", "organization_user", "persistent_variables"]
         read_only_fields = ["id", "persistent_variables"]
 
 

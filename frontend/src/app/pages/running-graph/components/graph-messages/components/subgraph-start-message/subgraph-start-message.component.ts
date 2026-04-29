@@ -14,12 +14,24 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
     animations: [expandCollapseAnimation],
     template: `
         <div class="subgraph-start-container">
-            <div class="subgraph-start-header" (click)="toggleMessage()">
-                <div class="play-arrow" *ngIf="hasContent()">
-                    <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
+            <div
+                class="subgraph-start-header"
+                (click)="toggleMessage()"
+            >
+                <div
+                    class="play-arrow"
+                    *ngIf="hasContent()"
+                >
+                    <app-svg-icon
+                        [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                        size="1.1rem"
+                    />
                 </div>
                 <div class="icon-container">
-                    <app-svg-icon icon="hierarchy-2" size="1.25rem" />
+                    <app-svg-icon
+                        icon="hierarchy-2"
+                        size="1.25rem"
+                    />
                 </div>
                 <h3>
                     <span class="node-name">{{ message.name }}</span> subgraph started {{ subgraphName }}
@@ -32,8 +44,14 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                     (click)="onViewNestedMessages($event)"
                     [class.show-nested-btn--open]="isNestedMessagesOpen"
                 >
-                    <div class="play-nested-arrow" [class.play-nested-arrow--open]="isNestedMessagesOpen">
-                        <app-svg-icon icon="caret-right-filled" size="1rem" />
+                    <div
+                        class="play-nested-arrow"
+                        [class.play-nested-arrow--open]="isNestedMessagesOpen"
+                    >
+                        <app-svg-icon
+                            icon="caret-right-filled"
+                            size="1rem"
+                        />
                     </div>
                     <svg
                         class="view-nested-icon"
@@ -55,12 +73,24 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
             </div>
 
             <!-- Collapsible Content -->
-            <div class="collapsible-content" [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'">
+            <div
+                class="collapsible-content"
+                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+            >
                 <div class="subgraph-start-content">
                     <!-- Input Parameters Section -->
-                    <div class="input-container" *ngIf="hasInput()">
-                        <div class="section-heading" (click)="toggleInputs($event)">
-                            <app-svg-icon [icon]="isInputsExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
+                    <div
+                        class="input-container"
+                        *ngIf="hasInput()"
+                    >
+                        <div
+                            class="section-heading"
+                            (click)="toggleInputs($event)"
+                        >
+                            <app-svg-icon
+                                [icon]="isInputsExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                size="1.1rem"
+                            />
                             Input Parameters
                         </div>
                         <div
@@ -68,15 +98,27 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                             [@expandCollapse]="isInputsExpanded ? 'expanded' : 'collapsed'"
                         >
                             <div class="input-content">
-                                <ngx-json-viewer [json]="getInput()" [expanded]="false"></ngx-json-viewer>
+                                <ngx-json-viewer
+                                    [json]="getInput()"
+                                    [expanded]="false"
+                                ></ngx-json-viewer>
                             </div>
                         </div>
                     </div>
 
                     <!-- Variables Section -->
-                    <div class="variables-container" *ngIf="hasVariables()">
-                        <div class="section-heading" (click)="toggleVariables($event)">
-                            <app-svg-icon [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
+                    <div
+                        class="variables-container"
+                        *ngIf="hasVariables()"
+                    >
+                        <div
+                            class="section-heading"
+                            (click)="toggleVariables($event)"
+                        >
+                            <app-svg-icon
+                                [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                size="1.1rem"
+                            />
                             Variables
                         </div>
                         <div
@@ -84,7 +126,10 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                             [@expandCollapse]="isVariablesExpanded ? 'expanded' : 'collapsed'"
                         >
                             <div class="variables-content">
-                                <ngx-json-viewer [json]="getVariables()" [expanded]="false"></ngx-json-viewer>
+                                <ngx-json-viewer
+                                    [json]="getVariables()"
+                                    [expanded]="false"
+                                ></ngx-json-viewer>
                             </div>
                         </div>
                     </div>

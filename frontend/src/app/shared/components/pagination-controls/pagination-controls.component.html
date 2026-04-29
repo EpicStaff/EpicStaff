@@ -1,11 +1,27 @@
 <!-- pagination-controls.component.html -->
-<nav class="pagination" aria-label="Pagination">
-    <button class="page-btn prev" (click)="prev()" [disabled]="currentPage === 1">Prev</button>
+<nav
+    class="pagination"
+    aria-label="Pagination"
+>
+    <button
+        class="page-btn prev"
+        (click)="prev()"
+        [disabled]="currentPage === 1"
+    >
+        Prev
+    </button>
 
     <ul class="page-list">
-        <li *ngFor="let p of pages" [class.ellipsis]="p === '…'">
+        <li
+            *ngFor="let p of pages"
+            [class.ellipsis]="p === '…'"
+        >
             <ng-container *ngIf="p !== '…'; else dots">
-                <button class="page-btn" [class.active]="p === currentPage" (click)="goTo(p)">
+                <button
+                    class="page-btn"
+                    [class.active]="p === currentPage"
+                    (click)="goTo(p)"
+                >
                     {{ p }}
                 </button>
             </ng-container>
@@ -15,5 +31,11 @@
         </li>
     </ul>
 
-    <button class="page-btn next" (click)="next()" [disabled]="currentPage === totalPages">Next</button>
+    <button
+        class="page-btn next"
+        (click)="next()"
+        [disabled]="currentPage === totalPages"
+    >
+        Next
+    </button>
 </nav>

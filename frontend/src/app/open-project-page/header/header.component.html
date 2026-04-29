@@ -1,9 +1,19 @@
 <!-- Updated header.component.html -->
 <div class="header">
     <div class="title-section">
-        <div class="title" *ngIf="project">
-            <div class="project-prefix" routerLink="/projects">
-                <app-svg-icon icon="arrow-left" size="20px" class="back-arrow" />
+        <div
+            class="title"
+            *ngIf="project"
+        >
+            <div
+                class="project-prefix"
+                routerLink="/projects"
+            >
+                <app-svg-icon
+                    icon="arrow-left"
+                    size="20px"
+                    class="back-arrow"
+                />
                 <span>Projects</span>
             </div>
             <span class="separator"> / </span>
@@ -12,7 +22,12 @@
                     {{ project.name }}
                 </span>
 
-                <app-svg-icon icon="edit" size="1rem" class="project-name__edit" (click)="openEditTitleDialog()" />
+                <app-svg-icon
+                    icon="edit"
+                    size="1rem"
+                    class="project-name__edit"
+                    (click)="openEditTitleDialog()"
+                />
             </div>
         </div>
         <app-unsaved-indicator [show]="hasUnsavedChanges"></app-unsaved-indicator>

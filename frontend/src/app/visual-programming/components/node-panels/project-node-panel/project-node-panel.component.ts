@@ -19,7 +19,10 @@ interface InputMapPair {
     template: `
         <div class="panel-container">
             <div class="panel-content">
-                <form [formGroup]="form" class="form-container">
+                <form
+                    [formGroup]="form"
+                    class="form-container"
+                >
                     <app-custom-input
                         label="Node Name"
                         tooltipText="The unique identifier used to reference this project node. This name must be unique within the flow."
@@ -41,27 +44,45 @@ interface InputMapPair {
                         [activeColor]="activeColor"
                     ></app-custom-input>
 
-                    <div class="stream-config-section" formGroupName="stream_config">
+                    <div
+                        class="stream-config-section"
+                        formGroupName="stream_config"
+                    >
                         <span class="section-label">Streaming to EpicChat</span>
                         <div class="checkbox-list">
                             <label class="checkbox-item">
-                                <input type="checkbox" formControlName="agent_activity" />
+                                <input
+                                    type="checkbox"
+                                    formControlName="agent_activity"
+                                />
                                 <span>Agent activity</span>
                             </label>
                             <label class="checkbox-item">
-                                <input type="checkbox" formControlName="task_progress" />
+                                <input
+                                    type="checkbox"
+                                    formControlName="task_progress"
+                                />
                                 <span>Task progress</span>
                             </label>
                             <label class="checkbox-item">
-                                <input type="checkbox" formControlName="agent_reasoning" />
+                                <input
+                                    type="checkbox"
+                                    formControlName="agent_reasoning"
+                                />
                                 <span>Agent reasoning</span>
                             </label>
                             <label class="checkbox-item">
-                                <input type="checkbox" formControlName="tool_calls" />
+                                <input
+                                    type="checkbox"
+                                    formControlName="tool_calls"
+                                />
                                 <span>Tool calls</span>
                             </label>
                             <label class="checkbox-item">
-                                <input type="checkbox" formControlName="final_reply" />
+                                <input
+                                    type="checkbox"
+                                    formControlName="final_reply"
+                                />
                                 <span>Final reply</span>
                             </label>
                         </div>

@@ -3,18 +3,33 @@
         <div class="files-header">
             <div class="header-title">
                 Convert to Format
-                <app-help-tooltip class="tooltip-icon" text="Select format" position="right" />
+                <app-help-tooltip
+                    class="tooltip-icon"
+                    text="Select format"
+                    position="right"
+                />
             </div>
-            <app-radio-button [(value)]="selectedFormat" [options]="formatOptions" [disabled]="true" />
+            <app-radio-button
+                [(value)]="selectedFormat"
+                [options]="formatOptions"
+                [disabled]="true"
+            />
         </div>
 
         <div class="non-txt-warning">
-            <app-svg-icon icon="warning" size="1rem" class="warning-icon" />
+            <app-svg-icon
+                icon="warning"
+                size="1rem"
+                class="warning-icon"
+            />
             <span>Non-txt files may not be properly processed, resulting in empty search results.</span>
         </div>
 
         <div class="files-content">
-            <app-graph-rag-files-list [ragId]="graphRag().graph_rag_id" [documents]="graphRag().documents" />
+            <app-graph-rag-files-list
+                [ragId]="graphRag().graph_rag_id"
+                [documents]="graphRag().documents"
+            />
         </div>
     </div>
 

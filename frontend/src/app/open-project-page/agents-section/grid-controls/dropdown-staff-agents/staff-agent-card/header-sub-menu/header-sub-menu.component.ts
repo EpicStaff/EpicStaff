@@ -12,7 +12,12 @@ import { CardState } from '../staff-agent-card.component';
     standalone: true,
     imports: [CommonModule, ClickOutsideDirective, AppSvgIconComponent],
     template: `
-        <div class="menu-container" *ngIf="isOpen" appClickOutside (appClickOutside)="onClickOutside()">
+        <div
+            class="menu-container"
+            *ngIf="isOpen"
+            appClickOutside
+            (appClickOutside)="onClickOutside()"
+        >
             <!-- <div class="menu-item" (click)="onEditAgent()">
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -32,8 +37,15 @@ import { CardState } from '../staff-agent-card.component';
         <span>Edit Agent</span>
       </div> -->
 
-            <div *ngIf="state === 'removing'" class="menu-item remove-item" (click)="onRemoveAgent()">
-                <app-svg-icon icon="trash" size="16px" />
+            <div
+                *ngIf="state === 'removing'"
+                class="menu-item remove-item"
+                (click)="onRemoveAgent()"
+            >
+                <app-svg-icon
+                    icon="trash"
+                    size="16px"
+                />
                 <span>Remove Agent</span>
             </div>
         </div>

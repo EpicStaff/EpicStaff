@@ -24,15 +24,32 @@ interface FlowOption {
     imports: [CommonModule, FormsModule, ClickOutsideDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div class="node-filter-dropdown" [class.open]="open" (appClickOutside)="closeDropdown()">
-            <button class="dropdown-toggle" (click)="toggleDropdown($event)">
+        <div
+            class="node-filter-dropdown"
+            [class.open]="open"
+            (appClickOutside)="closeDropdown()"
+        >
+            <button
+                class="dropdown-toggle"
+                (click)="toggleDropdown($event)"
+            >
                 <span class="selected-label">
                     <i class="ti ti-filter"></i>
                     {{ value ?? 'Filter by Flow' }}
                 </span>
                 <span class="dropdown-arrow-wrapper">
-                    <svg class="dropdown-arrow" width="16" height="16" viewBox="0 0 24 24">
-                        <path d="M7 10l5 5 5-5" stroke="currentColor" stroke-width="2" fill="none" />
+                    <svg
+                        class="dropdown-arrow"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            d="M7 10l5 5 5-5"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            fill="none"
+                        />
                     </svg>
                 </span>
             </button>
@@ -49,13 +66,19 @@ interface FlowOption {
                             (click)="$event.stopPropagation()"
                         />
                         @if (searchQuery) {
-                            <button class="clear-search" (click)="clearSearch($event)">
+                            <button
+                                class="clear-search"
+                                (click)="clearSearch($event)"
+                            >
                                 <i class="ti ti-x"></i>
                             </button>
                         }
                     </div>
                     <ul class="dropdown-menu">
-                        <li (click)="select(null, $event)" [class.selected]="value === null">
+                        <li
+                            (click)="select(null, $event)"
+                            [class.selected]="value === null"
+                        >
                             <i class="ti ti-list"></i>
                             <span>All Flows</span>
                             @if (value === null) {
@@ -63,7 +86,10 @@ interface FlowOption {
                             }
                         </li>
                         @for (flow of filteredFlows; track flow.id) {
-                            <li (click)="select(flow.name, $event)" [class.selected]="value === flow.name">
+                            <li
+                                (click)="select(flow.name, $event)"
+                                [class.selected]="value === flow.name"
+                            >
                                 <span>{{ flow.name }}</span>
                                 @if (value === flow.name) {
                                     <span class="checkmark">&#10003;</span>
@@ -79,7 +105,12 @@ interface FlowOption {
                     </ul>
                     @if (value !== null) {
                         <div class="clear-filter-footer">
-                            <button class="clear-filter-btn" (click)="select(null, $event)">Clear Filter</button>
+                            <button
+                                class="clear-filter-btn"
+                                (click)="select(null, $event)"
+                            >
+                                Clear Filter
+                            </button>
                         </div>
                     }
                 </div>

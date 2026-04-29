@@ -1,10 +1,16 @@
 <div class="files">
     <app-list [items]="documents()">
-        <ng-template let-item let-i="index">
+        <ng-template
+            let-item
+            let-i="index"
+        >
             <app-list-row class="files__file">
                 <div class="files__name-column">
                     <span>{{ i + 1 }}</span>
-                    <app-svg-icon icon="document" size="0.75rem"/>
+                    <app-svg-icon
+                        icon="document"
+                        size="0.75rem"
+                    />
 
                     <span class="files__name">
                         {{ item.file_name }}

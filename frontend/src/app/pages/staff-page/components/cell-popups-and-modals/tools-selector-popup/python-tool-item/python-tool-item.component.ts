@@ -9,12 +9,23 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
     standalone: true,
     imports: [NgClass, AppSvgIconComponent],
     template: `
-        <div class="python-tool-item" [ngClass]="{ 'selected-tool': isSelected }" (click)="onToolToggle()">
-            <app-svg-icon icon="python" size="16px" />
+        <div
+            class="python-tool-item"
+            [ngClass]="{ 'selected-tool': isSelected }"
+            (click)="onToolToggle()"
+        >
+            <app-svg-icon
+                icon="python"
+                size="16px"
+            />
             <span class="tool-name">
                 {{ tool.name }}
             </span>
-            <input type="checkbox" [checked]="isSelected" (click)="onCheckboxClick($event)" />
+            <input
+                type="checkbox"
+                [checked]="isSelected"
+                (click)="onCheckboxClick($event)"
+            />
         </div>
     `,
     styleUrls: ['./python-tool-item.component.scss'],

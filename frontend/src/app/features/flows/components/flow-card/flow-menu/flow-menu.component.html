@@ -1,4 +1,7 @@
-<div class="menu-container" [ngClass]="{ 'menu-active': isMenuOpen() }">
+<div
+    class="menu-container"
+    [ngClass]="{ 'menu-active': isMenuOpen() }"
+>
     <button
         class="menu-button"
         [class.active]="isMenuOpen()"
@@ -7,17 +10,37 @@
         (mouseenter)="onButtonEnter()"
         (mouseleave)="onButtonLeave()"
     >
-        <app-svg-icon icon="dots-vertical" size="1rem"></app-svg-icon>
+        <app-svg-icon
+            icon="dots-vertical"
+            size="1rem"
+        ></app-svg-icon>
     </button>
-    <div class="context-menu" *ngIf="isMenuOpen()" (mouseenter)="onMenuEnter()" (mouseleave)="onMenuLeave()">
+    <div
+        class="context-menu"
+        *ngIf="isMenuOpen()"
+        (mouseenter)="onMenuEnter()"
+        (mouseleave)="onMenuLeave()"
+    >
         <app-flow-menu-item
             label="View Sessions"
             (itemClick)="onActionClick($event, 'viewSessions')"
         ></app-flow-menu-item>
-        <app-flow-menu-item label="Run" (itemClick)="onActionClick($event, 'run')"></app-flow-menu-item>
-        <app-flow-menu-item label="Edit" (itemClick)="onActionClick($event, 'rename')"></app-flow-menu-item>
-        <app-flow-menu-item label="Copy" (itemClick)="onActionClick($event, 'copy')"></app-flow-menu-item>
-        <app-flow-menu-item label="Export" (itemClick)="onActionClick($event, 'export')"></app-flow-menu-item>
+        <app-flow-menu-item
+            label="Run"
+            (itemClick)="onActionClick($event, 'run')"
+        ></app-flow-menu-item>
+        <app-flow-menu-item
+            label="Edit"
+            (itemClick)="onActionClick($event, 'rename')"
+        ></app-flow-menu-item>
+        <app-flow-menu-item
+            label="Copy"
+            (itemClick)="onActionClick($event, 'copy')"
+        ></app-flow-menu-item>
+        <app-flow-menu-item
+            label="Export"
+            (itemClick)="onActionClick($event, 'export')"
+        ></app-flow-menu-item>
         <app-flow-menu-item
             label="Delete"
             [isDelete]="true"

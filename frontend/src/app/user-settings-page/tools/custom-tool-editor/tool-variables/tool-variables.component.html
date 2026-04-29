@@ -29,7 +29,11 @@
                         />
 
                         <label class="required-checkbox">
-                            <input type="checkbox" [checked]="variable.required" (change)="toggleRequired(i)" />
+                            <input
+                                type="checkbox"
+                                [checked]="variable.required"
+                                (change)="toggleRequired(i)"
+                            />
                             <span class="checkbox-label">Required</span>
                         </label>
                     </div>
@@ -45,8 +49,14 @@
 
                         <!-- Allow deletion if there's more than one row -->
                         @if (variables.length > 1) {
-                            <button class="delete-variable-btn" (click)="removeVariable(i); $event.preventDefault()">
-                                <app-svg-icon icon="x" size="1rem"></app-svg-icon>
+                            <button
+                                class="delete-variable-btn"
+                                (click)="removeVariable(i); $event.preventDefault()"
+                            >
+                                <app-svg-icon
+                                    icon="x"
+                                    size="1rem"
+                                ></app-svg-icon>
                             </button>
                         }
                     </div>

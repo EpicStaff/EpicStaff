@@ -7,8 +7,16 @@ import { Component, Input } from '@angular/core';
     imports: [CommonModule],
     template: `
         <div class="loading-spinner-container">
-            <div class="spinner" [ngClass]="size"></div>
-            <div *ngIf="message" class="loading-message">{{ message }}</div>
+            <div
+                class="spinner"
+                [ngClass]="size"
+            ></div>
+            <div
+                *ngIf="message"
+                class="loading-message"
+            >
+                {{ message }}
+            </div>
         </div>
     `,
     styles: [

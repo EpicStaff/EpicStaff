@@ -60,6 +60,12 @@
     animation: fadeIn 0.15s ease forwards;
     transform-origin: top right;
     border: 1px solid var(--color-flow-card-bg);
+
+    &.open-upwards {
+        top: auto;
+        bottom: calc(100% + 8px);
+        transform-origin: bottom right;
+    }
 }
 
 @keyframes fadeIn {

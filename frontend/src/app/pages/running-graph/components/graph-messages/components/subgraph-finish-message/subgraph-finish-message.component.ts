@@ -19,12 +19,21 @@ import {
     animations: [expandCollapseAnimation],
     template: `
         <div class="subgraph-finish-container">
-            <div class="subgraph-finish-header" (click)="toggleMessage()">
+            <div
+                class="subgraph-finish-header"
+                (click)="toggleMessage()"
+            >
                 <div class="play-arrow">
-                    <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+                    <app-svg-icon
+                        [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                        size="1rem"
+                    />
                 </div>
                 <div class="icon-container">
-                    <app-svg-icon icon="hierarchy-2" size="1rem" />
+                    <app-svg-icon
+                        icon="hierarchy-2"
+                        size="1rem"
+                    />
                 </div>
                 <h3>
                     <span class="node-name">{{ message.name }}</span> subgraph finished
@@ -32,12 +41,24 @@ import {
             </div>
 
             <!-- Collapsible Content -->
-            <div class="collapsible-content" [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'">
+            <div
+                class="collapsible-content"
+                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+            >
                 <div class="subgraph-finish-content">
                     <!-- Final Output Section -->
-                    <div class="output-container" *ngIf="hasOutput()">
-                        <div class="section-heading" (click)="toggleOutput($event)">
-                            <app-svg-icon [icon]="isOutputExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+                    <div
+                        class="output-container"
+                        *ngIf="hasOutput()"
+                    >
+                        <div
+                            class="section-heading"
+                            (click)="toggleOutput($event)"
+                        >
+                            <app-svg-icon
+                                [icon]="isOutputExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                size="1rem"
+                            />
                             Final Output
                         </div>
                         <div
@@ -45,15 +66,27 @@ import {
                             [@expandCollapse]="isOutputExpanded ? 'expanded' : 'collapsed'"
                         >
                             <div class="output-content">
-                                <ngx-json-viewer [json]="getOutput()" [expanded]="false"></ngx-json-viewer>
+                                <ngx-json-viewer
+                                    [json]="getOutput()"
+                                    [expanded]="false"
+                                ></ngx-json-viewer>
                             </div>
                         </div>
                     </div>
 
                     <!-- Variables Section -->
-                    <div class="variables-container" *ngIf="hasVariables()">
-                        <div class="section-heading" (click)="toggleVariables($event)">
-                            <app-svg-icon [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+                    <div
+                        class="variables-container"
+                        *ngIf="hasVariables()"
+                    >
+                        <div
+                            class="section-heading"
+                            (click)="toggleVariables($event)"
+                        >
+                            <app-svg-icon
+                                [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                size="1rem"
+                            />
                             Variables
                         </div>
                         <div
@@ -61,7 +94,10 @@ import {
                             [@expandCollapse]="isVariablesExpanded ? 'expanded' : 'collapsed'"
                         >
                             <div class="variables-content">
-                                <ngx-json-viewer [json]="getVariables()" [expanded]="false"></ngx-json-viewer>
+                                <ngx-json-viewer
+                                    [json]="getVariables()"
+                                    [expanded]="false"
+                                ></ngx-json-viewer>
                             </div>
                         </div>
                     </div>

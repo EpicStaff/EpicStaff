@@ -1,25 +1,44 @@
 <div class="panel-header">
     <div class="header-naming-container">
         <div class="icon">
-            <app-svg-icon icon="heartbeat" size="20px" />
+            <app-svg-icon
+                icon="heartbeat"
+                size="20px"
+            />
         </div>
         <p class="text">Session execution</p>
     </div>
 
-    <button [disabled]="!hasNextSession" (click)="goToNextSession()" class="btn-switch-session">
+    <button
+        [disabled]="!hasNextSession"
+        (click)="goToNextSession()"
+        class="btn-switch-session"
+    >
         <div class="icon-arrow">
-            <app-svg-icon icon="chevron-down" size="20px" />
+            <app-svg-icon
+                icon="chevron-down"
+                size="20px"
+            />
         </div>
     </button>
 
     <div class="session-dropdown-wrapper">
-        <button class="session-dropdown-trigger" (click)="toggleDropdown()">
+        <button
+            class="session-dropdown-trigger"
+            (click)="toggleDropdown()"
+        >
             <span class="session-dropdown-trigger__label">{{ selectedSessionLabel }}</span>
-            <app-svg-icon icon="chevron-down" size="16px" />
+            <app-svg-icon
+                icon="chevron-down"
+                size="16px"
+            />
         </button>
 
         @if (isDropdownOpen) {
-            <div class="session-dropdown-overlay" (click)="closeDropdown()"></div>
+            <div
+                class="session-dropdown-overlay"
+                (click)="closeDropdown()"
+            ></div>
             <div class="session-dropdown">
                 <div class="session-dropdown__search">
                     <input
@@ -49,9 +68,16 @@
         }
     </div>
 
-    <button [disabled]="!hasPreviousSession" (click)="goToPreviousSession()" class="btn-switch-session">
+    <button
+        [disabled]="!hasPreviousSession"
+        (click)="goToPreviousSession()"
+        class="btn-switch-session"
+    >
         <div class="icon-arrow">
-            <app-svg-icon icon="chevron-up" size="20px" />
+            <app-svg-icon
+                icon="chevron-up"
+                size="20px"
+            />
         </div>
     </button>
 
@@ -62,13 +88,23 @@
         class="btn-go-to-arrow"
     >
         <div>
-            <app-svg-icon icon="arrow-up" size="15px" class="arrow-up-custom" />
+            <app-svg-icon
+                icon="arrow-up"
+                size="15px"
+                class="arrow-up-custom"
+            />
         </div>
     </button>
 
-    <button (click)="close.emit()" class="btn-switch-session">
+    <button
+        (click)="close.emit()"
+        class="btn-switch-session"
+    >
         <div>
-            <app-svg-icon icon="x" size="20px" />
+            <app-svg-icon
+                icon="x"
+                size="20px"
+            />
         </div>
     </button>
 </div>
@@ -84,7 +120,10 @@
         <div class="panel-body__empty">
             Click
             <span class="panel-body__run-badge">
-                <app-svg-icon icon="player-play-filled" size="0.875rem" />
+                <app-svg-icon
+                    icon="player-play-filled"
+                    size="0.875rem"
+                />
                 Run
             </span>
             button to see session messages

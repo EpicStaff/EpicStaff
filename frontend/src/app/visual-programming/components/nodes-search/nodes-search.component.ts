@@ -33,11 +33,17 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                     [attr.title]="isSearchVisible() ? 'Close search' : 'Search nodes'"
                     [class.active]="isSearchVisible()"
                 >
-                    <app-svg-icon icon="search"></app-svg-icon>
+                    <app-svg-icon
+                        icon="search"
+                        size="1.1rem"
+                    ></app-svg-icon>
                 </button>
 
                 <!-- Search input field (appears to the right of the icon) -->
-                <div class="search-input-container" *ngIf="isSearchVisible()">
+                <div
+                    class="search-input-container"
+                    *ngIf="isSearchVisible()"
+                >
                     <input
                         type="text"
                         class="search-input"
@@ -46,25 +52,39 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                         (ngModelChange)="updateSearch($event)"
                         #searchInputRef
                     />
-                    <button *ngIf="searchQuery" class="clear-button" (click)="clearSearch()" title="Clear search">
+                    <button
+                        *ngIf="searchQuery"
+                        class="clear-button"
+                        (click)="clearSearch()"
+                        title="Clear search"
+                    >
                         <app-svg-icon icon="x"></app-svg-icon>
                     </button>
                 </div>
             </div>
 
             <!-- Search results (visible when expanded) -->
-            <div class="search-results" *ngIf="isSearchVisible() && (filteredNodes.length > 0 || searchQuery)">
+            <div
+                class="search-results"
+                *ngIf="isSearchVisible() && (filteredNodes.length > 0 || searchQuery)"
+            >
                 <!-- Add panel title -->
                 <div class="panel-title">
                     <h3>Search nodes ({{ filteredNodes.length }} found)</h3>
                 </div>
 
                 <ul class="node-list">
-                    <li class="no-results" *ngIf="filteredNodes.length === 0 && searchQuery">
+                    <li
+                        class="no-results"
+                        *ngIf="filteredNodes.length === 0 && searchQuery"
+                    >
                         No nodes match your search
                     </li>
 
-                    <li *ngFor="let node of filteredNodes; let last = last" [class.last-node]="last">
+                    <li
+                        *ngFor="let node of filteredNodes; let last = last"
+                        [class.last-node]="last"
+                    >
                         <app-search-node-item
                             [node]="node"
                             (nodeSelected)="onNodeSelected($event)"
@@ -93,9 +113,9 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
             }
 
             .search-button {
-                width: 38px;
-                height: 38px;
-                min-width: 38px;
+                width: 36px;
+                height: 36px;
+                min-width: 36px;
                 padding: 8px;
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);

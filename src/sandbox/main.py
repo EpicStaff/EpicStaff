@@ -12,6 +12,9 @@ redis_host = os.environ.get("REDIS_HOST", "127.0.0.1")
 redis_port = int(os.environ.get("REDIS_PORT", "6379"))
 redis_password = os.getenv("REDIS_PASSWORD")
 code_result_channel = os.environ.get("CODE_RESULT_CHANNEL", "code_results")
+storage_mutation_channel = os.environ.get(
+    "STORAGE_MUTATION_CHANNEL", "storage_mutations"
+)
 task_channel = os.environ.get("CODE_EXEC_TASK_CHANNEL", "code_exec_tasks")
 output_path = Path(os.environ.get("OUTPUT_PATH", "executions"))
 base_venv_path = Path(os.environ.get("BASE_VENV_PATH", "venvs"))
@@ -60,7 +63,33 @@ async def run(code_task_data: CodeTaskData):
         entrypoint=code_task_data.entrypoint,
         func_kwargs=code_task_data.func_kwargs,
         global_kwargs=code_task_data.global_kwargs,
+        use_storage=code_task_data.use_storage,
+        storage_allowed_paths=code_task_data.storage_allowed_paths,
+        storage_org_prefix=code_task_data.storage_org_prefix,
     )
+    if code_task_data.use_storage and code_task_data.storage_org_prefix:
+        try:
+            mutations_path = (
+                output_path / code_task_data.execution_id / "storage_mutations.json"
+            )
+
+            if mutations_path.exists():
+                with open(mutations_path, "r") as f:
+                    mutations = json.load(f)
+
+                if mutations:
+                    event = {
+                        "execution_id": code_task_data.execution_id,
+                        "org_prefix": code_task_data.storage_org_prefix,
+                        "session_id": code_task_data.session_id,
+                        "mutations": mutations,
+                    }
+                    await redis_service.async_publish(
+                        channel=storage_mutation_channel, message=event
+                    )
+        except Exception as e:
+            logger.warning(f"Failed to publish storage mutations: {e}")
+
     await redis_service.async_publish(
         channel=code_result_channel, message=result.model_dump()
     )

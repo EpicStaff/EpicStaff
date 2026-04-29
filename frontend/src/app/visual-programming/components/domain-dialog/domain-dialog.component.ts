@@ -17,7 +17,6 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { findNodeAtOffset, Node as JsonNode, parse as parseJsonc, parseTree } from 'jsonc-parser';
 
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
-
 import { JsonEditorComponent } from '../../../shared/components/json-editor/json-editor.component';
 import {
     EMPTY_VALIDATION_RESULT,
@@ -57,7 +56,10 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
         <div class="dialog-container">
             <div class="dialog-header">
                 <h2 class="dialog-title">Domain Variables</h2>
-                <button class="close-button" (click)="close()">
+                <button
+                    class="close-button"
+                    (click)="close()"
+                >
                     <app-svg-icon icon="x"></app-svg-icon>
                 </button>
             </div>
@@ -68,7 +70,10 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                 </div>
 
                 <div class="autocomplete-hint">
-                    <app-svg-icon icon="bulb" size="1rem"></app-svg-icon>
+                    <app-svg-icon
+                        icon="bulb"
+                        size="1rem"
+                    ></app-svg-icon>
                     <span>
                         Place your cursor inside <code>user</code> or <code>organization</code> arrays and press
                         <kbd>Ctrl+Space</kbd> to pick variables from <code>context</code>.
@@ -146,7 +151,6 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                     background: var(--color-surface-hover, #333);
                     color: var(--color-text-primary, #fff);
                 }
-
             }
 
             .dialog-content {

@@ -1,7 +1,10 @@
 <div class="projects-list-page">
     <div class="sticky-header">
         <header class="header">
-            <div class="header-titles" appHideInlineSubtitleOnOverflow>
+            <div
+                class="header-titles"
+                appHideInlineSubtitleOnOverflow
+            >
                 <h1 class="title">
                     Projects
                     <span class="subtitle-inline">A project is a workspace to organize your AI agents and tasks.</span>
@@ -36,7 +39,11 @@
                 </app-project-tags-filter> -->
 
                 <div class="search-container">
-                    <app-svg-icon icon="search" class="search-icon" size="1.1rem" />
+                    <app-svg-icon
+                        icon="search"
+                        class="search-icon"
+                        size="1.1rem"
+                    />
                     <input
                         type="text"
                         class="search-input"
@@ -51,7 +58,10 @@
                             aria-label="Clear"
                             (click)="clearSearch()"
                         >
-                            <app-svg-icon icon="x" size="1.1rem" />
+                            <app-svg-icon
+                                icon="x"
+                                size="1.1rem"
+                            />
                         </button>
                     }
                 </div>

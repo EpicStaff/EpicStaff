@@ -1,10 +1,9 @@
 import { NgComponentOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input, OnChanges, signal } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { SelectComponent } from '@shared/components';
+import { HelpTooltipComponent, SelectComponent } from '@shared/components';
 import { MATERIAL_FORMS } from '@shared/material-forms';
 
-import { HelpTooltipComponent } from '../../../../../shared/components/help-tooltip/help-tooltip.component';
 import { CHUNK_STRATEGIES_SELECT_ITEMS } from '../../../constants/constants';
 import { ADDITIONAL_PARAMS_FORM_COMPONENT_MAP } from '../../../enums/additional-params-form.map';
 import { NaiveRagChunkStrategy } from '../../../enums/naive-rag-chunk-strategy';
@@ -14,7 +13,7 @@ import { TableDocument } from '../../naive-rag-configuration/configuration-table
     selector: 'app-document-config',
     templateUrl: './document-config.component.html',
     styleUrls: ['./document-config.component.scss'],
-    imports: [HelpTooltipComponent, MATERIAL_FORMS, SelectComponent, ReactiveFormsModule, NgComponentOutlet],
+    imports: [MATERIAL_FORMS, SelectComponent, ReactiveFormsModule, NgComponentOutlet, HelpTooltipComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DocumentConfigComponent implements OnChanges {

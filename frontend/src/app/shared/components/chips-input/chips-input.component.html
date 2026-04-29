@@ -1,10 +1,18 @@
 @if (label()) {
-    <app-tooltip [required]="required()" [tooltipText]="tooltipText()" [label]="label()" [icon]="icon()" />
+    <app-tooltip
+        [required]="required()"
+        [tooltipText]="tooltipText()"
+        [label]="label()"
+        [icon]="icon()"
+    />
 }
 
 <div class="wrapper">
     <div class="input">
-        <app-custom-input [placeholder]="inputPlaceholder()" [formControl]="inputControl" />
+        <app-custom-input
+            [placeholder]="inputPlaceholder()"
+            [formControl]="inputControl"
+        />
 
         <app-svg-icon
             class="input-icon"
@@ -20,7 +28,12 @@
         @for (item of value(); track $index; let i = $index) {
             <div class="chip">
                 {{ item }}
-                <app-svg-icon class="action" icon="close" size="1.25rem" (click)="onRemove(i)" />
+                <app-svg-icon
+                    class="action"
+                    icon="close"
+                    size="1.25rem"
+                    (click)="onRemove(i)"
+                />
             </div>
         }
     </div>

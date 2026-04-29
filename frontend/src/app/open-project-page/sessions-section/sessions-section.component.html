@@ -1,15 +1,39 @@
 <div class="sessions-section">
     <div class="section-header">
         <div class="filters">
-            <button [class.active]="selectedFilter === 'all'" (click)="setFilter('all')">All</button>
-            <button [class.active]="selectedFilter === 'active'" (click)="setFilter('active')">Active</button>
-            <button [class.active]="selectedFilter === 'finished'" (click)="setFilter('finished')">Finished</button>
-            <button [class.active]="selectedFilter === 'error'" (click)="setFilter('error')">Error</button>
+            <button
+                [class.active]="selectedFilter === 'all'"
+                (click)="setFilter('all')"
+            >
+                All
+            </button>
+            <button
+                [class.active]="selectedFilter === 'active'"
+                (click)="setFilter('active')"
+            >
+                Active
+            </button>
+            <button
+                [class.active]="selectedFilter === 'finished'"
+                (click)="setFilter('finished')"
+            >
+                Finished
+            </button>
+            <button
+                [class.active]="selectedFilter === 'error'"
+                (click)="setFilter('error')"
+            >
+                Error
+            </button>
         </div>
     </div>
 
     <div class="sessions-list">
-        <div class="session-item" *ngFor="let session of filteredSessions" [class]="session.status">
+        <div
+            class="session-item"
+            *ngFor="let session of filteredSessions"
+            [class]="session.status"
+        >
             <div class="session-info">
                 <div class="session-id">Session #{{ session.id }}</div>
                 <div class="session-times">
@@ -26,12 +50,25 @@
                 </div>
             </div>
             <div class="session-actions">
-                <button mat-button *ngIf="session.status === 'active'" (click)="stopSession(session.id)">
-                    <app-svg-icon icon="stop" size="18px" />
+                <button
+                    mat-button
+                    *ngIf="session.status === 'active'"
+                    (click)="stopSession(session.id)"
+                >
+                    <app-svg-icon
+                        icon="stop"
+                        size="18px"
+                    />
                     Stop
                 </button>
-                <button mat-button (click)="viewSession(session.id)">
-                    <app-svg-icon icon="eye" size="18px" />
+                <button
+                    mat-button
+                    (click)="viewSession(session.id)"
+                >
+                    <app-svg-icon
+                        icon="eye"
+                        size="18px"
+                    />
                     View
                 </button>
             </div>

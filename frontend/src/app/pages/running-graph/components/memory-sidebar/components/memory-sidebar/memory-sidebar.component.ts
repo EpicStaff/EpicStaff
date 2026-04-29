@@ -11,21 +11,38 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
     imports: [CommonModule, MemoryItemComponent, AppSvgIconComponent],
     template: `
         <!-- Memories Sidebar Overlay -->
-        <div class="sidebar-overlay" *ngIf="isOpen" (click)="close.emit()"></div>
+        <div
+            class="sidebar-overlay"
+            *ngIf="isOpen"
+            (click)="close.emit()"
+        ></div>
 
         <!-- Memories Sidebar -->
-        <div class="memories-sidebar" [class.open]="isOpen">
+        <div
+            class="memories-sidebar"
+            [class.open]="isOpen"
+        >
             <div class="sidebar-header">
                 <h2>Session Memories ({{ memories.length }})</h2>
-                <button class="close-button" (click)="close.emit()">
-                    <app-svg-icon icon="x" size="1rem" />
+                <button
+                    class="close-button"
+                    (click)="close.emit()"
+                >
+                    <app-svg-icon
+                        icon="x"
+                        size="1rem"
+                    />
                 </button>
             </div>
 
             <div class="sidebar-content">
                 <div class="memory-filters">
                     <div class="filter-chips">
-                        <button class="filter-chip" [class.active]="activeFilter === 'all'" (click)="setFilter('all')">
+                        <button
+                            class="filter-chip"
+                            [class.active]="activeFilter === 'all'"
+                            (click)="setFilter('all')"
+                        >
                             All ({{ memories.length }})
                         </button>
                         <button

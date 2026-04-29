@@ -20,7 +20,10 @@ interface InputMapPair {
     template: `
         <div class="panel-container">
             <div class="panel-content">
-                <form [formGroup]="form" class="form-container">
+                <form
+                    [formGroup]="form"
+                    class="form-container"
+                >
                     @if (!isExpanded() || isFormFieldsVisible()) {
                         <!-- Input Map Key-Value Pairs -->
                         <div class="input-map">
@@ -64,7 +67,10 @@ interface InputMapPair {
                                     />
                                 </svg>
                             </button>
-                            <div class="code-editor-section" [class.fields-hidden]="!isFormFieldsVisible()">
+                            <div
+                                class="code-editor-section"
+                                [class.fields-hidden]="!isFormFieldsVisible()"
+                            >
                                 <app-code-editor
                                     [pythonCode]="pythonCode"
                                     (pythonCodeChange)="onPythonCodeChange($event)"

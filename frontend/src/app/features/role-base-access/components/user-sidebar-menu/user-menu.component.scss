@@ -1,0 +1,135 @@
+:host {
+    position: absolute;
+    bottom: 0;
+    left: calc(100% + 8px);
+    z-index: 1000;
+}
+
+.user-menu-panel {
+    background-color: var(--color-sidenav-background);
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 8px;
+    min-width: 220px;
+    max-width: 300px;
+    padding: 8px 0;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.user-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+}
+
+.user-info {
+    display: flex;
+    flex-direction: column;
+    line-height: 100%;
+    overflow: hidden;
+}
+
+.user-name {
+    font-size: 14px;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.user-role {
+    font-size: 0.6875rem;
+    color: var(--text-secondary-60);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.menu-divider {
+    height: 1px;
+    background-color: var(--color-divider-subtle);
+    margin: 4px 0;
+}
+
+.menu-section {
+    padding: 0 16px;
+}
+
+.section-label {
+    font-size: 14px;
+    padding: 8px 0;
+    color: var(--text-secondary-60);
+}
+
+.org-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.org-row {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    padding: 4px 0;
+
+    &.active {
+        color: var(--accent-color);
+
+        .org-name {
+            color: var(--accent-color);
+            font-weight: 500;
+        }
+    }
+}
+
+.org-name {
+    font-size: 14px;
+    color: var(--color-text-primary);
+    flex: 1;
+    min-width: 0;
+    margin-left: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color 0.15s ease;
+}
+
+.nav-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 4px 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    color: var(--text);
+    font-size: 14px;
+    transition: background-color 0.15s ease;
+
+    &.danger {
+        color: var(--color-ks-status-failed);
+
+        .nav-icon {
+            width: 24px;
+            color: var(--color-ks-status-failed);
+        }
+    }
+}
+
+.nav-icon {
+    color: var(--color-text-secondary);
+}
+
+.nav-label {
+    margin-left: 8px;
+    font-weight: 400;
+    line-height: 1;
+}

@@ -10,11 +10,19 @@
         }
     </div>
     @if (!isLoaded()) {
-        <app-loading-spinner size="md" message="Loading tools..."></app-loading-spinner>
+        <app-loading-spinner
+            size="md"
+            message="Loading tools..."
+        ></app-loading-spinner>
     } @else {
         @if (error()) {
             <div class="error">{{ error() }}</div>
-            <button type="button" (click)="ngOnInit()">Retry</button>
+            <button
+                type="button"
+                (click)="ngOnInit()"
+            >
+                Retry
+            </button>
         } @else {
             <div class="tools-grid">
                 @if (filteredTools().length === 0) {

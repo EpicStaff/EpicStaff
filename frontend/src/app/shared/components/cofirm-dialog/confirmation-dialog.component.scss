@@ -47,7 +47,7 @@
 
 .dialog-message {
     font-size: 0.875rem;
-    color: var(--color-text-subtle);
+    color: var(--color-ks-transparent-text-60);
     margin: 0;
     line-height: 1.5;
     word-wrap: break-word;
@@ -56,7 +56,7 @@
 }
 
 ::ng-deep .dialog-message strong {
-    color: var(--color-text);
+    color: var(--color-text-primary);
     font-weight: 600;
     word-wrap: break-word;
     overflow-wrap: break-word;

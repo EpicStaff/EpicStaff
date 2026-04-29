@@ -3,10 +3,35 @@
         <!-- Header -->
         <div class="dialog-header">
             <h2 class="title">Realtime Settings for {{ data.agent.role }}</h2>
-            <button class="close-btn" type="button" (click)="onCancel()">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                    <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-                    <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            <button
+                class="close-btn"
+                type="button"
+                (click)="onCancel()"
+            >
+                <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                >
+                    <line
+                        x1="18"
+                        y1="6"
+                        x2="6"
+                        y2="18"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                    />
+                    <line
+                        x1="6"
+                        y1="6"
+                        x2="18"
+                        y2="18"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                    />
                 </svg>
             </button>
         </div>
@@ -188,7 +213,13 @@
 
         <!-- Footer -->
         <div class="dialog-footer">
-            <button class="btn close" type="button" (click)="onCancel()">Cancel</button>
+            <button
+                class="btn close"
+                type="button"
+                (click)="onCancel()"
+            >
+                Cancel
+            </button>
             <button
                 class="btn create"
                 type="button"

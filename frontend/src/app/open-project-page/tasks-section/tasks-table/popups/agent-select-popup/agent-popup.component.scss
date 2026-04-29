@@ -17,8 +17,12 @@ $shadow-color: rgba(0, 0, 0, 0.5);
 $transition-default: all 0.2s ease;
 
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
 }
 
 .agent-list-container {
@@ -52,7 +56,9 @@ $transition-default: all 0.2s ease;
             transition: $transition-default;
             outline: none;
 
-            &::placeholder { color: $text-tertiary; }
+            &::placeholder {
+                color: $text-tertiary;
+            }
 
             &:focus {
                 border-color: $accent-blue;
@@ -74,7 +80,9 @@ $transition-default: all 0.2s ease;
             transition: $transition-default;
             border: none;
 
-            app-svg-icon { margin-bottom: 2px; }
+            app-svg-icon {
+                margin-bottom: 2px;
+            }
 
             &:hover {
                 background-color: color.adjust($bg-input, $lightness: 5%);
@@ -134,7 +142,9 @@ $transition-default: all 0.2s ease;
                 border-color: $accent-blue;
             }
 
-            &:hover { background-color: $bg-item-hover; }
+            &:hover {
+                background-color: $bg-item-hover;
+            }
 
             &.selected {
                 background-color: rgba($accent-blue, 0.15);
@@ -203,7 +213,9 @@ $transition-default: all 0.2s ease;
                 border: none;
                 margin-left: 8px;
 
-                app-svg-icon { transition: transform 0.2s ease; }
+                app-svg-icon {
+                    transition: transform 0.2s ease;
+                }
 
                 &:hover {
                     background-color: $accent-blue;

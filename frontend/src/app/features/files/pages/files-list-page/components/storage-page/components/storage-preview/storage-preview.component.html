@@ -1,0 +1,262 @@
+<div
+    class="storage-preview"
+    [class.storage-preview--empty]="!item()"
+>
+    <div class="storage-preview__header">
+        <div class="storage-preview__header-left">
+            <button
+                class="storage-preview__toggle-btn"
+                [class.storage-preview__toggle-btn--active]="showSidebar()"
+                (click)="toggleSidebar.emit()"
+                title="Toggle Folder Branches"
+            >
+                <app-svg-icon
+                    icon="expand-sidebar"
+                    size="0.85rem"
+                ></app-svg-icon>
+            </button>
+            @if (item()) {
+                <div class="storage-preview__breadcrumbs">
+                    @for (crumb of breadcrumbs; track crumb; let last = $last; let i = $index) {
+                        @if (!last) {
+                            <button
+                                class="storage-preview__breadcrumb storage-preview__breadcrumb--link"
+                                (click)="breadcrumbClick.emit(breadcrumbs.slice(0, i + 1).join('/'))"
+                            >
+                                {{ crumb }}
+                            </button>
+                            <span class="storage-preview__breadcrumb-sep">/</span>
+                        } @else {
+                            <span class="storage-preview__breadcrumb">{{ crumb }}</span>
+                        }
+                    }
+                </div>
+            }
+        </div>
+        @if (item()) {
+            <app-button
+                class="storage-preview__add-to-flow"
+                type="outline-primary"
+                mod="small"
+                [leftIcon]="'add-to-flow'"
+                iconSize="12px"
+                ariaLabel="Add to flow"
+                (click)="onKebabMenuAction('add-to-flow')"
+            >
+                Add to flow
+            </app-button>
+            <button
+                class="storage-preview__kebab"
+                aria-label="More actions"
+                (click)="onKebabClick($event)"
+            >
+                <app-svg-icon
+                    icon="dots-vertical"
+                    size="1rem"
+                ></app-svg-icon>
+            </button>
+        }
+    </div>
+
+    @if (item()) {
+        @if (kebabMenuOpen()) {
+            <div
+                class="storage-preview__overlay"
+                (click)="closeKebabMenu()"
+            ></div>
+            <div
+                class="storage-preview__context-menu"
+                [style.right.px]="kebabMenuPosition().right"
+                [style.top.px]="kebabMenuPosition().top"
+            >
+                <button
+                    class="storage-preview__context-menu-item"
+                    (click)="onKebabMenuAction('download')"
+                >
+                    Download
+                </button>
+                <button
+                    class="storage-preview__context-menu-item"
+                    (click)="onKebabMenuAction('copy')"
+                >
+                    Copy to...
+                </button>
+                <button
+                    class="storage-preview__context-menu-item"
+                    (click)="onKebabMenuAction('rename')"
+                >
+                    Rename
+                </button>
+                <button
+                    class="storage-preview__context-menu-item"
+                    (click)="onKebabMenuAction('view-details')"
+                >
+                    View details
+                </button>
+                <div class="storage-preview__context-menu-divider"></div>
+                <button
+                    class="storage-preview__context-menu-item"
+                    (click)="onKebabMenuAction('delete')"
+                >
+                    Delete
+                </button>
+            </div>
+        }
+    }
+
+    <div
+        class="storage-preview__body"
+        [class.storage-preview__body--no-content]="!item() || !hasFileSelected"
+    >
+        @if (!item() || !hasFileSelected) {
+            <div class="storage-preview__empty-state">
+                <app-svg-icon
+                    icon="file-empty-state"
+                    size="66px"
+                    class="storage-preview__empty-icon"
+                ></app-svg-icon>
+                <p class="storage-preview__empty-text">Select a file to preview</p>
+            </div>
+        } @else {
+            @if (previewBadge && previewType() !== 'pdf') {
+                <div class="storage-preview__badge">
+                    <span class="storage-preview__badge-type">{{ previewBadge }}</span>
+                    <span class="storage-preview__badge-suffix">only view</span>
+                </div>
+            }
+            <div class="storage-preview__scroll">
+                @if (isLoadingPreview()) {
+                    <div class="storage-preview__loading">Loading preview...</div>
+                } @else if (previewError()) {
+                    <div class="storage-preview__error">
+                        <app-svg-icon
+                            icon="alert-triangle"
+                            size="1.5rem"
+                        ></app-svg-icon>
+                        <p>{{ previewError() }}</p>
+                        <app-button
+                            type="ghost"
+                            (click)="onDownload()"
+                            >Download file</app-button
+                        >
+                    </div>
+                } @else {
+                    @switch (previewType()) {
+                        @case ('text') {
+                            <pre class="storage-preview__text">{{ textContent() }}</pre>
+                        }
+                        @case ('json') {
+                            <pre class="storage-preview__json">{{ jsonContent() | json }}</pre>
+                        }
+                        @case ('pdf') {
+                            @if (pdfUrl()) {
+                                <embed
+                                    class="storage-preview__pdf"
+                                    [attr.src]="pdfUrl()"
+                                    type="application/pdf"
+                                />
+                            }
+                        }
+                        @case ('image') {
+                            @if (imageUrl()) {
+                                <img
+                                    class="storage-preview__image"
+                                    [src]="imageUrl()"
+                                    [alt]="item()!.name"
+                                />
+                            }
+                        }
+                        @case ('sheet') {
+                            @if (sheetData(); as data) {
+                                <div class="storage-preview__sheet">
+                                    @if (isCsv) {
+                                        <div class="storage-preview__csv-toolbar">
+                                            <span class="storage-preview__csv-label">Delimiter</span>
+                                            <div class="storage-preview__csv-delimiters">
+                                                @for (d of csvDelimiters; track d.value) {
+                                                    <button
+                                                        class="storage-preview__csv-btn"
+                                                        [class.storage-preview__csv-btn--active]="
+                                                            csvDelimiter() === d.value
+                                                        "
+                                                        (click)="onDelimiterChange(d.value)"
+                                                    >
+                                                        {{ d.label }}
+                                                    </button>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                    @if (data.sheetNames.length > 1) {
+                                        <div class="storage-preview__sheet-tabs">
+                                            @for (name of data.sheetNames; track name) {
+                                                <button
+                                                    class="storage-preview__sheet-tab"
+                                                    [class.storage-preview__sheet-tab--active]="
+                                                        name === data.activeSheet
+                                                    "
+                                                    (click)="onSheetChange(name)"
+                                                >
+                                                    {{ name }}
+                                                </button>
+                                            }
+                                        </div>
+                                    }
+                                    <div class="storage-preview__sheet-scroll">
+                                        <table class="storage-preview__table">
+                                            @if (data.headers.length) {
+                                                <thead>
+                                                    <tr>
+                                                        @for (h of data.headers; track $index) {
+                                                            <th class="storage-preview__th">{{ h }}</th>
+                                                        }
+                                                    </tr>
+                                                </thead>
+                                            }
+                                            <tbody>
+                                                @for (row of data.rows; track $index) {
+                                                    <tr class="storage-preview__tr">
+                                                        @for (cell of row; track $index) {
+                                                            <td class="storage-preview__td">{{ cell }}</td>
+                                                        }
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            }
+                        }
+                        @case ('docx') {
+                            @if (docxHtml()) {
+                                <div
+                                    class="storage-preview__docx"
+                                    [innerHTML]="docxHtml()"
+                                ></div>
+                            }
+                        }
+                        @case ('unsupported') {
+                            <div class="storage-preview__unsupported">
+                                <app-svg-icon
+                                    icon="file-empty-state"
+                                    size="66px"
+                                ></app-svg-icon>
+                                <p class="storage-preview__unsupported-name">{{ item()!.name }}</p>
+                                @if (item()!.size) {
+                                    <p class="storage-preview__unsupported-size">{{ item()!.size | number }} bytes</p>
+                                }
+                                <app-button
+                                    type="ghost"
+                                    [leftIcon]="'download'"
+                                    (click)="onDownload()"
+                                >
+                                    Download
+                                </app-button>
+                            </div>
+                        }
+                    }
+                }
+            </div>
+        }
+    </div>
+</div>

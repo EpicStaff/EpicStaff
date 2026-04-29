@@ -1,10 +1,22 @@
-<div class="extracted-chunks-container" *ngIf="data">
-    <div class="header" (click)="toggle()">
+<div
+    class="extracted-chunks-container"
+    *ngIf="data"
+>
+    <div
+        class="header"
+        (click)="toggle()"
+    >
         <div class="play-arrow">
-            <app-svg-icon [icon]="isExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+            <app-svg-icon
+                [icon]="isExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                size="1rem"
+            />
         </div>
         <div class="icon-container">
-            <app-svg-icon icon="database" size="1rem" />
+            <app-svg-icon
+                icon="database"
+                size="1rem"
+            />
         </div>
         <div class="title">
             <h3>Knowledge Retrieval</h3>
@@ -20,7 +32,11 @@
         </div>
     </div>
 
-    <div class="content" [class.collapsed]="!isExpanded" [@expandCollapse]="isExpanded ? 'expanded' : 'collapsed'">
+    <div
+        class="content"
+        [class.collapsed]="!isExpanded"
+        [@expandCollapse]="isExpanded ? 'expanded' : 'collapsed'"
+    >
         <div class="stats">
             <div class="stat">
                 <span class="label">Search limit</span>
@@ -39,10 +55,16 @@
         </div>
 
         <div class="chunks">
-            <article class="chunk-card" *ngFor="let chunk of data.chunks; trackBy: trackByOrder">
+            <article
+                class="chunk-card"
+                *ngFor="let chunk of data.chunks; trackBy: trackByOrder"
+            >
                 <div class="chunk-header">
                     <div class="chunk-order">#{{ chunk.chunk_order }}</div>
-                    <div class="chunk-source" [title]="chunk.chunk_source">
+                    <div
+                        class="chunk-source"
+                        [title]="chunk.chunk_source"
+                    >
                         {{ chunk.chunk_source || 'Unknown source' }}
                     </div>
                     <span class="similarity">

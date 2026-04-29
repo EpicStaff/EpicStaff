@@ -51,7 +51,7 @@ def copy_start_node(graph: Graph, node: StartNode) -> StartNode:
         for org_user in GraphOrganizationUser.objects.filter(graph=node.graph):
             GraphOrganizationUser.objects.create(
                 graph=graph,
-                user=org_user.user,
+                organization_user=org_user.organization_user,
                 persistent_variables=service.extract(node.variables, DOMAIN_USER_KEY),
             )
 

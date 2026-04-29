@@ -1,8 +1,7 @@
 import { inject, Injectable, signal } from '@angular/core';
-import { LLMProvider, ModelTypes } from "@shared/models";
-import { LLMProvidersService } from "@shared/services";
+import { LLMProvider, ModelTypes } from '@shared/models';
+import { LLMProvidersService } from '@shared/services';
 import { catchError, Observable, of, tap, throwError } from 'rxjs';
-
 
 @Injectable({
     providedIn: 'root',

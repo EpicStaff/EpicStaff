@@ -1,11 +1,23 @@
 <!-- Editor Header -->
-<div *ngIf="showHeader" class="editor-header">
+<div
+    *ngIf="showHeader"
+    class="editor-header"
+>
     <div class="left-section">
         <span class="editor-title">
-            <app-svg-icon icon="brackets" size="1.2rem" class="json-icon" />
+            <app-svg-icon
+                icon="brackets"
+                size="1.2rem"
+                class="json-icon"
+            />
             {{ title }}
         </span>
-        <span class="validation-message" *ngIf="!jsonIsValid"> Invalid JSON format </span>
+        <span
+            class="validation-message"
+            *ngIf="!jsonIsValid"
+        >
+            Invalid JSON format
+        </span>
     </div>
     <div class="right-section">
         @if (collapsible) {
@@ -17,14 +29,23 @@
             />
         }
         @if (allowCopy) {
-            <app-svg-icon class="action-icon" icon="fold" size="1rem" (click)="onCopy()" />
+            <app-svg-icon
+                class="action-icon"
+                icon="fold"
+                size="1rem"
+                (click)="onCopy()"
+            />
         }
     </div>
 </div>
 
 <!-- Editor Container -->
-<div class="editor-container" [class.collapsed]="collapsible && collapsed" [class.expanded]="collapsible && !collapsed"
-     #editorContainer>
+<div
+    class="editor-container"
+    [class.collapsed]="collapsible && collapsed"
+    [class.expanded]="collapsible && !collapsed"
+    #editorContainer
+>
     @if (!collapsible || !collapsed) {
         <ngx-monaco-editor
             [options]="editorOptions"
@@ -37,13 +58,21 @@
     }
 
     <!-- Loading Overlay -->
-    <div class="editor-loading-overlay" *ngIf="!editorLoaded">
+    <div
+        class="editor-loading-overlay"
+        *ngIf="!editorLoaded"
+    >
         <div class="spinner"></div>
         <span>Loading editor...</span>
     </div>
 </div>
 
 <!-- Resize Handle with the directive -->
-<div class="editor-resize-handle" appResizable (heightChange)="onResize($event)" *ngIf="!fullHeight">
+<div
+    class="editor-resize-handle"
+    appResizable
+    (heightChange)="onResize($event)"
+    *ngIf="!fullHeight"
+>
     <div class="little-handle"></div>
 </div>

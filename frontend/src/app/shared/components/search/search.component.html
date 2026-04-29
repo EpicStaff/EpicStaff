@@ -1,4 +1,8 @@
-<div class="search" [ngClass]="'search--mod-' + mod()" [style.width]="width()">
+<div
+    class="search"
+    [ngClass]="'search--mod-' + mod()"
+    [style.width]="width()"
+>
     <app-svg-icon
         icon="search"
         class="search__icon"
@@ -15,8 +19,16 @@
     />
 
     @if (searchTerm()) {
-        <button type="button" class="search__clear-btn" aria-label="Clear" (click)="clearSearch()">
-            <app-svg-icon icon="x" size="1.1rem" />
+        <button
+            type="button"
+            class="search__clear-btn"
+            aria-label="Clear"
+            (click)="clearSearch()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="1.1rem"
+            />
         </button>
     }
 </div>

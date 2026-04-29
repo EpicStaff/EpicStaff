@@ -1,0 +1,339 @@
+<div class="panel-container">
+    <div class="panel-content">
+        <form
+            [formGroup]="form"
+            class="form-container"
+        >
+            @if (isExpanded()) {
+                <div
+                    class="form-layout expanded"
+                    [class.code-editor-fullwidth]="isCodeEditorFullWidth()"
+                >
+                    @if (!isCodeEditorFullWidth()) {
+                        <div class="form-fields">
+                            <app-custom-input
+                                label="Node Name"
+                                tooltipText="Unique identifier for this Code Agent node within the flow."
+                                formControlName="node_name"
+                                placeholder="Enter node name"
+                                [activeColor]="activeColor"
+                                [errorMessage]="getNodeNameErrorMessage()"
+                            ></app-custom-input>
+
+                            <div class="input-map">
+                                <app-input-map [activeColor]="activeColor"></app-input-map>
+                            </div>
+
+                            <app-custom-input
+                                label="Output Variable Path"
+                                tooltipText="Path where the Code Agent output will be stored in flow variables."
+                                formControlName="output_variable_path"
+                                placeholder="e.g. code_reply"
+                                [activeColor]="activeColor"
+                            ></app-custom-input>
+
+                            <div class="select-field">
+                                <label class="select-label">Agent Mode</label>
+                                <select
+                                    formControlName="agent_mode"
+                                    class="select-input"
+                                    [style.--active-color]="activeColor"
+                                >
+                                    <option value="build">Build</option>
+                                    <option value="plan">Plan</option>
+                                </select>
+                            </div>
+
+                            <div class="select-field">
+                                <label class="select-label">LLM Config</label>
+                                <select
+                                    formControlName="llm_config"
+                                    class="select-input"
+                                    [style.--active-color]="activeColor"
+                                >
+                                    <option [ngValue]="null">— None —</option>
+                                    @for (cfg of llmConfigs; track cfg.id) {
+                                        <option [ngValue]="cfg.id">
+                                            {{ cfg.custom_name || 'Config #' + cfg.id }}
+                                        </option>
+                                    }
+                                </select>
+                            </div>
+
+                            <app-custom-input
+                                label="Session ID"
+                                tooltipText="Variable path for the OpenCode session ID (e.g. variables.chat_id). Each unique value gets its own session with its own system prompt."
+                                formControlName="session_id"
+                                placeholder="e.g. variables.chat_id"
+                                [activeColor]="activeColor"
+                            ></app-custom-input>
+
+                            <app-custom-input
+                                label="System Prompt"
+                                tooltipText="System prompt sent to the Code Agent before the user message."
+                                formControlName="system_prompt"
+                                placeholder="Enter system prompt"
+                                [activeColor]="activeColor"
+                            ></app-custom-input>
+
+                            <div class="timeout-section">
+                                <span class="section-label">Timeouts</span>
+                                <div class="timeout-grid">
+                                    <app-custom-input
+                                        label="Poll (ms)"
+                                        formControlName="polling_interval_ms"
+                                        [activeColor]="activeColor"
+                                    ></app-custom-input>
+                                    <app-custom-input
+                                        label="Chunk Timeout (s)"
+                                        formControlName="chunk_timeout_s"
+                                        [activeColor]="activeColor"
+                                    ></app-custom-input>
+                                    <app-custom-input
+                                        label="Inactivity (s)"
+                                        formControlName="inactivity_timeout_s"
+                                        [activeColor]="activeColor"
+                                    ></app-custom-input>
+                                    <app-custom-input
+                                        label="Max Wait (s)"
+                                        formControlName="max_wait_s"
+                                        [activeColor]="activeColor"
+                                    ></app-custom-input>
+                                </div>
+                            </div>
+
+                            <app-node-storage-section
+                                [useStorage]="useStorage()"
+                                (onToggleChange)="onStorageToggle($event)"
+                                (onInsertCode)="insertStorageCode($event)"
+                                (onRemoveCode)="removeStorageCode($event)"
+                            ></app-node-storage-section>
+
+                            <div
+                                class="stream-config-section"
+                                formGroupName="stream_config"
+                            >
+                                <span class="section-label">Streaming to EpicChat</span>
+                                <div class="checkbox-list">
+                                    <label class="checkbox-item">
+                                        <input
+                                            type="checkbox"
+                                            formControlName="reasoning"
+                                        />
+                                        <span>Reasoning</span>
+                                    </label>
+                                    <label class="checkbox-item">
+                                        <input
+                                            type="checkbox"
+                                            formControlName="tool_calls"
+                                        />
+                                        <span>Tool calls</span>
+                                    </label>
+                                    <label class="checkbox-item">
+                                        <input
+                                            type="checkbox"
+                                            formControlName="tool_results"
+                                        />
+                                        <span>Tool results</span>
+                                    </label>
+                                    <label class="checkbox-item">
+                                        <input
+                                            type="checkbox"
+                                            formControlName="final_reply"
+                                        />
+                                        <span>Final reply</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <app-custom-input
+                                label="Libraries"
+                                tooltipText="Python libraries for event hook callbacks (comma-separated)."
+                                formControlName="libraries"
+                                placeholder="e.g. requests, httpx"
+                                [activeColor]="activeColor"
+                            ></app-custom-input>
+                        </div>
+                    }
+
+                    <div class="editor-panel-wrapper">
+                        <button
+                            type="button"
+                            class="toggle-icon-button"
+                            (click)="toggleCodeEditorFullWidth()"
+                        >
+                            <svg
+                                width="9"
+                                height="22"
+                                viewBox="0 0 9 22"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                                [style.transform]="isCodeEditorFullWidth() ? 'scaleX(-1)' : 'scaleX(1)'"
+                            >
+                                <path
+                                    d="M7.16602 21.0001L1.16602 11.0001L7.16602 1.00012"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                />
+                            </svg>
+                        </button>
+
+                        <div class="editor-panel">
+                            <div class="editor-tabs">
+                                <button
+                                    type="button"
+                                    class="editor-tab"
+                                    [class.active]="activeEditorTab() === 'hooks'"
+                                    [style.--accent-color]="activeColor"
+                                    (click)="activeEditorTab.set('hooks')"
+                                >
+                                    Event Hooks
+                                </button>
+                                <button
+                                    type="button"
+                                    class="editor-tab"
+                                    [class.active]="activeEditorTab() === 'schema'"
+                                    [style.--accent-color]="activeColor"
+                                    (click)="activeEditorTab.set('schema')"
+                                >
+                                    Output Schema
+                                </button>
+                            </div>
+                            <div class="editor-tab-content">
+                                @switch (activeEditorTab()) {
+                                    @case ('hooks') {
+                                        <app-code-editor
+                                            class="code-editor-section"
+                                            [pythonCode]="streamHandlerCode"
+                                            (pythonCodeChange)="onStreamHandlerCodeChange($event)"
+                                            (errorChange)="onCodeErrorChange($event)"
+                                        ></app-code-editor>
+                                    }
+                                    @case ('schema') {
+                                        <div class="schema-editor-container">
+                                            <app-json-editor
+                                                [jsonData]="outputSchemaText"
+                                                (jsonChange)="onSchemaEditorChange($event)"
+                                                (validationChange)="onSchemaValidChange($event)"
+                                                [fullHeight]="true"
+                                                [showHeader]="false"
+                                            ></app-json-editor>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            } @else {
+                <div class="form-layout collapsed">
+                    <app-custom-input
+                        label="Node Name"
+                        tooltipText="Unique identifier for this Code Agent node within the flow."
+                        formControlName="node_name"
+                        placeholder="Enter node name"
+                        [activeColor]="activeColor"
+                        [errorMessage]="getNodeNameErrorMessage()"
+                    ></app-custom-input>
+
+                    <div class="input-map">
+                        <app-input-map [activeColor]="activeColor"></app-input-map>
+                    </div>
+
+                    <app-custom-input
+                        label="Output Variable Path"
+                        formControlName="output_variable_path"
+                        placeholder="e.g. code_reply"
+                        [activeColor]="activeColor"
+                    ></app-custom-input>
+
+                    <div class="select-field">
+                        <label class="select-label">Agent Mode</label>
+                        <select
+                            formControlName="agent_mode"
+                            class="select-input"
+                            [style.--active-color]="activeColor"
+                        >
+                            <option value="build">Build</option>
+                            <option value="plan">Plan</option>
+                        </select>
+                    </div>
+
+                    <div class="select-field">
+                        <label class="select-label">LLM Config</label>
+                        <select
+                            formControlName="llm_config"
+                            class="select-input"
+                            [style.--active-color]="activeColor"
+                        >
+                            <option [ngValue]="null">— None —</option>
+                            @for (cfg of llmConfigs; track cfg.id) {
+                                <option [ngValue]="cfg.id">{{ cfg.custom_name || 'Config #' + cfg.id }}</option>
+                            }
+                        </select>
+                    </div>
+
+                    <app-custom-input
+                        label="Session ID"
+                        tooltipText="Variable path for the OpenCode session ID."
+                        formControlName="session_id"
+                        placeholder="e.g. variables.chat_id"
+                        [activeColor]="activeColor"
+                    ></app-custom-input>
+
+                    <app-custom-input
+                        label="System Prompt"
+                        formControlName="system_prompt"
+                        placeholder="Enter system prompt"
+                        [activeColor]="activeColor"
+                    ></app-custom-input>
+
+                    <app-node-storage-section
+                        [useStorage]="useStorage()"
+                        (onToggleChange)="onStorageToggle($event)"
+                        (onInsertCode)="insertStorageCode($event)"
+                        (onRemoveCode)="removeStorageCode($event)"
+                    ></app-node-storage-section>
+
+                    <div
+                        class="stream-config-section"
+                        formGroupName="stream_config"
+                    >
+                        <span class="section-label">Streaming to EpicChat</span>
+                        <div class="checkbox-list">
+                            <label class="checkbox-item">
+                                <input
+                                    type="checkbox"
+                                    formControlName="reasoning"
+                                />
+                                <span>Reasoning</span>
+                            </label>
+                            <label class="checkbox-item">
+                                <input
+                                    type="checkbox"
+                                    formControlName="tool_calls"
+                                />
+                                <span>Tool calls</span>
+                            </label>
+                            <label class="checkbox-item">
+                                <input
+                                    type="checkbox"
+                                    formControlName="tool_results"
+                                />
+                                <span>Tool results</span>
+                            </label>
+                            <label class="checkbox-item">
+                                <input
+                                    type="checkbox"
+                                    formControlName="final_reply"
+                                />
+                                <span>Final reply</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            }
+        </form>
+    </div>
+</div>

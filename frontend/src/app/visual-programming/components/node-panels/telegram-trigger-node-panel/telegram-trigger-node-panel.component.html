@@ -1,6 +1,10 @@
 <div class="panel-container">
     <div class="panel-content">
-        <form [formGroup]="form" class="form-container" [class.form-container--expanded]="isExpanded()">
+        <form
+            [formGroup]="form"
+            class="form-container"
+            [class.form-container--expanded]="isExpanded()"
+        >
             <div class="form-layout">
                 <div class="form-data">
                     <div class="form-fields">
@@ -46,21 +50,32 @@
                     <div class="webhook-section">
                         <div class="webhook-section__label-container">
                             <label>Webhook</label>
-                            <app-help-tooltip text="Ngrok tunnel" position="right" />
+                            <app-help-tooltip
+                                text="Ngrok tunnel"
+                                position="right"
+                            />
                         </div>
 
                         <div class="webhook-status__container">
                             @switch (webhookStatusDisplay()) {
                                 @case (WebhookStatus.FAIL) {
                                     <div class="webhook-status__main">
-                                        <app-svg-icon class="webhook-status__icon--failed" icon="x" size="1rem" />
+                                        <app-svg-icon
+                                            class="webhook-status__icon--failed"
+                                            icon="x"
+                                            size="1rem"
+                                        />
                                         <span>Registration failed</span>
                                     </div>
                                     <span class="webhook-status__error-message"> Webhook service is not running </span>
                                 }
                                 @case (WebhookStatus.SUCCESS) {
                                     <div class="webhook-status__main">
-                                        <app-svg-icon class="webhook-status__icon--success" icon="check" size="1rem" />
+                                        <app-svg-icon
+                                            class="webhook-status__icon--success"
+                                            icon="check"
+                                            size="1rem"
+                                        />
                                         <span>Webhook registered</span>
                                     </div>
                                 }
@@ -89,7 +104,12 @@
                                     <span>No fields selected</span>
                                 }
                             </div>
-                            <app-button type="primary" (click)="onEditing()"> Editing </app-button>
+                            <app-button
+                                type="primary"
+                                (click)="onEditing()"
+                            >
+                                Editing
+                            </app-button>
                         </div>
                     </div>
                 </div>

@@ -19,6 +19,7 @@ export interface GetCodeAgentNodeRequest {
     stream_config?: Record<string, boolean>;
     output_schema?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
+    use_storage?: boolean;
 }
 
 export interface CreateCodeAgentNodeRequest {
@@ -41,6 +42,7 @@ export interface CreateCodeAgentNodeRequest {
     stream_config?: Record<string, boolean>;
     output_schema?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
+    use_storage?: boolean;
 }
 
 export interface CodeAgentNodeData {
@@ -58,4 +60,5 @@ export interface CodeAgentNodeData {
     max_wait_s: number;
     stream_config?: Record<string, boolean>;
     output_schema?: Record<string, unknown>;
+    use_storage?: boolean;
 }

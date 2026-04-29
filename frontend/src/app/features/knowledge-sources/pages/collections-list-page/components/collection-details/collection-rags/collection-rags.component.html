@@ -1,6 +1,9 @@
 <ul class="rags">
     <li class="rags__item">
-        <app-svg-icon icon="mouse" size="0.75rem" />
+        <app-svg-icon
+            icon="mouse"
+            size="0.75rem"
+        />
         <span class="rags__name">Naive RAG</span>
         <span class="rags__model">gpt-4o-mini</span>
         <app-svg-icon
@@ -11,16 +14,37 @@
         />
     </li>
 
-    <li class="rags__item" style="cursor: not-allowed">
-        <app-svg-icon icon="web" size="0.75rem" />
+    <li
+        class="rags__item"
+        style="cursor: not-allowed"
+    >
+        <app-svg-icon
+            icon="web"
+            size="0.75rem"
+        />
         <span class="rags__name">Graph RAG</span>
         <span class="rags__model">gpt-4o-mini</span>
-        <app-svg-icon icon="arrow-right" size="1rem" class="rags__nav" (click)="onConfigureNaiveRag('graph')" />
+        <app-svg-icon
+            icon="arrow-right"
+            size="1rem"
+            class="rags__nav"
+            (click)="onConfigureNaiveRag('graph')"
+        />
     </li>
-    <li class="rags__item" style="cursor: not-allowed">
-        <app-svg-icon icon="tab-group" size="0.75rem" />
+    <li
+        class="rags__item"
+        style="cursor: not-allowed"
+    >
+        <app-svg-icon
+            icon="tab-group"
+            size="0.75rem"
+        />
         <span class="rags__name">Hybrid RAG</span>
         <span class="rags__model">gpt-4o-mini</span>
-        <app-svg-icon icon="arrow-right" size="1rem" class="rags__nav" />
+        <app-svg-icon
+            icon="arrow-right"
+            size="1rem"
+            class="rags__nav"
+        />
     </li>
 </ul>

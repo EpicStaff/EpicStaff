@@ -1,6 +1,10 @@
 <div class="item">
     <div class="item__left">
-        <app-svg-icon icon="cloud" [size]="'2rem'" class="item__icon" />
+        <app-svg-icon
+            icon="cloud"
+            [size]="'2rem'"
+            class="item__icon"
+        />
         <div class="item__info">
             <div class="item__name">{{ config().name }}</div>
             <div class="item__config">
@@ -9,7 +13,11 @@
         </div>
     </div>
     <div class="item__right">
-        <app-button type="ghost" (click)="onConfigure()">Configure</app-button>
+        <app-button
+            type="ghost"
+            (click)="onConfigure()"
+            >Configure</app-button
+        >
         <div class="item__separator"></div>
         <app-icon-button
             icon="x"

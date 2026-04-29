@@ -1,6 +1,14 @@
 <div class="process-selector">
-    <div class="process-option" [class.active]="selectedValue === 'sequential'" (click)="setProcessType('sequential')">
-        <app-svg-icon icon="list-numbers" size="1rem" class="option-icon" />
+    <div
+        class="process-option"
+        [class.active]="selectedValue === 'sequential'"
+        (click)="setProcessType('sequential')"
+    >
+        <app-svg-icon
+            icon="list-numbers"
+            size="1rem"
+            class="option-icon"
+        />
         Sequential
     </div>
     <div
@@ -8,7 +16,11 @@
         [class.active]="selectedValue === 'hierarchical'"
         (click)="setProcessType('hierarchical')"
     >
-        <app-svg-icon icon="hierarchy" size="1rem" class="option-icon" />
+        <app-svg-icon
+            icon="hierarchy"
+            size="1rem"
+            class="option-icon"
+        />
         Hierarchical
     </div>
 </div>

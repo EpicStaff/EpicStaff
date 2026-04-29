@@ -18,7 +18,8 @@ export class DragDropAreaComponent {
     onDragOver(event: DragEvent): void {
         event.preventDefault();
         event.stopPropagation();
-        this.isDragging.set(true);
+        const hasFiles = event.dataTransfer?.types?.includes('Files') ?? false;
+        this.isDragging.set(hasFiles);
     }
 
     onDragLeave(event: DragEvent): void {

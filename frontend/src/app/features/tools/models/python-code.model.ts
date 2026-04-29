@@ -24,4 +24,5 @@ export interface CustomPythonCode {
     libraries: string[];
     code: string;
     entrypoint: string;
+    use_storage?: boolean;
 }

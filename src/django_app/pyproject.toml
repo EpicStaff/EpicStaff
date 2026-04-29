@@ -30,6 +30,7 @@ django-redis = "5.4.0"
 uvicorn = "0.34.2"
 gunicorn = "23.0.0"
 tenacity = "^9.1.2"
+boto3 = "^1.35.0"
 drf-spectacular = "^0.29.0"
 simplejwt = "^2.0.1"
 

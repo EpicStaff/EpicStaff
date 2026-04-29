@@ -1,5 +1,10 @@
 <!-- Angular Form with Simplified Structure -->
-<form [formGroup]="form" (ngSubmit)="onSubmit()" class="config-form" autocomplete="off">
+<form
+    [formGroup]="form"
+    (ngSubmit)="onSubmit()"
+    class="config-form"
+    autocomplete="off"
+>
     <div class="form-content-wrapper">
         <div class="form-content">
             <!-- Name Field -->
@@ -14,7 +19,13 @@
                         [text]="'A unique name for this tool configuration.'"
                     ></app-help-tooltip>
                 </div>
-                <input id="name" formControlName="name" type="text" aria-required="true" autocomplete="off" />
+                <input
+                    id="name"
+                    formControlName="name"
+                    type="text"
+                    aria-required="true"
+                    autocomplete="off"
+                />
                 <!-- Error Message Container -->
                 <div class="error-container">
                     <div
@@ -31,13 +42,27 @@
             </div>
 
             <!-- Dynamic Fields -->
-            <div class="form-group" *ngFor="let field of tool.tool_fields" [ngSwitch]="field.data_type">
+            <div
+                class="form-group"
+                *ngFor="let field of tool.tool_fields"
+                [ngSwitch]="field.data_type"
+            >
                 <div class="label-with-tooltip">
-                    <label [for]="field.name" class="field-label">
+                    <label
+                        [for]="field.name"
+                        class="field-label"
+                    >
                         {{ field.name }}
-                        <span class="required-asterisk" *ngIf="field.required">*</span>
+                        <span
+                            class="required-asterisk"
+                            *ngIf="field.required"
+                            >*</span
+                        >
                     </label>
-                    <app-help-tooltip position="right" [text]="field.description"></app-help-tooltip>
+                    <app-help-tooltip
+                        position="right"
+                        [text]="field.description"
+                    ></app-help-tooltip>
                 </div>
 
                 <!-- LLM Config Selector -->
@@ -73,7 +98,10 @@
                     [attr.aria-required]="field.required ? 'true' : 'false'"
                 ></textarea>
 
-                <div *ngSwitchCase="'boolean'" class="checkbox-group">
+                <div
+                    *ngSwitchCase="'boolean'"
+                    class="checkbox-group"
+                >
                     <input
                         [id]="field.name"
                         [formControlName]="field.name"
@@ -118,8 +146,18 @@
     </div>
 
     <div class="form-actions">
-        <button type="button" (click)="onCancel()" class="cancel-button">Cancel</button>
-        <button type="submit" [disabled]="form.invalid" class="submit-button">
+        <button
+            type="button"
+            (click)="onCancel()"
+            class="cancel-button"
+        >
+            Cancel
+        </button>
+        <button
+            type="submit"
+            [disabled]="form.invalid"
+            class="submit-button"
+        >
             {{ selectedConfig ? 'Save' : 'Create' }}
         </button>
     </div>

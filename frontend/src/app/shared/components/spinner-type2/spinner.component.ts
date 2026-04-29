@@ -7,8 +7,16 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
     standalone: true,
     imports: [AppSvgIconComponent],
     template: `
-        <div class="spinner-container" [style.width.px]="size" [style.height.px]="size">
-            <app-svg-icon icon="loader" [size]="iconSize + 'px'" class="spinner" />
+        <div
+            class="spinner-container"
+            [style.width.px]="size"
+            [style.height.px]="size"
+        >
+            <app-svg-icon
+                icon="loader"
+                [size]="iconSize + 'px'"
+                class="spinner"
+            />
         </div>
     `,
     styles: [

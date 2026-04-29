@@ -2,8 +2,14 @@
     <!-- Header Section -->
     <div class="header">
         <h2 class="dialog-title">Advanced Settings for {{ taskData.taskName || 'New Task' }}</h2>
-        <button class="close-button" (click)="requestClose()">
-            <app-svg-icon icon="x" size="14px" />
+        <button
+            class="close-button"
+            (click)="requestClose()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="14px"
+            />
         </button>
     </div>
 
@@ -36,7 +42,10 @@ Note: If properties is empty, the output model will be set to null."
                             text="Toggle this to enable or disable the output model. When disabled, the output model will be set to null."
                         ></app-help-tooltip>
                     </div>
-                    <mat-slide-toggle [ngModel]="useOutputModel()" (ngModelChange)="useOutputModel.set($event)">
+                    <mat-slide-toggle
+                        [ngModel]="useOutputModel()"
+                        (ngModelChange)="useOutputModel.set($event)"
+                    >
                     </mat-slide-toggle>
                 </div>
             </div>
@@ -52,7 +61,12 @@ Note: If properties is empty, the output model will be set to null."
                         [editorHeight]="400"
                     ></app-json-editor>
                 </div>
-                <button class="reset-button" (click)="resetToDefault()">Reset to Default</button>
+                <button
+                    class="reset-button"
+                    (click)="resetToDefault()"
+                >
+                    Reset to Default
+                </button>
             </div>
         </div>
 
@@ -85,11 +99,19 @@ Note: If properties is empty, the output model will be set to null."
                                     (change)="toggleTaskSelection(task.id)"
                                     class="transparent-checkbox"
                                 />
-                                <span class="checkmark" *ngIf="isTaskSelected(task.id)"></span>
+                                <span
+                                    class="checkmark"
+                                    *ngIf="isTaskSelected(task.id)"
+                                ></span>
                             </span>
                         </div>
                     </div>
-                    <div *ngIf="availableTasks.length === 0" class="empty-state">No task contexts available</div>
+                    <div
+                        *ngIf="availableTasks.length === 0"
+                        class="empty-state"
+                    >
+                        No task contexts available
+                    </div>
                 </div>
             </div>
         </div>

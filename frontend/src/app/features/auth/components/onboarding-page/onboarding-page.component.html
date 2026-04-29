@@ -1,0 +1,54 @@
+<div class="page">
+    <p class="step-label">STEP {{ step() }} OF 2</p>
+    @if (step() === 1) {
+        <div class="hero">
+            <h1 class="title">Name your organization</h1>
+            <p class="subtitle">It will help you identify your workspace</p>
+        </div>
+
+        <div class="card">
+            <div class="field">
+                <app-custom-input
+                    label="Organization Name"
+                    placeholder="e.g. Example Corp"
+                    [formControl]="orgNameControl"
+                />
+                <p class="hint">You can rename this anytime in settings</p>
+            </div>
+            <app-button (click)="onContinue()">Continue</app-button>
+        </div>
+    } @else if (step() === 2) {
+        <div class="hero">
+            <h1 class="title">How do you want to start?</h1>
+            <p class="subtitle">Select a mode to start interacting with the system</p>
+        </div>
+
+        <div class="choices">
+            <button
+                class="choice-card"
+                (click)="onStartWorking()"
+            >
+                <app-svg-icon
+                    class="icon"
+                    icon="play"
+                    size="32px"
+                />
+                <span class="title">Start working</span>
+                <span class="subtitle">Jump right now, no setup needed</span>
+            </button>
+
+            <button
+                class="choice-card"
+                (click)="onSetupOrganizations()"
+            >
+                <app-svg-icon
+                    class="icon"
+                    icon="buildings"
+                    size="32px"
+                />
+                <span class="title">Set up organizations</span>
+                <span class="subtitle">Invite users &amp; assign roles</span>
+            </button>
+        </div>
+    }
+</div>

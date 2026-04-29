@@ -1,0 +1,149 @@
+<button
+    class="flow-files-btn"
+    [class.flow-files-btn--active]="attachedCount() > 0"
+    (click)="toggleDropdown($event)"
+>
+    <app-svg-icon
+        icon="file-upload"
+        size="12px"
+        class="flow-files-btn__icon"
+    ></app-svg-icon>
+    @if (attachedCount() > 0) {
+        <span class="flow-files-btn__count">{{ attachedCount() }}</span>
+    } @else {
+        <span class="flow-files-btn__label">Add Files</span>
+    }
+</button>
+
+@if (dropdownOpen()) {
+    <div
+        class="flow-files-dropdown"
+        (click)="stopPropagation($event)"
+    >
+        <div class="flow-files-dropdown__header">
+            <div class="flow-files-dropdown__search">
+                <app-svg-icon
+                    icon="search"
+                    size="0.875rem"
+                    class="flow-files-dropdown__search-icon"
+                ></app-svg-icon>
+                <input
+                    class="flow-files-dropdown__search-input"
+                    type="text"
+                    placeholder="Search file..."
+                    [ngModel]="searchQuery()"
+                    (ngModelChange)="searchQuery.set($event)"
+                />
+            </div>
+            <button
+                class="flow-files-dropdown__upload-btn"
+                (click)="onUploadNew()"
+                title="Upload files"
+            >
+                <svg
+                    width="40"
+                    height="40"
+                    viewBox="0 0 40 40"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                >
+                    <rect
+                        width="40"
+                        height="40"
+                        rx="8"
+                        fill="#685FFF"
+                    />
+                    <path
+                        fill-rule="evenodd"
+                        clip-rule="evenodd"
+                        d="M19 14.3431C19 13.7909 19.4476 13.3433 19.9999 13.3433C20.5521 13.3433 20.9998 13.7909 20.9998 14.3431L20.9998 19.0001H25.6568C26.209 19.0002 26.6567 19.4478 26.6567 20C26.6567 20.5522 26.209 20.9998 25.6568 20.9999H20.9998L20.9998 25.6569C20.9998 26.2091 20.5521 26.6567 19.9999 26.6567C19.4476 26.6567 19 26.2091 19 25.6569L19 20.9999L14.3431 20.9999C13.7908 20.9999 13.3432 20.5523 13.3432 20C13.3432 19.4477 13.7908 19.0001 14.3431 19.0001L19 19.0001L19 14.3431Z"
+                        fill="#D9D9DE"
+                    />
+                </svg>
+            </button>
+        </div>
+
+        <div class="flow-files-dropdown__tree">
+            @if (isLoadingRoot()) {
+                <div class="flow-files-dropdown__state">Loading files...</div>
+            } @else if (visibleNodes().length === 0) {
+                <div class="flow-files-dropdown__state">No files found</div>
+            } @else {
+                @for (node of visibleNodes(); track node.path) {
+                    <div
+                        class="flow-files-dropdown__item"
+                        [class.flow-files-dropdown__item--checked]="isChecked(node)"
+                        [style.padding-left.px]="12 + node.level * 20"
+                        (click)="toggleCheck(node)"
+                    >
+                        @if (node.type === 'folder' && (node.hasChildren || node.isExpanded)) {
+                            <button
+                                class="flow-files-dropdown__chevron"
+                                [class.flow-files-dropdown__chevron--open]="node.isExpanded"
+                                (click)="toggleExpand($event, node)"
+                            >
+                                <app-svg-icon
+                                    icon="expand"
+                                    size="0.5rem"
+                                ></app-svg-icon>
+                            </button>
+                        } @else {
+                            <span class="flow-files-dropdown__chevron-gap"></span>
+                        }
+
+                        <div
+                            class="flow-files-dropdown__checkbox"
+                            [class.flow-files-dropdown__checkbox--checked]="isChecked(node)"
+                        >
+                            @if (isChecked(node)) {
+                                <app-svg-icon
+                                    icon="check"
+                                    size="0.625rem"
+                                ></app-svg-icon>
+                            }
+                        </div>
+
+                        <app-svg-icon
+                            class="flow-files-dropdown__file-icon"
+                            [icon]="getFileIcon(node)"
+                            size="12px"
+                        ></app-svg-icon>
+
+                        <span
+                            class="flow-files-dropdown__item-name"
+                            [title]="node.name"
+                            >{{ node.name }}</span
+                        >
+
+                        @if (node.isLoading) {
+                            <span class="flow-files-dropdown__node-spinner">...</span>
+                        }
+                    </div>
+                }
+            }
+        </div>
+
+        <div class="flow-files-dropdown__footer">
+            <button
+                class="flow-files-dropdown__btn flow-files-dropdown__btn--outline"
+                (click)="onClear()"
+            >
+                Clear
+            </button>
+            <span class="flow-files-dropdown__spacer"></span>
+            <button
+                class="flow-files-dropdown__btn flow-files-dropdown__btn--outline"
+                (click)="onCancel()"
+            >
+                Cancel
+            </button>
+            <button
+                class="flow-files-dropdown__btn flow-files-dropdown__btn--primary"
+                [disabled]="!hasChanges() || isSaving()"
+                (click)="onSave()"
+            >
+                Save changes
+            </button>
+        </div>
+    </div>
+}

@@ -36,8 +36,15 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
     ],
     template: `
         <div class="embedding-selector-container">
-            <div class="selected-model" [class.placeholder]="!selectedConfig" (click)="toggleDropdown($event)">
-                <div *ngIf="selectedConfig; else placeholderTemplate" class="model-info">
+            <div
+                class="selected-model"
+                [class.placeholder]="!selectedConfig"
+                (click)="toggleDropdown($event)"
+            >
+                <div
+                    *ngIf="selectedConfig; else placeholderTemplate"
+                    class="model-info"
+                >
                     <app-svg-icon
                         [icon]="getProviderIcon(selectedConfig)"
                         size="20px"
@@ -46,7 +53,10 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
                     />
                     <div class="model-text">
                         <span class="model-name">{{ selectedConfig.modelDetails?.name || 'Unknown Model' }}</span>
-                        <span *ngIf="selectedConfig.custom_name" class="custom-name">
+                        <span
+                            *ngIf="selectedConfig.custom_name"
+                            class="custom-name"
+                        >
                             ({{ selectedConfig.custom_name }})
                         </span>
                     </div>
@@ -55,7 +65,13 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
                     <div class="placeholder-text">{{ placeholder }}</div>
                 </ng-template>
                 <div class="dropdown-icon">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                    >
                         <path
                             d="M6 9L12 15L18 9"
                             stroke="currentColor"
@@ -68,7 +84,11 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
             </div>
 
             <!-- Dropdown Menu -->
-            <div class="dropdown-menu" [class.dropdown-top]="dropdownPosition === 'top'" *ngIf="isDropdownOpen">
+            <div
+                class="dropdown-menu"
+                [class.dropdown-top]="dropdownPosition === 'top'"
+                *ngIf="isDropdownOpen"
+            >
                 <!-- Search Input -->
                 <div class="search-container">
                     <input
@@ -82,7 +102,12 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
 
                 <!-- Models List -->
                 <div class="models-list">
-                    <div *ngIf="filteredConfigs.length === 0" class="no-results">No matching models found</div>
+                    <div
+                        *ngIf="filteredConfigs.length === 0"
+                        class="no-results"
+                    >
+                        No matching models found
+                    </div>
 
                     @for (config of filteredConfigs; track config.id) {
                         <app-embedding-model-item

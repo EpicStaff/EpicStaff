@@ -21,11 +21,19 @@ import { AddProjectCardComponent } from './add-project-card/add-project-card.com
     template: `
         <div class="project-grid">
             @if (!isProjectsLoaded()) {
-                <app-loading-spinner size="md" message="Loading projects..."></app-loading-spinner>
+                <app-loading-spinner
+                    size="md"
+                    message="Loading projects..."
+                ></app-loading-spinner>
             } @else {
                 @if (error()) {
                     <div class="error">{{ error() }}</div>
-                    <button type="button" (click)="ngOnInit()">Retry</button>
+                    <button
+                        type="button"
+                        (click)="ngOnInit()"
+                    >
+                        Retry
+                    </button>
                 } @else {
                     <div class="grid">
                         <app-add-project-card (createClick)="onCreateProject()"></app-add-project-card>

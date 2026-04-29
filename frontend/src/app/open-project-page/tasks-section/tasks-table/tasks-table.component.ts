@@ -969,11 +969,9 @@ export class TasksTableComponent implements OnChanges {
             return;
         }
 
-        let allValid = true;
         for (const field of fieldsToValidate) {
             const v = event.data[field] ? String(event.data[field]).trim() : '';
             event.data[`${field}Warning`] = !v;
-            if (!v) allValid = false;
         }
 
         this.gridApi.refreshCells({
@@ -1631,7 +1629,6 @@ export class TasksTableComponent implements OnChanges {
             const popupRef = this.popupOverlayRef.attach(portal);
             this._activePopupCommitFn = () => popupRef.instance.save();
             const rowNode = event.node;
-            const taskData = rowNode.data as TableFullTask;
 
             popupRef.instance.mergedTools = event.data?.mergedTools || [];
 
@@ -2047,7 +2044,7 @@ export class TasksTableComponent implements OnChanges {
             if (this.isTempRowId(id)) continue;
             if (!this.localPendingKeys.has(id)) continue;
             const rowWithWarnings = row as TableFullTask & Record<string, unknown>;
-            if (this.requiredTaskFields.some(f => Boolean(rowWithWarnings[`${f}Warning`]))) {
+            if (this.requiredTaskFields.some((f) => Boolean(rowWithWarnings[`${f}Warning`]))) {
                 ok = false;
             }
         }

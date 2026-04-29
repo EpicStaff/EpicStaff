@@ -27,8 +27,15 @@ interface NodeStatus {
                             [ngClass]="getItemClass(item.status)"
                         >
                             <div class="node-name">{{ item.node.node_name }}</div>
-                            <div class="status-badge" [ngClass]="getStatusClass(item.status)">
-                                <app-svg-icon *ngIf="getStatusIcon(item.status)" [icon]="getStatusIcon(item.status)" size="1rem" />
+                            <div
+                                class="status-badge"
+                                [ngClass]="getStatusClass(item.status)"
+                            >
+                                <app-svg-icon
+                                    *ngIf="getStatusIcon(item.status)"
+                                    [icon]="getStatusIcon(item.status)"
+                                    size="1rem"
+                                />
                                 {{ getStatusText(item.status) }}
                             </div>
                         </li>

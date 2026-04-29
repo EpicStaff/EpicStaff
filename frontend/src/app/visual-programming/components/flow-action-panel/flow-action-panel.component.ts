@@ -1,8 +1,8 @@
 import { CommonModule } from '@angular/common';
 import { Component } from '@angular/core';
 
-import { UndoRedoService } from '../../services/undo-redo.service';
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { UndoRedoService } from '../../services/undo-redo.service';
 
 @Component({
     selector: 'app-flow-action-panel',

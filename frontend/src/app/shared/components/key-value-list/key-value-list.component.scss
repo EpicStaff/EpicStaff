@@ -51,7 +51,9 @@
         border: none;
         border-radius: 0.5rem;
         cursor: pointer;
-        transition: opacity 0.2s ease, background-color 0.2s ease;
+        transition:
+            opacity 0.2s ease,
+            background-color 0.2s ease;
 
         i {
             font-size: 1rem;
@@ -150,7 +152,9 @@
         color: var(--color-input-text-placeholder);
         cursor: pointer;
         border-radius: 0.25rem;
-        transition: color 0.15s ease, background-color 0.15s ease;
+        transition:
+            color 0.15s ease,
+            background-color 0.15s ease;
 
         i {
             font-size: 1rem;

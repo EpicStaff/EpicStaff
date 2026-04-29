@@ -15,26 +15,50 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
     template: `
         <div class="python-flow-container">
             <!-- Python Message Header with Toggle -->
-            <div class="python-header" (click)="toggleMessage()">
+            <div
+                class="python-header"
+                (click)="toggleMessage()"
+            >
                 <div class="play-arrow">
-                    <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
+                    <app-svg-icon
+                        [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                        size="1.1rem"
+                    />
                 </div>
                 <div class="icon-container">
-                    <app-svg-icon icon="brand-python" size="1.25rem" />
+                    <app-svg-icon
+                        icon="brand-python"
+                        size="1.25rem"
+                    />
                 </div>
                 <h3>Python Code Execution</h3>
             </div>
 
             <!-- Collapsible Python Content -->
-            <div class="collapsible-content" [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'">
+            <div
+                class="collapsible-content"
+                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+            >
                 <div class="python-content">
                     <!-- Code Section -->
-                    <div class="code-container" *ngIf="hasCode()">
-                        <div class="section-heading" (click)="toggleSection('code')">
-                            <app-svg-icon [icon]="isCodeExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
+                    <div
+                        class="code-container"
+                        *ngIf="hasCode()"
+                    >
+                        <div
+                            class="section-heading"
+                            (click)="toggleSection('code')"
+                        >
+                            <app-svg-icon
+                                [icon]="isCodeExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                size="1.1rem"
+                            />
                             Python Code
                         </div>
-                        <div class="collapsible-content" [@expandCollapse]="isCodeExpanded ? 'expanded' : 'collapsed'">
+                        <div
+                            class="collapsible-content"
+                            [@expandCollapse]="isCodeExpanded ? 'expanded' : 'collapsed'"
+                        >
                             <div class="code-wrapper">
                                 <div class="result-content">
                                     <pre>{{ getCode() }}</pre>
@@ -44,12 +68,24 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                     </div>
 
                     <!-- Input Section -->
-                    <div class="input-container" *ngIf="hasInput()">
-                        <div class="section-heading" (click)="toggleSection('input')">
-                            <app-svg-icon [icon]="isInputExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
+                    <div
+                        class="input-container"
+                        *ngIf="hasInput()"
+                    >
+                        <div
+                            class="section-heading"
+                            (click)="toggleSection('input')"
+                        >
+                            <app-svg-icon
+                                [icon]="isInputExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                size="1.1rem"
+                            />
                             Input
                         </div>
-                        <div class="collapsible-content" [@expandCollapse]="isInputExpanded ? 'expanded' : 'collapsed'">
+                        <div
+                            class="collapsible-content"
+                            [@expandCollapse]="isInputExpanded ? 'expanded' : 'collapsed'"
+                        >
                             <div class="input-wrapper">
                                 <div class="result-content">
                                     <ngx-json-viewer
@@ -64,9 +100,18 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                     </div>
 
                     <!-- Output Section -->
-                    <div class="output-container" *ngIf="hasOutput()">
-                        <div class="section-heading" (click)="toggleSection('output')">
-                            <app-svg-icon [icon]="isOutputExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
+                    <div
+                        class="output-container"
+                        *ngIf="hasOutput()"
+                    >
+                        <div
+                            class="section-heading"
+                            (click)="toggleSection('output')"
+                        >
+                            <app-svg-icon
+                                [icon]="isOutputExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                size="1.1rem"
+                            />
                             Output
                         </div>
                         <div
@@ -94,12 +139,24 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                     </div>
 
                     <!-- Error Section -->
-                    <div class="error-container" *ngIf="hasError()">
-                        <div class="section-heading" (click)="toggleSection('error')">
-                            <app-svg-icon [icon]="isErrorExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
+                    <div
+                        class="error-container"
+                        *ngIf="hasError()"
+                    >
+                        <div
+                            class="section-heading"
+                            (click)="toggleSection('error')"
+                        >
+                            <app-svg-icon
+                                [icon]="isErrorExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                size="1.1rem"
+                            />
                             Error
                         </div>
-                        <div class="collapsible-content" [@expandCollapse]="isErrorExpanded ? 'expanded' : 'collapsed'">
+                        <div
+                            class="collapsible-content"
+                            [@expandCollapse]="isErrorExpanded ? 'expanded' : 'collapsed'"
+                        >
                             <div class="error-wrapper">
                                 <div class="result-content error-content">
                                     <pre>{{ getError() }}</pre>
@@ -110,8 +167,14 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
 
                     <!-- Raw Data Section -->
                     <div class="raw-data-container">
-                        <div class="section-heading" (click)="toggleSection('rawData')">
-                            <app-svg-icon [icon]="isRawDataExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
+                        <div
+                            class="section-heading"
+                            (click)="toggleSection('rawData')"
+                        >
+                            <app-svg-icon
+                                [icon]="isRawDataExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                size="1.1rem"
+                            />
                             Raw Execution Data
                         </div>
                         <div

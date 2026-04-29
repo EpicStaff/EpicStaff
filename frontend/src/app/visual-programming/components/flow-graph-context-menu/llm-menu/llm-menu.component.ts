@@ -20,7 +20,10 @@ import { NodeType } from '../../../core/enums/node-type';
     imports: [CommonModule],
     template: `
         <ul>
-            <li *ngFor="let config of filteredConfigs; trackBy: trackById" (click)="onConfigClicked(config)">
+            <li
+                *ngFor="let config of filteredConfigs; trackBy: trackById"
+                (click)="onConfigClicked(config)"
+            >
                 <i class="ti ti-brain"></i>
                 <span class="config-name">{{ config.custom_name }}</span>
                 <i class="ti ti-plus plus-icon"></i>

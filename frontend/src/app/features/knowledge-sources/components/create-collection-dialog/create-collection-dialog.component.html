@@ -3,7 +3,10 @@
         <span class="dialog__header-title"> Create New Collection </span>
 
         <div class="dialog__stepper">
-            <app-stepper [steps]="stepLabels()" [currentStep]="currentStepIndex()" />
+            <app-stepper
+                [steps]="stepLabels()"
+                [currentStep]="currentStepIndex()"
+            />
         </div>
 
         <div class="dialog__actions">

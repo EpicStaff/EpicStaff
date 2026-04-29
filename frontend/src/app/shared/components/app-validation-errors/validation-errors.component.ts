@@ -1,4 +1,5 @@
-import { Component, input } from '@angular/core';
+import { Component, DestroyRef, effect, inject, input, OnInit, signal, untracked } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AbstractControl } from '@angular/forms';
 
 type MinError = { min: number };
@@ -10,8 +11,26 @@ type LengthError = { requiredLength: number; actualLength: number };
     templateUrl: './validation-errors.component.html',
     styleUrls: ['./validation-errors.component.scss'],
 })
-export class ValidationErrorsComponent {
+export class ValidationErrorsComponent implements OnInit {
+    private destroyRef = inject(DestroyRef);
+
     control = input.required<AbstractControl>();
+    serverError = input<string | null>(null);
+
+    effectiveServerError = signal<string | null>(null);
+
+    constructor() {
+        effect(() => {
+            const err = this.serverError();
+            untracked(() => this.effectiveServerError.set(err));
+        });
+    }
+
+    ngOnInit() {
+        this.control()
+            .valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.effectiveServerError.set(null));
+    }
 
     private messages: Record<string, (error: unknown) => string> = {
         required: () => 'This field is required.',
@@ -23,6 +42,7 @@ export class ValidationErrorsComponent {
             `Max length is ${(error as LengthError).requiredLength}. Current length is ${(error as LengthError).actualLength}.`,
         pattern: () => `The value does not match the required pattern.`,
         email: () => `Invalid email address.`,
+        numericOnly: () => `Password cannot be entirely numeric.`,
         other: (error: unknown) => String(error),
     };
 

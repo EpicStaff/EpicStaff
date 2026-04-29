@@ -16,8 +16,17 @@
                 (click)="onStepDown()"
                 [disabled]="isDisabled() || (value() ?? min()) <= min()"
             >
-                <svg width="10" height="2" viewBox="0 0 10 2" fill="none">
-                    <path d="M0 1H10" stroke="currentColor" stroke-width="1.5" />
+                <svg
+                    width="10"
+                    height="2"
+                    viewBox="0 0 10 2"
+                    fill="none"
+                >
+                    <path
+                        d="M0 1H10"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                    />
                 </svg>
             </button>
 
@@ -29,8 +38,17 @@
                 (click)="onStepUp()"
                 [disabled]="isDisabled() || (value() ?? min()) >= max()"
             >
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                    <path d="M5 0V10M0 5H10" stroke="currentColor" stroke-width="1.5" />
+                <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 10 10"
+                    fill="none"
+                >
+                    <path
+                        d="M5 0V10M0 5H10"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                    />
                 </svg>
             </button>
         </div>
@@ -49,6 +67,9 @@
             [disabled]="isDisabled()"
             [style.--slider-percentage]="sliderPercentage() + '%'"
         />
-        <div class="slider-stepper__thumb" [style.left]="sliderPercentage() + '%'"></div>
+        <div
+            class="slider-stepper__thumb"
+            [style.left]="sliderPercentage() + '%'"
+        ></div>
     </div>
 </div>

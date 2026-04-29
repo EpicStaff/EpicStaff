@@ -4,24 +4,43 @@
             >Selected Files: <span class="count">({{ documents().length }})</span></span
         >
 
-        <app-button class="reinclude-btn" type="outline-primary" mod="small" (click)="reIncludeFiles()">
+        <app-button
+            class="reinclude-btn"
+            type="outline-primary"
+            mod="small"
+            (click)="reIncludeFiles()"
+        >
             Re-include Files
         </app-button>
     </div>
 
     <div class="files-wrapper">
-        <app-list width="574px" [items]="documents()">
-            <ng-template let-item let-i="index">
+        <app-list
+            width="574px"
+            [items]="documents()"
+        >
+            <ng-template
+                let-item
+                let-i="index"
+            >
                 <app-list-row class="file">
                     <div class="name-column">
                         <span class="file-index">{{ i + 1 }}</span>
-                        <app-svg-icon icon="document" size="0.75rem" />
+                        <app-svg-icon
+                            icon="document"
+                            size="0.75rem"
+                        />
                         <span class="file-name">{{ item.file_name }}</span>
                     </div>
                     <div class="size-column">
                         <span class="size">{{ item.file_size | fileSize }}</span>
                         <app-list-actions>
-                            <app-button type="outline-secondary" mod="small"> Watch Conversion </app-button>
+                            <app-button
+                                type="outline-secondary"
+                                mod="small"
+                            >
+                                Watch Conversion
+                            </app-button>
                             <app-svg-icon
                                 icon="close"
                                 style="cursor: pointer"

@@ -1,8 +1,8 @@
 import { inject, Injectable, signal } from '@angular/core';
-import { CreateEmbeddingConfigRequest, EmbeddingConfig, GetEmbeddingConfigRequest } from "@shared/models";
-import { EmbeddingConfigsService } from "@shared/services";
+import { CreateEmbeddingConfigRequest, EmbeddingConfig, GetEmbeddingConfigRequest } from '@shared/models';
+import { EmbeddingConfigsService } from '@shared/services';
 import { catchError, finalize, Observable, of, tap, throwError } from 'rxjs';
-import { shareReplay } from "rxjs/operators";
+import { shareReplay } from 'rxjs/operators';
 
 @Injectable({
     providedIn: 'root',

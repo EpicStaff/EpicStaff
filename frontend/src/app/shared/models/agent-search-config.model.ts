@@ -1,6 +1,6 @@
 export interface AgentSearchConfigs {
     naive?: NaiveRagSearchConfig;
-    graph?: GraphRagSearchConfig
+    graph?: GraphRagSearchConfig;
 }
 
 export interface NaiveRagSearchConfig {

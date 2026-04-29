@@ -1,0 +1,79 @@
+<div class="dialog-wrapper">
+    <div class="dialog-header">
+        <h2>Version History</h2>
+        <app-icon-button
+            icon="x"
+            size="2rem"
+            ariaLabel="Close dialog"
+            (onClick)="dialogRef.close()"
+        ></app-icon-button>
+    </div>
+    <div class="dialog-content">
+        @if (isLoading) {
+            <app-spinner
+                [isOverlay]="false"
+                [size]="32"
+                [borderWidth]="3"
+                text="Loading versions..."
+            ></app-spinner>
+        } @else if (versionsList.length === 0) {
+            <div class="empty-state">
+                <h2>No versions saved yet</h2>
+                <h3>Click "Save version" to create one</h3>
+            </div>
+        }
+
+        @for (version of versionsList; track version.id) {
+            <div class="version-card">
+                <div class="version-info">
+                    @if (editingVersionId === version.id && editingField === 'name') {
+                        <input
+                            class="version-edit-input"
+                            [(ngModel)]="editingValue"
+                            (keydown)="onEditKeydown($event, version)"
+                        />
+                    } @else {
+                        <div class="version-name">{{ version.name }}</div>
+                    }
+                    @if (editingVersionId === version.id && editingField === 'description') {
+                        <textarea
+                            class="version-edit-input version-edit-textarea"
+                            rows="1"
+                            [(ngModel)]="editingValue"
+                            (keydown)="onEditKeydown($event, version)"
+                        ></textarea>
+                    } @else if (version.description) {
+                        <div class="version-description">{{ version.description }}</div>
+                    }
+                    <div class="version-date">{{ version.created_at | date: 'MMM d, yyyy, h:mm a' }}</div>
+                </div>
+                <div class="version-menu">
+                    <app-icon-button
+                        icon="dots-vertical"
+                        size="1.5rem"
+                        ariaLabel="Version options"
+                        (onClick)="toggleMenu(version.id)"
+                    ></app-icon-button>
+                    @if (openMenuId === version.id) {
+                        <div class="dropdown-menu">
+                            <button class="dropdown-item">Restore</button>
+                            <button
+                                class="dropdown-item"
+                                (click)="startEdit(version, 'name')"
+                            >
+                                Rename
+                            </button>
+                            <button
+                                class="dropdown-item"
+                                (click)="startEdit(version, 'description')"
+                            >
+                                Change Description
+                            </button>
+                            <button class="dropdown-item dropdown-item--danger">Delete</button>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>

@@ -1,13 +1,8 @@
-import {
-    ChangeDetectionStrategy,
-    Component,
-    input,
-    computed,
-    model, signal
-} from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from "@angular/forms";
-import { TooltipComponent } from "../tooltip/tooltip.component";
+import { ChangeDetectionStrategy, Component, computed, input, model, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+
+import { TooltipComponent } from '../tooltip/tooltip.component';
 
 @Component({
     selector: 'app-dual-slider',

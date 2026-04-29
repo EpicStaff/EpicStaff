@@ -1,4 +1,4 @@
-import { BaseRagType, RagStatus, RagType } from "./base-rag.model";
+import { BaseRagType, RagStatus, RagType } from './base-rag.model';
 
 export interface CollectionNaiveRag {
     chunks_count: number;

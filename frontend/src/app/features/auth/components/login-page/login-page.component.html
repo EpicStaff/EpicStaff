@@ -17,11 +17,11 @@
         >
             <div>
                 <app-custom-input
-                    label="Username"
-                    placeholder="Enter username"
-                    formControlName="username"
+                    label="Email"
+                    placeholder="example@gmail.com"
+                    formControlName="email"
                 />
-                <app-validation-errors [control]="form.get('username')!" />
+                <app-validation-errors [control]="form.get('email')!" />
             </div>
 
             <div>
@@ -36,21 +36,25 @@
 
             <div class="remember-row">
                 <app-checkbox formControlName="rememberMe" />
-                <span>Remember me</span>
+                <span class="remember-label">Remember me</span>
+                <span class="forgot-label">Forgot?</span>
             </div>
         </form>
 
-        <div
-            *ngIf="serverError()"
-            class="server-error"
-        >
-            {{ serverError() }}
-        </div>
+        @if (serverError() || throttleSecondsLeft() > 0) {
+            <div class="server-error">
+                @if (throttleSecondsLeft() > 0) {
+                    Too many login attempts. Please try again in {{ throttleSecondsLeft() }}s.
+                } @else {
+                    {{ serverError() }}
+                }
+            </div>
+        }
 
         <app-button
             class="btn"
             (click)="onSubmit()"
-            [disabled]="loading || form.invalid"
+            [disabled]="loading || form.invalid || throttleSecondsLeft() > 0"
         >
             Login
         </app-button>

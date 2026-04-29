@@ -1,7 +1,7 @@
 import { Component, Input } from '@angular/core';
 
-import { StartNodeModel } from '../../../core/models/node.model';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { StartNodeModel } from '../../../core/models/node.model';
 
 @Component({
     selector: 'app-start-node',
@@ -9,7 +9,10 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
     imports: [AppSvgIconComponent],
     template: `
         <div class="start-node">
-            <app-svg-icon icon="play" size="25px"></app-svg-icon>
+            <app-svg-icon
+                icon="play"
+                size="25px"
+            ></app-svg-icon>
 
             <span>Start</span>
         </div>

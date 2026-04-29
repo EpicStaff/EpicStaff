@@ -1,34 +1,66 @@
 <!-- microphone-selector.component.html -->
 <div class="microphone-selector">
-    <button class="device-button" (click)="toggleDevicesList($event)" [class.disabled]="!isInitialized || !hasDevices">
+    <button
+        class="device-button"
+        (click)="toggleDevicesList($event)"
+        [class.disabled]="!isInitialized || !hasDevices"
+    >
         <!-- Loading spinner when not initialized -->
-        <div class="spinner" *ngIf="!isInitialized">
-            <app-svg-icon icon="loader" size="1rem" class="ti-spin" />
+        <div
+            class="spinner"
+            *ngIf="!isInitialized"
+        >
+            <app-svg-icon
+                icon="loader"
+                size="1rem"
+                class="ti-spin"
+            />
         </div>
 
         <!-- No microphones found message -->
-        <span class="device-label" *ngIf="isInitialized && !hasDevices">No microphones found</span>
+        <span
+            class="device-label"
+            *ngIf="isInitialized && !hasDevices"
+            >No microphones found</span
+        >
 
         <!-- Selected device when loaded -->
-        <span class="device-label" *ngIf="isInitialized && hasDevices">
+        <span
+            class="device-label"
+            *ngIf="isInitialized && hasDevices"
+        >
             {{ getSelectedDeviceLabel() }}
         </span>
 
         <!-- Dropdown chevron -->
-        <span class="chevron" [class.open]="showDevicesList" *ngIf="isInitialized && hasDevices">
-            <app-svg-icon icon="chevron-down" size="1rem" />
+        <span
+            class="chevron"
+            [class.open]="showDevicesList"
+            *ngIf="isInitialized && hasDevices"
+        >
+            <app-svg-icon
+                icon="chevron-down"
+                size="1rem"
+            />
         </span>
     </button>
 
     <!-- Devices dropdown -->
-    <div class="devices-dropdown" *ngIf="showDevicesList && isInitialized && hasDevices">
+    <div
+        class="devices-dropdown"
+        *ngIf="showDevicesList && isInitialized && hasDevices"
+    >
         <div
             class="device-item"
             *ngFor="let device of audioInputDevices"
             (click)="selectDevice(device.deviceId)"
             [class.selected]="selectedDeviceId === device.deviceId"
         >
-            <app-svg-icon icon="check" size="1rem" *ngIf="selectedDeviceId === device.deviceId" />
+            <app-svg-icon
+                icon="check"
+                size="1rem"
+                *ngIf="selectedDeviceId === device.deviceId"
+            />
             <span>{{ device.label || 'Unnamed device' }}</span>
         </div>
     </div>

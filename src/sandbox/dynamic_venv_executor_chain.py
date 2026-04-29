@@ -62,7 +62,11 @@ class CreateVenvHandler(AbstractHandler):
 
         context["libraries"] = set(context["libraries"])
         # Install libraries
-        predefined_libraries = {"/app/src/shared/dotdict"}  # TODO: deal with hard coded path
+        predefined_libraries = {
+            "/app/src/shared/dotdict"
+        }  # TODO: deal with hard coded path
+        if context.get("use_storage"):
+            predefined_libraries.add("/app/src/shared/epicstaff_storage")
         context["libraries"].update(predefined_libraries)
 
         context["libraries"] = sorted(context["libraries"])
@@ -224,6 +228,7 @@ class ExecuteCodeHandler(AbstractHandler):
         entrypoint: str,
         func_kwargs: dict[str, Any],
         global_kwargs: dict[str, Any] | None = None,
+        storage_mutations_path: Path | None = None,
     ):
         global_kwargs = global_kwargs or dict()
         code_lines = code.split("\n")
@@ -237,19 +242,33 @@ try:
     from dotdict import DotDict, DotObject, DotList
     for k, v in {global_kwargs}.items():
         globals()[k] = v
-    
+
 {code}
-    
+
     __sys_dot_kwargs = DotDict({func_kwargs})
-    
+
     sys_result_variable = {entrypoint}(**__sys_dot_kwargs)
     with open(r'{result_file_path.as_posix()}', 'w', encoding='utf-8') as file:
         file.write(json.dumps(sys_result_variable))
 except Exception as e:
     print(str(e), file=sys.stderr)
     sys.exit(1)
-sys.exit(0)
 """
+
+        if storage_mutations_path:
+            wrapped_code += f"""
+try:
+    from epicstaff_storage.storage import get_mutations as __es_get_muts
+    import json as __es_json
+    __es_muts = __es_get_muts()
+    if __es_muts:
+        with open(r'{storage_mutations_path.as_posix()}', 'w') as __es_mf:
+            __es_json.dump(__es_muts, __es_mf)
+except Exception:
+    pass
+"""
+
+        wrapped_code += "sys.exit(0)\n"
 
         return wrapped_code
 
@@ -259,12 +278,19 @@ sys.exit(0)
 
         temp_code_path = context["temp_code_path"]
 
+        storage_mutations_path = None
+        if context.get("use_storage"):
+            storage_mutations_path = (
+                Path(context["result_file_path"]).parent / "storage_mutations.json"
+            )
+
         wrapped_code = self.wrap_code(
             code=context["code"],
             result_file_path=context["result_file_path"],
             entrypoint=context["entrypoint"],
             func_kwargs=context["func_kwargs"],
             global_kwargs=context["global_kwargs"],
+            storage_mutations_path=storage_mutations_path,
         )
 
         # Write the code to a temporary file
@@ -273,10 +299,22 @@ sys.exit(0)
 
         # Execute the code asynchronously
         logger.info(f"Executing code using {python_executable}...")
+        storage_allowed_paths = context.get("storage_allowed_paths")
+        storage_org_prefix = context.get("storage_org_prefix")
+
+        env = None
+        if storage_allowed_paths is not None or storage_org_prefix is not None:
+            env = os.environ.copy()
+            if storage_allowed_paths is not None:
+                env["STORAGE_ALLOWED_PATHS"] = json.dumps(storage_allowed_paths)
+            if storage_org_prefix is not None:
+                env["STORAGE_ORG_PREFIX"] = storage_org_prefix
+
         process = await asyncio.create_subprocess_shell(
             f"{python_executable} {temp_code_path}",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=env,
         )
         stdout, stderr = await process.communicate()
         stderr = stderr.decode("utf-8", errors="replace")
@@ -339,6 +377,9 @@ class DynamicVenvExecutorChain:
         entrypoint: str = "main",
         func_kwargs: dict[str, Any] | None = None,
         global_kwargs: dict[str, Any] | None = None,
+        use_storage: bool = False,
+        storage_allowed_paths: list[str] | None = None,
+        storage_org_prefix: str | None = None,
     ) -> CodeResultData:
         """Run the complete workflow asynchronously."""
         if func_kwargs is None:
@@ -358,6 +399,9 @@ class DynamicVenvExecutorChain:
             "func_kwargs": func_kwargs,
             "execution_id": execution_id,
             "global_kwargs": global_kwargs,
+            "use_storage": use_storage,
+            "storage_allowed_paths": storage_allowed_paths,
+            "storage_org_prefix": storage_org_prefix,
         }
 
         result = await self.chain.handle(context)

@@ -49,7 +49,6 @@ from tables.views.model_view_sets import (
     RealtimeModelViewSet,
     RealtimeAgentViewSet,
     RealtimeAgentChatViewSet,
-    GraphFileViewSet,
     OrganizationViewSet,
     OrganizationUserViewSet,
     GraphOrganizationViewSet,
@@ -114,6 +113,7 @@ from tables.views.knowledge_views.graph_rag_views import (
 )
 
 
+from tables.views.storage_views import StorageAPIView
 from tables.views.sse_views import (
     RunSessionSSEView,
     RunSessionSSEViewSwagger,
@@ -144,7 +144,6 @@ collection_documents_viewset = CollectionDocumentsViewSet.as_view({"get": "list"
 
 # Graphs
 router.register(r"graphs", GraphViewSet, basename="graphs")
-router.register(r"graph-files", GraphFileViewSet)
 router.register(r"crewnodes", CrewNodeViewSet)
 router.register(r"pythonnodes", PythonNodeViewSet)
 router.register(r"file-extractor-nodes", FileExtractorNodeViewSet)
@@ -164,7 +163,7 @@ router.register(r"crew-tags", CrewTagViewSet)
 router.register(r"agent-tags", AgentTagViewSet)
 router.register(r"graph-tags", GraphTagViewSet)
 router.register(r"graph-light", GraphLightViewSet, basename="graphs-light")
-router.register(r"graph-versions", GraphVersionViewSet)
+router.register(r"graph-versions", GraphVersionViewSet, basename="graph-versions")
 router.register(r"realtime-models", RealtimeModelViewSet)
 router.register(r"realtime-model-configs", RealtimeConfigModelViewSet)
 router.register(r"realtime-transcription-models", RealtimeTranscriptionModelViewSet)
@@ -193,6 +192,7 @@ router.register(r"graph-notes", GraphNoteViewSet)
 router.register(r"ngrok-config", NgrokWebhookConfigViewSet)
 
 router.register(r"labels", LabelViewSet)
+router.register(r"storage", StorageAPIView, basename="storage")
 
 urlpatterns = [
     path(

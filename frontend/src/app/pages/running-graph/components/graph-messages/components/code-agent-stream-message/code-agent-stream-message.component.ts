@@ -23,30 +23,67 @@ interface ThinkingStep {
     imports: [CommonModule, MarkdownModule, AppSvgIconComponent],
     animations: [expandCollapseAnimation],
     template: `
-        <div class="code-agent-container" [class.in-progress]="!isFinal()">
+        <div
+            class="code-agent-container"
+            [class.in-progress]="!isFinal()"
+        >
             <!-- Header -->
-            <div class="code-agent-header" (click)="toggleMessage()">
+            <div
+                class="code-agent-header"
+                (click)="toggleMessage()"
+            >
                 <div class="play-arrow">
-                    <app-svg-icon [icon]="isExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+                    <app-svg-icon
+                        [icon]="isExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                        size="1rem"
+                    />
                 </div>
-                <div class="icon-container" [class.working]="!isFinal()">
-                    <app-svg-icon [icon]="isFinal() ? 'terminal-2' : 'loader'" size="1rem" />
+                <div
+                    class="icon-container"
+                    [class.working]="!isFinal()"
+                >
+                    <app-svg-icon
+                        [icon]="isFinal() ? 'terminal-2' : 'loader'"
+                        size="1rem"
+                    />
                 </div>
                 <div class="header-text">
                     <span class="node-name">{{ message.name }}</span>
-                    <span class="status-badge" *ngIf="!isFinal()">working...</span>
-                    <span class="step-count" *ngIf="thinkingSteps.length > 0">
+                    <span
+                        class="status-badge"
+                        *ngIf="!isFinal()"
+                        >working...</span
+                    >
+                    <span
+                        class="step-count"
+                        *ngIf="thinkingSteps.length > 0"
+                    >
                         {{ thinkingSteps.length }} step{{ thinkingSteps.length !== 1 ? 's' : '' }}
                     </span>
                 </div>
             </div>
 
             <!-- Steps (at the top, always visible when expanded) -->
-            <div class="collapsible-content" [@expandCollapse]="isExpanded ? 'expanded' : 'collapsed'">
-                <div class="steps-container" *ngIf="thinkingSteps.length > 0">
-                    <div class="step-item" *ngFor="let step of thinkingSteps; let i = index">
-                        <div class="step-header" (click)="toggleStep(i)">
-                            <app-svg-icon [icon]="expandedSteps[i] ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+            <div
+                class="collapsible-content"
+                [@expandCollapse]="isExpanded ? 'expanded' : 'collapsed'"
+            >
+                <div
+                    class="steps-container"
+                    *ngIf="thinkingSteps.length > 0"
+                >
+                    <div
+                        class="step-item"
+                        *ngFor="let step of thinkingSteps; let i = index"
+                    >
+                        <div
+                            class="step-header"
+                            (click)="toggleStep(i)"
+                        >
+                            <app-svg-icon
+                                [icon]="expandedSteps[i] ? 'caret-down-filled' : 'caret-right-filled'"
+                                size="1rem"
+                            />
                             <span class="step-summary">{{ getStepSummary(step, i) }}</span>
                         </div>
 
@@ -55,20 +92,35 @@ interface ThinkingStep {
                             [@expandCollapse]="expandedSteps[i] ? 'expanded' : 'collapsed'"
                         >
                             <div class="step-content">
-                                <div class="tool-call-item" *ngFor="let tc of step.toolCalls">
+                                <div
+                                    class="tool-call-item"
+                                    *ngFor="let tc of step.toolCalls"
+                                >
                                     <div class="tool-call-name">
-                                        <app-svg-icon icon="tool" size="1rem" />
+                                        <app-svg-icon
+                                            icon="tool"
+                                            size="1rem"
+                                        />
                                         {{ tc.name }}
                                     </div>
-                                    <div class="tool-call-input" *ngIf="tc.input">
+                                    <div
+                                        class="tool-call-input"
+                                        *ngIf="tc.input"
+                                    >
                                         {{ truncate(tc.input, 200) }}
                                     </div>
-                                    <div class="tool-call-output" *ngIf="tc.output">
+                                    <div
+                                        class="tool-call-output"
+                                        *ngIf="tc.output"
+                                    >
                                         {{ truncate(tc.output, 300) }}
                                     </div>
                                 </div>
 
-                                <div class="thinking-text" *ngIf="step.text">
+                                <div
+                                    class="thinking-text"
+                                    *ngIf="step.text"
+                                >
                                     {{ truncate(step.text, 2000) }}
                                 </div>
                             </div>
@@ -78,8 +130,14 @@ interface ThinkingStep {
             </div>
 
             <!-- Final result (below steps) -->
-            <div class="final-result" *ngIf="getText()">
-                <markdown [data]="getText()" class="markdown-content"></markdown>
+            <div
+                class="final-result"
+                *ngIf="getText()"
+            >
+                <markdown
+                    [data]="getText()"
+                    class="markdown-content"
+                ></markdown>
             </div>
         </div>
     `,

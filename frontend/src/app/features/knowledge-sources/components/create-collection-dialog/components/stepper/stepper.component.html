@@ -10,7 +10,10 @@
         >
             <div class="stepper__circle">
                 @if (i < currentStep()) {
-                    <app-svg-icon icon="check" size="15px"></app-svg-icon>
+                    <app-svg-icon
+                        icon="check"
+                        size="15px"
+                    ></app-svg-icon>
                 } @else {
                     {{ i + 1 }}
                 }

@@ -1,7 +1,7 @@
 export interface LLMProvider {
-  id: number;
-  name: string;
-  description?: string;
+    id: number;
+    name: string;
+    description?: string;
 }
 
 export enum ModelTypes {

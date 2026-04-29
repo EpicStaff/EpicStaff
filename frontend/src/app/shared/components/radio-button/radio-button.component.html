@@ -1,8 +1,17 @@
 @if (label()) {
-    <app-tooltip [required]="required()" [tooltipText]="tooltipText()" [label]="label()" [icon]="icon()" />
+    <app-tooltip
+        [required]="required()"
+        [tooltipText]="tooltipText()"
+        [label]="label()"
+        [icon]="icon()"
+    />
 }
 
-<div class="radio" [class.small]="mod() === 'small'" [class.default]="mod() === 'default'">
+<div
+    class="radio"
+    [class.small]="mod() === 'small'"
+    [class.default]="mod() === 'default'"
+>
     @for (option of options(); track option.value; let count = $count) {
         <div
             class="item"

@@ -1,15 +1,17 @@
-import { HttpClient, HttpHeaders } from "@angular/common/http";
-import { inject, Injectable } from "@angular/core";
-import { Observable } from "rxjs";
-import { ConfigService } from "../../../services/config";
-import { StartIndexingDtoRequest, StartIndexingDtoResponse } from "../models/base-rag.model";
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { inject, Injectable } from '@angular/core';
+import { Observable } from 'rxjs';
+
+import { ConfigService } from '../../../services/config';
+import { StartIndexingDtoRequest, StartIndexingDtoResponse } from '../models/base-rag.model';
 import {
     CollectionGraphRag,
-    CreateGraphRagForCollectionResponse, CreateGraphRagIndexConfigRequest,
-} from "../models/graph-rag.model";
+    CreateGraphRagForCollectionResponse,
+    CreateGraphRagIndexConfigRequest,
+} from '../models/graph-rag.model';
 
 @Injectable({
-    providedIn: 'root'
+    providedIn: 'root',
 })
 export class GraphRagService {
     private http = inject(HttpClient);
@@ -26,29 +28,29 @@ export class GraphRagService {
     createRagForCollection(
         collectionId: number,
         embedderId: number,
-        llmId: number,
+        llmId: number
     ): Observable<CreateGraphRagForCollectionResponse> {
         const body = { embedder_id: embedderId, llm_id: llmId };
 
         return this.http.post<CreateGraphRagForCollectionResponse>(
             `${this.apiUrl}collections/${collectionId}/graph-rag/`,
             body
-        )
+        );
     }
 
     getRagById(ragId: number): Observable<CollectionGraphRag> {
-        return this.http.get<CollectionGraphRag>(`${this.apiUrl}${ragId}/`)
+        return this.http.get<CollectionGraphRag>(`${this.apiUrl}${ragId}/`);
     }
 
-    updateRagIndexConfigs(ragId: number, dto: CreateGraphRagIndexConfigRequest): Observable<CreateGraphRagIndexConfigRequest> {
-        return this.http.put<CreateGraphRagIndexConfigRequest>(
-            `${this.apiUrl}${ragId}/index-config/`,
-            dto
-        )
+    updateRagIndexConfigs(
+        ragId: number,
+        dto: CreateGraphRagIndexConfigRequest
+    ): Observable<CreateGraphRagIndexConfigRequest> {
+        return this.http.put<CreateGraphRagIndexConfigRequest>(`${this.apiUrl}${ragId}/index-config/`, dto);
     }
 
     startIndexing(dto: StartIndexingDtoRequest): Observable<StartIndexingDtoResponse> {
-        return this.http.post<StartIndexingDtoResponse>(`${this.configService.apiUrl}process-rag-indexing/`, dto)
+        return this.http.post<StartIndexingDtoResponse>(`${this.configService.apiUrl}process-rag-indexing/`, dto);
     }
 
     deleteFileById(ragId: number, fileId: number): Observable<void> {

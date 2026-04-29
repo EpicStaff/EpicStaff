@@ -22,7 +22,6 @@ import {
     ValidationErrors,
     Validators,
 } from '@angular/forms';
-
 import {
     ButtonComponent,
     ConfirmationDialogData,
@@ -31,7 +30,6 @@ import {
     JsonEditorComponent,
 } from '@shared/components';
 
-import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
     ArgsSchema,
     CreatePythonCodeToolRequest,
@@ -40,6 +38,7 @@ import {
 } from '../../../features/tools/models/python-code-tool.model';
 import { CustomToolsService } from '../../../features/tools/services/custom-tools/custom-tools.service';
 import { ToastService } from '../../../services/notifications';
+import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CodeEditorComponent } from './code-editor/code-editor.component';
 import { ToolLibrariesComponent } from './tool-libraries/tool-libraries.component';
 
@@ -142,14 +141,12 @@ export class CustomToolDialogComponent implements OnInit, AfterViewInit {
             this.inputsJsonConfig.set(this.getDefaultInputsSchema());
         }
 
-        this.dialogRef.keydownEvents
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((event: KeyboardEvent) => {
-                if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
-                    event.preventDefault();
-                    this.createTool();
-                }
-            });
+        this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event: KeyboardEvent) => {
+            if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                event.preventDefault();
+                this.createTool();
+            }
+        });
 
         this.cdr.markForCheck();
     }

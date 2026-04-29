@@ -7,7 +7,10 @@ import { ICellRendererParams } from 'ag-grid-community';
     selector: 'app-expression-renderer',
     standalone: true,
     imports: [CommonModule],
-    template: `<div class="expression-renderer" [innerHTML]="highlightedValue"></div>`,
+    template: `<div
+        class="expression-renderer"
+        [innerHTML]="highlightedValue"
+    ></div>`,
     styleUrls: ['./expression-renderer.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

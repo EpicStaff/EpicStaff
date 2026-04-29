@@ -1,0 +1,83 @@
+<div class="storage-details-dialog">
+    <div class="storage-details-dialog__header">
+        <h2 class="storage-details-dialog__title">{{ title }}</h2>
+        <button
+            class="storage-details-dialog__close"
+            type="button"
+            aria-label="Close dialog"
+            (click)="close()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="1rem"
+            ></app-svg-icon>
+        </button>
+    </div>
+
+    <div class="storage-details-dialog__content">
+        <div class="storage-details-dialog__section">
+            <div class="storage-details-dialog__section-title">DATA</div>
+            <div class="storage-details-dialog__data-grid">
+                @if (data.type !== 'folder') {
+                    <div class="storage-details-dialog__cell">
+                        <span class="storage-details-dialog__label">Size</span>
+                        <span class="storage-details-dialog__value">{{ sizeLabel }}</span>
+                    </div>
+                    <div class="storage-details-dialog__cell">
+                        <span class="storage-details-dialog__label">Type</span>
+                        <span class="storage-details-dialog__value">{{ typeLabel }}</span>
+                    </div>
+                }
+                <div class="storage-details-dialog__cell">
+                    <span class="storage-details-dialog__label">Modified</span>
+                    <span class="storage-details-dialog__value">{{ modifiedAt }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="storage-details-dialog__section">
+            <div class="storage-details-dialog__section-title">STORAGE PATH</div>
+            <div class="storage-details-dialog__path-box">
+                <span class="storage-details-dialog__path-value">{{ storagePath }}</span>
+                <button
+                    class="storage-details-dialog__copy-btn"
+                    type="button"
+                    aria-label="Copy path"
+                    (click)="copyPath()"
+                >
+                    <app-svg-icon
+                        icon="copy"
+                        size="0.875rem"
+                    ></app-svg-icon>
+                </button>
+            </div>
+        </div>
+
+        <div class="storage-details-dialog__section">
+            <div class="storage-details-dialog__section-title">USED IN FLOWS</div>
+            @if (usedInFlows.length) {
+                <div class="storage-details-dialog__chips">
+                    @for (flow of usedInFlows; track flow.id) {
+                        <span class="storage-details-dialog__chip">
+                            {{ flow.name }}
+                            <button
+                                class="storage-details-dialog__chip-remove"
+                                type="button"
+                                aria-label="Remove from flow"
+                                (click)="onRemoveFromFlow(flow)"
+                            >
+                                <app-svg-icon
+                                    icon="x"
+                                    size="20px"
+                                    class="storage-details-dialog__chip-x"
+                                ></app-svg-icon>
+                            </button>
+                        </span>
+                    }
+                </div>
+            } @else {
+                <div class="storage-details-dialog__empty">Not used in flows</div>
+            }
+        </div>
+    </div>
+</div>

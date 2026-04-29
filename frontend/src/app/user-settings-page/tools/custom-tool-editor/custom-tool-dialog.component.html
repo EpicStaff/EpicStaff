@@ -1,12 +1,22 @@
 <div class="custom-tool-dialog">
-    <form [formGroup]="form" (ngSubmit)="createTool()">
+    <form
+        [formGroup]="form"
+        (ngSubmit)="createTool()"
+    >
         <!-- Header -->
         <div class="dialog-header">
             <h2 class="title">
                 {{ selectedTool ? 'Update ' + selectedTool.name : 'Create Custom Tool' }}
             </h2>
-            <button class="close-btn" type="button" (click)="close()">
-                <app-svg-icon icon="x" size="1.2rem"></app-svg-icon>
+            <button
+                class="close-btn"
+                type="button"
+                (click)="close()"
+            >
+                <app-svg-icon
+                    icon="x"
+                    size="1.2rem"
+                ></app-svg-icon>
             </button>
         </div>
 
@@ -109,8 +119,16 @@
 
         <!-- Footer -->
         <div class="dialog-footer">
-            <app-button type="secondary" (click)="close()">Close</app-button>
-            <app-button type="primary" [disabled]="form.invalid || !isInputsJsonValid()" (click)="createTool()">
+            <app-button
+                type="secondary"
+                (click)="close()"
+                >Close</app-button
+            >
+            <app-button
+                type="primary"
+                [disabled]="form.invalid || !isInputsJsonValid()"
+                (click)="createTool()"
+            >
                 {{ selectedTool ? 'Update' : 'Create' }}
             </app-button>
         </div>

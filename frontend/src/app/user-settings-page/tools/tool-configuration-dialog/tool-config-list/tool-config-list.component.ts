@@ -16,7 +16,10 @@ import { ToolConfig } from '../../../../features/tools/models/tool-config.model'
     template: `
         <div class="config-list-wrapper">
             <!-- Search Input -->
-            <div class="search-input-wrapper" [ngClass]="{ 'input-has-content': searchHasContent }">
+            <div
+                class="search-input-wrapper"
+                [ngClass]="{ 'input-has-content': searchHasContent }"
+            >
                 <input
                     type="text"
                     class="search-input"
@@ -27,11 +30,17 @@ import { ToolConfig } from '../../../../features/tools/models/tool-config.model'
 
             <!-- Scrollable content area -->
             <div class="list-content-wrapper">
-                <div *ngIf="filteredConfigs.length === 0" class="no-configs-message">
+                <div
+                    *ngIf="filteredConfigs.length === 0"
+                    class="no-configs-message"
+                >
                     No configurations available. Please create a new one.
                 </div>
 
-                <ul class="config-list" *ngIf="filteredConfigs.length > 0">
+                <ul
+                    class="config-list"
+                    *ngIf="filteredConfigs.length > 0"
+                >
                     <li
                         *ngFor="let config of filteredConfigs"
                         (click)="onSelect(config)"
@@ -55,7 +64,12 @@ import { ToolConfig } from '../../../../features/tools/models/tool-config.model'
             </div>
 
             <!-- "Create New" button stays at the bottom, outside the scrollable area -->
-            <button class="create-config-button" (click)="onCreateNewConfig()">Create new form</button>
+            <button
+                class="create-config-button"
+                (click)="onCreateNewConfig()"
+            >
+                Create new form
+            </button>
         </div>
     `,
     styles: [

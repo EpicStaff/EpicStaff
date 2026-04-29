@@ -104,7 +104,10 @@ export class FlowsStorageService {
     }
 
     // --- Data Fetching Methods ---
-    public getFlows(forceRefresh = false, labelFilter?: 'all' | 'unlabeled' | number): Observable<GetGraphLightRequest[]> {
+    public getFlows(
+        forceRefresh = false,
+        labelFilter?: 'all' | 'unlabeled' | number
+    ): Observable<GetGraphLightRequest[]> {
         const isFiltered = labelFilter !== undefined && labelFilter !== 'all';
         const params = this.buildLabelParams(labelFilter);
 

@@ -31,7 +31,10 @@ interface InputMapPair {
     template: `
         <div class="panel-container">
             <div class="panel-content">
-                <form [formGroup]="form" class="form-container">
+                <form
+                    [formGroup]="form"
+                    class="form-container"
+                >
                     <app-custom-input
                         label="Node Name"
                         tooltipText="The unique identifier used to reference this subgraph node. This name must be unique within the flow."
@@ -56,11 +59,23 @@ interface InputMapPair {
                     <div class="field">
                         <label>
                             Selected Flow
-                            <app-help-tooltip text="Select the flow that this node will execute" size="1rem" />
+                            <app-help-tooltip
+                                text="Select the flow that this node will execute"
+                                size="1rem"
+                            />
                         </label>
                         <div class="selected-flow-row">
-                            <select formControlName="selectedFlowId" class="select-field" (change)="onFlowChange()">
-                                <option [value]="null" disabled>Select a flow</option>
+                            <select
+                                formControlName="selectedFlowId"
+                                class="select-field"
+                                (change)="onFlowChange()"
+                            >
+                                <option
+                                    [value]="null"
+                                    disabled
+                                >
+                                    Select a flow
+                                </option>
                                 @for (flow of filteredFlows(); track flow.id) {
                                     <option [value]="flow.id">{{ flow.name }}</option>
                                 }

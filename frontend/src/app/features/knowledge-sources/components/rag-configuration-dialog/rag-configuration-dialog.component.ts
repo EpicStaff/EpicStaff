@@ -1,9 +1,10 @@
-import { DIALOG_DATA, DialogRef } from "@angular/cdk/dialog";
-import { Component, DestroyRef, inject } from "@angular/core";
-import { ToastService } from "../../../../services/notifications";
+import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { Component, DestroyRef, inject } from '@angular/core';
+
+import { ToastService } from '../../../../services/notifications';
 
 @Component({
-    template: ''
+    template: '',
 })
 export abstract class RagConfigurationDialogComponent {
     protected data: { ragId: number } = inject(DIALOG_DATA);

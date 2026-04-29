@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -13,11 +13,13 @@ import { PythonNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
-
-interface InputMapPair {
-    key: string;
-    value: string;
-}
+import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
+import {
+    createInputMapFromPairs,
+    getValidInputPairs,
+    initializeInputMap,
+    parseCommaSeparatedList,
+} from '../node-panel-form.utils';
 
 @Component({
     standalone: true,
@@ -28,20 +30,24 @@ interface InputMapPair {
         InputMapComponent,
         CodeEditorComponent,
         CommonModule,
+        NodeStorageSectionComponent,
         AppSvgIconComponent,
     ],
     animations: [expandCollapseAnimation],
     template: `
         <div class="panel-container">
             <div class="panel-content">
-                <form [formGroup]="form" class="form-container">
+                <form
+                    [formGroup]="form"
+                    class="form-container"
+                >
                     @if (isExpanded()) {
-                        <!-- Expanded Mode: Two Column Layout or Full Width -->
-                        <div class="form-layout expanded" [class.code-editor-fullwidth]="isCodeEditorFullWidth()">
-                            <!-- Left Column - Form Fields -->
+                        <div
+                            class="form-layout expanded"
+                            [class.code-editor-fullwidth]="isCodeEditorFullWidth()"
+                        >
                             @if (!isCodeEditorFullWidth()) {
                                 <div class="form-fields">
-                                    <!-- Node Name Field -->
                                     <app-custom-input
                                         label="Node Name"
                                         tooltipText="The unique identifier used to reference this Python node. This name must be unique within the flow."
@@ -51,12 +57,10 @@ interface InputMapPair {
                                         [errorMessage]="getNodeNameErrorMessage()"
                                     ></app-custom-input>
 
-                                    <!-- Input Map Key-Value Pairs -->
                                     <div class="input-map">
                                         <app-input-map [activeColor]="activeColor"></app-input-map>
                                     </div>
 
-                                    <!-- Output Variable Path -->
                                     <app-custom-input
                                         label="Output Variable Path"
                                         tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
@@ -65,7 +69,6 @@ interface InputMapPair {
                                         [activeColor]="activeColor"
                                     ></app-custom-input>
 
-                                    <!-- Libraries Input -->
                                     <app-custom-input
                                         label="Libraries"
                                         tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
@@ -74,19 +77,31 @@ interface InputMapPair {
                                         [activeColor]="activeColor"
                                     ></app-custom-input>
 
-                                    <div class="stream-config-section" formGroupName="stream_config">
+                                    <div
+                                        class="stream-config-section"
+                                        formGroupName="stream_config"
+                                    >
                                         <span class="section-label">Streaming to EpicChat</span>
                                         <div class="checkbox-list">
                                             <label class="checkbox-item">
-                                                <input type="checkbox" formControlName="execution_status" />
+                                                <input
+                                                    type="checkbox"
+                                                    formControlName="execution_status"
+                                                />
                                                 <span>Execution status</span>
                                             </label>
                                         </div>
                                     </div>
+
+                                    <app-node-storage-section
+                                        [useStorage]="useStorage()"
+                                        (onToggleChange)="onStorageToggle($event)"
+                                        (onInsertCode)="insertStorageCode($event)"
+                                        (onRemoveCode)="removeStorageCode($event)"
+                                    ></app-node-storage-section>
                                 </div>
                             }
 
-                            <!-- Code Editor Section with Toggle Arrow -->
                             <div class="code-editor-wrapper">
                                 <button
                                     type="button"
@@ -97,7 +112,7 @@ interface InputMapPair {
                                     "
                                 >
                                     <app-svg-icon
-                                        [icon]="isCodeEditorFullWidth() ? 'chevron-left' : 'chevron-right'"
+                                        [icon]="isCodeEditorFullWidth() ? 'chevron-right' : 'chevron-left'"
                                         size="1rem"
                                     ></app-svg-icon>
                                 </button>
@@ -111,9 +126,7 @@ interface InputMapPair {
                             </div>
                         </div>
                     } @else {
-                        <!-- Collapsed Mode: Single Column Layout -->
                         <div class="form-layout collapsed">
-                            <!-- Node Name Field -->
                             <app-custom-input
                                 label="Node Name"
                                 tooltipText="The unique identifier used to reference this Python node. This name must be unique within the flow."
@@ -123,12 +136,10 @@ interface InputMapPair {
                                 [errorMessage]="getNodeNameErrorMessage()"
                             ></app-custom-input>
 
-                            <!-- Input Map Key-Value Pairs -->
                             <div class="input-map">
                                 <app-input-map [activeColor]="activeColor"></app-input-map>
                             </div>
 
-                            <!-- Output Variable Path -->
                             <app-custom-input
                                 label="Output Variable Path"
                                 tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
@@ -137,7 +148,6 @@ interface InputMapPair {
                                 [activeColor]="activeColor"
                             ></app-custom-input>
 
-                            <!-- Libraries Input -->
                             <app-custom-input
                                 label="Libraries"
                                 tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
@@ -146,17 +156,29 @@ interface InputMapPair {
                                 [activeColor]="activeColor"
                             ></app-custom-input>
 
-                            <div class="stream-config-section" formGroupName="stream_config">
+                            <div
+                                class="stream-config-section"
+                                formGroupName="stream_config"
+                            >
                                 <span class="section-label">Streaming to EpicChat</span>
                                 <div class="checkbox-list">
                                     <label class="checkbox-item">
-                                        <input type="checkbox" formControlName="execution_status" />
+                                        <input
+                                            type="checkbox"
+                                            formControlName="execution_status"
+                                        />
                                         <span>Execution status</span>
                                     </label>
                                 </div>
                             </div>
 
-                            <!-- Code Editor Section -->
+                            <app-node-storage-section
+                                [useStorage]="useStorage()"
+                                (onToggleChange)="onStorageToggle($event)"
+                                (onInsertCode)="insertStorageCode($event)"
+                                (onRemoveCode)="removeStorageCode($event)"
+                            ></app-node-storage-section>
+
                             <div class="code-editor-section">
                                 <app-code-editor
                                     [pythonCode]="pythonCode"
@@ -383,9 +405,9 @@ interface InputMapPair {
 export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     public override readonly isExpanded = input<boolean>(false);
     public readonly isCodeEditorFullWidth = signal<boolean>(true);
+    public readonly useStorage = signal<boolean>(false);
 
     pythonCode: string = '';
-    initialPythonCode: string = '';
     codeEditorHasError: boolean = false;
     private readonly pythonCodeChange$ = new Subject<string>();
 
@@ -413,8 +435,31 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         this.codeEditorHasError = hasError;
     }
 
+    onStorageToggle(value: boolean): void {
+        this.useStorage.set(value);
+        this.sidePanelService.triggerAutosave();
+    }
+
+    insertStorageCode(code: string): void {
+        if (!this.pythonCode.includes('epicstaff_storage')) {
+            this.pythonCode = code + '\n\n' + this.pythonCode;
+        }
+        this.sidePanelService.triggerAutosave();
+    }
+
+    removeStorageCode(code: string): void {
+        const prefix = code + '\n\n';
+        if (this.pythonCode.startsWith(prefix)) {
+            this.pythonCode = this.pythonCode.slice(prefix.length);
+            this.sidePanelService.triggerAutosave();
+        }
+    }
+
     initializeForm(): FormGroup {
         const sc = this.node().stream_config;
+
+        this.useStorage.set(this.node().data.use_storage ?? false);
+
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             input_map: this.fb.array([]),
@@ -428,21 +473,14 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         this.initializeInputMap(form);
 
         this.pythonCode = this.node().data.code || '';
-        this.initialPythonCode = this.pythonCode;
 
         return form;
     }
 
     createUpdatedNode(): PythonNodeModel {
-        const validInputPairs = this.getValidInputPairs();
-        const inputMapValue = this.createInputMapFromPairs(validInputPairs);
-
-        const librariesArray = this.form.value.libraries
-            ? this.form.value.libraries
-                  .split(',')
-                  .map((lib: string) => lib.trim())
-                  .filter((lib: string) => lib.length > 0)
-            : [];
+        const validInputPairs = getValidInputPairs(this.inputMapPairs);
+        const inputMapValue = createInputMapFromPairs(validInputPairs);
+        const librariesArray = parseCommaSeparatedList(this.form.value.libraries);
 
         return {
             ...this.node(),
@@ -455,48 +493,14 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 code: this.pythonCode,
                 entrypoint: 'main',
                 libraries: librariesArray,
+                use_storage: this.useStorage(),
             },
             stream_config: this.form.value.stream_config || {},
         };
     }
 
     private initializeInputMap(form: FormGroup): void {
-        const inputMapArray = form.get('input_map') as FormArray;
-
-        if (this.node().input_map && Object.keys(this.node().input_map).length > 0) {
-            Object.entries(this.node().input_map).forEach(([key, value]) => {
-                inputMapArray.push(
-                    this.fb.group({
-                        key: [key, Validators.required],
-                        value: [value, Validators.required],
-                    })
-                );
-            });
-        } else {
-            inputMapArray.push(
-                this.fb.group({
-                    key: [''],
-                    value: ['variables.'],
-                })
-            );
-        }
-    }
-
-    private getValidInputPairs(): AbstractControl[] {
-        return this.inputMapPairs.controls.filter((control) => {
-            const value = control.value as InputMapPair;
-            return value.key?.trim() !== '' || value.value?.trim() !== '';
-        });
-    }
-
-    private createInputMapFromPairs(pairs: AbstractControl[]): Record<string, string> {
-        return pairs.reduce((acc: Record<string, string>, curr: AbstractControl) => {
-            const pair = curr.value as InputMapPair;
-            if (pair.key?.trim()) {
-                acc[pair.key.trim()] = pair.value;
-            }
-            return acc;
-        }, {});
+        initializeInputMap(form, this.node().input_map as Record<string, unknown> | null | undefined, this.fb);
     }
 
     toggleCodeEditorFullWidth(): void {

@@ -11,7 +11,11 @@ import { WavRecorderService } from '../../../../../services/wav-recorder.service
     template: `
         <div class="visualizer">
             <div class="wave-container">
-                <canvas #canvas width="300" height="40"></canvas>
+                <canvas
+                    #canvas
+                    width="300"
+                    height="40"
+                ></canvas>
             </div>
         </div>
     `,

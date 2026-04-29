@@ -19,7 +19,12 @@
         <h3 class="select-rag__config-title">AI Model Configuration</h3>
 
         <div class="select-rag__config-row">
-            <label for="collection-name" class="select-rag__config-label"> Embedder </label>
+            <label
+                for="collection-name"
+                class="select-rag__config-label"
+            >
+                Embedder
+            </label>
 
             <app-help-tooltip
                 class="select-rag__config-tooltip"
@@ -28,12 +33,20 @@
                 tooltipClass="dialog__label-tooltip"
             />
 
-            <app-select [items]="embeddingConfigs()" [(selectedValue)]="selectedEmbedder" />
+            <app-select
+                [items]="embeddingConfigs()"
+                [(selectedValue)]="selectedEmbedder"
+            />
         </div>
 
         @if (selectedRag() === 'graph') {
             <div class="select-rag__config-row">
-                <label for="collection-name" class="select-rag__config-label"> LLM Model </label>
+                <label
+                    for="collection-name"
+                    class="select-rag__config-label"
+                >
+                    LLM Model
+                </label>
 
                 <app-help-tooltip
                     class="select-rag__config-tooltip"
@@ -42,7 +55,10 @@
                     tooltipClass="dialog__label-tooltip"
                 />
 
-                <app-select [items]="llmModels()" [(selectedValue)]="selectedLLM" />
+                <app-select
+                    [items]="llmModels()"
+                    [(selectedValue)]="selectedLLM"
+                />
             </div>
         }
     </section>

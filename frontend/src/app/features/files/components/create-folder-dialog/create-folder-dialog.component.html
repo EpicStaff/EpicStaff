@@ -1,0 +1,260 @@
+<div class="create-folder-dialog">
+    <div class="create-folder-dialog__header">
+        <h2 class="create-folder-dialog__title">Add files</h2>
+        <div class="create-folder-dialog__header-actions">
+            <button
+                class="create-folder-dialog__icon-btn create-folder-dialog__icon-btn--cancel"
+                aria-label="Cancel"
+                (click)="onCancel()"
+            >
+                <app-svg-icon
+                    icon="x-fill"
+                    size="16px"
+                ></app-svg-icon>
+            </button>
+            <button
+                class="create-folder-dialog__icon-btn create-folder-dialog__icon-btn--confirm"
+                aria-label="Add files"
+                [disabled]="!isValid() || isUploading()"
+                (click)="onConfirm()"
+            >
+                @if (isUploading()) {
+                    <app-spinner2 [size]="20" />
+                } @else {
+                    <app-svg-icon
+                        icon="check-fill"
+                        size="16px"
+                    ></app-svg-icon>
+                }
+            </button>
+        </div>
+    </div>
+
+    <div class="create-folder-dialog__body">
+        <div class="create-folder-dialog__settings">
+            <!-- Destination folder -->
+            <div class="create-folder-dialog__field create-folder-dialog__field--inline">
+                <div class="create-folder-dialog__label-group">
+                    <label class="create-folder-dialog__label">Destination folder</label>
+                    <mat-icon
+                        class="create-folder-dialog__tooltip-icon"
+                        matTooltip="Choose where uploaded files will be placed. If not selected, files will be saved in Root (Default)."
+                        matTooltipPosition="above"
+                        matTooltipClass="dialog__label-tooltip"
+                    >
+                        help_outline
+                    </mat-icon>
+                </div>
+                <div
+                    class="create-folder-dialog__selector"
+                    [class.create-folder-dialog__selector--filled]="selectedPath() !== ''"
+                    [class.create-folder-dialog__selector--open]="dropdownOpen()"
+                    (click)="toggleDropdown($event)"
+                >
+                    <span class="create-folder-dialog__selector-text">{{ selectedFolderLabel }}</span>
+                    <app-svg-icon
+                        icon="chevron-down"
+                        size="0.875rem"
+                        class="create-folder-dialog__selector-chevron"
+                        [class.create-folder-dialog__selector-chevron--open]="dropdownOpen()"
+                    ></app-svg-icon>
+                </div>
+
+                @if (dropdownOpen()) {
+                    <div
+                        class="create-folder-dialog__dropdown"
+                        (click)="stopPropagation($event)"
+                    >
+                        <div class="create-folder-dialog__search">
+                            <app-svg-icon
+                                icon="search"
+                                size="0.875rem"
+                                class="create-folder-dialog__search-icon"
+                            ></app-svg-icon>
+                            <input
+                                class="create-folder-dialog__search-input"
+                                type="text"
+                                placeholder="Search folder..."
+                                [ngModel]="searchQuery()"
+                                (ngModelChange)="searchQuery.set($event)"
+                            />
+                        </div>
+                        <div class="create-folder-dialog__tree">
+                            @if (isLoadingRoot()) {
+                                <div class="create-folder-dialog__state">Loading folders...</div>
+                            } @else {
+                                <!-- Root -->
+                                <div
+                                    class="create-folder-dialog__node"
+                                    [class.create-folder-dialog__node--selected]="isSelected('')"
+                                    [style.padding-left.px]="12"
+                                    (click)="selectFolder('')"
+                                >
+                                    <span
+                                        class="create-folder-dialog__chevron-btn create-folder-dialog__chevron-btn--open"
+                                    >
+                                        <app-svg-icon
+                                            icon="expand"
+                                            size="0.5rem"
+                                        ></app-svg-icon>
+                                    </span>
+                                    <span class="create-folder-dialog__node-name">/</span>
+                                </div>
+                                @for (node of visibleNodes(); track node.path) {
+                                    <div
+                                        class="create-folder-dialog__node"
+                                        [class.create-folder-dialog__node--selected]="isSelected(node.path)"
+                                        [style.padding-left.px]="32 + node.level * 20"
+                                        (click)="selectFolder(node.path)"
+                                    >
+                                        @if (node.hasChildren) {
+                                            <button
+                                                class="create-folder-dialog__chevron-btn"
+                                                [class.create-folder-dialog__chevron-btn--open]="node.isExpanded"
+                                                (click)="toggleExpand($event, node)"
+                                            >
+                                                <app-svg-icon
+                                                    icon="expand"
+                                                    size="0.5rem"
+                                                ></app-svg-icon>
+                                            </button>
+                                        } @else {
+                                            <span class="create-folder-dialog__chevron-gap"></span>
+                                        }
+                                        <span class="create-folder-dialog__node-name">{{ node.name }}</span>
+                                        @if (node.isLoading) {
+                                            <span class="create-folder-dialog__node-spinner">...</span>
+                                        }
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <!-- Folder name (optional subfolder) -->
+            <div class="create-folder-dialog__field create-folder-dialog__field--inline">
+                <div class="create-folder-dialog__label-group">
+                    <label class="create-folder-dialog__label">Organize into folder</label>
+                    <mat-icon
+                        class="create-folder-dialog__tooltip-icon"
+                        matTooltip="Enter a folder name to group files. If empty, files won’t be grouped and will be saved in Root (Default)."
+                        matTooltipPosition="above"
+                        matTooltipClass="dialog__label-tooltip"
+                    >
+                        help_outline
+                    </mat-icon>
+                </div>
+                <input
+                    class="create-folder-dialog__input"
+                    type="text"
+                    placeholder="Leave blank to use current"
+                    [ngModel]="folderName()"
+                    (ngModelChange)="folderName.set($event)"
+                />
+            </div>
+        </div>
+        <!-- /.settings -->
+
+        <!-- Drop zone + file list -->
+        <div
+            class="create-folder-dialog__field create-folder-dialog__field--files"
+            (dragover)="onDragOver($event)"
+            (dragleave)="onDragLeave($event)"
+            (drop)="onDrop($event)"
+            [class.create-folder-dialog__field--dragging]="isDragging()"
+        >
+            @if (files().length === 0) {
+                <div class="create-folder-dialog__empty-state">
+                    <span class="create-folder-dialog__drop-text">Drag and drop files here or click to upload</span>
+                    <label class="create-folder-dialog__upload-box">
+                        <app-svg-icon
+                            icon="upload"
+                            size="32px"
+                            class="create-folder-dialog__drop-icon"
+                        ></app-svg-icon>
+                        <input
+                            type="file"
+                            multiple
+                            hidden
+                            (change)="onFileInputChange($event)"
+                        />
+                    </label>
+                </div>
+            } @else {
+                <div class="create-folder-dialog__file-list-header">
+                    <label class="create-folder-dialog__label">
+                        Selected Files: <span class="create-folder-dialog__count">({{ totalSize() }})</span>
+                    </label>
+                    @if (hasBlockedFiles()) {
+                        <span class="create-folder-dialog__file-validation-error">File validation errors</span>
+                    }
+                    <label class="create-folder-dialog__add-more-btn">
+                        + Add More Files
+                        <input
+                            type="file"
+                            multiple
+                            hidden
+                            (change)="onFileInputChange($event)"
+                        />
+                    </label>
+                </div>
+                <ul class="create-folder-dialog__file-list">
+                    @for (file of files(); track file.name; let i = $index) {
+                        <li class="create-folder-dialog__file-item">
+                            <span class="create-folder-dialog__file-index">{{ i + 1 }}</span>
+                            <app-svg-icon
+                                icon="file-flat"
+                                size="12px"
+                                class="create-folder-dialog__file-icon"
+                            ></app-svg-icon>
+                            <div class="create-folder-dialog__file-info">
+                                <span
+                                    class="create-folder-dialog__file-name"
+                                    [title]="file.name"
+                                    >{{ file.name }}</span
+                                >
+                                @if (getFileError(file); as serverError) {
+                                    <span
+                                        class="create-folder-dialog__file-badge create-folder-dialog__file-badge--blocked"
+                                        >{{ serverError }}</span
+                                    >
+                                } @else if (isZeroSize(file)) {
+                                    <span
+                                        class="create-folder-dialog__file-badge create-folder-dialog__file-badge--blocked"
+                                        >Empty file</span
+                                    >
+                                } @else if (isArchive(file)) {
+                                    <span
+                                        class="create-folder-dialog__file-badge create-folder-dialog__file-badge--unpack"
+                                        >Will be unpacked</span
+                                    >
+                                } @else if (isBlocked(file)) {
+                                    <span
+                                        class="create-folder-dialog__file-badge create-folder-dialog__file-badge--blocked"
+                                        >Invalid file type</span
+                                    >
+                                }
+                            </div>
+                            <span class="create-folder-dialog__file-size">{{ formatSize(file.size) }}</span>
+                            <button
+                                class="create-folder-dialog__file-remove"
+                                aria-label="Remove file"
+                                (click)="removeFile(i)"
+                            >
+                                <app-svg-icon
+                                    icon="x"
+                                    size="16px"
+                                ></app-svg-icon>
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+    <div class="create-folder-dialog__footer">
+        Archives are extracted after saving, structure is preserved; unsupported ones are not extracted.
+    </div>
+</div>

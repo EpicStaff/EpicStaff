@@ -1,0 +1,104 @@
+.page {
+    background: #1a1b1c;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 10%;
+
+    .step-label {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--color-ks-secondary);
+        margin: 0;
+        text-align: center;
+    }
+
+    .hero {
+        margin-top: 40px;
+        margin-bottom: 96px;
+        text-align: center;
+
+        .title {
+            font-size: 32px;
+            line-height: 130%;
+            font-weight: 700;
+            color: var(--color-ks-text);
+            margin: 0 0 0.5rem;
+        }
+
+        .subtitle {
+            font-size: 18px;
+            color: var(--color-ks-secondary);
+            margin: 0;
+        }
+    }
+
+    .card {
+        display: flex;
+        flex-direction: column;
+        gap: 40px;
+        width: 480px;
+        background: var(--color-ks-background);
+        padding: 40px 30px;
+        border-radius: 10px;
+        border: 1px solid var(--color-divider-subtle);
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 0.375rem;
+
+            .hint {
+                font-size: 12px;
+                color: var(--color-ks-secondary);
+                margin: 0;
+            }
+        }
+    }
+
+    .choices {
+        display: flex;
+        gap: 30px;
+
+        .choice-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            width: 308px;
+            padding: 24px 16px;
+            background: var(--color-ks-background);
+            border: 1px solid var(--color-divider-subtle);
+            border-radius: 10px;
+            cursor: pointer;
+            transition:
+                border-color 0.2s ease,
+                background-color 0.2s ease;
+            text-align: center;
+
+            &:hover {
+                border-color: var(--accent-color);
+                background: #25262a;
+            }
+
+            .icon {
+                color: var(--accent-color);
+            }
+
+            .title {
+                font-size: 18px;
+                font-weight: 500;
+                color: var(--color-ks-text);
+            }
+
+            .subtitle {
+                width: 100%;
+                border-top: 1px solid var(--color-divider-subtle);
+                padding-top: 16px;
+                font-size: 12px;
+                color: var(--color-ks-secondary);
+            }
+        }
+    }
+}

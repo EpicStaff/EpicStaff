@@ -12,9 +12,16 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
     imports: [CommonModule, FormsModule, HelpTooltipComponent],
     template: `
         <div class="form-group">
-            <div class="label-container" *ngIf="label">
+            <div
+                class="label-container"
+                *ngIf="label"
+            >
                 <label [for]="id">{{ label }}</label>
-                <app-help-tooltip *ngIf="tooltipText" position="right" [text]="tooltipText"></app-help-tooltip>
+                <app-help-tooltip
+                    *ngIf="tooltipText"
+                    position="right"
+                    [text]="tooltipText"
+                ></app-help-tooltip>
             </div>
 
             <select
@@ -28,12 +35,18 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                 [style.--active-color]="activeColor"
             >
                 <option [ngValue]="null">{{ placeholder }}</option>
-                <option *ngFor="let opt of options" [ngValue]="opt[valueProperty]">
+                <option
+                    *ngFor="let opt of options"
+                    [ngValue]="opt[valueProperty]"
+                >
                     {{ opt[displayProperty] || opt[valueProperty] }}
                 </option>
             </select>
 
-            <div class="error-message" *ngIf="errorMessage">
+            <div
+                class="error-message"
+                *ngIf="errorMessage"
+            >
                 {{ errorMessage }}
             </div>
         </div>

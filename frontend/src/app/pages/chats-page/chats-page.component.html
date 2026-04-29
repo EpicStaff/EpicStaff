@@ -11,7 +11,11 @@
     <main class="chats__body">
         <ng-container *ngIf="isLoading()">
             <div class="chats__loading-container">
-                <app-spinner [text]="'Loading chats...'" [accentColor]="'#6562f5'" [isOverlay]="false"></app-spinner>
+                <app-spinner
+                    [text]="'Loading chats...'"
+                    [accentColor]="'#6562f5'"
+                    [isOverlay]="false"
+                ></app-spinner>
             </div>
         </ng-container>
 

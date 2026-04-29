@@ -1,25 +1,48 @@
 <div class="sidebar-header">
     <span class="sidebar-title">Label Branches</span>
-    <button class="close-btn" (click)="closeSidebar.emit()">
-        <app-svg-icon icon="x" size="1.5rem"/>
+    <button
+        class="close-btn"
+        (click)="closeSidebar.emit()"
+    >
+        <app-svg-icon
+            icon="x"
+            size="1.5rem"
+        />
     </button>
 </div>
 
 <div class="sidebar-content">
     <!-- All Flows row -->
-    <div class="tree-item all-flows-item" [class.active]="activeLabelFilter() === 'all'" (click)="selectAll()">
-        <app-svg-icon icon="home" size="0.9rem"/>
+    <div
+        class="tree-item all-flows-item"
+        [class.active]="activeLabelFilter() === 'all'"
+        (click)="selectAll()"
+    >
+        <app-svg-icon
+            icon="home"
+            size="0.9rem"
+        />
         <span>All Flows</span>
     </div>
 
     <!-- Labels section header -->
     <div class="section-header">
         <div class="section-label-header">
-            <app-svg-icon icon="label" size="12px"/>
+            <app-svg-icon
+                icon="label"
+                size="12px"
+            />
             <span class="section-label">Labels</span>
         </div>
-        <button class="add-btn" (click)="startAddRootLabel()" title="Add label">
-            <app-svg-icon icon="plus" size="1rem"/>
+        <button
+            class="add-btn"
+            (click)="startAddRootLabel()"
+            title="Add label"
+        >
+            <app-svg-icon
+                icon="plus"
+                size="1rem"
+            />
         </button>
     </div>
 
@@ -40,11 +63,25 @@
                 [selectedColor]="newLabelColor()"
                 (colorChange)="newLabelColor.set($event)"
             ></app-label-color-picker>
-            <button class="confirm-btn" (click)="confirmAddLabel()" title="Confirm">
-                <app-svg-icon icon="check" size="0.85rem"/>
+            <button
+                class="confirm-btn"
+                (click)="confirmAddLabel()"
+                title="Confirm"
+            >
+                <app-svg-icon
+                    icon="check"
+                    size="0.85rem"
+                />
             </button>
-            <button class="cancel-btn" (click)="cancelAddLabel()" title="Cancel">
-                <app-svg-icon icon="x" size="0.85rem"/>
+            <button
+                class="cancel-btn"
+                (click)="cancelAddLabel()"
+                title="Cancel"
+            >
+                <app-svg-icon
+                    icon="x"
+                    size="0.85rem"
+                />
             </button>
         </div>
         @if (newLabelError()) {
@@ -76,7 +113,11 @@
                     class="expand-icon"
                 />
             </button>
-            <app-svg-icon icon="label" size="12px" class="label-icon"/>
+            <app-svg-icon
+                icon="label"
+                size="12px"
+                class="label-icon"
+            />
 
             <!-- Label name or rename input -->
             @if (editingLabelId() === item.node.id) {
@@ -99,10 +140,20 @@
                     (click)="$event.stopPropagation(); confirmRename(item.node.id)"
                     title="Confirm rename"
                 >
-                    <app-svg-icon icon="check" size="0.85rem"/>
+                    <app-svg-icon
+                        icon="check"
+                        size="0.85rem"
+                    />
                 </button>
-                <button class="cancel-btn" (click)="$event.stopPropagation(); cancelRename()" title="Cancel rename">
-                    <app-svg-icon icon="x" size="0.85rem"/>
+                <button
+                    class="cancel-btn"
+                    (click)="$event.stopPropagation(); cancelRename()"
+                    title="Cancel rename"
+                >
+                    <app-svg-icon
+                        icon="x"
+                        size="0.85rem"
+                    />
                 </button>
             } @else {
                 <span class="label-name">{{ item.node.name }}</span>
@@ -114,21 +165,30 @@
                         (click)="$event.stopPropagation(); startAddChildLabel(item.node.id)"
                         title="Add sublabel"
                     >
-                        <app-svg-icon icon="plus" size="1rem"/>
+                        <app-svg-icon
+                            icon="plus"
+                            size="1rem"
+                        />
                     </button>
                     <button
                         class="action-btn edit-label-btn"
                         (click)="$event.stopPropagation(); startRename(item.node)"
                         title="Rename"
                     >
-                        <app-svg-icon icon="edit-label" size="0.75rem"/>
+                        <app-svg-icon
+                            icon="edit-label"
+                            size="0.75rem"
+                        />
                     </button>
                     <button
                         class="action-btn danger"
                         (click)="$event.stopPropagation(); openDeleteDialog(item.node)"
                         title="Delete"
                     >
-                        <app-svg-icon icon="trash" size="0.75rem"/>
+                        <app-svg-icon
+                            icon="trash"
+                            size="0.75rem"
+                        />
                     </button>
                 </div>
             }
@@ -146,7 +206,10 @@
 
         <!-- Child add input row (shown below its parent) -->
         @if (addingChildOf() === item.node.id) {
-            <div class="add-label-row child-add" [style.paddingLeft]="getIndentPadding(item.depth + 1)">
+            <div
+                class="add-label-row child-add"
+                [style.paddingLeft]="getIndentPadding(item.depth + 1)"
+            >
                 <input
                     class="label-input"
                     [class.has-error]="newLabelError()"
@@ -161,15 +224,32 @@
                     [selectedColor]="newLabelColor()"
                     (colorChange)="newLabelColor.set($event)"
                 ></app-label-color-picker>
-                <button class="confirm-btn" (click)="confirmAddLabel()" title="Confirm">
-                    <app-svg-icon icon="check" size="1rem"/>
+                <button
+                    class="confirm-btn"
+                    (click)="confirmAddLabel()"
+                    title="Confirm"
+                >
+                    <app-svg-icon
+                        icon="check"
+                        size="1rem"
+                    />
                 </button>
-                <button class="cancel-btn" (click)="cancelAddLabel()" title="Cancel">
-                    <app-svg-icon icon="x" size="1rem"/>
+                <button
+                    class="cancel-btn"
+                    (click)="cancelAddLabel()"
+                    title="Cancel"
+                >
+                    <app-svg-icon
+                        icon="x"
+                        size="1rem"
+                    />
                 </button>
             </div>
             @if (newLabelError()) {
-                <div class="label-error" [style.marginLeft]="getIndentPadding(item.depth + 1)">
+                <div
+                    class="label-error"
+                    [style.marginLeft]="getIndentPadding(item.depth + 1)"
+                >
                     {{ newLabelError() }}
                 </div>
             }
@@ -182,7 +262,10 @@
         [class.active]="activeLabelFilter() === 'unlabeled'"
         (click)="selectUnlabeled()"
     >
-        <app-svg-icon icon="nolabel" size="12px"/>
+        <app-svg-icon
+            icon="nolabel"
+            size="12px"
+        />
         <span>Unlabeled</span>
     </div>
 </div>

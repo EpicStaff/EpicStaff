@@ -6,7 +6,12 @@
         </div>
 
         <div class="header-right">
-            <app-button type="primary" leftIcon="plus" (click)="onAddConfig()">Add</app-button>
+            <app-button
+                type="primary"
+                leftIcon="plus"
+                (click)="onAddConfig()"
+                >Add</app-button
+            >
         </div>
     </header>
 
@@ -16,7 +21,13 @@
         } @else if (status() === 'error') {
             <div class="loading-state error">
                 <p>{{ errorMessage() }}</p>
-                <app-button type="secondary" leftIcon="refresh" (click)="refreshData()"> Retry </app-button>
+                <app-button
+                    type="secondary"
+                    leftIcon="refresh"
+                    (click)="refreshData()"
+                >
+                    Retry
+                </app-button>
             </div>
         } @else if (ngrokConfigs().length === 0) {
             <div class="loading-state">

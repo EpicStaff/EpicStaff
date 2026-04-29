@@ -130,7 +130,6 @@ class CrewSessionMessage(BaseSessionMessage):
 
 class SoftDeleteMixin(models.Model):
     deleted_at = models.DateTimeField(
-        db_index=True,
         null=True,
         blank=True,
         default=None,

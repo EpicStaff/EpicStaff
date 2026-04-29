@@ -2,8 +2,8 @@ import { DIALOG_DATA, DialogModule, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import { Component, Inject } from '@angular/core';
 
-import { IconButtonComponent } from '../buttons/icon-button/icon-button.component';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
+import { IconButtonComponent } from '../buttons/icon-button/icon-button.component';
 
 export type DialogResult = 'confirm' | 'cancel' | 'close';
 

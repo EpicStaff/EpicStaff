@@ -3,10 +3,19 @@
         <h2 class="title">
             {{ title() }}
         </h2>
-        <app-icon-button icon="x" ariaLabel="Close dialog" size="2rem" (onClick)="dialogRef.close()"> </app-icon-button>
+        <app-icon-button
+            icon="x"
+            ariaLabel="Close dialog"
+            size="2rem"
+            (onClick)="dialogRef.close()"
+        >
+        </app-icon-button>
     </div>
 
-    <div class="form" [formGroup]="form">
+    <div
+        class="form"
+        [formGroup]="form"
+    >
         <div>
             <app-llm-model-selector
                 formControlName="realtime_transcription_model"
@@ -42,8 +51,17 @@
     </div>
 
     <div class="footer">
-        <app-button type="outline-primary" (click)="onCancel()"> Cancel </app-button>
-        <app-button type="primary" [disabled]="form.invalid || isSaving() || isLoading()" (click)="onSave()">
+        <app-button
+            type="outline-primary"
+            (click)="onCancel()"
+        >
+            Cancel
+        </app-button>
+        <app-button
+            type="primary"
+            [disabled]="form.invalid || isSaving() || isLoading()"
+            (click)="onSave()"
+        >
             {{ saveLabel() }}
         </app-button>
     </div>

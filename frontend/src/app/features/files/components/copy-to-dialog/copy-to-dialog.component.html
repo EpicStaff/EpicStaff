@@ -1,0 +1,129 @@
+<div class="copy-to-dialog">
+    <div class="copy-to-dialog__header">
+        <h2 class="copy-to-dialog__title">Copy to Folder</h2>
+        <button
+            class="copy-to-dialog__close"
+            aria-label="Close"
+            (click)="onCancel()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="1rem"
+            ></app-svg-icon>
+        </button>
+    </div>
+
+    <div class="copy-to-dialog__body">
+        <div class="copy-to-dialog__field">
+            <label class="copy-to-dialog__label">Folder <span class="copy-to-dialog__required">*</span></label>
+            <div
+                #selectorEl
+                class="copy-to-dialog__selector"
+                [class.copy-to-dialog__selector--filled]="selectedPath() !== null"
+                [class.copy-to-dialog__selector--open]="dropdownOpen()"
+                (click)="toggleDropdown($event)"
+            >
+                <span class="copy-to-dialog__selector-text">
+                    {{ selectedPath() !== null ? selectedFolderLabel : 'Select folder' }}
+                </span>
+                <app-svg-icon
+                    icon="chevron-down"
+                    size="0.875rem"
+                    class="copy-to-dialog__selector-chevron"
+                    [class.copy-to-dialog__selector-chevron--open]="dropdownOpen()"
+                ></app-svg-icon>
+            </div>
+
+            @if (dropdownOpen()) {
+                <div
+                    class="copy-to-dialog__dropdown"
+                    [style.max-height.px]="dropdownMaxHeight()"
+                    (click)="stopPropagation($event)"
+                >
+                    <div class="copy-to-dialog__search">
+                        <app-svg-icon
+                            icon="search"
+                            size="0.875rem"
+                            class="copy-to-dialog__search-icon"
+                        ></app-svg-icon>
+                        <input
+                            class="copy-to-dialog__search-input"
+                            type="text"
+                            placeholder="Search folder..."
+                            [ngModel]="searchQuery()"
+                            (ngModelChange)="searchQuery.set($event)"
+                        />
+                    </div>
+
+                    <div class="copy-to-dialog__tree">
+                        @if (isLoadingRoot()) {
+                            <div class="copy-to-dialog__state">Loading folders...</div>
+                        } @else if (visibleNodes().length === 0) {
+                            <div class="copy-to-dialog__state">No folders found</div>
+                        } @else {
+                            <div
+                                class="copy-to-dialog__node"
+                                [class.copy-to-dialog__node--selected]="isSelected('')"
+                                [style.padding-left.px]="12"
+                                (click)="selectFolder('')"
+                            >
+                                <span class="copy-to-dialog__chevron-btn copy-to-dialog__chevron-btn--open">
+                                    <app-svg-icon
+                                        icon="expand"
+                                        size="0.5rem"
+                                    ></app-svg-icon>
+                                </span>
+                                <span class="copy-to-dialog__node-name">/</span>
+                            </div>
+                            @for (node of visibleNodes(); track node.path) {
+                                <div
+                                    class="copy-to-dialog__node"
+                                    [class.copy-to-dialog__node--selected]="isSelected(node.path)"
+                                    [style.padding-left.px]="32 + node.level * 20"
+                                    (click)="selectFolder(node.path)"
+                                >
+                                    @if (node.hasChildren) {
+                                        <button
+                                            class="copy-to-dialog__chevron-btn"
+                                            [class.copy-to-dialog__chevron-btn--open]="node.isExpanded"
+                                            (click)="toggleExpand($event, node)"
+                                        >
+                                            <app-svg-icon
+                                                icon="expand"
+                                                size="0.5rem"
+                                            ></app-svg-icon>
+                                        </button>
+                                    } @else {
+                                        <span class="copy-to-dialog__chevron-gap"></span>
+                                    }
+
+                                    <span class="copy-to-dialog__node-name">{{ node.name }}</span>
+
+                                    @if (node.isLoading) {
+                                        <span class="copy-to-dialog__node-spinner">...</span>
+                                    }
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="copy-to-dialog__footer">
+        <button
+            class="copy-to-dialog__btn copy-to-dialog__btn--cancel"
+            (click)="onCancel()"
+        >
+            Cancel
+        </button>
+        <button
+            class="copy-to-dialog__btn copy-to-dialog__btn--confirm"
+            [disabled]="!isValid"
+            (click)="onConfirm()"
+        >
+            Copy
+        </button>
+    </div>
+</div>

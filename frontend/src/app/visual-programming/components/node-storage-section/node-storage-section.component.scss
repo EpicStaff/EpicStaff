@@ -1,0 +1,115 @@
+.storage-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.storage-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.section-label {
+    font-size: 0.75rem;
+    color: #d9d9d999;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.storage-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.select-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.field-label {
+    font-size: 0.75rem;
+    color: #d9d9d999;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.select-input {
+    background: var(--color-nodes-background, #1e1e1e);
+    color: #d4d4d4;
+    border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
+    border-radius: 8px;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.875rem;
+    cursor: pointer;
+    outline: none;
+    appearance: auto;
+    transition: border-color 0.2s ease;
+
+    &:focus {
+        border-color: var(--active-color, #685fff);
+    }
+
+    option {
+        background: #1e1e1e;
+        color: #d4d4d4;
+    }
+}
+
+.input-map-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.input-map-key {
+    font-family: 'Fira Code', 'Consolas', monospace;
+    font-size: 0.8rem;
+    color: #d4d4d4;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
+    border-radius: 6px;
+    padding: 0.3rem 0.6rem;
+}
+
+.code-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.code-preview-text {
+    font-family: 'Fira Code', 'Consolas', monospace;
+    font-size: 0.75rem;
+    color: #d4d4d4;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.insert-btn {
+    background: var(--active-color, #685fff);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 0.45rem 0.9rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    align-self: flex-start;
+
+    &:hover:not(:disabled) {
+        opacity: 0.85;
+    }
+
+    &:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+}

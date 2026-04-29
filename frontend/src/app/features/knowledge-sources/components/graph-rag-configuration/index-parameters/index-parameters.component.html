@@ -1,5 +1,8 @@
 <div class="wrapper">
-    <form class="form" [formGroup]="form">
+    <form
+        class="form"
+        [formGroup]="form"
+    >
         <div class="tooltip">Index Parameters</div>
         <div></div>
 
@@ -12,7 +15,10 @@
             />
         </div>
         <div class="control">
-            <app-radio-button formControlName="chunk_strategy" [options]="chunkStrategyOptions" />
+            <app-radio-button
+                formControlName="chunk_strategy"
+                [options]="chunkStrategyOptions"
+            />
             <app-validation-errors [control]="getControl('chunk_strategy')!" />
         </div>
 
@@ -56,16 +62,28 @@
 
         <div class="tooltip">
             <label>Entity Types</label>
-            <app-help-tooltip class="icon" text="The entity types to identify." position="right" />
+            <app-help-tooltip
+                class="icon"
+                text="The entity types to identify."
+                position="right"
+            />
         </div>
         <div>
-            <app-chips-input formControlName="entity_types" [minItemLength]="1" [maxItemLength]="20" />
+            <app-chips-input
+                formControlName="entity_types"
+                [minItemLength]="1"
+                [maxItemLength]="20"
+            />
             <app-validation-errors [control]="getControl('entity_types')!" />
         </div>
 
         <div class="tooltip">
             <label>Max Gleanings</label>
-            <app-help-tooltip class="icon" text="The maximum number of gleaning cycles to use." position="right" />
+            <app-help-tooltip
+                class="icon"
+                text="The maximum number of gleaning cycles to use."
+                position="right"
+            />
         </div>
         <div class="control">
             <app-input-number
@@ -80,7 +98,11 @@
 
         <div class="tooltip">
             <label>Max Cluster Size</label>
-            <app-help-tooltip class="icon" text="The maximum cluster size to export." position="right" />
+            <app-help-tooltip
+                class="icon"
+                text="The maximum cluster size to export."
+                position="right"
+            />
         </div>
         <div class="control">
             <app-input-number

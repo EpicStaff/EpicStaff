@@ -20,10 +20,18 @@
                 </div>
                 <div class="setting-value">
                     <div class="toggle-wrapper">
-                        <div class="toggle-option" [class.active]="memory()" (click)="!memory() && toggleMemory()">
+                        <div
+                            class="toggle-option"
+                            [class.active]="memory()"
+                            (click)="!memory() && toggleMemory()"
+                        >
                             Enabled
                         </div>
-                        <div class="toggle-option" [class.active]="!memory()" (click)="memory() && toggleMemory()">
+                        <div
+                            class="toggle-option"
+                            [class.active]="!memory()"
+                            (click)="memory() && toggleMemory()"
+                        >
                             Disabled
                         </div>
                     </div>
@@ -43,10 +51,18 @@
                 </div>
                 <div class="setting-value">
                     <div class="toggle-wrapper">
-                        <div class="toggle-option" [class.active]="cache()" (click)="!cache() && toggleCache()">
+                        <div
+                            class="toggle-option"
+                            [class.active]="cache()"
+                            (click)="!cache() && toggleCache()"
+                        >
                             Enabled
                         </div>
-                        <div class="toggle-option" [class.active]="!cache()" (click)="cache() && toggleCache()">
+                        <div
+                            class="toggle-option"
+                            [class.active]="!cache()"
+                            (click)="cache() && toggleCache()"
+                        >
                             Disabled
                         </div>
                     </div>
@@ -73,7 +89,10 @@
                         >
                             Sequential
                         </div>
-                        <div class="toggle-option disabled-option" [class.active]="process() === 'hierarchical'">
+                        <div
+                            class="toggle-option disabled-option"
+                            [class.active]="process() === 'hierarchical'"
+                        >
                             Hierarchical
                             <span class="coming-soon-label">Coming Soon</span>
                         </div>
@@ -160,7 +179,10 @@
     </div>
 
     <!-- Memory Settings Group (conditionally displayed) -->
-    <div class="settings-group memory-group" *ngIf="memory()">
+    <div
+        class="settings-group memory-group"
+        *ngIf="memory()"
+    >
         <div class="group-header">
             <h3>Memory Configuration</h3>
             <p>Configure memory settings for your project</p>
@@ -226,7 +248,10 @@
     </div>
 
     <!-- Hierarchical Settings Group (conditionally displayed) -->
-    <div class="settings-group hierarchical-group" *ngIf="process() === 'hierarchical'">
+    <div
+        class="settings-group hierarchical-group"
+        *ngIf="process() === 'hierarchical'"
+    >
         <div class="group-header">
             <h3>Hierarchical Process Settings</h3>
             <p>Advanced settings available in hierarchical process mode</p>

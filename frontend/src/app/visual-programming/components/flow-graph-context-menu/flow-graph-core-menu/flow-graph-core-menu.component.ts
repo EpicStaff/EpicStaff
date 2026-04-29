@@ -22,7 +22,10 @@ interface FlowGraphBlock {
                     [style.border-left-color]="block.color"
                     [class.disabled]="isDisabled(block.type)"
                 >
-                    <i [class]="block.icon" [style.color]="block.color"></i>
+                    <i
+                        [class]="block.icon"
+                        [style.color]="block.color"
+                    ></i>
                     {{ block.label }}
                     <i class="ti ti-plus plus-icon"></i>
                 </li>

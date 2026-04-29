@@ -4,7 +4,11 @@
             <h3 class="tab__title">Voice / Twilio Settings</h3>
             <p class="tab__subtitle">Configure Twilio credentials and the default voice agent for inbound calls.</p>
         </div>
-        <app-button type="primary" [disabled]="saving()" (click)="onSave()">
+        <app-button
+            type="primary"
+            [disabled]="saving()"
+            (click)="onSave()"
+        >
             {{ saving() ? 'Saving…' : 'Save' }}
         </app-button>
     </div>
@@ -18,7 +22,10 @@
             <p>Failed to load voice settings.</p>
         </div>
     } @else {
-        <form [formGroup]="form" class="tab__form">
+        <form
+            [formGroup]="form"
+            class="tab__form"
+        >
             <app-custom-input
                 label="Twilio Account SID"
                 formControlName="twilio_account_sid"
@@ -67,7 +74,11 @@
                 <p class="tab__hint">Select and save a Webhook Tunnel above to enable webhook configuration.</p>
             }
 
-            <app-button type="primary" [disabled]="configuringWebhook()" (click)="onConfigureWebhook()">
+            <app-button
+                type="primary"
+                [disabled]="configuringWebhook()"
+                (click)="onConfigureWebhook()"
+            >
                 {{ configuringWebhook() ? 'Configuring…' : 'Configure Webhook' }}
             </app-button>
         </form>

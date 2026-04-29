@@ -1,0 +1,63 @@
+<div class="user-menu-panel">
+    <!-- User header -->
+    <div class="user-header">
+        <app-user-avatar [name]="user().display_name || user().email" />
+        <div class="user-info">
+            <div class="user-name">{{ user().display_name || user().email }}</div>
+            <div class="user-role">Super Admin</div>
+        </div>
+    </div>
+
+    <div class="menu-divider"></div>
+
+    <!-- Organizations section -->
+    <div class="menu-section">
+        <div class="section-label">Organizations</div>
+        <ul class="org-list">
+            @for (org of organizations(); track org.organization.id) {
+                <!--                class.active is hardcoded for now since there are no other organizations-->
+                <li
+                    class="org-row"
+                    [class.active]="true"
+                >
+                    <app-org-avatar [name]="org.organization.name" />
+                    <span class="org-name">{{ org.organization.name }}</span>
+                </li>
+            }
+        </ul>
+    </div>
+
+    <div class="menu-divider"></div>
+
+    <!-- Navigation section -->
+    <!--    <div class="menu-section">-->
+    <!--        <div class="section-label">Navigation</div>-->
+    <!--        <div class="nav-list">-->
+    <!--            <button class="nav-item" (click)="onWorkspaceClick()">-->
+    <!--                <app-svg-icon size="20px" icon="workspace" class="nav-icon" />-->
+    <!--                <span class="nav-label">Workspace</span>-->
+    <!--            </button>-->
+
+    <!--            <button class="nav-item" (click)="onProfileClick()">-->
+    <!--                <app-svg-icon size="20px" icon="profile" class="nav-icon" />-->
+    <!--                <span class="nav-label">My Profile</span>-->
+    <!--            </button>-->
+    <!--        </div>-->
+    <!--    </div>-->
+
+    <!--    <div class="menu-divider"></div>-->
+
+    <div class="menu-section">
+        <button
+            class="nav-item danger"
+            (click)="onSignOutClick()"
+        >
+            <app-svg-icon
+                size="20px"
+                icon="sign-out"
+                class="nav-icon"
+            />
+            <span class="nav-label">Sign out</span>
+        </button>
+    </div>
+</div>

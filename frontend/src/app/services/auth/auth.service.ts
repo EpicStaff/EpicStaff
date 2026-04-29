@@ -1,6 +1,8 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { finalize, map, Observable, of, shareReplay, tap } from 'rxjs';
+import { Router } from '@angular/router';
+import { FirstSetupRequest, FirstSetupResponse, FirstSetupStatus, GetMeResponse } from '@shared/models';
+import { catchError, finalize, map, Observable, of, shareReplay, tap, throwError } from 'rxjs';
 
 import { ConfigService } from '../config';
 
@@ -21,20 +23,57 @@ interface TokenDecoded {
 export class AuthService {
     private readonly http = inject(HttpClient);
     private readonly configService = inject(ConfigService);
+    private readonly router = inject(Router);
 
     private readonly accessKey = 'auth.access';
     private readonly refreshKey = 'auth.refresh';
 
     private refreshInProgress$: Observable<string | null> | null = null;
+    private statusCache$: Observable<FirstSetupStatus> | null = null;
 
     private get baseUrl(): string {
-        return this.configService.apiUrl.replace(/\/+$/, '');
+        return `${this.configService.apiUrl}auth/`;
     }
 
-    login(username: string, password: string, rememberMe: boolean = false): Observable<boolean> {
-        return this.http.post<TokenPair>(`${this.baseUrl}/auth/token/`, { username, password }).pipe(
+    getStatus(): Observable<FirstSetupStatus> {
+        if (!this.statusCache$) {
+            this.statusCache$ = this.http.get<FirstSetupStatus>(`${this.baseUrl}first-setup/`).pipe(
+                catchError((err) => {
+                    this.statusCache$ = null;
+                    return throwError(() => err);
+                }),
+                shareReplay(1)
+            );
+        }
+        return this.statusCache$;
+    }
+
+    runSetup(payload: FirstSetupRequest): Observable<FirstSetupResponse> {
+        return this.http.post<FirstSetupResponse>(`${this.baseUrl}first-setup/`, payload).pipe(
+            tap(() => {
+                this.statusCache$ = null;
+            })
+        );
+    }
+
+    login(email: string, password: string, rememberMe: boolean = false): Observable<boolean> {
+        return this.http.post<TokenPair>(`${this.baseUrl}login/`, { email, password }).pipe(
             tap((tokens) => this.storeTokens(tokens, rememberMe)),
             map(() => true)
+        );
+    }
+
+    logout(): Observable<void> {
+        const refreshToken = this.getRefreshToken();
+
+        if (!refreshToken) {
+            this.removeTokensAndNavToLogin();
+            return of();
+        }
+
+        return this.http.post<void>(`${this.baseUrl}logout/`, { refresh: refreshToken }).pipe(
+            tap(() => this.removeTokensAndNavToLogin()),
+            catchError((err) => throwError(() => err))
         );
     }
 
@@ -46,30 +85,36 @@ export class AuthService {
         const refresh = this.getRefreshToken();
         if (!refresh) return of(null);
 
-        this.refreshInProgress$ = this.http
-            .post<{ access: string; refresh?: string }>(`${this.baseUrl}/auth/token/refresh/`, {
-                refresh,
-            })
-            .pipe(
-                tap((resp) => {
-                    this.setCookie(this.accessKey, resp.access, this.getTokenExpiry(resp.access));
-                    if (resp.refresh) {
-                        this.setCookie(this.refreshKey, resp.refresh, this.getTokenExpiry(resp.refresh));
-                    }
-                }),
-                map((resp) => resp.access),
-                finalize(() => {
-                    this.refreshInProgress$ = null;
-                }),
-                shareReplay(1)
-            );
+        this.refreshInProgress$ = this.http.post<TokenPair>(`${this.baseUrl}refresh/`, { refresh }).pipe(
+            tap((resp) => {
+                this.setCookie(this.accessKey, resp.access, this.getTokenExpiry(resp.access));
+                if (resp.refresh) {
+                    this.setCookie(this.refreshKey, resp.refresh, this.getTokenExpiry(resp.refresh));
+                }
+            }),
+            map((resp) => resp.access),
+            catchError((err) => {
+                this.removeTokensAndNavToLogin();
+                return throwError(() => err);
+            }),
+            finalize(() => {
+                this.refreshInProgress$ = null;
+            }),
+            shareReplay(1)
+        );
 
         return this.refreshInProgress$;
     }
 
-    logout(): void {
+    getCurrentUser(): Observable<GetMeResponse> {
+        return this.http.get<GetMeResponse>(`${this.baseUrl}me/`);
+    }
+
+    removeTokensAndNavToLogin(): void {
         this.deleteCookie(this.accessKey);
         this.deleteCookie(this.refreshKey);
+
+        void this.router.navigate(['/login']);
     }
 
     isAuthenticated(): boolean {
@@ -120,8 +165,9 @@ export class AuthService {
         try {
             const parts = token.split('.');
             if (parts.length !== 3) return null;
-            const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-            const decoded = atob(payload);
+            const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+            const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+            const decoded = atob(padded);
             return JSON.parse(decoded);
         } catch {
             return null;

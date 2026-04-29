@@ -13,11 +13,24 @@
 
         <!-- List of added libraries displayed as "chips" -->
         <div class="libraries-list">
-            <div class="library-item" *ngFor="let lib of libraries; let i = index">
+            <div
+                class="library-item"
+                *ngFor="let lib of libraries; let i = index"
+            >
                 <!-- `title` attribute shows the full name on hover -->
-                <span class="library-name" [title]="lib">{{ lib }}</span>
-                <button class="delete-library-btn" (click)="removeLibrary(i); $event.preventDefault()">
-                    <app-svg-icon icon="x" size="1rem"></app-svg-icon>
+                <span
+                    class="library-name"
+                    [title]="lib"
+                    >{{ lib }}</span
+                >
+                <button
+                    class="delete-library-btn"
+                    (click)="removeLibrary(i); $event.preventDefault()"
+                >
+                    <app-svg-icon
+                        icon="x"
+                        size="1rem"
+                    ></app-svg-icon>
                 </button>
             </div>
 
@@ -29,8 +42,14 @@
                     (keydown.enter)="addLibrary(); $event.preventDefault()"
                     class="library-input"
                 />
-                <button class="add-library-btn" (click)="addLibrary(); $event.preventDefault()">
-                    <app-svg-icon icon="plus" size="1rem"></app-svg-icon>
+                <button
+                    class="add-library-btn"
+                    (click)="addLibrary(); $event.preventDefault()"
+                >
+                    <app-svg-icon
+                        icon="plus"
+                        size="1rem"
+                    ></app-svg-icon>
                 </button>
             </div>
         </div>

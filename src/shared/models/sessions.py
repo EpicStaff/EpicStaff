@@ -33,3 +33,15 @@ class WebhookEventData(BaseModel):
     path: str
     payload: dict
     config_id: str | None = None
+
+
+class StorageMutation(BaseModel):
+    op: str
+    path: str
+
+
+class StorageMutationEvent(BaseModel):
+    execution_id: str
+    org_prefix: str
+    session_id: int | None = None
+    mutations: list[StorageMutation]

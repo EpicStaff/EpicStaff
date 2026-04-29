@@ -1,6 +1,6 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
-import { CreateLlmModelRequest, LLMModel } from "@shared/models";
-import { LLMModelsService } from "@shared/services";
+import { CreateLlmModelRequest, LLMModel } from '@shared/models';
+import { LLMModelsService } from '@shared/services';
 import { catchError, Observable, of, tap, throwError } from 'rxjs';
 
 @Injectable({
@@ -104,10 +104,7 @@ export class LlmModelsStorageService {
 
     // Replaces models for a single provider without touching others
     private setModelsForProvider(providerId: number, models: LLMModel[]): void {
-        this.modelsSignal.update((current) => [
-            ...current.filter((m) => m.llm_provider !== providerId),
-            ...models,
-        ]);
+        this.modelsSignal.update((current) => [...current.filter((m) => m.llm_provider !== providerId), ...models]);
         this.loadedProviderIds.update((set) => {
             const updated = new Set(set);
             updated.add(providerId);

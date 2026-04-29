@@ -15,13 +15,7 @@ import { DecisionTableGridComponent } from './decision-table-grid/decision-table
 @Component({
     standalone: true,
     selector: 'app-decision-table-node-panel',
-    imports: [
-        ReactiveFormsModule,
-        CustomInputComponent,
-        CommonModule,
-        DecisionTableGridComponent,
-        AppSvgIconComponent,
-    ],
+    imports: [ReactiveFormsModule, CustomInputComponent, CommonModule, DecisionTableGridComponent, AppSvgIconComponent],
     templateUrl: './decision-table-node-panel.component.html',
     styleUrls: ['./decision-table-node-panel.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -51,7 +51,12 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                             >
                             </app-flow-session-status-filter-dropdown>
                         </th>
-                        <th *ngIf="showFlowName" style="width: 40%">Flow Name</th>
+                        <th
+                            *ngIf="showFlowName"
+                            style="width: 40%"
+                        >
+                            Flow Name
+                        </th>
                         <th
                             [class.sortable]="sortable"
                             (click)="sortable && toggleSort()"
@@ -65,7 +70,11 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                         <th [style.width]="showFlowName ? '10%' : '20%'">
                             {{ showDuration ? 'Duration' : 'Finished At' }}
                         </th>
-                        <th [style.width]="showFlowName ? '15%' : '25%'" style="text-align: center" class="actions">
+                        <th
+                            [style.width]="showFlowName ? '15%' : '25%'"
+                            style="text-align: center"
+                            class="actions"
+                        >
                             Actions
                         </th>
                     </tr>
@@ -73,13 +82,22 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                 <tbody>
                     @if (isLoading) {
                         <tr>
-                            <td [attr.colspan]="showFlowName ? 7 : 6" style="text-align: center; padding: 40px;">
-                                <app-loading-spinner size="md" message="Loading sessions..." />
+                            <td
+                                [attr.colspan]="showFlowName ? 7 : 6"
+                                style="text-align: center; padding: 40px;"
+                            >
+                                <app-loading-spinner
+                                    size="md"
+                                    message="Loading sessions..."
+                                />
                             </td>
                         </tr>
                     } @else if (showEmptyState) {
                         <tr>
-                            <td [attr.colspan]="showFlowName ? 7 : 6" style="text-align: center; padding: 40px;">
+                            <td
+                                [attr.colspan]="showFlowName ? 7 : 6"
+                                style="text-align: center; padding: 40px;"
+                            >
                                 <div class="no-sessions-message">
                                     <p>No sessions found for the selected filters.</p>
                                     <small>Try adjusting your filter criteria or create a new session.</small>
@@ -102,8 +120,14 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                         [status]="session.status"
                                     ></app-flow-session-status-badge>
                                 </td>
-                                <td *ngIf="showFlowName" class="flow-link-td">
-                                    <a class="flow-link" (click)="navigateToFlow(session.graph_id)">
+                                <td
+                                    *ngIf="showFlowName"
+                                    class="flow-link-td"
+                                >
+                                    <a
+                                        class="flow-link"
+                                        (click)="navigateToFlow(session.graph_id)"
+                                    >
                                         {{ session.graph_name }}
                                     </a>
                                 </td>
@@ -151,8 +175,14 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                 </td>
                             </tr>
 
-                            <tr *ngIf="expandedSessionId() === session.id" class="preview-row">
-                                <td [attr.colspan]="showFlowName ? 7 : 6" class="preview-cell">
+                            <tr
+                                *ngIf="expandedSessionId() === session.id"
+                                class="preview-row"
+                            >
+                                <td
+                                    [attr.colspan]="showFlowName ? 7 : 6"
+                                    class="preview-cell"
+                                >
                                     <div class="preview-content">
                                         <app-graph-messages
                                             [graphId]="flow?.id ?? session.graph_id"

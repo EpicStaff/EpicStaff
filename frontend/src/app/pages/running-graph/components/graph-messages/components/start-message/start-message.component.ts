@@ -14,12 +14,24 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
     animations: [expandCollapseAnimation],
     template: `
         <div class="start-container">
-            <div class="start-header" (click)="toggleMessage()">
-                <div class="play-arrow" *ngIf="hasInputs()">
-                    <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
+            <div
+                class="start-header"
+                (click)="toggleMessage()"
+            >
+                <div
+                    class="play-arrow"
+                    *ngIf="hasInputs()"
+                >
+                    <app-svg-icon
+                        [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                        size="1.1rem"
+                    />
                 </div>
                 <div class="icon-container">
-                    <app-svg-icon icon="flag" size="1.25rem" />
+                    <app-svg-icon
+                        icon="flag"
+                        size="1.25rem"
+                    />
                 </div>
                 <h3>
                     <span class="node-name">{{ message.name }}</span> started
@@ -27,12 +39,24 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
             </div>
 
             <!-- Collapsible Content -->
-            <div class="collapsible-content" [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'">
+            <div
+                class="collapsible-content"
+                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+            >
                 <div class="start-content">
                     <!-- Input Parameters Section -->
-                    <div class="input-container" *ngIf="hasInputs()">
-                        <div class="section-heading" (click)="toggleInputs($event)">
-                            <app-svg-icon [icon]="isInputsExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1.1rem" />
+                    <div
+                        class="input-container"
+                        *ngIf="hasInputs()"
+                    >
+                        <div
+                            class="section-heading"
+                            (click)="toggleInputs($event)"
+                        >
+                            <app-svg-icon
+                                [icon]="isInputsExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                size="1.1rem"
+                            />
                             Input Parameters
                         </div>
                         <div
@@ -40,7 +64,10 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
                             [@expandCollapse]="isInputsExpanded ? 'expanded' : 'collapsed'"
                         >
                             <div class="input-content">
-                                <ngx-json-viewer [json]="getStartInput()" [expanded]="false"></ngx-json-viewer>
+                                <ngx-json-viewer
+                                    [json]="getStartInput()"
+                                    [expanded]="false"
+                                ></ngx-json-viewer>
                             </div>
                         </div>
                     </div>

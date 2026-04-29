@@ -1,6 +1,12 @@
-<div class="number-stepper" [class]="'number-stepper--' + size()">
+<div
+    class="number-stepper"
+    [class]="'number-stepper--' + size()"
+>
     @if (label()) {
-        <app-tooltip [tooltipText]="tooltipText()" [label]="label()" />
+        <app-tooltip
+            [tooltipText]="tooltipText()"
+            [label]="label()"
+        />
     }
 
     <div
@@ -18,8 +24,15 @@
                 (mousedown)="onStepDown(); $event.preventDefault()"
                 [disabled]="isDisabled() || !canStepDown()"
             >
-                <svg viewBox="0 0 10 2" fill="none">
-                    <path d="M0 1H10" stroke="currentColor" stroke-width="1.5" />
+                <svg
+                    viewBox="0 0 10 2"
+                    fill="none"
+                >
+                    <path
+                        d="M0 1H10"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                    />
                 </svg>
             </button>
         }
@@ -44,8 +57,15 @@
                 (mousedown)="onStepUp(); $event.preventDefault()"
                 [disabled]="isDisabled() || !canStepUp()"
             >
-                <svg viewBox="0 0 10 10" fill="none">
-                    <path d="M5 0V10M0 5H10" stroke="currentColor" stroke-width="1.5" />
+                <svg
+                    viewBox="0 0 10 10"
+                    fill="none"
+                >
+                    <path
+                        d="M5 0V10M0 5H10"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                    />
                 </svg>
             </button>
         }

@@ -1,3 +1,7 @@
+.cdk-overlay-container {
+    z-index: 900 !important;
+}
+
 .cdk-overlay-pane.settings-dialog-panel {
     z-index: 10000 !important;
 }

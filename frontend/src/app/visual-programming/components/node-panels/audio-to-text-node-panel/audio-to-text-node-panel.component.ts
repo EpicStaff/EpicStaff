@@ -17,7 +17,10 @@ interface InputMapPair {
     template: `
         <div class="panel-container">
             <div class="panel-content">
-                <form [formGroup]="form" class="form-container">
+                <form
+                    [formGroup]="form"
+                    class="form-container"
+                >
                     <!-- Node Name Field -->
                     <app-custom-input
                         label="Node Name"

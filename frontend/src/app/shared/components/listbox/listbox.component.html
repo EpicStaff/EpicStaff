@@ -1,10 +1,18 @@
 @if (label()) {
-    <app-tooltip [required]="required()" [tooltipText]="tooltipText()" [label]="label()" [icon]="icon()" />
+    <app-tooltip
+        [required]="required()"
+        [tooltipText]="tooltipText()"
+        [label]="label()"
+        [icon]="icon()"
+    />
 }
 
 <div class="listbox">
     <div class="listbox__input-container">
-        <app-custom-input [placeholder]="inputPlaceholder()" [formControl]="inputControl" />
+        <app-custom-input
+            [placeholder]="inputPlaceholder()"
+            [formControl]="inputControl"
+        />
 
         <app-svg-icon
             class="listbox__add-btn"

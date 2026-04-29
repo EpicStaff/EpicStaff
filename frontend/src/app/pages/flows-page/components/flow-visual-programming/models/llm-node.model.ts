@@ -1,4 +1,4 @@
-import { GetLlmConfigRequest } from "@shared/models";
+import { GetLlmConfigRequest } from '@shared/models';
 
 export interface GetLLMNodeRequest {
     id: number;

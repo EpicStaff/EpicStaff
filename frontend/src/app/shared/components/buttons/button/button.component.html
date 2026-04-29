@@ -20,7 +20,7 @@
         @if (leftIcon) {
             <app-svg-icon
                 [icon]="leftIcon!"
-                size="1.1rem"
+                [size]="iconSize"
                 class="btn-icon left"
                 [ngStyle]="leftIconColor ? { color: leftIconColor } : null"
             />
@@ -28,7 +28,7 @@
         @if (rightIcon) {
             <app-svg-icon
                 [icon]="rightIcon!"
-                size="1.1rem"
+                [size]="iconSize"
                 class="btn-icon right"
                 [ngStyle]="rightIconColor ? { color: rightIconColor } : null"
             />
@@ -37,7 +37,7 @@
         @if (showLeftIcon) {
             <app-svg-icon
                 [icon]="leftIcon!"
-                size="1.1rem"
+                [size]="iconSize"
                 class="btn-icon left"
                 [ngStyle]="leftIconColor ? { color: leftIconColor } : null"
             />
@@ -50,7 +50,7 @@
         @if (showRightIcon) {
             <app-svg-icon
                 [icon]="rightIcon!"
-                size="1.1rem"
+                [size]="iconSize"
                 class="btn-icon right"
                 [ngStyle]="rightIconColor ? { color: rightIconColor } : null"
             />

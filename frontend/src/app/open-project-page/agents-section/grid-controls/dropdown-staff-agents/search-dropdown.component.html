@@ -2,14 +2,23 @@
 <div class="dropdown-container">
     <div class="agent-grid">
         <!-- Loading Animation -->
-        <div *ngIf="isLoading" class="loading-container">
+        <div
+            *ngIf="isLoading"
+            class="loading-container"
+        >
             <div class="loading-spinner"></div>
             <p class="loading-text">Loading staff agents...</p>
         </div>
 
         <!-- Empty State Message -->
-        <div *ngIf="!isLoading && filteredStaffAgents.length === 0" class="empty-state">
-            <app-svg-icon icon="search-off" size="2rem" />
+        <div
+            *ngIf="!isLoading && filteredStaffAgents.length === 0"
+            class="empty-state"
+        >
+            <app-svg-icon
+                icon="search-off"
+                size="2rem"
+            />
             <p *ngIf="searchTerm && searchTerm.trim() !== ''">No staff agents found matching "{{ searchTerm }}"</p>
             <p *ngIf="!searchTerm || searchTerm.trim() === ''">No available staff agents found</p>
         </div>

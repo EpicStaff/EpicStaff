@@ -1,4 +1,8 @@
-<div class="decision-table" appClickOrDrag (actualClick)="onEditClick()">
+<div
+    class="decision-table"
+    appClickOrDrag
+    (actualClick)="onEditClick()"
+>
     @if (inputPort; as port) {
         <div class="input-port-wrapper">
             <div
@@ -18,14 +22,21 @@
                     'background-color': port.color,
                 }"
             >
-                <i class="fa-solid fa-plus plus-icon" [ngStyle]="{ color: 'hsl(0, 0%, 15%)' }"></i>
+                <i
+                    class="fa-solid fa-plus plus-icon"
+                    [ngStyle]="{ color: 'hsl(0, 0%, 15%)' }"
+                ></i>
             </div>
         </div>
     }
 
     <div class="decision-table__header">
         <div class="icon-wrapper">
-            <i [class]="node.icon" [style.color]="node.color" style="font-size: 1.4rem"></i>
+            <i
+                [class]="node.icon"
+                [style.color]="node.color"
+                style="font-size: 1.4rem"
+            ></i>
         </div>
         <div class="title">{{ node.node_name || 'Decision Table' }}</div>
     </div>
@@ -55,7 +66,10 @@
                                     'background-color': 'hsl(0, 0%, 15%)',
                                 }"
                             >
-                                <i class="fa-solid fa-plus plus-icon" [ngStyle]="{ color: port.color }"></i>
+                                <i
+                                    class="fa-solid fa-plus plus-icon"
+                                    [ngStyle]="{ color: port.color }"
+                                ></i>
                             </div>
                         </div>
                     }
@@ -96,7 +110,10 @@
                             'background-color': 'hsl(0, 0%, 15%)',
                         }"
                     >
-                        <i class="fa-solid fa-plus plus-icon" [ngStyle]="{ color: port.color }"></i>
+                        <i
+                            class="fa-solid fa-plus plus-icon"
+                            [ngStyle]="{ color: port.color }"
+                        ></i>
                     </div>
                 </div>
             }
@@ -131,7 +148,10 @@
                             'background-color': 'hsl(0, 0%, 15%)',
                         }"
                     >
-                        <i class="fa-solid fa-plus plus-icon" [ngStyle]="{ color: port.color }"></i>
+                        <i
+                            class="fa-solid fa-plus plus-icon"
+                            [ngStyle]="{ color: port.color }"
+                        ></i>
                     </div>
                 </div>
             }

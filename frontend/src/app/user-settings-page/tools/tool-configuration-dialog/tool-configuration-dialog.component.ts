@@ -9,8 +9,8 @@ import { Tool } from '../../../features/tools/models/tool.model';
 import { GetToolConfigRequest, ToolConfig } from '../../../features/tools/models/tool-config.model';
 import { ToolConfigService } from '../../../features/tools/services/tool-config.service';
 import { ToastService } from '../../../services/notifications/toast.service';
-import { ConfirmationDialogService } from '../../../shared/components/cofirm-dialog/confimation-dialog.service';
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { ConfirmationDialogService } from '../../../shared/components/cofirm-dialog/confimation-dialog.service';
 import { ToolConfigFormComponent } from './tool-config-form/tool-config-form.component';
 
 @Component({

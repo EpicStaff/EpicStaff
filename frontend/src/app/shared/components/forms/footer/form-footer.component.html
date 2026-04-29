@@ -1,7 +1,21 @@
 <div class="bottom">
-    <button type="button" class="close" (click)="onCancel()">Cancel</button>
-    <button type="submit" class="submit" [disabled]="isSubmitDisabled" (click)="onSubmit()">
-        <div *ngIf="isSubmitting" class="spinner"></div>
+    <button
+        type="button"
+        class="close"
+        (click)="onCancel()"
+    >
+        Cancel
+    </button>
+    <button
+        type="submit"
+        class="submit"
+        [disabled]="isSubmitDisabled"
+        (click)="onSubmit()"
+    >
+        <div
+            *ngIf="isSubmitting"
+            class="spinner"
+        ></div>
 
         <div>Create</div>
     </button>

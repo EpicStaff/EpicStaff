@@ -1,4 +1,4 @@
-import { Tag } from "../tag.model";
+import { Tag } from '../tag.model';
 
 export interface GetLlmConfigRequest {
     id: number;

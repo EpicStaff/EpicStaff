@@ -2,12 +2,20 @@
     <div class="context-menu dark-theme">
         <div class="search-container">
             <i class="ti ti-search"></i>
-            <input type="text" placeholder="Search..." (input)="onSearchInput($event)" [value]="searchTerm()" />
+            <input
+                type="text"
+                placeholder="Search..."
+                (input)="onSearchInput($event)"
+                [value]="searchTerm()"
+            />
         </div>
 
         <div class="menu-header">
             @for (item of menuItems; track item.type) {
-                <button [class.active]="item.type === selectedMenu()" (click)="onSelectMenu(item.type)">
+                <button
+                    [class.active]="item.type === selectedMenu()"
+                    (click)="onSelectMenu(item.type)"
+                >
                     {{ item.label }}
                 </button>
             }

@@ -1,10 +1,17 @@
 <!-- Node badge number -->
-<div class="node-name-wrapper" *ngIf="!noteNode && node.nodeNumber != null">
+<div
+    class="node-name-wrapper"
+    *ngIf="!noteNode && node.nodeNumber != null"
+>
     <div class="node-name-label">#{{ node.nodeNumber }}</div>
 </div>
 
 <!-- Control buttons positioned above the node -->
-<div class="actions" *ngIf="node.type !== NodeType.TABLE" (mousedown)="$event.stopPropagation()">
+<div
+    class="actions"
+    *ngIf="node.type !== NodeType.TABLE"
+    (mousedown)="$event.stopPropagation()"
+>
     <!-- Edit Button for Note -->
     <div
         *ngIf="node.type === NodeType.NOTE"
@@ -61,13 +68,26 @@
     }
 }
 <ng-template #interactiveNode>
-    <div class="interactive-node-body" appClickOrDrag (actualClick)="onEditClick()">
+    <div
+        class="interactive-node-body"
+        appClickOrDrag
+        (actualClick)="onEditClick()"
+    >
         <!-- Header Section -->
-        <div class="header" *ngIf="node.type !== NodeType.TABLE">
+        <div
+            class="header"
+            *ngIf="node.type !== NodeType.TABLE"
+        >
             <div class="icon-wrapper">
-                <i [class]="node.icon" [style.color]="node.color"></i>
+                <i
+                    [class]="node.icon"
+                    [style.color]="node.color"
+                ></i>
             </div>
-            <div class="title" [title]="getNodeTitle()">
+            <div
+                class="title"
+                [title]="getNodeTitle()"
+            >
                 {{ getNodeTitle() }}
             </div>
             <div
@@ -76,9 +96,17 @@
                 (mousedown)="$event.stopPropagation()"
                 (click)="$event.stopPropagation()"
             >
-                <app-go-to-button variant="icon" [href]="getSelectedFlowUrl()!" target="_blank"></app-go-to-button>
+                <app-go-to-button
+                    variant="icon"
+                    [href]="getSelectedFlowUrl()!"
+                    target="_blank"
+                ></app-go-to-button>
             </div>
-            <div class="blocked-badge" *ngIf="isBlockedSubgraph" title="Referenced subgraph was deleted">
+            <div
+                class="blocked-badge"
+                *ngIf="isBlockedSubgraph"
+                title="Referenced subgraph was deleted"
+            >
                 Missing flow
             </div>
         </div>
@@ -86,18 +114,27 @@
 </ng-template>
 @switch (node.type) {
     @case (NodeType.EDGE) {
-        <app-conditional-edge-node appClickOrDrag (actualClick)="onEditClick()"></app-conditional-edge-node>
+        <app-conditional-edge-node
+            appClickOrDrag
+            (actualClick)="onEditClick()"
+        ></app-conditional-edge-node>
     }
     @case (NodeType.NOTE) {
         <app-graph-note [node]="noteNode!"></app-graph-note>
     }
     @case (NodeType.TABLE) {
-        <app-decision-table-node [node]="tableNode!" (actualClick)="onEditClick($event)"></app-decision-table-node>
+        <app-decision-table-node
+            [node]="tableNode!"
+            (actualClick)="onEditClick($event)"
+        ></app-decision-table-node>
     }
     @default {
         <ng-container *ngTemplateOutlet="interactiveNode"></ng-container>
     }
 }
 @if (showVariables) {
-    <app-flow-node-variables-overlay [node]="node" [showVariables]="showVariables"></app-flow-node-variables-overlay>
+    <app-flow-node-variables-overlay
+        [node]="node"
+        [showVariables]="showVariables"
+    ></app-flow-node-variables-overlay>
 }

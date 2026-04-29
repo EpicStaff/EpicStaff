@@ -1,6 +1,10 @@
 <!-- <div class="wrapper"> -->
 @if (isLoaded) {
-    <div #agGridWrap class="ag-grid-wrap" [class.tasks-table-wrap--saving]="isSaving">
+    <div
+        #agGridWrap
+        class="ag-grid-wrap"
+        [class.tasks-table-wrap--saving]="isSaving"
+    >
         <ag-grid-angular
             appPreventContextMenu
             class="ag-grid-staff"

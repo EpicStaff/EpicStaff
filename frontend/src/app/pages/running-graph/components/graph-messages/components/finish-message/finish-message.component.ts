@@ -16,27 +16,52 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
     template: `
         <div class="finish-container">
             <!-- Finish Message Header with Toggle -->
-            <div class="finish-header" (click)="toggleMessage()">
+            <div
+                class="finish-header"
+                (click)="toggleMessage()"
+            >
                 <div class="play-arrow">
-                    <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+                    <app-svg-icon
+                        [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                        size="1rem"
+                    />
                 </div>
                 <div class="icon-container">
-                    <app-svg-icon icon="flag-filled" size="1rem" />
+                    <app-svg-icon
+                        icon="flag-filled"
+                        size="1rem"
+                    />
                 </div>
                 <h3>
-                    <span class="project-name" *ngIf="project && project.name">{{ project.name }}</span>
+                    <span
+                        class="project-name"
+                        *ngIf="project && project.name"
+                        >{{ project.name }}</span
+                    >
                     <span *ngIf="!project || !project.name">Default Project</span>
                     finished
                 </h3>
             </div>
 
             <!-- Collapsible Finish Content -->
-            <div class="collapsible-content" [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'">
+            <div
+                class="collapsible-content"
+                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+            >
                 <div class="finish-content">
                     <!-- Variables Section -->
-                    <div class="variables-container" *ngIf="hasVariables()">
-                        <div class="section-heading" (click)="toggleSection('variables')">
-                            <app-svg-icon [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+                    <div
+                        class="variables-container"
+                        *ngIf="hasVariables()"
+                    >
+                        <div
+                            class="section-heading"
+                            (click)="toggleSection('variables')"
+                        >
+                            <app-svg-icon
+                                [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                size="1rem"
+                            />
                             Variables
                         </div>
                         <div
@@ -44,15 +69,24 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
                             [@expandCollapse]="isVariablesExpanded ? 'expanded' : 'collapsed'"
                         >
                             <div class="variables-content">
-                                <ngx-json-viewer [json]="getVariables()" [expanded]="false"></ngx-json-viewer>
+                                <ngx-json-viewer
+                                    [json]="getVariables()"
+                                    [expanded]="false"
+                                ></ngx-json-viewer>
                             </div>
                         </div>
                     </div>
 
                     <!-- Final Output Section -->
                     <div class="output-container">
-                        <div class="section-heading" (click)="toggleSection('output')">
-                            <app-svg-icon [icon]="isOutputExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+                        <div
+                            class="section-heading"
+                            (click)="toggleSection('output')"
+                        >
+                            <app-svg-icon
+                                [icon]="isOutputExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                size="1rem"
+                            />
                             Final Output
                         </div>
 
@@ -62,7 +96,10 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
                             [@expandCollapse]="isOutputExpanded ? 'expanded' : 'collapsed'"
                         >
                             <div class="output-content">
-                                <ngx-json-viewer [json]="getOutput()" [expanded]="false"></ngx-json-viewer>
+                                <ngx-json-viewer
+                                    [json]="getOutput()"
+                                    [expanded]="false"
+                                ></ngx-json-viewer>
                             </div>
                         </div>
                     </div>

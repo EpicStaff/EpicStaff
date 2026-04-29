@@ -7,17 +7,26 @@
             [class.editing]="editingIndex === i"
             [class.duplicate]="variable.name === duplicateVariableName"
         >
-            <div class="variable-content" *ngIf="editingIndex !== i">
+            <div
+                class="variable-content"
+                *ngIf="editingIndex !== i"
+            >
                 <div class="variable-item">
                     <span class="variable-name">{{ variable.name }}</span>
                     <span class="chain-separator">→</span>
-                    <span class="variable-value" [class.no-value]="!variable.value">
+                    <span
+                        class="variable-value"
+                        [class.no-value]="!variable.value"
+                    >
                         {{ variable.value || '(empty)' }}
                     </span>
                 </div>
             </div>
 
-            <div class="variable-edit-form" *ngIf="editingIndex === i">
+            <div
+                class="variable-edit-form"
+                *ngIf="editingIndex === i"
+            >
                 <input
                     type="text"
                     class="variable-input name-input"
@@ -76,7 +85,11 @@
         </div>
 
         <!-- Add variable form -->
-        <div class="add-variable-form" [class.submitted]="submitted" [class.invalid]="submitted && !newVariable.name">
+        <div
+            class="add-variable-form"
+            [class.submitted]="submitted"
+            [class.invalid]="submitted && !newVariable.name"
+        >
             <div class="variable-item">
                 <input
                     #nameInput
@@ -96,8 +109,14 @@
                     (keydown.enter)="onAddVariable()"
                 />
             </div>
-            <button class="add-variable-button" (click)="onAddVariable()">
-                <app-svg-icon icon="plus" size="16px" />
+            <button
+                class="add-variable-button"
+                (click)="onAddVariable()"
+            >
+                <app-svg-icon
+                    icon="plus"
+                    size="16px"
+                />
                 Add
             </button>
         </div>

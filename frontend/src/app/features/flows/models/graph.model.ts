@@ -94,9 +94,13 @@ export interface GraphVersionCreateRequest {
 
 export interface GraphVersionDto {
     id: number;
-    graph: number;
+    graph_id: number;
     name: string;
     description: string;
-    dependencies: Record<string, unknown>;
     created_at: string;
+}
+
+export interface GraphVersionUpdateRequest {
+    name: string;
+    description: string;
 }

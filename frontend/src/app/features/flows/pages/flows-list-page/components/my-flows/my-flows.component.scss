@@ -36,19 +36,27 @@
 .recent-flows-list {
     display: flex;
     gap: 8px;
+    overflow: hidden;
+    padding: 4px 16px 16px;
+    margin: -4px -16px -16px;
+
+    &.measuring {
+        visibility: hidden;
+    }
 }
 
 .recent-flow-card {
     display: flex;
     align-items: center;
-    justify-content: center;
-    width: 87px;
+    justify-content: flex-start;
     height: 28px;
     padding: 0 8px;
     background: var(--color-flow-card-bg);
     border-radius: 4px;
     cursor: pointer;
     flex-shrink: 0;
+    max-width: 100%;
+    overflow-x: auto;
     box-shadow:
         0px 2px 3px 0px #0000004d,
         0px 6px 10px 4px #00000026;
@@ -56,13 +64,16 @@
         background: #313438;
     }
 
+    scrollbar-width: none;
+    &::-webkit-scrollbar {
+        display: none;
+    }
+
     .recent-flow-name {
         font-size: 14px;
         font-weight: 500;
         color: var(--color-text-primary);
         white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
         text-decoration: none;
     }
 }

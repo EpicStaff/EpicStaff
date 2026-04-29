@@ -20,19 +20,6 @@ import { mapWebhookTriggerNodeToModel } from './nodes/webhook-trigger-node.mappe
 import { resolveDecisionTableNodeRefs } from './ref-resolvers/decision-table-refs';
 
 export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
-    console.log(
-        `[load][map-start] graphId=${graph.id} ` +
-            `edgeCount=${graph.edge_list?.length ?? 0} ` +
-            `decisionTableCount=${graph.decision_table_node_list?.length ?? 0} ` +
-            `edges=${JSON.stringify(
-                (graph.edge_list ?? []).map((e) => ({
-                    id: e.id,
-                    start_node_id: e.start_node_id,
-                    end_node_id: e.end_node_id,
-                }))
-            )}`
-    );
-
     // ── 1. Map each backend node list to UI node models ──────────────────
     const startNodes = (graph.start_node_list ?? []).map((n) => mapStartNodeToModel(n));
     const crewNodes = (graph.crew_node_list ?? []).map((n) => mapCrewNodeToModel(n));
@@ -104,21 +91,6 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
             `[load][duplicate-connection-ids] graphId=${graph.id} duplicateIds=${JSON.stringify(duplicateConnectionIds)}`
         );
     }
-
-    console.log(
-        `[load][map-done] graphId=${graph.id} nodeCount=${allNodes.length} ` +
-            `connectionCount=${allConnections.length} backendNodeCount=${backendIdToUuid.size} ` +
-            `connections=${JSON.stringify(
-                allConnections.map((c) => ({
-                    id: c.id,
-                    sourceNodeId: c.sourceNodeId,
-                    targetNodeId: c.targetNodeId,
-                    sourcePortId: c.sourcePortId,
-                    targetPortId: c.targetPortId,
-                    backendEdgeId: c.data?.id ?? null,
-                }))
-            )}`
-    );
 
     return { nodes: allNodes, connections: allConnections };
 }

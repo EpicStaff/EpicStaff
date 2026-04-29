@@ -3,14 +3,29 @@
     <!-- Header -->
     <div class="header">
         <div class="list-header">
-            <input #searchInput type="text" [(ngModel)]="searchTerm" placeholder="Search tools..." />
+            <input
+                #searchInput
+                type="text"
+                [(ngModel)]="searchTerm"
+                placeholder="Search tools..."
+            />
             <!-- Commented out filter button as requested -->
             <!-- <button class="filter-button"><i class="ti ti-filter"></i> Filter</button> -->
         </div>
 
         <div class="menu-header">
-            <button [class.active]="selectedMenu === 'custom'" (click)="toggleToolType('custom')">Custom Tools</button>
-            <button [class.active]="selectedMenu === 'mcp'" (click)="toggleToolType('mcp')">MCP Tools</button>
+            <button
+                [class.active]="selectedMenu === 'custom'"
+                (click)="toggleToolType('custom')"
+            >
+                Custom Tools
+            </button>
+            <button
+                [class.active]="selectedMenu === 'mcp'"
+                (click)="toggleToolType('mcp')"
+            >
+                MCP Tools
+            </button>
         </div>
     </div>
 
@@ -47,9 +62,15 @@
         <!--    </div>-->
 
         <!-- Python/Custom Tools -->
-        <div class="python-tools" *ngIf="selectedMenu === 'custom'">
+        <div
+            class="python-tools"
+            *ngIf="selectedMenu === 'custom'"
+        >
             <!-- Loading Spinner -->
-            <div *ngIf="loading" class="loading-spinner">
+            <div
+                *ngIf="loading"
+                class="loading-spinner"
+            >
                 <div class="dots">
                     <div class="dot"></div>
                     <div class="dot"></div>
@@ -58,7 +79,10 @@
             </div>
 
             <!-- No python tools message -->
-            <div class="no-tools" *ngIf="!loading && pythonTools.length === 0">
+            <div
+                class="no-tools"
+                *ngIf="!loading && pythonTools.length === 0"
+            >
                 <p>No custom tools available</p>
                 <app-button
                     type="primary"
@@ -71,7 +95,10 @@
             </div>
 
             <!-- Using Python Tool Item Component for each tool -->
-            <div class="tools-list" *ngIf="!loading && pythonTools.length > 0">
+            <div
+                class="tools-list"
+                *ngIf="!loading && pythonTools.length > 0"
+            >
                 <app-python-tool-item
                     *ngFor="let pTool of filteredPythonTools"
                     [tool]="pTool"
@@ -93,9 +120,15 @@
         </div>
 
         <!-- MCP Tools -->
-        <div class="mcp-tools" *ngIf="selectedMenu === 'mcp'">
+        <div
+            class="mcp-tools"
+            *ngIf="selectedMenu === 'mcp'"
+        >
             <!-- Loading Spinner -->
-            <div *ngIf="loading" class="loading-spinner">
+            <div
+                *ngIf="loading"
+                class="loading-spinner"
+            >
                 <div class="dots">
                     <div class="dot"></div>
                     <div class="dot"></div>
@@ -104,7 +137,10 @@
             </div>
 
             <!-- No MCP tools message -->
-            <div class="no-tools" *ngIf="!loading && mcpTools.length === 0">
+            <div
+                class="no-tools"
+                *ngIf="!loading && mcpTools.length === 0"
+            >
                 <p>No MCP tools available</p>
                 <app-button
                     type="primary"
@@ -117,7 +153,10 @@
             </div>
 
             <!-- Using MCP Tool Item Component for each tool -->
-            <div class="tools-list" *ngIf="!loading && mcpTools.length > 0">
+            <div
+                class="tools-list"
+                *ngIf="!loading && mcpTools.length > 0"
+            >
                 <app-mcp-tool-item
                     *ngFor="let mcpTool of filteredMcpTools"
                     [tool]="mcpTool"
@@ -141,7 +180,17 @@
 
     <!-- Footer -->
     <div class="footer">
-        <button class="cancel-button" (click)="onCancel()">Cancel</button>
-        <button class="save-btn" (click)="save()">Save Selection</button>
+        <button
+            class="cancel-button"
+            (click)="onCancel()"
+        >
+            Cancel
+        </button>
+        <button
+            class="save-btn"
+            (click)="save()"
+        >
+            Save Selection
+        </button>
     </div>
 </div>

@@ -9,7 +9,11 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
     standalone: true,
     imports: [NgClass, AppSvgIconComponent],
     template: `
-        <div class="mcp-tool-item" [ngClass]="{ 'selected-tool': isSelected }" (click)="onToolToggle()">
+        <div
+            class="mcp-tool-item"
+            [ngClass]="{ 'selected-tool': isSelected }"
+            (click)="onToolToggle()"
+        >
             <app-svg-icon icon="hub" />
             <span class="tool-name">
                 {{ tool.name }}
@@ -17,7 +21,11 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
             <span class="tool-description">
                 {{ tool.tool_name }}
             </span>
-            <input type="checkbox" [checked]="isSelected" (click)="onCheckboxClick($event)" />
+            <input
+                type="checkbox"
+                [checked]="isSelected"
+                (click)="onCheckboxClick($event)"
+            />
         </div>
     `,
     styleUrls: ['./mcp-tool-item.component.scss'],

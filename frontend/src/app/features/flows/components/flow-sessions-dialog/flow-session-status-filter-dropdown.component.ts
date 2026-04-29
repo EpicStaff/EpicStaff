@@ -25,18 +25,54 @@ interface StatusOption {
     standalone: true,
     imports: [CommonModule, ClickOutsideDirective, AppSvgIconComponent],
     template: `
-        <div 
-            class="status-filter-dropdown-custom" 
-            [class.open]="open" 
+        <div
+            class="status-filter-dropdown-custom"
+            [class.open]="open"
             (appClickOutside)="closeDropdown()"
         >
-            <button class="dropdown-toggle" (click)="toggleDropdown($event)">
-                Status
-                <img
-                    src="assets/icons/ui/status-filter.svg"
-                    alt="status-filter"
-                />
+            <button
+                class="dropdown-toggle"
+                (click)="toggleDropdown($event)"
+            >
+                <span class="selected-icons">
+                    @if (selectedValues().length === 0) {
+                        <app-svg-icon
+                            class="status-icon"
+                            [icon]="options[0].icon"
+                            size="16px"
+                        ></app-svg-icon>
+                        {{ options[0].label }}
+                    } @else if (selectedValues().length === 1) {
+                        <app-svg-icon
+                            class="status-icon"
+                            [icon]="selectedOptions()[0].icon"
+                            size="16px"
+                            [style.color]="selectedOptions()[0].color"
+                        ></app-svg-icon>
+                        {{ selectedOptions()[0].label }}
+                    } @else {
+                        <span class="icon-multi">
+                            @for (opt of selectedOptions(); track opt.value) {
+                                <app-svg-icon
+                                    class="status-icon"
+                                    [icon]="opt.icon"
+                                    size="16px"
+                                    [style.color]="opt.color"
+                                ></app-svg-icon>
+                            }
+                        </span>
+                        Mixed ({{ selectedValues().length }})
+                    }
+                </span>
+                <span class="dropdown-arrow-wrapper">
+                    <app-svg-icon
+                        icon="chevron-down"
+                        size="16px"
+                        class="dropdown-arrow"
+                    ></app-svg-icon>
+                </span>
             </button>
+
             @if (open) {
                 <ul class="dropdown-menu">
                     @for (option of options; track option.value) {
@@ -45,7 +81,11 @@ interface StatusOption {
                             [class.selected]="selectedValues().includes(option.value)"
                         >
                             <span [style.color]="option.color">
-                                <app-svg-icon class="status-icon" [icon]="option.icon" size="16px"></app-svg-icon>
+                                <app-svg-icon
+                                    class="status-icon"
+                                    [icon]="option.icon"
+                                    size="16px"
+                                ></app-svg-icon>
                                 {{ option.label }}
                             </span>
                             @if (selectedValues().includes(option.value)) {

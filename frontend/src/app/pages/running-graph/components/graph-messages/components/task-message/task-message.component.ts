@@ -15,12 +15,21 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
     template: `
         <div class="agent-flow-container">
             <!-- Task Message Header with Toggle -->
-            <div class="agent-header" (click)="toggleMessage()">
+            <div
+                class="agent-header"
+                (click)="toggleMessage()"
+            >
                 <div class="play-arrow">
-                    <app-svg-icon [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+                    <app-svg-icon
+                        [icon]="isMessageExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                        size="1rem"
+                    />
                 </div>
                 <div class="icon-container">
-                    <app-svg-icon icon="list-check" size="1rem" />
+                    <app-svg-icon
+                        icon="list-check"
+                        size="1rem"
+                    />
                 </div>
                 <h3>
                     Task <span class="task-name">{{ getTaskName() }}</span> is done
@@ -28,12 +37,24 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
             </div>
 
             <!-- Collapsible Task Content -->
-            <div class="collapsible-content" [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'">
+            <div
+                class="collapsible-content"
+                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+            >
                 <div class="agent-content">
                     <!-- Task Details Section -->
-                    <div class="details-container" *ngIf="hasDetails()">
-                        <div class="section-heading" (click)="toggleSection('details')">
-                            <app-svg-icon [icon]="isDetailsExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+                    <div
+                        class="details-container"
+                        *ngIf="hasDetails()"
+                    >
+                        <div
+                            class="section-heading"
+                            (click)="toggleSection('details')"
+                        >
+                            <app-svg-icon
+                                [icon]="isDetailsExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                size="1rem"
+                            />
                             Task Details
                         </div>
                         <div
@@ -41,21 +62,30 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
                             [@expandCollapse]="isDetailsExpanded ? 'expanded' : 'collapsed'"
                         >
                             <div class="details-content">
-                                <div class="description-section" *ngIf="taskMessageData?.description">
+                                <div
+                                    class="description-section"
+                                    *ngIf="taskMessageData?.description"
+                                >
                                     <div class="subsection-heading">Description:</div>
                                     <div class="description-content">
                                         {{ taskMessageData?.description }}
                                     </div>
                                 </div>
 
-                                <div class="expected-output-section" *ngIf="taskMessageData?.expected_output">
+                                <div
+                                    class="expected-output-section"
+                                    *ngIf="taskMessageData?.expected_output"
+                                >
                                     <div class="subsection-heading">Expected Output:</div>
                                     <div class="expected-output-content">
                                         {{ taskMessageData?.expected_output }}
                                     </div>
                                 </div>
 
-                                <div class="agent-section" *ngIf="taskMessageData?.agent">
+                                <div
+                                    class="agent-section"
+                                    *ngIf="taskMessageData?.agent"
+                                >
                                     <div class="subsection-heading">Assigned To:</div>
                                     <div class="agentData-content">
                                         {{ taskMessageData?.agent }}
@@ -66,12 +96,24 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
                     </div>
 
                     <!-- Result Section -->
-                    <div class="raw-container" *ngIf="hasRawData()">
-                        <div class="section-heading" (click)="toggleSection('raw')">
-                            <app-svg-icon [icon]="isRawExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+                    <div
+                        class="raw-container"
+                        *ngIf="hasRawData()"
+                    >
+                        <div
+                            class="section-heading"
+                            (click)="toggleSection('raw')"
+                        >
+                            <app-svg-icon
+                                [icon]="isRawExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                size="1rem"
+                            />
                             Result
                         </div>
-                        <div class="collapsible-content" [@expandCollapse]="isRawExpanded ? 'expanded' : 'collapsed'">
+                        <div
+                            class="collapsible-content"
+                            [@expandCollapse]="isRawExpanded ? 'expanded' : 'collapsed'"
+                        >
                             <div class="result-content">
                                 <!-- JSON Viewer when raw data is valid JSON -->
                                 <ngx-json-viewer

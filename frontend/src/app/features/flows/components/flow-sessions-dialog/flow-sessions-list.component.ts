@@ -19,6 +19,7 @@ import { NodeGroup } from 'src/app/shared/models/node-group.model';
 import { GraphDto } from '../../models/graph.model';
 import { GraphSessionLight, GraphSessionService, GraphSessionStatus } from '../../services/flows-sessions.service';
 import { FlowSessionNodeFilterDropdownComponent } from './flow-session-node-filter-dropdown.component';
+import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-filter-dropdown.component';
 import { FlowSessionsTableComponent } from './flow-sessions-table.component';
 
 @Component({
@@ -30,6 +31,7 @@ import { FlowSessionsTableComponent } from './flow-sessions-table.component';
         CommonModule,
         FlowSessionsTableComponent,
         PaginationControlsComponent,
+        FlowSessionStatusFilterDropdownComponent,
         FlowSessionNodeFilterDropdownComponent,
         IconButtonComponent,
     ],

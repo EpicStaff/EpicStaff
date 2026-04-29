@@ -868,6 +868,12 @@ export class AgentsTableComponent {
             ...this.rowData[index],
             ...updatedData,
         };
+
+        // Sync full config objects when IDs are explicitly cleared
+        if ('fcm_llm_config' in updatedData && updatedData.fcm_llm_config == null) {
+            updatedAgent.fullFcmLlmConfig = null;
+        }
+
         // Update our local row data
         this.rowData[index] = updatedAgent;
 

@@ -129,6 +129,14 @@
     }
 }
 
+.user-avatar-wrapper {
+    position: relative;
+}
+
+.user-avatar-btn {
+    cursor: pointer;
+}
+
 .epic-chat-host {
     display: contents;
 }

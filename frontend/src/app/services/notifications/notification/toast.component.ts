@@ -12,7 +12,10 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
     imports: [CommonModule, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div class="toast-container" [ngClass]="position">
+        <div
+            class="toast-container"
+            [ngClass]="position"
+        >
             <div
                 *ngFor="let toast of toasts"
                 [@toastAnimation]="position"
@@ -22,12 +25,21 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
             >
                 <div class="toast-content">
                     <div class="toast-icon-wrapper">
-                        <app-svg-icon [icon]="getIconId(toast.type)" size="20px"></app-svg-icon>
+                        <app-svg-icon
+                            [icon]="getIconId(toast.type)"
+                            size="20px"
+                        ></app-svg-icon>
                     </div>
                     <span class="toast-message">{{ toast.message }}</span>
                 </div>
-                <button class="toast-close-btn" (click)="closeToast(toast.id); $event.stopPropagation()">
-                    <app-svg-icon icon="x" size="16px"></app-svg-icon>
+                <button
+                    class="toast-close-btn"
+                    (click)="closeToast(toast.id); $event.stopPropagation()"
+                >
+                    <app-svg-icon
+                        icon="x"
+                        size="16px"
+                    ></app-svg-icon>
                 </button>
             </div>
         </div>
@@ -36,7 +48,7 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
         `
             .toast-container {
                 position: fixed;
-                z-index: 9999;
+                z-index: 20000;
                 display: flex;
                 gap: 10px;
                 max-width: 350px;

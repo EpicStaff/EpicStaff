@@ -10,15 +10,29 @@
             (keydown.enter)="onCancel()"
             (keydown.space)="onCancel()"
         >
-            <app-svg-icon icon="x" size="1.25rem" class="close-icon"></app-svg-icon>
+            <app-svg-icon
+                icon="x"
+                size="1.25rem"
+                class="close-icon"
+            ></app-svg-icon>
         </div>
     </div>
 
-    <div class="dialog-content" *ngIf="!isLoading">
+    <div
+        class="dialog-content"
+        *ngIf="!isLoading"
+    >
         <div class="config-list-container">
             <!-- Search Input -->
-            <div class="search-input-wrapper" [ngClass]="{ 'input-has-content': searchHasContent }">
-                <app-svg-icon icon="search" size="1.125rem" class="search-icon"></app-svg-icon>
+            <div
+                class="search-input-wrapper"
+                [ngClass]="{ 'input-has-content': searchHasContent }"
+            >
+                <app-svg-icon
+                    icon="search"
+                    size="1.125rem"
+                    class="search-icon"
+                ></app-svg-icon>
                 <input
                     type="text"
                     class="search-input"
@@ -29,11 +43,17 @@
 
             <!-- Scrollable content area -->
             <div class="list-content-wrapper">
-                <div *ngIf="filteredConfigs.length === 0" class="no-configs-message">
+                <div
+                    *ngIf="filteredConfigs.length === 0"
+                    class="no-configs-message"
+                >
                     No configurations available. Please create a new one.
                 </div>
 
-                <ul class="config-list" *ngIf="filteredConfigs.length > 0">
+                <ul
+                    class="config-list"
+                    *ngIf="filteredConfigs.length > 0"
+                >
                     <li
                         *ngFor="let config of filteredConfigs"
                         (click)="onSelect(config)"
@@ -58,7 +78,10 @@
                                 (click)="deleteFromList(config, $event)"
                                 aria-label="Delete Configuration"
                             >
-                                <app-svg-icon icon="trash" size="1.125rem"></app-svg-icon>
+                                <app-svg-icon
+                                    icon="trash"
+                                    size="1.125rem"
+                                ></app-svg-icon>
                             </button>
                         </div>
                     </li>
@@ -66,8 +89,14 @@
             </div>
 
             <!-- "Create New" button stays at the bottom -->
-            <button class="create-config-button" (click)="onCreateNew()">
-                <app-svg-icon icon="plus" size="1.25rem"></app-svg-icon>
+            <button
+                class="create-config-button"
+                (click)="onCreateNew()"
+            >
+                <app-svg-icon
+                    icon="plus"
+                    size="1.25rem"
+                ></app-svg-icon>
                 New Form
             </button>
         </div>
@@ -84,9 +113,15 @@
     </div>
 
     <!-- Loading Spinner -->
-    <div class="loading-container" *ngIf="isLoading">
+    <div
+        class="loading-container"
+        *ngIf="isLoading"
+    >
         <div class="spinner">
-            <app-svg-icon icon="loader" size="2.5rem"></app-svg-icon>
+            <app-svg-icon
+                icon="loader"
+                size="2.5rem"
+            ></app-svg-icon>
         </div>
         <div class="loading-text">Loading configurations...</div>
     </div>

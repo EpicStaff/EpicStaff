@@ -11,6 +11,7 @@ import {
     GraphDto,
     GraphVersionCreateRequest,
     GraphVersionDto,
+    GraphVersionUpdateRequest,
     UpdateGraphDtoRequest,
 } from '../models/graph.model';
 
@@ -106,6 +107,19 @@ export class FlowsApiService {
 
     saveGraphVersion(payload: GraphVersionCreateRequest): Observable<GraphVersionDto> {
         return this.http.post<GraphVersionDto>(`${this.configService.apiUrl}graph-versions/`, payload, {
+            headers: this.httpHeaders,
+        });
+    }
+
+    getGraphVersions(graphId: number): Observable<GraphVersionDto[]> {
+        const params = new HttpParams().set('graph_id', graphId.toString());
+        return this.http
+            .get<ApiGetRequest<GraphVersionDto>>(`${this.configService.apiUrl}graph-versions/`, { params })
+            .pipe(map((response) => response.results));
+    }
+
+    updateGraphVersion(id: number, data: GraphVersionUpdateRequest): Observable<GraphVersionDto> {
+        return this.http.patch<GraphVersionDto>(`${this.configService.apiUrl}graph-versions/${id}/`, data, {
             headers: this.httpHeaders,
         });
     }

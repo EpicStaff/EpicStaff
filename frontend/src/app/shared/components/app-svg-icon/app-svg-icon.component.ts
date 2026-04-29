@@ -3,7 +3,12 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 @Component({
     selector: 'app-svg-icon',
     template: `
-        <svg [style.width]="size()" [style.height]="size()" [attr.aria-label]="ariaLabel()" aria-hidden="true">
+        <svg
+            [style.width]="size()"
+            [style.height]="size()"
+            [attr.aria-label]="ariaLabel()"
+            aria-hidden="true"
+        >
             <use [attr.href]="'#icon-' + icon()" />
         </svg>
     `,

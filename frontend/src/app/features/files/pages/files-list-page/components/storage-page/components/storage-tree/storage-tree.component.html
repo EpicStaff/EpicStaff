@@ -1,0 +1,300 @@
+<div class="storage-tree">
+    <div class="storage-tree__header">
+        <span class="storage-tree__header-label">Folder Branches</span>
+        <button
+            class="storage-tree__header-close"
+            aria-label="Close panel"
+            (click)="closeSidebar.emit()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="1.25rem"
+            ></app-svg-icon>
+        </button>
+    </div>
+
+    <div class="storage-tree__toolbar">
+        <span class="storage-tree__toolbar-label">Folders</span>
+        <button
+            class="storage-tree__toolbar-btn"
+            aria-label="Add folder"
+            (click)="onAddFolderClick()"
+        >
+            <app-svg-icon
+                icon="plus"
+                size="1rem"
+            ></app-svg-icon>
+        </button>
+        <button
+            class="storage-tree__toolbar-btn"
+            aria-label="More options"
+            (click)="onMoreOptionsClick($event)"
+        >
+            <app-svg-icon
+                icon="dots-vertical"
+                size="1rem"
+            ></app-svg-icon>
+        </button>
+    </div>
+
+    <div
+        #listEl
+        class="storage-tree__list"
+        [class.storage-tree__list--drop-target-root]="dropTargetRoot()"
+        (dragover)="onRootDragOver($event)"
+        (dragleave)="onRootDragLeave($event)"
+        (drop)="onRootDrop($event)"
+    >
+        <div class="storage-tree__list-content">
+            <ng-container *ngTemplateOutlet="treeNodes; context: { $implicit: items(), level: 0 }"></ng-container>
+        </div>
+    </div>
+</div>
+
+<ng-template
+    #treeNodes
+    let-nodes
+    let-level="level"
+>
+    @for (node of asStorageItems(nodes); track node.path || node.name + '-' + $index) {
+        <div
+            class="storage-tree__item"
+            [attr.data-path]="node.path"
+            [class.storage-tree__item--selected]="isItemSelected(node)"
+            [class.storage-tree__item--non-empty]="node.type === 'folder' && !node.is_empty"
+            [class.storage-tree__item--hovered]="hoveredItem() === node"
+            [class.storage-tree__item--drop-target]="isDropTarget(node)"
+            [class.storage-tree__item--dragging]="draggedItem()?.path === node.path"
+            [attr.draggable]="renamingItem() === null || renamingItem()?.path !== node.path ? 'true' : 'false'"
+            [style.padding-left.rem]="0.75 + level * 1.25"
+            (click)="onItemClick($event, node)"
+            (contextmenu)="onContextMenu($event, node)"
+            (mouseenter)="onItemMouseEnter($event, node)"
+            (mouseleave)="onItemMouseLeave()"
+            (dragstart)="onDragStart($event, node)"
+            (dragover)="onDragOver($event, node)"
+            (dragleave)="onDragLeave($event, node)"
+            (drop)="onDrop($event, node)"
+            (dragend)="onDragEnd()"
+        >
+            @if (node.type === 'folder' && !node.is_empty) {
+                <button
+                    class="storage-tree__chevron-btn"
+                    [class.storage-tree__chevron-btn--expanded]="node.isExpanded"
+                    (click)="onFolderChevronClick($event, node)"
+                >
+                    <app-svg-icon
+                        icon="expand"
+                        size="0.5rem"
+                    ></app-svg-icon>
+                </button>
+            } @else {
+                <span class="storage-tree__chevron-placeholder"></span>
+            }
+
+            <app-svg-icon
+                class="storage-tree__icon"
+                [icon]="getFileIcon(node)"
+                size="12px"
+            ></app-svg-icon>
+
+            @if (node.type === 'folder' && node.is_empty) {
+                <div class="storage-tree__folder-meta">
+                    <span
+                        class="storage-tree__name storage-tree__name--folder-meta"
+                        [title]="node.name"
+                    >
+                        {{ node.name }}
+                    </span>
+                    <span class="storage-tree__empty-badge">Empty</span>
+                </div>
+            } @else {
+                <span
+                    class="storage-tree__name"
+                    [title]="node.name"
+                    >{{ node.name }}</span
+                >
+            }
+
+            @if (!renamingItem() || renamingItem()?.path !== node.path) {
+                <div
+                    class="storage-tree__hover-actions"
+                    [class.storage-tree__hover-actions--visible]="hoveredItem() === node"
+                >
+                    <button
+                        class="storage-tree__hover-btn storage-tree__hover-btn--plus"
+                        aria-label="Add folder"
+                        (click)="onAddFolderClickForNode($event, node)"
+                    >
+                        <app-svg-icon
+                            icon="plus"
+                            size="1rem"
+                        ></app-svg-icon>
+                    </button>
+                    <button
+                        class="storage-tree__hover-btn"
+                        aria-label="More"
+                        (click)="onKebabClick($event, node)"
+                    >
+                        <app-svg-icon
+                            icon="dots-vertical"
+                            size="1rem"
+                        ></app-svg-icon>
+                    </button>
+                </div>
+            }
+        </div>
+
+        @if (node.type === 'folder' && node.isExpanded && node.children?.length) {
+            <ng-container
+                *ngTemplateOutlet="treeNodes; context: { $implicit: asStorageItems(node.children), level: level + 1 }"
+            ></ng-container>
+        }
+    }
+</ng-template>
+
+<!-- Rename overlay (fixed, always within list width) -->
+@if (renamingItem(); as item) {
+    <div
+        class="storage-tree__rename-overlay"
+        [style.top.px]="renamePos()?.top"
+        [style.left.px]="renamePos()?.left"
+        [style.right.px]="renamePos()?.right"
+        (click)="$event.stopPropagation()"
+    >
+        <input
+            #renameInput
+            class="storage-tree__rename-input"
+            type="text"
+            [value]="renameValue"
+            (input)="renameValue = renameInput.value"
+            (keydown.enter)="onRenameEnter($event)"
+            (keydown.escape)="onRenameCancel($event)"
+            (blur)="onRenameCancel($event)"
+        />
+        <button
+            class="storage-tree__rename-btn storage-tree__rename-btn--cancel"
+            type="button"
+            aria-label="Cancel rename"
+            (mousedown)="$event.preventDefault()"
+            (click)="onRenameCancel($event)"
+        >
+            <app-svg-icon
+                icon="rename-cancel"
+                size="1.75rem"
+            ></app-svg-icon>
+        </button>
+        <button
+            class="storage-tree__rename-btn storage-tree__rename-btn--confirm"
+            type="button"
+            aria-label="Confirm rename"
+            (mousedown)="$event.preventDefault()"
+            (click)="onRenameConfirm()"
+        >
+            <app-svg-icon
+                icon="rename-confirm"
+                size="1.75rem"
+            ></app-svg-icon>
+        </button>
+    </div>
+}
+
+<!-- More Options Menu Overlay -->
+@if (moreMenuOpen()) {
+    <div
+        class="storage-tree__overlay"
+        (click)="closeMoreMenu()"
+    ></div>
+    <div
+        class="storage-tree__context-menu"
+        [style.left.px]="moreMenuPosition().x"
+        [style.top.px]="moreMenuPosition().y"
+    >
+        <button
+            class="storage-tree__context-menu-item"
+            [class.storage-tree__context-menu-item--disabled]="selectedPaths().size === 0"
+            [disabled]="selectedPaths().size === 0"
+            (click)="onMoreMenuAction('download-selected')"
+        >
+            Download Selected
+        </button>
+        <button
+            class="storage-tree__context-menu-item"
+            (click)="onMoreMenuAction('download-all')"
+        >
+            Download All
+        </button>
+        <div class="storage-tree__context-menu-divider"></div>
+        <button
+            class="storage-tree__context-menu-item"
+            [class.storage-tree__context-menu-item--disabled]="selectedPaths().size === 0"
+            [disabled]="selectedPaths().size === 0"
+            (click)="onMoreMenuAction('delete-selected')"
+        >
+            Delete Selected
+        </button>
+        <button
+            class="storage-tree__context-menu-item"
+            (click)="onMoreMenuAction('delete-all')"
+        >
+            Delete All
+        </button>
+    </div>
+}
+
+<!-- Context Menu Overlay -->
+@if (contextMenuOpen()) {
+    <div
+        class="storage-tree__overlay"
+        (click)="closeContextMenu()"
+    ></div>
+    <div
+        class="storage-tree__context-menu"
+        [style.left.px]="contextMenuPosition().x"
+        [style.top.px]="contextMenuPosition().y"
+    >
+        <button
+            class="storage-tree__context-menu-item"
+            (click)="onContextMenuAction('add-to-flow')"
+        >
+            Add to flow
+        </button>
+        <button
+            class="storage-tree__context-menu-item"
+            (click)="onContextMenuAction('download')"
+        >
+            Download
+        </button>
+        <button
+            class="storage-tree__context-menu-item"
+            (click)="onContextMenuAction('copy')"
+        >
+            Copy to...
+        </button>
+        <button
+            class="storage-tree__context-menu-item"
+            (click)="onContextMenuAction('duplicate-here')"
+        >
+            Duplicate here
+        </button>
+        <button
+            class="storage-tree__context-menu-item"
+            (click)="onContextMenuAction('rename')"
+        >
+            Rename
+        </button>
+        <button
+            class="storage-tree__context-menu-item"
+            (click)="onContextMenuAction('view-details')"
+        >
+            View details
+        </button>
+        <div class="storage-tree__context-menu-divider"></div>
+        <button
+            class="storage-tree__context-menu-item"
+            (click)="onContextMenuAction('delete')"
+        >
+            Delete
+        </button>
+    </div>
+}

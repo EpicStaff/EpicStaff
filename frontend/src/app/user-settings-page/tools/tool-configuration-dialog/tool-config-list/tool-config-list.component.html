@@ -1,17 +1,31 @@
 <div class="config-list-wrapper">
     <!-- Search Input -->
-    <div class="search-input-wrapper" [ngClass]="{ 'input-has-content': searchHasContent }">
+    <div
+        class="search-input-wrapper"
+        [ngClass]="{ 'input-has-content': searchHasContent }"
+    >
         <i class="material-icons search-icon">search</i>
-        <input type="text" class="search-input" placeholder="Search configurations" (input)="onSearch($event)" />
+        <input
+            type="text"
+            class="search-input"
+            placeholder="Search configurations"
+            (input)="onSearch($event)"
+        />
     </div>
 
     <!-- Scrollable content area -->
     <div class="list-content-wrapper">
-        <div *ngIf="filteredConfigs.length === 0" class="no-configs-message">
+        <div
+            *ngIf="filteredConfigs.length === 0"
+            class="no-configs-message"
+        >
             No configurations available. Please create a new one.
         </div>
 
-        <ul class="config-list" *ngIf="filteredConfigs.length > 0">
+        <ul
+            class="config-list"
+            *ngIf="filteredConfigs.length > 0"
+        >
             <li
                 *ngFor="let config of filteredConfigs"
                 (click)="onSelect(config)"
@@ -24,7 +38,11 @@
                 <div class="config-item">
                     <span class="config-name">{{ config.name }}</span>
                     <!-- Delete Icon -->
-                    <button class="delete-button" (click)="onDelete(config, $event)" aria-label="Delete Configuration">
+                    <button
+                        class="delete-button"
+                        (click)="onDelete(config, $event)"
+                        aria-label="Delete Configuration"
+                    >
                         <i class="material-icons">delete</i>
                     </button>
                 </div>
@@ -33,7 +51,10 @@
     </div>
 
     <!-- "Create New" button stays at the bottom, outside the scrollable area -->
-    <button class="create-config-button" (click)="onCreateNewConfig()">
+    <button
+        class="create-config-button"
+        (click)="onCreateNewConfig()"
+    >
         <i class="material-icons">add</i>
         Create new form
     </button>

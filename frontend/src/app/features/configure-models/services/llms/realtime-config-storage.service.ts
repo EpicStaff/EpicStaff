@@ -1,8 +1,12 @@
 import { inject, Injectable, signal } from '@angular/core';
-import { CreateRealtimeModelConfigRequest, RealtimeModelConfig, UpdateRealtimeModelConfigRequest } from "@shared/models";
-import { RealtimeModelConfigsService } from "@shared/services";
+import {
+    CreateRealtimeModelConfigRequest,
+    RealtimeModelConfig,
+    UpdateRealtimeModelConfigRequest,
+} from '@shared/models';
+import { RealtimeModelConfigsService } from '@shared/services';
 import { catchError, finalize, Observable, of, tap, throwError } from 'rxjs';
-import { shareReplay } from "rxjs/operators";
+import { shareReplay } from 'rxjs/operators';
 
 @Injectable({
     providedIn: 'root',

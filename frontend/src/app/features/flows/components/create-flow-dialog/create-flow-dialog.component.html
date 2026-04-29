@@ -1,10 +1,17 @@
 <div class="dialog-container">
-<div class="dialog-header">
-  <h2 class="dialog-title">{{ dialogTitle }}</h2>
-  <button class="close-button" (click)="onCancel()" [disabled]="isSubmitting">
-    <app-svg-icon icon="x" size="14px"></app-svg-icon>
-  </button>
-</div>
+    <div class="dialog-header">
+        <h2 class="dialog-title">{{ dialogTitle }}</h2>
+        <button
+            class="close-button"
+            (click)="onCancel()"
+            [disabled]="isSubmitting"
+        >
+            <app-svg-icon
+                icon="x"
+                size="14px"
+            ></app-svg-icon>
+        </button>
+    </div>
 
     <div class="dialog-content">
         <form [formGroup]="flowForm">
@@ -55,8 +62,18 @@
     </div>
 
     <div class="dialog-footer">
-        <app-button type="ghost" (click)="onCancel()" [disabled]="isSubmitting"> Cancel </app-button>
-        <app-button type="primary" [disabled]="!flowForm.valid || isSubmitting" (click)="onSubmit()">
+        <app-button
+            type="ghost"
+            (click)="onCancel()"
+            [disabled]="isSubmitting"
+        >
+            Cancel
+        </app-button>
+        <app-button
+            type="primary"
+            [disabled]="!flowForm.valid || isSubmitting"
+            (click)="onSubmit()"
+        >
             @if (isSubmitting) {
                 <span class="spinner"></span> Save
             } @else {

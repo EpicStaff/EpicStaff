@@ -40,6 +40,10 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 **global_kwargs,
                 **additional_global_kwargs,
             },
+            use_storage=python_code_data.use_storage,
+            storage_allowed_paths=python_code_data.storage_allowed_paths,
+            storage_org_prefix=python_code_data.storage_org_prefix,
+            session_id=python_code_data.session_id,
         )
         callback_receiver = RunPythonCallbackReceiver(execution_id=unique_task_id)
 

@@ -1,4 +1,4 @@
-import { AgentSearchConfigs } from "../../../shared/models";
+import { AgentSearchConfigs } from '../../../shared/models';
 import { GetMcpToolRequest } from '../../tools/models/mcp-tool.model';
 import { GetPythonCodeToolRequest } from '../../tools/models/python-code-tool.model';
 import { GetToolRequest } from '../../tools/models/tool.model';
@@ -157,7 +157,7 @@ export interface UpdateAgentRequest {
 export interface AgentRag {
     rag_id: number;
     rag_type: string;
-    rag_status?: string
+    rag_status?: string;
 }
 
 export type AgentTableItem = Omit<Agent, 'id'> & {

@@ -1,23 +1,33 @@
-<div class="tool-card" [class.disabled]="!tool.enabled">
-  <div class="tool-header">
-    <div class="tool-icon-large">
-      <app-svg-icon [icon]="getIconName()" size="35px" />
+<div
+    class="tool-card"
+    [class.disabled]="!tool.enabled"
+>
+    <div class="tool-header">
+        <div class="tool-icon-large">
+            <app-svg-icon
+                [icon]="getIconName()"
+                size="35px"
+            />
+        </div>
+        <div class="tool-header-info">
+            <div class="tool-name">{{ tool.name }}</div>
+            <div class="tool-provider">
+                <ng-container i="italic">by {{ provider }}</ng-container>
+            </div>
+        </div>
     </div>
-    <div class="tool-header-info">
-      <div class="tool-name">{{ tool.name }}</div>
-      <div class="tool-provider">
-        <ng-container i="italic">by {{ provider }}</ng-container>
-      </div>
+    <div class="tool-description">{{ toolDescription }}</div>
+    <div class="tool-footer">
+        <app-button
+            type="ghost"
+            (click)="onConfigure()"
+            >Configure</app-button
+        >
+        <div class="footer-actions">
+            <app-toggle-switch
+                [checked]="tool.enabled"
+                (checkedChange)="onToggle($event)"
+            ></app-toggle-switch>
+        </div>
     </div>
-  </div>
-  <div class="tool-description">{{ toolDescription }}</div>
-  <div class="tool-footer">
-    <app-button type="ghost" (click)="onConfigure()">Configure</app-button>
-    <div class="footer-actions">
-      <app-toggle-switch
-        [checked]="tool.enabled"
-        (checkedChange)="onToggle($event)"
-      ></app-toggle-switch>
-    </div>
-  </div>
 </div>

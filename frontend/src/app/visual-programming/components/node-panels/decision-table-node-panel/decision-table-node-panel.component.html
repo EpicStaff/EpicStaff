@@ -1,7 +1,10 @@
 <div class="panel-container">
     <div class="panel-content">
         @if (form) {
-            <form [formGroup]="form" class="form-container">
+            <form
+                [formGroup]="form"
+                class="form-container"
+            >
                 <div class="form-header">
                     <app-custom-input
                         label="Node Name"
@@ -16,11 +19,17 @@
                     <div class="select-wrapper">
                         <label>
                             Default Next Node
-                            <span class="tooltip-icon" title="Optional fallback branch when no condition matches">
+                            <span
+                                class="tooltip-icon"
+                                title="Optional fallback branch when no condition matches"
+                            >
                                 <app-svg-icon icon="help"></app-svg-icon>
                             </span>
                         </label>
-                        <select formControlName="default_next_node" class="node-select">
+                        <select
+                            formControlName="default_next_node"
+                            class="node-select"
+                        >
                             <option value="">-- Select Node --</option>
                             @for (node of availableNodes(); track node.value) {
                                 <option [value]="node.value">{{ node.label }}</option>
@@ -31,11 +40,17 @@
                     <div class="select-wrapper">
                         <label>
                             Error Next Node
-                            <span class="tooltip-icon" title="Optional error branch if decision evaluation fails">
+                            <span
+                                class="tooltip-icon"
+                                title="Optional error branch if decision evaluation fails"
+                            >
                                 <app-svg-icon icon="help"></app-svg-icon>
                             </span>
                         </label>
-                        <select formControlName="next_error_node" class="node-select">
+                        <select
+                            formControlName="next_error_node"
+                            class="node-select"
+                        >
                             <option value="">-- Select Node --</option>
                             @for (node of availableNodes(); track node.value) {
                                 <option [value]="node.value">{{ node.label }}</option>

@@ -69,6 +69,8 @@ from tables.models.graph_models import (
     EndNode,
     FileExtractorNode,
     Graph,
+    GraphOrganization,
+    GraphStorageFile,
     PythonNode,
     SubGraphNode,
     TelegramTriggerNode,
@@ -489,7 +491,14 @@ class ConverterService(metaclass=SingletonMeta):
 
         return rt_agent_chat_data
 
-    def convert_python_code_to_pydantic(self, python_code: PythonCode):
+    def convert_python_code_to_pydantic(
+        self,
+        python_code: PythonCode,
+        use_storage: bool = False,
+        storage_allowed_paths: list[str] | None = None,
+        storage_org_prefix: str | None = None,
+        session_id: int | None = None,
+    ):
         libraries = python_code.get_libraries_list()
         venv_name = str(python_code.pk)
         if not libraries:
@@ -500,6 +509,10 @@ class ConverterService(metaclass=SingletonMeta):
             entrypoint=python_code.entrypoint,
             libraries=libraries,
             global_kwargs=python_code.global_kwargs,
+            use_storage=use_storage,
+            storage_allowed_paths=storage_allowed_paths,
+            storage_org_prefix=storage_org_prefix,
+            session_id=session_id,
         )
 
     def convert_python_code_tool_to_pydantic(
@@ -634,9 +647,31 @@ class ConverterService(metaclass=SingletonMeta):
         self,
         python_node: PythonNode,
         resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+        graph_id: int | None = None,
+        session_id: int | None = None,
     ) -> PythonNodeData:
+        storage_allowed_paths = None
+        if python_node.use_storage and graph_id is not None:
+            storage_allowed_paths = list(
+                GraphStorageFile.objects.filter(graph_id=graph_id)
+                .select_related("storage_file")
+                .values_list("storage_file__path", flat=True)
+            )
+            if session_id is not None:
+                storage_allowed_paths.append(f"sessions/{session_id}/")
+
+        storage_org_prefix = None
+        if python_node.use_storage and graph_id is not None:
+            graph_org = GraphOrganization.objects.filter(graph_id=graph_id).first()
+            if graph_org is not None:
+                storage_org_prefix = f"org_{graph_org.organization_id}"
+
         python_code_data = self.convert_python_code_to_pydantic(
-            python_code=python_node.python_code
+            python_code=python_node.python_code,
+            use_storage=python_node.use_storage,
+            storage_allowed_paths=storage_allowed_paths,
+            storage_org_prefix=storage_org_prefix,
+            session_id=session_id,
         )
         return PythonNodeData(
             node_name=resolver(python_node.id),

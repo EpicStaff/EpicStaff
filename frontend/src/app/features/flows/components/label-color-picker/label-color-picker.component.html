@@ -1,7 +1,22 @@
 <div class="color-picker-wrapper">
-    <button type="button" class="color-trigger-btn" (click)="toggle($event)" title="Select color">
-        <span class="color-dot" [style.background]="currentOption.circleBg"></span>
-        <svg class="chevron" [class.rotated]="isOpen()" width="10" height="10" viewBox="0 0 12 12" fill="none">
+    <button
+        type="button"
+        class="color-trigger-btn"
+        (click)="toggle($event)"
+        title="Select color"
+    >
+        <span
+            class="color-dot"
+            [style.background]="currentOption.circleBg"
+        ></span>
+        <svg
+            class="chevron"
+            [class.rotated]="isOpen()"
+            width="10"
+            height="10"
+            viewBox="0 0 12 12"
+            fill="none"
+        >
             <path
                 d="M2 4L6 8L10 4"
                 stroke="currentColor"
@@ -27,8 +42,14 @@
                     [title]="option.id"
                     (click)="select(option, $event)"
                 >
-                    <span class="color-dot" [style.background]="option.circleBg"></span>
-                    <span class="aa-preview" [style.background]="option.chipBg" [style.color]="option.chipColor"
+                    <span
+                        class="color-dot"
+                        [style.background]="option.circleBg"
+                    ></span>
+                    <span
+                        class="aa-preview"
+                        [style.background]="option.chipBg"
+                        [style.color]="option.chipColor"
                         >Aa</span
                     >
                 </button>

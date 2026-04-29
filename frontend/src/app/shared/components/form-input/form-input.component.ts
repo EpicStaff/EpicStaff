@@ -43,7 +43,12 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     [style.--active-color]="activeColor"
                 />
                 @if (type === 'password') {
-                    <button type="button" class="toggle-visibility" (click)="togglePasswordVisibility()" tabindex="-1">
+                    <button
+                        type="button"
+                        class="toggle-visibility"
+                        (click)="togglePasswordVisibility()"
+                        tabindex="-1"
+                    >
                         <i [class]="'ti ' + (passwordVisible ? 'ti-eye' : 'ti-eye-off')"></i>
                     </button>
                 }
@@ -90,6 +95,10 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                 .text-input {
                     width: 100%;
                     padding: 8px 12px;
+
+                    &::-ms-reveal {
+                        display: none;
+                    }
                     background-color: var(--color-input-background);
                     border: 1px solid rgba(255, 255, 255, 0.1);
                     border-radius: 6px;

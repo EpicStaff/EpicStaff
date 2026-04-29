@@ -38,7 +38,11 @@
                 [naiveRagId]="data.ragId"
                 [selectedDocumentId]="selectedDocumentId()"
             >
-                <app-button class="dialog__chunk-preview-button" type="outline-primary" (click)="onShowChunks()">
+                <app-button
+                    class="dialog__chunk-preview-button"
+                    type="outline-primary"
+                    (click)="onShowChunks()"
+                >
                     Show
                 </app-button>
             </app-document-chunks-section>

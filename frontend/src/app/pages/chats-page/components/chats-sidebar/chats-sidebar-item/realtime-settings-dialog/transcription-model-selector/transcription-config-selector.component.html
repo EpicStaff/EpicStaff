@@ -1,18 +1,44 @@
-<div class="config-selector" appClickOutside (appClickOutside)="isOpen = false">
+<div
+    class="config-selector"
+    appClickOutside
+    (appClickOutside)="isOpen = false"
+>
     <!-- <label *ngIf="label">{{ label }}</label> -->
-    <div class="selector" [class.disabled]="disabled" (click)="toggleDropdown()">
+    <div
+        class="selector"
+        [class.disabled]="disabled"
+        (click)="toggleDropdown()"
+    >
         <div class="selected-config">{{ getSelectedConfigName() }}</div>
-        <div class="selector-arrow" [class.open]="isOpen">
-            <app-svg-icon icon="chevron-down" size="10px" />
+        <div
+            class="selector-arrow"
+            [class.open]="isOpen"
+        >
+            <app-svg-icon
+                icon="chevron-down"
+                size="10px"
+            />
         </div>
     </div>
 
-    <div class="dropdown-menu" *ngIf="isOpen">
-        <div *ngIf="loading" class="dropdown-item loading">Loading configurations...</div>
+    <div
+        class="dropdown-menu"
+        *ngIf="isOpen"
+    >
+        <div
+            *ngIf="loading"
+            class="dropdown-item loading"
+        >
+            Loading configurations...
+        </div>
 
         <ng-container *ngIf="!loading">
             <!-- None option -->
-            <div class="dropdown-item" [class.selected]="selectedConfigId === null" (click)="selectConfig(null)">
+            <div
+                class="dropdown-item"
+                [class.selected]="selectedConfigId === null"
+                (click)="selectConfig(null)"
+            >
                 None
             </div>
 
@@ -34,7 +60,12 @@
             </div>
 
             <!-- Create new option -->
-            <div class="dropdown-item create-new" (click)="onCreateNew()">Create New Configuration</div>
+            <div
+                class="dropdown-item create-new"
+                (click)="onCreateNew()"
+            >
+                Create New Configuration
+            </div>
         </ng-container>
     </div>
 </div>

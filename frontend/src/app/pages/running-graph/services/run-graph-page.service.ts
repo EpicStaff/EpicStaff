@@ -6,8 +6,8 @@ import { Memory } from '../components/memory-sidebar/models/memory.model';
     providedIn: 'root',
 })
 export class RunGraphPageService {
-  private memories = signal<Memory[]>([]);
-  private nodeNameFilter = signal<string | null>(null);
+    private memories = signal<Memory[]>([]);
+    private nodeNameFilter = signal<string | null>(null);
 
     constructor() {}
 
@@ -19,21 +19,19 @@ export class RunGraphPageService {
         this.memories.set(memories);
     }
 
-  public deleteMemory(memoryId: string): void {
-    const currentMemories = this.memories();
-    const updatedMemories = currentMemories.filter(
-      (memory) => memory.id !== memoryId
-    );
-    this.memories.set(updatedMemories);
-  }
-  
-  public getNodeNameFilter(): string | null {
-    return this.nodeNameFilter();
-  }
+    public deleteMemory(memoryId: string): void {
+        const currentMemories = this.memories();
+        const updatedMemories = currentMemories.filter((memory) => memory.id !== memoryId);
+        this.memories.set(updatedMemories);
+    }
 
-  public setNodeNameFilter(nodeName: string | null) {
-    this.nodeNameFilter.set(nodeName)
-  }
+    public getNodeNameFilter(): string | null {
+        return this.nodeNameFilter();
+    }
 
-  public readonly activeNodeNameFilter = this.nodeNameFilter.asReadonly();
+    public setNodeNameFilter(nodeName: string | null) {
+        this.nodeNameFilter.set(nodeName);
+    }
+
+    public readonly activeNodeNameFilter = this.nodeNameFilter.asReadonly();
 }

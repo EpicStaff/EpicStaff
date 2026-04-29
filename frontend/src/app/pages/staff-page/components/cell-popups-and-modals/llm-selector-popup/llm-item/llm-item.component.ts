@@ -20,7 +20,11 @@ import { MergedConfig } from '../../../../../../features/staff/services/full-age
     imports: [NgClass, NgIf, AppSvgIconComponent],
     template: `
         <div class="llm-item-container">
-            <div class="llm-item" [ngClass]="{ 'selected-item': isSelected }" (click)="onSelect()">
+            <div
+                class="llm-item"
+                [ngClass]="{ 'selected-item': isSelected }"
+                (click)="onSelect()"
+            >
                 <app-svg-icon
                     [icon]="getProviderIcon(item)"
                     size="16px"
@@ -30,10 +34,19 @@ import { MergedConfig } from '../../../../../../features/staff/services/full-age
 
                 <div class="llm-name">
                     {{ getModelName(item) }}
-                    <span *ngIf="item.custom_name" class="custom-name"> ({{ item.custom_name }}) </span>
+                    <span
+                        *ngIf="item.custom_name"
+                        class="custom-name"
+                    >
+                        ({{ item.custom_name }})
+                    </span>
                 </div>
 
-                <input type="checkbox" [checked]="isSelected" (click)="onCheckboxClick($event)" />
+                <input
+                    type="checkbox"
+                    [checked]="isSelected"
+                    (click)="onCheckboxClick($event)"
+                />
             </div>
         </div>
     `,

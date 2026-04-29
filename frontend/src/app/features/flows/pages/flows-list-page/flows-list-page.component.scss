@@ -119,19 +119,13 @@
                     height: 28px;
                     flex-shrink: 0;
 
-                    ::ng-deep app-icon svg path {
-                        stroke: var(--color-text-secondary);
-                        transition: stroke 0.15s ease;
-                    }
+                    color: var(--color-text-secondary);
+                    transition: color 0.15s ease;
 
                     &.active {
                         color: var(--accent-color);
                         border-color: var(--accent-color);
                         background: rgba(88, 86, 214, 0.08);
-
-                        ::ng-deep app-icon svg path {
-                            stroke: var(--accent-color);
-                        }
                     }
                 }
 
@@ -154,10 +148,7 @@
                         width: 28px;
                         height: 28px;
 
-                        ::ng-deep app-icon svg path {
-                            fill: var(--color-text-secondary);
-                            transition: fill 0.15s ease;
-                        }
+                        transition: color 0.15s ease;
                     }
 
                     .breadcrumb-sep {

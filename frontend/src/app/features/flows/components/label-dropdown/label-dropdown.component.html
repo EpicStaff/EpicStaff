@@ -1,7 +1,19 @@
 <div class="label-dropdown-wrapper">
-    <button type="button" class="trigger-btn" (click)="$event.stopPropagation(); toggle()" [class.open]="isOpen()">
+    <button
+        type="button"
+        class="trigger-btn"
+        (click)="$event.stopPropagation(); toggle()"
+        [class.open]="isOpen()"
+    >
         <span class="trigger-text">{{ triggerLabel }}</span>
-        <svg class="chevron" [class.rotated]="isOpen()" width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <svg
+            class="chevron"
+            [class.rotated]="isOpen()"
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            fill="none"
+        >
             <path
                 d="M2 4L6 8L10 4"
                 stroke="currentColor"
@@ -13,15 +25,29 @@
     </button>
 
     @if (isOpen()) {
-        <div class="dropdown-panel" (click)="$event.stopPropagation()">
+        <div
+            class="dropdown-panel"
+            (click)="$event.stopPropagation()"
+        >
             <div class="labels-section-header">
                 <div class="header-labels-left">
-                    <app-svg-icon icon="label" size="1.125rem" class="section-label-icon"/>
+                    <app-svg-icon
+                        icon="label"
+                        size="1.125rem"
+                        class="section-label-icon"
+                    />
                     <span>Labels</span>
                 </div>
                 @if (!addingRoot()) {
-                    <button type="button" class="add-root-btn" (click)="startAddRoot()">
-                        <app-svg-icon icon="plus" size="0.6rem"/>
+                    <button
+                        type="button"
+                        class="add-root-btn"
+                        (click)="startAddRoot()"
+                    >
+                        <app-svg-icon
+                            icon="plus"
+                            size="0.6rem"
+                        />
                         <span>Add label</span>
                     </button>
                 }
@@ -43,11 +69,27 @@
                         [selectedColor]="newLabelColor()"
                         (colorChange)="newLabelColor.set($event)"
                     ></app-label-color-picker>
-                    <button type="button" class="cancel-btn-icon" (click)="cancelAdd()" title="Cancel">
-                        <app-svg-icon icon="x" size="0.85rem"/>
+                    <button
+                        type="button"
+                        class="cancel-btn-icon"
+                        (click)="cancelAdd()"
+                        title="Cancel"
+                    >
+                        <app-svg-icon
+                            icon="x"
+                            size="0.85rem"
+                        />
                     </button>
-                    <button type="button" class="confirm-btn" (click)="confirmAdd()" title="Confirm">
-                        <app-svg-icon icon="check" size="0.85rem"/>
+                    <button
+                        type="button"
+                        class="confirm-btn"
+                        (click)="confirmAdd()"
+                        title="Confirm"
+                    >
+                        <app-svg-icon
+                            icon="check"
+                            size="0.85rem"
+                        />
                     </button>
                 </div>
                 @if (addLabelError()) {
@@ -97,12 +139,18 @@
                             (click)="$event.stopPropagation(); startAddChild(item.node.id)"
                             title="Add sublabel"
                         >
-                            <app-svg-icon icon="plus" size="0.8rem"/>
+                            <app-svg-icon
+                                icon="plus"
+                                size="0.8rem"
+                            />
                         </button>
                     </div>
 
                     @if (addingChildOf() === item.node.id) {
-                        <div class="add-label-row child-add" [style.paddingLeft]="getIndentPadding(item.depth + 1)">
+                        <div
+                            class="add-label-row child-add"
+                            [style.paddingLeft]="getIndentPadding(item.depth + 1)"
+                        >
                             <input
                                 class="label-input"
                                 [class.has-error]="addLabelError()"
@@ -117,11 +165,27 @@
                                 [selectedColor]="newLabelColor()"
                                 (colorChange)="newLabelColor.set($event)"
                             ></app-label-color-picker>
-                            <button type="button" class="cancel-btn-icon" (click)="cancelAdd()" title="Cancel">
-                                <app-svg-icon icon="x" size="0.85rem"/>
+                            <button
+                                type="button"
+                                class="cancel-btn-icon"
+                                (click)="cancelAdd()"
+                                title="Cancel"
+                            >
+                                <app-svg-icon
+                                    icon="x"
+                                    size="0.85rem"
+                                />
                             </button>
-                            <button type="button" class="confirm-btn" (click)="confirmAdd()" title="Confirm">
-                                <app-svg-icon icon="check" size="0.85rem"/>
+                            <button
+                                type="button"
+                                class="confirm-btn"
+                                (click)="confirmAdd()"
+                                title="Confirm"
+                            >
+                                <app-svg-icon
+                                    icon="check"
+                                    size="0.85rem"
+                                />
                             </button>
                         </div>
                         @if (addLabelError()) {
@@ -132,10 +196,22 @@
             </div>
 
             <div class="dropdown-footer">
-                <app-button type="outline-primary" (click)="clear()">Clear filter</app-button>
+                <app-button
+                    type="outline-primary"
+                    (click)="clear()"
+                    >Clear filter</app-button
+                >
                 <div class="footer-right">
-                    <app-button type="outline-primary" (click)="close()">Cancel</app-button>
-                    <app-button type="primary" (click)="save()">Save changes</app-button>
+                    <app-button
+                        type="outline-primary"
+                        (click)="close()"
+                        >Cancel</app-button
+                    >
+                    <app-button
+                        type="primary"
+                        (click)="save()"
+                        >Save changes</app-button
+                    >
                 </div>
             </div>
         </div>

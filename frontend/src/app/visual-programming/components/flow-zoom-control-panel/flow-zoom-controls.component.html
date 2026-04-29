@@ -1,6 +1,10 @@
 <div class="flow-zoom-controls">
     @for (control of zoomControls; track control.icon) {
-        <button class="zoom-button" [attr.title]="control.tooltip" (click)="control.action()">
+        <button
+            class="zoom-button"
+            [attr.title]="control.tooltip"
+            (click)="control.action()"
+        >
             <app-svg-icon [icon]="control.icon"></app-svg-icon>
         </button>
     }

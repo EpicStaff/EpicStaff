@@ -4,14 +4,25 @@
             {{ isEditMode ? 'Edit MCP Tool' : 'Add MCP Tool' }}
         </h2>
 
-        <app-icon-button icon="x" ariaLabel="Close dialog" size="2rem" (onClick)="onCancel()"></app-icon-button>
+        <app-icon-button
+            icon="x"
+            ariaLabel="Close dialog"
+            size="2rem"
+            (onClick)="onCancel()"
+        ></app-icon-button>
     </div>
 
-    <form [formGroup]="form" class="mcp-tool-dialog__form">
+    <form
+        [formGroup]="form"
+        class="mcp-tool-dialog__form"
+    >
         <div class="mcp-tool-dialog__body">
             @if (backendErrorMessage) {
                 <div class="mcp-tool-dialog__error-banner">
-                    <app-svg-icon icon="alert-circle" size="20px" />
+                    <app-svg-icon
+                        icon="alert-circle"
+                        size="20px"
+                    />
                     <span>{{ backendErrorMessage }}</span>
                 </div>
             }
@@ -85,8 +96,16 @@
     </form>
 
     <div class="mcp-tool-dialog__footer">
-        <app-button type="outline-primary" (click)="onCancel()">Cancel</app-button>
-        <app-button type="primary" [disabled]="form.invalid || form.pending" (click)="onSave()">
+        <app-button
+            type="outline-primary"
+            (click)="onCancel()"
+            >Cancel</app-button
+        >
+        <app-button
+            type="primary"
+            [disabled]="form.invalid || form.pending"
+            (click)="onSave()"
+        >
             {{ isEditMode ? 'Update' : 'Create' }}
         </app-button>
     </div>

@@ -9,10 +9,17 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
     standalone: true,
     imports: [NgFor, FormsModule, NgClass, AppSvgIconComponent],
     template: `
-        <div class="tags-popup" (click)="$event.stopPropagation()">
+        <div
+            class="tags-popup"
+            (click)="$event.stopPropagation()"
+        >
             <div class="header">
                 <h3>Manage Tags</h3>
-                <span class="clear-all" (click)="clearAllTags()">Clear all</span>
+                <span
+                    class="clear-all"
+                    (click)="clearAllTags()"
+                    >Clear all</span
+                >
             </div>
             <div class="content">
                 <div class="tags-container">
@@ -22,20 +29,44 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                         [ngClass]="{ duplicate: duplicateTagIndex === i }"
                     >
                         <div class="tag-text">#{{ tag }}</div>
-                        <button type="button" class="remove-btn" (click)="removeTag(i)" aria-label="Remove tag">
+                        <button
+                            type="button"
+                            class="remove-btn"
+                            (click)="removeTag(i)"
+                            aria-label="Remove tag"
+                        >
                             ×
                         </button>
                     </div>
                     <div class="tag-input-item">
-                        <input type="text" placeholder="Add tag" [(ngModel)]="newTag" (keyup.enter)="addTag()" />
-                        <button type="button" class="add-btn" (click)="addTag()" aria-label="Add tag">
-                            <app-svg-icon icon="plus" size="1rem" />
+                        <input
+                            type="text"
+                            placeholder="Add tag"
+                            [(ngModel)]="newTag"
+                            (keyup.enter)="addTag()"
+                        />
+                        <button
+                            type="button"
+                            class="add-btn"
+                            (click)="addTag()"
+                            aria-label="Add tag"
+                        >
+                            <app-svg-icon
+                                icon="plus"
+                                size="1rem"
+                            />
                         </button>
                     </div>
                 </div>
             </div>
 
-            <button class="save" type="button" (click)="saveTags()">Save</button>
+            <button
+                class="save"
+                type="button"
+                (click)="saveTags()"
+            >
+                Save
+            </button>
         </div>
     `,
     styles: [

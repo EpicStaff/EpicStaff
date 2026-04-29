@@ -8,7 +8,10 @@ import { GraphSessionStatus } from '../../services/flows-sessions.service';
     standalone: true,
     imports: [CommonModule],
     template: `
-        <span class="status-badge" [ngClass]="statusClass">
+        <span
+            class="status-badge"
+            [ngClass]="statusClass"
+        >
             <i [class]="statusIcon"></i>
             {{ statusLabel }}
         </span>

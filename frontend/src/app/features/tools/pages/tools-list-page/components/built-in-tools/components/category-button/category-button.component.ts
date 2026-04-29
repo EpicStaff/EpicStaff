@@ -8,8 +8,17 @@ import { AppSvgIconComponent } from '../../../../../../../../shared/components/a
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [AppSvgIconComponent],
     template: `
-        <button type="button" class="category-btn" [class.selected]="selected" (click)="clicked.emit()">
-            <app-svg-icon [icon]="icon" size="1.1rem" class="cat-icon" />
+        <button
+            type="button"
+            class="category-btn"
+            [class.selected]="selected"
+            (click)="clicked.emit()"
+        >
+            <app-svg-icon
+                [icon]="icon"
+                size="1.1rem"
+                class="cat-icon"
+            />
             <span class="cat-label">{{ label }}</span>
         </button>
     `,

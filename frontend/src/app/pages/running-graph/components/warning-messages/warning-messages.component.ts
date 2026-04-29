@@ -10,19 +10,34 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
     imports: [CommonModule, AppSvgIconComponent],
     animations: [expandCollapseAnimation],
     template: `
-        <div class="warning-container" *ngIf="messages && messages.length > 0">
-            <div class="warning-header" (click)="toggleExpand()">
+        <div
+            class="warning-container"
+            *ngIf="messages && messages.length > 0"
+        >
+            <div
+                class="warning-header"
+                (click)="toggleExpand()"
+            >
                 <div class="play-arrow">
-                    <app-svg-icon [icon]="isExpanded ? 'caret-down-filled' : 'caret-right-filled'" size="1rem" />
+                    <app-svg-icon
+                        [icon]="isExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                        size="1rem"
+                    />
                 </div>
                 <div class="icon-container">
-                    <app-svg-icon icon="alert-triangle" size="1rem" />
+                    <app-svg-icon
+                        icon="alert-triangle"
+                        size="1rem"
+                    />
                 </div>
                 <h3>Warnings</h3>
                 <span class="warning-count">({{ messages.length }})</span>
             </div>
 
-            <div class="collapsible-content" [@expandCollapse]="isExpanded ? 'expanded' : 'collapsed'">
+            <div
+                class="collapsible-content"
+                [@expandCollapse]="isExpanded ? 'expanded' : 'collapsed'"
+            >
                 <div class="warning-content">
                     @for (message of messages; track message; let i = $index) {
                         <div class="warning-item">

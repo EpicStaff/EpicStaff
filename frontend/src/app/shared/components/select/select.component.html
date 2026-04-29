@@ -1,5 +1,10 @@
 @if (label()) {
-    <app-tooltip [required]="required()" [tooltipText]="tooltipText()" [label]="label()" [icon]="icon()" />
+    <app-tooltip
+        [required]="required()"
+        [tooltipText]="tooltipText()"
+        [label]="label()"
+        [icon]="icon()"
+    />
 }
 
 <div class="selector">
@@ -13,10 +18,16 @@
         (click)="toggle()"
     >
         @if (loading()) {
-            <div class="selector__spinner" [ngClass]="'selector__spinner--' + mod()"></div>
+            <div
+                class="selector__spinner"
+                [ngClass]="'selector__spinner--' + mod()"
+            ></div>
         } @else {
             @if (selectedItem()?.icon) {
-                <app-svg-icon [icon]="selectedItem()!.icon!" [size]="'18px'"></app-svg-icon>
+                <app-svg-icon
+                    [icon]="selectedItem()!.icon!"
+                    [size]="'18px'"
+                ></app-svg-icon>
             }
             <span class="selector__text">
                 {{ selectedItem() ? selectedItem()!.name : placeholder() }}
@@ -30,7 +41,13 @@
                 height="16"
                 viewBox="0 0 24 24"
             >
-                <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" />
+                <path
+                    d="M6 9l6 6 6-6"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    fill="none"
+                    stroke-linecap="round"
+                />
             </svg>
         }
     </button>
@@ -45,14 +62,20 @@
                 (click)="select(item)"
             >
                 @if (item.icon) {
-                    <app-svg-icon [icon]="item.icon" [size]="'18px'"></app-svg-icon>
+                    <app-svg-icon
+                        [icon]="item.icon"
+                        [size]="'18px'"
+                    ></app-svg-icon>
                 }
                 <span class="selector__text">{{ item.name }}</span>
             </div>
         }
 
         @if (!items().length) {
-            <div class="selector__option selector__option--empty" [ngClass]="'selector__option--' + mod()">
+            <div
+                class="selector__option selector__option--empty"
+                [ngClass]="'selector__option--' + mod()"
+            >
                 No items available
             </div>
         }

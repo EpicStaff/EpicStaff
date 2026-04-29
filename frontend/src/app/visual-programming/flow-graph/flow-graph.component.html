@@ -229,11 +229,10 @@
                             stroke="none"
                         ></path>
                     </svg>
-
                     <div
                         fConnectionContent
                         class="connection-center"
-                        [position]="0.3"
+                        [position]="0.5"
                     >
                         <button
                             type="button"
@@ -288,6 +287,13 @@
     </div>
 
     <div class="top-right-controls">
+    <div class="top-right-actions">
+        @if (currentFlowId) {
+            <app-flow-files-button
+                [flowId]="currentFlowId"
+                [flowName]="flowName"
+            ></app-flow-files-button>
+        }
         <button
             class="show-inputs-btn"
             [class.active]="showVariables()"
@@ -308,6 +314,7 @@
         </div>
     </div>
 
+    </div>
     <app-flow-action-panel></app-flow-action-panel>
 
     @if (showContextMenu()) {

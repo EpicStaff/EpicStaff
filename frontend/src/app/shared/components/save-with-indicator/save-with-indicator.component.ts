@@ -2,8 +2,8 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 
 import { CollapseOnOverflowDirective } from '../../directives/collapse-on-overflow.directive';
-import { Spinner2Component } from '../spinner-type2/spinner.component';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
+import { Spinner2Component } from '../spinner-type2/spinner.component';
 
 @Component({
     selector: 'app-save-with-indicator',

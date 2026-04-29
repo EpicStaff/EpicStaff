@@ -10,7 +10,10 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
     template: `
         <div class="no-messages">
             <div class="no-messages-content">
-                <app-svg-icon icon="message-circle-off" size="1.5rem" />
+                <app-svg-icon
+                    icon="message-circle-off"
+                    size="1.5rem"
+                />
                 <p>No messages available for this session.</p>
             </div>
         </div>

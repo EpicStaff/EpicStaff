@@ -3,12 +3,23 @@
         <h2 class="create-agent__title">
             {{ isEditMode ? 'Edit Agent' : 'Create New Agent' }}
         </h2>
-        <button mat-icon-button class="create-agent__close-button" (click)="onCancelForm()" [disabled]="isSubmitting()">
-            <app-svg-icon icon="close" size="24px" />
+        <button
+            mat-icon-button
+            class="create-agent__close-button"
+            (click)="onCancelForm()"
+            [disabled]="isSubmitting()"
+        >
+            <app-svg-icon
+                icon="close"
+                size="24px"
+            />
         </button>
     </div>
 
-    <form [formGroup]="agentForm" class="create-agent__body">
+    <form
+        [formGroup]="agentForm"
+        class="create-agent__body"
+    >
         <!-- Left Side - Basic Information -->
         <div class="create-agent__content">
             <div>
@@ -49,7 +60,11 @@
         <div class="create-agent__sidebar">
             <div class="tabs">
                 @for (tab of tabs; track tab.id) {
-                    <app-tab-button [mod]="'sm'" [active]="tab.id === activeTab()" (click)="activeTab.set(tab.id)">
+                    <app-tab-button
+                        [mod]="'sm'"
+                        [active]="tab.id === activeTab()"
+                        (click)="activeTab.set(tab.id)"
+                    >
                         {{ tab.label }}
                     </app-tab-button>
                     @if (!$last) {
@@ -95,8 +110,18 @@
     </form>
 
     <div class="create-agent__footer">
-        <app-button type="outline-primary" (click)="onCancelForm()" [disabled]="isSubmitting()"> Cancel </app-button>
-        <app-button type="primary" [disabled]="isSubmitting() || agentForm.invalid" (click)="onSubmitForm()">
+        <app-button
+            type="outline-primary"
+            (click)="onCancelForm()"
+            [disabled]="isSubmitting()"
+        >
+            Cancel
+        </app-button>
+        <app-button
+            type="primary"
+            [disabled]="isSubmitting() || agentForm.invalid"
+            (click)="onSubmitForm()"
+        >
             @if (isSubmitting()) {
                 <mat-spinner diameter="16"></mat-spinner>
             } @else {

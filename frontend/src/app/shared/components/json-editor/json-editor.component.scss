@@ -100,8 +100,9 @@
         height: 100%;
         width: 100%;
         opacity: 1;
-        transition: max-height 300ms ease,
-        opacity 200ms ease;
+        transition:
+            max-height 300ms ease,
+            opacity 200ms ease;
 
         .editor-loading-overlay {
             position: absolute;

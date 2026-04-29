@@ -8,7 +8,11 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
     standalone: true,
     imports: [CommonModule, AppSvgIconComponent],
     template: `
-        <svg [attr.width]="width" [attr.height]="height" [attr.viewBox]="'0 0 ' + width + ' ' + height">
+        <svg
+            [attr.width]="width"
+            [attr.height]="height"
+            [attr.viewBox]="'0 0 ' + width + ' ' + height"
+        >
             <path
                 [attr.d]="roundedDiamondPath"
                 [style.fill]="'var(--color-nodes-background)'"
@@ -22,7 +26,10 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
                 [attr.height]="contentHeight"
             >
                 <div class="edge-content">
-                    <app-svg-icon icon="route-alt-left" size="25px"></app-svg-icon>
+                    <app-svg-icon
+                        icon="route-alt-left"
+                        size="25px"
+                    ></app-svg-icon>
                     <span>Conditional Edge</span>
                 </div>
             </foreignObject>

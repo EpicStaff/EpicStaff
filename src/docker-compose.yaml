@@ -39,6 +39,21 @@ services:
       DJANGO_HOST: ${DJANGO_HOST:-localhost}
       DJANGO_PORT: ${DJANGO_PORT:-8000}
       LOAD_DEBUG_ENV: ${LOAD_DEBUG_ENV}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin_secret}
+      STORAGE_BUCKET_NAME: ${STORAGE_BUCKET_NAME:-epicstaff}
+      STORAGE_LOCAL_ROOT: ${STORAGE_LOCAL_ROOT:-/app/storage}
+      JWT_SECRET: ${JWT_SECRET:-}
+      JWT_ACCESS_MINUTES: ${JWT_ACCESS_MINUTES:-15}
+      JWT_REFRESH_DAYS: ${JWT_REFRESH_DAYS:-7}
+      PASSWORD_RESET_TOKEN_TTL: ${PASSWORD_RESET_TOKEN_TTL:-3600}
+      DJANGO_AUTO_CREATE_ADMIN: ${DJANGO_AUTO_CREATE_ADMIN:-False}
+      DJANGO_ADMIN_EMAIL: ${DJANGO_ADMIN_EMAIL:-}
+      DJANGO_ADMIN_PASSWORD: ${DJANGO_ADMIN_PASSWORD:-}
+      DEFAULT_ORGANIZATION_NAME: ${DEFAULT_ORGANIZATION_NAME:-}
+      DJANGO_API_KEY: ${DJANGO_API_KEY:-}
     volumes:
       - media_data:/app/src/django_app/media
     networks:
@@ -47,6 +62,8 @@ services:
       crewdb:
         condition: service_started
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://${DJANGO_HOST:-localhost}:${DJANGO_PORT:-8000}/ht/')\""]
@@ -246,6 +263,10 @@ services:
       <<: *common_env
       BASE_VENV_PATH: ${BASE_VENV_PATH}
       OUTPUT_PATH: ${OUTPUT_PATH}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin_secret}
+      STORAGE_BUCKET_NAME: ${STORAGE_BUCKET_NAME:-epicstaff}
     volumes:
       - sandbox_venvs:${BASE_VENV_PATH}
       - sandbox_executions:${OUTPUT_PATH}
@@ -312,6 +333,42 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    command: server /data --console-address ":${MINIO_CONSOLE_PORT:-9001}"
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY:-minioadmin_secret}
+    volumes:
+      - minio_data:/data
+    networks:
+      - backend-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:${MINIO_PORT:-9000}/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: minio-init
+    networks:
+      - backend-network
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:${MINIO_PORT:-9000} ${STORAGE_ACCESS_KEY:-minioadmin} ${STORAGE_SECRET_KEY:-minioadmin_secret} &&
+      mc mb --ignore-existing local/${STORAGE_BUCKET_NAME:-epicstaff} &&
+      echo 'Bucket ready.' &&
+      exit 0
+      "
+    restart: on-failure
 
   frontend:
     image: frontend
@@ -410,6 +467,7 @@ volumes:
     external: true
   redis_data: {}
   code_instances: {}
+  minio_data: {}
 
   graph_data:
     external: true

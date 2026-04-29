@@ -7,7 +7,10 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
     imports: [CommonModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div class="projects-page-search" [class.projects-page-search-has-content]="searchTerm.trim().length > 0">
+        <div
+            class="projects-page-search"
+            [class.projects-page-search-has-content]="searchTerm.trim().length > 0"
+        >
             <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="20"
@@ -17,8 +20,17 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
                 stroke-width="1.5"
                 viewBox="0 0 24 24"
             >
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="16" y1="16" x2="21.5" y2="21.5"></line>
+                <circle
+                    cx="11"
+                    cy="11"
+                    r="8"
+                ></circle>
+                <line
+                    x1="16"
+                    y1="16"
+                    x2="21.5"
+                    y2="21.5"
+                ></line>
             </svg>
 
             <input

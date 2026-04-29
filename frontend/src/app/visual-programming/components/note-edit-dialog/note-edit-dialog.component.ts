@@ -1,6 +1,14 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, HostListener, Inject, OnInit } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    ChangeDetectorRef,
+    Component,
+    DestroyRef,
+    HostListener,
+    Inject,
+    OnInit,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 
@@ -12,17 +20,30 @@ import { GraphNoteModel } from '../../core/models/node.model';
     standalone: true,
     imports: [CommonModule, FormsModule, AppSvgIconComponent],
     template: `
-        <div class="backdrop" (click)="close()">
-            <div class="wrapper" (click)="$event.stopPropagation()">
+        <div
+            class="backdrop"
+            (click)="close()"
+        >
+            <div
+                class="wrapper"
+                (click)="$event.stopPropagation()"
+            >
                 <div class="dialog-header">
                     <div class="icon-and-title">
-                        <app-svg-icon icon="note" size="1.25rem"></app-svg-icon>
+                        <app-svg-icon
+                            icon="note"
+                            size="1.25rem"
+                        ></app-svg-icon>
                         <h2 class="title">Edit Note</h2>
                     </div>
                     <div class="header-actions">
                         <div class="close-action">
                             <span class="esc-label">ESC</span>
-                            <app-svg-icon icon="x" (click)="close()" style="cursor:pointer"></app-svg-icon>
+                            <app-svg-icon
+                                icon="x"
+                                (click)="close()"
+                                style="cursor:pointer"
+                            ></app-svg-icon>
                         </div>
                     </div>
                 </div>
@@ -163,14 +184,12 @@ export class NoteEditDialogComponent implements OnInit {
         this.noteContent = this.data.node.data.content || '';
         this.cdr.detectChanges();
 
-        this.dialogRef.keydownEvents
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((event: KeyboardEvent) => {
-                if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
-                    event.preventDefault();
-                    this.close();
-                }
-            });
+        this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event: KeyboardEvent) => {
+            if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                event.preventDefault();
+                this.close();
+            }
+        });
     }
 
     close(): void {

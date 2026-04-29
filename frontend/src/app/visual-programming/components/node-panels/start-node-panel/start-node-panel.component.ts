@@ -13,7 +13,10 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
     template: `
         <div class="panel-container">
             <div class="panel-content">
-                <form [formGroup]="form" class="form-container">
+                <form
+                    [formGroup]="form"
+                    class="form-container"
+                >
                     <!-- Helper Text -->
                     <div class="helper-text">
                         Here you can define your domain variables that will be available throughout your workflow

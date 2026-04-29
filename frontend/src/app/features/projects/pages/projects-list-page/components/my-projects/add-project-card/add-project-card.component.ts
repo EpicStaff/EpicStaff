@@ -1,9 +1,4 @@
-import {
-    ChangeDetectionStrategy,
-    Component,
-    EventEmitter,
-    Output,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Output } from '@angular/core';
 
 import { AppSvgIconComponent } from '../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
@@ -13,10 +8,16 @@ import { AppSvgIconComponent } from '../../../../../../../shared/components/app-
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [AppSvgIconComponent],
     template: `
-        <div class="add-project-card" (click)="createClick.emit()">
+        <div
+            class="add-project-card"
+            (click)="createClick.emit()"
+        >
             <div class="content">
                 <div class="plus-icon">
-                    <app-svg-icon icon="plus" size="2.5rem" />
+                    <app-svg-icon
+                        icon="plus"
+                        size="2.5rem"
+                    />
                 </div>
                 <div class="title">Create New Project</div>
             </div>

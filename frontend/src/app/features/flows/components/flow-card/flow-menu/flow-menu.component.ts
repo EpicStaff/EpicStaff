@@ -32,7 +32,11 @@ export class FlowMenuComponent implements OnDestroy {
     private readonly isMouseOnButton = signal<boolean>(false);
     private readonly isMouseOnMenu = signal<boolean>(false);
     public readonly isMenuOpen = signal<boolean>(false);
+    public readonly openUpwards = signal<boolean>(false);
     private closeTimeout: ReturnType<typeof setTimeout> | null = null;
+    // Approximate menu height (6 items * ~36px + paddings/divider). Used before the menu is rendered
+    // so we can decide the open direction without a flash of mis-positioned content.
+    private static readonly ESTIMATED_MENU_HEIGHT = 240;
 
     constructor() {
         effect(() => {
@@ -43,6 +47,9 @@ export class FlowMenuComponent implements OnDestroy {
     public toggleMenu(event: MouseEvent): void {
         event.stopPropagation();
         const newState = !this.isMenuOpen();
+        if (newState) {
+            this.updateOpenDirection();
+        }
         this.isMenuOpen.set(newState);
         if (newState) {
             this.cancelCloseTimeout();
@@ -51,6 +58,14 @@ export class FlowMenuComponent implements OnDestroy {
             this.isMouseOnMenu.set(false);
         }
         this.menuToggle.emit(newState);
+    }
+
+    private updateOpenDirection(): void {
+        const button: HTMLElement | null = this.elementRef.nativeElement?.querySelector('.menu-button');
+        if (!button) return;
+        const rect = button.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.bottom;
+        this.openUpwards.set(spaceBelow < FlowMenuComponent.ESTIMATED_MENU_HEIGHT && rect.top > spaceBelow);
     }
 
     public onButtonEnter(): void {

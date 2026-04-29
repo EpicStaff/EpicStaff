@@ -13,7 +13,10 @@ import { ResizeHandleComponent } from '../../resize-handle/resize-handle.compone
     standalone: true,
     imports: [CommonModule, FFlowModule, FormsModule, ResizeHandleComponent],
     template: `
-        <div class="note-container" [style.background-color]="node.data.backgroundColor || '#ffffd1'">
+        <div
+            class="note-container"
+            [style.background-color]="node.data.backgroundColor || '#ffffd1'"
+        >
             <div class="content-container">
                 {{ node.data.content || 'Add note text...' }}
             </div>

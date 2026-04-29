@@ -13,9 +13,23 @@ $compact-theme: mat.define-theme(
 );
 
 :root {
+    --mdc-plain-tooltip-container-color: rgba(33, 35, 37, 1);
+    --mdc-plain-tooltip-supporting-text-color: #d9d9de;
+
     @include mat.form-field-density($compact-theme);
 }
 
 .mat-mdc-form-field-required-marker {
     color: var(--color-required-asterisk, var(--accent-color));
+}
+
+.mat-mdc-tooltip .mdc-tooltip__surface {
+    box-shadow:
+        0 6px 10px 4px rgba(0, 0, 0, 0.15),
+        0 2px 3px 0 rgba(0, 0, 0, 0.3);
+}
+
+.allow-scroll-tooltip .mdc-tooltip__surface {
+    max-height: 225px;
+    overflow-y: auto;
 }

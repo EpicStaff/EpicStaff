@@ -225,6 +225,7 @@ function toCodeAgentComparable(node: CodeAgentNodeModel): unknown {
         output_variable_path: node.output_variable_path,
         stream_config: node.stream_config ?? {},
         output_schema: node.data?.output_schema ?? {},
+        use_storage: node.data?.use_storage ?? false,
         metadata: toNodeMetadata(node),
     };
 }

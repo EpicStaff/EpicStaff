@@ -7,9 +7,21 @@
         (drop)="onDrop($event)"
     >
         <h3 class="file-uploader__label">Drag and drop files here or click to upload</h3>
-        <label (click)="fileInput.click()" class="file-uploader__button">
-            <app-svg-icon icon="upload" size="2rem" />
+        <label
+            (click)="fileInput.click()"
+            class="file-uploader__button"
+        >
+            <app-svg-icon
+                icon="upload"
+                size="2rem"
+            />
         </label>
-        <input #fileInput type="file" multiple style="display: none" (change)="onFileSelect($event)" />
+        <input
+            #fileInput
+            type="file"
+            multiple
+            style="display: none"
+            (change)="onFileSelect($event)"
+        />
     </div>
 </div>

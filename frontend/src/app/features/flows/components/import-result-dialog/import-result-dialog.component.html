@@ -12,10 +12,18 @@
                 }"
             >
                 @if (allCreated()) {
-                    <app-icon icon="ui/created-imported-item" size="1rem" class="created"></app-icon>
+                    <app-icon
+                        icon="ui/created-imported-item"
+                        size="1rem"
+                        class="created"
+                    ></app-icon>
                     All items were newly created
                 } @else if (allReused()) {
-                    <app-icon icon="ui/reused-imported-item" size="1rem" class="reused"></app-icon>
+                    <app-icon
+                        icon="ui/reused-imported-item"
+                        size="1rem"
+                        class="reused"
+                    ></app-icon>
                     All items already existed and were reused
                 } @else {
                     <span class="viewing-dot"></span>
@@ -23,7 +31,12 @@
                 }
             </div>
         </div>
-        <app-icon [icon]="'ui/close'" class="close-btn" [size]="'1.5rem'" (click)="closeDialog()" />
+        <app-icon
+            [icon]="'ui/close'"
+            class="close-btn"
+            [size]="'1.5rem'"
+            (click)="closeDialog()"
+        />
     </div>
 
     <!-- Content -->
@@ -39,12 +52,20 @@
                 </h3>
                 <div class="viewing-totals">
                     <div class="viewing-total-item">
-                        <app-icon icon="ui/created-imported-item" size="1rem" class="created"></app-icon>
+                        <app-icon
+                            icon="ui/created-imported-item"
+                            size="1rem"
+                            class="created"
+                        ></app-icon>
                         <span class="viewing-count created-count">{{ totalCreatedCount() }}</span>
                         <span class="viewing-label">Created</span>
                     </div>
                     <div class="viewing-total-item">
-                        <app-icon icon="ui/reused-imported-item" size="1rem" class="reused"></app-icon>
+                        <app-icon
+                            icon="ui/reused-imported-item"
+                            size="1rem"
+                            class="reused"
+                        ></app-icon>
                         <span class="viewing-count reused-count">{{ totalReusedCount() }}</span>
                         <span class="viewing-label">Reused</span>
                     </div>
@@ -59,13 +80,24 @@
                     [class.hidden]="!canScrollLeft()"
                     aria-label="Scroll left"
                 >
-                    <app-icon icon="ui/chevron-up" size="1rem" class="scroll-btn-icon"></app-icon>
+                    <app-icon
+                        icon="ui/chevron-up"
+                        size="1rem"
+                        class="scroll-btn-icon"
+                    ></app-icon>
                 </button>
 
-                <div class="summary-list" #summaryList (scroll)="onSummaryScroll()">
+                <div
+                    class="summary-list"
+                    #summaryList
+                    (scroll)="onSummaryScroll()"
+                >
                     @for (entityType of entityTypes(); track entityType) {
                         @if (getEntityTypeCount(entityType) > 0) {
-                            <div class="summary-item" (click)="scrollToEntityGroup(entityType)">
+                            <div
+                                class="summary-item"
+                                (click)="scrollToEntityGroup(entityType)"
+                            >
                                 @if (isInlineSvgIcon(entityType)) {
                                     <div
                                         class="item-icon"
@@ -97,19 +129,33 @@
                     [class.hidden]="!canScrollRight()"
                     aria-label="Scroll right"
                 >
-                    <app-icon icon="ui/chevron-down" size="1rem" class="scroll-btn-icon"></app-icon>
+                    <app-icon
+                        icon="ui/chevron-down"
+                        size="1rem"
+                        class="scroll-btn-icon"
+                    ></app-icon>
                 </button>
             </div>
         </div>
 
         <!-- Entity Lists Section -->
-        <div class="entity-lists-section" #entityListsSection>
+        <div
+            class="entity-lists-section"
+            #entityListsSection
+        >
             @for (entityType of entityTypes(); track entityType) {
                 @let result = getEntityTypeResult(entityType);
                 @if (result!.total !== 0) {
-                    <div class="entity-group" #entityGroup [class.highlighted]="highlightedGroup() === entityType">
+                    <div
+                        class="entity-group"
+                        #entityGroup
+                        [class.highlighted]="highlightedGroup() === entityType"
+                    >
                         <!-- Entity Type Header -->
-                        <h4 class="entity-type-title" (click)="toggleGroup(entityType)">
+                        <h4
+                            class="entity-type-title"
+                            (click)="toggleGroup(entityType)"
+                        >
                             <app-icon
                                 icon="ui/chevron-down"
                                 size="0.85rem"
@@ -164,7 +210,10 @@
                                                         ></app-icon>
                                                     }
                                                     <span class="item-name">{{ item.name }}</span>
-                                                    <span class="status-badge" [ngClass]="getStatusClass('created')">
+                                                    <span
+                                                        class="status-badge"
+                                                        [ngClass]="getStatusClass('created')"
+                                                    >
                                                         <app-icon
                                                             icon="ui/created-imported-item"
                                                             size="1.2rem"
@@ -242,7 +291,10 @@
                                                         ></app-icon>
                                                     }
                                                     <span class="item-name">{{ item.name }}</span>
-                                                    <span class="status-badge" [ngClass]="getStatusClass('reused')">
+                                                    <span
+                                                        class="status-badge"
+                                                        [ngClass]="getStatusClass('reused')"
+                                                    >
                                                         <app-icon
                                                             icon="ui/reused-imported-item"
                                                             size="1.2rem"

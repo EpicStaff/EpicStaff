@@ -85,6 +85,19 @@
     --color-ks-status-processing: #ff8f3f;
     --color-ks-status-failed: #dc5b60;
     --color-error: #f54242;
+
+    //ui-kit colors
+    --inactive-purple: rgba(104, 95, 255, 0.4);
+    --purple-primary: rgba(104, 95, 255, 1);
+    --transparent-white-8: rgba(217, 217, 222, 0.08);
+    --transparent-green-8: rgba(42, 186, 107, 0.08);
+    --transparent-orange-8: rgba(255, 143, 63, 0.08);
+
+    --text: rgba(217, 217, 222, 1);
+    --text-secondary-60: rgba(217, 217, 222, 0.6);
+
+    //storage
+    --color-storage-icon: rgba(230, 230, 230, 1);
 }
 
 .my-app-light {

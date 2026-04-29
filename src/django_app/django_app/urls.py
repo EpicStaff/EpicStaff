@@ -15,16 +15,18 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
-from django.contrib import admin
 from django.urls import include, path
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.views import TokenRefreshView
 from tables.views.auth_views import (
-    AuthMeView,
-    TokenIntrospectView,
     ApiKeyValidateView,
+    AuthMeView,
     FirstSetupView,
+    LoginView,
+    LogoutView,
     ResetUserView,
+    SseTicketView,
     SwaggerTokenView,
+    TokenIntrospectView,
 )
 from .yasg import urlpatterns as doc_urls
 from django.conf import settings
@@ -32,10 +34,11 @@ from django.conf.urls.static import static
 
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
-    path("api/auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
-    path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    path("api/auth/login/", LoginView.as_view(), name="login"),
+    path("api/auth/logout/", LogoutView.as_view(), name="logout"),
+    path("api/auth/refresh/", TokenRefreshView.as_view(), name="refresh"),
     path("api/auth/me/", AuthMeView.as_view(), name="auth_me"),
+    path("api/auth/sse-ticket/", SseTicketView.as_view(), name="sse_ticket"),
     path(
         "api/auth/introspect/", TokenIntrospectView.as_view(), name="token_introspect"
     ),

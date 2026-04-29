@@ -1,4 +1,5 @@
 .page {
+    background: #1a1b1c;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
@@ -12,10 +13,10 @@
         align-items: center;
         gap: 2.5rem;
         width: 480px;
-        background: #212325;
+        background: var(--color-ks-background);
         padding: 1.875rem 1.875rem 2.5rem 1.875rem;
         border-radius: 10px;
-        border: 1px solid #2b2d30;
+        border: 1px solid var(--color-divider-subtle);
 
         .title-section {
             text-align: center;
@@ -51,10 +52,16 @@
             display: flex;
             align-items: center;
             gap: 10px;
+            font-size: 0.875rem;
 
-            span {
-                font-size: 0.875rem;
+            .remember-label {
                 color: var(--color-ks-secondary);
+            }
+
+            .forgot-label {
+                color: var(--accent-color);
+                cursor: pointer;
+                margin-left: auto;
             }
         }
     }

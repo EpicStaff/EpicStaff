@@ -1,0 +1,24 @@
+<div class="save-dropdown">
+    <button
+        class="save-dropdown__item"
+        (click)="save.emit()"
+    >
+        Save
+    </button>
+    <button
+        class="save-dropdown__item"
+        (click)="saveVersion.emit()"
+    >
+        Save Version
+    </button>
+    <button
+        class="save-dropdown__item"
+        (click)="viewVersionHistory.emit()"
+    >
+        Version History
+        <app-svg-icon
+            icon="arrow-up-right"
+            size="1rem"
+        />
+    </button>
+</div>

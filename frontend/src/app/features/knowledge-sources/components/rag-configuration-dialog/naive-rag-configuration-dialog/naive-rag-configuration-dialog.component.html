@@ -3,11 +3,24 @@
         <span class="dialog__header-title"> Naive RAG Configuration </span>
 
         <div class="dialog__actions">
-            <app-button type="outline-primary" (click)="onClose()"> Close </app-button>
+            <app-button
+                type="outline-primary"
+                (click)="onClose()"
+            >
+                Close
+            </app-button>
 
-            <app-button type="primary" (click)="runIndexing()"> Run indexing </app-button>
+            <app-button
+                type="primary"
+                (click)="runIndexing()"
+            >
+                Run indexing
+            </app-button>
         </div>
     </div>
 
-    <app-naive-rag-configuration class="dialog__content" [naiveRagId]="data.ragId" />
+    <app-naive-rag-configuration
+        class="dialog__content"
+        [naiveRagId]="data.ragId"
+    />
 </div>

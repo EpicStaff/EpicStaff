@@ -1,8 +1,14 @@
-<div class="chat-header" *ngIf="agent">
+<div
+    class="chat-header"
+    *ngIf="agent"
+>
     <div class="agent-info">
         <div>
             <h3>{{ agent.role }}</h3>
-            <div class="model-info" *ngIf="agent.fullRealtimeConfig?.modelDetails?.name; else noModel">
+            <div
+                class="model-info"
+                *ngIf="agent.fullRealtimeConfig?.modelDetails?.name; else noModel"
+            >
                 {{ agent.fullRealtimeConfig?.modelDetails?.name }}
                 <ng-container *ngIf="agent.fullRealtimeConfig?.custom_name"
                     >({{ agent.fullRealtimeConfig?.custom_name }})</ng-container

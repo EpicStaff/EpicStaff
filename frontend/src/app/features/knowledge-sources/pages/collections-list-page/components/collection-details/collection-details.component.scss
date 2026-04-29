@@ -23,7 +23,7 @@
     }
 
     &__header-name {
-        width: 503px;
+        width: calc(60% - 2.5rem);
         display: flex;
         flex-direction: column;
         justify-content: space-between;
@@ -111,7 +111,6 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding-right: 1rem;
     }
 
     &__section-title {

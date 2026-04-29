@@ -1,7 +1,8 @@
 import uuid
 from copy import deepcopy
 
-from tables.models import Graph, Crew
+from tables.models import Graph, Crew, Organization, GraphOrganization
+from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from tables.serializers.model_serializers import (
     CrewSerializer,
 )
@@ -80,6 +81,9 @@ class GraphStrategy(EntityImportExportStrategy):
         serializer = self.serializer_class(data=import_data)
         serializer.is_valid(raise_exception=True)
         graph = serializer.save()
+
+        organization = Organization.objects.get(name=DEFAULT_ORGANIZATION_NAME)
+        GraphOrganization.objects.get_or_create(graph=graph, organization=organization)
 
         node_mapper = IDMapper()
 

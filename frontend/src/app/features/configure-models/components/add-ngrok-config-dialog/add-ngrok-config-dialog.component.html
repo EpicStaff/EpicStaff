@@ -2,8 +2,14 @@
     <div class="dialog__header">
         {{ data.action === 'create' ? 'Add Ngrok Configuration' : 'Update Ngrok Configuration' }}
     </div>
-    <form class="dialog__form" [formGroup]="form">
-        <div *ngIf="errorMessage()" class="dialog__error-message">
+    <form
+        class="dialog__form"
+        [formGroup]="form"
+    >
+        <div
+            *ngIf="errorMessage()"
+            class="dialog__error-message"
+        >
             <p>{{ errorMessage() }}</p>
         </div>
         <div>
@@ -45,8 +51,17 @@
         />
     </form>
     <div class="dialog__actions">
-        <app-button type="outline-primary" (click)="onCancel()"> Cancel </app-button>
-        <app-button type="primary" (click)="onSubmit()" [disabled]="form.invalid || isSubmitting()">
+        <app-button
+            type="outline-primary"
+            (click)="onCancel()"
+        >
+            Cancel
+        </app-button>
+        <app-button
+            type="primary"
+            (click)="onSubmit()"
+            [disabled]="form.invalid || isSubmitting()"
+        >
             @if (isSubmitting()) {
                 {{ data.action === 'create' ? 'Creating...' : 'Updating...' }}
             } @else {

@@ -6,7 +6,10 @@
 
     <div class="quickstart-section__layout">
         <div class="quickstart-section__left">
-            <form class="quickstart-section__form" [formGroup]="quickStartForm">
+            <form
+                class="quickstart-section__form"
+                [formGroup]="quickStartForm"
+            >
                 <div class="quickstart-section__row">
                     <div class="quickstart-section__label">
                         <span>Recommended Provider</span>
@@ -35,11 +38,20 @@
                             tooltipClass="dialog__label-tooltip"
                         />
                     </div>
-                    <app-custom-input formControlName="apiKey" type="password" placeholder="Enter API key" />
+                    <app-custom-input
+                        formControlName="apiKey"
+                        type="password"
+                        placeholder="Enter API key"
+                    />
                 </div>
 
                 <div class="quickstart-section__actions">
-                    <app-button type="outline-primary" (click)="onReset()"> Reset </app-button>
+                    <app-button
+                        type="outline-primary"
+                        (click)="onReset()"
+                    >
+                        Reset
+                    </app-button>
                     <app-button
                         type="primary"
                         (click)="onQuickStart()"
@@ -57,8 +69,15 @@
                 <ol class="quickstart-section__steps">
                     <li>
                         Go to the official website of your provider
-                        <span class="quickstart-section__arrow-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" width="14" height="14">
+                        <span
+                            class="quickstart-section__arrow-icon"
+                            aria-hidden="true"
+                        >
+                            <svg
+                                viewBox="0 0 24 24"
+                                width="14"
+                                height="14"
+                            >
                                 <path
                                     d="M5 12h14M13 5l6 7-6 7"
                                     fill="none"
@@ -70,8 +89,15 @@
                             </svg>
                         </span>
                         open Settings
-                        <span class="quickstart-section__arrow-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" width="14" height="14">
+                        <span
+                            class="quickstart-section__arrow-icon"
+                            aria-hidden="true"
+                        >
+                            <svg
+                                viewBox="0 0 24 24"
+                                width="14"
+                                height="14"
+                            >
                                 <path
                                     d="M5 12h14M13 5l6 7-6 7"
                                     fill="none"
@@ -93,7 +119,10 @@
                 <div class="quickstart-section__card quickstart-section__card--success">
                     <div class="quickstart-section__card-title quickstart-section__card-title--success">
                         @if (activeCard.showIcon) {
-                            <i class="ti ti-check" aria-hidden="true"></i>
+                            <i
+                                class="ti ti-check"
+                                aria-hidden="true"
+                            ></i>
                         }
                         {{ activeCard.title }}
                     </div>

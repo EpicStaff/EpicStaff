@@ -27,6 +27,7 @@ export function mapCodeAgentNodeToModel(ca: GetCodeAgentNodeRequest): CodeAgentN
             inactivity_timeout_s: ca.inactivity_timeout_s ?? 120,
             max_wait_s: ca.max_wait_s ?? 300,
             output_schema: ca.output_schema ?? {},
+            use_storage: ca.use_storage ?? false,
         },
         position: ui.position,
         ports: null,

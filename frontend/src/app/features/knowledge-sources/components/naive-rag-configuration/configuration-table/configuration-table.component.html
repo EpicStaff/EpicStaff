@@ -1,9 +1,16 @@
 <div class="table__wrapper">
     <!-- HEADER ROW -->
-    <div class="table__row table__header" [style]="{ 'margin-bottom': showBulkRow() ? '0.25rem' : '0.5rem' }">
+    <div
+        class="table__row table__header"
+        [style]="{ 'margin-bottom': showBulkRow() ? '0.25rem' : '0.5rem' }"
+    >
         <!-- 1. Checkbox -->
         <div class="table__col">
-            <app-checkbox [checked]="allChecked()" [indeterminate]="indeterminate()" (changed)="toggleAll()" />
+            <app-checkbox
+                [checked]="allChecked()"
+                [indeterminate]="indeterminate()"
+                (changed)="toggleAll()"
+            />
         </div>
 
         <!-- 2. Files (sortable dropdown) -->
@@ -46,7 +53,11 @@
 
             <!-- strategy select -->
             <div class="table__col">
-                <app-select mod="small" [items]="chunkStrategySelectItems" [(selectedValue)]="bulkChunkStrategy" />
+                <app-select
+                    mod="small"
+                    [items]="chunkStrategySelectItems"
+                    [(selectedValue)]="bulkChunkStrategy"
+                />
             </div>
 
             @if (bulkChunkStrategy() === 'csv') {
@@ -58,12 +69,22 @@
             } @else {
                 <!-- chunk size -->
                 <div class="table__col">
-                    <app-input-number mod="small" [min]="20" [max]="8000" [(value)]="bulkChunkSize" />
+                    <app-input-number
+                        mod="small"
+                        [min]="20"
+                        [max]="8000"
+                        [(value)]="bulkChunkSize"
+                    />
                 </div>
 
                 <!-- overlap -->
                 <div class="table__col">
-                    <app-input-number mod="small" [min]="0" [max]="1000" [(value)]="bulkChunkOverlap" />
+                    <app-input-number
+                        mod="small"
+                        [min]="0"
+                        [max]="1000"
+                        [(value)]="bulkChunkOverlap"
+                    />
                 </div>
             }
 
@@ -94,11 +115,17 @@
                     <li class="table__row">
                         <!-- checkbox -->
                         <div class="table__col">
-                            <app-checkbox [checked]="d.checked" (changed)="toggleDocument(d)" />
+                            <app-checkbox
+                                [checked]="d.checked"
+                                (changed)="toggleDocument(d)"
+                            />
                         </div>
 
                         <!-- filename -->
-                        <div class="table__col table__col-file" (click)="selectedRagDocId.set(d.naive_rag_document_id)">
+                        <div
+                            class="table__col table__col-file"
+                            (click)="selectedRagDocId.set(d.naive_rag_document_id)"
+                        >
                             <span>{{ i + 1 }}</span>
                             <app-svg-icon
                                 icon="document"

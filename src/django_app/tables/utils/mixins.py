@@ -8,12 +8,13 @@ from typing import AsyncGenerator, AsyncIterable, Callable, Union
 
 from asgiref.sync import sync_to_async
 from django.core.serializers.json import DjangoJSONEncoder
-from django.http import StreamingHttpResponse
+from django.http import JsonResponse, StreamingHttpResponse
 from django.views import View
 from loguru import logger
 
 from tables.models.knowledge_models.collection_models import DocumentMetadata
 from tables.services.redis_service import RedisService
+from tables.services.rbac.sse_ticket_service import SseTicketService
 
 ALLOWED_FILE_TYPES = {choice[0] for choice in DocumentMetadata.DocumentFileType.choices}
 MAX_FILE_SIZE = 12 * 1024 * 1024  # 12MB
@@ -142,6 +143,19 @@ class SSEMixin(View, ABC):
             yield "\n\nevent: fatal-error\ndata: unexpected error\n\n"
 
     async def get(self, request, *args, **kwargs):
+        ticket = request.GET.get("ticket", "")
+        user = await sync_to_async(SseTicketService().consume)(ticket)
+        if user is None:
+            return JsonResponse(
+                {
+                    "status_code": 401,
+                    "code": "invalid_sse_ticket",
+                    "message": "Invalid or expired SSE ticket.",
+                },
+                status=401,
+            )
+        self.user = user
+
         test_mode = bool(request.GET.get("test", ""))
         logger.debug(f"Started SSE {'with' if test_mode else 'without'} test mode")
         return StreamingHttpResponse(

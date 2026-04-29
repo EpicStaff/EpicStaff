@@ -50,6 +50,10 @@ class PythonCodeData(BaseModel):
     entrypoint: str
     libraries: list[str]
     global_kwargs: dict[str, Any] | None = None
+    use_storage: bool = False
+    storage_allowed_paths: list[str] | None = None
+    storage_org_prefix: str | None = None
+    session_id: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -147,5 +151,9 @@ class CodeTaskData(BaseModel):
     entrypoint: str
     func_kwargs: dict | None = None
     global_kwargs: dict[str, Any] | None = None
+    use_storage: bool = False
+    storage_allowed_paths: list[str] | None = None
+    storage_org_prefix: str | None = None
+    session_id: int | None = None
 
     model_config = ConfigDict(from_attributes=True)

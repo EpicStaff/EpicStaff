@@ -1,4 +1,8 @@
-<div class="knowledge-selector" appClickOutside (appClickOutside)="closeDropdown()">
+<div
+    class="knowledge-selector"
+    appClickOutside
+    (appClickOutside)="closeDropdown()"
+>
     <!-- <label *ngIf="label">{{ label }}</label> -->
     <div
         class="selector"
@@ -8,8 +12,17 @@
         (click)="toggleDropdown()"
     >
         <div class="selected-collection">{{ getSelectedCollectionName() }}</div>
-        <div class="selector-arrow" [class.open]="isOpen">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <div
+            class="selector-arrow"
+            [class.open]="isOpen"
+        >
+            <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+            >
                 <path
                     d="M6 9L12 15L18 9"
                     stroke="currentColor"
@@ -21,7 +34,10 @@
         </div>
     </div>
 
-    <div class="dropdown-menu" *ngIf="isOpen">
+    <div
+        class="dropdown-menu"
+        *ngIf="isOpen"
+    >
         <div
             class="dropdown-item"
             [class.selected]="selectedCollectionId === null && !isPlaceholder"
@@ -37,6 +53,11 @@
         >
             {{ collection.collection_name }}
         </div>
-        <div *ngIf="collections.length === 0" class="no-results">No knowledge sources available</div>
+        <div
+            *ngIf="collections.length === 0"
+            class="no-results"
+        >
+            No knowledge sources available
+        </div>
     </div>
 </div>

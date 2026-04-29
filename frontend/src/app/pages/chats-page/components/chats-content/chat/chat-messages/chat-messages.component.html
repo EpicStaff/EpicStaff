@@ -1,6 +1,9 @@
 <!-- chat-messages.component.html with expandable tool arguments and JSON viewer -->
 <div class="chat-messages">
-    <div *ngIf="!this.consoleService.isConversationConnected()" class="awaiting-connection">
+    <div
+        *ngIf="!this.consoleService.isConversationConnected()"
+        class="awaiting-connection"
+    >
         press start speaking to start conversation ...
     </div>
 
@@ -14,14 +17,23 @@
         </div>
 
         <div class="message-content">
-            <div *ngFor="let item of group.items; trackBy: trackByItemId" class="message-item">
+            <div
+                *ngFor="let item of group.items; trackBy: trackByItemId"
+                class="message-item"
+            >
                 <!-- Tool Call with Expandable Arguments -->
-                <div *ngIf="item.formatted?.tool" class="message-text tool-call">
+                <div
+                    *ngIf="item.formatted?.tool"
+                    class="message-text tool-call"
+                >
                     <div class="tool-call-name">
                         {{ item.formatted.tool?.name }}
 
                         <!-- Loading animation - only shown if no matching function_call_output exists -->
-                        <div *ngIf="!(groupedMessages() | hasToolOutput: item.id)" class="loading-dots">
+                        <div
+                            *ngIf="!(groupedMessages() | hasToolOutput: item.id)"
+                            class="loading-dots"
+                        >
                             <span></span>
                             <span></span>
                             <span></span>
@@ -29,7 +41,10 @@
                     </div>
 
                     <div class="tool-arguments">
-                        <div class="tool-arguments-header" (click)="toggleArgumentsVisibility(item.id)">
+                        <div
+                            class="tool-arguments-header"
+                            (click)="toggleArgumentsVisibility(item.id)"
+                        >
                             <app-svg-icon
                                 icon="player-play-filled"
                                 size="1rem"
@@ -37,7 +52,10 @@
                             />
                             <span>Arguments</span>
                         </div>
-                        <div class="tool-arguments-content" *ngIf="isArgumentsExpanded(item.id)">
+                        <div
+                            class="tool-arguments-content"
+                            *ngIf="isArgumentsExpanded(item.id)"
+                        >
                             <ngx-json-viewer
                                 [json]="getParsedJson(item.formatted.tool?.arguments)"
                                 [expanded]="false"
@@ -47,8 +65,14 @@
                 </div>
 
                 <!-- Tool Response -->
-                <div *ngIf="item.type === 'function_call_output'" class="message-text tool-response">
-                    <div class="tool-response-header" (click)="toggleResponseVisibility(item.id)">
+                <div
+                    *ngIf="item.type === 'function_call_output'"
+                    class="message-text tool-response"
+                >
+                    <div
+                        class="tool-response-header"
+                        (click)="toggleResponseVisibility(item.id)"
+                    >
                         <app-svg-icon
                             icon="player-play-filled"
                             size="1rem"
@@ -56,7 +80,10 @@
                         />
                         <span>Output</span>
                     </div>
-                    <div class="tool-response-content" *ngIf="isResponseExpanded(item.id)">
+                    <div
+                        class="tool-response-content"
+                        *ngIf="isResponseExpanded(item.id)"
+                    >
                         {{ item.formatted.output }}
                     </div>
                 </div>

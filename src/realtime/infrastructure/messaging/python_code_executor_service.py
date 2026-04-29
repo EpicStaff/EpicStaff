@@ -39,6 +39,7 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
                 **global_kwargs,
                 **additional_global_kwargs,
             },
+            use_storage=python_code_data.use_storage,
         )
 
         pubsub = await self.redis_service.async_subscribe("code_results")

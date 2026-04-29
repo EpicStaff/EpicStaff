@@ -7,8 +7,8 @@ import { finalize, map, switchMap } from 'rxjs/operators';
 
 import { CreateGraphDtoRequest, GraphDto } from '../../../../features/flows/models/graph.model';
 import { FlowsStorageService } from '../../../../features/flows/services/flows-storage.service';
-import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
 import { LabelDropdownComponent } from '../label-dropdown/label-dropdown.component';
 
 export interface FlowDialogData {
@@ -19,13 +19,7 @@ export interface FlowDialogData {
 @Component({
     selector: 'app-create-flow-dialog',
     standalone: true,
-    imports: [
-        CommonModule,
-        ReactiveFormsModule,
-        ButtonComponent,
-        AppSvgIconComponent,
-        LabelDropdownComponent,
-    ],
+    imports: [CommonModule, ReactiveFormsModule, ButtonComponent, AppSvgIconComponent, LabelDropdownComponent],
     templateUrl: './create-flow-dialog.component.html',
     styleUrls: ['./create-flow-dialog.component.scss'],
 })
@@ -40,7 +34,7 @@ export class CreateFlowDialogComponent implements OnInit, OnDestroy {
     public errorMessage: string | null = null;
 
     private flowsStorageService = inject(FlowsStorageService);
-    
+
     @ViewChild(LabelDropdownComponent)
     private labelDropdown?: LabelDropdownComponent;
     private keydownSubscription?: Subscription;

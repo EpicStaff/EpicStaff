@@ -10,7 +10,11 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
     standalone: true,
     imports: [CommonModule, AppSvgIconComponent],
     template: `
-        <div class="model-item" [class.selected]="isSelected" (click)="onSelect()">
+        <div
+            class="model-item"
+            [class.selected]="isSelected"
+            (click)="onSelect()"
+        >
             <app-svg-icon
                 [icon]="getProviderIcon()"
                 size="20px"
@@ -19,7 +23,12 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
             />
             <div class="model-text">
                 <span class="model-name">{{ config.modelDetails?.name || 'Unknown Model' }}</span>
-                <span *ngIf="config.custom_name" class="custom-name"> ({{ config.custom_name }}) </span>
+                <span
+                    *ngIf="config.custom_name"
+                    class="custom-name"
+                >
+                    ({{ config.custom_name }})
+                </span>
             </div>
         </div>
     `,

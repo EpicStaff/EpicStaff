@@ -48,6 +48,7 @@
         "ag-grid-angular": "^33.1.1",
         "ag-grid-community": "^33.1.1",
         "lodash-es": "^4.18.0",
+        "mammoth": "^1.12.0",
         "monaco-editor": "^0.52.2",
         "ngx-color": "^10.0.0",
         "ngx-json-viewer": "^3.2.1",
@@ -57,6 +58,7 @@
         "tslib": "^2.3.0",
         "uuid": "^11.0.5",
         "wavtools": "^0.1.5",
+        "xlsx": "^0.18.5",
         "zone.js": "~0.15.0"
     },
     "devDependencies": {
@@ -65,7 +67,6 @@
         "@angular/cli": "^19.2.0",
         "@angular/compiler-cli": "^19.2.0",
         "@types/jasmine": "~5.1.0",
-        "@types/lodash": "^4.17.14",
         "@types/lodash-es": "^4.17.12",
         "eslint": "^9.39.4",
         "eslint-plugin-simple-import-sort": "^12.1.1",

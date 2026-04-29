@@ -18,7 +18,10 @@ import { ICellRendererParams } from 'ag-grid-community';
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <span class="row-index">{{ params?.value }}</span>
-        <div class="resize-handler" [ngStyle]="{ opacity: resizerOpacity }"></div>
+        <div
+            class="resize-handler"
+            [ngStyle]="{ opacity: resizerOpacity }"
+        ></div>
     `,
     styles: [
         `

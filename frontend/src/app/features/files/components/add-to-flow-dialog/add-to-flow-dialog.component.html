@@ -1,0 +1,106 @@
+<div class="add-to-flow-dialog">
+    <div class="add-to-flow-dialog__header">
+        <h2 class="add-to-flow-dialog__title">Add to Flow</h2>
+        <button
+            class="add-to-flow-dialog__close"
+            aria-label="Close"
+            (click)="onCancel()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="1rem"
+            ></app-svg-icon>
+        </button>
+    </div>
+
+    <div class="add-to-flow-dialog__body">
+        <div class="add-to-flow-dialog__field">
+            <label class="add-to-flow-dialog__label">Flow <span class="add-to-flow-dialog__required">*</span></label>
+            <div
+                #selectorEl
+                class="add-to-flow-dialog__selector"
+                [class.add-to-flow-dialog__selector--filled]="selectedFlows().length > 0"
+                [class.add-to-flow-dialog__selector--open]="dropdownOpen()"
+                (click)="toggleDropdown($event)"
+            >
+                <span class="add-to-flow-dialog__selector-text">
+                    {{ selectedFlows().length > 0 ? selectorLabel : 'Select flows' }}
+                </span>
+                <app-svg-icon
+                    icon="chevron-down"
+                    size="0.875rem"
+                    class="add-to-flow-dialog__selector-chevron"
+                    [class.add-to-flow-dialog__selector-chevron--open]="dropdownOpen()"
+                ></app-svg-icon>
+            </div>
+
+            @if (dropdownOpen()) {
+                <div
+                    class="add-to-flow-dialog__dropdown"
+                    [style.max-height.px]="dropdownMaxHeight()"
+                    (click)="stopPropagation($event)"
+                >
+                    <div class="add-to-flow-dialog__search">
+                        <app-svg-icon
+                            icon="search"
+                            size="0.875rem"
+                            class="add-to-flow-dialog__search-icon"
+                        ></app-svg-icon>
+                        <input
+                            class="add-to-flow-dialog__search-input"
+                            type="text"
+                            placeholder="Search flows..."
+                            [ngModel]="searchQuery()"
+                            (ngModelChange)="searchQuery.set($event)"
+                        />
+                    </div>
+
+                    <div class="add-to-flow-dialog__list">
+                        @if (isLoading()) {
+                            <div class="add-to-flow-dialog__state">Loading flows...</div>
+                        } @else if (visibleFlows().length === 0) {
+                            <div class="add-to-flow-dialog__state">No flows found</div>
+                        } @else {
+                            @for (flow of visibleFlows(); track flow.id) {
+                                <div
+                                    class="add-to-flow-dialog__item"
+                                    [class.add-to-flow-dialog__item--checked]="flow.checked"
+                                    (click)="toggleFlow(flow)"
+                                >
+                                    <div
+                                        class="add-to-flow-dialog__checkbox"
+                                        [class.add-to-flow-dialog__checkbox--checked]="flow.checked"
+                                    >
+                                        @if (flow.checked) {
+                                            <app-svg-icon
+                                                icon="check"
+                                                size="0.625rem"
+                                            ></app-svg-icon>
+                                        }
+                                    </div>
+                                    <span class="add-to-flow-dialog__item-name">{{ flow.name }}</span>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="add-to-flow-dialog__footer">
+        <button
+            class="add-to-flow-dialog__btn add-to-flow-dialog__btn--cancel"
+            (click)="onCancel()"
+        >
+            Cancel
+        </button>
+        <button
+            class="add-to-flow-dialog__btn add-to-flow-dialog__btn--confirm"
+            [disabled]="!hasChanges"
+            (click)="onConfirm()"
+        >
+            Add
+        </button>
+    </div>
+</div>

@@ -32,7 +32,10 @@ import { UnsavedIndicatorComponent } from '../../../shared/components/unsaved-in
         <div class="project-dialog-wrapper">
             <div class="dialog-header">
                 <div class="icon-and-title">
-                    <app-svg-icon icon="folder" size="1.5rem"></app-svg-icon>
+                    <app-svg-icon
+                        icon="folder"
+                        size="1.5rem"
+                    ></app-svg-icon>
                     <span class="title">{{ data.projectName }}</span>
                     <app-unsaved-indicator [show]="openProjectPage?.hasUnsavedChanges ?? false"></app-unsaved-indicator>
                 </div>
@@ -46,12 +49,20 @@ import { UnsavedIndicatorComponent } from '../../../shared/components/unsaved-in
                     ></app-save-with-indicator>
                     <div class="close-action">
                         <span class="esc-label">ESC</span>
-                        <app-svg-icon icon="x" class="close-icon" (click)="tryClose()"></app-svg-icon>
+                        <app-svg-icon
+                            icon="x"
+                            class="close-icon"
+                            (click)="tryClose()"
+                        ></app-svg-icon>
                     </div>
                 </div>
             </div>
             <div class="dialog-content">
-                <app-open-project-page [showHeader]="true" [inputProjectId]="data.projectId"> </app-open-project-page>
+                <app-open-project-page
+                    [showHeader]="true"
+                    [inputProjectId]="data.projectId"
+                >
+                </app-open-project-page>
             </div>
         </div>
     `,

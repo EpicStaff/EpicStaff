@@ -28,6 +28,9 @@ def custom_exception_handler(exc, context):
                 else f"{exc.__class__.__name__}: {exc.detail or exc.default_detail}"
             ),
         }
+        errors = getattr(exc, "errors", None)
+        if isinstance(errors, list):
+            response.data["errors"] = errors
         return response
 
     if not DEBUG:

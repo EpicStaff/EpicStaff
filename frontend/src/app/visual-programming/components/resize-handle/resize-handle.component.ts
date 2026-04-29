@@ -6,7 +6,12 @@ import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
     selector: 'app-resize-handle',
     standalone: true,
     imports: [CommonModule, FFlowModule],
-    template: ` <div fResizeHandle [fResizeHandleType]="handleType"></div> `,
+    template: `
+        <div
+            fResizeHandle
+            [fResizeHandleType]="handleType"
+        ></div>
+    `,
     styles: [
         `
             :host {

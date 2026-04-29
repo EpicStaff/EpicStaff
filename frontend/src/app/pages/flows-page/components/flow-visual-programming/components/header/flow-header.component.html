@@ -1,74 +1,164 @@
 <div class="header">
     <div class="title-search">
         <h2 class="title">
-            <div class="flows-prefix" routerLink="/flows">
-                <app-svg-icon icon="arrow-left" size="20px" class="back-arrow" />
+            <div
+                class="flows-prefix"
+                routerLink="/flows"
+            >
+                <app-svg-icon
+                    icon="arrow-left"
+                    size="20px"
+                    class="back-arrow"
+                />
                 <span>Flows</span>
             </div>
             <span class="slash">/</span>
             <div class="graph-name-row">
                 <div class="graph-name project-link">
                     {{ graphName ?? 'Loading...' }}
-                    @if (hasUnsavedChanges) {
-                        <span class="unsaved-indicator" title="Unsaved changes">
-                            <app-svg-icon icon="circle" size="10px" />
-                            <span class="unsaved-text">Unsaved changes</span>
-                        </span>
-                    }
                 </div>
-                <button class="edit-name-btn" (click)="openRenameDialog()" title="Edit flow">
-                    <app-svg-icon icon="edit" size="16px" />
+                <button
+                    class="edit-name-btn"
+                    (click)="openRenameDialog()"
+                    title="Edit flow"
+                >
+                    <app-svg-icon
+                        icon="edit"
+                        size="16px"
+                    />
                 </button>
+                @if (hasUnsavedChanges) {
+                    <span
+                        class="unsaved-indicator"
+                        title="Unsaved changes"
+                        [appCollapseOnOverflow]="true"
+                        collapseOnOverflowTarget=".unsaved-text"
+                        collapseOnOverflowClass="unsaved-indicator--icon-only"
+                        collapseOnOverflowRequireSelector="app-svg-icon"
+                    >
+                        <app-svg-icon
+                            icon="circle"
+                            size="10px"
+                        />
+                        <span class="unsaved-text">Unsaved changes</span>
+                    </span>
+                }
             </div>
         </h2>
     </div>
     <div class="header-actions">
-        <button class="sessions-button" (click)="onViewSessions()">
-            <app-svg-icon icon="history" size="1.25rem" /> Sessions
+        <button
+            class="sessions-button"
+            [appCollapseOnOverflow]="true"
+            collapseOnOverflowTarget=".btn-label"
+            collapseOnOverflowClass="btn--icon-only"
+            collapseOnOverflowRequireSelector="app-svg-icon"
+            (click)="onViewSessions()"
+        >
+            <app-svg-icon
+                icon="history"
+                size="1.25rem"
+            />
+            <span class="btn-label">Sessions</span>
         </button>
-        <button class="get-curl-button" (click)="onGetCurl()">Get CURL</button>
+        <button
+            class="get-curl-button"
+            [appCollapseOnOverflow]="true"
+            collapseOnOverflowTarget=".btn-label"
+            collapseOnOverflowClass="btn--icon-only"
+            collapseOnOverflowRequireSelector="app-svg-icon"
+            (click)="onGetCurl()"
+        >
+            <span class="btn-label">Get CURL</span>
+        </button>
         @if (isEpicChatEnabled) {
-            <button class="connect-chat-button" (click)="onConnectChat()">Connect chat</button>
+            <button
+                class="connect-chat-button"
+                [appCollapseOnOverflow]="true"
+                collapseOnOverflowTarget=".btn-label"
+                collapseOnOverflowClass="btn--icon-only"
+                collapseOnOverflowRequireSelector="app-svg-icon"
+                (click)="onConnectChat()"
+            >
+                <span class="btn-label">Connect chat</span>
+            </button>
         }
-        <div class="save-split-btn" [class.disabled]="isSaving || isRunning">
-            <button class="save-split-btn__main" [disabled]="isSaving || isRunning" (click)="onSave()">
+        <div
+            #saveSplitOrigin="cdkOverlayOrigin"
+            cdkOverlayOrigin
+            class="save-split-btn"
+            [class.disabled]="isSaving || isRunning"
+            [appCollapseOnOverflow]="true"
+            collapseOnOverflowTarget=".btn-label"
+            collapseOnOverflowClass="save-split-btn--icon-only"
+            collapseOnOverflowRequireSelector="app-svg-icon"
+        >
+            <button
+                class="save-split-btn__main"
+                [disabled]="isSaving || isRunning"
+                (click)="onSave()"
+            >
                 @if (isSaving) {
                     <app-spinner2 [size]="16"></app-spinner2>
                 } @else {
-                    <app-svg-icon icon="floppy" size="1.25rem" />
+                    <app-svg-icon
+                        icon="floppy"
+                        size="1.25rem"
+                    />
                 }
-                Save
+                <span class="btn-label">Save</span>
             </button>
             <button
                 class="save-split-btn__chevron"
                 [disabled]="isSaving || isRunning"
                 (click)="toggleSaveDropdown($event)"
             >
-                <app-svg-icon icon="chevron-down" size="1rem" />
+                <app-svg-icon
+                    icon="chevron-down"
+                    size="1rem"
+                />
             </button>
-            @if (isSaveDropdownOpen()) {
-                <div class="save-dropdown" (click)="$event.stopPropagation()">
-                    <button class="save-dropdown__item" (click)="onSave(); isSaveDropdownOpen.set(false)">Save</button>
-                    <button class="save-dropdown__item" (click)="saveVersion.emit(); isSaveDropdownOpen.set(false)">
-                        Save Version
-                    </button>
-                    <button
-                        class="save-dropdown__item"
-                        (click)="viewVersionHistory.emit(); isSaveDropdownOpen.set(false)"
-                    >
-                        Version History
-                        <app-svg-icon icon="arrow-up-right" size="1rem" />
-                    </button>
-                </div>
-            }
         </div>
-        <button class="run-button" [disabled]="isSaving || isRunning" (click)="onRun()">
+        <ng-template
+            cdkConnectedOverlay
+            [cdkConnectedOverlayOrigin]="saveSplitOrigin"
+            [cdkConnectedOverlayOpen]="isSaveDropdownOpen()"
+            [cdkConnectedOverlayPositions]="[
+                {
+                    originX: 'end',
+                    originY: 'bottom',
+                    overlayX: 'end',
+                    overlayY: 'top',
+                    offsetY: 6,
+                },
+            ]"
+            (overlayOutsideClick)="closeSaveDropdown()"
+            (detach)="closeSaveDropdown()"
+        >
+            <app-save-dropdown
+                (save)="onSave(); closeSaveDropdown()"
+                (saveVersion)="saveVersion.emit(); closeSaveDropdown()"
+                (viewVersionHistory)="viewVersionHistory.emit(); closeSaveDropdown()"
+            />
+        </ng-template>
+        <button
+            class="run-button"
+            [appCollapseOnOverflow]="true"
+            collapseOnOverflowTarget=".btn-label"
+            collapseOnOverflowClass="btn--icon-only"
+            collapseOnOverflowRequireSelector="app-svg-icon"
+            [disabled]="isSaving || isRunning"
+            (click)="onRun()"
+        >
             @if (isRunning) {
                 <app-spinner2 [size]="16"></app-spinner2>
             } @else {
-                <app-svg-icon icon="player-play-filled" size="1.25rem" />
+                <app-svg-icon
+                    icon="player-play-filled"
+                    size="1.25rem"
+                />
             }
-            Run
+            <span class="btn-label">Run</span>
         </button>
     </div>
 </div>

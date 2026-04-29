@@ -23,7 +23,10 @@ import { HelpTooltipComponent } from '../../../shared/components/help-tooltip/he
         },
     ],
     template: `
-        <div class="input-map-container" formArrayName="input_map">
+        <div
+            class="input-map-container"
+            formArrayName="input_map"
+        >
             <div class="input-map-header">
                 <label>Input List</label>
                 <app-help-tooltip
@@ -33,7 +36,10 @@ import { HelpTooltipComponent } from '../../../shared/components/help-tooltip/he
             </div>
             <div class="input-map-list">
                 @for (pair of pairs.controls; let i = $index; track pair) {
-                    <div class="input-map-item" [formGroupName]="i">
+                    <div
+                        class="input-map-item"
+                        [formGroupName]="i"
+                    >
                         <div class="input-map-fields">
                             <div class="input-wrapper">
                                 <input
@@ -66,8 +72,16 @@ import { HelpTooltipComponent } from '../../../shared/components/help-tooltip/he
                     </div>
                 }
             </div>
-            <button type="button" class="add-pair-btn" (click)="addPair()">
-                <app-svg-icon icon="plus" size="16px"></app-svg-icon> Add Input
+            <button
+                type="button"
+                class="add-pair-btn"
+                (click)="addPair()"
+            >
+                <app-svg-icon
+                    icon="plus"
+                    size="16px"
+                ></app-svg-icon>
+                Add Input
             </button>
         </div>
     `,

@@ -17,20 +17,22 @@
     </div>
 
     <div class="collections-sidebar__actions">
-        <app-search
-            placeholder="Search collections..."
-            [(searchTerm)]="searchTerm"
-            class="collections-sidebar__search"
+        <app-select
+            [placeholder]="'All status'"
+            class="collections-sidebar__select"
         />
-
-        <app-select [placeholder]="'All status'" class="collections-sidebar__select" />
     </div>
 
     <div class="collections-sidebar__items">
         @if (!collections().length) {
             <p class="collections-sidebar__empty">No collections yet</p>
 
-            <app-button type="outline-primary" (click)="onCreateCollection.emit()"> + Create Collection </app-button>
+            <app-button
+                type="outline-primary"
+                (click)="onCreateCollection.emit()"
+            >
+                + Create Collection
+            </app-button>
         } @else {
             @for (collection of filteredCollections(); track collection.collection_id) {
                 <app-collection

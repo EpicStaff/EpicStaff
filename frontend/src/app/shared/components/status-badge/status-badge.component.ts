@@ -2,21 +2,29 @@ import { NgClass, NgIf } from '@angular/common';
 import { Component, Input } from '@angular/core';
 
 import { GraphSessionStatus } from '../../../features/flows/services/flows-sessions.service';
+import { CollapseOnOverflowDirective } from '../../../shared/directives/collapse-on-overflow.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-status-badge',
     standalone: true,
-    imports: [NgClass, NgIf, AppSvgIconComponent],
+    imports: [NgClass, NgIf, AppSvgIconComponent, CollapseOnOverflowDirective],
     template: `
-        <span class="status-badge" [ngClass]="statusClass">
+        <span
+            class="status-badge"
+            [ngClass]="statusClass"
+            [appCollapseOnOverflow]="true"
+            collapseOnOverflowTarget=".status-text"
+            collapseOnOverflowClass="status-badge--icon-only"
+            collapseOnOverflowRequireSelector="app-svg-icon"
+        >
             <app-svg-icon
                 *ngIf="statusIcon"
                 [icon]="statusIcon"
                 size="14px"
                 aria-hidden="true"
             />
-            {{ statusText }}
+            <span class="status-text">{{ statusText }}</span>
         </span>
     `,
     styles: [
@@ -31,6 +39,15 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
                 font-size: 0.8rem;
                 font-weight: 500;
                 gap: 6px;
+                flex-shrink: 0;
+
+                &.status-badge--icon-only {
+                    padding: 0.25rem 0.5rem;
+
+                    .status-text {
+                        display: none;
+                    }
+                }
             }
 
             .status-running {

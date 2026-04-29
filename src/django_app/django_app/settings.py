@@ -66,7 +66,6 @@ LOGGING = {
 
 INSTALLED_APPS = [
     "health_check",
-    "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -75,6 +74,7 @@ INSTALLED_APPS = [
     "tables",
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
     "django_filters",
     "corsheaders",
@@ -102,11 +102,14 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "utils.exception_handler.custom_exception_handler",
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "tables.authentication.JwtOrApiKeyAuthentication",
+        "tables.services.rbac.authentication.JwtOrApiKeyAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    "DEFAULT_THROTTLE_RATES": {
+        "login": os.getenv("LOGIN_THROTTLE_RATE", "5/min"),
+    },
 }
 
 CORS_ALLOW_ALL_ORIGINS = True
@@ -121,8 +124,8 @@ SIMPLE_JWT = {
         minutes=int(os.getenv("JWT_ACCESS_MINUTES", "15"))
     ),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=int(os.getenv("JWT_REFRESH_DAYS", "7"))),
-    "ROTATE_REFRESH_TOKENS": False,
-    "BLACKLIST_AFTER_ROTATION": False,
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
 }
 
 ROOT_URLCONF = "django_app.urls"
@@ -221,6 +224,24 @@ CACHES = {
 MEDIA_ROOT = os.environ.get("DJANGO_MEDIA_ROOT", os.path.join(BASE_DIR, "media"))
 MEDIA_URL = "/media/"
 
+AUTH_USER_MODEL = "tables.User"
+
+PASSWORD_RESET_TOKEN_TTL = int(os.getenv("PASSWORD_RESET_TOKEN_TTL", "3600"))
+
+SSE_TICKET_TTL_SECONDS = 30
+
+DEFAULT_ORGANIZATION_NAME = os.getenv(
+    "DEFAULT_ORGANIZATION_NAME", "Default Organization"
+)
+
+# Object storage
+STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "s3")
+STORAGE_ENDPOINT = os.getenv("STORAGE_ENDPOINT", "")
+STORAGE_ACCESS_KEY = os.getenv("STORAGE_ACCESS_KEY", "")
+STORAGE_SECRET_KEY = os.getenv("STORAGE_SECRET_KEY", "")
+STORAGE_BUCKET_NAME = os.getenv("STORAGE_BUCKET_NAME", "epicstaff")
+STORAGE_LOCAL_ROOT = os.getenv("STORAGE_LOCAL_ROOT", "/app/storage")
+
 MAX_TOTAL_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 REDIS_TUNNEL_CONFIG_CHANNEL = os.getenv(
@@ -257,6 +278,9 @@ GRAPH_MESSAGE_UPDATE_CHANNEL = os.environ.get(
     "GRAPH_MESSAGE_UPDATE_CHANNEL", "graph:message:update"
 )
 WEBHOOK_MESSAGE_CHANNEL = os.environ.get("WEBHOOK_MESSAGE_CHANNEL", "webhooks")
+STORAGE_MUTATION_CHANNEL = os.environ.get(
+    "STORAGE_MUTATION_CHANNEL", "storage_mutations"
+)
 TELEGRAM_TRIGGER_PREFIX = "telegram-trigger/"
 
 

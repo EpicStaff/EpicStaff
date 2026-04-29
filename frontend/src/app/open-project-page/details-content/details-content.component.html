@@ -1,6 +1,9 @@
 <div class="panel-content">
     <!-- Description Section -->
-    <div class="description" [class.editing]="isEditingDescription">
+    <div
+        class="description"
+        [class.editing]="isEditingDescription"
+    >
         <textarea
             [(ngModel)]="internalDescription"
             placeholder="Enter project description..."

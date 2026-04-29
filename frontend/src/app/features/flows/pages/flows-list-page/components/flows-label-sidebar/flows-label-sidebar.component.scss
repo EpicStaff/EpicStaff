@@ -122,8 +122,8 @@
         align-items: center;
         gap: 0.6rem;
 
-        ::ng-deep app-icon svg path {
-            fill: var(--color-ks-text);
+        app-svg-icon {
+            color: var(--color-ks-text);
             opacity: 0.4;
         }
     }
@@ -304,22 +304,12 @@
 }
 
 .edit-label-btn {
-    ::ng-deep app-icon svg path {
-        fill: #d9d9de;
-        fill-opacity: 0.6;
-        transition:
-            fill 0.15s ease,
-            fill-opacity 0.15s ease;
-    }
+    color: rgba(217, 217, 222, 0.6);
+    transition: color 0.15s ease;
 
-    &:hover ::ng-deep app-icon svg path {
-        fill: var(--color-ks-text);
-        fill-opacity: 1;
-    }
-
-    &:active ::ng-deep app-icon svg path {
-        fill: var(--color-ks-text);
-        fill-opacity: 1;
+    &:hover,
+    &:active {
+        color: var(--color-ks-text);
     }
 }
 
@@ -332,18 +322,16 @@
 // ── Icon color states ──
 
 .all-flows-item {
-    ::ng-deep app-icon svg path {
-        fill: var(--color-text-secondary);
-        transition: fill 0.15s ease;
+    color: var(--color-text-secondary);
+    transition: color 0.15s ease;
+
+    &:hover {
+        color: var(--color-ks-text);
     }
 
-    &:hover ::ng-deep app-icon svg path {
-        fill: var(--color-ks-text);
-    }
-
-    &:active ::ng-deep app-icon svg path,
-    &.active ::ng-deep app-icon svg path {
-        fill: var(--accent-color);
+    &:active,
+    &.active {
+        color: var(--accent-color);
     }
 }
 
@@ -359,18 +347,16 @@
 }
 
 .unlabeled-item {
-    ::ng-deep app-icon svg path {
-        stroke: var(--color-text-secondary);
-        transition: stroke 0.15s ease;
+    color: var(--color-text-secondary);
+    transition: color 0.15s ease;
+
+    &:hover {
+        color: var(--color-ks-text);
     }
 
-    &:hover ::ng-deep app-icon svg path {
-        stroke: var(--color-ks-text);
-    }
-
-    &:active ::ng-deep app-icon svg path,
-    &.active ::ng-deep app-icon svg path {
-        stroke: var(--accent-color);
+    &:active,
+    &.active {
+        color: var(--accent-color);
     }
 }
 

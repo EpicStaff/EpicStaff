@@ -20,8 +20,15 @@ import {
     imports: [CommonModule, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div class="search-node-item" (click)="onNodeClick()" (dblclick)="onNodeDoubleClick($event)">
-            <div class="node-icon" [style.--node-color]="getNodeColor(node.type)">
+        <div
+            class="search-node-item"
+            (click)="onNodeClick()"
+            (dblclick)="onNodeDoubleClick($event)"
+        >
+            <div
+                class="node-icon"
+                [style.--node-color]="getNodeColor(node.type)"
+            >
                 <i [class]="getNodeIcon(node.type)"></i>
             </div>
             <div class="node-info">
@@ -29,13 +36,19 @@ import {
                     {{ getNodeDisplayName() }}
                 </div>
                 <div class="node-details">
-                    <div class="node-description" *ngIf="node.node_name">
+                    <div
+                        class="node-description"
+                        *ngIf="node.node_name"
+                    >
                         {{ node.node_name }}
                     </div>
                 </div>
             </div>
             <div class="show-in-canvas">
-                <app-svg-icon icon="eye-search" size="16px"></app-svg-icon>
+                <app-svg-icon
+                    icon="eye-search"
+                    size="16px"
+                ></app-svg-icon>
             </div>
         </div>
     `,

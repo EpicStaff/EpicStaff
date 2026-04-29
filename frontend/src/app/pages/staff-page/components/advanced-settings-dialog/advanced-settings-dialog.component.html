@@ -2,14 +2,27 @@
     <!-- Header Section -->
     <div class="header">
         <div class="icon-and-title">
-            <app-svg-icon icon="settings" size="1.5rem" />
+            <app-svg-icon
+                icon="settings"
+                size="1.5rem"
+            />
             <h2 class="dialog-title">Advanced Settings for {{ data.role }}</h2>
         </div>
-        <app-icon-button icon="x" ariaLabel="Close dialog" size="2rem" (onClick)="dialogRef.close()"> </app-icon-button>
+        <app-icon-button
+            icon="x"
+            ariaLabel="Close dialog"
+            size="2rem"
+            (onClick)="dialogRef.close()"
+        >
+        </app-icon-button>
     </div>
     <div class="tabs">
         @for (tab of tabs; track tab.id) {
-            <app-tab-button [mod]="'sm'" [active]="tab.id === activeTab()" (click)="activeTab.set(tab.id)">
+            <app-tab-button
+                mod="sm"
+                [active]="tab.id === activeTab()"
+                (click)="activeTab.set(tab.id)"
+            >
                 {{ tab.label }}
             </app-tab-button>
             @if (!$last) {
@@ -42,13 +55,32 @@
         <!--        [class.visible-tab]="activeTab() === TabId.LLM_PARAMS"-->
         <!--        [form]="form"-->
         <!--    />-->
-        <app-execution-tab class="tab-content" [class.visible-tab]="activeTab() === TabId.EXECUTION" [form]="form" />
-        <app-advanced-tab class="tab-content" [class.visible-tab]="activeTab() === TabId.ADVANCED" [form]="form" />
+        <app-execution-tab
+            class="tab-content"
+            [class.visible-tab]="activeTab() === TabId.EXECUTION"
+            [form]="form"
+        />
+        <app-advanced-tab
+            class="tab-content"
+            [class.visible-tab]="activeTab() === TabId.ADVANCED"
+            [form]="form"
+        />
     </div>
 
     <!-- Action Buttons -->
     <div class="actions">
-        <button class="btn-cancel" (click)="dialogRef.close()">Cancel</button>
-        <button class="btn-save" [disabled]="form.invalid" (click)="save()">Save Changes</button>
+        <button
+            class="btn-cancel"
+            (click)="dialogRef.close()"
+        >
+            Cancel
+        </button>
+        <button
+            class="btn-save"
+            [disabled]="form.invalid"
+            (click)="save()"
+        >
+            Save Changes
+        </button>
     </div>
 </div>

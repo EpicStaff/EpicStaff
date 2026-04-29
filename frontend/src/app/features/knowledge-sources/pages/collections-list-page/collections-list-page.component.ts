@@ -4,7 +4,6 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications/toast.service';
-import { PageHeaderComponent } from '../../../../shared/components/header/page-header.component';
 import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.component';
 import { CreateCollectionDialogComponent } from '../../components/create-collection-dialog/create-collection-dialog.component';
 import { CollectionsStorageService } from '../../services/collections-storage.service';
@@ -16,7 +15,7 @@ import { CollectionsListItemSidebarComponent } from './components/collections-li
     templateUrl: './collections-list-page.component.html',
     styleUrls: ['./collections-list-page.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CollectionDetailsComponent, CollectionsListItemSidebarComponent, PageHeaderComponent, SpinnerComponent],
+    imports: [CollectionDetailsComponent, CollectionsListItemSidebarComponent, SpinnerComponent],
 })
 export class CollectionsListPageComponent implements OnInit {
     private destroyRef = inject(DestroyRef);

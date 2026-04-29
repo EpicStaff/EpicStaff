@@ -6,7 +6,7 @@
         [graph]="graph"
         [isSaving]="isSaving()"
         [isRunning]="isRunning()"
-        [hasUnsavedChanges]="hasUnsavedChanges()"
+        [hasUnsavedChanges]="hasUnsavedChangesSignal()"
         (save)="onHeaderSave()"
         (saveVersion)="onSaveVersion()"
         (viewVersionHistory)="onViewVersionHistory()"
@@ -21,6 +21,7 @@
         <app-flow-graph
             [flowState]="currentFlowState()"
             [currentFlowId]="graph.id"
+            [flowName]="graph.name"
             [initialNodeId]="initialNodeId"
             (save)="onGraphSave($event)"
             (openShortcuts)="openShortcutsModal($event)"
@@ -40,7 +41,11 @@
                 [class.collapsed]="isPanelCollapsed()"
                 (mousedown)="onDragStart($event)"
             >
-                <button class="collapse-toggle" (mousedown)="$event.stopPropagation()" (click)="togglePanelCollapsed()">
+                <button
+                    class="collapse-toggle"
+                    (mousedown)="$event.stopPropagation()"
+                    (click)="togglePanelCollapsed()"
+                >
                     <span class="collapse-toggle__icon">
                         <app-svg-icon
                             [icon]="isPanelCollapsed() ? 'chevron-left' : 'chevron-right'"
@@ -61,5 +66,9 @@
         }
     </div>
 } @else {
-    <app-spinner [text]="'Loading flow...'" [accentColor]="'#6562f5'" [isOverlay]="false"></app-spinner>
+    <app-spinner
+        [text]="'Loading flow...'"
+        [accentColor]="'#6562f5'"
+        [isOverlay]="false"
+    ></app-spinner>
 }

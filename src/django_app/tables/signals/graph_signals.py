@@ -74,21 +74,24 @@ def _sync_nested_dict(original, current, path=""):
 @receiver(post_save, sender=GraphOrganization)
 def update_organization_objects(sender, instance, created, **kwargs):
     """
-    Updates persistent_variables for users after user_variables was changed.
+    Propagate updates to GraphOrganization.user_variables into every existing
+    GraphOrganizationUser row for the same (graph, org): added keys seed in,
+    removed keys strip out, existing user values are preserved.
     """
     if created:
         return
 
     current_variables = instance.user_variables
     graph_users = GraphOrganizationUser.objects.filter(
-        user__organization=instance.organization
+        graph=instance.graph,
+        organization_user__org=instance.organization,
     )
 
     for graph_user in graph_users:
         sync_variables(
             graph_user,
             "persistent_variables",
-            graph_user.user.name,
+            graph_user.organization_user.user.email,
             "user",
             current_variables,
         )
@@ -97,11 +100,11 @@ def update_organization_objects(sender, instance, created, **kwargs):
 @receiver(post_delete, sender=GraphOrganization)
 def delete_related_graph_organization_users(sender, instance, **kwargs):
     """
-    Delete all GraphOrganizationUser records with the same organization
-    when a GraphOrganization is deleted.
+    Delete all GraphOrganizationUser rows for this (graph, org) when the
+    GraphOrganization is deleted.
     """
-    org_users = OrganizationUser.objects.filter(organization=instance.organization)
+    memberships = OrganizationUser.objects.filter(org=instance.organization)
 
     GraphOrganizationUser.objects.filter(
-        graph=instance.graph, user__in=org_users
+        graph=instance.graph, organization_user__in=memberships
     ).delete()

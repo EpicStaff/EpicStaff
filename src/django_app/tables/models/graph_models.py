@@ -98,6 +98,7 @@ class PythonNode(BaseNode):
     )
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
     stream_config = models.JSONField(default=dict, blank=True)
+    use_storage = models.BooleanField(default=False)
 
     def generate_hash(self):
         """
@@ -204,6 +205,7 @@ class CodeAgentNode(BaseNode):
     max_wait_s = models.IntegerField(default=300)
     stream_config = models.JSONField(default=dict, blank=True)
     output_schema = models.JSONField(default=dict, blank=True)
+    use_storage = models.BooleanField(default=False)
 
 
 class Edge(BaseGraphEntity, models.Model):
@@ -411,49 +413,17 @@ class Condition(ContentHashMixin, models.Model):
         ordering = ["order"]
 
 
-class GraphFile(models.Model):
-    graph = models.ForeignKey(
-        "Graph", on_delete=models.CASCADE, related_name="uploaded_files"
-    )
-    domain_key = models.CharField(
-        max_length=100, help_text="Key to access file from domain"
-    )
-    name = models.CharField(max_length=255, help_text="Original filename")
-    content_type = models.CharField(max_length=100, help_text="MIME type")
-    size = models.PositiveIntegerField(help_text="File size in bytes")
-    file = models.FileField(upload_to="uploads/")
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["graph", "domain_key"], name="unique_file_key_per_graph"
-            )
-        ]
-
-    def delete(self, *args, **kwargs):
-        if self.file:
-            self.file.delete(save=False)
-
-        super().delete(*args, **kwargs)
-
-
-class Organization(models.Model):
-    name = models.CharField(max_length=256, blank=False, unique=True)
-
-
-class OrganizationUser(models.Model):
-    name = models.CharField(max_length=256, blank=False)
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["name", "organization"],
-                name="unique_flow_user_for_organization",
-            )
-        ]
+# Legacy graph-domain `Organization` and `OrganizationUser` (anonymous named
+# flow end-users) were replaced by the RBAC models `Organization` and
+# `OrganizationUser` (see tables/models/rbac_models/). GraphOrganization and
+# GraphOrganizationUser below now hold per-flow persistent variables scoped to
+# those RBAC entities.
+#
+# - GraphOrganization(graph, organization)          -> org-level persistent vars
+#   .user_variables                                 -> seed template for new
+#                                                      GraphOrganizationUser rows
+# - GraphOrganizationUser(graph, organization_user) -> per-membership persistent
+#                                                      vars (one User in one Org)
 
 
 class BasePersistentEntity(models.Model):
@@ -469,11 +439,13 @@ class BasePersistentEntity(models.Model):
 
 class GraphOrganization(BasePersistentEntity):
     organization = models.ForeignKey(
-        Organization, on_delete=models.CASCADE, related_name="graph"
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="graph_persistent_states",
     )
     user_variables = models.JSONField(
         default=dict,
-        help_text="Variables that persistent for all users for specific flow",
+        help_text="Seed template of variables copied into each user's GraphOrganizationUser row",
     )
 
     class Meta:
@@ -486,14 +458,18 @@ class GraphOrganization(BasePersistentEntity):
 
 
 class GraphOrganizationUser(BasePersistentEntity):
-    user = models.ForeignKey(
-        OrganizationUser, on_delete=models.CASCADE, related_name="graph"
+    # FK points at RBAC OrganizationUser (User x Org membership), so per-user
+    # persistent state is scoped per-org as well
+    organization_user = models.ForeignKey(
+        "OrganizationUser",
+        on_delete=models.CASCADE,
+        related_name="graph_persistent_states",
     )
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["graph", "user"],
+                fields=["graph", "organization_user"],
                 name="unique_user_per_flow",
             )
         ]
@@ -592,6 +568,16 @@ class GraphNote(BaseGraphEntity, BaseGlobalNode):
     content = models.TextField()
 
 
+class ActiveManager(models.Manager):
+    """
+    Manager for models that using SoftDeleteMixin.
+    Filters the active records
+    """
+
+    def get_queryset(self):
+        return super().get_queryset().filter(is_active=True, deleted_at__isnull=True)
+
+
 class GraphVersion(SoftDeleteMixin, models.Model):
     graph = models.ForeignKey(
         "Graph",
@@ -609,5 +595,65 @@ class GraphVersion(SoftDeleteMixin, models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
     class Meta:
         ordering = ["-created_at"]
+
+
+class StorageFile(models.Model):
+    org = models.ForeignKey(
+        "Organization", on_delete=models.CASCADE, related_name="storage_files"
+    )
+    path = models.CharField(
+        max_length=1000, help_text="Org-relative path, never starts with '/'"
+    )
+    name = models.CharField(
+        max_length=255, help_text="Last path segment, denormalized for search"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "path"], name="unique_storage_file_per_org"
+            )
+        ]
+        indexes = [models.Index(fields=["org", "path"])]
+
+
+class GraphStorageFile(models.Model):
+    graph = models.ForeignKey(
+        "Graph", on_delete=models.CASCADE, related_name="storage_files"
+    )
+    storage_file = models.ForeignKey(
+        "StorageFile", on_delete=models.CASCADE, related_name="graph_storage_files"
+    )
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["graph", "storage_file"], name="unique_graph_storage_file"
+            )
+        ]
+
+
+class SessionStorageFile(models.Model):
+    session = models.ForeignKey(
+        "Session", on_delete=models.CASCADE, related_name="storage_files"
+    )
+    storage_file = models.ForeignKey(
+        "StorageFile", on_delete=models.CASCADE, related_name="session_storage_files"
+    )
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["session", "storage_file"],
+                name="unique_session_storage_file",
+            )
+        ]

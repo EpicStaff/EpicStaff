@@ -1,0 +1,134 @@
+@if (isLoaded() && outputFiles().length > 0) {
+    <button
+        #btn
+        class="session-files-btn"
+        [appCollapseOnOverflow]="true"
+        collapseOnOverflowTarget=".session-files-btn__label"
+        collapseOnOverflowClass="session-files-btn--icon-only"
+        (click)="toggleDropdown($event)"
+    >
+        <app-svg-icon
+            icon="download"
+            size="12px"
+            class="session-files-btn__icon"
+        ></app-svg-icon>
+        <span class="session-files-btn__label">Files</span>
+    </button>
+
+    @if (dropdownOpen()) {
+        <div
+            class="session-files-dropdown"
+            [class.session-files-dropdown--align-right]="dropdownAlignRight()"
+            (click)="stopPropagation($event)"
+        >
+            <div class="session-files-dropdown__header">
+                <div class="session-files-dropdown__search">
+                    <app-svg-icon
+                        icon="search"
+                        size="0.875rem"
+                        class="session-files-dropdown__search-icon"
+                    ></app-svg-icon>
+                    <input
+                        class="session-files-dropdown__search-input"
+                        type="text"
+                        placeholder="Search file..."
+                        [ngModel]="searchQuery()"
+                        (ngModelChange)="searchQuery.set($event)"
+                    />
+                </div>
+            </div>
+
+            <div class="session-files-dropdown__tree">
+                @if (visibleNodes().length === 0) {
+                    <div class="session-files-dropdown__state">No files found</div>
+                } @else {
+                    @for (node of visibleNodes(); track node.path) {
+                        <div
+                            class="session-files-dropdown__item"
+                            [class.session-files-dropdown__item--checked]="isChecked(node)"
+                            [style.padding-left.px]="12 + node.level * 20"
+                            (click)="toggleCheck(node)"
+                        >
+                            @if (node.type === 'folder' && node.hasChildren) {
+                                <button
+                                    class="session-files-dropdown__chevron"
+                                    [class.session-files-dropdown__chevron--open]="node.isExpanded"
+                                    (click)="toggleExpand($event, node)"
+                                >
+                                    <app-svg-icon
+                                        icon="expand"
+                                        size="0.5rem"
+                                    ></app-svg-icon>
+                                </button>
+                            } @else {
+                                <span class="session-files-dropdown__chevron-gap"></span>
+                            }
+
+                            <div
+                                class="session-files-dropdown__checkbox"
+                                [class.session-files-dropdown__checkbox--checked]="isChecked(node)"
+                                [class.session-files-dropdown__checkbox--indeterminate]="isIndeterminate(node)"
+                            >
+                                @if (isChecked(node)) {
+                                    <app-svg-icon
+                                        icon="check"
+                                        size="0.625rem"
+                                    ></app-svg-icon>
+                                } @else if (isIndeterminate(node)) {
+                                    <span class="session-files-dropdown__checkbox-dash"></span>
+                                }
+                            </div>
+
+                            <app-svg-icon
+                                class="session-files-dropdown__file-icon"
+                                [icon]="getFileIcon(node)"
+                                size="12px"
+                            ></app-svg-icon>
+
+                            <span
+                                class="session-files-dropdown__item-name"
+                                [title]="node.name"
+                                >{{ node.name }}</span
+                            >
+
+                            <button
+                                class="session-files-dropdown__link-btn"
+                                (click)="onDeepLink($event, node)"
+                                title="Open in storage"
+                            >
+                                <app-svg-icon
+                                    icon="external-link"
+                                    size="12px"
+                                ></app-svg-icon>
+                            </button>
+                        </div>
+                    }
+                }
+            </div>
+
+            <div class="session-files-dropdown__footer">
+                <button
+                    class="session-files-dropdown__btn session-files-dropdown__btn--outline"
+                    [disabled]="isDownloading() || allFilePaths().length === 0"
+                    (click)="onDownloadAll()"
+                >
+                    Download all
+                </button>
+                <span class="session-files-dropdown__spacer"></span>
+                <button
+                    class="session-files-dropdown__btn session-files-dropdown__btn--outline"
+                    (click)="onCancel()"
+                >
+                    Cancel
+                </button>
+                <button
+                    class="session-files-dropdown__btn session-files-dropdown__btn--primary"
+                    [disabled]="!hasSelection() || isDownloading()"
+                    (click)="onDownloadSelected()"
+                >
+                    Download selected
+                </button>
+            </div>
+        </div>
+    }
+}

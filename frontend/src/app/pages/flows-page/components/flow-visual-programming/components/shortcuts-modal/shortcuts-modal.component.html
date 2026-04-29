@@ -1,5 +1,8 @@
 @if (open() && pos()) {
-    <div class="shortcuts__overlay" (click)="closed.emit()">
+    <div
+        class="shortcuts__overlay"
+        (click)="closed.emit()"
+    >
         <div
             class="shortcuts__modal"
             [style.top.px]="pos()!.top"
@@ -44,7 +47,11 @@
                                 (click)="closed.emit()"
                                 aria-label="Close"
                             >
-                                <app-svg-icon class="shortcuts__close-icon" icon="x" size="1.25rem" />
+                                <app-svg-icon
+                                    class="shortcuts__close-icon"
+                                    icon="x"
+                                    size="1.25rem"
+                                />
                             </button>
                         }
                     </div>
@@ -59,7 +66,10 @@
                                 <div class="shortcuts__card-body">
                                     @for (row of section.rows; track row.id; let i = $index) {
                                         @if (!row.hidden) {
-                                            <div class="shortcuts__row" [class.shortcuts__row--alt]="i % 2 === 1">
+                                            <div
+                                                class="shortcuts__row"
+                                                [class.shortcuts__row--alt]="i % 2 === 1"
+                                            >
                                                 <div class="shortcuts__label">
                                                     {{ row.label }}
                                                 </div>

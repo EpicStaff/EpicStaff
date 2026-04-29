@@ -1,9 +1,16 @@
 <!-- agents-section.component.html -->
-<div class="agents-section" appClickOutside (appClickOutside)="onOutsideClick()">
+<div
+    class="agents-section"
+    appClickOutside
+    (appClickOutside)="onOutsideClick()"
+>
     <!-- Grid controls - search and size switcher -->
     <div class="grid-container">
         <!-- Loading Animation -->
-        <div *ngIf="!isLoaded" class="loading-container">
+        <div
+            *ngIf="!isLoaded"
+            class="loading-container"
+        >
             <div class="loading-spinner"></div>
             <p class="loading-text">Loading agents...</p>
         </div>

@@ -4,7 +4,10 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
     selector: 'app-project-create-button',
     standalone: true,
     template: `
-        <button class="create-project-button" (click)="onCreate()">
+        <button
+            class="create-project-button"
+            (click)="onCreate()"
+        >
             <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="20"
@@ -17,7 +20,11 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
                 stroke-linejoin="round"
                 class="icon icon-tabler icons-tabler-outline icon-tabler-plus"
             >
-                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                <path
+                    stroke="none"
+                    d="M0 0h24v24H0z"
+                    fill="none"
+                />
                 <path d="M12 5l0 14" />
                 <path d="M5 12l14 0" />
             </svg>
