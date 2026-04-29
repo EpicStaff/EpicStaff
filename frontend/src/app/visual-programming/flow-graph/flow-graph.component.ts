@@ -71,7 +71,6 @@ import { normalizeTableNodeSize } from '../core/helpers/node-size.util';
 import {
     computeSegmentAvoidanceWaypoints,
     getConnectionIntersectingNodes,
-    getConnectionRenderedPath,
     getPortPosition,
     normalizeConnectionWaypoints,
 } from '../core/helpers/segment-avoidance.helper';
@@ -430,6 +429,20 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const connection = this.flowService.connections().find((c) => c.id === connectionId);
         if (!connection) return;
 
+        // Foblex's insert() fires waypointsChange with one more waypoint than the store
+        // currently holds. Normalizing here would call simplifyRoute which removes a
+        // collinear candidate, causing connection.waypoints in the store to diverge from
+        // _waypoints. Angular CD then writes the shorter array back into the model signal,
+        // breaking the _waypoints/waypoints() reference invariant and freezing live drag.
+        // Store the original array (which _waypoints points to) and defer normalization
+        // until mouseup, when update() fires waypointsChange at the same count.
+        const existingCount = connection.waypoints?.length ?? 0;
+        if (waypoints.length > existingCount) {
+            this.userAdjustedConnectionIds.add(connectionId);
+            this.flowService.updateConnectionWaypoints(connectionId, waypoints);
+            return;
+        }
+
         const normalizedWaypoints = this.normalizeWaypointsForConnection(connection, waypoints);
 
         if (normalizedWaypoints.length > 0) {
@@ -438,7 +451,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             this.userAdjustedConnectionIds.delete(connectionId);
         }
 
-        this.flowService.updateConnectionWaypoints(connectionId, normalizedWaypoints);
+        const isSameElements =
+            normalizedWaypoints.length === waypoints.length && normalizedWaypoints.every((p, i) => p === waypoints[i]);
+
+        this.flowService.updateConnectionWaypoints(connectionId, isSameElements ? waypoints : normalizedWaypoints);
     }
 
     public onNodeDroppedFromPanel(event: FCreateNodeEvent): void {
@@ -557,14 +573,42 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public onNodePanelSaved(updatedNode: NodeModel): void {
         const normalizedNode = normalizeTableNodeSize(updatedNode);
         this.flowService.updateNode(normalizedNode);
-        this.resolveTableOverlaps(normalizedNode);
+        const movedNodeIds = this.resolveTableOverlaps(normalizedNode);
         this.sidePanelService.clearSelection();
+
+        setTimeout(() => {
+            this.rerouteSegmentConnections();
+
+            const affectedNodeIds = new Set<string>([normalizedNode.id, ...movedNodeIds]);
+
+            for (const conn of this.flowService.connections()) {
+                if (affectedNodeIds.has(conn.sourceNodeId) || affectedNodeIds.has(conn.targetNodeId)) {
+                    this.bumpConnectionRenderVersion(conn.id);
+                }
+            }
+
+            this.cd.detectChanges();
+        }, 0);
     }
 
     public onNodePanelAutosaved(updatedNode: NodeModel): void {
         const normalizedNode = normalizeTableNodeSize(updatedNode);
         this.flowService.updateNode(normalizedNode);
-        this.resolveTableOverlaps(normalizedNode);
+        const movedNodeIds = this.resolveTableOverlaps(normalizedNode);
+
+        setTimeout(() => {
+            this.rerouteSegmentConnections();
+
+            const affectedNodeIds = new Set<string>([normalizedNode.id, ...movedNodeIds]);
+
+            for (const conn of this.flowService.connections()) {
+                if (affectedNodeIds.has(conn.sourceNodeId) || affectedNodeIds.has(conn.targetNodeId)) {
+                    this.bumpConnectionRenderVersion(conn.id);
+                }
+            }
+
+            this.cd.detectChanges();
+        }, 0);
     }
 
     public commitSidePanelToFlow(): void {
@@ -689,24 +733,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 this.flowService.updateConnectionWaypoints(current.id, normalizedWaypoints);
                 this.bumpConnectionRenderVersion(current.id);
                 current = { ...current, waypoints: normalizedWaypoints };
-
-                const appliedPath = getConnectionRenderedPath(current, nodes);
-                const intersecting = appliedPath ? getConnectionIntersectingNodes(current, nodes) : [];
-                console.log(
-                    `[APPLY attempt=${attempt}] conn=${current.id}`,
-                    `\n  applied waypoints : [${waypoints.map((p) => `(${p.x.toFixed(1)},${p.y.toFixed(1)})`).join(', ')}]`,
-                    `\n  rendered path     : ${
-                        appliedPath
-                            ? `[${appliedPath.map((p) => `(${p.x.toFixed(1)},${p.y.toFixed(1)})`).join(', ')}]`
-                            : 'null'
-                    }`,
-                    `\n  intersecting nodes: [${intersecting.map((n) => `${n.id}(${n.type})`).join(', ')}]`
-                );
             }
         }
     }
 
     public onDragEnded(): void {
+        const autoAlignedNodeIds = new Set<string>();
+
         for (const id of this.draggedNodeIds) {
             const currentNodes = this.flowService.nodes();
             const current = currentNodes.find((n) => n.id === id);
@@ -721,6 +754,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
             if (freePos.x !== current.position.x || freePos.y !== current.position.y) {
                 this.flowService.updateNode({ ...current, position: freePos });
+                autoAlignedNodeIds.add(id);
             }
         }
 
@@ -729,6 +763,14 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
         setTimeout(() => {
             this.rerouteSegmentConnections();
+            if (autoAlignedNodeIds.size > 0) {
+                const connections = this.flowService.connections();
+                for (const conn of connections) {
+                    if (autoAlignedNodeIds.has(conn.sourceNodeId) || autoAlignedNodeIds.has(conn.targetNodeId)) {
+                        this.bumpConnectionRenderVersion(conn.id);
+                    }
+                }
+            }
             this.cd.detectChanges();
         }, 0);
 
@@ -878,13 +920,18 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         });
     }
 
-    private resolveTableOverlaps(node: NodeModel): void {
-        if (node.type !== NodeType.TABLE) return;
+    private resolveTableOverlaps(node: NodeModel): string[] {
+        if (node.type !== NodeType.TABLE) {
+            return [];
+        }
 
         const movedNodes = resolveOverlapsForNode(node.id, this.flowService.nodes());
+
         if (movedNodes.length > 0) {
             this.flowService.updateNodesInBatch(movedNodes);
         }
+
+        return movedNodes.map((movedNode) => movedNode.id);
     }
 
     private snapToGrid(value: number): number {

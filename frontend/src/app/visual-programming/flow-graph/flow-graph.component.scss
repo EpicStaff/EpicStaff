@@ -39,6 +39,13 @@
             visibility: hidden;
         }
 
+        svg.f-marker circle {
+            fill: var(--marker-start-color, #555);
+        }
+        svg.f-marker path {
+            fill: var(--marker-end-color, #555);
+        }
+
         &.f-selected {
             .f-connection-selection {
                 stroke: transparent;

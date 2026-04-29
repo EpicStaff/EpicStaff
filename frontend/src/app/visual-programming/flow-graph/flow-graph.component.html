@@ -120,7 +120,11 @@
 
             @for (
                 connection of sortedConnections();
-                track connection.id + '-' + (connectionRenderVersions()[connection.id] ?? 0)
+                track connection.id +
+                    '-' +
+                    (connectionRenderVersions()[connection.id] ?? 0) +
+                    '-' +
+                    (backwardConnectionIds().has(connection.id) ? 'b' : 'f')
             ) {
                 <f-connection
                     [fBehavior]="connection.behavior || 'fixed'"
@@ -133,10 +137,14 @@
                     [class.is-backward]="backwardConnectionIds().has(connection.id)"
                     [style.z-index]="backwardConnectionIds().has(connection.id) ? 0 : 1"
                     [style.--marker-start-color]="
-                        smartRoutingEnabled() ? nodeColorMap().get(connection.sourceNodeId) || '#555' : '#555'
+                        smartRoutingEnabled()
+                            ? nodeColorMap().get(connection.sourceNodeId) || '#555'
+                            : connection.startColor || '#555'
                     "
                     [style.--marker-end-color]="
-                        smartRoutingEnabled() ? nodeColorMap().get(connection.targetNodeId) || '#555' : '#555'
+                        smartRoutingEnabled()
+                            ? nodeColorMap().get(connection.targetNodeId) || '#555'
+                            : connection.endColor || '#555'
                     "
                 >
                     <f-connection-gradient
