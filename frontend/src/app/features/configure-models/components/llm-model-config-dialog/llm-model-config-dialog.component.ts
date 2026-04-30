@@ -13,9 +13,9 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
+import { LlmConfigStorageService } from '@shared/services';
 
 import { ToastService } from '../../../../services/notifications';
-import { LlmConfigStorageService } from '../../services/llms/llm-config-storage.service';
 import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selector.component';
 
 interface DialogData {

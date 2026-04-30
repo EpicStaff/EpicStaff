@@ -42,6 +42,7 @@
 
         .filter-controls {
             display: flex;
+            align-items: center;
             gap: 10px;
             margin-bottom: 16px;
             flex-shrink: 0;
@@ -115,7 +116,6 @@
     border: none;
     outline: none;
     padding: 6px 14px;
-    margin-right: 8px;
     margin-left: auto;
     border-radius: 6px;
     font-size: 0.95em;
@@ -124,8 +124,14 @@
     transition:
         background 0.18s,
         color 0.18s;
-}
-.delete-btn:hover {
-    background: #b32b36 !important;
-    color: #fff !important;
+
+    &:hover {
+        background: #b32b36 !important;
+        color: #fff !important;
+    }
+
+    &--hidden {
+        visibility: hidden;
+        pointer-events: none;
+    }
 }

@@ -11,11 +11,11 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { LLMProvider, RealtimeModel } from '@shared/models';
+import { RealtimeModelsStorageService } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
 import { finalize } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
-import { RealtimeModelsStorageService } from '../../services/llms/realtime-models-storage.service';
 
 export interface CreateRealtimeModelDialogData {
     provider: LLMProvider;

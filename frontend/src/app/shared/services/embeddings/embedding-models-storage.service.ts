@@ -1,31 +1,26 @@
 import { inject, Injectable, signal } from '@angular/core';
+import { CreateEmbeddingModelRequest, EmbeddingModel } from '@shared/models';
 import { catchError, Observable, of, tap, throwError } from 'rxjs';
-import { map } from 'rxjs/operators';
 
-import {
-    CreateRealtimeTranscriptionModelRequest,
-    GetRealtimeTranscriptionModelRequest,
-} from '../../../transcription/models/transcription-config.model';
-import { RealtimeTranscriptionModelsService } from '../../../transcription/services/transcription-models.service';
+import { EmbeddingModelsService } from './embeddings.service';
 
 @Injectable({
     providedIn: 'root',
 })
-export class TranscriptionModelsStorageService {
-    private readonly transcriptionModelsService = inject(RealtimeTranscriptionModelsService);
+export class EmbeddingModelsStorageService {
+    private readonly embeddingModelsService = inject(EmbeddingModelsService);
 
-    private modelsSignal = signal<GetRealtimeTranscriptionModelRequest[]>([]);
+    private modelsSignal = signal<EmbeddingModel[]>([]);
     private allModelsLoadedSignal = signal<boolean>(false);
 
     public readonly models = this.modelsSignal.asReadonly();
 
-    getModels(forceRefresh = false): Observable<GetRealtimeTranscriptionModelRequest[]> {
+    getModels(forceRefresh = false): Observable<EmbeddingModel[]> {
         if (!forceRefresh && this.allModelsLoadedSignal()) {
             return of(this.modelsSignal());
         }
 
-        return this.transcriptionModelsService.getAllModels().pipe(
-            map((response) => response.results),
+        return this.embeddingModelsService.getEmbeddingModels().pipe(
             tap((models) => {
                 this.modelsSignal.set(models);
                 this.allModelsLoadedSignal.set(true);
@@ -34,24 +29,28 @@ export class TranscriptionModelsStorageService {
         );
     }
 
-    createModel(data: CreateRealtimeTranscriptionModelRequest): Observable<GetRealtimeTranscriptionModelRequest> {
-        return this.transcriptionModelsService.createModel(data).pipe(
+    createModel(data: CreateEmbeddingModelRequest): Observable<EmbeddingModel> {
+        return this.embeddingModelsService.createModel(data).pipe(
             tap((model) => this.upsertModelInCache(model)),
             catchError((err) => throwError(() => err))
         );
     }
 
-    patchModel(
-        id: number,
-        data: Partial<CreateRealtimeTranscriptionModelRequest>
-    ): Observable<GetRealtimeTranscriptionModelRequest> {
-        return this.transcriptionModelsService.patchModel(id, data).pipe(
+    patchModel(id: number, data: Partial<EmbeddingModel>): Observable<EmbeddingModel> {
+        return this.embeddingModelsService.patchModel(id, data).pipe(
             tap((model) => this.upsertModelInCache(model)),
             catchError((err) => throwError(() => err))
         );
     }
 
-    private upsertModelInCache(model: GetRealtimeTranscriptionModelRequest): void {
+    deleteModel(id: number): Observable<void> {
+        return this.embeddingModelsService.deleteModel(id).pipe(
+            tap(() => this.removeModelFromCache(id)),
+            catchError((err) => throwError(() => err))
+        );
+    }
+
+    private upsertModelInCache(model: EmbeddingModel): void {
         this.modelsSignal.update((current) => {
             const index = current.findIndex((m) => m.id === model.id);
             if (index >= 0) {

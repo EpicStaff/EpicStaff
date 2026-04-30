@@ -123,4 +123,8 @@ export class FlowsApiService {
             headers: this.httpHeaders,
         });
     }
+
+    deleteGraphVersion(id: number): Observable<void> {
+        return this.http.delete<void>(`${this.configService.apiUrl}graph-versions/${id}/`);
+    }
 }

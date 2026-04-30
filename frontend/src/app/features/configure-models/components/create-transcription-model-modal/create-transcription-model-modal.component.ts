@@ -10,13 +10,12 @@ import {
     TooltipComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { LLMProvider } from '@shared/models';
+import { GetRealtimeTranscriptionModelRequest, LLMProvider } from '@shared/models';
+import { TranscriptionModelsStorageService } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
 import { finalize } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
-import { GetRealtimeTranscriptionModelRequest } from '../../../transcription/models/transcription-config.model';
-import { TranscriptionModelsStorageService } from '../../services/llms/transcription-models-storage.service';
 
 export interface CreateTranscriptionModelDialogData {
     provider: LLMProvider;

@@ -1,6 +1,8 @@
 <div class="dialog-container">
     <div class="dialog-header">
-        <h2 class="dialog-title">Create Transcription Configuration</h2>
+        <h2 class="dialog-title">
+            {{ isEditMode ? 'Edit Transcription Configuration' : 'Create Transcription Configuration' }}
+        </h2>
         <button
             class="close-button"
             (click)="onCancel()"
@@ -174,7 +176,11 @@
             [disabled]="transcriptionForm.invalid || submitting"
             (click)="onConfirm()"
         >
-            {{ submitting ? 'Creating...' : 'Create' }}
+            @if (isEditMode) {
+                {{ submitting ? 'Saving...' : 'Save' }}
+            } @else {
+                {{ submitting ? 'Creating...' : 'Create' }}
+            }
         </button>
     </div>
 </div>

@@ -26,9 +26,6 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-}
-
-.dialog-header.has-border {
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     padding-bottom: 16px;
 }
@@ -94,7 +91,7 @@
     display: flex;
     justify-content: flex-end;
     gap: 8px;
-    margin-top: 8px;
+    margin-top: 0;
 }
 
 .button {
@@ -104,36 +101,54 @@
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
-    border: none;
+    background: transparent;
 
     &.cancel-button {
-        background: transparent;
-        color: var(--color-text-subtle);
+        color: rgba(255, 255, 255, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.2);
 
         &:hover {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.35);
         }
     }
 
     &.confirm-button {
-        background: var(--color-primary);
-        color: white;
+        color: var(--color-primary);
+        border: 1px solid var(--color-primary);
 
         &:hover {
-            background: var(--color-primary-hover);
+            background: var(--color-primary);
+            color: white;
         }
 
         &.danger {
-            background: #f44336;
+            color: #f44336;
+            border-color: #f44336;
+
             &:hover {
-                background: #d32f2f;
+                background: #f44336;
+                color: white;
             }
         }
 
         &.warning {
-            background: #e65100; /* Darker orange */
+            color: #e65100;
+            border-color: #e65100;
+
             &:hover {
-                background: #bf360c; /* Even darker orange for hover */
+                background: #e65100;
+                color: white;
+            }
+        }
+
+        &.info {
+            color: #685fff;
+            border-color: #685fff;
+
+            &:hover {
+                background: #685fff;
+                color: white;
             }
         }
     }
@@ -172,30 +187,8 @@
     color: #f44336;
 }
 .dialog-container.warning .dialog-icon {
-    color: #e65100; /* Darker orange */
+    color: #e65100;
 }
 .dialog-container.info .dialog-icon {
     color: #685fff;
-}
-
-.button.confirm-button.info {
-    background: #685fff;
-    color: white;
-}
-.button.confirm-button.info:hover {
-    background: #574fd6;
-}
-.button.confirm-button.danger {
-    background: #f44336;
-    color: white;
-}
-.button.confirm-button.danger:hover {
-    background: #d32f2f;
-}
-.button.confirm-button.warning {
-    background: #e65100; /* Darker orange */
-    color: white;
-}
-.button.confirm-button.warning:hover {
-    background: #bf360c; /* Even darker orange for hover */
 }

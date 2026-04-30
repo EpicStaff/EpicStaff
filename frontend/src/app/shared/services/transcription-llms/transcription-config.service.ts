@@ -1,16 +1,16 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { map, Observable, switchMap } from 'rxjs';
-
-import { ApiGetRequest } from '../../../core/models/api-request.model';
-import { ConfigService } from '../../../services/config/config.service';
 import {
     CreateTranscriptionConfigRequest,
     EnhancedTranscriptionConfig,
     GetRealtimeTranscriptionModelRequest,
     GetTranscriptionConfigRequest,
     UpdateTranscriptionConfigRequest,
-} from '../models/transcription-config.model';
+} from '@shared/models';
+import { map, Observable, switchMap } from 'rxjs';
+
+import { ApiGetRequest } from '../../../core/models/api-request.model';
+import { ConfigService } from '../../../services/config/config.service';
 import { ApiGetResponse, RealtimeTranscriptionModelsService } from './transcription-models.service';
 
 @Injectable({

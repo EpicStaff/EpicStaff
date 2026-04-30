@@ -3,21 +3,19 @@ import { CommonModule } from '@angular/common';
 import { Component, DestroyRef, Inject, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-
 import {
     CreateTranscriptionConfigRequest,
     GetRealtimeTranscriptionModelRequest,
     GetTranscriptionConfigRequest,
-} from '../../../../../../../features/transcription/models/transcription-config.model';
-import { TranscriptionConfigsService } from '../../../../../../../features/transcription/services/transcription-config.service';
-import {
-    ApiGetResponse,
-    RealtimeTranscriptionModelsService,
-} from '../../../../../../../features/transcription/services/transcription-models.service';
+    UpdateTranscriptionConfigRequest,
+} from '@shared/models';
+import { ApiGetResponse, RealtimeTranscriptionModelsService, TranscriptionConfigsService } from '@shared/services';
+
 import { ToastService } from '../../../../../../../services/notifications/toast.service';
 
 export interface AddTranscriptionConfigDialogData {
     providerId?: number;
+    editConfig?: GetTranscriptionConfigRequest;
 }
 
 @Component({
@@ -56,12 +54,20 @@ export class AddTranscriptionConfigDialogComponent implements OnInit {
         });
     }
 
+    public get isEditMode(): boolean {
+        return !!this.data?.editConfig;
+    }
+
     private initForm(): void {
+        const edit = this.data?.editConfig;
         this.transcriptionForm = this.fb.group({
-            realtime_transcription_model: [null, Validators.required],
-            custom_name: ['', Validators.required],
-            api_key: ['', Validators.required],
+            realtime_transcription_model: [edit?.realtime_transcription_model ?? null, Validators.required],
+            custom_name: [edit?.custom_name ?? '', Validators.required],
+            api_key: [edit?.api_key ?? '', Validators.required],
         });
+        if (edit) {
+            this.lastAutoCustomName = null;
+        }
     }
 
     private setupModelSubscription(): void {
@@ -90,36 +96,57 @@ export class AddTranscriptionConfigDialogComponent implements OnInit {
     }
 
     onConfirm(): void {
-        if (this.transcriptionForm.valid) {
-            this.submitting = true;
-            const formValue = this.transcriptionForm.value;
+        if (!this.transcriptionForm.valid) {
+            this.transcriptionForm.markAllAsTouched();
+            return;
+        }
 
-            const config: CreateTranscriptionConfigRequest = {
+        this.submitting = true;
+        const formValue = this.transcriptionForm.value;
+
+        if (this.isEditMode) {
+            const update: UpdateTranscriptionConfigRequest = {
+                id: this.data.editConfig!.id,
                 realtime_transcription_model: formValue.realtime_transcription_model,
                 api_key: formValue.api_key,
                 custom_name: formValue.custom_name,
             };
-
-            // Create the transcription config through the service
-            this.transcriptionConfigsService.createTranscriptionConfig(config).subscribe({
-                next: (createdConfig: GetTranscriptionConfigRequest) => {
+            this.transcriptionConfigsService.updateTranscriptionConfig(update).subscribe({
+                next: (updatedConfig: GetTranscriptionConfigRequest) => {
                     this.toastService.success(
-                        `Transcription configuration "${createdConfig.custom_name}" has been successfully created`
+                        `Transcription configuration "${updatedConfig.custom_name}" has been successfully updated`
                     );
-                    // Close the dialog with the created config
-                    this.dialogRef.close(createdConfig);
+                    this.dialogRef.close(updatedConfig);
                     this.submitting = false;
                 },
                 error: (error) => {
-                    console.error('Error creating transcription config:', error);
-                    this.toastService.error('Failed to create transcription configuration');
+                    console.error('Error updating transcription config:', error);
+                    this.toastService.error('Failed to update transcription configuration');
                     this.submitting = false;
                 },
             });
-        } else {
-            // Mark all fields as touched to show validation errors
-            this.transcriptionForm.markAllAsTouched();
+            return;
         }
+
+        const config: CreateTranscriptionConfigRequest = {
+            realtime_transcription_model: formValue.realtime_transcription_model,
+            api_key: formValue.api_key,
+            custom_name: formValue.custom_name,
+        };
+        this.transcriptionConfigsService.createTranscriptionConfig(config).subscribe({
+            next: (createdConfig: GetTranscriptionConfigRequest) => {
+                this.toastService.success(
+                    `Transcription configuration "${createdConfig.custom_name}" has been successfully created`
+                );
+                this.dialogRef.close(createdConfig);
+                this.submitting = false;
+            },
+            error: (error) => {
+                console.error('Error creating transcription config:', error);
+                this.toastService.error('Failed to create transcription configuration');
+                this.submitting = false;
+            },
+        });
     }
 
     onCancel(): void {
@@ -141,6 +168,14 @@ export class AddTranscriptionConfigDialogComponent implements OnInit {
 
         const selectedModel = this.models.find((model) => model.id === modelId);
         if (!selectedModel) {
+            return;
+        }
+
+        const currentName = customNameControl.value;
+        const isKnownModelName = this.models.some((model) => model.name === currentName);
+        const isAutoName = !currentName || currentName === this.lastAutoCustomName || isKnownModelName;
+        const isCustomized = !isAutoName;
+        if (isCustomized) {
             return;
         }
 

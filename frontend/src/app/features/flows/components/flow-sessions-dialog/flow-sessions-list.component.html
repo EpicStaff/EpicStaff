@@ -32,15 +32,15 @@
                     <div class="toggle-thumb"></div>
                 </div>
             </label>
-        </div>
-        @if (selectedIds().size > 0) {
+
             <button
                 class="delete-btn"
+                [class.delete-btn--hidden]="selectedIds().size === 0"
                 (click)="onBulkDelete()"
             >
                 Delete Selected
             </button>
-        }
+        </div>
         <div class="table-container">
             <app-flow-sessions-table
                 [sessions]="sessions()"

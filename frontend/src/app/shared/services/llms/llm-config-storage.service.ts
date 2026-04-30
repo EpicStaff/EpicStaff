@@ -1,8 +1,9 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { CreateLLMConfigRequest, GetLlmConfigRequest, UpdateLLMConfigRequest } from '@shared/models';
-import { LLMConfigService } from '@shared/services';
 import { catchError, finalize, Observable, of, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
+
+import { LLMConfigService } from './llm-config.service';
 
 @Injectable({
     providedIn: 'root',

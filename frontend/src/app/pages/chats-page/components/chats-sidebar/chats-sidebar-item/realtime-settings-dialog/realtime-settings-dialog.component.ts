@@ -3,14 +3,13 @@ import { CommonModule } from '@angular/common';
 import { Component, DestroyRef, Inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
-import { RealtimeModelConfigsService } from '@shared/services';
+import { EnhancedTranscriptionConfig } from '@shared/models';
+import { RealtimeModelConfigsService, TranscriptionConfigsService } from '@shared/services';
 import { finalize } from 'rxjs';
 
 import { PartialUpdateAgentRequest, RealtimeAgentConfig } from '../../../../../../features/staff/models/agent.model';
 import { FullAgent, PartialAgent } from '../../../../../../features/staff/services/full-agent.service';
 import { AgentsService } from '../../../../../../features/staff/services/staff.service';
-import { EnhancedTranscriptionConfig } from '../../../../../../features/transcription/models/transcription-config.model';
-import { TranscriptionConfigsService } from '../../../../../../features/transcription/services/transcription-config.service';
 import { ToastService } from '../../../../../../services/notifications/toast.service';
 import { HelpTooltipComponent } from '../../../../../../shared/components/help-tooltip/help-tooltip.component';
 import { AVAILABLE_LANGUAGES } from '../../../../../../shared/constants/languages-selector.constants';
@@ -149,6 +148,34 @@ export class RealtimeSettingsDialogComponent implements OnInit {
                 // After a short delay to ensure the configs are loaded, select the new config
                 setTimeout(() => {
                     this.onTranscriptionConfigChange((result as { id: number }).id);
+                }, 300);
+            }
+        });
+    }
+
+    editTranscriptionConfig(configId: number): void {
+        const editConfig = this.transcriptionConfigs.find((c) => c.id === configId);
+        if (!editConfig) {
+            return;
+        }
+
+        const dialogRef = this.dialog.open(AddTranscriptionConfigDialogComponent, {
+            data: { editConfig },
+            width: '500px',
+        });
+
+        dialogRef.closed.subscribe((result: unknown) => {
+            if (!result) {
+                return;
+            }
+
+            const updated = result as { id: number };
+            this.loadTranscriptionConfigs();
+
+            const currentSelected = this.settingsForm.get('realtime_transcription_config')?.value;
+            if (currentSelected === updated.id) {
+                setTimeout(() => {
+                    this.onTranscriptionConfigChange(updated.id);
                 }, 300);
             }
         });

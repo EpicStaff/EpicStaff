@@ -23,6 +23,13 @@ import {
 } from '@shared/components';
 import { MATERIAL_FORMS } from '@shared/material-forms';
 import { LLMProvider, ModelTypes } from '@shared/models';
+import {
+    EmbeddingConfigStorageService,
+    LlmConfigStorageService,
+    LlmProvidersStorageService,
+    RealtimeConfigStorageService,
+    TranscriptionConfigStorageService,
+} from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
 import { EMPTY, filter, finalize, forkJoin, of } from 'rxjs';
 import { catchError, map, switchMap, tap } from 'rxjs/operators';
@@ -31,11 +38,6 @@ import { ToastService } from '../../../../services/notifications';
 import { ConfigureModelsTabId } from '../../enums/configure-models-tab-id.enum';
 import { CreateQuickstartRequest } from '../../models/quickstart.model';
 import { DefaultModelsStorageService } from '../../services/default-models-storage.service';
-import { EmbeddingConfigStorageService } from '../../services/llms/embedding-config-storage.service';
-import { LlmConfigStorageService } from '../../services/llms/llm-config-storage.service';
-import { LlmProvidersStorageService } from '../../services/llms/llm-providers-storage.service';
-import { RealtimeConfigStorageService } from '../../services/llms/realtime-config-storage.service';
-import { TranscriptionConfigStorageService } from '../../services/llms/transcription-config-storage.service';
 import { QuickstartService } from '../../services/quickstart.service';
 
 @Component({

@@ -15,13 +15,15 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent, SelectComponent, SelectItem } from '@shared/components';
 import { ModelTypes } from '@shared/models';
+import {
+    EmbeddingConfigStorageService,
+    LlmConfigStorageService,
+    RealtimeConfigStorageService,
+    TranscriptionConfigStorageService,
+} from '@shared/services';
 import { Observable } from 'rxjs';
 
 import { DefaultLlmsCard } from '../../interfaces/default-llms-card.interface';
-import { EmbeddingConfigStorageService } from '../../services/llms/embedding-config-storage.service';
-import { LlmConfigStorageService } from '../../services/llms/llm-config-storage.service';
-import { RealtimeConfigStorageService } from '../../services/llms/realtime-config-storage.service';
-import { TranscriptionConfigStorageService } from '../../services/llms/transcription-config-storage.service';
 import { EmbeddingModelConfigDialogComponent } from '../embedding-model-config-dialog/embedding-model-config-dialog.component';
 import { LlmModelConfigDialogComponent } from '../llm-model-config-dialog/llm-model-config-dialog.component';
 import { TranscriptionModelConfigDialogComponent } from '../transcription-model-config-dialog/transcription-model-config-dialog.component';

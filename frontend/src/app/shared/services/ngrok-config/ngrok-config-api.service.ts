@@ -3,8 +3,8 @@ import { inject, Injectable } from '@angular/core';
 import { CreateNgrokConfigRequest, GetNgrokConfigResponse } from '@shared/models';
 import { map, Observable } from 'rxjs';
 
-import { ApiGetResponse } from '../../../features/transcription/services/transcription-models.service';
 import { ConfigService } from '../../../services/config';
+import { ApiGetResponse } from '../transcription-llms/transcription-models.service';
 
 @Injectable({
     providedIn: 'root',

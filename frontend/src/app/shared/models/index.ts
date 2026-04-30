@@ -7,6 +7,7 @@ export * from './embeddings/embedding-config.model';
 export * from './llms/llm.model';
 export * from './llms/llm-config.model';
 export * from './llms/llm-provider.model';
+export * from './llms/transcription-config.model';
 export * from './ngrok/ngrok-config.model';
 export * from './realtime-voice/realtime-llm-config.model';
 export * from './realtime-voice/realtime-model.model';

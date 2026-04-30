@@ -9,9 +9,9 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
+import { EmbeddingConfigStorageService } from '@shared/services';
 
 import { ToastService } from '../../../../services/notifications';
-import { EmbeddingConfigStorageService } from '../../services/llms/embedding-config-storage.service';
 import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selector.component';
 
 @Component({

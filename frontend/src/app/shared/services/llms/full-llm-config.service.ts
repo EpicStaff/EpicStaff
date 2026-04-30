@@ -1,13 +1,13 @@
 import { Injectable } from '@angular/core';
 import { GetLlmConfigRequest } from '@shared/models';
 import { LLMProvider, ModelTypes } from '@shared/models';
-import { LLMProvidersService } from '@shared/services';
 import { forkJoin, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { GetLlmModelRequest } from '../../models/llms/llm.model';
-import { LLMConfigService } from './llm-config.service';
-import { LLMModelsService } from './llm-models.service';
+import { LlmConfigStorageService } from './llm-config-storage.service';
+import { LlmModelsStorageService } from './llm-models-storage.service';
+import { LlmProvidersStorageService } from './llm-providers-storage.service';
 
 export interface FullLLMConfig extends GetLlmConfigRequest {
     modelDetails: GetLlmModelRequest | null;
@@ -19,16 +19,16 @@ export interface FullLLMConfig extends GetLlmConfigRequest {
 })
 export class FullLLMConfigService {
     constructor(
-        private llmConfigService: LLMConfigService,
-        private llmModelsService: LLMModelsService,
-        private llmProvidersService: LLMProvidersService
+        private llmConfigStorage: LlmConfigStorageService,
+        private llmModelsStorage: LlmModelsStorageService,
+        private llmProvidersStorage: LlmProvidersStorageService
     ) {}
 
     getFullLLMConfigs(): Observable<FullLLMConfig[]> {
         return forkJoin({
-            configs: this.llmConfigService.getAllConfigsLLM(),
-            models: this.llmModelsService.getLLMModels(),
-            providers: this.llmProvidersService.getProvidersByQuery(ModelTypes.LLM),
+            configs: this.llmConfigStorage.getAllConfigs(),
+            models: this.llmModelsStorage.getModels(),
+            providers: this.llmProvidersStorage.getProvidersByType(ModelTypes.LLM),
         }).pipe(
             map(({ configs, models, providers }) => {
                 const modelMap: Record<number, GetLlmModelRequest> = {};
@@ -42,7 +42,6 @@ export class FullLLMConfigService {
                 });
 
                 const visibleConfigs = configs.filter((config) => config);
-                console.log('models', modelMap);
                 return visibleConfigs.map((config) => {
                     const modelDetails = modelMap[config.model] || null;
                     const providerDetails = modelDetails?.llm_provider ? providerMap[modelDetails.llm_provider] : null;

@@ -20,12 +20,12 @@ import {
 } from '@shared/components';
 import { GetEmbeddingConfigRequest, GetLlmConfigRequest } from '@shared/models';
 import {
-    EmbeddingConfigsService,
+    EmbeddingConfigStorageService,
     FullEmbeddingConfig,
     FullEmbeddingConfigService,
     FullLLMConfig,
     FullLLMConfigService,
-    LLMConfigService,
+    LlmConfigStorageService,
 } from '@shared/services';
 
 import { GetProjectRequest } from '../../features/projects/models/project.model';
@@ -84,8 +84,8 @@ export class SettingsSectionComponent implements OnInit, OnChanges {
     private rpmCurrentValue: number = 15;
 
     constructor(
-        private llmConfigService: LLMConfigService,
-        private embeddingConfigService: EmbeddingConfigsService,
+        private llmConfigStorage: LlmConfigStorageService,
+        private embeddingConfigStorage: EmbeddingConfigStorageService,
         private fullLLMConfigService: FullLLMConfigService,
         private fullEmbeddingConfigService: FullEmbeddingConfigService,
         private cdr: ChangeDetectorRef
@@ -142,7 +142,7 @@ export class SettingsSectionComponent implements OnInit, OnChanges {
         this.configsLoaded.set(false);
 
         // Fetch LLM configs
-        this.llmConfigService.getAllConfigsLLM().subscribe({
+        this.llmConfigStorage.getAllConfigs().subscribe({
             next: (configs) => {
                 this.availableLLMs.set(configs);
                 this.checkLoadingComplete();
@@ -154,7 +154,7 @@ export class SettingsSectionComponent implements OnInit, OnChanges {
         });
 
         // Fetch embedding configs
-        this.embeddingConfigService.getEmbeddingConfigs().subscribe({
+        this.embeddingConfigStorage.getAllConfigs().subscribe({
             next: (configs) => {
                 this.embeddingConfigs.set(configs);
                 this.checkLoadingComplete();

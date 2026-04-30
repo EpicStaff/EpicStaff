@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { LlmConfigStorageService } from '@shared/services';
 import { catchError, EMPTY, forkJoin } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
@@ -8,7 +9,6 @@ import { DEFAULT_LLMS_SECTIONS } from '../../constants/default-llms-sections.con
 import { DefaultLlmsCard } from '../../interfaces/default-llms-card.interface';
 import { UpdateDefaultModelsRequest } from '../../models/default-models.model';
 import { DefaultModelsStorageService } from '../../services/default-models-storage.service';
-import { LlmConfigStorageService } from '../../services/llms/llm-config-storage.service';
 import { DefaultLlmsCardComponent } from '../default-llms-card/default-llms-card.component';
 
 @Component({

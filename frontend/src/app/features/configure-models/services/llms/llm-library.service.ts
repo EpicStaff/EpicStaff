@@ -1,21 +1,29 @@
 import { computed, inject, Injectable } from '@angular/core';
 import { PROVIDER_ICON_PATHS } from '@shared/constants';
-import { EmbeddingModel, LLMProvider, ModelTypes, RealtimeModel, Tag } from '@shared/models';
+import {
+    EmbeddingModel,
+    GetRealtimeTranscriptionModelRequest,
+    LLMModel,
+    LLMProvider,
+    ModelTypes,
+    RealtimeModel,
+    Tag,
+} from '@shared/models';
+import {
+    EmbeddingConfigStorageService,
+    EmbeddingModelsStorageService,
+    LlmConfigStorageService,
+    LlmModelsStorageService,
+    LlmProvidersStorageService,
+    RealtimeConfigStorageService,
+    RealtimeModelsStorageService,
+    TranscriptionConfigStorageService,
+    TranscriptionModelsStorageService,
+} from '@shared/services';
 import { forkJoin, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
-import { LLMModel } from '../../../../shared/models/llms/llm.model';
-import { GetRealtimeTranscriptionModelRequest } from '../../../transcription/models/transcription-config.model';
 import { LlmLibraryProviderGroup } from '../../interfaces/llm-library-provider-group.interface';
-import { EmbeddingConfigStorageService } from './embedding-config-storage.service';
-import { EmbeddingModelsStorageService } from './embedding-models-storage.service';
-import { LlmConfigStorageService } from './llm-config-storage.service';
-import { LlmModelsStorageService } from './llm-models-storage.service';
-import { LlmProvidersStorageService } from './llm-providers-storage.service';
-import { RealtimeConfigStorageService } from './realtime-config-storage.service';
-import { RealtimeModelsStorageService } from './realtime-models-storage.service';
-import { TranscriptionConfigStorageService } from './transcription-config-storage.service';
-import { TranscriptionModelsStorageService } from './transcription-models-storage.service';
 
 type AnyModel = LLMModel | EmbeddingModel | RealtimeModel | GetRealtimeTranscriptionModelRequest;
 

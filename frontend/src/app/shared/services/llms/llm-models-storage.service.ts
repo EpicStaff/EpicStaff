@@ -1,7 +1,8 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { CreateLlmModelRequest, LLMModel } from '@shared/models';
-import { LLMModelsService } from '@shared/services';
 import { catchError, Observable, of, tap, throwError } from 'rxjs';
+
+import { LLMModelsService } from './llm-models.service';
 
 @Injectable({
     providedIn: 'root',

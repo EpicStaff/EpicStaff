@@ -3,9 +3,9 @@ import { GetLlmModelRequest, LLMProvider, RealtimeModel } from '@shared/models';
 import {
     FullLLMConfig,
     FullRealtimeConfig,
-    LLMConfigService,
-    LLMModelsService,
-    LLMProvidersService,
+    LlmConfigStorageService,
+    LlmModelsStorageService,
+    LlmProvidersStorageService,
     RealtimeModelConfigsService,
     RealtimeModelsService,
 } from '@shared/services';
@@ -75,28 +75,28 @@ export interface TableFullAgent extends Omit<FullAgent, 'id'> {
 export class FullAgentService {
     constructor(
         private agentsService: AgentsService,
-        private llmConfigService: LLMConfigService,
+        private llmConfigStorage: LlmConfigStorageService,
         private toolConfigService: ToolConfigService,
         private pythonCodeToolService: PythonCodeToolService,
-        private llmModelsService: LLMModelsService,
+        private llmModelsStorage: LlmModelsStorageService,
         private projectsService: ProjectsStorageService,
         private realtimeModelConfigsService: RealtimeModelConfigsService,
         private realtimeModelsService: RealtimeModelsService,
-        private llmProvidersService: LLMProvidersService,
+        private llmProvidersStorage: LlmProvidersStorageService,
         private mcpToolsService: McpToolsService
     ) {}
 
     getFullAgents(): Observable<FullAgent[]> {
         return forkJoin({
             agents: this.agentsService.getAgents(),
-            llmConfigs: this.llmConfigService.getAllConfigsLLM(),
+            llmConfigs: this.llmConfigStorage.getAllConfigs(),
             toolConfigs: this.toolConfigService.getToolConfigs(),
             pythonTools: this.pythonCodeToolService.getPythonCodeTools(),
             mcpTools: this.mcpToolsService.getMcpTools(),
-            llmModels: this.llmModelsService.getLLMModels(),
+            llmModels: this.llmModelsStorage.getModels(),
             realtimeConfigs: this.realtimeModelConfigsService.getAllConfigs(),
             realtimeModels: this.realtimeModelsService.getAllModels(),
-            llmProviders: this.llmProvidersService.getProviders(),
+            llmProviders: this.llmProvidersStorage.getProviders(),
         }).pipe(
             map(
                 ({
@@ -259,14 +259,14 @@ export class FullAgentService {
         return forkJoin({
             project: this.projectsService.getProjectById(projectId),
             agents: this.agentsService.getAgentsByProjectId(projectId),
-            llmConfigs: this.llmConfigService.getAllConfigsLLM(),
+            llmConfigs: this.llmConfigStorage.getAllConfigs(),
             toolConfigs: this.toolConfigService.getToolConfigs(),
             pythonTools: this.pythonCodeToolService.getPythonCodeTools(),
             mcpTools: this.mcpToolsService.getMcpTools(),
-            llmModels: this.llmModelsService.getLLMModels(),
+            llmModels: this.llmModelsStorage.getModels(),
             realtimeConfigs: this.realtimeModelConfigsService.getAllConfigs(),
             realtimeModels: this.realtimeModelsService.getAllModels(),
-            llmProviders: this.llmProvidersService.getProviders(),
+            llmProviders: this.llmProvidersStorage.getProviders(),
         }).pipe(
             map(
                 ({
@@ -435,14 +435,14 @@ export class FullAgentService {
     getFullAgentById(agentId: number): Observable<FullAgent | null> {
         return forkJoin({
             agents: this.agentsService.getAgents(),
-            llmConfigs: this.llmConfigService.getAllConfigsLLM(),
+            llmConfigs: this.llmConfigStorage.getAllConfigs(),
             toolConfigs: this.toolConfigService.getToolConfigs(),
             pythonTools: this.pythonCodeToolService.getPythonCodeTools(),
             mcpTools: this.mcpToolsService.getMcpTools(),
-            llmModels: this.llmModelsService.getLLMModels(),
+            llmModels: this.llmModelsStorage.getModels(),
             realtimeConfigs: this.realtimeModelConfigsService.getAllConfigs(),
             realtimeModels: this.realtimeModelsService.getAllModels(),
-            llmProviders: this.llmProvidersService.getProviders(),
+            llmProviders: this.llmProvidersStorage.getProviders(),
         }).pipe(
             map(
                 ({

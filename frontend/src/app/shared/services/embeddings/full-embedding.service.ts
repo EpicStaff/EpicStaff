@@ -3,9 +3,9 @@ import { EmbeddingModel, GetEmbeddingConfigRequest, LLMProvider, ModelTypes } fr
 import { forkJoin, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
-import { LLMProvidersService } from '../llms/llm-providers.service';
-import { EmbeddingConfigsService } from './embedding-configs.service';
-import { EmbeddingModelsService } from './embeddings.service';
+import { LlmProvidersStorageService } from '../llms/llm-providers-storage.service';
+import { EmbeddingConfigStorageService } from './embedding-config-storage.service';
+import { EmbeddingModelsStorageService } from './embedding-models-storage.service';
 
 export interface FullEmbeddingConfig extends GetEmbeddingConfigRequest {
     modelDetails: EmbeddingModel | null;
@@ -17,16 +17,16 @@ export interface FullEmbeddingConfig extends GetEmbeddingConfigRequest {
 })
 export class FullEmbeddingConfigService {
     constructor(
-        private embeddingConfigService: EmbeddingConfigsService,
-        private embeddingModelsService: EmbeddingModelsService,
-        private providersService: LLMProvidersService
+        private embeddingConfigStorage: EmbeddingConfigStorageService,
+        private embeddingModelsStorage: EmbeddingModelsStorageService,
+        private llmProvidersStorage: LlmProvidersStorageService
     ) {}
 
     getFullEmbeddingConfigs(): Observable<FullEmbeddingConfig[]> {
         return forkJoin({
-            configs: this.embeddingConfigService.getEmbeddingConfigs(),
-            models: this.embeddingModelsService.getEmbeddingModels(),
-            providers: this.providersService.getProvidersByQuery(ModelTypes.EMBEDDING),
+            configs: this.embeddingConfigStorage.getAllConfigs(),
+            models: this.embeddingModelsStorage.getModels(),
+            providers: this.llmProvidersStorage.getProvidersByType(ModelTypes.EMBEDDING),
         }).pipe(
             map(({ configs, models, providers }) => {
                 // Create lookup tables for models and providers

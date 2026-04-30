@@ -50,13 +50,22 @@
                 (click)="selectConfig(config.id)"
             >
                 <span class="config-name">{{ config.custom_name }} ({{ config.model_name }})</span>
-                <app-svg-icon
-                    icon="x"
-                    size="16px"
-                    class="delete-icon"
-                    (click)="onDeleteConfig($event, config.id)"
-                    aria-label="Delete configuration"
-                />
+                <span class="item-actions">
+                    <app-svg-icon
+                        icon="settings"
+                        size="16px"
+                        class="edit-icon"
+                        (click)="onEditConfig($event, config.id)"
+                        aria-label="Edit configuration"
+                    />
+                    <app-svg-icon
+                        icon="x"
+                        size="16px"
+                        class="delete-icon"
+                        (click)="onDeleteConfig($event, config.id)"
+                        aria-label="Delete configuration"
+                    />
+                </span>
             </div>
 
             <!-- Create new option -->

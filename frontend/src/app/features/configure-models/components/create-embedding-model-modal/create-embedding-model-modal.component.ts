@@ -12,11 +12,11 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { EmbeddingModel, LLMProvider } from '@shared/models';
+import { EmbeddingModelsStorageService } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
 import { finalize } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
-import { EmbeddingModelsStorageService } from '../../services/llms/embedding-models-storage.service';
 
 export interface CreateEmbeddingModelDialogData {
     provider: LLMProvider;

@@ -1,29 +1,25 @@
 import { inject, Injectable, signal } from '@angular/core';
+import { CreateEmbeddingConfigRequest, EmbeddingConfig, GetEmbeddingConfigRequest } from '@shared/models';
 import { catchError, finalize, Observable, of, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
-import {
-    CreateTranscriptionConfigRequest,
-    GetTranscriptionConfigRequest,
-    UpdateTranscriptionConfigRequest,
-} from '../../../transcription/models/transcription-config.model';
-import { TranscriptionConfigsService } from '../../../transcription/services/transcription-config.service';
+import { EmbeddingConfigsService } from './embedding-configs.service';
 
 @Injectable({
     providedIn: 'root',
 })
-export class TranscriptionConfigStorageService {
-    private readonly transcriptionConfigsService = inject(TranscriptionConfigsService);
+export class EmbeddingConfigStorageService {
+    private readonly embeddingConfigsService = inject(EmbeddingConfigsService);
 
-    private configsRequest$?: Observable<GetTranscriptionConfigRequest[]>;
+    private configsRequest$?: Observable<EmbeddingConfig[]>;
 
-    private configsSignal = signal<GetTranscriptionConfigRequest[]>([]);
+    private configsSignal = signal<EmbeddingConfig[]>([]);
     private configsLoaded = signal<boolean>(false);
 
     public readonly configs = this.configsSignal.asReadonly();
     public readonly isConfigsLoaded = this.configsLoaded.asReadonly();
 
-    getAllConfigs(forceRefresh = false): Observable<GetTranscriptionConfigRequest[]> {
+    getAllConfigs(forceRefresh = false): Observable<EmbeddingConfig[]> {
         if (this.configsLoaded() && !forceRefresh) {
             return of(this.configsSignal());
         }
@@ -32,7 +28,7 @@ export class TranscriptionConfigStorageService {
             return this.configsRequest$;
         }
 
-        this.configsRequest$ = this.transcriptionConfigsService.getTranscriptionConfigs().pipe(
+        this.configsRequest$ = this.embeddingConfigsService.getEmbeddingConfigs().pipe(
             tap((configs) => {
                 this.configsSignal.set(configs);
                 this.configsLoaded.set(true);
@@ -46,19 +42,19 @@ export class TranscriptionConfigStorageService {
         return this.configsRequest$;
     }
 
-    getConfigById(id: number): Observable<GetTranscriptionConfigRequest> {
+    getConfigById(id: number): Observable<EmbeddingConfig> {
         const cached = this.configsSignal().find((c) => c.id === id);
         if (cached) {
             return of(cached);
         }
-        return this.transcriptionConfigsService.getTranscriptionConfigById(id).pipe(
+        return this.embeddingConfigsService.getEmbeddingConfigById(id).pipe(
             tap((config) => this.mergeConfigsIntoCache([config])),
             catchError((err) => throwError(() => err))
         );
     }
 
-    createConfig(data: CreateTranscriptionConfigRequest): Observable<GetTranscriptionConfigRequest> {
-        return this.transcriptionConfigsService.createTranscriptionConfig(data).pipe(
+    createConfig(data: CreateEmbeddingConfigRequest): Observable<GetEmbeddingConfigRequest> {
+        return this.embeddingConfigsService.createEmbeddingConfig(data).pipe(
             tap((config) => {
                 this.configsSignal.update((configs) => [config, ...configs]);
             }),
@@ -66,15 +62,15 @@ export class TranscriptionConfigStorageService {
         );
     }
 
-    updateConfig(data: UpdateTranscriptionConfigRequest): Observable<GetTranscriptionConfigRequest> {
-        return this.transcriptionConfigsService.updateTranscriptionConfig(data).pipe(
+    updateConfig(data: EmbeddingConfig): Observable<EmbeddingConfig> {
+        return this.embeddingConfigsService.updateEmbeddingConfig(data).pipe(
             tap((updated) => this.updateConfigInCache(updated)),
             catchError((err) => throwError(() => err))
         );
     }
 
     deleteConfig(id: number): Observable<void> {
-        return this.transcriptionConfigsService.deleteTranscriptionConfig(id).pipe(
+        return this.embeddingConfigsService.deleteEmbeddingConfig(id).pipe(
             tap(() => {
                 this.configsSignal.update((configs) => configs.filter((c) => c.id !== id));
             }),
@@ -86,7 +82,7 @@ export class TranscriptionConfigStorageService {
         this.configsLoaded.set(false);
     }
 
-    private mergeConfigsIntoCache(incoming: GetTranscriptionConfigRequest[]): void {
+    private mergeConfigsIntoCache(incoming: EmbeddingConfig[]): void {
         this.configsSignal.update((current) => {
             const map = new Map(current.map((c) => [c.id, c]));
             for (const config of incoming) {
@@ -96,7 +92,7 @@ export class TranscriptionConfigStorageService {
         });
     }
 
-    private updateConfigInCache(updated: GetTranscriptionConfigRequest): void {
+    private updateConfigInCache(updated: EmbeddingConfig): void {
         this.configsSignal.update((configs) => {
             const index = configs.findIndex((c) => c.id === updated.id);
             if (index >= 0) {

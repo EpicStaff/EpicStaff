@@ -83,16 +83,32 @@
                 text-overflow: ellipsis;
             }
 
+            .item-actions {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                margin-left: 8px;
+                flex-shrink: 0;
+            }
+
+            .edit-icon,
             .delete-icon {
                 opacity: 0.6;
-                margin-left: 8px;
                 color: rgba(255, 255, 255, 0.8);
-                transition: opacity 0.2s ease;
+                transition:
+                    opacity 0.2s ease,
+                    color 0.2s ease;
+                cursor: pointer;
+            }
 
-                &:hover {
-                    opacity: 1;
-                    color: #ff4d4f;
-                }
+            .edit-icon:hover {
+                opacity: 1;
+                color: #685fff;
+            }
+
+            .delete-icon:hover {
+                opacity: 1;
+                color: #ff4d4f;
             }
 
             &:hover {

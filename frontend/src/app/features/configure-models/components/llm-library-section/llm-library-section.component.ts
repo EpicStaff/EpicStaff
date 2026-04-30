@@ -13,17 +13,19 @@ import {
 } from '@shared/components';
 import { AppSvgIconComponent } from '@shared/components';
 import { ModelTypes } from '@shared/models';
+import {
+    EmbeddingConfigStorageService,
+    LlmConfigStorageService,
+    RealtimeConfigStorageService,
+    TranscriptionConfigStorageService,
+} from '@shared/services';
 import { Observable } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
 import { LlmLibraryModel } from '../../interfaces/llm-library-model.interface';
 import { LlmLibraryProviderGroup } from '../../interfaces/llm-library-provider-group.interface';
 import { DefaultModelsStorageService } from '../../services/default-models-storage.service';
-import { EmbeddingConfigStorageService } from '../../services/llms/embedding-config-storage.service';
-import { LlmConfigStorageService } from '../../services/llms/llm-config-storage.service';
 import { LLMLibraryService } from '../../services/llms/llm-library.service';
-import { RealtimeConfigStorageService } from '../../services/llms/realtime-config-storage.service';
-import { TranscriptionConfigStorageService } from '../../services/llms/transcription-config-storage.service';
 import { EmbeddingModelConfigDialogComponent } from '../embedding-model-config-dialog/embedding-model-config-dialog.component';
 import { LlmLibraryCardComponent } from '../llm-library-card/llm-library-card.component';
 import { LlmModelConfigDialogComponent } from '../llm-model-config-dialog/llm-model-config-dialog.component';

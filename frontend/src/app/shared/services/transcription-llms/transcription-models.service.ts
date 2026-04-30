@@ -1,12 +1,9 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
+import { CreateRealtimeTranscriptionModelRequest, GetRealtimeTranscriptionModelRequest } from '@shared/models';
 import { map, Observable, of, shareReplay, switchMap } from 'rxjs';
 
 import { ConfigService } from '../../../services/config/config.service';
-import {
-    CreateRealtimeTranscriptionModelRequest,
-    GetRealtimeTranscriptionModelRequest,
-} from '../models/transcription-config.model';
 
 export interface ApiGetResponse<T> {
     count: number;

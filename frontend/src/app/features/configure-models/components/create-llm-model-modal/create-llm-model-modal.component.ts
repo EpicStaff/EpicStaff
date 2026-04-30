@@ -12,11 +12,11 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { LLMModel, LLMProvider } from '@shared/models';
+import { LlmModelsStorageService } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
 import { finalize } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
-import { LlmModelsStorageService } from '../../services/llms/llm-models-storage.service';
 
 export interface CreateLlmModelDialogData {
     provider: LLMProvider;

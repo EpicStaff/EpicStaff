@@ -4,9 +4,10 @@ import {
     RealtimeModelConfig,
     UpdateRealtimeModelConfigRequest,
 } from '@shared/models';
-import { RealtimeModelConfigsService } from '@shared/services';
 import { catchError, finalize, Observable, of, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
+
+import { RealtimeModelConfigsService } from './real-time-model-config.service';
 
 @Injectable({
     providedIn: 'root',
