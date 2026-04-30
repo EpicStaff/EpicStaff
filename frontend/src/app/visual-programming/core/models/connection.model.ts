@@ -17,4 +17,5 @@ export interface ConnectionModel {
     /** Backend edge record — null for connections not yet persisted. */
     data: Edge | null;
     waypoints?: IPoint[];
+    userAdjustedWaypoints?: boolean;
 }

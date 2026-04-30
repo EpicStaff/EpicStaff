@@ -17,6 +17,7 @@ import {
     TelegramTriggerNodeModel,
     WebhookTriggerNodeModel,
 } from '../../core/models/node.model';
+import { hasPersistedWaypoints, waypointsChanged } from './edge-waypoints.helpers';
 import { toNodeMetadata } from './metadata';
 import { ConnectionDiff, NodeDiff, NodeDiffByType } from './types';
 
@@ -348,5 +349,15 @@ export function getConnectionDiff(previous: FlowModel, current: FlowModel, idMap
         if (!prevByKey.has(key)) toCreate.push(conn);
     }
 
-    return { toCreate, toDelete };
+    const toUpdate: ConnectionModel[] = [];
+    for (const [key, currConn] of currByKey) {
+        const prevConn = prevByKey.get(key);
+        if (!prevConn || currConn.data?.id == null) continue;
+        if (!hasPersistedWaypoints(currConn) && !hasPersistedWaypoints(prevConn)) continue;
+        if (waypointsChanged(prevConn.waypoints, currConn.waypoints)) {
+            toUpdate.push(currConn);
+        }
+    }
+
+    return { toCreate, toDelete, toUpdate };
 }

@@ -1,3 +1,5 @@
+import { IPoint } from '@foblex/2d';
+
 import { Edge } from '../../../../pages/flows-page/components/flow-visual-programming/models/edge.model';
 import { NodeType } from '../../../core/enums/node-type';
 import { ConnectionModel } from '../../../core/models/connection.model';
@@ -5,6 +7,12 @@ import { NodeModel } from '../../../core/models/node.model';
 import { CustomPortId } from '../../../core/models/port.model';
 import { createFlowConnection } from '../../connection.factory';
 import { getInputPortRole, getOutputPortRole } from '../../node-port-roles';
+
+function extractPersistedWaypoints(metadata: Record<string, unknown>): IPoint[] | undefined {
+    const raw = metadata?.['waypoints'];
+    if (!Array.isArray(raw) || raw.length === 0) return undefined;
+    return raw as IPoint[];
+}
 
 /**
  * Maps plain edges (edge_list) to canvas connections.
@@ -60,6 +68,8 @@ export function mapEdgesToConnections(
             continue;
         }
 
+        const restoredWaypoints = extractPersistedWaypoints(edge.metadata ?? {});
+
         connections.push({
             ...createFlowConnection(
                 sourceUuid,
@@ -68,6 +78,7 @@ export function mapEdgesToConnections(
                 `${targetUuid}_${getInputPortRole(targetNode.type)}` as CustomPortId
             ),
             data: edge,
+            ...(restoredWaypoints ? { waypoints: restoredWaypoints, userAdjustedWaypoints: true } : {}),
         });
     }
 

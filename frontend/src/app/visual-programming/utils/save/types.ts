@@ -40,4 +40,5 @@ export interface NodeDiffByType {
 export interface ConnectionDiff {
     toCreate: ConnectionModel[];
     toDelete: ConnectionModel[];
+    toUpdate: ConnectionModel[];
 }

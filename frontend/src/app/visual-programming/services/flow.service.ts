@@ -134,10 +134,18 @@ export class FlowService {
         }
     }
 
-    public updateConnectionWaypoints(id: string, waypoints: IPoint[]): void {
+    public updateConnectionWaypoints(id: string, waypoints: IPoint[], isUserAdjusted?: boolean): void {
         this.flowSignal.update((flow) => ({
             ...flow,
-            connections: flow.connections.map((c) => (c.id === id ? { ...c, waypoints } : c)),
+            connections: flow.connections.map((c) =>
+                c.id === id
+                    ? {
+                          ...c,
+                          waypoints,
+                          ...(isUserAdjusted !== undefined ? { userAdjustedWaypoints: isUserAdjusted } : {}),
+                      }
+                    : c
+            ),
         }));
     }
 

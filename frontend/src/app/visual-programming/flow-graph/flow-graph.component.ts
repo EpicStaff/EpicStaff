@@ -153,6 +153,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     readonly GRID_CELL_SIZE = GRID_CELL_SIZE;
     protected readonly getMinimapClassForNode = getMinimapClassForNode;
     protected readonly eMarkerType = EFMarkerType;
+    protected readonly CONNECTION_DELETE_BUTTON_POSITION = 0.56;
     protected readonly eResizeHandleType = EFResizeHandleType;
     protected readonly NodeType = NodeType;
 
@@ -441,7 +442,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const existingCount = connection.waypoints?.length ?? 0;
         if (waypoints.length > existingCount) {
             this.userAdjustedConnectionIds.add(connectionId);
-            this.flowService.updateConnectionWaypoints(connectionId, waypoints);
+            this.flowService.updateConnectionWaypoints(connectionId, waypoints, true);
             return;
         }
 
@@ -456,7 +457,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const isSameElements =
             normalizedWaypoints.length === waypoints.length && normalizedWaypoints.every((p, i) => p === waypoints[i]);
 
-        this.flowService.updateConnectionWaypoints(connectionId, isSameElements ? waypoints : normalizedWaypoints);
+        this.flowService.updateConnectionWaypoints(
+            connectionId,
+            isSameElements ? waypoints : normalizedWaypoints,
+            normalizedWaypoints.length > 0
+        );
     }
 
     public onNodeDroppedFromPanel(event: FCreateNodeEvent): void {
@@ -889,6 +894,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private applyIncomingFlowState(flowState: FlowModel): void {
         const normalizedFlowState = normalizeFlowPorts(flowState);
         this.flowService.setFlow(normalizedFlowState);
+        for (const conn of normalizedFlowState.connections) {
+            if (conn.userAdjustedWaypoints) {
+                this.userAdjustedConnectionIds.add(conn.id);
+            } else {
+                this.userAdjustedConnectionIds.delete(conn.id);
+            }
+        }
     }
 
     private isDialogOpen(): boolean {

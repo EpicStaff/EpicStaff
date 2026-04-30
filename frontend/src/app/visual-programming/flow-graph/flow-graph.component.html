@@ -129,7 +129,7 @@
                 <f-connection
                     [fBehavior]="connection.behavior || 'fixed'"
                     [fType]="backwardConnectionIds().has(connection.id) ? 'backward-arc' : connection.type || 'segment'"
-                    [fOffset]="connection.waypoints?.length ? 0 : 30"
+                    [fOffset]="connection.userAdjustedWaypoints ? 0 : 30"
                     [fOutputId]="connection.sourcePortId"
                     [fInputId]="connection.targetPortId"
                     [fConnectionId]="connection.id"
@@ -232,7 +232,7 @@
                     <div
                         fConnectionContent
                         class="connection-center"
-                        [position]="0.5"
+                        [position]="CONNECTION_DELETE_BUTTON_POSITION"
                     >
                         <button
                             type="button"
@@ -287,33 +287,32 @@
     </div>
 
     <div class="top-right-controls">
-    <div class="top-right-actions">
-        @if (currentFlowId) {
-            <app-flow-files-button
-                [flowId]="currentFlowId"
-                [flowName]="flowName"
-            ></app-flow-files-button>
-        }
-        <button
-            class="show-inputs-btn"
-            [class.active]="showVariables()"
-            (click)="toggleShowVariables()"
-        >
-            {{ showVariables() ? 'Hide Inputs/Output' : 'Show Inputs/Output' }}
-        </button>
+        <div class="top-right-actions">
+            @if (currentFlowId) {
+                <app-flow-files-button
+                    [flowId]="currentFlowId"
+                    [flowName]="flowName"
+                ></app-flow-files-button>
+            }
+            <button
+                class="show-inputs-btn"
+                [class.active]="showVariables()"
+                (click)="toggleShowVariables()"
+            >
+                {{ showVariables() ? 'Hide Inputs/Output' : 'Show Inputs/Output' }}
+            </button>
 
-        <div class="routing-toggle-block">
-            <app-svg-icon
-                icon="routing-arrow"
-                size="22px"
-            ></app-svg-icon>
-            <app-toggle-switch
-                [checked]="smartRoutingEnabled()"
-                (checkedChange)="onSmartRoutingToggle($event)"
-            ></app-toggle-switch>
+            <div class="routing-toggle-block">
+                <app-svg-icon
+                    icon="routing-arrow"
+                    size="22px"
+                ></app-svg-icon>
+                <app-toggle-switch
+                    [checked]="smartRoutingEnabled()"
+                    (checkedChange)="onSmartRoutingToggle($event)"
+                ></app-toggle-switch>
+            </div>
         </div>
-    </div>
-
     </div>
     <app-flow-action-panel></app-flow-action-panel>
 
