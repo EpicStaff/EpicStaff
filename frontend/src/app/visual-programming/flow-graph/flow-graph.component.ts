@@ -187,7 +187,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     protected readonly sortedConnections = computed(() => {
         const backwardIds = this.backwardConnectionIds();
-        const connections = [...this.flowService.visibleConnections()];
+        const hiddenIds = this.hiddenConnectionIds();
+
+        const connections = [...this.flowService.visibleConnections()].filter(
+            (connection) => !hiddenIds.has(connection.id)
+        );
 
         return connections.sort((a, b) => {
             const aBackward = backwardIds.has(a.id) ? 1 : 0;
@@ -204,6 +208,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private draggingElements = new Set<string>();
     private isDragging = false;
     protected readonly connectionRenderVersions = signal<Record<string, number>>({});
+    private readonly hiddenConnectionIds = signal<Set<string>>(new Set<string>());
 
     protected readonly flowService = inject(FlowService);
     protected readonly sidePanelService = inject(SidePanelService);
@@ -783,30 +788,18 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
 
         this.draggedNodeIds.clear();
-        this.rerouteSegmentConnections();
-
-        setTimeout(() => {
-            this.rerouteSegmentConnections();
-
-            if (autoAlignedNodeIds.size > 0) {
-                this.cd.detectChanges();
-
-                const connections = this.flowService.connections();
-                for (const conn of connections) {
-                    if (autoAlignedNodeIds.has(conn.sourceNodeId) || autoAlignedNodeIds.has(conn.targetNodeId)) {
-                        this.bumpConnectionRenderVersion(conn.id);
-                    }
-                }
-                this.cd.detectChanges();
-                this.fFlowComponent?.redraw();
-            } else {
-                this.cd.detectChanges();
-            }
-        }, 0);
 
         setTimeout(() => {
             this.isDragging = false;
             this.draggingElements.clear();
+
+            if (autoAlignedNodeIds.size > 0) {
+                this.syncAfterAutoAlign(autoAlignedNodeIds);
+            } else {
+                this.rerouteSegmentConnections();
+                this.cd.detectChanges();
+                this.fFlowComponent?.redraw();
+            }
         }, 100);
     }
 
@@ -997,5 +990,41 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             ...v,
             [connectionId]: (v[connectionId] ?? 0) + 1,
         }));
+    }
+
+    private syncAfterAutoAlign(affectedNodeIds: Set<string>): void {
+        const affectedConnectionIds = this.flowService
+            .connections()
+            .filter(
+                (connection) =>
+                    affectedNodeIds.has(connection.sourceNodeId) || affectedNodeIds.has(connection.targetNodeId)
+            )
+            .map((connection) => connection.id);
+
+        if (affectedConnectionIds.length === 0) {
+            this.rerouteSegmentConnections();
+            this.cd.detectChanges();
+            this.fFlowComponent?.redraw();
+            return;
+        }
+
+        this.hiddenConnectionIds.set(new Set(affectedConnectionIds));
+        this.cd.detectChanges();
+        this.fFlowComponent?.redraw();
+
+        requestAnimationFrame(() => {
+            this.rerouteSegmentConnections();
+
+            for (const connectionId of affectedConnectionIds) {
+                this.bumpConnectionRenderVersion(connectionId);
+            }
+
+            this.hiddenConnectionIds.set(new Set<string>());
+            this.cd.detectChanges();
+
+            requestAnimationFrame(() => {
+                this.fFlowComponent?.redraw();
+            });
+        });
     }
 }
