@@ -50,6 +50,7 @@
             display: none;
             width: 2.2rem;
             height: 2.2rem;
+            object-fit: contain;
             mix-blend-mode: lighten;
         }
         &:hover .static-logo {
