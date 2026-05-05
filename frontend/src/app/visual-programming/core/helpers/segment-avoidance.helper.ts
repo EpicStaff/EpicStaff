@@ -647,16 +647,6 @@ export function computeSegmentAvoidanceWaypoints(
         }
     }
 
-    const tag = `[SAW ${connection.sourceNodeId.slice(-4)}→${connection.targetNodeId.slice(-4)}]`;
-    console.log(tag, 'enter', {
-        sourcePt,
-        targetPt,
-        defaultMidX,
-        vertBlockerIds: vertBlockers.map((n) => n.id),
-        existingWaypoints: existingWaypoints ?? [],
-        yBounds: { ya, yb },
-    });
-
     const scoreBasePath: IPoint[] =
         existingWaypoints && existingWaypoints.length > 0
             ? simplifyRoute([sourcePt, ...existingWaypoints, targetPt])
@@ -669,13 +659,6 @@ export function computeSegmentAvoidanceWaypoints(
         return findSegmentNearBlockers(arr[idx], arr[idx + 1], allNodes, excludeIds, NODE_CLEARANCE).length > 0;
     });
 
-    console.log(tag, 'scoreBasePath', {
-        pts: scoreBasePath,
-        startScore,
-        startHasNearBlockers,
-        earlyExitWouldFire: startScore === 0 && !startHasNearBlockers,
-    });
-
     if (startScore === 0 && !startHasNearBlockers) {
         if (existingWaypoints && existingWaypoints.length > 0) {
             const defaultPath = simplifyRoute([
@@ -685,19 +668,12 @@ export function computeSegmentAvoidanceWaypoints(
                 targetPt,
             ]);
             const defaultScore = countPathIntersections(defaultPath, allNodes, excludeIds);
-            console.log(
-                tag,
-                'early-exit: defaultScore',
-                defaultScore,
-                _allowFreshFallback ? '→ fresh fallback' : '→ null'
-            );
             if (defaultScore === 0) return [];
             if (_allowFreshFallback) {
                 return computeSegmentAvoidanceWaypoints(connection, allNodes, undefined, false);
             }
             return null;
         }
-        console.log(tag, 'early-exit: no existingWaypoints → null');
         return null;
     }
 
@@ -707,8 +683,6 @@ export function computeSegmentAvoidanceWaypoints(
     } else {
         path = simplifyRoute([sourcePt, { x: midX, y: sourcePt.y }, { x: midX, y: targetPt.y }, targetPt]);
     }
-
-    console.log(tag, 'detour-loop initial path', path);
 
     let hadDetour = (existingWaypoints && existingWaypoints.length > 0) || proactiveShift;
 
@@ -740,13 +714,6 @@ export function computeSegmentAvoidanceWaypoints(
                 a.y === b.y
                     ? buildHDetour(path, i, segBlockers, allNodes, segmentExcludeIds)
                     : buildVDetour(path, i, segBlockers, allNodes, segmentExcludeIds);
-
-            console.log(tag, `seg[${i}] (${a.x.toFixed(0)},${a.y.toFixed(0)})→(${b.x.toFixed(0)},${b.y.toFixed(0)})`, {
-                kind: a.y === b.y ? 'H' : 'V',
-                blockerIds: segBlockers.map((n) => n.id),
-                detourAccepted: !!detourPts,
-                detourPts,
-            });
 
             if (detourPts) {
                 path = detourPts;
@@ -832,10 +799,7 @@ export function computeSegmentAvoidanceWaypoints(
         if (!changed) break;
     }
 
-    console.log(tag, 'post-loop', { hadDetour, pathPts: path });
-
     if (!hadDetour) {
-        console.log(tag, 'return: hadDetour=false → null');
         return null;
     }
 
@@ -864,19 +828,6 @@ export function computeSegmentAvoidanceWaypoints(
     const second = interiorWaypoints[0];
     const penultimate = interiorWaypoints[interiorWaypoints.length - 1];
 
-    console.log(tag, 'final', {
-        finalScore,
-        tableTargetTopSafe,
-        sourceExitSafe,
-        sourceTableTopSafe,
-        isVerticalStackWithBlocker,
-        interiorWaypoints,
-        second,
-        penultimate,
-        secondYMatchesSource: second?.y === sourcePt.y,
-        penultimateYMatchesTarget: penultimate?.y === targetPt.y,
-    });
-
     if (finalScore === 0 && tableTargetTopSafe && sourceExitSafe && sourceTableTopSafe) {
         if (interiorWaypoints.length > 0) {
             if (penultimate.y === targetPt.y) {
@@ -885,7 +836,6 @@ export function computeSegmentAvoidanceWaypoints(
                     !isVerticalStackWithBlocker &&
                     (targetIsLeftPort ? penultimate.x > targetPt.x : penultimate.x < targetPt.x)
                 ) {
-                    console.log(tag, 'return: penultimate direction rejected → null');
                     return null;
                 }
             }
@@ -896,12 +846,10 @@ export function computeSegmentAvoidanceWaypoints(
                     !isVerticalStackWithBlocker &&
                     (sourceIsRightPort ? second.x < sourcePt.x : second.x > sourcePt.x)
                 ) {
-                    console.log(tag, 'return: second direction rejected → null');
                     return null;
                 }
             }
         }
-        console.log(tag, 'return: interiorWaypoints', interiorWaypoints);
         return interiorWaypoints;
     }
 
@@ -909,14 +857,11 @@ export function computeSegmentAvoidanceWaypoints(
         const defaultPath = simplifyRoute([sourcePt, { x: midX, y: sourcePt.y }, { x: midX, y: targetPt.y }, targetPt]);
         const defaultPathScore = countPathIntersections(defaultPath, allNodes, excludeIds);
         if (defaultPathScore === 0) {
-            console.log(tag, 'return: fallback → [] (default spine clear)');
             return [];
         }
-        console.log(tag, 'return: fallback → fresh reroute');
         return computeSegmentAvoidanceWaypoints(connection, allNodes, undefined, false);
     }
 
-    console.log(tag, 'return: no improvement → null');
     return null; // no improvement — caller must keep existing waypoints unchanged
 }
 
