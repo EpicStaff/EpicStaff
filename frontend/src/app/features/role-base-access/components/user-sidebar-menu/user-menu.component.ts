@@ -6,6 +6,7 @@ import { FullMembership, GetMeResponse } from '@shared/models';
 import { EMPTY } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
+import { TourService } from '../../../../core/services/tour/tour.service';
 import { AuthService } from '../../../../services/auth/auth.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { OrgAvatarComponent } from '../org-avatar/org-avatar.component';
@@ -21,6 +22,7 @@ import { UserAvatarComponent } from '../user-avatar/user-avatar.component';
 export class UserMenuComponent {
     private authService = inject(AuthService);
     private router = inject(Router);
+    private tourService = inject(TourService);
     protected currentUserService = inject(ProfileService);
 
     user = input.required<GetMeResponse>();
@@ -42,6 +44,11 @@ export class UserMenuComponent {
     onProfileClick(): void {
         this.isUserMenuOpen.set(false);
         this.router.navigate(['/profile']);
+    }
+
+    onQuickStartTourClick(): void {
+        this.isUserMenuOpen.set(false);
+        void this.tourService.startQuickStartTour();
     }
 
     onSignOutClick(): void {

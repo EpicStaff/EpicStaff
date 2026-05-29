@@ -26,11 +26,13 @@ export class OnboardingPageComponent {
 
     onStartWorking(): void {
         sessionStorage.removeItem('needs_onboarding');
+        sessionStorage.setItem('start_quickstart_tour', '1');
         void this.router.navigate(['/projects']);
     }
 
     onSetupOrganizations(): void {
         sessionStorage.removeItem('needs_onboarding');
+        sessionStorage.setItem('start_quickstart_tour', '1');
         void this.router.navigate(['/projects']);
     }
 }

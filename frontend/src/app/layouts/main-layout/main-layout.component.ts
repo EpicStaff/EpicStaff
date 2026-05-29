@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs/operators';
 
+import { TourService } from '../../core/services/tour/tour.service';
 import { EpicChatService } from '../../features/epic-chat/epic-chat.service';
 import { LastVisitedTabService } from '../../services/last-visited-tab.service';
 import { LeftSidebarComponent } from './sidenav/sidenav.component';
@@ -89,6 +90,7 @@ export class MainLayoutComponent implements OnInit {
     private router = inject(Router);
     private destroyRef = inject(DestroyRef);
     private lastVisitedTabService = inject(LastVisitedTabService);
+    private tourService = inject(TourService);
 
     constructor(public epicChatService: EpicChatService) {}
 
@@ -107,6 +109,11 @@ export class MainLayoutComponent implements OnInit {
                     }
                 }
             });
+
+        if (sessionStorage.getItem('start_quickstart_tour') === '1') {
+            sessionStorage.removeItem('start_quickstart_tour');
+            queueMicrotask(() => void this.tourService.startQuickStartTour());
+        }
     }
 
     public onDockResizeStart(event: MouseEvent): void {

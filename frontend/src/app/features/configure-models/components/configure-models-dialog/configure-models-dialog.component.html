@@ -22,6 +22,7 @@
                 type="button"
                 class="configure-models-dialog__tab"
                 [class.configure-models-dialog__tab--active]="activeTabId() === tab.id"
+                [attr.data-tour]="tab.id === tabIds.QUICKSTART ? 'quickstart-tab' : null"
                 (click)="selectTab(tab.id)"
             >
                 <i

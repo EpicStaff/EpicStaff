@@ -1,0 +1,190 @@
+.shepherd-modal-overlay-container {
+    z-index: 1100;
+}
+
+body.tour-active .cdk-overlay-container {
+    z-index: 50 !important;
+}
+
+.shepherd-element.shepherd-quickstart {
+    position: relative;
+    z-index: 1301;
+    background: var(--color-ks-line);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-divider-regular);
+    border-radius: 8px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    max-width: 324px;
+    font-family: inherit;
+
+    &.shepherd-welcome {
+        left: calc(3.7rem) !important;
+        top: auto !important;
+        bottom: 24px !important;
+        transform: none !important;
+
+        .shepherd-content {
+            position: relative;
+        }
+
+        .shepherd-welcome-image {
+            display: block;
+            width: 276px;
+            height: 283px;
+            margin: 24px auto 0;
+            user-select: none;
+            -webkit-user-drag: none;
+            pointer-events: none;
+        }
+
+        .shepherd-header {
+            padding-top: 16px;
+        }
+
+        .shepherd-cancel-icon {
+            position: absolute;
+            top: 0;
+            right: 24px;
+            z-index: 2;
+        }
+    }
+
+    &.shepherd-has-progress::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 4px;
+        width: var(--tour-progress, 0%);
+        background: var(--accent-color);
+        border-radius: 7px 7px 0 0;
+        transition: width 240ms ease;
+        pointer-events: none;
+        z-index: 1;
+    }
+
+    .shepherd-content {
+        background: transparent;
+        padding: 0;
+    }
+
+    .shepherd-header {
+        background: transparent;
+        padding: 24px 24px 0;
+        border-bottom: none;
+
+        .shepherd-title {
+            color: var(--accent-color);
+            font-family: Inter, sans-serif;
+            font-weight: 500;
+            font-size: 18px;
+            line-height: 100%;
+            letter-spacing: 0;
+        }
+
+        .shepherd-cancel-icon {
+            color: var(--color-text-secondary);
+            font-size: 18px;
+            line-height: 1;
+            opacity: 0.7;
+            transition: opacity 120ms ease;
+
+            &:hover {
+                opacity: 1;
+            }
+        }
+    }
+
+    .shepherd-text {
+        color: var(--text);
+        font-family: Inter, sans-serif;
+        font-weight: 400;
+        font-size: 14px;
+        line-height: 130%;
+        letter-spacing: 0;
+        padding: 24px;
+
+        p {
+            margin: 0;
+        }
+
+        p + p {
+            margin-top: 8px;
+        }
+    }
+
+    .shepherd-footer {
+        padding: 0 24px 24px;
+        gap: 8px;
+        justify-content: space-between;
+
+        .shepherd-button {
+            font-size: 13px;
+            font-weight: 500;
+            padding: 6px 14px;
+            border-radius: 6px;
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition:
+                background 120ms ease,
+                border-color 120ms ease,
+                color 120ms ease;
+
+            &.shepherd-button-primary {
+                background: var(--accent-color);
+                color: var(--text);
+
+                &:hover {
+                    background: var(--accent-color-hover);
+                }
+
+                &:active {
+                    background: var(--accent-color-active);
+                }
+            }
+
+            &.shepherd-button-secondary {
+                background: transparent;
+                color: var(--inactive-purple);
+                border-color: var(--inactive-purple);
+
+                &:hover {
+                    background: var(--color-ghost-btn-hover);
+                    // color: var(--color-text-primary);
+                }
+            }
+        }
+    }
+
+    .shepherd-arrow,
+    .shepherd-arrow::before {
+        background: transparent;
+    }
+
+    &.shepherd-quickstart.shepherd-quickstart .shepherd-arrow::before {
+        content: '';
+        background-color: var(--color-ks-line);
+        border: 1px solid var(--color-divider-regular);
+        transform: rotate(45deg);
+    }
+
+    &.shepherd-quickstart[data-popper-placement^='top'] .shepherd-arrow::before {
+        border-top: none;
+        border-left: none;
+    }
+
+    &.shepherd-quickstart[data-popper-placement^='bottom'] .shepherd-arrow::before {
+        border-bottom: none;
+        border-right: none;
+    }
+
+    &.shepherd-quickstart[data-popper-placement^='left'] .shepherd-arrow::before {
+        border-bottom: none;
+        border-left: none;
+    }
+
+    &.shepherd-quickstart[data-popper-placement^='right'] .shepherd-arrow::before {
+        border-top: none;
+        border-right: none;
+    }
+}

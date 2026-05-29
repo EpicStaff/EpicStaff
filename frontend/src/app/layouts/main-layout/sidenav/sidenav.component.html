@@ -68,6 +68,7 @@
         @for (item of bottomNavItems; track item.id) {
             <li
                 class="sidenav-nav-item"
+                [attr.data-tour]="item.id === 'settings' ? 'sidenav-settings' : null"
                 (mouseenter)="item.showTooltip = true"
                 (mouseleave)="item.showTooltip = false"
             >

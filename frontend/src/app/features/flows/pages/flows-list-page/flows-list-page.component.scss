@@ -286,3 +286,96 @@
         }
     }
 }
+
+.import-group {
+    display: inline-flex;
+    align-items: stretch;
+    height: 40px;
+    border-radius: 7px;
+    overflow: hidden;
+    border: 1px solid var(--color-divider-subtle);
+
+    &__main,
+    &__cog {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        color: var(--accent-color);
+        cursor: pointer;
+        transition:
+            background-color 0.15s ease,
+            color 0.15s ease;
+        padding: 0;
+
+        &:hover {
+            background: var(--color-ghost-btn-hover);
+        }
+
+        &:active {
+            background: var(--color-ghost-btn-active);
+        }
+    }
+
+    &__main {
+        gap: 0.5rem;
+        padding: 0 1rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+
+    &__cog {
+        width: 34px;
+        position: relative;
+
+        &::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 20%;
+            bottom: 20%;
+            width: 1px;
+            background: var(--color-divider-subtle);
+        }
+
+        &.is-open {
+            background: var(--color-ghost-btn-active);
+            color: var(--accent-color);
+        }
+    }
+}
+
+.export-group {
+    display: inline-flex;
+    align-items: stretch;
+    height: 40px;
+    border-radius: 7px;
+    overflow: hidden;
+    border: 1px solid var(--color-divider-subtle);
+
+    &__main {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 0 1rem;
+        background: transparent;
+        border: none;
+        color: var(--accent-color);
+        cursor: pointer;
+        font-size: 0.875rem;
+        font-weight: 500;
+        transition:
+            background-color 0.15s ease,
+            color 0.15s ease;
+
+        &:hover {
+            background: var(--color-ghost-btn-hover);
+        }
+
+        &:active {
+            background: var(--color-ghost-btn-active);
+        }
+    }
+}

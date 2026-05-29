@@ -10,7 +10,10 @@
                 class="quickstart-section__form"
                 [formGroup]="quickStartForm"
             >
-                <div class="quickstart-section__row">
+                <div
+                    class="quickstart-section__row"
+                    data-tour="quickstart-provider"
+                >
                     <div class="quickstart-section__label">
                         <span>Recommended Provider</span>
                         <app-help-tooltip
@@ -28,7 +31,10 @@
                     />
                 </div>
 
-                <div class="quickstart-section__row">
+                <div
+                    class="quickstart-section__row"
+                    data-tour="quickstart-api-key"
+                >
                     <div class="quickstart-section__label">
                         <span>API Key</span>
                         <app-help-tooltip
@@ -54,6 +60,7 @@
                     </app-button>
                     <app-button
                         type="primary"
+                        data-tour="quickstart-activate"
                         (click)="onQuickStart()"
                         [disabled]="quickStartForm.invalid || isSaving()"
                     >

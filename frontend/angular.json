@@ -52,6 +52,8 @@
             ],
             "styles": [
               "@angular/material/prebuilt-themes/cyan-orange.css",
+              "node_modules/shepherd.js/dist/css/shepherd.css",
+              "src/app/core/services/tour/tour.scss",
               "src/styles.scss"
             ],
             "scripts": [],
@@ -144,6 +146,8 @@
             ],
             "styles": [
               "@angular/material/prebuilt-themes/cyan-orange.css",
+              "node_modules/shepherd.js/dist/css/shepherd.css",
+              "src/app/core/services/tour/tour.scss",
               "src/styles.scss"
             ],
             "scripts": []
