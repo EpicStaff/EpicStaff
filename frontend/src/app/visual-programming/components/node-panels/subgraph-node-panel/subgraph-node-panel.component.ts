@@ -7,6 +7,7 @@ import { FlowsApiService } from '../../../../features/flows/services/flows-api.s
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { GoToButtonComponent } from '../../../../shared/components/go-to-button/go-to-button.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
+import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
 // import { flowUrl } from '../../../../shared/utils/flow-links';
 import { SubGraphNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
@@ -27,6 +28,7 @@ interface InputMapPair {
         InputMapComponent,
         GoToButtonComponent,
         HelpTooltipComponent,
+        SelectComponent,
     ],
     template: `
         <div class="panel-container">
@@ -65,21 +67,12 @@ interface InputMapPair {
                             />
                         </label>
                         <div class="selected-flow-row">
-                            <select
-                                formControlName="selectedFlowId"
+                            <app-select
                                 class="select-field"
-                                (change)="onFlowChange()"
-                            >
-                                <option
-                                    [value]="null"
-                                    disabled
-                                >
-                                    Select a flow
-                                </option>
-                                @for (flow of filteredFlows(); track flow.id) {
-                                    <option [value]="flow.id">{{ flow.name }}</option>
-                                }
-                            </select>
+                                formControlName="selectedFlowId"
+                                placeholder="Select a flow"
+                                [items]="flowItems()"
+                            />
                             <app-go-to-button
                                 variant="full"
                                 label="Go to flow"
@@ -129,25 +122,7 @@ interface InputMapPair {
 
             .select-field {
                 flex: 1;
-                width: auto;
-                padding: 0.5rem;
-                background: rgba(255, 255, 255, 0.05);
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 4px;
-                color: rgba(255, 255, 255, 0.9);
-                font-size: 14px;
-                transition: border-color 0.2s ease;
-                cursor: pointer;
-            }
-
-            .select-field:focus {
-                outline: none;
-                border-color: #00bfa5;
-            }
-
-            .select-field option {
-                background: #1a1a1a;
-                color: rgba(255, 255, 255, 0.9);
+                min-width: 0;
             }
 
             .selected-flow-row {
@@ -180,6 +155,10 @@ export class SubGraphNodePanelComponent extends BaseSidePanel<SubGraphNodeModel>
         }
         return this.availableFlows().filter((flow) => flow.id !== currentId);
     });
+
+    public readonly flowItems = computed<SelectItem[]>(() =>
+        this.filteredFlows().map((flow) => ({ name: flow.name, value: flow.id }))
+    );
 
     constructor() {
         super();

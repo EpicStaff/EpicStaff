@@ -2,8 +2,8 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, inject, input, signal } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
+import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
 import { NodeType } from '../../../core/enums/node-type';
 import { generatePortsForDecisionTableNode } from '../../../core/helpers/helpers';
 import { Condition, ConditionGroup, DecisionTableNode } from '../../../core/models/decision-table.model';
@@ -15,7 +15,7 @@ import { DecisionTableGridComponent } from './decision-table-grid/decision-table
 @Component({
     standalone: true,
     selector: 'app-decision-table-node-panel',
-    imports: [ReactiveFormsModule, CustomInputComponent, CommonModule, DecisionTableGridComponent, AppSvgIconComponent],
+    imports: [ReactiveFormsModule, CustomInputComponent, CommonModule, DecisionTableGridComponent, SelectComponent],
     templateUrl: './decision-table-node-panel.component.html',
     styleUrls: ['./decision-table-node-panel.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -28,11 +28,11 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
 
     public conditionGroups = signal<ConditionGroup[]>([]);
 
-    public availableNodes = computed(() => {
+    public availableNodeItems = computed<SelectItem[]>(() => {
         const nodes = this.flowService.nodes();
         const currentNodeId = this.node().id;
 
-        return nodes
+        const nodeItems = nodes
             .filter(
                 (node) =>
                     node.type !== NodeType.NOTE &&
@@ -43,8 +43,10 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
             )
             .map((node) => ({
                 value: node.id,
-                label: node.node_name || node.id,
+                name: node.node_name || node.id,
             }));
+
+        return [{ name: '-- Select Node --', value: '' }, ...nodeItems];
     });
 
     get activeColor(): string {
