@@ -39,6 +39,8 @@ from utils.auth import introspect_token
 
 from infrastructure.persistence.database import get_db, engine
 from infrastructure.persistence.db_models import Base
+from infrastructure.persistence.presence_repository import PresenceRepository
+from application.presence_service import PresenceService
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -74,6 +76,9 @@ app.add_middleware(
 
 
 connection_repository = ConnectionRepository()
+
+presence_repository = PresenceRepository(redis_service=redis_service)
+presence_service = PresenceService(repository=presence_repository)
 
 _voice_settings_cache: dict | None = None
 _voice_settings_cache_time: float = 0.0
@@ -129,7 +134,9 @@ async def _run_forever(coro_fn, name: str, restart_delay: float = 2.0):
     while True:
         try:
             await coro_fn()
-            logger.warning(f"{name} exited unexpectedly, restarting in {restart_delay}s")
+            logger.warning(
+                f"{name} exited unexpectedly, restarting in {restart_delay}s"
+            )
         except Exception as e:
             logger.error(f"{name} crashed: {e}, restarting in {restart_delay}s")
         await asyncio.sleep(restart_delay)
@@ -244,6 +251,59 @@ async def root(
     await service.execute()
 
 
+@app.websocket("/realtime/collab/")
+async def collab_presence(
+    websocket: WebSocket,
+    flow_id: int | None = None,
+    token: str | None = None,
+):
+    """Collaborative presence counter for the flow editor.
+
+    Query params:
+        flow_id (int, required)  — identifies the flow being edited.
+        token   (str, required)  — JWT; validated via introspect_token.
+
+    On connect the client is added to the flow's presence set.  Every
+    mutation (join or leave) broadcasts::
+
+        {"type": "presence", "flow_id": <int>, "count": <int>}
+
+    to all connections on that flow.  The client sends nothing; the
+    receive loop exists solely to detect a disconnect.
+    """
+    if not token:
+        logger.warning("collab_presence: missing token, closing 1008")
+        await websocket.close(code=1008)
+        return
+
+    user_info = introspect_token(token)
+    if not user_info:
+        logger.warning("collab_presence: invalid token, closing 1008")
+        await websocket.close(code=1008)
+        return
+
+    if flow_id is None:
+        logger.warning("collab_presence: missing flow_id, closing 1008")
+        await websocket.close(code=1008)
+        return
+
+    await websocket.accept()
+    member_id: str | None = None
+    try:
+        member_id = await presence_service.join(flow_id, websocket)
+        logger.info("collab_presence: accepted flow={} member={}", flow_id, member_id)
+        while True:
+            # Block until the client disconnects (we don't process messages).
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        logger.info(
+            "collab_presence: disconnected flow={} member={}", flow_id, member_id
+        )
+    finally:
+        if member_id is not None:
+            await presence_service.leave(flow_id, websocket, member_id)
+
+
 @app.websocket("/ht")
 async def healthcheck_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -340,7 +400,9 @@ async def voice_stream(twilio_ws: WebSocket):
                 await twilio_ws.close()
                 return
             conn_key = resp.json().get("connection_key")
-            logger.info(f"Init realtime response: status={resp.status_code} conn_key={conn_key}")
+            logger.info(
+                f"Init realtime response: status={resp.status_code} conn_key={conn_key}"
+            )
         except Exception as e:
             logger.error(f"Failed to init realtime session: {e}")
             await twilio_ws.close()

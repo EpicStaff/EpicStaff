@@ -18,6 +18,9 @@
     ></app-flow-header>
 
     <div class="body">
+        @if (presenceCount() > 1) {
+            <span class="presence-indicator">{{ presenceCount() }} in this flow</span>
+        }
         @if (restoreWarnings().length > 0) {
             <button
                 class="restore-warning-btn"

@@ -54,6 +54,7 @@ import { FlowsStorageService } from '../../../../features/flows/services/flows-s
 import { RunGraphService } from '../../../../features/flows/services/run-graph-session.service';
 import { FlowMessagesPanelComponent } from '../../../../pages/running-graph/components/flow-messages-panel/flow-messages-panel.component';
 import { RunSessionSSEService } from '../../../../pages/running-graph/services/graph-session-sse.service';
+import { CollaborationPresenceService } from '../../../../services/collaboration/collaboration-presence.service';
 import { ConfigService } from '../../../../services/config/config.service';
 import { ToastService } from '../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -148,6 +149,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         return this.graphState()!;
     }
 
+    public readonly presenceCount = computed(() => this.collaborationPresenceService.participantCount());
+
+    private readonly collaborationPresenceService = inject(CollaborationPresenceService);
+
     constructor(
         private readonly route: ActivatedRoute,
         private readonly router: Router,
@@ -187,6 +192,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             const warnings = this.createGraphWarningService.readPending();
             if (warnings.length) this.restoreWarnings.set(warnings);
             this.fetchGraph(graphId);
+            this.collaborationPresenceService.connect(graphId);
         });
 
         this.sidePanelService.saveNodeRequest$
@@ -597,6 +603,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public ngOnDestroy(): void {
         this.flowUnsavedStateService.unregister();
         this.runSessionSSEService.stopStream();
+        this.collaborationPresenceService.disconnect();
     }
 
     private addStartNodeIfNeeded(flowModel: FlowModel): FlowModel {
