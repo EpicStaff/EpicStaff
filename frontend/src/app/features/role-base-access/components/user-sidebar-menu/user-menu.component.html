@@ -23,7 +23,7 @@
                 (click)="onOrgClick(org.organization.id)"
             >
                 <app-org-avatar [name]="org.organization.name" />
-                <span class="org-name">{{ org.organization.name }}</span>
+                <span class="org-name">{{ org.organization.name | aprilFoolsOrgName }}</span>
             </li>
         }
     </ul>

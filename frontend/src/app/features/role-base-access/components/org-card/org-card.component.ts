@@ -1,12 +1,13 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, input } from '@angular/core';
 import { GetOrganizationResponse } from '@shared/models';
+import { AprilFoolsOrgNamePipe } from '../../../../shared/pipes/april-fools-org-name.pipe';
 
 import { OrgAvatarComponent } from '../org-avatar/org-avatar.component';
 
 @Component({
     selector: 'app-org-card',
-    imports: [OrgAvatarComponent],
+    imports: [OrgAvatarComponent, AprilFoolsOrgNamePipe],
     templateUrl: './org-card.component.html',
     styleUrls: ['./org-card.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

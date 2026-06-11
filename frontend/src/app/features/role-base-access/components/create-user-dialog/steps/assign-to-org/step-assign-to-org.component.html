@@ -30,7 +30,7 @@
             >
                 <div class="org-cell">
                     <app-org-avatar [name]="row['name']" />
-                    <span class="org-name">{{ row['name'] }}</span>
+                    <span class="org-name">{{ row['name'] | aprilFoolsOrgName }}</span>
                 </div>
             </ng-template>
 

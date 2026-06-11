@@ -11,6 +11,7 @@ import {
     SelectItem,
 } from '@shared/components';
 import { UserRole } from '@shared/models';
+import { AprilFoolsOrgNamePipe } from '../../../../shared/pipes/april-fools-org-name.pipe';
 import { EMPTY } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
@@ -37,6 +38,7 @@ import { ROLE_LABELS } from '../../constants/role-labels.constant';
         ListRowComponent,
         DatePipe,
         HideInlineSubtitleOnOverflowDirective,
+        AprilFoolsOrgNamePipe,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

@@ -10,6 +10,7 @@ import {
     TableRow,
 } from '@shared/components';
 import { FullMembership, Organization, UserRole } from '@shared/models';
+import { AprilFoolsOrgNamePipe } from '../../../../../../shared/pipes/april-fools-org-name.pipe';
 
 import { USER_ROLES } from '../../../../constants/user-roles-select-items.constant';
 import { OrgAvatarComponent } from '../../../org-avatar/org-avatar.component';
@@ -31,6 +32,7 @@ export interface OrgAssignment {
         SearchComponent,
         OrgAvatarComponent,
         LoadingSpinnerComponent,
+        AprilFoolsOrgNamePipe,
     ],
 })
 export class StepAssignToOrgComponent implements OnInit {

@@ -13,6 +13,7 @@ import {
     SelectItem,
     TableRow,
 } from '@shared/components';
+import { AprilFoolsOrgNamePipe } from '../../../../../shared/pipes/april-fools-org-name.pipe';
 import { getRelativeTime } from '@shared/utils';
 import { finalize } from 'rxjs/operators';
 
@@ -58,6 +59,7 @@ const STATUS_ITEMS: SelectItem[] = [
         OverflowItemDirective,
         OverflowBadgeDirective,
         MatTooltipModule,
+        AprilFoolsOrgNamePipe,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

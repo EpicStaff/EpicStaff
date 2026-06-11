@@ -15,6 +15,7 @@ import {
     TableRow,
 } from '@shared/components';
 import { GetOrganizationResponse } from '@shared/models';
+import { AprilFoolsOrgNamePipe } from '../../../../../shared/pipes/april-fools-org-name.pipe';
 import { finalize } from 'rxjs';
 
 import { ToastService } from '../../../../../services/notifications';
@@ -44,6 +45,7 @@ const STATUS_ITEMS: SelectItem[] = [
         OrgAvatarComponent,
         AdminsCellComponent,
         DatePipe,
+        AprilFoolsOrgNamePipe,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

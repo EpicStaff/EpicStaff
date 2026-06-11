@@ -141,7 +141,7 @@
                             <app-list-row class="org-row">
                                 <div class="left">
                                     <app-org-avatar [name]="item.organization.name" />
-                                    <span class="org-name">{{ item.organization.name }}</span>
+                                    <span class="org-name">{{ item.organization.name | aprilFoolsOrgName }}</span>
                                 </div>
 
                                 <div class="right">

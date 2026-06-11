@@ -104,9 +104,9 @@
                     @for (org of row['organizationDetails']; track org.id) {
                         <app-org-avatar
                             appOverflowItem
-                            [appOverflowLabel]="org.name"
+                            [appOverflowLabel]="org.name | aprilFoolsOrgName"
                             [name]="org.name"
-                            [title]="org.name"
+                            [title]="org.name | aprilFoolsOrgName"
                         />
                     }
                     <span

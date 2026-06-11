@@ -11,12 +11,14 @@ import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { AuthService } from '../../../../services/auth/auth.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
+import { AprilFoolsOrgNamePipe } from '../../../../shared/pipes/april-fools-org-name.pipe';
+
 import { OrgAvatarComponent } from '../org-avatar/org-avatar.component';
 import { UserAvatarComponent } from '../user-avatar/user-avatar.component';
 
 @Component({
     selector: 'app-user-menu',
-    imports: [CommonModule, AppSvgIconComponent, UserAvatarComponent, OrgAvatarComponent, HasPermissionDirective],
+    imports: [CommonModule, AppSvgIconComponent, UserAvatarComponent, OrgAvatarComponent, HasPermissionDirective, AprilFoolsOrgNamePipe],
     templateUrl: './user-menu.component.html',
     styleUrls: ['./user-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
