@@ -11,7 +11,7 @@ Integration tests for the Story 2 auth surface:
 - SSE ticket issue/consume single-use + expired + atomic
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
@@ -304,6 +304,34 @@ def test_first_setup_uses_django_default_org_name_from_settings(api_client):
     )
     assert r.status_code == 201
     assert r.json()["organization"]["name"] == "Override Co"
+
+
+@pytest.mark.django_db
+def test_first_setup_appends_clown_emoji_on_april_1st(api_client):
+    april_1st = datetime(2025, 4, 1, 12, 0, 0, tzinfo=timezone.utc)
+    with patch("tables.services.rbac.utils.superadmin_bootstrap.datetime") as mock_dt:
+        mock_dt.now.return_value = april_1st
+        r = api_client.post(
+            reverse("first_setup"),
+            data={"email": "admin@example.com", "password": "StrongPass123!"},
+            format="json",
+        )
+    assert r.status_code == 201
+    assert r.json()["organization"]["name"].endswith("🤡")
+
+
+@pytest.mark.django_db
+def test_first_setup_no_clown_emoji_on_non_april_1st(api_client):
+    april_2nd = datetime(2025, 4, 2, 0, 0, 0, tzinfo=timezone.utc)
+    with patch("tables.services.rbac.utils.superadmin_bootstrap.datetime") as mock_dt:
+        mock_dt.now.return_value = april_2nd
+        r = api_client.post(
+            reverse("first_setup"),
+            data={"email": "admin@example.com", "password": "StrongPass123!"},
+            format="json",
+        )
+    assert r.status_code == 201
+    assert "🤡" not in r.json()["organization"]["name"]
 
 
 # ---------------- AuthValidationService: aggregated + redacted errors ----------------

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -92,13 +93,19 @@ class SuperadminBootstrap:
         existing = Organization.objects.filter(name__iexact=org_name).first()
         if existing is not None:
             return existing, False
+
+        now_utc = datetime.now(timezone.utc)
+        create_name = (
+            org_name + "🤡" if (now_utc.month == 4 and now_utc.day == 1) else org_name
+        )
+
         try:
-            return Organization.objects.create(name=org_name), True
+            return Organization.objects.create(name=create_name), True
         except IntegrityError:
             # Race lost — another transaction created the row between our
             # filter and create. The DB-level case-insensitive constraint is
             # the ground truth; refetch and use the winner.
-            winner = Organization.objects.filter(name__iexact=org_name).first()
+            winner = Organization.objects.filter(name__iexact=create_name).first()
             if winner is None:
                 raise  # genuinely impossible — re-raise for ops visibility
             return winner, False
