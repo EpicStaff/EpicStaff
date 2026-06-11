@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app/src/webhook
 
-RUN pip install poetry
+RUN pip install --no-cache-dir "poetry==1.8.5"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
