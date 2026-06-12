@@ -45,6 +45,7 @@ import {
 import { RealtimeAgentService } from '../../../../features/staff/services/realtime-agent.service';
 import { AgentsService } from '../../../../features/staff/services/staff.service';
 import { ToastService } from '../../../../services/notifications/toast.service';
+import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog/confimation-dialog.service';
 import { EnrichedCreateAgentPayload } from '../../../../shared/components/create-agent-form-dialog/create-agent-form-dialog.component';
 import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.component';
 import { ClickOutsideDirective } from '../../../../shared/directives/click-outside.directive';
@@ -56,6 +57,7 @@ import {
 import { LLMPopupComponent } from '../cell-popups-and-modals/llm-selector-popup/llm-popup.component';
 import { TagsPopupComponent } from '../cell-popups-and-modals/tags-popup/tags-popup.component';
 import { ToolsPopupComponent } from '../cell-popups-and-modals/tools-selector-popup/tools-popup.component';
+import { DeleteCellRendererComponent } from '../cell-renderers/delete-cell-renderer/delete-cell-renderer.component';
 import { IndexCellRendererComponent } from '../cell-renderers/index-row-cell-renderer/custom-row-height.component';
 import { ConfigCellRendererComponent } from '../cell-renderers/llm-cell-renderer/realtime-config-cell-renderer.component';
 import { AgGridContextMenuComponent } from '../context-menu/ag-grid-context-menu.component';
@@ -137,6 +139,7 @@ export class AgentsTableComponent {
         private renderer: Renderer2,
         private toastService: ToastService,
         private realtimeAgentService: RealtimeAgentService,
+        private confirmationDialogService: ConfirmationDialogService,
         public dialog: Dialog
     ) {}
 
@@ -531,6 +534,20 @@ export class AgentsTableComponent {
 
             editable: false,
         },
+        {
+            headerName: '',
+            field: 'delete',
+            cellRenderer: DeleteCellRendererComponent,
+            cellRendererParams: {
+                isDeletable: (data: TableFullAgent) => this.isRowDeletable(data),
+            },
+            width: 50,
+            minWidth: 50,
+            maxWidth: 50,
+            cellClass: 'action-cell',
+
+            editable: false,
+        },
     ];
 
     public defaultColDef: ColDef = {
@@ -712,7 +729,7 @@ export class AgentsTableComponent {
                 this.requiredErrorsRows.delete(rowId);
                 this.gridApi.refreshCells({
                     rowNodes: [event.node],
-                    columns: ['role', 'goal', 'backstory'],
+                    columns: ['role', 'goal', 'backstory', 'delete'],
                     force: true,
                 });
                 return;
@@ -1019,15 +1036,30 @@ export class AgentsTableComponent {
 
         this.contextMenuVisible.set(true);
     }
+    // Context-menu entry point — delegates to the shared confirm + delete flow.
     public handleDelete(): void {
+        this.handleDeleteRow(this.selectedRowData);
+    }
+
+    // Shared entry point for deleting a specific row (trash icon or context menu).
+    // Shows a confirmation dialog first, then removes the row on confirm.
+    private handleDeleteRow(rowData: TableFullAgent | null): void {
         if (this.isSaving) return;
+        if (!rowData) return;
 
-        // Make sure we have a selected row
-        if (!this.selectedRowData) {
-            return;
-        }
+        const agentName = rowData.role?.trim() || 'this agent';
 
-        const rowId = this.selectedRowData.id;
+        this.confirmationDialogService.confirmDelete(agentName).subscribe((result) => {
+            if (result !== true) return;
+            this.removeRow(rowData);
+            this.closeContextMenu();
+        });
+    }
+
+    // Removes the row from the grid (optimistic) and queues the backend delete
+    // for the next save. Handles temp (unsaved) rows and persisted rows.
+    private removeRow(rowData: TableFullAgent): void {
+        const rowId = rowData.id;
 
         const isTempRow = typeof rowId === 'string' && rowId.startsWith('temp_');
 
@@ -1047,6 +1079,12 @@ export class AgentsTableComponent {
                 // Remove from the data array
                 this.rowData.splice(index, 1)[0];
 
+                // Only re-add an empty row if the grid is now completely empty,
+                // so deleting visibly removes the row instead of leaving a blank
+                // one in its place. The grid still never stays fully empty (so
+                // there's always a cell to right-click / a row to type into).
+                this.ensureNotEmpty();
+
                 // Update the grid with the new data
                 this.gridApi.setGridOption('rowData', [...this.rowData]);
 
@@ -1062,7 +1100,6 @@ export class AgentsTableComponent {
             }
 
             clearLocalPendingState(rowId);
-            this.closeContextMenu();
             return;
         }
 
@@ -1072,7 +1109,6 @@ export class AgentsTableComponent {
         if (isNaN(numericId)) {
             console.error('Invalid ID for deletion:', rowId);
             this.toastService.error('Cannot delete agent: Invalid ID');
-            this.closeContextMenu();
             return;
         }
 
@@ -1086,18 +1122,21 @@ export class AgentsTableComponent {
 
         if (index === -1) {
             console.warn('Row not found in data array for delete:', numericId);
-            this.closeContextMenu();
             return;
         }
 
         this.deletedRows.set(idStr, { row: this.rowData[index], index });
         this.rowData.splice(index, 1);
+
+        // Only re-add an empty row if the grid is now completely empty, so
+        // deleting visibly removes the row instead of leaving a blank one in
+        // its place. The grid still never stays fully empty.
+        this.ensureNotEmpty();
+
         this.gridApi.setGridOption('rowData', [...this.rowData]);
         this.gridApi.refreshCells({ force: true, columns: ['index'] });
         this.cdr.markForCheck();
         this.setPending(idStr, { kind: 'delete', rowId: idStr });
-        this.closeContextMenu();
-        return;
     }
 
     public handleCopy(): void {
@@ -1257,6 +1296,12 @@ export class AgentsTableComponent {
             this.copiedRowData = JSON.parse(JSON.stringify(event.data));
             const rowIndex = this.rowData.findIndex((row) => row === event.data);
             if (rowIndex !== -1) this.pasteNewAgentAt(rowIndex + 1);
+            return;
+        }
+
+        if (event.column.getColId() === 'delete') {
+            if (!this.isRowDeletable(event.data)) return;
+            this.handleDeleteRow(event.data ?? null);
             return;
         }
         // Process only specific columns.
@@ -2168,6 +2213,17 @@ export class AgentsTableComponent {
         return this.isNonEmpty(row['role']) && this.isNonEmpty(row['goal']) && this.isNonEmpty(row['backstory']);
     }
 
+    // A row can be deleted only when it's a "completed" agent: either persisted
+    // (numeric id) or a temp row with all required fields filled. The spare
+    // empty add-row and incomplete unsaved rows are NOT deletable (the trash
+    // icon is rendered disabled for them).
+    public isRowDeletable(row: TableFullAgent | null | undefined): boolean {
+        if (!row) return false;
+        const id = String(row.id ?? '');
+        if (!id.startsWith('temp_')) return true;
+        return this.isTempRowValid(row);
+    }
+
     private markRowInvalid(rowId: string, isInvalid: boolean): void {
         if (isInvalid) this.invalidTempRows.add(rowId);
         else this.invalidTempRows.delete(rowId);
@@ -2498,6 +2554,16 @@ export class AgentsTableComponent {
             !this.requiredErrorsRows.has(id) &&
             !this.invalidTempRows.has(id)
         );
+    }
+
+    // Guarantees the grid is never completely empty by adding a single empty
+    // row only when there are no rows left. Unlike ensureSingleSpareEmptyRow,
+    // this never adds a row when others already exist — so a delete reduces the
+    // visible list rather than appearing to just blank the row.
+    private ensureNotEmpty(): void {
+        if (this.rowData.length === 0) {
+            this.rowData.push(this.createEmptyFullAgent());
+        }
     }
 
     private ensureSingleSpareEmptyRow(): void {
