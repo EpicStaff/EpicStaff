@@ -14,6 +14,8 @@ permissions:
 
 jobs:
   cla-assistant:
+    # Toggle: set repo variable CLA_ENFORCED=true to enable. Unset/anything else = CLA bot off.
+    if: vars.CLA_ENFORCED == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: "CLA Assistant"
