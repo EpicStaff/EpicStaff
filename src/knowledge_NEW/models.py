@@ -11,6 +11,7 @@ from pydantic import (
 
 from enums import (
     ChunkStrategyEnum,
+    EmbedderProviderEnum,
 )
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "Entity",
     "ChunkingConfig",
     "PreviewChunk",
+    "EmbeddingConfig",
 ]
 
 
@@ -51,3 +53,14 @@ class PreviewChunk(ValueObject):
     token_count: Optional[int] = None
     overlap_start: Optional[int] = None
     overlap_end: Optional[int] = None
+
+
+class EmbeddingConfig(BaseModel):
+    """Configuration for an embedding provider client."""
+
+    provider: EmbedderProviderEnum
+    api_key: str = Field(exclude=True)
+    model: str
+    extra: dict = Field(default_factory=dict)
+
+    model_config = ConfigDict(frozen=True)

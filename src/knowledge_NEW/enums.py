@@ -2,6 +2,7 @@ from enum import StrEnum
 
 __all__ = [
     "ChunkStrategyEnum",
+    "EmbedderProviderEnum",
     "FileExtensionEnum",
 ]
 
@@ -13,6 +14,14 @@ class ChunkStrategyEnum(StrEnum):
     JSON = "json"
     MARKDOWN = "markdown"
     TOKEN = "token"
+
+
+class EmbedderProviderEnum(StrEnum):
+    COHERE = "cohere"
+    GEMINI = "gemini"
+    MISTRAL = "mistral"
+    OPENAI = "openai"
+    TOGETHER_AI = "together_ai"
 
 
 class FileExtensionEnum(StrEnum):
