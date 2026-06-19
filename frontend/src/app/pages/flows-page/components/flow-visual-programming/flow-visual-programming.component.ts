@@ -82,6 +82,7 @@ import { rewriteLegacyOnceScheduleName } from '../../../../visual-programming/ut
 import {
     buildBulkSavePayload,
     buildUuidToBackendIdMap,
+    clearStaleIds,
     cloneFlowState,
     getConnectionDiff,
     getNodeDiff,
@@ -271,14 +272,15 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         if (!this.graph?.id) return EMPTY;
 
         const previous = this.loadedFlowState();
-        const nodeDiff = getNodeDiff(previous, flowState);
-        const idMap = buildUuidToBackendIdMap(flowState.nodes);
-        const connectionDiff = getConnectionDiff(previous, flowState, idMap);
+        const flowToSave = clearStaleIds(previous, flowState);
+        const nodeDiff = getNodeDiff(previous, flowToSave);
+        const idMap = buildUuidToBackendIdMap(flowToSave.nodes);
+        const connectionDiff = getConnectionDiff(previous, flowToSave, idMap);
         const payload = buildBulkSavePayload(
             this.graph.id,
             nodeDiff,
             connectionDiff,
-            flowState,
+            flowToSave,
             idMap,
             this.graphState()!.save_version
         );
@@ -295,7 +297,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             tap(({ graph, flows }) => {
                 this.graphState.set(graph);
                 this.availableFlowLights.set(flows);
-                const patchedFlow = patchFlowStateWithBackendIds(flowState, previous, nodeDiff, graph);
+                const patchedFlow = patchFlowStateWithBackendIds(flowToSave, previous, nodeDiff, graph);
 
                 this.flowService.setFlow(patchedFlow);
                 // Sync isActive from the save response: patchFlowStateWithBackendIds only assigns
