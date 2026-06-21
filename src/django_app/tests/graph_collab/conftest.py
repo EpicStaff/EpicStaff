@@ -11,7 +11,8 @@ from channels.testing import WebsocketCommunicator
 
 from tables.models import Graph
 from tables.graph_collab.consumers import GraphEditConsumer
-from tables.graph_collab.presence_service import presence_service
+from tables.graph_collab.presence_service import presence_service, GraphPresenceService
+from tables.graph_collab.protocol import EditorInfo
 
 
 application = URLRouter(
@@ -24,6 +25,10 @@ CHANNEL_LAYERS_OVERRIDE = {
         "BACKEND": "channels.layers.InMemoryChannelLayer",
     }
 }
+
+
+def _editor(user_id: int, name: str = "Alice") -> EditorInfo:
+    return EditorInfo(user_id=user_id, display_name=name, avatar_url=None)
 
 
 @pytest.fixture(autouse=True)
@@ -100,3 +105,8 @@ def make_communicator():
         return communicator
 
     return _make
+
+
+@pytest.fixture
+def service():
+    return GraphPresenceService()

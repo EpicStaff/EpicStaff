@@ -15,25 +15,15 @@ from channels.layers import get_channel_layer
 
 from tables.graph_collab.notifications import GraphEditNotifier
 from tables.graph_collab.presence_service import GraphPresenceService, presence_service
-from tables.graph_collab.protocol import EditorInfo
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _editor(user_id: int, name: str = "Alice") -> EditorInfo:
-    return EditorInfo(user_id=user_id, display_name=name, avatar_url=None)
-
+from tests.graph_collab.conftest import _editor
 
 # ---------------------------------------------------------------------------
 # GraphPresenceService.update_editor_for_user
 # ---------------------------------------------------------------------------
 
 
-def test_update_editor_replaces_across_multiple_graphs():
-    service = GraphPresenceService()
+def test_update_editor_replaces_across_multiple_graphs(service):
     old = _editor(user_id=1, name="Old Name")
     service.add(graph_id=10, channel_name="ch-a", editor=old)
     service.add(graph_id=20, channel_name="ch-b", editor=old)
@@ -51,8 +41,7 @@ def test_update_editor_replaces_across_multiple_graphs():
     assert service._store[20]["ch-c"].display_name == "Other"
 
 
-def test_update_editor_returns_empty_when_user_not_present():
-    service = GraphPresenceService()
+def test_update_editor_returns_empty_when_user_not_present(service):
     service.add(graph_id=10, channel_name="ch-a", editor=_editor(user_id=99))
 
     affected = service.update_editor_for_user(user_id=1, editor=_editor(user_id=1))
@@ -60,8 +49,7 @@ def test_update_editor_returns_empty_when_user_not_present():
     assert affected == []
 
 
-def test_update_editor_returns_empty_when_store_is_empty():
-    service = GraphPresenceService()
+def test_update_editor_returns_empty_when_store_is_empty(service):
     affected = service.update_editor_for_user(user_id=1, editor=_editor(user_id=1))
     assert affected == []
 
@@ -79,7 +67,6 @@ def test_notify_profile_updated_broadcasts_to_each_affected_graph():
     async_to_sync(channel_layer.group_add)("graph_edit_2", ch2)
 
     editor = _editor(user_id=5, name="Pavlo")
-    presence_service._store.clear()
     presence_service.add(graph_id=1, channel_name="ch-1", editor=editor)
     presence_service.add(graph_id=2, channel_name="ch-2", editor=editor)
 
@@ -103,7 +90,6 @@ def test_notify_profile_updated_broadcasts_to_each_affected_graph():
 def test_notify_profile_updated_is_noop_when_user_not_present(mocker):
     send_spy = mocker.spy(GraphEditNotifier, "_send")
 
-    presence_service._store.clear()
     user = SimpleNamespace(pk=5, display_name="Ghost", email="g@e.com", avatar=None)
     GraphEditNotifier.notify_profile_updated(user)
 
@@ -117,7 +103,7 @@ def test_notify_profile_updated_does_not_raise_when_channel_layer_is_none(mocker
     )
 
     editor = _editor(user_id=7)
-    presence_service._store.clear()
+
     presence_service.add(graph_id=1, channel_name="ch-x", editor=editor)
 
     user = SimpleNamespace(pk=7, display_name="User7", email="u@e.com", avatar=None)
@@ -134,7 +120,7 @@ def test_notify_profile_updated_does_not_raise_when_group_send_raises(mocker):
     )
 
     editor = _editor(user_id=8)
-    presence_service._store.clear()
+
     presence_service.add(graph_id=1, channel_name="ch-y", editor=editor)
 
     user = SimpleNamespace(pk=8, display_name="User8", email="u8@e.com", avatar=None)

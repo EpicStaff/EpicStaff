@@ -53,6 +53,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         )
 
         editor = build_editor_info(user)
+        already_present = presence_service.has_user(self.graph_id, user.pk)
         presence_service.add(self.graph_id, self.channel_name, editor)
 
         await self.send_json(
@@ -61,10 +62,11 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             ).model_dump()
         )
 
-        await self.channel_layer.group_send(
-            self.group,
-            UserJoinedMessage(editor=editor).model_dump(),
-        )
+        if not already_present:
+            await self.channel_layer.group_send(
+                self.group,
+                UserJoinedMessage(editor=editor).model_dump(),
+            )
 
     async def disconnect(self, code):
         group = getattr(self, "group", None)
@@ -74,10 +76,11 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             if graph_id is not None:
                 presence_service.remove(graph_id, self.channel_name)
                 if user and not isinstance(user, AnonymousUser):
-                    await self.channel_layer.group_send(
-                        group,
-                        UserLeftMessage(user_id=user.pk).model_dump(),
-                    )
+                    if not presence_service.has_user(graph_id, user.pk):
+                        await self.channel_layer.group_send(
+                            group,
+                            UserLeftMessage(user_id=user.pk).model_dump(),
+                        )
             await self.channel_layer.group_discard(group, self.channel_name)
 
     async def receive_json(self, content, **kwargs):
