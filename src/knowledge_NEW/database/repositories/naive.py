@@ -16,6 +16,7 @@ from database.repositories.base import AbstractSQLAlchemyRepository
 from models import (
     EmbeddingConfig,
     Document,
+    FoundChunk,
     PreviewChunk,
     IndexedChunk,
     ChunkingConfig,
@@ -152,6 +153,60 @@ class NaiveRagSQLAlchemyRepository(AbstractSQLAlchemyRepository):
             )
             .values(status=document.status)
         )
+
+    async def search_chunks(
+        self, rag_id: int, vector: list[float], limit: int, similarity_threshold: float
+    ) -> list[FoundChunk]:
+        """Return the chunks in RAG `rag_id` most similar to `vector`.
+
+        Args:
+            rag_id: Identifier of the naive RAG to search.
+            vector: Query embedding to compare chunks against.
+            limit: Maximum number of chunks to return.
+            similarity_threshold: Minimum cosine similarity a chunk must reach.
+
+        Returns:
+            Matching chunks ordered by descending similarity.
+        """
+        similarity = (1 - NaiveRagEmbedding.vector.cosine_distance(vector)).label(
+            "similarity"
+        )
+        result = await self._session.execute(
+            select(
+                NaiveRagChunk.chunk_index,
+                similarity,
+                NaiveRagChunk.text,
+                DocumentMetadata.file_name,
+            )
+            .select_from(NaiveRagEmbedding)
+            .join(
+                NaiveRagChunk,
+                NaiveRagEmbedding.chunk_id == NaiveRagChunk.chunk_id,
+            )
+            .join(
+                NaiveRagDocumentConfig,
+                NaiveRagChunk.naive_rag_document_config_id
+                == NaiveRagDocumentConfig.naive_rag_document_id,
+            )
+            .join(
+                DocumentMetadata,
+                NaiveRagDocumentConfig.document_id == DocumentMetadata.document_id,
+            )
+            .where(NaiveRagDocumentConfig.naive_rag_id == rag_id)
+            .order_by(similarity.desc())
+            .limit(limit)
+        )
+        rows = result.all()
+        return [
+            FoundChunk(
+                order=r.chunk_index,
+                similarity=round(r.similarity, 4),
+                text=r.text,
+                source=r.file_name or "",
+            )
+            for r in rows
+            if r.similarity >= similarity_threshold
+        ]
 
     @staticmethod
     def _to_document(config: NaiveRagDocumentConfig) -> Document:

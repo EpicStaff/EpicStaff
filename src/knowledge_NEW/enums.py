@@ -5,6 +5,7 @@ __all__ = [
     "ChunkStrategyEnum",
     "DocumentStatusEnum",
     "EmbedderProviderEnum",
+    "GraphSearchMethodEnum",
     "IndexStatusEnum",
     "FileExtensionEnum",
 ]
@@ -40,6 +41,13 @@ class EmbedderProviderEnum(StrEnum):
     MISTRAL = "mistral"
     OPENAI = "openai"
     TOGETHER_AI = "together_ai"
+
+
+class GraphSearchMethodEnum(StrEnum):
+    BASIC = "basic"
+    LOCAL = "local"
+    GLOBAL = "global"
+    DRIFT = "drift"
 
 
 class IndexStatusEnum(StrEnum):
