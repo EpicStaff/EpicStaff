@@ -137,13 +137,9 @@ export class TasksTableComponent implements OnChanges {
     private currentCellElement: HTMLElement | null = null;
     private globalClickUnlistener: (() => void) | null = null;
     private globalKeydownUnlistener: (() => void) | null = null;
-    // True while the tools popup has a child CDK dialog open (e.g. the
-    // "Create custom tool" / "Add MCP tool" modal). Driven by the popup's
-    // childDialogOpenChange output so we don't dismiss the popup while the
-    // modal is open or when the click/Escape that closes it reaches us.
+   
     private childDialogOpen = false;
 
-    // Track drag state for header drop detection
     private isDragOutsideRows = false;
     private draggedTaskData: TableFullTask | null = null;
     private dragMouseUpListener: (() => void) | null = null;
