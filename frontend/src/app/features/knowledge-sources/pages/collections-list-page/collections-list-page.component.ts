@@ -44,7 +44,7 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
         this.isLoading.set(true);
 
         this.collectionsStorageService
-            .getCollections()
+            .getCollections(true)
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 finalize(() => {

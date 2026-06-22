@@ -1,4 +1,6 @@
-@if (!hideTrigger()) {
+<ng-content select="[appMultiSelectTrigger]" />
+
+@if (!projectedTriggerEl() && !hideTrigger()) {
     <div
         #triggerBtn
         class="multi-select__btn"
@@ -16,7 +18,7 @@
     </div>
 }
 
-@if (hideTrigger()) {
+@if (!projectedTriggerEl() && hideTrigger()) {
     <span
         #triggerBtn
         style="display: none"
@@ -57,7 +59,7 @@
                                 [checked]="isChecked(item.value)"
                             />
                         }
-                        <span>
+                        <span class="multi-select__item-label">
                             {{ item.name }}
                             @if (item.tip) {
                                 <span class="multi-select__item-tip">

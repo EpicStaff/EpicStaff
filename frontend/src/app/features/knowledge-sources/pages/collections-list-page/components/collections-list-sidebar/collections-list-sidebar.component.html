@@ -1,20 +1,20 @@
 <div class="collections-sidebar">
-    <div class="collections-sidebar__items">
-        @if (!collections().length) {
-            <p class="collections-sidebar__empty">No collections yet</p>
+    @if (!collections().length) {
+        <p class="collections-sidebar__empty">No collections yet</p>
 
-            <app-button
-                type="outline-primary"
-                (click)="onCreateCollection.emit()"
-            >
-                + Create Collection
-            </app-button>
-        } @else {
-            <app-select
-                [placeholder]="'Rag type'"
-                [items]="ragTypeItems"
-                [(selectedValue)]="selectedRagType"
-            />
+        <app-button
+            type="outline-primary"
+            (click)="onCreateCollection.emit()"
+        >
+            + Create Collection
+        </app-button>
+    } @else {
+        <app-select
+            [placeholder]="'Rag type'"
+            [items]="ragTypeItems"
+            [(selectedValue)]="selectedRagType"
+        />
+        <div class="collections-sidebar__items">
             @for (collection of filteredCollections(); track collection.collection_id) {
                 <app-collection
                     class="collections-sidebar__item"
@@ -23,6 +23,6 @@
                     (click)="selectedCollectionId.set(collection.collection_id)"
                 />
             }
-        }
-    </div>
+        </div>
+    }
 </div>

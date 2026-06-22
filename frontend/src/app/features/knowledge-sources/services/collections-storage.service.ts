@@ -1,7 +1,7 @@
 import { inject, Injectable, Injector, Signal, signal } from '@angular/core';
 import { StorageService } from '@shared/services';
 import { catchError, delay, EMPTY, interval, Observable, of, Subscription, tap, throwError } from 'rxjs';
-import { filter, shareReplay, switchMap } from 'rxjs/operators';
+import { exhaustMap, filter, shareReplay, switchMap } from 'rxjs/operators';
 
 import {
     CreateCollectionDtoResponse,
@@ -155,7 +155,7 @@ export class CollectionsStorageService implements StorageService {
         this.pollingSubscription = interval(CollectionsStorageService.POLL_INTERVAL_MS)
             .pipe(
                 filter(() => document.visibilityState === 'visible'),
-                switchMap(() => this.refreshAll())
+                exhaustMap(() => this.refreshAll())
             )
             .subscribe();
     }
@@ -174,6 +174,10 @@ export class CollectionsStorageService implements StorageService {
 
         const selectedId = this.selectedCollectionId?.();
         if (!selectedId) {
+            return collections$;
+        }
+
+        if (!this.collectionsSignal().some((c) => c.collection_id === selectedId)) {
             return collections$;
         }
 

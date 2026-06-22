@@ -181,7 +181,7 @@ export class CollectionDetailsComponent implements OnInit, OnChanges {
             )
             .subscribe({
                 next: () => {
-                    this.toastService.error('Collection deleted successfully');
+                    this.toastService.success('Collection deleted successfully');
                     if (this.selectedCollectionId() === deletedId) {
                         this.selectedCollectionId.set(null);
                         this.fullCollection.set(null);
