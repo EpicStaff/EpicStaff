@@ -1,12 +1,13 @@
+from src.shared.models import args_schema_to_variables
 from tables.import_export.version_conversions.base import VersionConverter
 
 _FIELD_TYPE_TO_VAR_TYPE = {
-    "llm_config": "integer",
-    "embedding_config": "integer",
+    "llm_config": "number",
+    "embedding_config": "number",
     "string": "string",
     "boolean": "boolean",
     "any": "any",
-    "integer": "integer",
+    "integer": "number",
     "float": "number",
 }
 
@@ -22,34 +23,13 @@ def v1_to_v2(data: dict) -> dict:
     user_input variables come from python_code_tool_config_fields records.
     Bundles that carry no PythonCodeTool key (e.g. graph-only snapshots)
     pass through unchanged.
+
+    JSON-schema "integer" types are normalized to "number" to match the
+    runtime VariableType enum, which has no integer variant. Nested
+    object/array schemas are recursively converted to NestedVariable shape.
     """
     for tool in data.get("PythonCodeTool", []):
-        variables = []
-
-        schema = tool.get("args_schema") or {}
-        properties = schema.get("properties", {})
-        required_names = set(schema.get("required", []))
-
-        for name, prop in properties.items():
-            var = {
-                "name": name,
-                "type": prop.get("type", "string"),
-                "description": prop.get("description", ""),
-                "default_value": prop.get("default", None),
-                "input_type": "agent_input",
-                "required": name in required_names,
-            }
-
-            if prop.get("properties"):
-                var["properties"] = prop["properties"]
-
-            if prop.get("required"):
-                var["required_properties"] = prop["required"]
-
-            if prop.get("items"):
-                var["items"] = prop["items"]
-
-            variables.append(var)
+        variables = args_schema_to_variables(tool.get("args_schema") or {})
 
         for field in tool.get("python_code_tool_config_fields", []):
             variables.append(

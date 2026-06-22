@@ -94,6 +94,11 @@ from .variables import (
     ArrayNestedVariable,
     NestedVariable,
 )
+from .variable_conversion import (
+    args_schema_to_variables,
+    json_schema_node_to_nested_variable,
+    _normalize_type,
+)
 
 __all__ = [
     # agents
@@ -185,4 +190,8 @@ __all__ = [
     "ObjectNestedVariable",
     "ArrayNestedVariable",
     "NestedVariable",
+    # variable_conversion
+    "args_schema_to_variables",
+    "json_schema_node_to_nested_variable",
+    "_normalize_type",
 ]
