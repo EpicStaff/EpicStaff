@@ -23,10 +23,12 @@ __all__ = [
     "Entity",
     "ChunkingConfig",
     "PreviewChunk",
+    "IndexedChunk",
     "Document",
     "EmbeddingConfig",
     "PrechunkRequest",
     "PrechunkResponse",
+    "IndexRequest",
 ]
 
 
@@ -62,6 +64,12 @@ class PreviewChunk(ValueObject):
     overlap_end: Optional[int] = None
 
 
+class IndexedChunk(PreviewChunk):
+    """A `PreviewChunk` paired with its embedding vector."""
+
+    vector: list[float]
+
+
 class Document(Entity):
     """A file tracked through chunking and indexing."""
 
@@ -70,6 +78,7 @@ class Document(Entity):
     config: ChunkingConfig = Field(frozen=True)
     status: DocumentStatusEnum
     preview_chunks: list[PreviewChunk] = Field(default_factory=list)
+    indexed_chunks: list[IndexedChunk] = Field(default_factory=list)
 
     @computed_field
     def extension(self) -> str:
@@ -100,3 +109,10 @@ class PrechunkResponse(ValueObject):
 
     request: PrechunkRequest
     chunks: list[PreviewChunk]
+
+
+class IndexRequest(ValueObject):
+    """Request to index a RAG collection's documents."""
+
+    rag_id: int
+    rag_strategy: RAGStrategy

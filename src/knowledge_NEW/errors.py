@@ -15,6 +15,7 @@ __all__ = [
     "ChunkingError",
     "EmbeddingError",
     "DocumentNotFound",
+    "EmbedderUnavailableError",
 ]
 
 
@@ -47,4 +48,8 @@ class EmbeddingError(KnowledgeError):
 
 
 class DocumentNotFound(KnowledgeError):
+    pass
+
+
+class EmbedderUnavailableError(KnowledgeError):
     pass

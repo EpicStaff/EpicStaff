@@ -5,6 +5,7 @@ __all__ = [
     "ChunkStrategyEnum",
     "DocumentStatusEnum",
     "EmbedderProviderEnum",
+    "IndexStatusEnum",
     "FileExtensionEnum",
 ]
 
@@ -39,6 +40,14 @@ class EmbedderProviderEnum(StrEnum):
     MISTRAL = "mistral"
     OPENAI = "openai"
     TOGETHER_AI = "together_ai"
+
+
+class IndexStatusEnum(StrEnum):
+    NEW = "new"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    WARNING = "warning"
+    FAILED = "failed"
 
 
 class FileExtensionEnum(StrEnum):
