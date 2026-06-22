@@ -102,9 +102,6 @@
     }
 }
 
-// Next-node dropdowns use the shared <app-select> (native <select> rendered
-// with broken OS-native styling on macOS). Size its trigger to match the
-// 32px header inputs so the three header columns stay aligned.
 .header-field app-select {
     width: 100%;
 
