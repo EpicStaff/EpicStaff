@@ -19,7 +19,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { ButtonComponent } from '@shared/components';
 import { forkJoin, Subject } from 'rxjs';
-import { takeUntil, tap } from 'rxjs/operators';
+import { takeUntil } from 'rxjs/operators';
 
 import { McpToolDialogComponent } from '../../../../../features/tools/components/mcp-tool-dialog/mcp-tool-dialog.component';
 import { GetMcpToolRequest } from '../../../../../features/tools/models/mcp-tool.model';
@@ -64,6 +64,7 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
     >();
 
     @Output() public cancel = new EventEmitter<void>();
+    @Output() public childDialogOpenChange = new EventEmitter<boolean>();
 
     public menuItems: { type: 'custom' | 'mcp'; label: string }[] = [
         // { type: 'builtin', label: 'Built-in Tools' },
@@ -374,39 +375,38 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
     }
 
     public openCustomToolDialog(): void {
+        this.childDialogOpenChange.emit(true);
         const dialogRef = this.cdkDialog.open<GetPythonCodeToolRequest>(CreateCustomToolDialogComponent);
 
-        dialogRef.closed
-            .pipe(
-                tap((result) => {
-                    if (!result) {
-                        return;
-                    }
-                    this.pythonTools = this._sortPythonToolsBySelection([result, ...this.pythonTools]);
-                    this.cdr.markForCheck();
-                }),
-                takeUntil(this._destroyed$)
-            )
-            .subscribe();
+        dialogRef.closed.pipe(takeUntil(this._destroyed$)).subscribe((result) => {
+            if (result) {
+                // Auto-select the newly created tool, preserving existing selections.
+                this.selectedPythonTools.add(result.id);
+                this.pythonTools = this._sortPythonToolsBySelection([result, ...this.pythonTools]);
+                this._cdr.markForCheck();
+            }
+            this._notifyChildDialogClosed();
+        });
     }
 
     public openMcpToolDialog(): void {
-        const dialogRef = this.cdkDialog.open(McpToolDialogComponent, {
+        this.childDialogOpenChange.emit(true);
+        const dialogRef = this.cdkDialog.open<GetMcpToolRequest>(McpToolDialogComponent, {
             data: {},
         });
 
-        dialogRef.closed
-            .pipe(
-                tap((result) => {
-                    if (result) {
-                        console.log('New MCP tool created:', result);
-                        // Reload the MCP tools list to include the newly created tool
-                        this.loadToolsData();
-                    }
-                }),
-                takeUntil(this._destroyed$)
-            )
-            .subscribe();
+        dialogRef.closed.pipe(takeUntil(this._destroyed$)).subscribe((result) => {
+            if (result) {
+                this.selectedMcpTools.add(result.id);
+                this.mcpTools = this._sortMcpToolsBySelection([result, ...this.mcpTools]);
+                this._cdr.markForCheck();
+            }
+            this._notifyChildDialogClosed();
+        });
+    }
+
+    private _notifyChildDialogClosed(): void {
+        setTimeout(() => this.childDialogOpenChange.emit(false));
     }
 
     // This method is commented out as per the requirement

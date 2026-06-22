@@ -102,27 +102,13 @@
     }
 }
 
-.header-select {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
-    color: #e0e0e0;
-    padding: 0.4rem 0.6rem;
-    font-size: 0.85rem;
-    box-sizing: border-box;
-    height: 32px;
+.header-field app-select {
     width: 100%;
-    outline: none;
-    cursor: pointer;
-    transition: border-color 0.15s ease;
 
-    &:focus {
-        border-color: #685fff;
-    }
-
-    option {
-        background: #1a1a1a;
-        color: #fff;
+    ::ng-deep .selector__btn--default {
+        height: 32px;
+        font-size: 0.85rem;
+        padding: 0.4rem 2rem 0.4rem 0.6rem;
     }
 }
 
