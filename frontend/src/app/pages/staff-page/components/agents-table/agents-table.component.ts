@@ -121,10 +121,7 @@ export class AgentsTableComponent {
     private currentCellElement: HTMLElement | null = null;
     private globalClickUnlistener: (() => void) | null = null;
     private globalKeydownUnlistener: (() => void) | null = null;
-    // True while the tools popup has a child CDK dialog open (e.g. the
-    // "Create custom tool" / "Add MCP tool" modal). Driven by the popup's
-    // childDialogOpenChange output so we don't dismiss the popup while the
-    // modal is open or when the click/Escape that closes it reaches us.
+    
     private childDialogOpen = false;
 
     @Output() dirtyChange = new EventEmitter<boolean>();
@@ -1762,10 +1759,6 @@ export class AgentsTableComponent {
     }
 
     private onDocumentClick(event: MouseEvent): void {
-        // While a child CDK dialog is open on top of the popup (e.g. the
-        // "Create custom tool" / "Add MCP tool" dialog), its clicks land outside
-        // the popup overlay. Ignore them so creating a tool — or the click that
-        // closes that dialog — doesn't dismiss the popup.
         if (this.childDialogOpen) {
             return;
         }
