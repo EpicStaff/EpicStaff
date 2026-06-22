@@ -1,9 +1,19 @@
 import { DecimalPipe, JsonPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, input, output, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    DestroyRef,
+    effect,
+    ElementRef,
+    inject,
+    input,
+    output,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { DomSanitizer, SafeHtml, SafeResourceUrl } from '@angular/platform-browser';
-import DOMPurify from 'dompurify';
-import * as mammoth from 'mammoth';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { renderAsync } from 'docx-preview';
 import * as Papa from 'papaparse';
 import type { Sheet as ExcelSheet } from 'read-excel-file/browser';
 import readXlsxFile from 'read-excel-file/browser';
@@ -48,7 +58,8 @@ export class StoragePreviewComponent {
     pdfUrl = signal<SafeResourceUrl | null>(null);
     imageUrl = signal<string | null>(null);
     sheetData = signal<SheetData | null>(null);
-    docxHtml = signal<SafeHtml | null>(null);
+    docxBlob = signal<Blob | null>(null);
+    docxContainer = viewChild<ElementRef<HTMLDivElement>>('docxContainer');
     isLoadingPreview = signal<boolean>(false);
     previewError = signal<string | null>(null);
     csvDelimiter = signal<string>('auto');
@@ -71,6 +82,13 @@ export class StoragePreviewComponent {
     constructor() {
         effect(() => {
             this.loadPreview(this.item());
+        });
+        effect(() => {
+            const blob = this.docxBlob();
+            const container = this.docxContainer();
+            if (blob && container) {
+                this.renderDocx(blob, container.nativeElement);
+            }
         });
     }
 
@@ -159,7 +177,7 @@ export class StoragePreviewComponent {
         this.pdfUrl.set(null);
         this.imageUrl.set(null);
         this.sheetData.set(null);
-        this.docxHtml.set(null);
+        this.docxBlob.set(null);
         this.currentSheets = null;
         this.currentCsvText = null;
         this.csvDelimiter.set('auto');
@@ -223,13 +241,8 @@ export class StoragePreviewComponent {
                 break;
             }
             case 'docx': {
-                blob.arrayBuffer().then((buf) => {
-                    mammoth.convertToHtml({ arrayBuffer: buf }).then((result) => {
-                        const cleanHtml = DOMPurify.sanitize(result.value);
-                        this.docxHtml.set(this.sanitizer.bypassSecurityTrustHtml(cleanHtml));
-                        this.isLoadingPreview.set(false);
-                    });
-                });
+                this.docxBlob.set(blob);
+                this.isLoadingPreview.set(false);
                 break;
             }
             case 'sheet': {
@@ -282,6 +295,23 @@ export class StoragePreviewComponent {
         const headers = rows.length > 0 ? rows[0] : [];
         const dataRows = rows.slice(1).map((r) => headers.map((_, i) => r[i] ?? ''));
         return { sheetNames, activeSheet, headers, rows: dataRows };
+    }
+
+    private async renderDocx(blob: Blob, container: HTMLElement): Promise<void> {
+        container.innerHTML = '';
+        // .docx is a ZIP archive — verify the "PK\x03\x04" magic before rendering
+        // so we can surface a clean error for misnamed/corrupt files.
+        const head = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+        const isZip = head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04;
+        if (!isZip) {
+            this.previewError.set('File is not a valid .docx document');
+            return;
+        }
+        try {
+            await renderAsync(blob, container);
+        } catch {
+            this.previewError.set('Failed to render document preview');
+        }
     }
 
     private resolvePreviewType(ext: string): PreviewType {
