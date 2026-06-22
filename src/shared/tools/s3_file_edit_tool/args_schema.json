@@ -1,0 +1,23 @@
+{
+  "title": "S3FileEditLineArgs",
+  "type": "object",
+  "properties": {
+    "file_path": {
+      "type": "string",
+      "description": "S3 file path to edit."
+    },
+    "line_number": {
+      "type": "integer",
+      "description": "1-based line number to replace."
+    },
+    "expected_text": {
+      "type": "string",
+      "description": "Current content of the line. Must match exactly (trailing newline ignored)."
+    },
+    "new_text": {
+      "type": "string",
+      "description": "Replacement content for the line."
+    }
+  },
+  "required": ["file_path", "line_number", "expected_text", "new_text"]
+}

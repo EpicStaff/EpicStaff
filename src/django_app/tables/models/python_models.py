@@ -20,6 +20,7 @@ class PythonCodeTool(models.Model):
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE, null=False)
     favorite = models.BooleanField(default=False)
     built_in = models.BooleanField(default=False)
+    use_storage = models.BooleanField(default=False)
 
 
 class PythonCodeToolConfig(models.Model):

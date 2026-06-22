@@ -10,6 +10,7 @@ import { FlowService } from './flow.service';
 export class SidePanelService {
     private readonly selectedNodeIdSignal = signal<string | null>(null);
     private readonly autosaveTriggerSignal = signal<boolean>(false);
+    private readonly fullSaveRequestSignal = signal<number>(0);
 
     private readonly expandRequestSignal = signal<boolean>(false);
     public readonly expandRequest: Signal<boolean> = this.expandRequestSignal.asReadonly();
@@ -34,6 +35,7 @@ export class SidePanelService {
     });
 
     public readonly autosaveTrigger: Signal<boolean> = this.autosaveTriggerSignal.asReadonly();
+    public readonly fullSaveRequest: Signal<number> = this.fullSaveRequestSignal.asReadonly();
 
     public requestExpand(): void {
         this.expandRequestSignal.set(true);
@@ -99,5 +101,9 @@ export class SidePanelService {
 
     public clearNodeSaving(): void {
         this.savingNodeIdSignal.set(null);
+    }
+
+    public requestFullSave(): void {
+        this.fullSaveRequestSignal.update((v) => v + 1);
     }
 }

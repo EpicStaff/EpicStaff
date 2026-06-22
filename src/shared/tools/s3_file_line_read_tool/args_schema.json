@@ -1,0 +1,19 @@
+{
+  "title": "S3LineReadFileArgs",
+  "type": "object",
+  "properties": {
+    "file_path": {
+      "type": "string",
+      "description": "S3 file path to read."
+    },
+    "line_number": {
+      "type": "integer",
+      "description": "1-based line number to start reading from."
+    },
+    "num_lines": {
+      "type": "integer",
+      "description": "Number of lines to read. If omitted, reads to end of file."
+    }
+  },
+  "required": ["file_path", "line_number"]
+}

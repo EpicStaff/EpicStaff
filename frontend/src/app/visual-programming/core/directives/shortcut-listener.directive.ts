@@ -24,8 +24,6 @@ export class ShortcutListenerDirective implements OnInit, OnDestroy {
         'я',
         'y',
         'н',
-        'r',
-        'к',
         's',
         'ы',
         'delete',
@@ -147,12 +145,12 @@ export class ShortcutListenerDirective implements OnInit, OnDestroy {
                 event.stopPropagation();
                 this.redo.emit();
                 break;
-            case 'r':
-            case 'к':
-                event.preventDefault();
-                event.stopPropagation();
-                this.refresh.emit();
-                break;
+            // case 'r':
+            // case 'к':
+            //     event.preventDefault();
+            //     event.stopPropagation();
+            //     this.refresh.emit();
+            //     break;
             case 's':
             case 'ы':
                 event.preventDefault();

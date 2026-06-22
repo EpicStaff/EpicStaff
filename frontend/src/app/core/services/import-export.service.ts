@@ -35,7 +35,7 @@ export class ImportExportService {
 
     private get sessionsApiUrl(): string {
         return this.configService.apiUrl + 'sessions/';
-    }
+    }    
 
     importFlow(file: File, settings: ImportFlowRequestOptions): Observable<ImportResult> {
         const formData = new FormData();

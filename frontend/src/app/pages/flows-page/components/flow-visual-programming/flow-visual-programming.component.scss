@@ -122,4 +122,15 @@ app-flow-messages-panel {
     overflow: hidden;
     border-left: 1px solid var(--color-divider-subtle);
     box-sizing: border-box;
+    z-index: 100;
+}
+
+.saving-lock-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 1000; // must sit above the canvas and the node/side panels
+    cursor: progress;
+    background: transparent;
+    // Intercept every pointer interaction so no edit can start while saving.
+    pointer-events: all;
 }

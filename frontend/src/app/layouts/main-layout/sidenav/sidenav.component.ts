@@ -5,6 +5,7 @@ import {
     ChangeDetectionStrategy,
     Component,
     CUSTOM_ELEMENTS_SCHEMA,
+    DestroyRef,
     ElementRef,
     inject,
     signal,
@@ -55,6 +56,7 @@ interface NavItem {
 })
 export class LeftSidebarComponent implements AfterViewInit {
     private currentUserService = inject(ProfileService);
+    private destroyRef = inject(DestroyRef);
 
     public topNavItems: NavItem[];
     public bottomNavItems: NavItem[];

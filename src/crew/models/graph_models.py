@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Any
 
 
 def iso_utc_timestamp():
@@ -117,11 +118,26 @@ class UpdateSessionStatusMessageData:
 
 @dataclass
 class ConditionGroupMessageData:
-    group_name: int
+    group_name: str
     result: bool
+    expression: str | None = None
+    message_type: str = "condition_group"
 
 
 @dataclass
 class ConditonGroupManipulationMessageData:
-    group_name: int
+    group_name: str
     state: dict
+    changed_variables: dict = field(default_factory=dict)
+    message_type: str = "condition_group_manipulation"
+
+
+@dataclass
+class ClassificationPromptMessageData:
+    prompt_id: str
+    prompt_text: str
+    raw_response: str
+    parsed_result: Any
+    result_variable: str
+    usage: dict
+    message_type: str = "classification_prompt"
