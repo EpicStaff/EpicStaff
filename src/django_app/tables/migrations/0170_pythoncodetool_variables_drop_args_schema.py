@@ -15,6 +15,10 @@ _PASSTHROUGH_TYPES = {"string", "number", "boolean", "object", "array", "any"}
 
 
 def _normalize_type(json_type) -> str:
+    # JSON Schema `type` may be a list for nullable fields, e.g. ["integer", "null"].
+    if isinstance(json_type, list):
+        json_type = next((t for t in json_type if t != "null"), None)
+
     if not json_type:
         return "string"
 
