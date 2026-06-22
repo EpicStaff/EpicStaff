@@ -30,6 +30,21 @@ export class AddTranscriptionConfigDialogComponent implements OnInit {
     transcriptionForm!: FormGroup;
     showApiKey = false;
     models: GetRealtimeTranscriptionModelRequest[] = [];
+
+    private readonly supportsTextSecurity: boolean =
+        typeof CSS !== 'undefined' &&
+        typeof CSS.supports === 'function' &&
+        CSS.supports('-webkit-text-security', 'disc');
+
+    get apiKeyInputType(): string {
+        if (this.showApiKey) return 'text';
+        return this.supportsTextSecurity ? 'text' : 'password';
+    }
+
+    get apiKeyMasked(): boolean {
+        return !this.showApiKey && this.supportsTextSecurity;
+    }
+
     submitting = false;
     private lastAutoCustomName: string | null = null;
     private destroyRef = inject(DestroyRef);
