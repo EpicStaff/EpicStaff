@@ -275,7 +275,6 @@ export class FlowsLabelSidebarComponent implements OnInit {
 
     getLabelIconColor(node: LabelTreeNode): string {
         const color = node.metadata?.color;
-        if (!color || color === LabelColor.Default) return '';
         return getLabelColorOption(color).circleBg;
     }
 

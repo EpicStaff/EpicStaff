@@ -166,28 +166,6 @@
                     ></f-connection-gradient>
 
                     <svg
-                        viewBox="0 0 10 10"
-                        fMarker
-                        [type]="eMarkerType.START"
-                        [height]="10"
-                        [width]="10"
-                        [refX]="5"
-                        [refY]="5"
-                    >
-                        <circle
-                            cx="5"
-                            cy="5"
-                            r="2"
-                            stroke="none"
-                            [attr.fill]="
-                                flowSettings.arrowColorsEnabled()
-                                    ? nodeColorMap().get(connection.sourceNodeId) || '#555'
-                                    : connection.startColor || '#555'
-                            "
-                        ></circle>
-                    </svg>
-
-                    <svg
                         viewBox="0 0 6 6"
                         fMarker
                         [type]="eMarkerType.END"
@@ -205,23 +183,6 @@
                                     : connection.endColor || '#555'
                             "
                         ></path>
-                    </svg>
-
-                    <svg
-                        viewBox="0 0 10 10"
-                        fMarker
-                        [type]="eMarkerType.SELECTED_START"
-                        [height]="10"
-                        [width]="10"
-                        [refX]="5"
-                        [refY]="5"
-                    >
-                        <circle
-                            cx="5"
-                            cy="5"
-                            r="2"
-                            stroke="none"
-                        ></circle>
                     </svg>
 
                     <svg

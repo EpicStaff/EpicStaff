@@ -37,6 +37,9 @@ from .graph_nodes import (
     GraphData,
     SubGraphData,
     CodeAgentNodeData,
+    PromptConfigData,
+    ClassificationConditionGroupData,
+    ClassificationDecisionTableNodeData,
 )
 from .knowledge import (
     BaseRagSearchConfig,
@@ -130,6 +133,9 @@ __all__ = [
     "GraphData",
     "SubGraphData",
     "CodeAgentNodeData",
+    "PromptConfigData",
+    "ClassificationConditionGroupData",
+    "ClassificationDecisionTableNodeData",
     # knowledge
     "BaseRagSearchConfig",
     "NaiveRagSearchConfig",

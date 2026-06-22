@@ -1,12 +1,23 @@
 import { computed, Injectable, signal } from '@angular/core';
 import { IPoint } from '@foblex/2d';
+import { Subject } from 'rxjs';
 
 import { NodeType } from '../core/enums/node-type';
-import { generatePortsForDecisionTableNode, isDecisionPortRole } from '../core/helpers/helpers';
+import {
+    generatePortsForClassificationDecisionTableNode,
+    generatePortsForDecisionTableNode,
+    isDecisionPortRole,
+    parsePortId,
+} from '../core/helpers/helpers';
 import { ConnectionModel } from '../core/models/connection.model';
 import { ConditionGroup, DecisionTableNode } from '../core/models/decision-table.model';
 import { FlowModel } from '../core/models/flow.model';
-import { DecisionTableNodeModel, NodeModel, StartNodeModel } from '../core/models/node.model';
+import {
+    ClassificationDecisionTableNodeModel,
+    DecisionTableNodeModel,
+    NodeModel,
+    StartNodeModel,
+} from '../core/models/node.model';
 import { CustomPortId, ViewPort } from '../core/models/port.model';
 
 export interface FlattenedPort {
@@ -24,6 +35,10 @@ export class FlowService {
     });
 
     private _nextNodeNumber = 1;
+
+    // Subject to request canvas redraw (e.g., after port reordering)
+    private canvasRedrawRequest$ = new Subject<void>();
+    public readonly canvasRedrawRequested = this.canvasRedrawRequest$.asObservable();
 
     public readonly nodes = computed(() => this.flowSignal().nodes);
     public readonly connections = computed(() => this.flowSignal().connections);
@@ -56,6 +71,10 @@ export class FlowService {
 
     public getFlowState(): FlowModel {
         return this.flowSignal();
+    }
+
+    public requestCanvasRedraw(): void {
+        this.canvasRedrawRequest$.next();
     }
 
     public setFlow(flow: FlowModel) {
@@ -172,13 +191,27 @@ export class FlowService {
 
         let connectionSnapshot = this.connections();
 
-        const validGroupsWithNextNode = groups.filter((group) => group.valid && group.next_node);
+        const nodeType = allNodes.find((n) => n.id === tableNodeId)?.type;
+        const isClassificationTable = nodeType === NodeType.CLASSIFICATION_TABLE;
+
+        const validGroupsWithNextNode = groups.filter(
+            (group) =>
+                group.valid !== false &&
+                group.dock_visible !== false &&
+                !!group.next_node &&
+                // Classification tables route by route_code; a group with no
+                // route code has no output port, so don't recreate a connection.
+                (!isClassificationTable || !!group.route_code)
+        );
 
         validGroupsWithNextNode.forEach((group) => {
+            const portRole = isClassificationTable
+                ? `decision-route-${group.route_code ?? group.group_name}`
+                : `decision-out-${group.group_name}`;
             connectionSnapshot = this.ensureDecisionTableConnection(
                 tableNodeId,
                 group.next_node!,
-                `decision-out-${group.group_name}`,
+                portRole,
                 allNodes,
                 connectionSnapshot
             );
@@ -240,7 +273,7 @@ export class FlowService {
         const existingNode = existingNodeIndex >= 0 ? currentFlow.nodes[existingNodeIndex] : null;
 
         const shouldResetDecisionTableConnections =
-            updatedNode.type === NodeType.TABLE &&
+            (updatedNode.type === NodeType.TABLE || updatedNode.type === NodeType.CLASSIFICATION_TABLE) &&
             this.haveDecisionTableTargetsChanged(
                 existingNode as DecisionTableNodeModel | null,
                 updatedNode as DecisionTableNodeModel
@@ -265,9 +298,11 @@ export class FlowService {
             };
         });
 
-        if (shouldResetDecisionTableConnections && !skipDecisionTableReset) {
-            if (updatedNode.type !== NodeType.TABLE) return;
-
+        if (
+            shouldResetDecisionTableConnections &&
+            !skipDecisionTableReset &&
+            (updatedNode.type === NodeType.TABLE || updatedNode.type === NodeType.CLASSIFICATION_TABLE)
+        ) {
             const tableData = updatedNode.data.table;
             const conditionGroups = tableData.condition_groups || [];
 
@@ -277,6 +312,32 @@ export class FlowService {
                 tableData.default_next_node || null,
                 tableData.next_error_node || null
             );
+        }
+
+        // Remove any decision-table source connection whose port no longer
+        // exists on the node (e.g. its route code was cleared/deleted).
+        if (
+            !skipDecisionTableReset &&
+            (updatedNode.type === NodeType.TABLE || updatedNode.type === NodeType.CLASSIFICATION_TABLE)
+        ) {
+            this.pruneOrphanDecisionTableConnections(updatedNode);
+        }
+    }
+
+    private pruneOrphanDecisionTableConnections(tableNode: NodeModel): void {
+        const validPortIds = new Set((tableNode.ports ?? []).map((port) => `${port.id}`));
+
+        const orphanConnectionIds = this.connections()
+            .filter(
+                (connection) =>
+                    connection.sourceNodeId === tableNode.id &&
+                    this.isDecisionTableSourcePort(connection.sourcePortId, tableNode.id) &&
+                    !validPortIds.has(`${connection.sourcePortId}`)
+            )
+            .map((connection) => connection.id);
+
+        if (orphanConnectionIds.length) {
+            this.removeConnectionsInBatch(orphanConnectionIds);
         }
     }
 
@@ -300,8 +361,11 @@ export class FlowService {
         }
 
         const groupsKey = (table.condition_groups ?? [])
-            .filter((group) => group.valid === true && !!group.next_node)
-            .map((group) => `${group.group_name ?? ''}::${group.next_node ?? ''}`)
+            .filter((group) => group.valid !== false && group.dock_visible !== false && !!group.next_node)
+            .map(
+                (group) =>
+                    `${group.route_code ?? ''}::${group.group_name ?? ''}::${group.next_node ?? ''}::${String(group.dock_visible !== false)}`
+            )
             .sort()
             .join('|');
 
@@ -389,11 +453,11 @@ export class FlowService {
     private updateDecisionTableNextNodeFromConnection(connection: ConnectionModel): void {
         const sourceNode = this.nodes().find((node) => node.id === connection.sourceNodeId);
 
-        if (!sourceNode || sourceNode.type !== NodeType.TABLE) {
+        if (!sourceNode || (sourceNode.type !== NodeType.TABLE && sourceNode.type !== NodeType.CLASSIFICATION_TABLE)) {
             return;
         }
 
-        const tableData = (sourceNode as DecisionTableNodeModel).data?.table;
+        const tableData = (sourceNode as DecisionTableNodeModel | ClassificationDecisionTableNodeModel).data?.table;
         if (!tableData) {
             return;
         }
@@ -410,12 +474,14 @@ export class FlowService {
 
         const normalizedSourceRole = this.normalizeDecisionPortRole(sourcePortRole);
 
-        const updatedTable: DecisionTableNode = {
+        const isCdt = sourceNode.type === NodeType.CLASSIFICATION_TABLE;
+
+        const updatedTable = {
             ...tableData,
-            condition_groups: (tableData.condition_groups || []).map((group) => {
-                const normalizedGroupRole = group.group_name
-                    ? this.normalizeDecisionPortRole(`decision-out-${group.group_name}`)
-                    : null;
+            condition_groups: (tableData.condition_groups || []).map((group: ConditionGroup) => {
+                const key = isCdt ? (group.route_code ?? group.group_name) : group.group_name;
+                const prefix = isCdt ? 'decision-route-' : 'decision-out-';
+                const normalizedGroupRole = key ? this.normalizeDecisionPortRole(`${prefix}${key}`) : null;
 
                 if (normalizedGroupRole === normalizedSourceRole) {
                     return {
@@ -437,17 +503,17 @@ export class FlowService {
             nextErrorNode = targetNode.id;
         }
 
-        const updatedNode: DecisionTableNodeModel = {
-            ...(sourceNode as DecisionTableNodeModel),
+        const updatedNode = {
+            ...sourceNode,
             data: {
-                ...(sourceNode as DecisionTableNodeModel).data,
+                ...(sourceNode as DecisionTableNodeModel | ClassificationDecisionTableNodeModel).data,
                 table: {
                     ...updatedTable,
                     default_next_node: defaultNextNode,
                     next_error_node: nextErrorNode,
                 },
             },
-        };
+        } as NodeModel;
 
         this.updateNode(updatedNode, { skipDecisionTableReset: true });
     }
@@ -461,14 +527,18 @@ export class FlowService {
             return;
         }
 
-        const sourceNodeId = sourcePortId.split('_')[0];
+        const sourceInfo = parsePortId(sourcePortId);
+        if (!sourceInfo) {
+            return;
+        }
+        const sourceNodeId = sourceInfo.nodeId;
         const sourceNode = this.nodes().find((node) => node.id === sourceNodeId);
 
-        if (!sourceNode || sourceNode.type !== NodeType.TABLE) {
+        if (!sourceNode || (sourceNode.type !== NodeType.TABLE && sourceNode.type !== NodeType.CLASSIFICATION_TABLE)) {
             return;
         }
 
-        const tableData = (sourceNode as DecisionTableNodeModel).data?.table;
+        const tableData = (sourceNode as DecisionTableNodeModel | ClassificationDecisionTableNodeModel).data?.table;
         if (!tableData) {
             return;
         }
@@ -495,12 +565,14 @@ export class FlowService {
             return;
         }
 
-        const updatedTable: DecisionTableNode = {
+        const isCdt = sourceNode.type === NodeType.CLASSIFICATION_TABLE;
+
+        const updatedTable = {
             ...tableData,
-            condition_groups: (tableData.condition_groups || []).map((group) => {
-                const normalizedGroupRole = group.group_name
-                    ? this.normalizeDecisionPortRole(`decision-out-${group.group_name}`)
-                    : null;
+            condition_groups: (tableData.condition_groups || []).map((group: ConditionGroup) => {
+                const key = isCdt ? (group.route_code ?? group.group_name) : group.group_name;
+                const prefix = isCdt ? 'decision-route-' : 'decision-out-';
+                const normalizedGroupRole = key ? this.normalizeDecisionPortRole(`${prefix}${key}`) : null;
                 if (normalizedGroupRole === normalizedSourceRole) {
                     return {
                         ...group,
@@ -520,28 +592,31 @@ export class FlowService {
             nextErrorNode = null;
         }
 
-        const updatedNode: DecisionTableNodeModel = {
-            ...(sourceNode as DecisionTableNodeModel),
+        const updatedNode = {
+            ...sourceNode,
             data: {
-                ...(sourceNode as DecisionTableNodeModel).data,
+                ...(sourceNode as DecisionTableNodeModel | ClassificationDecisionTableNodeModel).data,
                 table: {
                     ...updatedTable,
                     default_next_node: defaultNextNode,
                     next_error_node: nextErrorNode,
                 },
             },
-        };
+        } as NodeModel;
 
         this.updateNode(updatedNode, { skipDecisionTableReset: true });
     }
 
     private normalizeDecisionPortRole(role: string): string {
-        if (!role.startsWith('decision-out-')) {
-            return role;
+        if (role.startsWith('decision-out-')) {
+            const suffix = role.substring('decision-out-'.length);
+            return `decision-out-${suffix.toLowerCase().replace(/\s+/g, '-')}`;
         }
-
-        const suffix = role.substring('decision-out-'.length);
-        return `decision-out-${suffix.toLowerCase().replace(/\s+/g, '-')}`;
+        if (role.startsWith('decision-route-')) {
+            const suffix = role.substring('decision-route-'.length);
+            return `decision-route-${suffix.toLowerCase().replace(/\s+/g, '-')}`;
+        }
+        return role;
     }
 
     private normalizeDecisionPortId(portId: string): string {
@@ -674,16 +749,23 @@ export class FlowService {
             removedConnections.forEach((conn) => {
                 const sourceNode = flow.nodes.find((node) => node.id === conn.sourceNodeId);
 
-                if (!sourceNode || sourceNode.type !== NodeType.TABLE) {
+                if (
+                    !sourceNode ||
+                    (sourceNode.type !== NodeType.TABLE && sourceNode.type !== NodeType.CLASSIFICATION_TABLE)
+                ) {
                     return;
                 }
 
                 const tableData = sourceNode.data.table;
 
+                if (!tableData) {
+                    return;
+                }
+
                 const existingUpdate = decisionTableUpdates.get(sourceNode.id);
                 const updatedTable: DecisionTableNode = existingUpdate?.table ?? {
                     ...tableData,
-                    condition_groups: (tableData.condition_groups || []).map((group) => ({ ...group })),
+                    condition_groups: (tableData.condition_groups || []).map((group: ConditionGroup) => ({ ...group })),
                 };
 
                 const portId = String(conn.sourcePortId);
@@ -694,6 +776,7 @@ export class FlowService {
                     updatedTable.next_error_node = null;
                 } else {
                     const prefix = `${sourceNode.id}_decision-out-`;
+                    const routePrefix = `${sourceNode.id}_decision-route-`;
                     if (portId.startsWith(prefix)) {
                         const normalizedGroupKey = portId.slice(prefix.length);
                         updatedTable.condition_groups = updatedTable.condition_groups.map((group) => {
@@ -706,10 +789,30 @@ export class FlowService {
                             }
                             return group;
                         });
+                    } else if (portId.startsWith(routePrefix)) {
+                        const normalizedRouteKey = portId.slice(routePrefix.length);
+                        updatedTable.condition_groups = updatedTable.condition_groups.map((group) => {
+                            const routeKey = (group.route_code || '').toLowerCase().replace(/\s+/g, '-');
+                            if (routeKey === normalizedRouteKey) {
+                                return {
+                                    ...group,
+                                    next_node: null,
+                                } as ConditionGroup;
+                            }
+                            return group;
+                        });
                     }
                 }
 
-                const updatedPorts = generatePortsForDecisionTableNode(sourceNode.id, updatedTable.condition_groups);
+                const updatedPorts =
+                    sourceNode.type === NodeType.CLASSIFICATION_TABLE
+                        ? generatePortsForClassificationDecisionTableNode(sourceNode.id, updatedTable.condition_groups)
+                        : generatePortsForDecisionTableNode(
+                              sourceNode.id,
+                              updatedTable.condition_groups
+                              // !!updatedTable.default_next_node,
+                              // !!updatedTable.next_error_node
+                          );
 
                 decisionTableUpdates.set(sourceNode.id, {
                     table: updatedTable,
@@ -726,7 +829,7 @@ export class FlowService {
                         return node;
                     }
 
-                    if (node.type !== NodeType.TABLE) return node;
+                    if (node.type !== NodeType.TABLE && node.type !== NodeType.CLASSIFICATION_TABLE) return node;
 
                     return {
                         ...node,
@@ -735,7 +838,7 @@ export class FlowService {
                             table: decisionUpdate.table,
                         },
                         ports: decisionUpdate.ports,
-                    };
+                    } as NodeModel;
                 });
 
             // Create an updated flow state
@@ -745,6 +848,117 @@ export class FlowService {
                 connections: updatedConnections,
             };
         });
+    }
+
+    /**
+     * Replaces oldNodeId with newNode in the flow, remapping edges:
+     * - Outgoing decision-default / decision-error edges keep their suffix on newNode.
+     * - If options.portIdMap is provided, per-rule outgoing edges whose old port id
+     *   exists as a key in portIdMap are remapped to the corresponding new port id.
+     * - All other outgoing edges (per-rule ports) are redirected to newNode's
+     *   decision-default port when options.mapPerRuleEdgesToDefault is true.
+     * - Incoming edges are rebuilt pointing to newNode (same target port role).
+     *
+     * Uses batched add/remove APIs to produce a single flow-state update per step.
+     */
+    public replaceNodePreservingEdges(
+        oldNodeId: string,
+        newNode: NodeModel,
+        options: { portIdMap?: Record<string, string>; mapPerRuleEdgesToDefault?: boolean }
+    ): void {
+        const currentConnections = this.connections();
+
+        // Snapshot edges that touch the old node
+        const outgoing = currentConnections.filter((c) => c.sourceNodeId === oldNodeId);
+        const incoming = currentConnections.filter((c) => c.targetNodeId === oldNodeId);
+
+        // 1. Add the new node
+        this.addNode(newNode);
+
+        // 2. Build replacement edges
+        const newEdges: ConnectionModel[] = [];
+
+        outgoing.forEach((edge) => {
+            const oldPortId = `${edge.sourcePortId}`;
+            let newSourcePortId: CustomPortId;
+
+            if (oldPortId.endsWith('_decision-default')) {
+                newSourcePortId = `${newNode.id}_decision-default` as CustomPortId;
+            } else if (oldPortId.endsWith('_decision-error')) {
+                newSourcePortId = `${newNode.id}_decision-error` as CustomPortId;
+            } else if (options.portIdMap?.[oldPortId]) {
+                newSourcePortId = options.portIdMap[oldPortId] as CustomPortId;
+            } else if (options.mapPerRuleEdgesToDefault) {
+                newSourcePortId = `${newNode.id}_decision-default` as CustomPortId;
+            } else {
+                // Keep the role suffix, replace the node-id prefix
+                const role = this.extractPortRole(oldPortId);
+                newSourcePortId = role
+                    ? (`${newNode.id}_${role}` as CustomPortId)
+                    : (`${newNode.id}_decision-default` as CustomPortId);
+            }
+
+            const newEdgeId = `${newSourcePortId}+${edge.targetPortId}`;
+            // Deduplicate: skip if we already built an edge with this id
+            if (newEdges.some((e) => e.id === newEdgeId)) {
+                return;
+            }
+
+            newEdges.push({
+                id: newEdgeId,
+                category: edge.category,
+                sourceNodeId: newNode.id,
+                targetNodeId: edge.targetNodeId,
+                sourcePortId: newSourcePortId,
+                targetPortId: edge.targetPortId,
+                behavior: edge.behavior,
+                type: edge.type,
+                startColor: edge.startColor,
+                endColor: edge.endColor,
+                data: null,
+            });
+        });
+
+        incoming.forEach((edge) => {
+            const role = this.extractPortRole(`${edge.targetPortId}`);
+            const newTargetPortId = role ? (`${newNode.id}_${role}` as CustomPortId) : edge.targetPortId;
+
+            const newEdgeId = `${edge.sourcePortId}+${newTargetPortId}`;
+            if (newEdges.some((e) => e.id === newEdgeId)) {
+                return;
+            }
+
+            newEdges.push({
+                id: newEdgeId,
+                category: edge.category,
+                sourceNodeId: edge.sourceNodeId,
+                targetNodeId: newNode.id,
+                sourcePortId: edge.sourcePortId,
+                targetPortId: newTargetPortId,
+                behavior: edge.behavior,
+                type: edge.type,
+                startColor: edge.startColor,
+                endColor: edge.endColor,
+                data: null,
+            });
+        });
+
+        // 3. Remove old edges (all that touched the old node)
+        const oldEdgeIds = [...outgoing, ...incoming].map((e) => e.id);
+        if (oldEdgeIds.length > 0) {
+            this.removeConnectionsInBatch(oldEdgeIds);
+        }
+
+        // 4. Remove old node
+        this.flowSignal.update((flow: FlowModel) => ({
+            ...flow,
+            nodes: flow.nodes.filter((n) => n.id !== oldNodeId),
+        }));
+
+        // 5. Add new edges in batch
+        if (newEdges.length > 0) {
+            this.addConnectionsInBatch(newEdges);
+        }
     }
 
     // Compute a mapping from each port id to an array of eligible connection port ids.

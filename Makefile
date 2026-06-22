@@ -243,3 +243,12 @@ django-manage:
 
 django-tests:
 	@cd src/django_app && python -m pytest $(ARGS)
+
+# ==========================================
+# LOCAL CREW DEVELOPMENT
+# ==========================================
+
+crew-tests: export PYTHONPATH = $(CURDIR)
+
+crew-tests:
+	@cd src/crew && python -m pytest $(ARGS)

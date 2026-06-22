@@ -2,7 +2,7 @@
     <app-flow-header
         [graphName]="graph.name"
         [graphId]="graph.id"
-        [isEpicChatEnabled]="isEpicChatEnabled"
+        [isAssistantOpen]="flowAssistantService.isOpen()"
         [graph]="graph"
         [isSaving]="isSaving()"
         [isRunning]="isRunning()"
@@ -13,7 +13,7 @@
         (viewSessions)="handleViewSessions()"
         (run)="handleRunFlow()"
         (getCurl)="handleGetCurl()"
-        (connectChat)="connectToEpicChat()"
+        (toggleAssistant)="onToggleAssistant()"
         (flowEdited)="onFlowEdited($event)"
     ></app-flow-header>
 
@@ -36,6 +36,7 @@
             [currentFlowId]="graph.id"
             [flowName]="graph.name"
             [initialNodeId]="initialNodeId"
+            [isSaving]="isSaving()"
             (save)="onGraphSave($event)"
             (openShortcuts)="openShortcutsModal($event)"
         ></app-flow-graph>
@@ -77,7 +78,16 @@
                 ></app-flow-messages-panel>
             }
         }
+        @if (isSaving()) {
+            <div
+                class="saving-lock-overlay"
+                title="Saving… editing is locked until the save completes"
+            ></div>
+        }
     </div>
+    @if (flowAssistantService.isOpen()) {
+        <app-flow-assistant-panel />
+    }
 } @else {
     <app-spinner
         [text]="'Loading flow...'"

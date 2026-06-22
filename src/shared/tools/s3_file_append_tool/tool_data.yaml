@@ -1,0 +1,8 @@
+tool-data:
+  name: "S3 File Append Tool"
+  description: "Append text to an S3-stored file. Creates the file if it does not exist."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true

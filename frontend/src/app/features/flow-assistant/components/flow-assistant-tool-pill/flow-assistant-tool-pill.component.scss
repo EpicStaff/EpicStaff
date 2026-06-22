@@ -1,0 +1,85 @@
+@use '../../_ep-tokens' as ep;
+
+:host {
+    @include ep.epicchat-tokens;
+
+    display: block;
+    margin-top: 0.5rem;
+    margin-left: 0.75rem;
+}
+
+.tool-pill {
+    border: 1px solid var(--ep-color-border-subtle);
+    border-radius: var(--ep-radius-md);
+    background-color: transparent;
+    overflow: hidden;
+    font-size: 12px;
+}
+
+.tool-pill__header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background-color: var(--ep-color-surface-alt);
+    border: none;
+    cursor: pointer;
+    color: var(--ep-color-text-muted);
+    width: 100%;
+    text-align: left;
+    list-style: none;
+    user-select: none;
+    transition: color 0.15s ease;
+
+    &:hover {
+        color: var(--ep-color-text);
+    }
+}
+
+.tool-pill__count {
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.tool-pill__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--ep-color-border-subtle);
+    background-color: var(--ep-color-surface-alt);
+}
+
+.tool-pill__item {
+    padding: 0.4rem 0.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+
+    & + & {
+        border-top: 1px solid var(--ep-color-border-subtle);
+    }
+}
+
+.tool-pill__item-label {
+    color: var(--ep-color-text-muted);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.tool-pill__item-args {
+    color: var(--ep-color-text-muted);
+    font-size: 0.75rem;
+    opacity: 0.8;
+    font-family: monospace;
+    word-break: break-all;
+}
+
+.tool-pill__item-result {
+    color: var(--ep-color-text-muted);
+    font-size: 0.75rem;
+    opacity: 0.7;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 120px;
+    overflow-y: auto;
+}

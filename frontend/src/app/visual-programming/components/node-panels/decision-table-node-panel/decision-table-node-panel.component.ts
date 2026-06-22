@@ -1,29 +1,45 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, inject, input, signal } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
-
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog/confimation-dialog.service';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
+import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { NodeType } from '../../../core/enums/node-type';
+import { convertDecisionTableToCdt } from '../../../core/helpers/dt-to-cdt-converter';
 import { generatePortsForDecisionTableNode } from '../../../core/helpers/helpers';
 import { Condition, ConditionGroup, DecisionTableNode } from '../../../core/models/decision-table.model';
 import { DecisionTableNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { FlowService } from '../../../services/flow.service';
+import { SidePanelService } from '../../../services/side-panel.service';
+import { UndoRedoService } from '../../../services/undo-redo.service';
 import { DecisionTableGridComponent } from './decision-table-grid/decision-table-grid.component';
 
 @Component({
     standalone: true,
     selector: 'app-decision-table-node-panel',
-    imports: [ReactiveFormsModule, CustomInputComponent, CommonModule, DecisionTableGridComponent, SelectComponent],
+    imports: [
+        ReactiveFormsModule,
+        CustomInputComponent,
+        CommonModule,
+        DecisionTableGridComponent,
+        SelectComponent,
+        HelpTooltipComponent,
+    ],
     templateUrl: './decision-table-node-panel.component.html',
     styleUrls: ['./decision-table-node-panel.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTableNodeModel> {
     public override readonly isExpanded = input<boolean>(true);
+    public readonly graphId = input<number | null>(null);
 
     private flowService = inject(FlowService);
+    private sidePanelService = inject(SidePanelService);
+    private confirmationDialogService = inject(ConfirmationDialogService);
+    private undoRedoService = inject(UndoRedoService);
     private cdr = inject(ChangeDetectorRef);
 
     public conditionGroups = signal<ConditionGroup[]>([]);
@@ -142,6 +158,61 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
         this.conditionGroups.set(this.cloneConditionGroups(groups));
         this.cdr.markForCheck();
         this.notifyExternalChange();
+    }
+
+    public convertToCdt(): void {
+        this.confirmationDialogService
+            .confirm({
+                title: 'Convert to Classification Decision Table?',
+                message:
+                    'This will replace this Decision Table with a Classification Decision Table. ' +
+                    'Per-row connections are preserved by auto-generating a route code for each rule. ' +
+                    'This action cannot be undone.',
+                confirmText: 'Convert',
+                cancelText: 'Cancel',
+                type: 'warning',
+            })
+            .subscribe((result) => {
+                if (result !== true) {
+                    return;
+                }
+
+                // Build from the CURRENT panel state (not this.node(), the committed flow-state node)
+                // so uncommitted edits — e.g. a condition just added in the open panel — are included
+                // in the conversion. Otherwise converting without closing/saving first drops them.
+                const dtNode = this.createUpdatedNode();
+                const { node: cdtNode, portIdMap } = convertDecisionTableToCdt(dtNode);
+
+                // Strategy (a): clear selection first so the DT panel unmounts and
+                // captureCurrentNodeState() cannot write a stale DT node back into
+                // flow state when emitSave() calls commitSidePanelToFlow().
+                this.sidePanelService.clearSelection();
+
+                this.flowService.replaceNodePreservingEdges(dtNode.id, cdtNode, {
+                    portIdMap,
+                });
+
+                // Materialize live canvas edges for ALL converted groups that route via
+                // group.next_node. replaceNodePreservingEdges only remaps PRE-EXISTING edges,
+                // so a row whose next node was set via the grid "Next Node" dropdown would otherwise have no edge until a
+                // reload. Rebuilding from next_node here matches the post-reload behavior.
+                const cdtTable = cdtNode.data.table;
+                this.flowService.resetDecisionTableConnections(
+                    cdtNode.id,
+                    cdtTable.condition_groups,
+                    cdtTable.default_next_node,
+                    cdtTable.next_error_node
+                );
+
+                // The conversion is irreversible (see confirm dialog: "This action cannot be undone").
+                // Reset undo/redo history so Undo/CTRL+Z can't revert to the pre-conversion DT node,
+                // whose stale backendId would otherwise be sent in the save payload and rejected by the
+                // backend .
+                this.undoRedoService.clear();
+
+                this.sidePanelService.setSelectedNodeId(cdtNode.id);
+                this.sidePanelService.requestFullSave();
+            });
     }
 
     private cloneConditionGroups(groups: ConditionGroup[]): ConditionGroup[] {

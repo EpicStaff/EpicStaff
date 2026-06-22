@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout CLA signatures branch
+        # Toggle: set repo variable CLA_ENFORCED=true to enforce. Unset/anything else = gate skipped, build runs.
+        if: vars.CLA_ENFORCED == 'true'
         uses: actions/checkout@v4
         with:
           ref: cla-signatures
@@ -20,6 +22,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Verify PR author signed the CLA
+        if: vars.CLA_ENFORCED == 'true'
         run: |
           AUTHOR="${{ github.event.pull_request.user.login }}"
           if jq -e --arg a "$AUTHOR" '.signedContributors[]? | select(.name == $a)' signatures/cla.json > /dev/null; then

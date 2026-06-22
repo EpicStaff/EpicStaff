@@ -16,6 +16,7 @@ class ToolData:
     code_file: str
     entrypoint: str
     requirements: str
+    use_storage: bool = False
 
 
 BASE_FOLDER_PATH: Path = Path("../shared/tools").absolute().resolve()
@@ -41,6 +42,7 @@ def get_tool_data(tool_path: Path) -> ToolData:
         code_file=tool_data.get("code-file", ""),
         entrypoint=tool_data.get("entrypoint", ""),
         requirements=tool_data.get("requirements", ""),
+        use_storage=tool_data.get("use-storage", False),
     )
 
 
@@ -105,6 +107,7 @@ def create_or_update_python_tool(
     entrypoint: str,
     description: str,
     variables: list[dict],
+    use_storage: bool = False,
 ) -> PythonCodeTool:
     python_tool_obj = PythonCodeTool.objects.filter(name=name).first()
 
@@ -118,6 +121,7 @@ def create_or_update_python_tool(
             description=description,
             variables=variables,
             built_in=True,
+            use_storage=use_storage,
         )
         return python_tool_obj
     else:
@@ -127,6 +131,7 @@ def create_or_update_python_tool(
         python_code_obj.libraries = requirements
         python_tool_obj.description = description
         python_tool_obj.variables = variables
+        python_tool_obj.use_storage = use_storage
         python_tool_obj.save()
         python_code_obj.save()
         return python_tool_obj
@@ -160,6 +165,7 @@ def upload_tools():
                     entrypoint=entrypoint,
                     description=description,
                     variables=variables,
+                    use_storage=tool_data.use_storage,
                 )
                 tool_name_set.add(name)
             except FileNotFoundError as e:

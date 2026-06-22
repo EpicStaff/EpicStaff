@@ -41,6 +41,7 @@ import { ToastService } from '../../../services/notifications';
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { DynamicTableComponent } from '../../../shared/components/dynamic-table/dynamic-table.component';
 import { TableColumnDef } from '../../../shared/components/dynamic-table/dynamic-table.models';
+import { ToggleSwitchComponent } from '../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 import { CodeEditorComponent } from './code-editor/code-editor.component';
 import { ToolLibrariesComponent } from './tool-libraries/tool-libraries.component';
 
@@ -62,6 +63,7 @@ interface DialogData {
         HelpTooltipComponent,
         JsonEditorComponent,
         DynamicTableComponent,
+        ToggleSwitchComponent,
     ],
     templateUrl: './custom-tool-dialog.component.html',
     styleUrls: ['./custom-tool-dialog.component.scss'],
@@ -171,6 +173,7 @@ export class CustomToolDialogComponent implements OnInit, AfterViewInit {
                 this.selectedTool ? this.selectedTool.description : '',
                 Validators.required
             ),
+            useStorage: new FormControl(this.selectedTool ? (this.selectedTool.use_storage ?? false) : false),
         });
 
         if (this.selectedTool) {
@@ -295,6 +298,7 @@ export class CustomToolDialogComponent implements OnInit, AfterViewInit {
             name: toolName,
             description: toolDescription,
             args_schema: argsSchemaObj,
+            use_storage: this.form.value.useStorage ?? false,
         };
 
         if (this.selectedTool) {
@@ -312,6 +316,7 @@ export class CustomToolDialogComponent implements OnInit, AfterViewInit {
                 name: toolName,
                 description: toolDescription,
                 args_schema: argsSchemaObj,
+                use_storage: this.form.value.useStorage ?? false,
             };
             this.customToolsService
                 .updatePythonCodeTool(String(this.selectedTool.id), updateTool)

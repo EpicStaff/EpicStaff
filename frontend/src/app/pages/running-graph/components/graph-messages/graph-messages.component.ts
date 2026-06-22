@@ -44,6 +44,7 @@ import { RunGraphPageService } from '../../services/run-graph-page.service';
 import { WarningMessagesComponent } from '../warning-messages/warning-messages.component';
 import { AgentFinishMessageComponent } from './components/agent-finish/agent-finish.component';
 import { AgentMessageComponent } from './components/agent-message/agent-message.component';
+import { ClassificationDtMessageComponent } from './components/classification-dt-message/classification-dt-message.component';
 import { CodeAgentStreamMessageComponent } from './components/code-agent-stream-message/code-agent-stream-message.component';
 import { ErrorMessageComponent } from './components/error-message/error-message.component';
 import { ExtractedChunksMessageComponent } from './components/extracted-chunks/extracted-chunks-message.component';
@@ -87,6 +88,9 @@ const RENDERABLE_MESSAGE_TYPES: ReadonlySet<string> = new Set([
     MessageType.CODE_AGENT_STREAM,
     MessageType.SUBGRAPH_START,
     MessageType.SUBGRAPH_FINISH,
+    MessageType.CONDITION_GROUP,
+    MessageType.CONDITION_GROUP_MANIPULATION,
+    MessageType.CLASSIFICATION_PROMPT,
 ]);
 
 interface MessageViewEntry {
@@ -141,6 +145,7 @@ const TERMINAL_STATUSES = new Set<GraphSessionStatus>([
         WaitForUserInputComponent,
         UserMessageComponent,
         ExtractedChunksMessageComponent,
+        ClassificationDtMessageComponent,
         WarningMessagesComponent,
         SubgraphStartMessageComponent,
         SubgraphFinishMessageComponent,
@@ -194,6 +199,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
     private readonly PAGE_SIZE = 20;
     private seenKeys = new Set<string>();
+    private hasReconciledTerminal = false;
     private currentOffset = 0;
     public isLoadingMore = false;
     public hasMore = true;
@@ -274,7 +280,13 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             this.sessionStatusChanged.emit(status);
             this.statusWaitForUser = status === GraphSessionStatus.WAITING_FOR_USER;
             this.showUserInputWithDelay = this.statusWaitForUser;
-
+            this.checkIfFinish();
+            // Bugfix: when the run reaches a terminal status, reconcile the full message list
+            // from the server so any messages the realtime SSE stream missed are backfilled (once).
+            if (TERMINAL_STATUSES.has(status) && !this.hasReconciledTerminal) {
+                this.hasReconciledTerminal = true;
+                this.reconcileMessagesFromServer();
+            }
             this.cdr.markForCheck();
         });
 
@@ -469,6 +481,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             this.messages = [];
             this.visibleMessageEntries = [];
             this.seenKeys = new Set<string>();
+            this.hasReconciledTerminal = false;
             this.currentOffset = 0;
             this.isLoadingMore = false;
             this.hasMore = true;
@@ -1108,6 +1121,30 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                 error: () => {
                     this.isLoadingMore = false;
                     this.cdr.markForCheck();
+                },
+            });
+    }
+
+    // Bugfix (safe reconcile): once the run reaches a terminal status the backend has
+    // persisted every message, so re-fetch the full list and merge it. mergeMessages() dedups
+    // via seenKeys, so this only ADDS messages the realtime SSE stream missed (no duplicates).
+    // Deliberately separate from loadMoreMessages() so it never touches the scroll-pagination
+    // state and isn't affected by it.
+    private reconcileMessagesFromServer(offset = 0): void {
+        if (!this.sessionId) return;
+        this.graphSessionService
+            .getSessionMessages(+this.sessionId, this.PAGE_SIZE, offset)
+            .pipe(takeUntil(this.destroy$))
+            .subscribe({
+                next: (response) => {
+                    this.mergeMessages(response.results);
+                    this.rebuildMessageState(this.messages);
+                    this.processMessages();
+                    this.messagesChanged.emit(this.messages);
+                    this.cdr.markForCheck();
+                    if (response.next !== null) {
+                        this.reconcileMessagesFromServer(offset + this.PAGE_SIZE);
+                    }
                 },
             });
     }

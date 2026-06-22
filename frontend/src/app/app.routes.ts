@@ -285,6 +285,13 @@ export const routes: Routes = [
                                 canActivate: [permissionGuard],
                                 data: { permission: ['roles', 'read'] },
                             },
+                            {
+                                path: 'roles',
+                                loadComponent: () =>
+                                    import('./features/role-base-access/pages/overview-page/roles-tab/roles-tab.component').then(
+                                        (m) => m.RolesTabComponent
+                                    ),
+                            },
                         ],
                     },
                     {
