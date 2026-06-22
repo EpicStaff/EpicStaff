@@ -4,15 +4,14 @@ import { RealtimeUtils } from "./utils.js";
 export class RealtimeAPI extends RealtimeEventHandler {
   /**
    * Create a new RealtimeAPI instance
-   * @param {{url?: string, apiKey?: string, connectionKey?: string, dangerouslyAllowAPIKeyInBrowser?: boolean, debug?: boolean}} [settings]
+   * @param {{url?: string, apiKey?: string, dangerouslyAllowAPIKeyInBrowser?: boolean, debug?: boolean}} [settings]
    * @returns {RealtimeAPI}
    */
-  constructor({ url, apiKey, connectionKey, dangerouslyAllowAPIKeyInBrowser, debug } = {}) {
+  constructor({ url, apiKey, dangerouslyAllowAPIKeyInBrowser, debug } = {}) {
     super();
     this.defaultUrl = "wss://api.openai.com/v1/realtime";
     this.url = url || this.defaultUrl;
     this.apiKey = apiKey || null;
-    this.connectionKey = connectionKey || null;
     this.debug = !!debug;
     this.ws = null;
     if (globalThis.document && this.apiKey) {
@@ -75,7 +74,6 @@ export class RealtimeAPI extends RealtimeEventHandler {
       }
       const WebSocket = globalThis.WebSocket;
       const key = localStorage.getItem("connectionKey"); // Retrieve connection key
-
       const ws = new WebSocket(
         `${this.url}${key ? `?connection_key=${key}` : ""}`,
         [
