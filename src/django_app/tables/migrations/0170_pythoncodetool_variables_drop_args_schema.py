@@ -2,14 +2,51 @@ from django.db import migrations, models
 
 
 _FIELD_TYPE_TO_VAR_TYPE = {
-    "llm_config": "integer",
-    "embedding_config": "integer",
+    "llm_config": "number",
+    "embedding_config": "number",
     "string": "string",
     "boolean": "boolean",
     "any": "any",
-    "integer": "integer",
+    "integer": "number",
     "float": "number",
 }
+
+_PASSTHROUGH_TYPES = {"string", "number", "boolean", "object", "array", "any"}
+
+
+def _normalize_type(json_type) -> str:
+    if not json_type:
+        return "string"
+
+    if json_type == "integer":
+        return "number"
+
+    if json_type in _PASSTHROUGH_TYPES:
+        return json_type
+
+    return json_type
+
+
+def _json_schema_node_to_nested_variable(node: dict) -> dict:
+    normalized_type = _normalize_type(node.get("type"))
+
+    result = {
+        "type": normalized_type,
+        "description": node.get("description", ""),
+        "default_value": node.get("default", None),
+    }
+
+    if normalized_type == "object":
+        result["properties"] = {
+            key: _json_schema_node_to_nested_variable(value)
+            for key, value in node.get("properties", {}).items()
+        }
+        result["required_properties"] = node.get("required", [])
+
+    if normalized_type == "array":
+        result["item"] = _json_schema_node_to_nested_variable(node.get("items", {}))
+
+    return result
 
 
 def migrate_to_variables(apps, schema_editor):
@@ -21,25 +58,16 @@ def migrate_to_variables(apps, schema_editor):
         variables = []
 
         schema = tool.args_schema or {}
-        properties = schema.get("properties", {})
         required_names = set(schema.get("required", []))
 
-        for name, prop in properties.items():
-            var = {
+        for name, prop in schema.get("properties", {}).items():
+            variable = {
                 "name": name,
-                "type": prop.get("type", "string"),
-                "description": prop.get("description", ""),
-                "default_value": prop.get("default", None),
                 "input_type": "agent_input",
                 "required": name in required_names,
             }
-            if prop.get("properties"):
-                var["properties"] = prop["properties"]
-            if prop.get("required"):
-                var["required_properties"] = prop["required"]
-            if prop.get("items"):
-                var["items"] = prop["items"]
-            variables.append(var)
+            variable.update(_json_schema_node_to_nested_variable(prop))
+            variables.append(variable)
 
         for field in PythonCodeToolConfigField.objects.filter(tool=tool):
             variables.append(
