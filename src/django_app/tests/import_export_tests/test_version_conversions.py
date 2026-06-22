@@ -34,6 +34,15 @@ class TestNormalizeType:
         for t in ("string", "number", "boolean", "object", "array", "any"):
             assert _normalize_type(t) == t
 
+    def test_list_type_nullable_integer_becomes_number(self):
+        assert _normalize_type(["integer", "null"]) == "number"
+
+    def test_list_type_null_only_becomes_string(self):
+        assert _normalize_type(["null"]) == "string"
+
+    def test_list_type_string_nullable_becomes_string(self):
+        assert _normalize_type(["string", "null"]) == "string"
+
 
 # ──────────────────────────────────────────
 # json_schema_node_to_nested_variable
@@ -143,6 +152,11 @@ class TestJsonSchemaNodeToNestedVariable:
         node = {"type": "boolean"}
         result = json_schema_node_to_nested_variable(node)
         assert set(result.keys()) == {"type", "description", "default_value"}
+
+    def test_list_type_nullable_integer_no_crash(self):
+        node = {"type": ["integer", "null"], "default": None, "description": "x"}
+        result = json_schema_node_to_nested_variable(node)
+        assert result["type"] == "number"
 
 
 # ──────────────────────────────────────────
