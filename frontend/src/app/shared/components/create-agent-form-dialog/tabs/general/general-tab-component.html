@@ -30,17 +30,15 @@
             [loading]="loadingLLMs()"
         ></app-llm-model-selector>
     </div>
-    } @if (form().get('configured_tools') && form().get('python_code_tools')) {
+    } @if (form().get('python_code_tools')) {
     <div class="form-group">
         <app-tooltip
             tooltipText="Select the tools this agent will have access to. Tools provide additional capabilities for the agent."
             label="Tools"
         />
         <app-tools-selector
-            [selectedConfiguredTools]="form().get('configured_tools')?.value || []"
             [selectedPythonCodeTools]="form().get('python_code_tools')?.value || []"
             [selectedMcpTools]="form().get('mcp_tools')?.value || [] "
-            (configuredToolsChange)="onConfiguredToolsChange($event)"
             (pythonCodeToolsChange)="onPythonToolsChange($event)"
             (mcpToolsChange)="onMcpToolsChange($event)"
             (mergedToolsChange)="mergedToolsChange.emit($event)"
