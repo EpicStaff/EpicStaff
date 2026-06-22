@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import (
     Any,
     Optional,
@@ -6,12 +7,15 @@ from typing import (
 from pydantic import (
     BaseModel,
     Field,
+    computed_field,
     ConfigDict,
 )
 
 from enums import (
     ChunkStrategyEnum,
+    DocumentStatusEnum,
     EmbedderProviderEnum,
+    RAGStrategy,
 )
 
 __all__ = [
@@ -19,7 +23,10 @@ __all__ = [
     "Entity",
     "ChunkingConfig",
     "PreviewChunk",
+    "Document",
     "EmbeddingConfig",
+    "PrechunkRequest",
+    "PrechunkResponse",
 ]
 
 
@@ -55,6 +62,20 @@ class PreviewChunk(ValueObject):
     overlap_end: Optional[int] = None
 
 
+class Document(Entity):
+    """A file tracked through chunking and indexing."""
+
+    name: str = Field(frozen=True)
+    content: bytes = Field(frozen=True)
+    config: ChunkingConfig = Field(frozen=True)
+    status: DocumentStatusEnum
+    preview_chunks: list[PreviewChunk] = Field(default_factory=list)
+
+    @computed_field
+    def extension(self) -> str:
+        return Path(self.name).suffix
+
+
 class EmbeddingConfig(BaseModel):
     """Configuration for an embedding provider client."""
 
@@ -64,3 +85,18 @@ class EmbeddingConfig(BaseModel):
     extra: dict = Field(default_factory=dict)
 
     model_config = ConfigDict(frozen=True)
+
+
+class PrechunkRequest(ValueObject):
+    """Request to pre-chunk a document for a RAG collection."""
+
+    rag_id: int
+    rag_strategy: RAGStrategy
+    document_id: int
+
+
+class PrechunkResponse(ValueObject):
+    """Preview chunks produced for a `PrechunkRequest`."""
+
+    request: PrechunkRequest
+    chunks: list[PreviewChunk]

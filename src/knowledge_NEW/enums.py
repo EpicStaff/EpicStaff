@@ -1,10 +1,17 @@
 from enum import StrEnum
 
 __all__ = [
+    "RAGStrategy",
     "ChunkStrategyEnum",
+    "DocumentStatusEnum",
     "EmbedderProviderEnum",
     "FileExtensionEnum",
 ]
+
+
+class RAGStrategy(StrEnum):
+    NAIVE = "naive"
+    GRAPH = "graph"
 
 
 class ChunkStrategyEnum(StrEnum):
@@ -14,6 +21,16 @@ class ChunkStrategyEnum(StrEnum):
     JSON = "json"
     MARKDOWN = "markdown"
     TOKEN = "token"
+
+
+class DocumentStatusEnum(StrEnum):
+    NEW = "new"
+    PROCESSING = "processing"
+    CHUNKING = "chunking"
+    CHUNKED = "chunked"
+    COMPLETED = "completed"
+    WARNING = "warning"
+    FAILED = "failed"
 
 
 class EmbedderProviderEnum(StrEnum):

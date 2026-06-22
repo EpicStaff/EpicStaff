@@ -14,6 +14,7 @@ __all__ = [
     "FileTextExtractingError",
     "ChunkingError",
     "EmbeddingError",
+    "DocumentNotFound",
 ]
 
 
@@ -43,3 +44,7 @@ class EmbeddingError(KnowledgeError):
         super().__init__(
             f"Cannot embed the text: '{text}' by {type(embedder).__name__}."
         )
+
+
+class DocumentNotFound(KnowledgeError):
+    pass
