@@ -481,7 +481,7 @@ export function serializeVariables(vars: ToolVariable[]): BackendToolVariable[] 
             out.required_properties = nested.required_properties;
         }
         if (v.type === 'array') {
-            out.item = { ...ARRAY_ITEM_SCHEMA };
+            out.item = v.items ? (v.items as unknown as PropertySchema) : { ...ARRAY_ITEM_SCHEMA };
             out.default_value = buildValue(v);
         }
 
@@ -567,6 +567,9 @@ export function deserializeVariables(data: unknown): ToolVariable[] {
         if (type === 'array') {
             variable.children = arrayDefaultToVariables(item.default_value, item.input_type);
             variable.default_value = null;
+            if (isObjectRecord(item.item)) {
+                variable.items = item.item as unknown as ItemsSchema;
+            }
         }
 
         result.push(variable);
