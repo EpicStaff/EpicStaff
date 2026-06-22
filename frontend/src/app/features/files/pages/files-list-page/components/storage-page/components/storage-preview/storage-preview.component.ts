@@ -308,7 +308,9 @@ export class StoragePreviewComponent {
             return;
         }
         try {
-            await renderAsync(blob, container);
+            // renderAltChunks=false: altChunk embeds raw HTML from the .docx
+            // into an iframe srcdoc in the same origin — a known XSS vector.
+            await renderAsync(blob, container, undefined, { renderAltChunks: false });
         } catch {
             this.previewError.set('Failed to render document preview');
         }
