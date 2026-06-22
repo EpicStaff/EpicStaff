@@ -1664,10 +1664,7 @@ export class TasksTableComponent implements OnChanges {
     }
 
     private onDocumentClick(event: MouseEvent): void {
-        // While a child CDK dialog is open on top of the popup (e.g. the
-        // "Create custom tool" / "Add MCP tool" dialog), its clicks land outside
-        // the popup overlay. Ignore them so creating a tool — or the click that
-        // closes that dialog — doesn't dismiss the popup.
+      
         if (this.childDialogOpen) {
             return;
         }
