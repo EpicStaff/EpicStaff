@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Iterable, Any, AsyncIterable
+from typing import Any, AsyncIterator, Iterator
 
 
 class AbstractBroker(ABC):
@@ -29,7 +29,7 @@ class AbstractBroker(ABC):
         """
 
     @abstractmethod
-    def receive(self, channel: str) -> Iterable[dict[str, Any]]:
+    def receive(self, channel: str) -> Iterator[dict[str, Any]]:
         """Receive messages from a channel synchronously.
 
         Return an unbounded iterator that blocks until the next message and
@@ -40,7 +40,7 @@ class AbstractBroker(ABC):
         """
 
     @abstractmethod
-    async def areceive(self, channel: str) -> AsyncIterable[dict[str, Any]]:
+    async def areceive(self, channel: str) -> AsyncIterator[dict[str, Any]]:
         """Receive messages from a channel asynchronously.
 
         Return an unbounded async iterator that blocks until the next message and
