@@ -19,7 +19,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { ButtonComponent } from '@shared/components';
 import { forkJoin, Subject } from 'rxjs';
-import { takeUntil, tap } from 'rxjs/operators';
+import { takeUntil } from 'rxjs/operators';
 
 import { McpToolDialogComponent } from '../../../../../features/tools/components/mcp-tool-dialog/mcp-tool-dialog.component';
 import { GetMcpToolRequest } from '../../../../../features/tools/models/mcp-tool.model';
@@ -64,6 +64,15 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
     >();
 
     @Output() public cancel = new EventEmitter<void>();
+
+    /**
+     * Emitted when this popup opens (`true`) or closes (`false`) a child CDK
+     * dialog such as the "Create custom tool" / "Add MCP tool" modal. The host
+     * grid listens to this so it can suspend its own outside-click / Escape
+     * dismissal while the modal is open — and, crucially, while the very click
+     * or keypress that closes the modal is still propagating to the document.
+     */
+    @Output() public childDialogOpenChange = new EventEmitter<boolean>();
 
     public menuItems: { type: 'custom' | 'mcp'; label: string }[] = [
         // { type: 'builtin', label: 'Built-in Tools' },
@@ -374,43 +383,47 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
     }
 
     public openCustomToolDialog(): void {
+        this.childDialogOpenChange.emit(true);
         const dialogRef = this.cdkDialog.open<GetPythonCodeToolRequest>(CreateCustomToolDialogComponent);
 
-        dialogRef.closed
-            .pipe(
-                tap((result) => {
-                    if (!result) {
-                        return;
-                    }
-                    // Auto-select the newly created tool, preserving existing selections
-                    this.selectedPythonTools.add(result.id);
-                    this.pythonTools = this._sortPythonToolsBySelection([result, ...this.pythonTools]);
-                    this._cdr.markForCheck();
-                }),
-                takeUntil(this._destroyed$)
-            )
-            .subscribe();
+        dialogRef.closed.pipe(takeUntil(this._destroyed$)).subscribe((result) => {
+            if (result) {
+                // Auto-select the newly created tool, preserving existing selections.
+                this.selectedPythonTools.add(result.id);
+                this.pythonTools = this._sortPythonToolsBySelection([result, ...this.pythonTools]);
+                this._cdr.markForCheck();
+            }
+            this._notifyChildDialogClosed();
+        });
     }
 
     public openMcpToolDialog(): void {
+        this.childDialogOpenChange.emit(true);
         const dialogRef = this.cdkDialog.open<GetMcpToolRequest>(McpToolDialogComponent, {
             data: {},
         });
 
-        dialogRef.closed
-            .pipe(
-                tap((result) => {
-                    if (result) {
-                        // Auto-select the newly created MCP tool and append it without a full
-                        // reload, which would wipe unsaved selections via _preselectMergedTools().
-                        this.selectedMcpTools.add(result.id);
-                        this.mcpTools = this._sortMcpToolsBySelection([result, ...this.mcpTools]);
-                        this._cdr.markForCheck();
-                    }
-                }),
-                takeUntil(this._destroyed$)
-            )
-            .subscribe();
+        dialogRef.closed.pipe(takeUntil(this._destroyed$)).subscribe((result) => {
+            if (result) {
+                // Auto-select the newly created MCP tool and append it without a full
+                // reload, which would wipe unsaved selections via _preselectMergedTools().
+                this.selectedMcpTools.add(result.id);
+                this.mcpTools = this._sortMcpToolsBySelection([result, ...this.mcpTools]);
+                this._cdr.markForCheck();
+            }
+            this._notifyChildDialogClosed();
+        });
+    }
+
+    /**
+     * Re-enable the host grid's outside-click / Escape dismissal after a child
+     * dialog closes. Deferred to a macrotask so the click or Escape keypress
+     * that closed the dialog finishes propagating to the document first —
+     * otherwise the grid would treat that same event as an outside interaction
+     * and dismiss this popup along with the modal.
+     */
+    private _notifyChildDialogClosed(): void {
+        setTimeout(() => this.childDialogOpenChange.emit(false));
     }
 
     // This method is commented out as per the requirement

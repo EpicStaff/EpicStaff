@@ -137,6 +137,11 @@ export class TasksTableComponent implements OnChanges {
     private currentCellElement: HTMLElement | null = null;
     private globalClickUnlistener: (() => void) | null = null;
     private globalKeydownUnlistener: (() => void) | null = null;
+    // True while the tools popup has a child CDK dialog open (e.g. the
+    // "Create custom tool" / "Add MCP tool" modal). Driven by the popup's
+    // childDialogOpenChange output so we don't dismiss the popup while the
+    // modal is open or when the click/Escape that closes it reaches us.
+    private childDialogOpen = false;
 
     // Track drag state for header drop detection
     private isDragOutsideRows = false;
@@ -1632,6 +1637,10 @@ export class TasksTableComponent implements OnChanges {
 
             popupRef.instance.mergedTools = event.data?.mergedTools || [];
 
+            popupRef.instance.childDialogOpenChange.subscribe((open: boolean) => {
+                this.childDialogOpen = open;
+            });
+
             popupRef.instance.mergedToolsUpdated.subscribe((updatedMergedTools) => {
                 const mergedToolsClone = (updatedMergedTools ?? []).map((t) => ({ ...t }));
                 const taskData = rowNode.data as TableFullTask;
@@ -1651,13 +1660,21 @@ export class TasksTableComponent implements OnChanges {
 
         // Attach a global keydown listener to close the popup on Escape key.
         this.globalKeydownUnlistener = this.renderer.listen('document', 'keydown', (evt: KeyboardEvent) => {
-            if (evt.key === 'Escape') {
+            // Let an open child dialog handle its own Escape without also closing the popup.
+            if (evt.key === 'Escape' && !this.childDialogOpen) {
                 this.closePopup();
             }
         });
     }
 
     private onDocumentClick(event: MouseEvent): void {
+        // While a child CDK dialog is open on top of the popup (e.g. the
+        // "Create custom tool" / "Add MCP tool" dialog), its clicks land outside
+        // the popup overlay. Ignore them so creating a tool — or the click that
+        // closes that dialog — doesn't dismiss the popup.
+        if (this.childDialogOpen) {
+            return;
+        }
         const target = event.target as HTMLElement;
         if (
             this.popupOverlayRef &&
@@ -1676,6 +1693,7 @@ export class TasksTableComponent implements OnChanges {
         }
         this._activePopupCommitFn = null;
         this.currentPopupCell = null;
+        this.childDialogOpen = false;
 
         // Remove the custom CSS class from the cell.
         if (this.currentCellElement) {
