@@ -17,6 +17,8 @@ import {
     ActionDropdownItem,
     AppSvgIconComponent,
     PaginationControlsComponent,
+    SelectComponent,
+    SelectItem,
 } from '@shared/components';
 import { catchError, EMPTY, finalize, interval, Observable, Subject, switchMap, takeUntil } from 'rxjs';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
@@ -45,6 +47,7 @@ import {
         RouterModule,
         GraphMessagesComponent,
         ActionDropdownButtonComponent,
+        SelectComponent,
     ],
     templateUrl: './global-sessions-list.component.html',
     styleUrls: ['./global-sessions-list.component.scss'],
@@ -57,6 +60,11 @@ export class GlobalSessionsListComponent {
     public isLoaded = signal<boolean>(false);
     public currentPage = signal(1);
     public pageSize = signal(10);
+    public readonly pageSizeItems: SelectItem[] = [
+        { name: '10', value: 10 },
+        { name: '20', value: 20 },
+        { name: '50', value: 50 },
+    ];
     public statusFilter = signal<string[]>(['all']);
     public sortOrder = signal<'asc' | 'desc'>('desc');
     public flowFilter = signal<string | null>(null);

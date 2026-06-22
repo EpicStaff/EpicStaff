@@ -79,14 +79,12 @@
                 }
                 <label class="page-size-selector">
                     <span>Sessions per page</span>
-                    <select
-                        [value]="pageSize()"
-                        (change)="onPageSizeChange(+$any($event.target).value)"
-                    >
-                        <option value="10">10</option>
-                        <option value="20">20</option>
-                        <option value="50">50</option>
-                    </select>
+                    <app-select
+                        mod="small"
+                        [items]="pageSizeItems"
+                        [selectedValue]="pageSize()"
+                        (changed)="onPageSizeChange($any($event))"
+                    />
                 </label>
             </div>
         </div>

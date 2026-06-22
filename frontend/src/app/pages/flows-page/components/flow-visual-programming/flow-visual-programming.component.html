@@ -36,6 +36,7 @@
             [currentFlowId]="graph.id"
             [flowName]="graph.name"
             [initialNodeId]="initialNodeId"
+            [isSaving]="isSaving()"
             (save)="onGraphSave($event)"
             (openShortcuts)="openShortcutsModal($event)"
             (requestReload)="refreshCurrentFlow()"
@@ -77,6 +78,12 @@
                     (sessionSelected)="onSessionSelected($event)"
                 ></app-flow-messages-panel>
             }
+        }
+        @if (isSaving()) {
+            <div
+                class="saving-lock-overlay"
+                title="Saving… editing is locked until the save completes"
+            ></div>
         }
     </div>
     @if (flowAssistantService.isOpen()) {

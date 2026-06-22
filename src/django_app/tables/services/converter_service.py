@@ -567,36 +567,47 @@ class ConverterService(metaclass=SingletonMeta):
             session_id=session_id,
         )
 
+    @staticmethod
+    def _get_user_input_defaults(variables: list[dict]) -> dict:
+        return {
+            var["name"]: var["default_value"]
+            for var in variables
+            if var.get("input_type") in ("user_input", "mixed")
+            and var.get("default_value") is not None
+        }
+
     def convert_python_code_tool_to_pydantic(
         self,
         python_code_tool: PythonCodeTool,
         graph_id: int | None = None,
         session_id: int | None = None,
-    ) -> PythonCodeToolData:
-        python_code: PythonCode = python_code_tool.python_code
-
+    ) -> PythonCodeToolData:      
         storage_allowed_paths = None
         storage_org_prefix = None
         if python_code_tool.use_storage and graph_id is not None:
             storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
-            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
-
+            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)        
+        
+        variables = python_code_tool.variables or []
+        user_defaults = self._get_user_input_defaults(variables)
         python_code_data = self.convert_python_code_to_pydantic(
-            python_code,
+            python_code_tool.python_code,
             use_storage=python_code_tool.use_storage,
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
         )
-        python_code_tool_data = PythonCodeToolData(
+        merged_kwargs = {**user_defaults, **(python_code_data.global_kwargs or {})}
+        python_code_data = PythonCodeData(
+            **{**python_code_data.model_dump(), "global_kwargs": merged_kwargs}
+        )
+        return PythonCodeToolData(
             id=python_code_tool.pk,
             name=python_code_tool.name,
             description=python_code_tool.description,
-            args_schema=python_code_tool.args_schema,
+            variables=variables,
             python_code=python_code_data,
         )
-
-        return python_code_tool_data
 
     def convert_python_code_tool_config_to_pydantic(
         self,
@@ -616,9 +627,12 @@ class ConverterService(metaclass=SingletonMeta):
         if python_code_tool.use_storage and graph_id is not None:
             storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
             storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+        variables = python_code_tool.variables or []
+        user_defaults = self._get_user_input_defaults(variables)
+        global_kwargs = {**user_defaults, **python_configuration}
 
         python_code: PythonCode = python_code_tool.python_code
-        python_code.global_kwargs = python_configuration
+        python_code.global_kwargs = global_kwargs
         python_code_data = self.convert_python_code_to_pydantic(
             python_code_tool.python_code,
             use_storage=python_code_tool.use_storage,
@@ -626,14 +640,14 @@ class ConverterService(metaclass=SingletonMeta):
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
         )
-        python_code_tool_data = PythonCodeToolData(
+
+        return PythonCodeToolData(
             id=python_code_tool.pk,
             name=python_code_tool.name,
             description=python_code_tool.description,
-            args_schema=python_code_tool.args_schema,
+            variables=variables,
             python_code=python_code_data,
         )
-        return python_code_tool_data
 
     def convert_configured_tool_to_pydantic(
         self, tool_config: ToolConfig

@@ -14,7 +14,6 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { ClickOutsideDirective } from '@shared/directives';
-import { environment } from 'src/environments/environment';
 
 import { ConfigureModelsDialogService } from '../../../features/configure-models/services/configure-models-dialog.service';
 import { EpicChatService } from '../../../features/epic-chat/epic-chat.service';
@@ -146,7 +145,7 @@ export class LeftSidebarComponent implements AfterViewInit {
 
         // Bad approach to use window.location because ui and backend can be on different domains
         // fixed localhost vs 127.0.0.1 problem in widget code
-        this.apiBaseUrl = environment.apiUrl;
+        this.apiBaseUrl = this.configService.apiUrl;
         this.accessToken = this.authService.getAccessToken() ?? '';
         this.topNavItems = [
             {

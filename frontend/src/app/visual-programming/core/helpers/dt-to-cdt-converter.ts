@@ -60,6 +60,11 @@ export function convertDecisionTableToCdt(dtNode: DecisionTableNodeModel): {
         return {
             ...g,
             group_name: groupName,
+            // DT marks empty-name rows as valid:false; the CDT canvas node filters
+            // groups where valid !== false, and the load mapper never sets valid
+            // (→ undefined → passes the filter).  Force valid:true here so the
+            // group is visible immediately after conversion, on par with reload.
+            valid: true,
             route_code: routeCode,
             conditions: (g.conditions ?? []).map((c) => ({ ...c })),
             dock_visible: g.dock_visible ?? true,
@@ -92,10 +97,10 @@ export function convertDecisionTableToCdt(dtNode: DecisionTableNodeModel): {
     const ports = generatePortsForClassificationDecisionTableNode(newId, conditionGroups);
 
     const portIdMap: Record<string, string> = {};
+    // Ports are generated for ALL groups (including originally-empty-name ones),
+    // so the edge map must cover all groups too — skipping valid===false left
+    // edges dangling (the old port id was still real on the DT canvas).
     (dtTable.condition_groups ?? []).forEach((g, i) => {
-        if (g.valid === false) {
-            return;
-        }
         const oldPortId = `${dtNode.id}_decision-out-${slug(g.group_name)}`;
         const routeCode = conditionGroups[i].route_code!;
         const newPortId = `${newId}_decision-route-${slug(routeCode)}`;

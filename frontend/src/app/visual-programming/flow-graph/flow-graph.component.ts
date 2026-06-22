@@ -138,6 +138,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     @Input() currentFlowId: number | null = null;
     @Input() flowName: string = '';
     @Input() initialNodeId: string | null = null;
+    @Input() isSaving: boolean = false;
 
     @Output() save = new EventEmitter<FlowModel>();
     @Output() requestReload = new EventEmitter<void>();
@@ -304,6 +305,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         if (changes['initialNodeId'] && changes['initialNodeId'].currentValue) {
             this.openNodePanel(changes['initialNodeId'].currentValue);
         }
+        if (changes['isSaving'] && changes['isSaving'].currentValue === true) {
+            this.onCloseContextMenu();
+        }
     }
 
     public ngOnDestroy(): void {
@@ -319,6 +323,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         setTimeout(() => {
             this.rerouteSegmentConnections();
             this.fCanvasComponent.fitToScreen({ x: 200, y: 100 }, false);
+            if (this.flowService.nodes().length === 1) {
+                this.fCanvasComponent.setScale(0.1);
+            }
             this.cd.detectChanges();
         }, 0);
     }
@@ -437,7 +444,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public onPaste(): void {
         this.hasUnarrangedChanges.set(true);
-        if (this.isDialogOpen()) {
+        if (this.isEditingLocked()) {
             return;
         }
 
@@ -470,7 +477,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onUndo(): void {
-        if (this.isDialogOpen()) {
+        if (this.isEditingLocked()) {
             return;
         }
 
@@ -479,7 +486,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onRedo(): void {
-        if (this.isDialogOpen()) {
+        if (this.isEditingLocked()) {
             return;
         }
 
@@ -489,7 +496,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public onDelete(): void {
         this.hasUnarrangedChanges.set(true);
-        if (this.isDialogOpen()) {
+        if (this.isEditingLocked()) {
             return;
         }
 
@@ -1446,6 +1453,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     private isDialogOpen(): boolean {
         return this.dialog.openDialogs.length > 0;
+    }
+
+    // Editing is locked while a dialog is open OR a full graph save is in flight.
+    // (Saving lock fixes edits made mid-save being discarded when the response is applied.)
+    private isEditingLocked(): boolean {
+        return this.isDialogOpen() || this.isSaving;
     }
 
     private updateStartNodeInitialState(newState: Record<string, unknown>): void {

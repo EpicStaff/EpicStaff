@@ -1,0 +1,324 @@
+<div class="create-custom-tool-dialog">
+    <form
+        [formGroup]="form"
+        (ngSubmit)="submit()"
+    >
+        <header class="dialog-header">
+            <h2 class="title">{{ isEditMode ? 'Edit Custom Tool' : 'Create Custom Tool' }}</h2>
+            <div class="dialog-header-right">
+                @if (isEditMode) {
+                    <app-button
+                        type="outline-primary"
+                        mod="default"
+                        [disabled]="isCopying()"
+                        (click)="makeCopy()"
+                        >{{ isCopying() ? 'Copying...' : 'Make Copy' }}</app-button
+                    >
+                }
+                <button
+                    class="header-icon-btn header-icon-btn--cancel"
+                    type="button"
+                    [attr.aria-label]="isEditMode ? 'Discard changes' : 'Cancel'"
+                    (click)="close()"
+                >
+                    <app-svg-icon
+                        icon="x"
+                        size="1.1rem"
+                    ></app-svg-icon>
+                </button>
+                <button
+                    class="header-icon-btn header-icon-btn--confirm"
+                    type="button"
+                    [disabled]="isSaving()"
+                    [attr.aria-label]="isEditMode ? 'Save changes' : 'Create tool'"
+                    (click)="submit()"
+                >
+                    <app-svg-icon
+                        icon="check"
+                        size="1.1rem"
+                    ></app-svg-icon>
+                </button>
+            </div>
+        </header>
+
+        <div
+            class="dialog-content"
+            [class.right-collapsed]="activeEditor() === ActiveEditor.None"
+        >
+            <section
+                class="form-pane"
+                aria-label="Tool details"
+            >
+                <div class="form-section">
+                    <app-custom-input
+                        label="Name"
+                        [required]="true"
+                        tooltipText="A unique, descriptive name for your custom tool."
+                        formControlName="name"
+                        placeholder="Enter tool name..."
+                        [errorMessage]="
+                            form.controls.name.touched && form.controls.name.hasError('required')
+                                ? 'Tool name is required.'
+                                : ''
+                        "
+                    ></app-custom-input>
+                </div>
+
+                <div class="form-section">
+                    <app-textarea
+                        label="Description"
+                        [required]="true"
+                        tooltipText="Describe what this tool does so agents know when to use it."
+                        formControlName="description"
+                        placeholder="Enter tool description..."
+                        [rows]="3"
+                        [invalid]="form.controls.description.touched && form.controls.description.invalid"
+                    ></app-textarea>
+                    @if (form.controls.description.touched && form.controls.description.hasError('required')) {
+                        <p class="error-message">Description is required.</p>
+                    }
+                </div>
+
+                @if (activeEditor() !== ActiveEditor.Python) {
+                    <div
+                        class="editor-card"
+                        [class.has-inline]="pythonSectionExpanded()"
+                    >
+                        <div class="editor-card-header">
+                            <div class="editor-card-title">
+                                <app-svg-icon
+                                    icon="python"
+                                    size="1rem"
+                                    class="python-icon"
+                                ></app-svg-icon>
+                                <span>Python3 <small>(entrypoint "main")</small></span>
+                            </div>
+                            <div class="editor-card-actions">
+                                <button
+                                    type="button"
+                                    aria-label="Copy Python code"
+                                    (click)="copyPythonCode()"
+                                >
+                                    <app-svg-icon
+                                        icon="copy"
+                                        size="1rem"
+                                    ></app-svg-icon>
+                                </button>
+                                <button
+                                    type="button"
+                                    [attr.aria-label]="
+                                        pythonSectionExpanded() ? 'Collapse Python section' : 'Expand Python section'
+                                    "
+                                    (click)="togglePythonSection()"
+                                >
+                                    <app-svg-icon
+                                        [icon]="pythonSectionExpanded() ? 'preview-hidden' : 'preview'"
+                                        size="1rem"
+                                    ></app-svg-icon>
+                                </button>
+                                <button
+                                    type="button"
+                                    aria-label="Show Python editor on the right"
+                                    (click)="toggleEditor(ActiveEditor.Python)"
+                                >
+                                    <app-svg-icon
+                                        icon="editor-expand"
+                                        size="1rem"
+                                    ></app-svg-icon>
+                                </button>
+                            </div>
+                        </div>
+                        @if (pythonSectionExpanded()) {
+                            <div class="inline-editor-host">
+                                <app-code-editor
+                                    [pythonCode]="form.controls.pythonCode.value"
+                                    [showHeader]="false"
+                                    (pythonCodeChange)="onPythonCodeChange($event)"
+                                    (errorChange)="onPythonErrorChange($event)"
+                                ></app-code-editor>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <div class="form-section parameters-section">
+                    <div class="section-header parameters-header">
+                        <div class="section-header-label">
+                            <h3>Parameters</h3>
+                            <app-help-tooltip
+                                text="Configure the JSON parameters your custom tool accepts."
+                            ></app-help-tooltip>
+                        </div>
+                        <div class="parameters-mode-switch">
+                            <span>Table mode</span>
+                            <app-toggle-switch
+                                [checked]="parametersTableMode()"
+                                (checkedChange)="setParametersTableMode($event)"
+                            ></app-toggle-switch>
+                        </div>
+                    </div>
+                    @if (parametersTableMode()) {
+                        <app-parameters-table-view
+                            [variables]="tableVariables()"
+                            [initialDrillStack]="tableDrillStack()"
+                            (variablesChange)="onVariablesChange($event)"
+                            (drillStackChange)="onDrillStackChange($event)"
+                        />
+                    } @else if (activeEditor() !== ActiveEditor.Json) {
+                        <div
+                            class="editor-card"
+                            [class.has-inline]="jsonSectionExpanded()"
+                        >
+                            <div class="editor-card-header">
+                                <div class="editor-card-title">
+                                    <app-svg-icon
+                                        icon="brackets"
+                                        size="1rem"
+                                    ></app-svg-icon>
+                                    <span>JSON</span>
+                                    <app-help-tooltip
+                                        [text]="variablesSchemaTooltip"
+                                        position="top"
+                                    ></app-help-tooltip>
+                                </div>
+                                <div class="editor-card-actions">
+                                    <button
+                                        type="button"
+                                        aria-label="Copy JSON configuration"
+                                        (click)="copyJsonConfiguration()"
+                                    >
+                                        <app-svg-icon
+                                            icon="copy"
+                                            size="1rem"
+                                        ></app-svg-icon>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        [attr.aria-label]="
+                                            jsonSectionExpanded() ? 'Collapse JSON section' : 'Expand JSON section'
+                                        "
+                                        (click)="toggleJsonSection()"
+                                    >
+                                        <app-svg-icon
+                                            [icon]="jsonSectionExpanded() ? 'preview-hidden' : 'preview'"
+                                            size="1rem"
+                                        ></app-svg-icon>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        aria-label="Show JSON editor on the right"
+                                        (click)="toggleEditor(ActiveEditor.Json)"
+                                    >
+                                        <app-svg-icon
+                                            icon="editor-expand"
+                                            size="1rem"
+                                        ></app-svg-icon>
+                                    </button>
+                                </div>
+                            </div>
+                            @if (jsonSectionExpanded()) {
+                                <div class="inline-editor-host">
+                                    <app-json-editor
+                                        [showHeader]="false"
+                                        [fullHeight]="true"
+                                        [jsonData]="form.controls.variablesJson.value"
+                                        (jsonChange)="onJsonChange($event)"
+                                        (validationChange)="onJsonValidationChange($event)"
+                                        (editorReady)="onJsonEditorReady($event)"
+                                    ></app-json-editor>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <div class="form-section">
+                    <app-chips-input
+                        label="Library"
+                        tooltipText="Add Python libraries needed by your tool. They must be available in the Python environment that runs the tool."
+                        inputPlaceholder="Enter library name..."
+                        formControlName="libraries"
+                    ></app-chips-input>
+                </div>
+            </section>
+
+            @if (activeEditor() !== ActiveEditor.None) {
+                <section
+                    class="editor-pane"
+                    aria-label="Editor"
+                >
+                    <div class="editor-pane-header">
+                        <span class="editor-pane-title">
+                            @if (activeEditor() === ActiveEditor.Python) {
+                                <app-svg-icon
+                                    icon="python"
+                                    size="1rem"
+                                    class="python-icon"
+                                ></app-svg-icon>
+                                Python3
+                            } @else {
+                                <app-svg-icon
+                                    icon="brackets"
+                                    size="1rem"
+                                ></app-svg-icon>
+                                JSON
+                                <app-help-tooltip
+                                    [text]="variablesSchemaTooltip"
+                                    position="top"
+                                ></app-help-tooltip>
+                            }
+                        </span>
+                        <div class="editor-pane-actions">
+                            <button
+                                type="button"
+                                [attr.aria-label]="
+                                    activeEditor() === ActiveEditor.Python
+                                        ? 'Copy Python code'
+                                        : 'Copy JSON configuration'
+                                "
+                                (click)="
+                                    activeEditor() === ActiveEditor.Python ? copyPythonCode() : copyJsonConfiguration()
+                                "
+                            >
+                                <app-svg-icon
+                                    icon="copy"
+                                    size="1rem"
+                                ></app-svg-icon>
+                            </button>
+                            <button
+                                type="button"
+                                aria-label="Collapse editor panel"
+                                (click)="closeEditorPane()"
+                            >
+                                <app-svg-icon
+                                    icon="editor-collapse"
+                                    size="1rem"
+                                ></app-svg-icon>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="editor-pane-body">
+                        @if (activeEditor() === ActiveEditor.Python) {
+                            <app-code-editor
+                                [pythonCode]="form.controls.pythonCode.value"
+                                [showHeader]="false"
+                                (pythonCodeChange)="onPythonCodeChange($event)"
+                                (errorChange)="onPythonErrorChange($event)"
+                            ></app-code-editor>
+                        }
+                        @if (activeEditor() === ActiveEditor.Json) {
+                            <app-json-editor
+                                [showHeader]="false"
+                                [jsonData]="form.controls.variablesJson.value"
+                                [fullHeight]="true"
+                                (jsonChange)="onJsonChange($event)"
+                                (validationChange)="onJsonValidationChange($event)"
+                                (editorReady)="onJsonEditorReady($event)"
+                            ></app-json-editor>
+                        }
+                    </div>
+                </section>
+            }
+        </div>
+    </form>
+</div>

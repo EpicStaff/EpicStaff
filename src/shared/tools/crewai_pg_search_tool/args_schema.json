@@ -15,7 +15,7 @@
       "description": "Search query text"
     },
     "limit": {
-      "type": "integer",
+      "type": "number",
       "description": "Maximum number of rows to return",
       "default": 10
     }

@@ -7,7 +7,7 @@
       "description": "Mandatory file full path to edit the file."
     },
     "line_number": {
-      "type": "integer",
+      "type": "number",
       "description": "Mandatory line number (1-based) to edit."
     },
     "expected_text": {

@@ -5,6 +5,7 @@ import { map, Observable } from 'rxjs';
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { ConfigService } from '../../../../services/config/config.service';
 import {
+    CreatePythonCodeToolPayload,
     CreatePythonCodeToolRequest,
     GetPythonCodeToolRequest,
     UpdatePythonCodeToolRequest,
@@ -37,11 +38,28 @@ export class CustomToolsService {
         });
     }
 
+    /**
+     * Create a Python code tool using the V2 payload shape (with `variables`
+     * instead of the deprecated `args_schema`). Hits the same endpoint as
+     * {@link createPythonCodeTool} - only the request body differs.
+     */
+    createPythonCodeToolV2(tool: CreatePythonCodeToolPayload): Observable<GetPythonCodeToolRequest> {
+        return this.http.post<GetPythonCodeToolRequest>(this.baseUrl, tool, {
+            headers: this.httpHeaders,
+        });
+    }
+
     updatePythonCodeTool(
         toolId: string,
         updatedTool: UpdatePythonCodeToolRequest
     ): Observable<GetPythonCodeToolRequest> {
         return this.http.put<GetPythonCodeToolRequest>(`${this.baseUrl}${toolId}/`, updatedTool, {
+            headers: this.httpHeaders,
+        });
+    }
+
+    updatePythonCodeToolV2(toolId: number, tool: CreatePythonCodeToolPayload): Observable<GetPythonCodeToolRequest> {
+        return this.http.put<GetPythonCodeToolRequest>(`${this.baseUrl}${toolId}/`, tool, {
             headers: this.httpHeaders,
         });
     }

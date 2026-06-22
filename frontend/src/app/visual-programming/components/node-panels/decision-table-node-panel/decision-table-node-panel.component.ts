@@ -1,10 +1,10 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, inject, input, signal } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
-
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog/confimation-dialog.service';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
+import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { NodeType } from '../../../core/enums/node-type';
 import { convertDecisionTableToCdt } from '../../../core/helpers/dt-to-cdt-converter';
@@ -25,7 +25,7 @@ import { DecisionTableGridComponent } from './decision-table-grid/decision-table
         CustomInputComponent,
         CommonModule,
         DecisionTableGridComponent,
-        AppSvgIconComponent,
+        SelectComponent,
         HelpTooltipComponent,
     ],
     templateUrl: './decision-table-node-panel.component.html',
@@ -44,11 +44,11 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
 
     public conditionGroups = signal<ConditionGroup[]>([]);
 
-    public availableNodes = computed(() => {
+    public availableNodeItems = computed<SelectItem[]>(() => {
         const nodes = this.flowService.nodes();
         const currentNodeId = this.node().id;
 
-        return nodes
+        const nodeItems = nodes
             .filter(
                 (node) =>
                     node.type !== NodeType.NOTE &&
@@ -59,8 +59,10 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
             )
             .map((node) => ({
                 value: node.id,
-                label: node.node_name || node.id,
+                name: node.node_name || node.id,
             }));
+
+        return [{ name: '-- Select Node --', value: '' }, ...nodeItems];
     });
 
     get activeColor(): string {
@@ -175,7 +177,10 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
                     return;
                 }
 
-                const dtNode = this.node();
+                // Build from the CURRENT panel state (not this.node(), the committed flow-state node)
+                // so uncommitted edits — e.g. a condition just added in the open panel — are included
+                // in the conversion. Otherwise converting without closing/saving first drops them.
+                const dtNode = this.createUpdatedNode();
                 const { node: cdtNode, portIdMap } = convertDecisionTableToCdt(dtNode);
 
                 // Strategy (a): clear selection first so the DT panel unmounts and
@@ -186,6 +191,18 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
                 this.flowService.replaceNodePreservingEdges(dtNode.id, cdtNode, {
                     portIdMap,
                 });
+
+                // Materialize live canvas edges for ALL converted groups that route via
+                // group.next_node. replaceNodePreservingEdges only remaps PRE-EXISTING edges,
+                // so a row whose next node was set via the grid "Next Node" dropdown would otherwise have no edge until a
+                // reload. Rebuilding from next_node here matches the post-reload behavior.
+                const cdtTable = cdtNode.data.table;
+                this.flowService.resetDecisionTableConnections(
+                    cdtNode.id,
+                    cdtTable.condition_groups,
+                    cdtTable.default_next_node,
+                    cdtTable.next_error_node
+                );
 
                 // The conversion is irreversible (see confirm dialog: "This action cannot be undone").
                 // Reset undo/redo history so Undo/CTRL+Z can't revert to the pre-conversion DT node,

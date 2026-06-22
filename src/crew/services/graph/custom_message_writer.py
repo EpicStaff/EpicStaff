@@ -2,7 +2,7 @@ from typing import Any
 
 from langgraph.types import StreamWriter
 
-from src.crew.models.graph_models import (
+from models.graph_models import (
     StartMessageData,
     GraphMessage,
     FinishMessageData,
@@ -11,7 +11,7 @@ from src.crew.models.graph_models import (
     ConditonGroupManipulationMessageData,
     ClassificationPromptMessageData,
 )
-from src.crew.models.state import State
+from models.state import State
 
 
 class CustomSessionMessageWriter:

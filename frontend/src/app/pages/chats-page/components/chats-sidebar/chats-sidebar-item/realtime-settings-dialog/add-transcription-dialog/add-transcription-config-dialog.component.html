@@ -39,42 +39,11 @@
         <form [formGroup]="transcriptionForm">
             <div class="form-group">
                 <label for="model">Transcription Model</label>
-                <div class="custom-select">
-                    <select
-                        id="model"
-                        formControlName="realtime_transcription_model"
-                        class="select-input"
-                    >
-                        <option
-                            [ngValue]="null"
-                            disabled
-                        >
-                            Select a model
-                        </option>
-                        @for (model of models; track model.id) {
-                            <option [ngValue]="model.id">
-                                {{ model.name }}
-                            </option>
-                        }
-                    </select>
-                    <div class="select-arrow">
-                        <svg
-                            width="10"
-                            height="6"
-                            viewBox="0 0 10 6"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                        >
-                            <path
-                                d="M1 1L5 5L9 1"
-                                stroke="currentColor"
-                                stroke-width="1.5"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            />
-                        </svg>
-                    </div>
-                </div>
+                <app-select
+                    formControlName="realtime_transcription_model"
+                    placeholder="Select a model"
+                    [items]="modelItems"
+                />
             </div>
 
             <div class="form-group">

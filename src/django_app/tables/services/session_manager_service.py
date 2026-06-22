@@ -545,7 +545,9 @@ class SessionManagerService(metaclass=SingletonMeta):
                 and item.subgraph_id not in unique_subgraphs
             ):
                 subgraph_data = self._build_graph_data(subgraph, unique_subgraphs, None)
-                variables = subgraph.start_node_list.first().variables or {}
+                variables = self._get_actual_variables(
+                    subgraph.start_node_list.first().variables or {}
+                )
                 unique_subgraphs[item.subgraph_id] = SubGraphData(
                     id=subgraph.id,
                     data=subgraph_data,

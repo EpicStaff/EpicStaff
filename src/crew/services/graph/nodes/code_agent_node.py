@@ -16,11 +16,11 @@ from typing import Any
 from langgraph.types import StreamWriter
 from loguru import logger
 
-from src.crew.models.state import State
-from src.crew.services.graph.events import StopEvent
-from src.crew.services.graph.exceptions import StopSession
-from src.crew.services.graph.nodes import BaseNode
-from src.crew.services.run_python_code_service import RunPythonCodeService
+from models.state import State
+from services.graph.events import StopEvent
+from services.graph.exceptions import StopSession
+from services.graph.nodes import BaseNode
+from services.run_python_code_service import RunPythonCodeService
 from src.shared.models import PythonCodeData
 
 
@@ -111,7 +111,7 @@ class CodeAgentNode(BaseNode):
     def get_input(self, state):
         if self.input_map == "__all__":
             return state["variables"]
-        from src.crew.utils import map_variables_to_input
+        from utils import map_variables_to_input
 
         return map_variables_to_input(
             state["variables"], self.input_map, set_missing_variables=True

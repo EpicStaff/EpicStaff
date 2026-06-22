@@ -28,9 +28,22 @@ class PythonCodeToolExecutor(BaseToolExecutor):
     def _gen_python_realtime_tool_model(
         self, python_code_tool_data: PythonCodeToolData
     ) -> RealtimeTool:
+        properties = {}
+        required = []
+        for var in python_code_tool_data.variables:
+            input_type = var.get("input_type")
+            if input_type in ("agent_input", "mixed"):
+                prop = {"type": var.get("type", "string"), "description": var.get("description", "")}
+                if var.get("properties"):
+                    prop["properties"] = var["properties"]
+                if var.get("items"):
+                    prop["items"] = var["items"]
+                properties[var["name"]] = prop
+                if var.get("required") and input_type == "agent_input":
+                    required.append(var["name"])
         tool_parameters = ToolParameters(
-            properties=python_code_tool_data.args_schema.properties,
-            required=python_code_tool_data.args_schema.required,
+            properties=properties,
+            required=required,
         )
         return RealtimeTool(
             name=self.tool_name,

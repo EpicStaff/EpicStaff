@@ -16,7 +16,7 @@
       "nullable": true
     },
     "limit": {
-      "type": "integer",
+      "type": "number",
       "description": "Maximum number of results to return",
       "nullable": true
     }

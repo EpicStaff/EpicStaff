@@ -64,13 +64,12 @@
             height: 100%;
 
             .form-fields {
-                width: 640px;
+                flex-shrink: 0;
                 padding: 1rem;
                 overflow-y: auto;
                 display: flex;
                 flex-direction: column;
                 gap: 1rem;
-                border-right: 1px solid var(--color-divider-subtle);
 
                 .form-section {
                     .section-header {
@@ -133,6 +132,41 @@
                         border-radius: 6px;
                         overflow: hidden;
                     }
+                }
+            }
+
+            .resizer {
+                width: 4px;
+                flex-shrink: 0;
+                cursor: col-resize;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                position: relative;
+
+                &::before {
+                    content: '';
+                    position: absolute;
+                    top: 0;
+                    bottom: 0;
+                    left: 50%;
+                    width: 4px;
+                    border-left: 1px solid var(--color-divider-subtle);
+                    border-right: 1px solid var(--color-divider-subtle);
+                    transform: translateX(-50%);
+                }
+
+                .resizer-handle {
+                    width: 2px;
+                    height: 36px;
+                    background: rgba(255, 255, 255, 0.2);
+                    border-radius: 2px;
+                    z-index: 1;
+                    transition: background 0.15s ease;
+                }
+
+                &:hover .resizer-handle {
+                    background: rgba(255, 255, 255, 0.5);
                 }
             }
 

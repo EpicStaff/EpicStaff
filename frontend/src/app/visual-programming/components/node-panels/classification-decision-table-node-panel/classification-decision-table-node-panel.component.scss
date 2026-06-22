@@ -41,7 +41,7 @@
 // Header fields row
 .panel-node-header {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr auto;
+    grid-template-columns: 1fr 1fr 1fr;
     min-width: 0; /* prevent overflow */
     gap: 1rem;
     padding: 20px 16px;
@@ -203,7 +203,7 @@
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
-    color: rgba(255, 255, 255, 0.5);
+    color: #685fff;
     padding: 0.6rem 0;
     margin-bottom: -1px;
     font-size: 0.9rem;
@@ -219,7 +219,7 @@
     }
 
     &:hover:not(.tab-btn--active) {
-        color: rgba(255, 255, 255, 0.8);
+        color: #8b83ff;
     }
 }
 
@@ -237,9 +237,9 @@
         border-color 0.15s ease;
 
     &--active {
-        color: #685fff;
+        color: #fff;
         font-weight: 500;
-        border-bottom-color: #685fff;
+        border-bottom-color: #fff;
     }
 
     &:hover:not(.tab-link--active) {

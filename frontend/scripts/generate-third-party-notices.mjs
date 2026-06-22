@@ -15,6 +15,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -83,8 +84,21 @@ for (const key of Object.keys(data).sort()) {
 const dist = {};
 for (const e of entries) dist[e.licenses] = (dist[e.licenses] || 0) + 1;
 
+const generatedAt = new Date().toUTCString().replace(/\s+/g, ' ');
+const gitShaResult = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' });
+const gitSha = gitShaResult.status === 0 ? gitShaResult.stdout.trim() : 'UNKNOWN';
+const lockFilePath = path.join(FRONTEND_DIR, 'package-lock.json');
+const lockHash = fs.existsSync(lockFilePath)
+  ? createHash('sha256').update(fs.readFileSync(lockFilePath)).digest('hex').slice(0, 16)
+  : 'no-lock';
+
 // Build markdown
 const lines = [];
+lines.push('<!-- AUTO-GENERATED — do not edit by hand -->');
+lines.push(`<!-- generated: ${generatedAt} -->`);
+lines.push(`<!-- commit: ${gitSha} -->`);
+lines.push(`<!-- package-lock.json sha256: ${lockHash} -->`);
+lines.push('');
 lines.push('# Third-Party Notices');
 lines.push('');
 lines.push('This file lists third-party open-source software bundled into the EpicStaff frontend (Angular application). It covers **production** npm dependencies declared in `frontend/package.json` and resolved via `frontend/package-lock.json`.');

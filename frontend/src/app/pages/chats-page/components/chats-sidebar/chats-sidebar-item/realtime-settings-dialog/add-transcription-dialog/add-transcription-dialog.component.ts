@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Component, DestroyRef, Inject, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { SelectComponent, SelectItem } from '@shared/components';
 import {
     CreateTranscriptionConfigRequest,
     GetRealtimeTranscriptionModelRequest,
@@ -21,7 +22,7 @@ export interface AddTranscriptionConfigDialogData {
 @Component({
     selector: 'app-add-transcription-config-dialog',
     standalone: true,
-    imports: [CommonModule, ReactiveFormsModule],
+    imports: [CommonModule, ReactiveFormsModule, SelectComponent],
     templateUrl: './add-transcription-config-dialog.component.html',
     styleUrls: ['./add-transcription-config-dialog.component.scss'],
 })
@@ -56,6 +57,10 @@ export class AddTranscriptionConfigDialogComponent implements OnInit {
 
     public get isEditMode(): boolean {
         return !!this.data?.editConfig;
+    }
+
+    public get modelItems(): SelectItem[] {
+        return this.models.map((model) => ({ name: model.name, value: model.id }));
     }
 
     private initForm(): void {

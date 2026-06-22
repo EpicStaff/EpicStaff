@@ -1,9 +1,9 @@
 from langgraph.types import StreamWriter
-from src.crew.models.graph_models import GraphMessage
-from src.crew.models.state import State
-from src.crew.services.graph.events import StopEvent
-from src.crew.services.graph.nodes import BaseNode
-from src.crew.utils import map_variables_to_input
+from models.graph_models import GraphMessage
+from models.state import State
+from services.graph.events import StopEvent
+from services.graph.nodes import BaseNode
+from utils import map_variables_to_input
 
 
 class EndNode(BaseNode):
@@ -38,7 +38,7 @@ class EndNode(BaseNode):
         graph_message = GraphMessage(
             session_id=self.session_id,
             name=self.node_name,
-            execution_order=0,
+            execution_order=kwargs.get("execution_order", 0),
             message_data=result,
         )
         writer(graph_message)

@@ -75,6 +75,19 @@
     font-weight: 500;
 }
 
+.dialog-container.warning .caution-block {
+    border-left-color: #e0a83a;
+}
+.dialog-container.warning .caution-title {
+    color: #e0a83a;
+}
+.dialog-container.info .caution-block {
+    border-left-color: var(--color-primary);
+}
+.dialog-container.info .caution-title {
+    color: var(--color-primary);
+}
+
 .caution-message {
     font-size: 0.875rem;
     color: var(--color-text-subtle);
@@ -196,7 +209,7 @@
     color: #f44336;
 }
 .dialog-container.warning .dialog-icon {
-    color: #ffcf00;
+    color: #e0a83a;
 }
 .dialog-container.info .dialog-icon {
     color: #685fff;

@@ -153,14 +153,16 @@ function buildCdtNodePayload(
     const conditionGroups = ((tableData?.condition_groups || []) as CdtConditionGroupUi[])
         .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER))
         .map((g, idx) => {
-            // Determine the target UUID: prefer the synced group.next_node;
-            // fall back to a live connection matched by route_code-derived port id.
-            let targetUuid: string | null = g.next_node ?? null;
-            if (!targetUuid && g.route_code) {
-                const slugified = g.route_code.toLowerCase().replace(/\s+/g, '-');
-                const routePortId = `${node.id}_decision-route-${slugified}`;
-                const conn = connections.find((c) => c.sourceNodeId === node.id && c.sourcePortId === routePortId);
-                if (conn) targetUuid = conn.targetNodeId;
+            // Resolve next_node only when route_code is present.
+            let targetUuid: string | null = null;
+            if (g.route_code) {
+                targetUuid = g.next_node ?? null;
+                if (!targetUuid) {
+                    const slugified = g.route_code.toLowerCase().replace(/\s+/g, '-');
+                    const routePortId = `${node.id}_decision-route-${slugified}`;
+                    const conn = connections.find((c) => c.sourceNodeId === node.id && c.sourcePortId === routePortId);
+                    if (conn) targetUuid = conn.targetNodeId;
+                }
             }
 
             const resolved = resolveNodeRef(targetUuid, allNodes, idMap);

@@ -342,11 +342,32 @@ def main(**kwargs) -> dict:
         state["variables"].update(variables)
 
     async def _run_json_llm(
-        self, prompt: str, llm: LLMData
+        self, prompt: str, llm: LLMData, output_schema: dict | str | None = None
     ) -> tuple[Any, dict[str, int]]:
         """Call LLM via litellm and parse JSON response."""
         llm_config = llm.config
         litellm.drop_params = True
+
+        response_format = llm_config.response_format
+        schema = output_schema
+        if isinstance(schema, str) and schema.strip():
+            try:
+                schema = json.loads(schema)
+            except (ValueError, TypeError):
+                logger.warning(
+                    "Prompt output_schema is not valid JSON; falling back to LLM response_format."
+                )
+                schema = None
+        if isinstance(schema, dict) and schema:
+            response_format = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "cdt_prompt_output",
+                    "schema": schema,
+                    "strict": True,
+                },
+            }
+
         params = {
             "model": f"{llm.provider}/{llm_config.model}",
             "timeout": llm_config.timeout,
@@ -357,7 +378,7 @@ def main(**kwargs) -> dict:
             "presence_penalty": llm_config.presence_penalty,
             "frequency_penalty": llm_config.frequency_penalty,
             "logit_bias": llm_config.logit_bias,
-            "response_format": llm_config.response_format,
+            "response_format": response_format,
             "seed": llm_config.seed,
             "base_url": llm_config.base_url,
             "api_version": llm_config.api_version,
@@ -423,7 +444,9 @@ def main(**kwargs) -> dict:
 
         try:
             result, usage = await self._run_json_llm(
-                prompt=rendered_prompt, llm=llm_data
+                prompt=rendered_prompt,
+                llm=llm_data,
+                output_schema=prompt_config.output_schema,
             )
         except Exception as e:
             error_msg = (
@@ -478,9 +501,17 @@ def main(**kwargs) -> dict:
         enter_node = self.node_data.node_name
         evaluate_node = self.node_data.node_name + "_evaluate"
 
-        # Sort condition groups by order
+        # Sort condition groups by order, excluding disabled (dock_visible=False) groups
+        enabled_groups = [g for g in self.node_data.condition_groups if g.dock_visible]
+        skipped = [
+            g.group_name for g in self.node_data.condition_groups if not g.dock_visible
+        ]
+        if skipped:
+            logger.info(
+                f"Skipping disabled condition groups in '{self.node_data.node_name}': {skipped}"
+            )
         sorted_groups = sorted(
-            self.node_data.condition_groups,
+            enabled_groups,
             key=lambda g: g.order,
         )
 
@@ -493,23 +524,19 @@ def main(**kwargs) -> dict:
             }
             if state["system_variables"].get("nodes") is None:
                 state["system_variables"]["nodes"] = {}
+
+            order = state["system_variables"].get("execution_order", 0)
+            state["system_variables"]["execution_order"] = order + 1
+
             if state["system_variables"]["nodes"].get(self.node_name) is None:
                 state["system_variables"]["nodes"][self.node_name] = update_variables
-                state["system_variables"]["nodes"][self.node_name][
-                    "execution_order"
-                ] = 0
             else:
                 state["system_variables"]["nodes"][self.node_name].update(
                     update_variables
                 )
-                state["system_variables"]["nodes"][self.node_name][
-                    "execution_order"
-                ] = (
-                    state["system_variables"]["nodes"][self.node_name][
-                        "execution_order"
-                    ]
-                    + 1
-                )
+            state["system_variables"]["nodes"][self.node_name]["execution_order"] = (
+                order
+            )
 
             input_vars = state["variables"].model_dump()
             if "shared" in input_vars:
@@ -667,7 +694,10 @@ def main(**kwargs) -> dict:
                     if group.field_manipulations:
                         for var_name, var_expr in group.field_manipulations.items():
                             if var_expr and var_expr.strip():
-                                manip_parts.append(f"{var_name} = {var_expr.strip()}")
+                                target = var_name.strip()
+                                if not target.startswith("variables."):
+                                    target = f"variables.{target}"
+                                manip_parts.append(f"{target} = {var_expr.strip()}")
                     if group.manipulation:
                         manip_parts.append(group.manipulation)
                     combined_manipulation = (
@@ -698,13 +728,13 @@ def main(**kwargs) -> dict:
                         )
                         self._publish_message(msg)
 
-                    # Step 4: Capture next_node from this row
+                    # Step 4: An explicit route is terminal — take it and stop, ignoring continue.
                     if group.next_node:
                         matched_next_node = group.next_node
+                        break
 
-                    # Step 5: Check continue flag
+                    # Step 5: No route on this row — honor continue flag (fall through if set).
                     if not group.continue_flag:
-                        # Stop evaluation
                         break
 
                 except ClassificationDecisionTableNodeError as e:

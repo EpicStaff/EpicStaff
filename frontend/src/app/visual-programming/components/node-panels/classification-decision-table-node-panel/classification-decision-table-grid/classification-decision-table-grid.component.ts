@@ -327,7 +327,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             .map((id) => id.substring(CDT_FIELD_PREFIX.length))
     );
 
-    public isEmpty = computed(() => this.rowData().length === 0);
+    public isEmpty = computed(() => this.displayedRowData().length === 0);
 
     // Manipulation field computed properties
     public activeManipFieldColumns = computed(() =>
@@ -487,7 +487,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         minWidth: 30,
     };
 
-    private unmergedGroup = signal<{ colId: string; startRow: number; endRow: number } | null>(null);
     private savedColumnWidths = new Map<string, number>();
     private saveTimeout: ReturnType<typeof setTimeout> | null = null;
     private isRebuilding = false;
@@ -961,12 +960,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             flex: 1,
             cellRenderer: MonacoCellRendererComponent,
             cellRendererParams: { singleLine: true },
-            rowSpan: (params: RowSpanParams<ConditionGroup>) =>
-                this.getRowSpan(
-                    params,
-                    `${CDT_FIELD_PREFIX}${fieldName}`,
-                    (d) => d?.field_expressions?.[fieldName] || ''
-                ),
             cellStyle: (params: RowSpanParams<ConditionGroup>) => {
                 const locked = this.isRowLocked(params.data as ConditionGroup);
                 return locked
@@ -1073,8 +1066,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             // Allow plain Enter to insert newlines inside the popup editor.
             // Ctrl/Cmd+Enter (handled by ExpressionBuilderComponent) commits.
             suppressKeyboardEvent: (params) => params.editing && params.event.key === 'Enter',
-            rowSpan: (params: RowSpanParams<ConditionGroup>) =>
-                this.getRowSpan(params, CDT_COLUMN_KIND.EXPRESSION, (d) => d?.expression || ''),
             cellStyle: () => ({ fontSize: '13px', fontFamily: 'monospace', color: '#d4d4d4' }),
             valueGetter: (params: ValueGetterParams<ConditionGroup>) =>
                 toDisplayExpression(params.data?.expression ?? ''),
@@ -1353,117 +1344,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         };
 
         return [...staticBefore, ...exprSection, promptIdCol, ...manipSection, routeCodeCol, skipCol, deleteCol];
-    }
-
-    private getMergeableColIds(): string[] {
-        return [...this.activeFieldColumns().map((f) => `${CDT_FIELD_PREFIX}${f}`), CDT_COLUMN_KIND.EXPRESSION];
-    }
-
-    // Returns the row range that column `colId` is allowed to merge within,
-    // based on the left column's merge group hierarchy.
-    private getHierarchicalBounds(
-        params: RowSpanParams<ConditionGroup>,
-        colId: string,
-        idx: number
-    ): { start: number; end: number } {
-        const mergeableCols = this.getMergeableColIds();
-        const colIndex = mergeableCols.indexOf(colId);
-
-        if (colIndex <= 0) {
-            // First column or not found — full table range
-            return { start: 0, end: (params.api?.getDisplayedRowCount?.() ?? 1000) - 1 };
-        }
-
-        const leftColId = mergeableCols[colIndex - 1];
-        // Recursively get the left column's own bounds
-        const leftBounds = this.getHierarchicalBounds(params, leftColId, idx);
-
-        const leftVal = this.getMergeableValueFromData(params.api?.getDisplayedRowAtIndex(idx)?.data, leftColId);
-
-        let start = idx;
-        while (start > leftBounds.start) {
-            const prev = params.api?.getDisplayedRowAtIndex(start - 1);
-            if (!prev || this.getMergeableValueFromData(prev.data, leftColId) !== leftVal) break;
-            start--;
-        }
-        let end = idx;
-        while (end < leftBounds.end) {
-            const next = params.api?.getDisplayedRowAtIndex(end + 1);
-            if (!next || this.getMergeableValueFromData(next.data, leftColId) !== leftVal) break;
-            end++;
-        }
-        return { start, end };
-    }
-
-    private getRowSpan(
-        params: RowSpanParams<ConditionGroup>,
-        colId: string,
-        getValue: (data: ConditionGroup | undefined) => string
-    ): number {
-        const idx = params.node?.rowIndex ?? 0;
-        const ug = this.unmergedGroup();
-        if (ug && ug.colId === colId && idx >= ug.startRow && idx <= ug.endRow) return 1;
-        const cur = getValue(params.data) || '';
-        if (!cur) return 1;
-
-        const bounds = this.getHierarchicalBounds(params, colId, idx);
-
-        // If this cell matches the one above (within bounds), AG Grid hides it behind the span above
-        if (idx > bounds.start) {
-            const prevNode = params.api?.getDisplayedRowAtIndex(idx - 1);
-            if (prevNode && cur === (getValue(prevNode.data) || '')) {
-                return 1;
-            }
-        }
-        // Count consecutive matching rows below, bounded by hierarchy
-        let span = 1;
-        while (idx + span <= bounds.end) {
-            const nextNode = params.api?.getDisplayedRowAtIndex(idx + span);
-            if (!nextNode || cur !== (getValue(nextNode.data) || '')) break;
-            span++;
-        }
-        return span;
-    }
-
-    private getMergeableValueFromData(data: ConditionGroup | undefined, colId: string): string {
-        if (!data) return '';
-        if (colId === CDT_COLUMN_KIND.EXPRESSION) return data.expression || '';
-        if (colId.startsWith(CDT_FIELD_PREFIX)) {
-            const field = colId.substring(CDT_FIELD_PREFIX.length);
-            return data.field_expressions?.[field] || '';
-        }
-        if (colId.startsWith(CDT_MANIP_PREFIX)) {
-            const field = colId.substring(CDT_MANIP_PREFIX.length);
-            return data.field_manipulations?.[field] || '';
-        }
-        return '';
-    }
-
-    private findMergeGroup(colId: string, rowIndex: number): { startRow: number; endRow: number } {
-        const rows = this.rowData();
-        const getVal = (i: number): string => this.getMergeableValueFromData(rows[i], colId);
-
-        const val = getVal(rowIndex);
-        if (!val) return { startRow: rowIndex, endRow: rowIndex };
-
-        // Respect hierarchical bounds from left columns
-        const mergeableCols = this.getMergeableColIds();
-        const colIdx = mergeableCols.indexOf(colId);
-        let boundsStart = 0;
-        let boundsEnd = rows.length - 1;
-
-        if (colIdx > 0) {
-            const leftColId = mergeableCols[colIdx - 1];
-            const leftGroup = this.findMergeGroup(leftColId, rowIndex);
-            boundsStart = leftGroup.startRow;
-            boundsEnd = leftGroup.endRow;
-        }
-
-        let start = rowIndex;
-        while (start > boundsStart && getVal(start - 1) === val) start--;
-        let end = rowIndex;
-        while (end < boundsEnd && getVal(end + 1) === val) end++;
-        return { startRow: start, endRow: end };
     }
 
     private applyWidths(defs: (ColDef | ColGroupDef)[], widthMap: Map<string, number>): (ColDef | ColGroupDef)[] {
@@ -1763,67 +1643,10 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         }
     }
 
-    private bodyClickHandler = (event: MouseEvent) => {
+    private bodyClickHandler = () => {
         // Close context menu on any click
         if (this.contextMenu()) {
             this.contextMenu.set(null);
-        }
-
-        const currentUnmerged = this.unmergedGroup();
-        const target = event.target as HTMLElement;
-
-        // Don't act if clicking inside a Monaco tooltip popover, AG Grid header, or field controls
-        if (target?.closest('.code-tooltip-popover')) return;
-        if (target?.closest('.ag-header')) return;
-        if (target?.closest('.field-column-controls')) return;
-
-        // Check if the click landed on an AG Grid cell and extract its col-id
-        const cellEl = target?.closest('[col-id]') as HTMLElement | null;
-        const clickedColId = cellEl?.getAttribute('col-id') || null;
-
-        if (clickedColId) {
-            // Click is on a grid cell
-            const isMergeableCol =
-                clickedColId === CDT_COLUMN_KIND.EXPRESSION || clickedColId.startsWith(CDT_FIELD_PREFIX);
-
-            if (isMergeableCol && (!currentUnmerged || currentUnmerged.colId !== clickedColId)) {
-                // Only unmerge if the cell is actually spanning multiple rows
-                const rowSpan = parseInt(cellEl!.getAttribute('rowspan') || '1', 10);
-                if (rowSpan <= 1) return;
-
-                // Determine which row was clicked within a spanned cell
-                const rowHeight = this.gridOptions.rowHeight || CDT_GRID_ROW_HEIGHT;
-                const cellRect = cellEl!.getBoundingClientRect();
-                const rowOffset = Math.floor((event.clientY - cellRect.top) / rowHeight);
-                const rowEl = cellEl!.closest('.ag-row');
-                const topRowIndex = parseInt(rowEl?.getAttribute('row-index') || '0', 10);
-                const targetRowIndex = topRowIndex + rowOffset;
-
-                // Find merge group boundaries for this cell
-                const groupRange = this.findMergeGroup(clickedColId, topRowIndex);
-
-                // Unmerge only this group
-                this.unmergedGroup.set({ colId: clickedColId, ...groupRange });
-                this.rebuildColumnDefs();
-
-                // After re-render, trigger editor on the target row's cell
-                setTimeout(() => {
-                    const targetCell = this.elRef.nativeElement.querySelector(
-                        `.ag-row[row-index="${targetRowIndex}"] [col-id="${clickedColId}"] .code-cell`
-                    );
-                    if (targetCell) {
-                        targetCell.click();
-                    }
-                }, 100);
-            } else if (!isMergeableCol && currentUnmerged) {
-                // Clicked a non-mergeable column → re-merge
-                this.unmergedGroup.set(null);
-                this.rebuildColumnDefs();
-            }
-        } else if (currentUnmerged) {
-            // Click is outside any grid cell → re-merge
-            this.unmergedGroup.set(null);
-            this.rebuildColumnDefs();
         }
     };
 
@@ -2074,7 +1897,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             }
         }
 
-        this.unmergedGroup.set(null);
         const updatedRows = this.getUpdatedRows();
         this.emitChanges(updatedRows);
     }

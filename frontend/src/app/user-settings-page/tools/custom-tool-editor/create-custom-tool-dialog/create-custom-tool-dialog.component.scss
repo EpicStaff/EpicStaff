@@ -1,0 +1,358 @@
+.create-custom-tool-dialog {
+    background-color: var(--color-modals-background);
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 12px;
+    color: #fff;
+    width: 95vw;
+    height: 95vh;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+
+    form {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+    }
+
+    .dialog-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 84px;
+        box-sizing: border-box;
+        padding: 24px 40px 20px;
+        border-bottom: 1px solid var(--color-divider-subtle);
+        flex-shrink: 0;
+
+        .title {
+            margin: 0;
+            font-size: 20px;
+            line-height: 100%;
+            font-weight: 500;
+            color: #fff;
+            letter-spacing: 0;
+        }
+
+        .dialog-header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-icon-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            border-radius: 50%;
+            border: 1px solid var(--accent-color);
+            background: transparent;
+            color: var(--accent-color);
+            cursor: pointer;
+            transition:
+                background-color 0.15s ease,
+                border-color 0.15s ease,
+                color 0.15s ease;
+
+            &--confirm {
+                background-color: var(--accent-color);
+                color: var(--color-text);
+            }
+
+            &:hover:not(:disabled) {
+                border-color: var(--accent-color-hover);
+
+                &.header-icon-btn--cancel {
+                    color: var(--accent-color-hover);
+                }
+
+                &.header-icon-btn--confirm {
+                    background-color: var(--accent-color-hover);
+                }
+            }
+
+            &:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+
+            &:focus-visible {
+                outline: 2px solid var(--accent-color);
+                outline-offset: 2px;
+            }
+        }
+    }
+
+    // Right pane goes edge-to-edge with the modal so we put the side padding
+    // on the form-pane only and let the editor-pane fill its share completely.
+    .dialog-content {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        overflow: hidden;
+
+        &.right-collapsed .form-pane {
+            flex: 1 1 100%;
+            max-width: 100%;
+        }
+    }
+
+    .form-pane {
+        flex: 0 0 56%;
+        min-width: 360px;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        padding: 24px 40px;
+        overflow-y: auto;
+    }
+
+    .editor-pane {
+        flex: 1 1 0;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        background-color: #1b1b1b;
+        border-left: 1px solid var(--color-divider-subtle);
+        overflow: hidden;
+    }
+
+    .editor-pane-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 58px;
+        box-sizing: border-box;
+        padding: 16px 40px 16px 30px;
+        background-color: var(--color-modals-background);
+        border-bottom: 1px solid var(--color-divider-subtle);
+        flex-shrink: 0;
+    }
+
+    .editor-pane-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        line-height: 130%;
+        font-weight: 700;
+        color: #fff;
+
+        .python-icon {
+            color: #ffdd57;
+        }
+    }
+
+    .editor-pane-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
+
+        button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            color: #d4d4dc;
+            cursor: pointer;
+            transition:
+                background-color 0.2s ease,
+                border-color 0.2s ease,
+                color 0.2s ease;
+
+            &:hover {
+                background-color: rgba(255, 255, 255, 0.06);
+                color: #fff;
+            }
+
+            &:focus-visible {
+                outline: 2px solid var(--accent-color);
+                outline-offset: 2px;
+            }
+        }
+    }
+
+    .editor-pane-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .form-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        flex-shrink: 0;
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 20px;
+
+            h3 {
+                margin: 0;
+                font-size: 14px;
+                line-height: 18px;
+                font-weight: 500;
+                color: #d4d4dc;
+                display: inline-flex;
+                align-items: center;
+
+                .required {
+                    color: var(--color-required-asterisk);
+                    margin-left: 4px;
+                }
+            }
+        }
+    }
+
+    .error-message {
+        margin: 0;
+        font-size: 12px;
+        color: #ff5c5c;
+    }
+
+    .parameters-section {
+        gap: 8px;
+    }
+
+    .parameters-header {
+        justify-content: space-between;
+    }
+
+    .section-header-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    .parameters-mode-switch {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 14px;
+        line-height: 18px;
+        font-weight: 500;
+        color: #d4d4dc;
+
+        app-toggle-switch {
+            display: inline-flex;
+        }
+    }
+
+    .editor-card {
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        background-color: transparent;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .editor-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        height: 58px;
+        padding: 20px 16px;
+        border-bottom: 1px solid transparent;
+    }
+
+    .editor-card.has-inline .editor-card-header {
+        border-bottom-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .editor-card-title {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        gap: 8px;
+        color: #fff;
+        font-size: 14px;
+        line-height: 18px;
+        font-weight: 600;
+
+        small {
+            color: #9b9ba6;
+            font-size: 13px;
+            font-weight: 400;
+            margin-left: 4px;
+        }
+
+        .python-icon {
+            color: #ffdd57;
+        }
+    }
+
+    .editor-card-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
+
+        button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            background: transparent;
+            color: #d4d4dc;
+            cursor: pointer;
+            transition:
+                background-color 0.2s ease,
+                border-color 0.2s ease,
+                color 0.2s ease;
+
+            &:hover {
+                background-color: rgba(255, 255, 255, 0.06);
+                color: #fff;
+            }
+
+            &.active {
+                background-color: rgba(104, 95, 255, 0.9);
+                border-color: var(--accent-color);
+                color: #fff;
+            }
+
+            &:focus-visible {
+                outline: 2px solid var(--accent-color);
+                outline-offset: 2px;
+            }
+        }
+    }
+
+    .inline-editor-host {
+        // Bounded height so an expanded inline editor doesn't push siblings
+        // out of view; the form pane scrolls around it.
+        height: 320px;
+        display: flex;
+        flex-direction: column;
+        background-color: #171719;
+        flex-shrink: 0;
+
+        > app-code-editor,
+        > app-json-editor {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+    }
+}

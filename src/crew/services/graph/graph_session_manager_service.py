@@ -8,18 +8,17 @@ import asyncio
 from loguru import logger
 from dotdict import DotDict
 
-from src.crew.services.graph.events import StopEvent
-from src.crew.services.graph.exceptions import StopSession
-from src.crew.services.crew.crew_parser_service import CrewParserService
-from src.crew.services.redis_service import AsyncPubsubSubscriber, RedisService
-from src.crew.services.graph.graph_builder import SessionGraphBuilder
-from src.crew.services.run_python_code_service import RunPythonCodeService
-from src.crew.services.knowledge_search_service import KnowledgeSearchService
-
-from src.crew.utils.singleton_meta import SingletonMeta
+from services.graph.events import StopEvent
+from services.graph.exceptions import StopSession
+from services.crew.crew_parser_service import CrewParserService
+from services.redis_service import AsyncPubsubSubscriber, RedisService
+from services.graph.graph_builder import SessionGraphBuilder
+from services.run_python_code_service import RunPythonCodeService
+from services.knowledge_search_service import KnowledgeSearchService
+from utils.singleton_meta import SingletonMeta
+from models.graph_models import GraphMessage
 
 from src.shared.models import SessionData, StopSessionMessage
-from src.crew.models.graph_models import GraphMessage
 from src.crew.services.graph.shared_variables import (
     SharedVariables,
     SharedVariableScope,

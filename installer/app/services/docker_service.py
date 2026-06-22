@@ -783,10 +783,32 @@ class DockerService:
         # Wait for Docker to be responsive
         return self._wait_for_docker()
 
+    def _ask_install_consent(self) -> bool:
+        """Show a tkinter consent dialog before auto-installing Docker (Linux only)."""
+        try:
+            from tkinter import messagebox
+
+            return messagebox.askyesno(
+                "Install Docker?",
+                "Docker was not found on this system.\n\n"
+                "The installer can download and install Docker automatically "
+                "from get.docker.com.\n\n"
+                "Continue with the Docker installation?",
+            )
+        except Exception:
+            print("Could not show consent dialog. Aborting automatic Docker install.")
+            return False
+
     def _install_docker(self):
         system = platform.system()
         try:
             if system == "Linux":
+                if not self._ask_install_consent():
+                    print(
+                        "Docker installation declined. "
+                        "Please install Docker manually and restart the installer."
+                    )
+                    return False
                 print("Attempting to install Docker...")
                 subprocess.run(
                     [

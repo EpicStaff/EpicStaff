@@ -41,7 +41,9 @@
 
     @if (data.caution) {
         <div class="caution-block">
-            <span class="caution-title">Caution</span>
+            @if (data.cautionTitle) {
+                <span class="caution-title">{{ data.cautionTitle }}</span>
+            }
             <p
                 class="caution-message"
                 [innerHTML]="data.caution"

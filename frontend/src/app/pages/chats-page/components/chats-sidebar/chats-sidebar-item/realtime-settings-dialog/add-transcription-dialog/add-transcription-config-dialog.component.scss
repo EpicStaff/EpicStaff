@@ -66,36 +66,6 @@
             }
         }
 
-        .custom-select {
-            position: relative;
-
-            .select-input {
-                width: 100%;
-                padding: 10px 12px;
-                background-color: rgba(30, 30, 30, 0.6);
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 6px;
-                color: white;
-                font-size: 14px;
-                appearance: none;
-                transition: border-color 0.2s ease;
-
-                &:focus {
-                    outline: none;
-                    border-color: #685fff;
-                }
-            }
-
-            .select-arrow {
-                position: absolute;
-                right: 12px;
-                top: 50%;
-                transform: translateY(-50%);
-                pointer-events: none;
-                color: rgba(255, 255, 255, 0.6);
-            }
-        }
-
         .input-with-icon {
             position: relative;
 

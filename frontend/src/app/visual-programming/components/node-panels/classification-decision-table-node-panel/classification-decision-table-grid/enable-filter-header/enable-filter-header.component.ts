@@ -151,13 +151,13 @@ export class EnableFilterHeaderComponent implements IHeaderAngularComp, OnDestro
     agInit(params: EnableFilterHeaderParams): void {
         this.params = params;
         this.mode = params.getMode();
-        this.label = this.mode === 'all' ? 'En/Dis' : 'Enable';
+        this.label = this.labelForMode(this.mode);
     }
 
     refresh(params: EnableFilterHeaderParams): boolean {
         this.params = params;
         this.mode = params.getMode();
-        this.label = this.mode === 'all' ? 'En/Dis' : 'Enable';
+        this.label = this.labelForMode(this.mode);
         this.cdr.markForCheck();
         return true;
     }
@@ -174,9 +174,20 @@ export class EnableFilterHeaderComponent implements IHeaderAngularComp, OnDestro
     public select(mode: EnableFilterMode): void {
         this.params.setMode(mode);
         this.mode = mode;
-        this.label = mode === 'all' ? 'En/Dis' : 'Enable';
+        this.label = this.labelForMode(mode);
         this.cdr.markForCheck();
         this.menuCtrl.close();
+    }
+
+    private labelForMode(mode: EnableFilterMode): string {
+        switch (mode) {
+            case 'all':
+                return 'En/Dis';
+            case 'disabled':
+                return 'Disable';
+            default:
+                return 'Enable';
+        }
     }
 
     ngOnDestroy(): void {

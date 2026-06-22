@@ -19,16 +19,15 @@ import {
 import { FormsModule } from '@angular/forms';
 import { ButtonComponent } from '@shared/components';
 import { forkJoin, Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
+import { takeUntil, tap } from 'rxjs/operators';
 
 import { McpToolDialogComponent } from '../../../../../features/tools/components/mcp-tool-dialog/mcp-tool-dialog.component';
 import { GetMcpToolRequest } from '../../../../../features/tools/models/mcp-tool.model';
 import { GetPythonCodeToolRequest } from '../../../../../features/tools/models/python-code-tool.model';
 import { GetToolConfigRequest } from '../../../../../features/tools/models/tool-config.model';
-import { CustomToolsService } from '../../../../../features/tools/services/custom-tools/custom-tools.service';
 import { FullToolConfig } from '../../../../../features/tools/services/full-tool-config.service';
 import { McpToolsService } from '../../../../../features/tools/services/mcp-tools/mcp-tools.service';
-import { CustomToolDialogComponent } from '../../../../../user-settings-page/tools/custom-tool-editor/custom-tool-dialog.component';
+import { CreateCustomToolDialogComponent } from '../../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
 import { PythonCodeToolService } from '../../../../../user-settings-page/tools/custom-tool-editor/services/pythonCodeToolService.service';
 import { McpToolItemComponent } from './mcp-tool-item/mcp-tool-item.component';
 import { PythonToolItemComponent } from './python-tool-item/python-tool-item.component';
@@ -92,7 +91,6 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
         private readonly _pythonCodeToolService: PythonCodeToolService,
         private readonly _cdr: ChangeDetectorRef,
         private readonly cdkDialog: Dialog,
-        private readonly customToolsService: CustomToolsService,
         private readonly mcpToolsService: McpToolsService,
         private readonly cdr: ChangeDetectorRef
     ) {}
@@ -376,19 +374,20 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
     }
 
     public openCustomToolDialog(): void {
-        // Load tools fresh for the dialog
-        this.customToolsService.getPythonCodeTools().subscribe((tools) => {
-            const dialogRef = this.cdkDialog.open(CustomToolDialogComponent, {
-                data: { pythonTools: tools },
-                disableClose: true,
-            });
-            dialogRef.closed.subscribe((result) => {
-                if (result) {
-                    console.log('New tool created:', result);
-                }
-                this.cdr.markForCheck();
-            });
-        });
+        const dialogRef = this.cdkDialog.open<GetPythonCodeToolRequest>(CreateCustomToolDialogComponent);
+
+        dialogRef.closed
+            .pipe(
+                tap((result) => {
+                    if (!result) {
+                        return;
+                    }
+                    this.pythonTools = this._sortPythonToolsBySelection([result, ...this.pythonTools]);
+                    this.cdr.markForCheck();
+                }),
+                takeUntil(this._destroyed$)
+            )
+            .subscribe();
     }
 
     public openMcpToolDialog(): void {
@@ -396,13 +395,18 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
             data: {},
         });
 
-        dialogRef.closed.subscribe((result) => {
-            if (result) {
-                console.log('New MCP tool created:', result);
-                // Reload the MCP tools list to include the newly created tool
-                this.loadToolsData();
-            }
-        });
+        dialogRef.closed
+            .pipe(
+                tap((result) => {
+                    if (result) {
+                        console.log('New MCP tool created:', result);
+                        // Reload the MCP tools list to include the newly created tool
+                        this.loadToolsData();
+                    }
+                }),
+                takeUntil(this._destroyed$)
+            )
+            .subscribe();
     }
 
     // This method is commented out as per the requirement

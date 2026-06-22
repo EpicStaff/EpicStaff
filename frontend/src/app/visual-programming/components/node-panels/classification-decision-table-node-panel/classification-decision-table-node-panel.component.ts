@@ -88,9 +88,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public activeTab = signal<TabType>('table');
 
-    private get tabStorageKey(): string {
-        return `cdt-panel-tab-${this.node().id}`;
-    }
     public conditionGroups = signal<ConditionGroup[]>([]);
     public prompts = signal<Record<string, PromptConfig>>({});
     public llmConfigs: FullLLMConfig[] = [];
@@ -326,10 +323,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.conditionGroups.set(groupsCopy);
         this.prompts.set({ ...(tableData.prompts || {}) });
 
-        // Restore persisted tab for this node, defaulting to 'table'
-        const persistedTab = localStorage.getItem(this.tabStorageKey) as TabType | null;
-        const validTabs: TabType[] = ['table', 'precomputation', 'postcomputation', 'prompts'];
-        this.activeTab.set(persistedTab && validTabs.includes(persistedTab) ? persistedTab : 'table');
+        this.activeTab.set('table');
 
         return form;
     }
@@ -399,7 +393,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public setActiveTab(tab: TabType): void {
         this.activeTab.set(tab);
-        localStorage.setItem(this.tabStorageKey, tab);
     }
 
     public onOpenPromptLibrary(event: { action: 'create' } | { action: 'edit'; promptId: string }): void {

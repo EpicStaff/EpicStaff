@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
 from typing import Any, Literal
 from langgraph.types import StreamWriter
-from src.crew.services.graph.events import StopEvent
-from src.crew.services.graph.custom_message_writer import CustomSessionMessageWriter
-from src.crew.models.state import State
+from services.graph.events import StopEvent
+from services.graph.custom_message_writer import CustomSessionMessageWriter
+from models.state import State
 
-from src.crew.utils import map_variables_to_input
-from src.crew.utils import set_output_variables
+from utils import map_variables_to_input
+from utils import set_output_variables
 
 
 class BaseNode(ABC):
@@ -153,10 +153,12 @@ class BaseNode(ABC):
         Raises:
             Exception: If there was an exception during the execution of the node.
         """
+        execution_order = 0
         try:
-            execution_order = self._calc_execution_order(
-                state=state, name=self.node_name
-            )
+            sysvars = state.get("system_variables") or {}
+            execution_order = sysvars.get("execution_order", 0)
+            sysvars["execution_order"] = execution_order + 1
+            state["system_variables"] = sysvars
             input_ = self.get_input(state=state)
             self.add_start_message(
                 writer=writer, input_=input_, execution_order=execution_order

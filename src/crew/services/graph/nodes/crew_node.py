@@ -4,15 +4,15 @@ from typing import Any
 from loguru import logger
 from langgraph.types import StreamWriter
 
-from src.crew.callbacks.session_callback_factory import CrewCallbackFactory
-from src.crew.services.crew.crew_parser_service import CrewParserService
-from src.crew.services.graph.events import StopEvent
-from src.crew.services.graph.nodes import BaseNode
-from src.crew.services.redis_service import RedisService
-from src.crew.services.knowledge_search_service import KnowledgeSearchService
+from callbacks.session_callback_factory import CrewCallbackFactory
+from services.crew.crew_parser_service import CrewParserService
+from services.graph.events import StopEvent
+from services.graph.nodes import BaseNode
+from services.redis_service import RedisService
+from services.knowledge_search_service import KnowledgeSearchService
 from src.shared.models import CrewData
 
-from src.crew.models.state import State
+from models.state import State
 
 
 class CrewNode(BaseNode):
