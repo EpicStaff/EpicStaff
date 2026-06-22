@@ -3,9 +3,10 @@ import io
 
 from minio import Minio, S3Error
 
-from communication.errors import StorageOperationError
-from communication.error_handler import handle_error
-from communication.storages.abstract import AbstractStorage
+from ..errors import StorageOperationError
+from ..error_handler import handle_error
+from .abstract import AbstractStorage
+
 
 
 class MinioStorage(AbstractStorage):

@@ -4,9 +4,9 @@ from typing import AsyncIterable, Any, Iterable
 from redis import Redis as SyncRedis, RedisError
 from redis.asyncio import Redis as AsyncRedis
 
-from communication.errors import BrokerOperationError
-from communication.error_handler import handle_error
-from communication.brokers.abstract import AbstractBroker
+from ..errors import BrokerOperationError
+from ..error_handler import handle_error
+from .abstract import AbstractBroker
 
 
 class RedisPubSubBroker(AbstractBroker):
