@@ -64,14 +64,6 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
     >();
 
     @Output() public cancel = new EventEmitter<void>();
-
-    /**
-     * Emitted when this popup opens (`true`) or closes (`false`) a child CDK
-     * dialog such as the "Create custom tool" / "Add MCP tool" modal. The host
-     * grid listens to this so it can suspend its own outside-click / Escape
-     * dismissal while the modal is open — and, crucially, while the very click
-     * or keypress that closes the modal is still propagating to the document.
-     */
     @Output() public childDialogOpenChange = new EventEmitter<boolean>();
 
     public menuItems: { type: 'custom' | 'mcp'; label: string }[] = [
@@ -405,8 +397,6 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
 
         dialogRef.closed.pipe(takeUntil(this._destroyed$)).subscribe((result) => {
             if (result) {
-                // Auto-select the newly created MCP tool and append it without a full
-                // reload, which would wipe unsaved selections via _preselectMergedTools().
                 this.selectedMcpTools.add(result.id);
                 this.mcpTools = this._sortMcpToolsBySelection([result, ...this.mcpTools]);
                 this._cdr.markForCheck();
@@ -415,13 +405,6 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
         });
     }
 
-    /**
-     * Re-enable the host grid's outside-click / Escape dismissal after a child
-     * dialog closes. Deferred to a macrotask so the click or Escape keypress
-     * that closed the dialog finishes propagating to the document first —
-     * otherwise the grid would treat that same event as an outside interaction
-     * and dismiss this popup along with the modal.
-     */
     private _notifyChildDialogClosed(): void {
         setTimeout(() => this.childDialogOpenChange.emit(false));
     }
