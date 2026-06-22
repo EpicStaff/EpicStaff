@@ -193,7 +193,6 @@ export class RealtimeClient extends RealtimeEventHandler {
    */
   constructor({ url, apiKey, dangerouslyAllowAPIKeyInBrowser, debug } = {}) {
     super();
-    console.log("RealtimeClient constructor", url);
 
     this.defaultSessionConfig = {
       modalities: ["text", "audio"],
