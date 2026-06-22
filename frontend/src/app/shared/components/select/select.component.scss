@@ -1,6 +1,7 @@
 :host {
     width: 100%;
     min-width: 0;
+    flex-shrink: 0;
     overflow: hidden;
 }
 
@@ -22,7 +23,7 @@
         gap: 0.5rem;
         justify-content: flex-start;
         position: relative;
-        border-radius: 0.5rem;
+        border-radius: 4px;
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
@@ -51,8 +52,8 @@
         &--small {
             height: 28px;
             font-weight: 200;
-            font-size: 0.625rem;
-            padding: 0.625rem 1.5rem 0.625rem 0.5rem;
+            font-size: 12px;
+            padding: 0.25rem 1.5rem 0.25rem 0.5rem;
         }
 
         &--invalid {
@@ -115,7 +116,7 @@
 
     &__dropdown {
         width: 100%;
-        border-radius: 10px;
+        border-radius: 4px;
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
@@ -162,8 +163,8 @@
 
         &--small {
             font-weight: 400;
-            font-size: 0.625rem;
-            padding: 0.625rem 0.5rem;
+            font-size: 12px;
+            padding: 0.25rem 0.5rem;
             border-bottom: 1px solid var(--color-divider-subtle);
 
             &:last-child {

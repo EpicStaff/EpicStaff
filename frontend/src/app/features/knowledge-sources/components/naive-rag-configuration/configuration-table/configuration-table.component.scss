@@ -17,7 +17,7 @@
     }
 
     &__rows {
-        overflow: hidden;
+        overflow: visible;
         margin: 0.5rem 0 0.5rem 2.5rem;
         width: 645px;
         border-radius: 10px;
@@ -25,10 +25,16 @@
     }
 
     &__row-wrapper {
+        position: relative;
         border-bottom: 1px solid var(--color-divider-subtle);
+
+        &:first-child {
+            border-radius: 10px 10px 0 0;
+        }
 
         &:last-child {
             border-bottom: none;
+            border-radius: 0 0 10px 10px;
         }
 
         &--dark {
@@ -40,14 +46,41 @@
         }
     }
 
+    &__status-icon {
+        position: absolute;
+        left: -1.5rem;
+        top: 1.125rem;
+
+        &--completed {
+            color: var(--color-ks-status-completed);
+        }
+
+        &--warning {
+            color: var(--color-ks-status-warning);
+        }
+
+        &--failed {
+            color: var(--color-ks-status-failed);
+        }
+    }
+
+    &__status-spinner {
+        width: 12px;
+        height: 12px;
+        border: 2px solid var(--color-ks-status-processing);
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
     &__row {
         display: grid;
         grid-template-columns: 1rem // checkbox
             1fr // file name
             145px // chunk strategy
-            110px // chunk size
-            110px // overlap
-            90px; // tune chunks
+            100px // chunk size
+            100px // overlap
+            60px; // tune chunks
         gap: 0.5rem;
         padding: 0.5rem 0.625rem;
         align-items: center;
@@ -62,6 +95,12 @@
         background-color: var(--color-ks-transparent-red);
         color: var(--color-ks-status-failed);
         padding: 0.25rem 0.5rem;
+
+        &--warning {
+            border-left-color: var(--color-ks-status-warning);
+            background-color: var(--color-ks-transparent-yellow);
+            color: var(--color-ks-status-warning);
+        }
     }
 
     &__header {
@@ -76,7 +115,7 @@
 
     &__bulk-row {
         font-size: 0.75rem;
-        padding: 0 2.5rem 0.5rem 3.125rem;
+        padding: 0 3.75rem 0.5rem 3.125rem;
         color: var(--color-ks-transparent-text-80);
     }
 
@@ -118,5 +157,11 @@
 
     &__col-btn {
         width: 100%;
+    }
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
     }
 }

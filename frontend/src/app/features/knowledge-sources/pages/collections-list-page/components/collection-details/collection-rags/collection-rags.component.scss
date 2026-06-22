@@ -1,39 +1,67 @@
+.empty {
+    display: flex;
+    flex-direction: column;
+    text-align: center;
+
+    .title {
+        font-size: 14px;
+        color: var(--color-text-primary);
+    }
+
+    .description {
+        font-size: 12px;
+        color: var(--color-text-secondary);
+    }
+}
+
 .rags {
     display: flex;
     flex-direction: column;
     row-gap: 0.5rem;
 
-    &__item {
+    .item {
         padding: 0.5rem;
         display: flex;
         align-items: center;
         column-gap: 0.5rem;
         border-radius: 0.5rem;
         border: 1px solid var(--color-divider-subtle);
+        cursor: pointer;
     }
 
-    &__name {
+    .name {
+        white-space: nowrap;
         font-size: 12px;
         color: var(--color-ks-text);
     }
 
-    &__model {
+    .model {
+        font-size: 12px;
+        color: var(--color-ks-transparent-text-80);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        overflow: hidden;
+    }
+
+    .status {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+        margin-left: auto;
         font-size: 12px;
         color: var(--color-ks-transparent-text-80);
     }
 
-    &__nav {
-        cursor: pointer;
-        margin-left: auto;
+    .nav {
         color: var(--color-ks-transparent-text-80);
-    }
 
-    &__nav--action {
-        border-radius: 50%;
-        cursor: pointer;
-        &:hover {
-            transition: 0.3s;
-            background-color: var(--color-ks-hover-row);
+        &.action {
+            border-radius: 50%;
+            cursor: pointer;
+            &:hover {
+                transition: 0.3s;
+                background-color: var(--color-ks-hover-row);
+            }
         }
     }
 }

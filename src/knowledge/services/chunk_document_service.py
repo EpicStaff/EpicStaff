@@ -257,10 +257,12 @@ class ChunkDocumentService(metaclass=SingletonMeta):
                     chunk_list=chunk_texts,
                 )
 
-                # Update status to CHUNKED
+                new_status = (
+                    "completed" if doc_config.is_snapshot_current() else "chunked"
+                )
                 uow_ctx.naive_rag_storage.update_document_config_status(
                     naive_rag_document_config_id=naive_rag_document_config_id,
-                    status="chunked",
+                    status=new_status,
                 )
 
                 chunk_count = len(chunks)

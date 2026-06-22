@@ -101,8 +101,8 @@ def test_json_file():
 @pytest.fixture
 def large_file():
     """Create a file that exceeds size limit."""
-    # Create a 13MB file (exceeds 12MB limit)
-    content = b"x" * (13 * 1024 * 1024)
+    # Create a 21MB file (exceeds 20MB limit)
+    content = b"x" * (21 * 1024 * 1024)
     return SimpleUploadedFile(
         name="large.pdf", content=content, content_type="application/pdf"
     )

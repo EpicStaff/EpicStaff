@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from django.db import models
 from django.db import transaction
 from django.core.files.uploadedfile import UploadedFile
@@ -16,6 +16,7 @@ from tables.exceptions import (
     CollectionNotFoundException,
     NoFilesProvidedException,
     DocumentNotFoundException,
+    DocumentsNotFoundException,
     InvalidCollectionIdException,
 )
 
@@ -242,8 +243,8 @@ class DocumentManagementService:
         # Get collection
         collection = DocumentManagementService.get_collection(collection_id)
 
-        # Update collection status to uploading
-        collection.status = SourceCollection.SourceCollectionStatus.UPLOADING
+        # Flip collection to NON_EMPTY (no-op if it already was).
+        collection.status = SourceCollection.SourceCollectionStatus.NON_EMPTY
         collection.save(update_fields=["status", "updated_at"])
 
         created_documents = []
@@ -420,3 +421,74 @@ class DocumentManagementService:
             logger.info(f"Filtering documents by collection {collection_id_int}")
 
         return queryset
+
+    @staticmethod
+    def get_documents_with_content(
+        document_ids: List[int],
+    ) -> List[DocumentMetadata]:
+        """
+        Fetch documents by ID with their binary content, preserving request order.
+
+        Raises:
+            DocumentsNotFoundException: If any requested document is missing.
+        """
+        documents_by_id = DocumentMetadata.objects.select_related(
+            "document_content"
+        ).in_bulk(document_ids)
+        missing_ids = [
+            doc_id for doc_id in document_ids if doc_id not in documents_by_id
+        ]
+        if missing_ids:
+            raise DocumentsNotFoundException(missing_ids)
+
+        return [documents_by_id[doc_id] for doc_id in document_ids]
+
+    @staticmethod
+    @transaction.atomic
+    def copy_documents_to_collection(
+        collection_id: int, document_ids: List[int]
+    ) -> Tuple[List[DocumentMetadata], List[DocumentMetadata]]:
+        """Copy documents into a collection without duplicating binary content
+        (new DocumentMetadata rows share the same DocumentContent). Documents
+        already present are skipped, as are duplicate ids and copies into the
+        source collection itself. Returns (copied, skipped).
+
+        Raises:
+            CollectionNotFoundException: target collection missing.
+            DocumentsNotFoundException: a source document missing.
+        """
+        collection = DocumentManagementService.get_collection(collection_id)
+        source_documents = DocumentManagementService.get_documents_with_content(
+            document_ids
+        )
+
+        existing_content_ids = set(
+            DocumentMetadata.objects.filter(source_collection=collection).values_list(
+                "document_content_id", flat=True
+            )
+        )
+
+        copied_documents: List[DocumentMetadata] = []
+        skipped_documents: List[DocumentMetadata] = []
+        for source_doc in source_documents:
+            if source_doc.document_content_id in existing_content_ids:
+                skipped_documents.append(source_doc)
+                continue
+
+            copied_documents.append(
+                DocumentManagementService.create_document_metadata(
+                    collection=collection,
+                    document_content=source_doc.document_content,
+                    file_name=source_doc.file_name,
+                    file_type=source_doc.file_type,
+                    file_size=source_doc.file_size,
+                )
+            )
+            existing_content_ids.add(source_doc.document_content_id)
+
+        logger.info(
+            f"Copied {len(copied_documents)} document(s) into collection "
+            f"{collection_id}, skipped {len(skipped_documents)} already present"
+        )
+
+        return copied_documents, skipped_documents

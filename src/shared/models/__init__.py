@@ -56,6 +56,19 @@ from .knowledge import (
     ChunkDocumentMessage,
     ChunkDocumentMessageResponse,
 )
+from .knowledge_status import (
+    DocumentStatus,
+    RagStatus,
+    DocumentErrorCode,
+    CHUNK_PARAM_FIELDS,
+    AGGREGATION_IN_PROGRESS,
+    RACE_GUARD_IN_PROGRESS,
+    ERROR_MESSAGE_MAX_LENGTH,
+    compute_rag_status,
+    summarize_rag_error,
+    is_snapshot_current,
+    format_error_message,
+)
 from .sessions import (
     SessionData,
     GraphSessionMessageData,
@@ -150,6 +163,18 @@ __all__ = [
     "ProcessRagIndexingMessage",
     "ChunkDocumentMessage",
     "ChunkDocumentMessageResponse",
+    # knowledge_status
+    "DocumentStatus",
+    "RagStatus",
+    "DocumentErrorCode",
+    "CHUNK_PARAM_FIELDS",
+    "AGGREGATION_IN_PROGRESS",
+    "RACE_GUARD_IN_PROGRESS",
+    "ERROR_MESSAGE_MAX_LENGTH",
+    "compute_rag_status",
+    "summarize_rag_error",
+    "is_snapshot_current",
+    "format_error_message",
     # sessions
     "SessionData",
     "GraphSessionMessageData",

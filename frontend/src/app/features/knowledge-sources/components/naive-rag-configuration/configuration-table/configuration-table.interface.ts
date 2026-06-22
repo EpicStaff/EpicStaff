@@ -1,5 +1,7 @@
 import { NaiveRagDocumentConfig, UpdateNaiveRagDocumentConfigError } from '../../../models/naive-rag-document.model';
 
+export type DocumentStatusFilter = 'all' | 'issues' | 'not_indexed' | 'indexed';
+
 export interface TableDocument extends NaiveRagDocumentConfig {
     checked: boolean;
     errors?: NormalizedDocumentErrors;

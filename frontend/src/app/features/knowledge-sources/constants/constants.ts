@@ -1,7 +1,7 @@
 import { SelectItem } from '@shared/components';
 
 import { RagName, RagTypeLevel } from '../enums/rag';
-import { Rag } from '../models/base-rag.model';
+import { Rag, RagStatus, RagType } from '../models/base-rag.model';
 
 export const FILE_TYPES = ['pdf', 'csv', 'md', 'docx', 'txt', 'json', 'html'];
 
@@ -11,7 +11,21 @@ export const CHUNK_STRATEGIES_SELECT_ITEMS: SelectItem[] = CHUNK_STRATEGIES.map(
     value: t.toLowerCase(),
 }));
 
-export const MAX_DOCUMENT_SIZE = 12 * 1024 * 1024; // 12 MB
+export const MAX_DOCUMENT_SIZE = 20 * 1024 * 1024; // 20 MB
+
+export const RAG_TYPE_CONFIG: Record<RagType, { name: string; icon: string }> = {
+    naive: { name: 'Naive RAG', icon: 'mouse' },
+    graph: { name: 'Graph RAG', icon: 'web' },
+    hybrid: { name: 'Hybrid RAG', icon: 'tab-group' },
+};
+
+export const RAG_STATUS_CONFIG: Record<RagStatus, { color: string; icon: string; text: string }> = {
+    new: { color: 'var(--color-ks-status-blue)', icon: 'processing', text: 'New' },
+    processing: { color: 'var(--color-ks-status-processing)', icon: 'processing', text: 'Processing' },
+    completed: { color: 'var(--color-ks-status-completed)', icon: 'check', text: 'Completed' },
+    warning: { color: 'var(--color-ks-status-warning)', icon: 'warning', text: 'Warning' },
+    failed: { color: 'var(--color-ks-status-failed)', icon: 'x', text: 'Failed' },
+};
 
 export const RAG_TYPES: Rag[] = [
     {

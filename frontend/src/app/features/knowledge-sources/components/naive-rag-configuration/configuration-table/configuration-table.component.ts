@@ -23,7 +23,7 @@ import {
 import { CHUNK_STRATEGIES_SELECT_ITEMS, FILE_TYPES } from '../../../constants/constants';
 import { NaiveRagDocumentConfig, UpdateNaiveRagDocumentDtoRequest } from '../../../models/naive-rag-document.model';
 import { NaiveRagDocumentsStorageService } from '../../../services/naive-rag-documents-storage.service';
-import { DocFieldChange, TableDocument } from './configuration-table.interface';
+import { DocFieldChange, DocumentStatusFilter, TableDocument } from './configuration-table.interface';
 
 @Component({
     selector: 'app-configuration-table',
@@ -48,6 +48,7 @@ export class ConfigurationTableComponent {
 
     searchTerm = input<string>('');
     showBulkRow = input<boolean>(false);
+    statusFilter = input<DocumentStatusFilter>('all');
     ragId = input.required<number>();
     documents = this.documentsStorageService.documents;
     selectedRagDocId = model<number | null>(null);
@@ -80,6 +81,7 @@ export class ConfigurationTableComponent {
         data = this.applyFileNameFilter(data);
         data = this.applyFileTypeFilter(data);
         data = this.applyChunkStrategyFilter(data);
+        data = this.applyStatusFilter(data);
 
         return data;
     });
@@ -179,6 +181,19 @@ export class ConfigurationTableComponent {
         if (!strategyFilter.length) return data;
 
         return data.filter((d) => strategyFilter.includes(d.chunk_strategy));
+    }
+
+    private applyStatusFilter(data: TableDocument[]): TableDocument[] {
+        switch (this.statusFilter()) {
+            case 'issues':
+                return data.filter((d) => d.status === 'failed' || d.status === 'warning');
+            case 'not_indexed':
+                return data.filter((d) => d.status !== 'completed' && d.status !== 'failed' && d.status !== 'warning');
+            case 'indexed':
+                return data.filter((d) => d.status === 'completed');
+            default:
+                return data;
+        }
     }
 
     // ================= FILTER LOGIC END =================

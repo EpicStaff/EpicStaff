@@ -118,11 +118,14 @@ class ProcessRagIndexingMessage(BaseModel):
     - rag_id: ID of the specific RAG implementation (naive_rag_id for NaiveRag, etc.)
     - rag_type: Type of RAG ("naive", "graph", etc.)
     - collection_id: Source collection ID (for logging)
+    - document_config_ids: Optional list of document config IDs to (re)index.
+      If None/empty — index the whole RAG. Only honored for rag_type='naive'.
     """
 
     rag_id: int
     rag_type: Literal["naive", "graph"]
     collection_id: int
+    document_config_ids: list[int] | None = None
 
 
 class ChunkDocumentMessage(BaseModel):

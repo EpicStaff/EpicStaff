@@ -126,6 +126,7 @@ services:
       - DOMAIN_NAME=localhost
       - SSL_ENABLE=#
       - FRONTEND_INTERNAL_PORT=4200
+      - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE:-100M}
 
 volumes:
   frontend_node_modules:

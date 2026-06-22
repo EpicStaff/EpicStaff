@@ -124,14 +124,14 @@ class SourceCollection(Base):
 
 class DocumentContent(Base):
     """
-    Binary storage for file contents (max 12MB).
+    Binary storage for file contents (max 20MB).
     Separated from metadata for efficient querying.
     """
 
     __tablename__ = "tables_documentcontent"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    content = Column(LargeBinary, comment="Binary file content (max 12MB)")
+    content = Column(LargeBinary, comment="Binary file content (max 20MB)")
 
     # Relationships
     metadata_records = relationship(

@@ -1,5 +1,6 @@
 import os
 import asyncio
+import functools
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -45,6 +46,7 @@ async def execute_indexing(
     rag_type: str,
     executor: ThreadPoolExecutor,
     semaphore: asyncio.Semaphore,
+    document_config_ids: list[int] | None = None,
 ):
     """
     Execute a single RAG indexing job (chunking + embedding).
@@ -54,17 +56,24 @@ async def execute_indexing(
         rag_type: Type of RAG (e.g., "naive")
         executor: ThreadPoolExecutor for CPU-bound work
         semaphore: Semaphore for rate limiting
+        document_config_ids: Optional subset of document config IDs (naive only).
     """
     async with semaphore:
         try:
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 executor,
-                collection_processor_service.process_rag_indexing,
-                rag_id,
-                rag_type,
+                functools.partial(
+                    collection_processor_service.process_rag_indexing,
+                    rag_id=rag_id,
+                    rag_type=rag_type,
+                    document_config_ids=document_config_ids,
+                ),
             )
-            logger.info(f"RAG indexing completed: rag_type={rag_type}, rag_id={rag_id}")
+            logger.info(
+                f"RAG indexing completed: rag_type={rag_type}, rag_id={rag_id}, "
+                f"document_config_ids={document_config_ids or 'all'}"
+            )
         except Exception as e:
             logger.error(f"Error processing indexing: {e}")
 
@@ -99,6 +108,7 @@ async def indexing(
                         rag_type=indexing_message.rag_type,
                         executor=executor,
                         semaphore=semaphore,
+                        document_config_ids=indexing_message.document_config_ids,
                     )
                 )
                 background_tasks.add(task)

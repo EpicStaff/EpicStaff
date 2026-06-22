@@ -113,7 +113,11 @@ class RedisService(metaclass=SingletonMeta):
         logger.info(f"Sent collection_id: {collection_id} to {channel}.")
 
     def publish_rag_indexing(
-        self, rag_id: int, rag_type: str, collection_id: int
+        self,
+        rag_id: int,
+        rag_type: str,
+        collection_id: int,
+        document_config_ids: list[int] | None = None,
     ) -> None:
         """
         Publish RAG indexing message to knowledge service.
@@ -122,16 +126,22 @@ class RedisService(metaclass=SingletonMeta):
             rag_id: ID of the specific RAG implementation (e.g., NaiveRag.naive_rag_id)
             rag_type: Type of RAG ("naive" or "graph")
             collection_id: Source collection ID
+            document_config_ids: Optional subset of NaiveRagDocumentConfig IDs to reindex.
+                If None/empty, the whole RAG is indexed. Only honored for naive RAG.
         """
         message = ProcessRagIndexingMessage(
-            rag_id=rag_id, rag_type=rag_type, collection_id=collection_id
+            rag_id=rag_id,
+            rag_type=rag_type,
+            collection_id=collection_id,
+            document_config_ids=document_config_ids or None,
         )
         self.redis_client.publish(
             channel=KNOWLEDGE_INDEXING_CHANNEL, message=message.model_dump_json()
         )
         logger.info(
             f"Sent RAG indexing request to {KNOWLEDGE_INDEXING_CHANNEL}: "
-            f"rag_type={rag_type}, rag_id={rag_id}, collection_id={collection_id}"
+            f"rag_type={rag_type}, rag_id={rag_id}, collection_id={collection_id}, "
+            f"document_config_ids={document_config_ids or 'all'}"
         )
 
     def publish_realtime_agent_chat(

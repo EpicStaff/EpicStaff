@@ -1,5 +1,6 @@
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List
 from django.db import transaction, models
+from django.db.models import Prefetch
 from loguru import logger
 
 from tables.models import SourceCollection, DocumentMetadata, DocumentContent
@@ -268,7 +269,7 @@ class CollectionManagementService:
         ).select_related("document_content")
 
         if source_documents:
-            new_collection.status = SourceCollection.SourceCollectionStatus.UPLOADING
+            new_collection.status = SourceCollection.SourceCollectionStatus.NON_EMPTY
             new_collection.save(update_fields=["status", "updated_at"])
 
         if not source_documents.exists():
@@ -295,100 +296,67 @@ class CollectionManagementService:
         return new_collection
 
     @staticmethod
-    def get_rag_configurations(collection_id: int) -> List[Dict[str, Any]]:
-        """
-        Get all RAG configurations for a collection.
-
-        This method aggregates all RAG implementations (NaiveRag, GraphRag, etc.)
-        for a given collection, returning summary data for each.
-
-        Args:
-            collection_id: ID of the source collection
-
-        Returns:
-            List[Dict]: List of RAG configuration summaries, each containing:
-                - rag_id: ID of the specific RAG implementation
-                - rag_type: Type of RAG ("naive", "graph", etc.)
-                - status
-                - is_ready_for_indexing
-                - embedder_name
-                - embedder_id
-                - document_configs_count
-                - chunks_count
-                - embeddings_count
-                - created_at
-                - updated_at
-        """
-        # Validate collection exists
-        try:
-            SourceCollection.objects.get(collection_id=collection_id)
-        except SourceCollection.DoesNotExist:
-            raise CollectionNotFoundException(collection_id)
-
-        rag_configurations = []
-
-        # Get all BaseRagType entries for this collection
-        base_rag_types = BaseRagType.objects.filter(
-            source_collection_id=collection_id
-        ).select_related("source_collection")
-
-        for base_rag_type in base_rag_types:
-            if base_rag_type.rag_type == BaseRagType.RagType.NAIVE:
-                # Get NaiveRag configuration
-                naive_rag_config = CollectionManagementService._get_naive_rag_summary(
-                    base_rag_type
-                )
-                if naive_rag_config:
-                    rag_configurations.append(naive_rag_config)
-
-            elif base_rag_type.rag_type == BaseRagType.RagType.GRAPH:
-                # Get GraphRag configuration
-                graph_rag_config = CollectionManagementService._get_graph_rag_summary(
-                    base_rag_type
-                )
-                if graph_rag_config:
-                    rag_configurations.append(graph_rag_config)
-
-        return rag_configurations
+    def rag_configurations_prefetch():
+        """Prefetch chain for get_rag_configurations_for_collection; spread into
+        queryset.prefetch_related(*...())."""
+        naive_rag_qs = NaiveRag.objects.select_related("embedder").prefetch_related(
+            "naive_rag_configs__chunks",
+            "naive_rag_configs__embeddings",
+        )
+        graph_rag_qs = GraphRag.objects.select_related(
+            "embedder", "llm"
+        ).prefetch_related("graph_rag_documents")
+        return (
+            "rag_types",
+            Prefetch("rag_types__naive_rags", queryset=naive_rag_qs),
+            Prefetch("rag_types__graph_rags", queryset=graph_rag_qs),
+        )
 
     @staticmethod
-    def _get_naive_rag_summary(base_rag_type: BaseRagType) -> Optional[Dict[str, Any]]:
+    def get_rag_configurations_for_collection(
+        collection: SourceCollection,
+    ) -> List[Dict[str, Any]]:
+        """
+        Build RAG configuration summaries from an already-loaded SourceCollection.
+        Caller must prefetch via `rag_configurations_prefetch()`.
+        """
+        configurations: List[Dict[str, Any]] = []
+        for base_rag_type in collection.rag_types.all():
+            if base_rag_type.rag_type == BaseRagType.RagType.NAIVE:
+                for naive_rag in base_rag_type.naive_rags.all():
+                    configurations.append(
+                        CollectionManagementService._get_naive_rag_summary(naive_rag)
+                    )
+            elif base_rag_type.rag_type == BaseRagType.RagType.GRAPH:
+                for graph_rag in base_rag_type.graph_rags.all():
+                    configurations.append(
+                        CollectionManagementService._get_graph_rag_summary(graph_rag)
+                    )
+        return configurations
+
+    @staticmethod
+    def _get_naive_rag_summary(naive_rag: NaiveRag) -> Dict[str, Any]:
         """
         Get summary data for a NaiveRag configuration.
 
         Args:
-            base_rag_type: BaseRagType instance
+            naive_rag: NaiveRag instance — must be pre-fetched by the caller via
+                ``rag_configurations_prefetch()`` (naive_rag_configs, chunks,
+                embeddings). Without prefetch every .all() call causes N+1 queries.
 
         Returns:
-            Dict with NaiveRag summary or None if not found
+            Dict with NaiveRag summary: rag_id, rag_type, status,
+            is_ready_for_indexing, embedder_name, embedder_id,
+            document_configs_count, chunks_count, embeddings_count,
+            created_at, updated_at.
         """
-        try:
-            naive_rag = (
-                NaiveRag.objects.select_related("embedder")
-                .prefetch_related(
-                    "naive_rag_configs",
-                    "naive_rag_configs__chunks",
-                    "naive_rag_configs__embeddings",
-                )
-                .get(base_rag_type=base_rag_type)
-            )
-        except NaiveRag.DoesNotExist:
-            return None
-
-        # Count document configs, chunks, and embeddings
-        document_configs_count = naive_rag.naive_rag_configs.count()
-        chunks_count = sum(
-            config.chunks.count() for config in naive_rag.naive_rag_configs.all()
-        )
-        embeddings_count = sum(
-            config.embeddings.count() for config in naive_rag.naive_rag_configs.all()
-        )
-
-        # Determine if ready for indexing
+        document_configs = list(naive_rag.naive_rag_configs.all())
+        document_configs_count = len(document_configs)
+        chunks_count = sum(len(c.chunks.all()) for c in document_configs)
+        embeddings_count = sum(len(c.embeddings.all()) for c in document_configs)
         is_ready_for_indexing = (
             naive_rag.embedder is not None and document_configs_count > 0
         )
-
         return {
             "rag_id": naive_rag.naive_rag_id,
             "rag_type": "naive",
@@ -406,39 +374,26 @@ class CollectionManagementService:
         }
 
     @staticmethod
-    def _get_graph_rag_summary(base_rag_type: BaseRagType) -> Optional[Dict[str, Any]]:
+    def _get_graph_rag_summary(graph_rag: GraphRag) -> Dict[str, Any]:
         """
         Get summary data for a GraphRag configuration.
 
         Args:
-            base_rag_type: BaseRagType instance
+            graph_rag: GraphRag instance — must be pre-fetched by the caller via
+                ``rag_configurations_prefetch()`` (graph_rag_documents).
+                Without prefetch .all() causes N+1 queries.
 
         Returns:
-            Dict with GraphRag summary or None if not found
+            Dict with GraphRag summary: rag_id, rag_type, status,
+            is_ready_for_indexing, embedder_name, embedder_id, llm_name,
+            llm_id, documents_count, indexed_at, created_at, updated_at.
         """
-        try:
-            graph_rag = (
-                GraphRag.objects.select_related(
-                    "embedder",
-                    "llm",
-                    "index_config",
-                )
-                .prefetch_related("graph_rag_documents")
-                .get(base_rag_type=base_rag_type)
-            )
-        except GraphRag.DoesNotExist:
-            return None
-
-        # Count documents linked to GraphRag
-        documents_count = graph_rag.graph_rag_documents.count()
-
-        # Determine if ready for indexing
+        documents_count = len(graph_rag.graph_rag_documents.all())
         is_ready_for_indexing = (
             graph_rag.embedder is not None
             and graph_rag.llm is not None
             and documents_count > 0
         )
-
         return {
             "rag_id": graph_rag.graph_rag_id,
             "rag_type": "graph",
@@ -455,3 +410,20 @@ class CollectionManagementService:
             "created_at": graph_rag.created_at,
             "updated_at": graph_rag.updated_at,
         }
+
+    @staticmethod
+    def get_rag_configurations(collection_id: int) -> List[Dict[str, Any]]:
+        """
+        Get all RAG configurations for a collection by id.
+        For list/retrieve views that already have a prefetched instance,
+        prefer `get_rag_configurations_for_collection(collection)`.
+        """
+        try:
+            collection = SourceCollection.objects.prefetch_related(
+                *CollectionManagementService.rag_configurations_prefetch()
+            ).get(collection_id=collection_id)
+        except SourceCollection.DoesNotExist:
+            raise CollectionNotFoundException(collection_id)
+        return CollectionManagementService.get_rag_configurations_for_collection(
+            collection
+        )

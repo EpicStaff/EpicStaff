@@ -48,6 +48,14 @@ def generate_file_name(
     return f"{prefix}_{safe_name}_{timestamp}.json"
 
 
+def parse_int_csv(raw: str | None) -> list[int] | None:
+    """Parse a comma-separated ``?ids=1,2,3`` query param into a list of ints.
+    Returns None if the param is missing/blank. Raises ValueError on garbage."""
+    if not raw:
+        return None
+    return [int(x) for x in raw.split(",") if x.strip()]
+
+
 def generate_new_unique_name(base_name: str, existing_names: list[str]):
     """
     Creates new unique name from base_name.

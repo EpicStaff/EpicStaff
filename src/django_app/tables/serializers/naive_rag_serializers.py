@@ -63,6 +63,8 @@ class DocumentConfigSerializer(serializers.ModelSerializer):
         source="document.document_id", read_only=True
     )
     file_name = serializers.CharField(source="document.file_name", read_only=True)
+    total_chunks = serializers.SerializerMethodField()
+    total_embeddings = serializers.SerializerMethodField()
 
     class Meta:
         model = NaiveRagDocumentConfig
@@ -75,12 +77,23 @@ class DocumentConfigSerializer(serializers.ModelSerializer):
             "chunk_overlap",
             "additional_params",
             "status",
+            "error_message",
+            "error_code",
+            "failed_at",
             "total_chunks",
             "total_embeddings",
             "created_at",
             "processed_at",
         ]
         read_only_fields = fields
+
+    def get_total_chunks(self, obj):
+        count = getattr(obj, "chunks_count", None)
+        return count if count is not None else obj.total_chunks
+
+    def get_total_embeddings(self, obj):
+        count = getattr(obj, "embeddings_count", None)
+        return count if count is not None else obj.total_embeddings
 
 
 class DocumentConfigWithErrorsSerializer(serializers.ModelSerializer):
@@ -106,6 +119,9 @@ class DocumentConfigWithErrorsSerializer(serializers.ModelSerializer):
             "chunk_overlap",
             "additional_params",
             "status",
+            "error_message",
+            "error_code",
+            "failed_at",
             "total_chunks",
             "total_embeddings",
             "created_at",
@@ -121,6 +137,9 @@ class DocumentConfigWithErrorsSerializer(serializers.ModelSerializer):
             "chunk_overlap",
             "additional_params",
             "status",
+            "error_message",
+            "error_code",
+            "failed_at",
             "total_chunks",
             "total_embeddings",
             "created_at",
@@ -240,14 +259,9 @@ class DocumentConfigBulkUpdateSerializer(serializers.Serializer):
         help_text="New additional parameters (applied to all selected configs)",
     )
 
-    def validate_config_ids(self, value):
-        """Validate config_ids list is not empty."""
-        if not value:
-            raise serializers.ValidationError("config_ids list cannot be empty")
-        return value
-
     def validate(self, attrs):
-        """Ensure at least one update field is provided besides config_ids."""
+        """Ensure at least one update field is provided besides config_ids.
+        (Empty config_ids is rejected by the field's allow_empty=False.)"""
         update_fields = {
             "chunk_size",
             "chunk_overlap",
@@ -276,11 +290,7 @@ class DocumentConfigBulkDeleteSerializer(serializers.Serializer):
     )
 
     def validate_config_ids(self, value):
-        """Validate config_ids list is not empty."""
-        if not value:
-            raise serializers.ValidationError("config_ids list cannot be empty")
-        # Remove duplicates
-        return list(set(value))
+        return list(dict.fromkeys(value))
 
 
 class NaiveRagChunkSerializer(serializers.ModelSerializer):

@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import List, Optional, Union
 from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy import delete, select
@@ -12,7 +13,11 @@ from models.orm import (
     NaiveRagEmbedding,
     DocumentMetadata,
 )
-from src.shared.models import KnowledgeChunkResponse
+from src.shared.models import (
+    DocumentErrorCode,
+    KnowledgeChunkResponse,
+    format_error_message,
+)
 from chunkers.base_chunker import BaseChunkData
 
 
@@ -72,6 +77,37 @@ class ORMNaiveRagStorage(BaseORMStorage):
 
         except Exception as e:
             logger.error(f"Failed to update NaiveRag {naive_rag_id} status: {e}")
+            return False
+
+    def set_error_message(
+        self, naive_rag_id: int, error_message: Optional[str]
+    ) -> bool:
+        """Set (or clear, with None) the RAG-level error_message. Mirrors GraphRag."""
+        try:
+            naive_rag = self.session.get(NaiveRag, naive_rag_id)
+            if not naive_rag:
+                logger.warning(f"NaiveRag {naive_rag_id} not found")
+                return False
+            naive_rag.error_message = error_message
+            return True
+        except Exception as e:
+            logger.error(
+                f"Failed to set error_message for NaiveRag {naive_rag_id}: {e}"
+            )
+            return False
+
+    def set_indexed_at(self, naive_rag_id: int) -> bool:
+        """Set indexed_at=now() for a NaiveRag. Called when indexing completes
+        (mirrors GraphRag). Aware UTC to match Django (USE_TZ=True)."""
+        try:
+            naive_rag = self.session.get(NaiveRag, naive_rag_id)
+            if not naive_rag:
+                logger.warning(f"NaiveRag {naive_rag_id} not found")
+                return False
+            naive_rag.indexed_at = datetime.now(timezone.utc)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to set indexed_at for NaiveRag {naive_rag_id}: {e}")
             return False
 
     # ==================== Document Config Operations ====================
@@ -179,6 +215,113 @@ class ORMNaiveRagStorage(BaseORMStorage):
             )
             return False
 
+    def clear_document_config_error(self, naive_rag_document_config_id: int) -> bool:
+        """
+        Clear the error triplet (error_message/error_code/failed_at) on a config.
+        Called at the start of a new attempt so the UI never shows a stale error
+        next to an active CHUNKING/INDEXING status.
+        """
+        try:
+            doc_config = self.session.get(
+                NaiveRagDocumentConfig, naive_rag_document_config_id
+            )
+            if not doc_config:
+                return False
+            doc_config.error_message = None
+            doc_config.error_code = DocumentErrorCode.NONE.value
+            doc_config.failed_at = None
+            return True
+        except Exception as e:
+            logger.error(
+                f"Failed to clear error for document config "
+                f"{naive_rag_document_config_id}: {e}"
+            )
+            return False
+
+    def mark_document_config_completed(self, naive_rag_document_config_id: int) -> bool:
+        """Set status=completed and snapshot the live chunk params into the
+        indexed_* columns. Called at the single point where chunks+embeddings
+        have just landed atomically — keeps the snapshot in sync with disk."""
+        try:
+            doc_config = self.session.get(
+                NaiveRagDocumentConfig, naive_rag_document_config_id
+            )
+            if not doc_config:
+                logger.warning(
+                    f"NaiveRagDocumentConfig {naive_rag_document_config_id} not found"
+                )
+                return False
+            doc_config.status = "completed"
+            doc_config.indexed_chunk_strategy = doc_config.chunk_strategy
+            doc_config.indexed_chunk_size = doc_config.chunk_size
+            doc_config.indexed_chunk_overlap = doc_config.chunk_overlap
+            doc_config.indexed_additional_params = doc_config.additional_params
+            doc_config.processed_at = datetime.now(timezone.utc)
+            return True
+        except Exception as e:
+            logger.error(
+                f"Failed to mark document config "
+                f"{naive_rag_document_config_id} as completed: {e}"
+            )
+            return False
+
+    def clear_indexed_snapshot(self, naive_rag_document_config_id: int) -> bool:
+        """Null the indexed_* snapshot. Called when stored embeddings are wiped
+        so is_snapshot_current() stays False until the next successful
+        completion — otherwise a doc whose live params later re-match the stale
+        snapshot would be treated as indexed despite having no embeddings."""
+        try:
+            doc_config = self.session.get(
+                NaiveRagDocumentConfig, naive_rag_document_config_id
+            )
+            if not doc_config:
+                logger.warning(
+                    f"NaiveRagDocumentConfig {naive_rag_document_config_id} not found"
+                )
+                return False
+            doc_config.indexed_chunk_strategy = None
+            doc_config.indexed_chunk_size = None
+            doc_config.indexed_chunk_overlap = None
+            doc_config.indexed_additional_params = None
+            return True
+        except Exception as e:
+            logger.error(
+                f"Failed to clear indexed snapshot for document config "
+                f"{naive_rag_document_config_id}: {e}"
+            )
+            return False
+
+    def mark_document_config_failed(
+        self,
+        naive_rag_document_config_id: int,
+        error_code: str,
+        error_message: str,
+    ) -> bool:
+        """
+        Mark a document config as FAILED with a categorized error.
+        Sets status, error_code, error_message, failed_at in one shot.
+        """
+        try:
+            doc_config = self.session.get(
+                NaiveRagDocumentConfig, naive_rag_document_config_id
+            )
+            if not doc_config:
+                logger.warning(
+                    f"NaiveRagDocumentConfig {naive_rag_document_config_id} not found"
+                )
+                return False
+            doc_config.status = "failed"
+            doc_config.error_code = error_code
+            doc_config.error_message = error_message
+            doc_config.failed_at = datetime.now(timezone.utc)
+            return True
+        except Exception as e:
+            logger.error(
+                f"Failed to mark document config "
+                f"{naive_rag_document_config_id} as failed: {e}"
+            )
+            return False
+
     # ==================== Chunk Operations ====================
 
     def save_document_chunks(
@@ -212,7 +355,8 @@ class ORMNaiveRagStorage(BaseORMStorage):
 
         except Exception as e:
             logger.error(
-                f"Failed to save chunks for document config {naive_rag_document_config_id}: {e}"
+                f"Failed to save chunks for document config "
+                f"{naive_rag_document_config_id}: {format_error_message(e)}"
             )
             raise
 
@@ -340,7 +484,8 @@ class ORMNaiveRagStorage(BaseORMStorage):
 
         except Exception as e:
             logger.error(
-                f"Failed to save preview chunks for config {naive_rag_document_config_id}: {e}"
+                f"Failed to save preview chunks for config "
+                f"{naive_rag_document_config_id}: {format_error_message(e)}"
             )
             raise
 
@@ -372,7 +517,10 @@ class ORMNaiveRagStorage(BaseORMStorage):
             self.session.add(embedding_obj)
 
         except Exception as e:
-            logger.error(f"Failed to save embedding for chunk {chunk_id}: {e}")
+            logger.error(
+                f"Failed to save embedding for chunk {chunk_id}: "
+                f"{format_error_message(e)}"
+            )
             raise
 
     def delete_embeddings(self, naive_rag_document_config_id: int) -> None:

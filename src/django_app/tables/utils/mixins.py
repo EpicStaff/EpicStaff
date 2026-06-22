@@ -20,7 +20,7 @@ from tables.services.redis_service import RedisService
 from tables.services.rbac.sse_ticket_service import SseTicketService
 
 ALLOWED_FILE_TYPES = {choice[0] for choice in DocumentMetadata.DocumentFileType.choices}
-MAX_FILE_SIZE = 12 * 1024 * 1024  # 12MB
+MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 
 
 redis_service = RedisService()

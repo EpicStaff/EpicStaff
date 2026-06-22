@@ -1,14 +1,33 @@
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiExample, OpenApiResponse
+from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse
 from tables.serializers.naive_rag_serializers import (
     ChunkPreviewResponseSerializer,
     ChunkingResponseSerializer,
 )
+from tables.serializers.serializers import ProcessRagIndexingSerializer
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
 NAIVE_RAG_DOCUMENT_CONFIGS_GET = dict(
-    summary="List all document configs for a NaiveRag.",
-    description="List all document configs for a NaiveRag.\n\nURL: GET /api/naive-rag/{naive_rag_id}/document-configs/",
+    summary="List document statuses inside a NaiveRag",
+    description=(
+        "List document configs attached to this NaiveRag with their current "
+        "indexing status, chunk parameters and the latest error (if any).\n\n"
+        "Pass `?ids=10,11,42` to fetch a subset — useful when polling only the "
+        "documents you just submitted to `/api/process-rag-indexing/`. IDs that "
+        "don't belong to this NaiveRag are silently dropped.\n\n"
+        "URL: GET /api/naive-rag/{naive_rag_id}/document-configs/[?ids=10,11,42]"
+    ),
+    parameters=[
+        OpenApiParameter(
+            name="ids",
+            location=OpenApiParameter.QUERY,
+            description=(
+                "Comma-separated naive_rag_document_id whitelist. Omit for all."
+            ),
+            required=False,
+            type=str,
+        ),
+    ],
     responses={
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -956,13 +975,44 @@ NAIVE_RAG_COLLECTIONS_GET = dict(
 )
 
 PROCESS_RAG_INDEXING_POST = dict(
-    summary="Trigger RAG indexing (chunking + embedding)",
+    summary="Trigger (re)indexing of a RAG, optionally for a subset of documents",
     description=(
-        "Trigger RAG indexing (chunking + embedding).\n"
-        "All business logic is handled by IndexingService.\n\n"
+        "Start indexing for a NaiveRag or GraphRag.\n\n"
+        "Body: `rag_id` (int), `rag_type` ('naive' | 'graph'), and for naive an "
+        "optional `document_config_ids` (int[]). Without `document_config_ids` "
+        "the whole RAG is considered; with it — only the listed docs (ignored "
+        "for graph).\n\n"
+        "Per-document decision (naive): if live chunk params match the "
+        "`indexed_*` snapshot the doc is short-circuited to COMPLETED and "
+        "returned in `skipped_completed_config_ids`. Docs currently being "
+        "processed go into `skipped_in_progress_config_ids`. The rest go to "
+        "`accepted_config_ids` and are queued.\n\n"
+        "200 — nothing to dispatch (everything up-to-date or in progress).\n"
+        "202 — work queued.\n\n"
         "URL: POST /process-rag-indexing/"
     ),
+    request=ProcessRagIndexingSerializer,
     responses={
+        200: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Nothing to index — all targeted documents are up-to-date or in progress.",
+            examples=[
+                OpenApiExample(
+                    name="Nothing to index",
+                    value={
+                        "detail": "Nothing to index",
+                        "rag_id": 1,
+                        "rag_type": "naive",
+                        "collection_id": 7,
+                        "accepted_config_ids": [],
+                        "skipped_completed_config_ids": [10, 11],
+                        "skipped_in_progress_config_ids": [],
+                    },
+                    response_only=True,
+                    status_codes=["200"],
+                )
+            ],
+        ),
         202: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Indexing process accepted and queued.",
@@ -974,6 +1024,9 @@ PROCESS_RAG_INDEXING_POST = dict(
                         "rag_id": 1,
                         "rag_type": "naive",
                         "collection_id": 7,
+                        "accepted_config_ids": [12, 13],
+                        "skipped_completed_config_ids": [10, 11],
+                        "skipped_in_progress_config_ids": [],
                     },
                     response_only=True,
                     status_codes=["202"],

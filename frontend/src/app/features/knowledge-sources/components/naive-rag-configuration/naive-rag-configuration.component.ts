@@ -1,12 +1,31 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, OnInit, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    effect,
+    inject,
+    input,
+    OnInit,
+    signal,
+    WritableSignal,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { AppSvgIconComponent, ButtonComponent, ConfirmationDialogService, SearchComponent } from '@shared/components';
+import {
+    AppSvgIconComponent,
+    ButtonComponent,
+    ConfirmationDialogService,
+    SearchComponent,
+    SelectComponent,
+    SelectItem,
+} from '@shared/components';
 import { EMPTY, groupBy, mergeMap, of, Subject } from 'rxjs';
 import { catchError, debounceTime, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
+import { IndexingDocumentInfo } from '../../helpers/get-indexing-confirmation-data.util';
 import { UpdateNaiveRagDocumentDtoRequest } from '../../models/naive-rag-document.model';
 import { RagConfiguration } from '../../models/rag-configuration';
 import { ChunkDeepLinkService } from '../../services/chunk-deep-link.service';
@@ -15,7 +34,7 @@ import { NaiveRagDocumentsStorageService } from '../../services/naive-rag-docume
 import { DocumentChunksSectionComponent } from '../document-chunks-section/document-chunks-section.component';
 import { EditFileParametersDialogComponent } from '../edit-file-parameters-dialog/edit-file-parameters-dialog.component';
 import { ConfigurationTableComponent } from './configuration-table/configuration-table.component';
-import { DocFieldChange } from './configuration-table/configuration-table.interface';
+import { DocFieldChange, DocumentStatusFilter } from './configuration-table/configuration-table.interface';
 
 @Component({
     selector: 'app-naive-rag-configuration',
@@ -28,6 +47,7 @@ import { DocFieldChange } from './configuration-table/configuration-table.interf
         ButtonComponent,
         DocumentChunksSectionComponent,
         AppSvgIconComponent,
+        SelectComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -42,8 +62,17 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
 
     naiveRagId = input.required<number>();
     collectionId = input.required<number>();
+    canIndexChange = input<WritableSignal<boolean>>();
+
+    statusFilterItems: SelectItem<DocumentStatusFilter>[] = [
+        { name: 'Show All', value: 'all' },
+        { name: 'Issues', value: 'issues' },
+        { name: 'Not indexed', value: 'not_indexed' },
+        { name: 'Indexed', value: 'indexed' },
+    ];
 
     searchTerm = signal<string>('');
+    statusFilter = signal<DocumentStatusFilter>('all');
     bulkBtnActive = signal<boolean>(false);
     selectedRagDocId = signal<number | null>(null);
     filteredAndCheckedDocIds = signal<number[]>([]);
@@ -52,6 +81,12 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
     showBulkRow = computed(() => this.bulkBtnActive() && !!this.filteredAndCheckedDocIds().length);
 
     private docFieldChange$ = new Subject<DocFieldChange>();
+
+    constructor() {
+        effect(() => {
+            this.canIndexChange()?.set(this.filteredAndCheckedDocIds().length > 0);
+        });
+    }
 
     ngOnInit() {
         const id = this.naiveRagId();
@@ -188,6 +223,40 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
 
     getConfigurationData(): unknown {
         return true;
+    }
+
+    getDocumentConfigIds(): number[] {
+        const { configIds } = this.getDocumentsForIndexing();
+        return configIds;
+    }
+
+    getIndexingDocuments(): IndexingDocumentInfo[] {
+        const checkedIds = this.filteredAndCheckedDocIds();
+        const allDocs = this.documentsStorageService.documents();
+        const docs = checkedIds.length ? allDocs.filter((d) => checkedIds.includes(d.naive_rag_document_id)) : allDocs;
+
+        return docs.map((d) => ({
+            fileName: d.file_name,
+            wasIndexed: d.status === 'completed' || d.status === 'warning',
+        }));
+    }
+
+    getDocumentsForIndexing(): { configIds: number[]; fileNames: string[] } {
+        const checkedIds = this.filteredAndCheckedDocIds();
+        const allDocs = this.documentsStorageService.documents();
+
+        if (checkedIds.length) {
+            const checkedDocs = allDocs.filter((d) => checkedIds.includes(d.naive_rag_document_id));
+            return {
+                configIds: checkedIds,
+                fileNames: checkedDocs.map((d) => d.file_name),
+            };
+        }
+
+        return {
+            configIds: allDocs.map((d) => d.naive_rag_document_id),
+            fileNames: allDocs.map((d) => d.file_name),
+        };
     }
 
     private handleDeepLink(): void {

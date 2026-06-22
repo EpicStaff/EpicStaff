@@ -2,6 +2,7 @@ from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.exceptions import NotFound, ValidationError
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter
 from rest_framework import serializers as drf_serializers
 
@@ -10,6 +11,7 @@ from tables.serializers.knowledge_serializers import (
     DocumentMetadataSerializer,
     DocumentUploadSerializer,
     DocumentBulkDeleteSerializer,
+    CopyDocumentsSerializer,
     DocumentListSerializer,
     DocumentDetailSerializer,
 )
@@ -22,6 +24,9 @@ from tables.swagger_schemas.knowledge_schemas.document_management_schemas import
     DOCUMENTS_DESTROY_DELETE,
     DOCUMENTS_UPLOAD_POST,
     DOCUMENTS_BULK_DELETE_POST,
+    DOCUMENTS_DOWNLOAD_GET,
+    DOCUMENTS_PREVIEW_GET,
+    DOCUMENTS_COPY_POST,
     COLLECTION_DOCUMENTS_LIST_GET,
 )
 from tables.exceptions import (
@@ -31,7 +36,13 @@ from tables.exceptions import (
     CollectionNotFoundException,
     NoFilesProvidedException,
     DocumentNotFoundException,
+    DocumentsNotFoundException,
     InvalidFieldType,
+)
+from tables.utils.document_serving import (
+    build_file_response,
+    build_preview_response,
+    build_archive_response,
 )
 
 
@@ -160,6 +171,8 @@ class DocumentViewSet(
             return DocumentListSerializer
         elif self.action == "retrieve":
             return DocumentDetailSerializer
+        elif self.action == "copy":
+            return CopyDocumentsSerializer
         return DocumentMetadataSerializer
 
     @extend_schema(**DOCUMENTS_LIST_GET)
@@ -180,6 +193,15 @@ class DocumentViewSet(
         instance = self.get_object()
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
+
+    @extend_schema(**DOCUMENTS_PREVIEW_GET)
+    @action(detail=True, methods=["get"], url_path="preview")
+    def preview(self, request, *args, **kwargs):
+        """Raw document content with ``Content-Disposition: inline`` so browsers
+        render supported formats (pdf, txt, md, json, html, csv) in place. DOCX
+        has no inline preview and is downloaded instead."""
+        document = self.get_object()
+        return build_preview_response(document)
 
     @extend_schema(**DOCUMENTS_DESTROY_DELETE)
     def destroy(self, request, *args, **kwargs):
@@ -210,6 +232,89 @@ class DocumentViewSet(
                 {"error": f"An unexpected error occurred: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+    @extend_schema(**DOCUMENTS_DOWNLOAD_GET)
+    @action(detail=False, methods=["get"], url_path="download")
+    def download(self, request):
+        """
+        Download one or multiple documents.
+        A single document is returned as-is; multiple are bundled into a zip.
+        """
+        document_ids = self._parse_document_ids(
+            request.query_params.get("document_ids", "")
+        )
+        if not document_ids:
+            raise ValidationError("document_ids query parameter is required")
+
+        try:
+            documents = DocumentManagementService.get_documents_with_content(
+                document_ids
+            )
+        except DocumentsNotFoundException as e:
+            raise NotFound(str(e))
+
+        if len(documents) == 1:
+            return build_file_response(documents[0])
+        return build_archive_response(documents)
+
+    @extend_schema(**DOCUMENTS_COPY_POST)
+    @action(detail=False, methods=["post"], url_path="copy")
+    def copy(self, request):
+        """
+        Copy documents into a target collection (shares binary content).
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            copied_documents, skipped_documents = (
+                DocumentManagementService.copy_documents_to_collection(
+                    collection_id=serializer.validated_data["collection_id"],
+                    document_ids=serializer.validated_data["document_ids"],
+                )
+            )
+
+            message = f"Successfully copied {len(copied_documents)} document(s)"
+            if skipped_documents:
+                message += (
+                    f", skipped {len(skipped_documents)} already present "
+                    "in the target collection"
+                )
+
+            return Response(
+                {
+                    "message": message,
+                    "documents": DocumentMetadataSerializer(
+                        copied_documents, many=True
+                    ).data,
+                    "skipped": DocumentMetadataSerializer(
+                        skipped_documents, many=True
+                    ).data,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+        except (CollectionNotFoundException, DocumentsNotFoundException) as e:
+            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response(
+                {"error": f"An unexpected error occurred: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @staticmethod
+    def _parse_document_ids(raw_value: str) -> list:
+        """Parse a comma-separated ``document_ids`` query parameter into ints."""
+        ids = []
+        for chunk in raw_value.split(","):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            try:
+                ids.append(int(chunk))
+            except ValueError:
+                raise InvalidFieldType("document_ids", chunk)
+        return ids
 
 
 class CollectionDocumentsViewSet(viewsets.GenericViewSet):

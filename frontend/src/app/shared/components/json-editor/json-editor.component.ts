@@ -37,6 +37,7 @@ export class JsonEditorComponent implements OnChanges {
     @Input() public showHeader: boolean = true;
     @Input() public title: string = 'JSON Editor';
     @Input() public collapsible: boolean = false;
+    @Input() public collapsed: boolean = true;
     @Input() public allowCopy: boolean = false;
     @Input() public editorOptions: MonacoEditor.IStandaloneEditorConstructionOptions = {
         theme: 'vs-dark',
@@ -58,7 +59,6 @@ export class JsonEditorComponent implements OnChanges {
     @Output() public validationChange = new EventEmitter<boolean>();
     @Output() public editorReady = new EventEmitter<MonacoEditor.IStandaloneCodeEditor>();
 
-    public collapsed: boolean = true;
     public editorLoaded = false;
     public jsonIsValid = true;
 

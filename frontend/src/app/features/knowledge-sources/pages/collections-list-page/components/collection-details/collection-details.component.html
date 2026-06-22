@@ -56,10 +56,10 @@
 
                             <div class="details__section-actions">
                                 <app-svg-icon
-                                    style="cursor: not-allowed"
                                     icon="plus"
                                     class="details__action details__action--medium"
                                     size="1rem"
+                                    (click)="openCreateCollectionModal()"
                                 />
                             </div>
                         </div>
@@ -82,15 +82,17 @@
                                 <span class="details__section-title">Collection Files</span>
 
                                 <div class="details__section-actions">
-                                    <!--                                <app-select-->
-                                    <!--                                    mod="small"-->
-                                    <!--                                    [items]="[]"-->
-                                    <!--                                />-->
                                     <app-svg-icon
-                                        style="cursor: not-allowed"
+                                        icon="download"
+                                        class="details__action details__action--medium"
+                                        size="0.875rem"
+                                        (click)="downloadAllFiles()"
+                                    />
+                                    <app-svg-icon
                                         icon="files-filled"
                                         class="details__action details__action--medium"
                                         size="0.75rem"
+                                        (click)="openCopyFilesDialog()"
                                     />
 
                                     <label (click)="fileInput.click()">
@@ -110,7 +112,11 @@
                                 </div>
                             </div>
                             <div class="details__files-wrap">
-                                <app-collection-details-files [(documents)]="documents" />
+                                <app-collection-details-files
+                                    [(documents)]="documents"
+                                    (downloadRequested)="onFileDownload($event)"
+                                    (previewRequested)="onFilePreview($event)"
+                                />
                             </div>
                         </div>
                     }

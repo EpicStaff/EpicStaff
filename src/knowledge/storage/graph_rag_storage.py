@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import joinedload, selectinload
 from loguru import logger
@@ -111,7 +112,6 @@ class ORMGraphRagStorage(BaseORMStorage):
         Returns:
             True if successful, False otherwise
         """
-        from datetime import datetime
 
         try:
             graph_rag = self.session.get(GraphRag, graph_rag_id)
@@ -119,7 +119,7 @@ class ORMGraphRagStorage(BaseORMStorage):
                 logger.warning(f"GraphRag {graph_rag_id} not found")
                 return False
 
-            graph_rag.indexed_at = datetime.utcnow()
+            graph_rag.indexed_at = datetime.now(timezone.utc)
             return True
 
         except Exception as e:

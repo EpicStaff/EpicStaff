@@ -17,9 +17,19 @@ class CollectionProcessorService(metaclass=SingletonMeta):
     def _get_strategy(self, rag_type: str) -> BaseRAGStrategy:
         return RAGStrategyFactory.get_strategy(rag_type)
 
-    def process_rag_indexing(self, rag_id: int, rag_type: str):
+    def process_rag_indexing(
+        self,
+        rag_id: int,
+        rag_type: str,
+        document_config_ids: Optional[list[int]] = None,
+    ):
         strategy = self._get_strategy(rag_type)
-        strategy.process_rag_indexing(rag_id=rag_id)
+        if rag_type == "naive":
+            strategy.process_rag_indexing(
+                rag_id=rag_id, document_config_ids=document_config_ids
+            )
+        else:
+            strategy.process_rag_indexing(rag_id=rag_id)
 
     def process_preview_chunking(
         self,

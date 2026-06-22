@@ -5,14 +5,11 @@ from loguru import logger
 
 class SourceCollection(models.Model):
     class SourceCollectionStatus(models.TextChoices):
-        """
-        Status of SourceCollection
-        """
+        """Whether the collection has any documents. Indexing statuses live on
+        NaiveRag.rag_status / NaiveRagDocumentConfig.status, not here."""
 
         EMPTY = "empty"
-        UPLOADING = "uploading"
-        COMPLETED = "completed"
-        WARNING = "warning"
+        NON_EMPTY = "non_empty"
 
     class SourceCollectionOrigin(models.TextChoices):
         """
@@ -83,12 +80,11 @@ class SourceCollection(models.Model):
         super().save(*args, **kwargs)
 
     def update_collection_status(self):
-        """Update collection status based on document statuses"""
-        if not self.documents.exists():
-            self.status = self.SourceCollectionStatus.EMPTY
+        """Set status to EMPTY if no documents, NON_EMPTY otherwise."""
+        if self.documents.exists():
+            self.status = self.SourceCollectionStatus.NON_EMPTY
         else:
-            # TODO: implement status aggregation logic
-            pass
+            self.status = self.SourceCollectionStatus.EMPTY
         self.save(update_fields=["status", "updated_at"])
 
 
@@ -97,7 +93,7 @@ class DocumentContent(models.Model):
     Binary storage for file contents.
     """
 
-    content = models.BinaryField(help_text="Binary file content (max 12MB)")
+    content = models.BinaryField(help_text="Binary file content (max 20MB)")
 
     def __str__(self):
         return f"Content {self.content_id}"

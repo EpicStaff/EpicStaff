@@ -11,6 +11,8 @@ import { ChangeDetectionStrategy, Component, ContentChild, input, TemplateRef } 
 export class ListComponent<T> {
     items = input.required<T[]>();
     width = input<string | null>(null);
+    emptyTitle = input<string | null>(null);
+    emptyDescription = input<string | null>(null);
 
     @ContentChild(TemplateRef)
     rowTemplate!: TemplateRef<{

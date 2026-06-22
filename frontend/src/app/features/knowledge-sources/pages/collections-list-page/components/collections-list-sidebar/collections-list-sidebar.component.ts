@@ -1,8 +1,9 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, model, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, model, output, signal } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { ButtonComponent, SelectComponent } from '@shared/components';
+import { ButtonComponent, SelectComponent, SelectItem } from '@shared/components';
 
-import { FilesSearchService } from '../../../../../../features/files/services/files-search.service';
+import { FilesSearchService } from '../../../../../files/services/files-search.service';
+import { RagType } from '../../../../models/base-rag.model';
 import { GetCollectionRequest } from '../../../../models/collection.model';
 import { CollectionComponent } from './collection/collection.component';
 
@@ -18,9 +19,23 @@ export class CollectionsListItemSidebarComponent {
 
     collections = input<GetCollectionRequest[]>([]);
 
+    ragTypeItems: SelectItem[] = [
+        { name: 'All', value: null },
+        { name: 'Naive RAG', value: 'naive' },
+        { name: 'Graph RAG', value: 'graph' },
+        // { name: 'Hybrid RAG', value: 'hybrid' },
+    ];
+
+    selectedRagType = signal<RagType | null>(null);
+
     filteredCollections = computed(() => {
         const search = this.filesSearchService.searchTerm().toLowerCase();
-        return this.collections().filter((collection) => collection.collection_name.toLowerCase().includes(search));
+        const ragType = this.selectedRagType();
+        return this.collections().filter((collection) => {
+            const matchesSearch = collection.collection_name.toLowerCase().includes(search);
+            const matchesRag = !ragType || collection.rag_configurations.some((r) => r.rag_type === ragType);
+            return matchesSearch && matchesRag;
+        });
     });
 
     selectedCollectionId = model<number | null>();

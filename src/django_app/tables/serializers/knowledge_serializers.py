@@ -149,10 +149,27 @@ class DocumentBulkDeleteSerializer(serializers.Serializer):
                 "At least one document ID must be provided."
             )
 
-        # Remove duplicates
         unique_ids = list(set(value))
 
         return unique_ids
+
+
+class CopyDocumentsSerializer(serializers.Serializer):
+    """
+    Serializer for copying documents into a target collection.
+    """
+
+    collection_id = serializers.IntegerField(
+        min_value=1, help_text="ID of the target collection to copy documents into"
+    )
+    document_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        help_text="List of document IDs to copy",
+    )
+
+    def validate_document_ids(self, value):
+        return list(dict.fromkeys(value))
 
 
 class DocumentDetailSerializer(serializers.ModelSerializer):
@@ -177,13 +194,42 @@ class DocumentDetailSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class SourceCollectionListSerializer(serializers.ModelSerializer):
+class RagConfigurationsMixin:
+    """Adds a `rag_configurations` field backed by CollectionManagementService."""
+
+    def get_rag_configurations(self, obj):
+        """Return serialized RAG configuration summaries for ``obj`` (a SourceCollection).
+
+        Requires the queryset to have been prefetched via
+        ``CollectionManagementService.rag_configurations_prefetch()``; without it
+        every call will trigger N+1 queries against rag_types, naive_rags, and
+        graph_rags. Returns ``[]`` on any error so a single bad collection never
+        breaks the list endpoint.
+        """
+        try:
+            rag_configs = (
+                CollectionManagementService.get_rag_configurations_for_collection(obj)
+            )
+            return RagConfigurationSummarySerializer(rag_configs, many=True).data
+        except Exception as e:
+            logger.error(
+                f"Error fetching RAG configurations for collection {obj.collection_id}: {e}"
+            )
+            return []
+
+
+class SourceCollectionListSerializer(
+    RagConfigurationsMixin, serializers.ModelSerializer
+):
     """
     Serializer for listing collections.
-    Shows basic collection info without related documents.
+    Shows basic collection info plus available RAG configurations with their statuses.
     """
 
     document_count = serializers.IntegerField(source="documents.count", read_only=True)
+    rag_configurations = serializers.SerializerMethodField(
+        help_text="List of RAG configurations for this collection (NaiveRag, GraphRag, etc.) with their statuses"
+    )
 
     class Meta:
         model = SourceCollection
@@ -193,13 +239,16 @@ class SourceCollectionListSerializer(serializers.ModelSerializer):
             "user_id",
             "status",
             "document_count",
+            "rag_configurations",
             "created_at",
             "updated_at",
         ]
         read_only_fields = fields
 
 
-class SourceCollectionDetailSerializer(serializers.ModelSerializer):
+class SourceCollectionDetailSerializer(
+    RagConfigurationsMixin, serializers.ModelSerializer
+):
     """
     Serializer for retrieving a single collection with all details.
     Includes RAG configurations to show what RAG types are available.
@@ -223,24 +272,6 @@ class SourceCollectionDetailSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = fields
-
-    def get_rag_configurations(self, obj):
-        """
-        Get all RAG configurations for this collection.
-        Business logic is delegated to CollectionManagementService.
-        """
-
-        try:
-            rag_configs = CollectionManagementService.get_rag_configurations(
-                obj.collection_id
-            )
-            serializer = RagConfigurationSummarySerializer(rag_configs, many=True)
-            return serializer.data
-        except Exception as e:
-            logger.error(
-                f"Error fetching RAG configurations for collection {obj.collection_id}: {e}"
-            )
-            return []
 
 
 class SourceCollectionCreateSerializer(serializers.ModelSerializer):

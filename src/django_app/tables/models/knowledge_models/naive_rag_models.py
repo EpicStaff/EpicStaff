@@ -1,9 +1,17 @@
 from django.db import models
+from django.utils import timezone
 import uuid
 
 from pgvector.django import VectorField
 
-
+from src.shared.models.knowledge_status import (
+    CHUNK_PARAM_FIELDS,
+    RACE_GUARD_IN_PROGRESS,
+    compute_rag_status,
+    summarize_rag_error,
+    is_snapshot_current,
+    format_error_message,
+)
 from ..embedding_models import EmbeddingConfig
 from .collection_models import BaseRagType, DocumentMetadata
 from ..crew_models import Agent
@@ -11,9 +19,7 @@ from ..crew_models import Agent
 
 class NaiveRag(models.Model):
     class NaiveRagStatus(models.TextChoices):
-        """
-        Status of document in SourceCollection
-        """
+        """Aggregate status of a NaiveRag, rolled up from per-document statuses."""
 
         NEW = "new"
         PROCESSING = "processing"
@@ -53,34 +59,21 @@ class NaiveRag(models.Model):
     indexed_at = models.DateTimeField(null=True, blank=True)
 
     def update_rag_status(self: "NaiveRag"):
-        naive_rag_document_statuses = set(
-            self.naive_rag_configs.values_list("status", flat=True)
-        )
+        """Recompute aggregate status from per-document statuses via the shared
+        single-source rule (see src.shared.models.knowledge_status). Stamps
+        indexed_at when the RAG reaches COMPLETED.
 
-        NEW = NaiveRag.NaiveRagStatus.NEW
-        PROCESSING = NaiveRag.NaiveRagStatus.PROCESSING
-        WARNING = NaiveRag.NaiveRagStatus.WARNING
-        FAILED = NaiveRag.NaiveRagStatus.FAILED
-        COMPLETED = NaiveRag.NaiveRagStatus.COMPLETED
-
-        if not naive_rag_document_statuses or naive_rag_document_statuses == {NEW}:
-            current_status = NEW
-        elif naive_rag_document_statuses == {COMPLETED}:
-            current_status = COMPLETED
-        elif naive_rag_document_statuses == {FAILED}:
-            current_status = FAILED
-        elif PROCESSING in naive_rag_document_statuses:
-            current_status = PROCESSING
-        elif (
-            FAILED in naive_rag_document_statuses
-            or WARNING in naive_rag_document_statuses
-        ):
-            current_status = WARNING
-        else:
-            current_status = WARNING
-
-        self.status = current_status
-        self.save()
+        Persists via self.save() — must be called inside or after @transaction.atomic
+        so the status update is visible atomically to polling clients.
+        """
+        doc_statuses = list(self.naive_rag_configs.values_list("status", flat=True))
+        self.rag_status = compute_rag_status(doc_statuses)
+        self.error_message = summarize_rag_error(doc_statuses)
+        update_fields = ["rag_status", "error_message", "updated_at"]
+        if self.rag_status == self.NaiveRagStatus.COMPLETED:
+            self.indexed_at = timezone.now()
+            update_fields.append("indexed_at")
+        self.save(update_fields=update_fields)
 
 
 class NaiveRagDocumentConfig(models.Model):
@@ -111,11 +104,27 @@ class NaiveRagDocumentConfig(models.Model):
 
         NEW = "new"
         CHUNKING = "chunking"
-        CHUNKED = "chunked"  # Preview chunks created
+        CHUNKED = "chunked"  # Preview chunks created, no active worker
         INDEXING = "indexing"
-        COMPLETED = "completed"  # Indexed chunks created
+        COMPLETED = "completed"  # Indexed chunks + embeddings created
         WARNING = "warning"
         FAILED = "failed"
+
+    class DocumentErrorCode(models.TextChoices):
+        """Categorized indexing error codes persisted on a document config."""
+
+        CHUNKING_FAILED = "chunking_failed"
+        EMBEDDING_FAILED = "embedding_failed"
+        EMBEDDER_AUTH = "embedder_auth"
+        EMBEDDER_RATE_LIMIT = "embedder_rate_limit"
+        UNKNOWN = "unknown"
+        NONE = "none"
+
+    # Statuses that indicate an active worker is running on this document.
+    # Used by apply_param_updates() to skip status realignment while indexing.
+    # NOTE: CHUNKED is intentionally excluded — see RACE_GUARD_IN_PROGRESS in
+    # src.shared.models.knowledge_status for the full explanation.
+    IN_PROGRESS_STATUSES = RACE_GUARD_IN_PROGRESS
 
     naive_rag_document_id = models.AutoField(primary_key=True)
 
@@ -151,6 +160,26 @@ class NaiveRagDocumentConfig(models.Model):
         default=NaiveRagDocumentStatus.NEW,
     )
 
+    error_message = models.TextField(null=True, blank=True)
+    error_code = models.CharField(
+        max_length=32,
+        choices=DocumentErrorCode.choices,
+        default=DocumentErrorCode.NONE,
+    )
+    failed_at = models.DateTimeField(null=True, blank=True)
+
+    # Snapshot of chunk params at the time of last successful indexing.
+    # Compared against the live params to decide whether re-indexing is needed.
+    indexed_chunk_strategy = models.CharField(
+        max_length=20,
+        choices=ChunkStrategy.choices,
+        null=True,
+        blank=True,
+    )
+    indexed_chunk_size = models.PositiveIntegerField(null=True, blank=True)
+    indexed_chunk_overlap = models.PositiveIntegerField(null=True, blank=True)
+    indexed_additional_params = models.JSONField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     processed_at = models.DateTimeField(null=True, blank=True)
 
@@ -161,6 +190,57 @@ class NaiveRagDocumentConfig(models.Model):
     @property
     def total_embeddings(self):
         return self.embeddings.count()
+
+    def is_snapshot_current(self) -> bool:
+        """True iff the indexed_chunk_* snapshot matches the current live params."""
+        live = {f: getattr(self, f) for f in CHUNK_PARAM_FIELDS}
+        indexed = {f: getattr(self, f"indexed_{f}") for f in CHUNK_PARAM_FIELDS}
+        return is_snapshot_current(live, indexed)
+
+    def _clear_error(self) -> None:
+        self.error_message = None
+        self.error_code = self.DocumentErrorCode.NONE
+        self.failed_at = None
+
+    def apply_param_updates(self, updates: dict) -> bool:
+        """Mutate chunk-param fields in place (in-memory only). If anything
+        changed and no worker is running, realign status to COMPLETED/NEW.
+        Returns True iff changed; the service then persists + drops the preview."""
+        changed = any(
+            f in updates and updates[f] != getattr(self, f) for f in CHUNK_PARAM_FIELDS
+        )
+        if not changed:
+            return False
+        for f, v in updates.items():
+            setattr(self, f, v)
+
+        if self.status not in self.IN_PROGRESS_STATUSES:
+            Status = self.NaiveRagDocumentStatus
+            self.status = Status.COMPLETED if self.is_snapshot_current() else Status.NEW
+            self._clear_error()
+
+        return True
+
+    def start_attempt(self, new_status) -> None:
+        """Flip status and clear stale error in memory (the caller persists)."""
+        self.status = new_status
+        self._clear_error()
+
+    def mark_completed(self, processed_at=None) -> None:
+        """Flip status to COMPLETED and clear any stale error in memory (caller persists)."""
+        self.status = self.NaiveRagDocumentStatus.COMPLETED
+        self._clear_error()
+        self.processed_at = processed_at
+
+    def mark_failed(self, error_code, exc: BaseException) -> str:
+        """Set FAILED + code + truncated message + timestamp in memory and
+        return the message (the caller persists)."""
+        message = format_error_message(exc)
+        self.status = self.NaiveRagDocumentStatus.FAILED
+        self.error_code = error_code
+        self.error_message = message
+        self.failed_at = timezone.now()
+        return message
 
     class Meta:
         indexes = [

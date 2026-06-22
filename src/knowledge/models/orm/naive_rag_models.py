@@ -15,6 +15,12 @@ from pgvector.sqlalchemy import Vector
 import uuid
 from datetime import datetime
 
+from src.shared.models import (
+    CHUNK_PARAM_FIELDS,
+    DocumentErrorCode,
+    is_snapshot_current,
+)
+
 from .base_models import Base
 
 
@@ -128,6 +134,26 @@ class NaiveRagDocumentConfig(Base):
     status = Column(
         String(20), default="new"
     )  # new, chunking, chunked, indexing, completed, warning, failed
+
+    error_message = Column(Text, nullable=True)
+    error_code = Column(
+        String(32), nullable=False, default=DocumentErrorCode.NONE.value
+    )
+    failed_at = Column(DateTime, nullable=True)
+
+    # Snapshot of chunk params that produced the currently-stored
+    # chunks/embeddings. NULL ⇒ never indexed with current params.
+    indexed_chunk_strategy = Column(String(20), nullable=True)
+    indexed_chunk_size = Column(Integer, nullable=True)
+    indexed_chunk_overlap = Column(Integer, nullable=True)
+    indexed_additional_params = Column(JSON, nullable=True)
+
+    def is_snapshot_current(self) -> bool:
+        """True iff every indexed_* snapshot field is populated AND equals the
+        live chunk-param. Uses the shared single-source rule."""
+        live = {f: getattr(self, f) for f in CHUNK_PARAM_FIELDS}
+        indexed = {f: getattr(self, f"indexed_{f}") for f in CHUNK_PARAM_FIELDS}
+        return is_snapshot_current(live, indexed)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     processed_at = Column(DateTime, nullable=True)

@@ -113,6 +113,35 @@
                     [class.table__row-wrapper--dark]="odd"
                     [class.table__row-wrapper--selected]="d.naive_rag_document_id === selectedRagDocId()"
                 >
+                    @switch (d.status) {
+                        @case ('completed') {
+                            <app-svg-icon
+                                icon="check"
+                                class="table__status-icon table__status-icon--completed"
+                                size="0.75rem"
+                            />
+                        }
+                        @case ('chunking') {
+                            <div class="table__status-icon table__status-spinner"></div>
+                        }
+                        @case ('indexing') {
+                            <div class="table__status-icon table__status-spinner"></div>
+                        }
+                        @case ('warning') {
+                            <app-svg-icon
+                                icon="warning"
+                                class="table__status-icon table__status-icon--warning"
+                                size="0.75rem"
+                            />
+                        }
+                        @case ('failed') {
+                            <app-svg-icon
+                                icon="close"
+                                class="table__status-icon table__status-icon--failed"
+                                size="0.75rem"
+                            />
+                        }
+                    }
                     <li class="table__row">
                         <!-- checkbox -->
                         <div class="table__col">
@@ -193,10 +222,22 @@
                                 mod="small"
                                 (click)="tuneChunk(d.naive_rag_document_id)"
                             >
-                                Tune Chunks
+                                <app-svg-icon
+                                    icon="vertical-sliders"
+                                    size="0.75rem"
+                                />
+                                Tune
                             </app-button>
                         </div>
                     </li>
+                    @if ((d.status === 'failed' || d.status === 'warning') && d.error_message) {
+                        <label
+                            class="table__row-error"
+                            [class.table__row-error--warning]="d.status === 'warning'"
+                        >
+                            {{ d.error_message }}
+                        </label>
+                    }
                     @for (error of d.errors | keyvalue; track error.key) {
                         <label class="table__row-error"> Update failed: {{ error.value?.reason }} </label>
                     }
