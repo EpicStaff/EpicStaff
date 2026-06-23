@@ -12,7 +12,9 @@ def _make_broker():
     """Return broker + sync_client_mock + async_client_mock with patched from_url."""
     with (
         patch("communication.brokers.redis_broker.SyncRedis.from_url") as sync_from_url,
-        patch("communication.brokers.redis_broker.AsyncRedis.from_url") as async_from_url,
+        patch(
+            "communication.brokers.redis_broker.AsyncRedis.from_url"
+        ) as async_from_url,
     ):
         sync_mock = MagicMock()
         async_mock = MagicMock()
@@ -66,7 +68,9 @@ class TestAsyncSend:
     @pytest.mark.asyncio
     async def test_asend_redis_error_raises_broker_operation_error(self):
         broker, _, async_mock = _make_broker()
-        async_mock.publish = AsyncMock(side_effect=redis.RedisError("async publish failed"))
+        async_mock.publish = AsyncMock(
+            side_effect=redis.RedisError("async publish failed")
+        )
 
         with pytest.raises(BrokerOperationError) as exc_info:
             await broker.asend("async-ch", {"key": "val"})
@@ -154,7 +158,9 @@ class TestAsyncReceive:
         pubsub = MagicMock()
         pubsub.subscribe = AsyncMock()
         pubsub.unsubscribe = AsyncMock()
-        pubsub.get_message = AsyncMock(side_effect=[_subscribe_frame(), _message_frame(message)])
+        pubsub.get_message = AsyncMock(
+            side_effect=[_subscribe_frame(), _message_frame(message)]
+        )
         async_mock.pubsub.return_value = pubsub
 
         result = await broker.areceive("ch")
@@ -179,7 +185,9 @@ class TestAsyncReceive:
     async def test_areceive_subscribe_redis_error_raises_broker_operation_error(self):
         broker, _, async_mock = _make_broker()
         pubsub = MagicMock()
-        pubsub.subscribe = AsyncMock(side_effect=redis.RedisError("async subscribe failed"))
+        pubsub.subscribe = AsyncMock(
+            side_effect=redis.RedisError("async subscribe failed")
+        )
         async_mock.pubsub.return_value = pubsub
 
         with pytest.raises(BrokerOperationError) as exc_info:
@@ -194,7 +202,10 @@ class TestAsyncReceive:
 class TestSyncStream:
     def test_stream_yields_decoded_messages_skipping_subscribe_frame(self):
         broker, sync_mock, _ = _make_broker()
-        messages = [{"id": "m1", "payload": {"a": 1}}, {"id": "m2", "payload": {"b": 2}}]
+        messages = [
+            {"id": "m1", "payload": {"a": 1}},
+            {"id": "m2", "payload": {"b": 2}},
+        ]
         frames = [_subscribe_frame(), *[_message_frame(m) for m in messages]]
         pubsub = MagicMock()
         pubsub.listen.return_value = iter(frames)
@@ -238,7 +249,10 @@ class TestAsyncStream:
     @pytest.mark.asyncio
     async def test_astream_yields_decoded_messages_skipping_subscribe_frame(self):
         broker, _, async_mock = _make_broker()
-        messages = [{"id": "am1", "payload": {"z": 9}}, {"id": "am2", "payload": {"y": 8}}]
+        messages = [
+            {"id": "am1", "payload": {"z": 9}},
+            {"id": "am2", "payload": {"y": 8}},
+        ]
 
         async def fake_listen():
             yield _subscribe_frame()
@@ -260,7 +274,9 @@ class TestAsyncStream:
     async def test_astream_subscribe_redis_error_raises_broker_operation_error(self):
         broker, _, async_mock = _make_broker()
         pubsub = MagicMock()
-        pubsub.subscribe = AsyncMock(side_effect=redis.RedisError("async subscribe failed"))
+        pubsub.subscribe = AsyncMock(
+            side_effect=redis.RedisError("async subscribe failed")
+        )
         async_mock.pubsub.return_value = pubsub
 
         with pytest.raises(BrokerOperationError) as exc_info:

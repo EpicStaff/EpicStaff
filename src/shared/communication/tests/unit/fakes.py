@@ -27,7 +27,9 @@ class FakeBroker(AbstractBroker):
     def receive(self, channel: str, timeout: float = 5.0) -> dict[str, Any] | None:
         return dict(self._frames.pop(0)) if self._frames else None
 
-    async def areceive(self, channel: str, timeout: float = 5.0) -> dict[str, Any] | None:
+    async def areceive(
+        self, channel: str, timeout: float = 5.0
+    ) -> dict[str, Any] | None:
         return dict(self._frames.pop(0)) if self._frames else None
 
     def stream(self, channel: str) -> Iterator[dict[str, Any]]:

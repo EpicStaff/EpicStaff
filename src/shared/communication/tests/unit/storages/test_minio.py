@@ -114,7 +114,9 @@ class TestGet:
 
         assert result is None
 
-    def test_get_other_s3_error_raises_storage_operation_error(self, storage_and_client):
+    def test_get_other_s3_error_raises_storage_operation_error(
+        self, storage_and_client
+    ):
         storage, client = storage_and_client
         client.get_object.side_effect = _make_s3_error("AccessDenied", "restricted-key")
 
@@ -192,7 +194,9 @@ class TestAsyncDelegation:
         )
 
     @pytest.mark.asyncio
-    async def test_aput_s3_error_raises_storage_operation_error(self, storage_and_client):
+    async def test_aput_s3_error_raises_storage_operation_error(
+        self, storage_and_client
+    ):
         storage, client = storage_and_client
         client.put_object.side_effect = _make_s3_error("InternalError")
 
@@ -202,7 +206,9 @@ class TestAsyncDelegation:
         assert exc_info.value.operation == "put"
 
     @pytest.mark.asyncio
-    async def test_aremove_s3_error_raises_storage_operation_error(self, storage_and_client):
+    async def test_aremove_s3_error_raises_storage_operation_error(
+        self, storage_and_client
+    ):
         storage, client = storage_and_client
         client.remove_object.side_effect = _make_s3_error("InternalError")
 

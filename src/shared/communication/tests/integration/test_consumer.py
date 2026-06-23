@@ -144,7 +144,9 @@ class TestAsyncEndToEnd:
         assert received.payload == {"async": True, "value": 99}
 
     @pytest.mark.asyncio
-    async def test_async_offloaded_payload_roundtrip_and_removed(self, broker, minio_storage):
+    async def test_async_offloaded_payload_roundtrip_and_removed(
+        self, broker, minio_storage
+    ):
         channel = _unique_channel("offload-async")
         producer = Producer(
             broker, minio_storage, payload_size_threshold=SMALL_THRESHOLD
@@ -164,7 +166,9 @@ class TestAsyncEndToEnd:
         assert await minio_storage.aget(message.id) is None
 
     @pytest.mark.asyncio
-    async def test_async_stream_collects_multiple_mixed_messages(self, broker, minio_storage):
+    async def test_async_stream_collects_multiple_mixed_messages(
+        self, broker, minio_storage
+    ):
         channel = _unique_channel("mixed-async")
         producer = Producer(
             broker, minio_storage, payload_size_threshold=SMALL_THRESHOLD

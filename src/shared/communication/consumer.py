@@ -71,7 +71,6 @@ class Consumer:
             data = self._update_data_by_payload_from_storage_if_exists(data)
             yield Message(**data)
 
-
     async def astream(self, channel: str) -> AsyncIterator[Message]:
         """Yield messages from `channel` asynchronously as they arrive.
 
@@ -88,16 +87,22 @@ class Consumer:
             data = await self._aupdate_data_by_payload_from_storage_if_exists(data)
             yield Message(**data)
 
-    def _update_data_by_payload_from_storage_if_exists(self, data: dict[str, Any]) -> dict[str, Any]:
-        msg_id = data['id']
+    def _update_data_by_payload_from_storage_if_exists(
+        self,
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        msg_id = data["id"]
         if data.pop("is_used_storage", False):
             payload = self.storage.get(msg_id)
             data["payload"] = json.loads(payload) if payload else {}
             self.storage.remove(msg_id)
         return data
 
-    async def _aupdate_data_by_payload_from_storage_if_exists(self, data: dict[str, Any]) -> dict[str, Any]:
-        msg_id = data['id']
+    async def _aupdate_data_by_payload_from_storage_if_exists(
+        self,
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        msg_id = data["id"]
         if data.pop("is_used_storage", False):
             payload = await self.storage.aget(msg_id)
             data["payload"] = json.loads(payload) if payload else {}

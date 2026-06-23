@@ -74,16 +74,20 @@ class RedisPubSubBroker(AbstractBroker):
             pubsub.subscribe(channel)
             try:
                 msg = pubsub.get_message(timeout=timeout)
-                if msg and msg['type'] != 'message':
+                if msg and msg["type"] != "message":
                     msg = pubsub.get_message(timeout=timeout)
 
                 if msg is None:
                     return None
-                return json.loads(msg['data'])
+                return json.loads(msg["data"])
             finally:
                 pubsub.unsubscribe()
 
-    async def areceive(self, channel: str, timeout: float = 5.0) -> dict[str, Any] | None:
+    async def areceive(
+        self,
+        channel: str,
+        timeout: float = 5.0,
+    ) -> dict[str, Any] | None:
         """Subscribe to `channel`, wait for one message, then unsubscribe, asynchronously.
 
         The first frame after subscribing is Redis's subscribe confirmation, which is
@@ -103,11 +107,11 @@ class RedisPubSubBroker(AbstractBroker):
             await pubsub.subscribe(channel)
             try:
                 msg = await pubsub.get_message(timeout=timeout)
-                if msg and msg['type'] != 'message':
+                if msg and msg["type"] != "message":
                     msg = await pubsub.get_message(timeout=timeout)
                 if msg is None:
                     return None
-                return json.loads(msg['data'])
+                return json.loads(msg["data"])
             finally:
                 await pubsub.unsubscribe()
 
@@ -128,9 +132,9 @@ class RedisPubSubBroker(AbstractBroker):
             pubsub.subscribe(channel)
             try:
                 for msg in pubsub.listen():
-                    if msg['type'] != 'message':
+                    if msg["type"] != "message":
                         continue
-                    yield json.loads(msg['data'])
+                    yield json.loads(msg["data"])
             finally:
                 pubsub.unsubscribe()
 
@@ -151,8 +155,8 @@ class RedisPubSubBroker(AbstractBroker):
             await pubsub.subscribe(channel)
             try:
                 async for msg in pubsub.listen():
-                    if msg['type'] != 'message':
+                    if msg["type"] != "message":
                         continue
-                    yield json.loads(msg['data'])
+                    yield json.loads(msg["data"])
             finally:
                 await pubsub.unsubscribe()

@@ -86,7 +86,9 @@ class TestAsyncStream:
     async def test_astream_yields_published_messages_in_order(self, redis_url):
         broker = RedisPubSubBroker(redis_url)
         channel = CHANNEL + "-astream"
-        messages = [{"id": f"abroker-integ-m{i}", "payload": {"i": i}} for i in range(3)]
+        messages = [
+            {"id": f"abroker-integ-m{i}", "payload": {"i": i}} for i in range(3)
+        ]
 
         received: list = []
 

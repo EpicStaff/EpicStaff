@@ -45,7 +45,11 @@ class AbstractBroker(ABC):
         """
 
     @abstractmethod
-    async def areceive(self, channel: str, timeout: float = 5.0) -> dict[str, Any] | None:
+    async def areceive(
+        self,
+        channel: str,
+        timeout: float = 5.0,
+    ) -> dict[str, Any] | None:
         """Receive the next message from a channel asynchronously.
 
         Implementations must wait for up to `timeout` seconds and return `None`

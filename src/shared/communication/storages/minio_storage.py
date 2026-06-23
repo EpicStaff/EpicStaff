@@ -19,7 +19,9 @@ def _check_dependency():
         try:
             import minio
         except ImportError:
-            raise ImportError('minio package is not installed. Use `pip install minio`.')
+            raise ImportError(
+                "minio package is not installed. Use `pip install minio`."
+            )
 
 
 class MinioStorage(AbstractStorage):
