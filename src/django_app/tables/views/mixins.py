@@ -187,6 +187,31 @@ class OrgScopedQuerysetMixin(OrgScopedResolverMixin):
         return queryset.distinct() if self.scope_distinct else queryset
 
 
+class OrgScopedServiceViewSetMixin(OrgScopedResolverMixin):
+    """For views that delegate to services using raw ids and so cannot rely on
+    get_object()/get_queryset scoping (common in the knowledge endpoints).
+
+    Provides one helper to fetch a target row scoped to the active org, raising
+    404 on a missing or cross-org id (no existence leak, D1). The `org_path` is
+    the ORM lookup from `model` to the org id — the same vocabulary as
+    OrgScopedChildViewSetMixin.org_filter_path (default "org_id" for an
+    org-owning model; e.g. "base_rag_type__source_collection__org_id" for a
+    knowledge child).
+
+    Works on both ViewSets and plain APIViews (only needs request + kwargs).
+    Pair with HasOrgPermission (ViewSets) or assert_org_permission (APIViews)
+    for the verb gate.
+    """
+
+    def get_in_active_org_or_404(self, model, pk, org_path: str = "org_id", **filters):
+        obj = model.objects.filter(
+            pk=pk, **{org_path: self.get_active_org_id()}, **filters
+        ).first()
+        if obj is None:
+            raise NotFound()
+        return obj
+
+
 class SuperadminWriteMixin:
     """Global-readable, superadmin-writable resources (registry / catalog /
     defaults).
