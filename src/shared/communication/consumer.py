@@ -20,10 +20,16 @@ class Consumer:
         self.storage = storage
 
     def receive(self, channel: str, timeout: float = 5.0) -> Message | None:
-        """Receive messages from a channel synchronously.
+        """Receive the next message from `channel`, or `None` if none arrives.
+
+        Restores an offloaded payload from storage and deletes it before returning.
 
         Args:
             channel: Channel to receive from.
+            timeout: Seconds to wait for a message. Defaults to `5.0`.
+
+        Returns:
+            The next message, or `None` if the timeout elapses with no message.
         """
         data = self.broker.receive(channel, timeout=timeout)
         if data is None:
@@ -32,10 +38,16 @@ class Consumer:
         return Message(**data)
 
     async def areceive(self, channel: str, timeout: float = 5.0) -> Message | None:
-        """Receive messages from a channel asynchronously.
+        """Receive the next message from `channel` asynchronously, or `None` if none arrives.
+
+        Restores an offloaded payload from storage and deletes it before returning.
 
         Args:
             channel: Channel to receive from.
+            timeout: Seconds to wait for a message. Defaults to `5.0`.
+
+        Returns:
+            The next message, or `None` if the timeout elapses with no message.
         """
         data = await self.broker.areceive(channel, timeout=timeout)
         if data is None:
@@ -44,12 +56,34 @@ class Consumer:
         return Message(**data)
 
     def stream(self, channel: str) -> Iterator[Message]:
+        """Yield messages from `channel` as they arrive.
+
+        Restores each offloaded payload from storage and deletes it before the
+        message is yielded.
+
+        Args:
+            channel: Channel to stream from.
+
+        Yields:
+            Each message as it arrives.
+        """
         for data in self.broker.stream(channel):
             data = self._update_data_by_payload_from_storage_if_exists(data)
             yield Message(**data)
 
 
     async def astream(self, channel: str) -> AsyncIterator[Message]:
+        """Yield messages from `channel` asynchronously as they arrive.
+
+        Restores each offloaded payload from storage and deletes it before the
+        message is yielded.
+
+        Args:
+            channel: Channel to stream from.
+
+        Yields:
+            Each message as it arrives.
+        """
         async for data in self.broker.astream(channel):
             data = await self._aupdate_data_by_payload_from_storage_if_exists(data)
             yield Message(**data)
