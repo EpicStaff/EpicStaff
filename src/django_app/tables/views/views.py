@@ -103,7 +103,11 @@ from tables.filters import SessionFilter  # CollectionFilter,
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.import_export.enums import EntityType
 from rest_framework.permissions import IsAuthenticated
-from tables.views.mixins import OrgScopedChildViewSetMixin
+from tables.views.mixins import (
+    OrgScopedChildViewSetMixin,
+    OrgScopedServiceViewSetMixin,
+)
+from tables.models.knowledge_models import NaiveRag, GraphRag
 from tables.services.rbac.permissions import HasOrgPermission, IsSuperadmin
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.session_access import assert_session_org_access
@@ -918,11 +922,14 @@ class QuickstartApplyView(APIView):
         return Response(DefaultModelsSerializer(dm).data, status=status.HTTP_200_OK)
 
 
-class ProcessRagIndexingView(APIView):
+class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
     """
     View for triggering RAG indexing (chunking + embedding).
     All business logic is handled by IndexingService.
     """
+
+    _RAG_MODELS = {"naive": NaiveRag, "graph": GraphRag}
+    _RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
 
     @extend_schema(**PROCESS_RAG_INDEXING_POST)
     def post(self, request):
@@ -932,6 +939,21 @@ class ProcessRagIndexingView(APIView):
 
         rag_id = serializer.validated_data["rag_id"]
         rag_type = serializer.validated_data["rag_type"]
+
+        # The rag must live in the active org (404), and indexing mutates it.
+        model = self._RAG_MODELS.get(rag_type)
+        if model is None:
+            return Response(
+                {"error": f"Unknown rag_type '{rag_type}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.KNOWLEDGE_SOURCES,
+            Permission.UPDATE,
+        )
 
         try:
             indexing_data = IndexingService.validate_and_prepare_indexing(
