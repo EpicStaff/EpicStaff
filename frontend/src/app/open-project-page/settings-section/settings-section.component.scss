@@ -22,7 +22,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
         border-radius: 12px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         border: 1px solid rgba(255, 255, 255, 0.08);
-        overflow: hidden;
+        overflow: visible;
         min-width: 0;
         box-sizing: border-box;
 
@@ -30,6 +30,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
             padding: 1rem 1.5rem;
             background: rgba(255, 255, 255, 0.05);
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px 12px 0 0;
 
             h3 {
                 margin: 0;
@@ -62,7 +63,10 @@ $purple-accent: rgba(104, 95, 255, 0.5);
     .settings-grid {
         display: flex;
         flex-direction: column;
-        overflow-x: auto;
+        // overflow stays visible so dropdowns from selectors inside .setting-item
+        // are not clipped. Setting overflow-x: auto would implicitly force
+        // overflow-y: auto (per CSS spec) and cut off the dropdowns.
+        overflow: visible;
         min-width: 0;
 
         .setting-item {
