@@ -1,11 +1,27 @@
+from __future__ import annotations
 import asyncio
 import io
+from typing import TYPE_CHECKING
 
-from minio import Minio, S3Error
+from ..errors import StorageOperationError
+from ..error_handler import handle_error
+from .abstract import AbstractStorage
 
-from communication.errors import StorageOperationError
-from communication.error_handler import handle_error
-from communication.storages.abstract import AbstractStorage
+if TYPE_CHECKING:
+    import minio
+else:
+    minio = None
+
+
+def _check_dependency():
+    global minio
+    if minio is None:
+        try:
+            import minio
+        except ImportError:
+            raise ImportError(
+                "minio package is not installed. Use `pip install minio`."
+            )
 
 
 class MinioStorage(AbstractStorage):
@@ -32,7 +48,8 @@ class MinioStorage(AbstractStorage):
         *,
         secure=False,
     ):
-        self._client = Minio(
+        _check_dependency()
+        self._client = minio.Minio(
             endpoint=f"{host}:{port}",
             access_key=access_key,
             secret_key=secret_key,
@@ -44,7 +61,7 @@ class MinioStorage(AbstractStorage):
             self._client.make_bucket(self._bucket)
 
     def put(self, key: str, payload: bytes):
-        with handle_error(S3Error, StorageOperationError, "put", key):
+        with handle_error(minio.S3Error, StorageOperationError, "put", key):
             self._client.put_object(
                 bucket_name=self._bucket,
                 object_name=key,
@@ -66,7 +83,7 @@ class MinioStorage(AbstractStorage):
             finally:
                 response.close()
                 response.release_conn()
-        except S3Error as e:
+        except minio.S3Error as e:
             if e.code == "NoSuchKey":
                 return None
             raise StorageOperationError("get", key) from e
@@ -75,7 +92,7 @@ class MinioStorage(AbstractStorage):
         return await asyncio.to_thread(self.get, key)
 
     def remove(self, key: str):
-        with handle_error(S3Error, StorageOperationError, "remove", key):
+        with handle_error(minio.S3Error, StorageOperationError, "remove", key):
             self._client.remove_object(
                 bucket_name=self._bucket,
                 object_name=key,
