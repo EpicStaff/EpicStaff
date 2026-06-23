@@ -11,6 +11,7 @@ import {
     ElementRef,
     HostListener,
     inject,
+    Injector,
     OnDestroy,
     OnInit,
     signal,
@@ -112,6 +113,7 @@ import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
 })
 export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanComponentDeactivate {
     private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public initialNodeId: string | null = null;
@@ -418,7 +420,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public saveCurrentState(): Observable<void> {
         if (!this.hasUnsavedChanges()) return of(void 0);
-        return toObservable(this.isSaving).pipe(
+        return toObservable(this.isSaving, { injector: this.injector }).pipe(
             filter((saving) => !saving),
             take(1),
             switchMap(() => this.saveFlowState(this.currentFlowState(), false))
