@@ -63,9 +63,6 @@ $purple-accent: rgba(104, 95, 255, 0.5);
     .settings-grid {
         display: flex;
         flex-direction: column;
-        // overflow stays visible so dropdowns from selectors inside .setting-item
-        // are not clipped. Setting overflow-x: auto would implicitly force
-        // overflow-y: auto (per CSS spec) and cut off the dropdowns.
         overflow: visible;
         min-width: 0;
 
