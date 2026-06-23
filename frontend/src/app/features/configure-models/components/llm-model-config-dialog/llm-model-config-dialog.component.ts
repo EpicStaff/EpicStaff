@@ -71,7 +71,6 @@ export class LlmModelConfigDialogComponent implements OnInit {
             presence_penalty: [0],
             frequency_penalty: [0],
             logit_bias: [null],
-            response_format: [null],
             seed: [null, [Validators.min(-2147483648), Validators.max(2147483647)]],
             headers: [{}],
             extra_headers: [{}],

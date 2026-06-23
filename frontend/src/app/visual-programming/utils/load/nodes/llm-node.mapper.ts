@@ -19,7 +19,6 @@ export function mapLLMNodeToModel(ln: GetLLMNodeRequest): LLMNodeModel {
         presence_penalty: null,
         frequency_penalty: null,
         logit_bias: null,
-        response_format: null,
         seed: null,
         timeout: null,
         is_visible: true,

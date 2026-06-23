@@ -707,7 +707,6 @@ class ConverterService(metaclass=SingletonMeta):
                 presence_penalty=config.presence_penalty,
                 frequency_penalty=config.frequency_penalty,
                 logit_bias=config.logit_bias,
-                response_format=config.response_format,
                 seed=config.seed,
                 base_url=config.model.base_url,
                 api_version=config.model.api_version,
