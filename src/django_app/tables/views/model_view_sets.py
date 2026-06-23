@@ -1647,10 +1647,19 @@ class WebhookTriggerNodeViewSet(
             raise
 
 
-class WebhookTriggerViewSet(viewsets.ModelViewSet):
+class WebhookTriggerViewSet(OrgScopedQuerysetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    scope_distinct = True  # reverse join via trigger nodes can duplicate rows
     queryset = WebhookTrigger.objects.all()
     serializer_class = WebhookTriggerSerializer
     filter_backends = [DjangoFilterBackend]
+
+    def get_org_scope_q(self, org_id: int) -> Q:
+        # A standalone trigger has no org column; it is visible through the
+        # flow(s) whose trigger nodes reference it.
+        return Q(webhook_trigger_nodes__graph__org_id=org_id)
 
 
 class TelegramTriggerNodeViewSet(
@@ -1699,7 +1708,9 @@ class GraphNoteViewSet(
     serializer_class = GraphNoteSerializer
 
 
-class NgrokWebhookConfigViewSet(ModelViewSet):
+class NgrokWebhookConfigViewSet(SuperadminWriteMixin, ModelViewSet):
+    # Global infrastructure config (ngrok tunnel/auth): readable by any
+    # authenticated user, writable only by superadmins.
     queryset = NgrokWebhookConfig.objects.all()
     serializer_class = NgrokWebhookConfigModelSerializer
 
@@ -1718,7 +1729,10 @@ class NgrokWebhookConfigViewSet(ModelViewSet):
         return response
 
 
-class LabelViewSet(viewsets.ModelViewSet):
+class LabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
     queryset = Label.objects.all()
     serializer_class = LabelSerializer
     filter_backends = [DjangoFilterBackend]
@@ -1729,9 +1743,13 @@ class LabelViewSet(viewsets.ModelViewSet):
         labels = list(queryset)
 
         # Build paths in memory (one extra lightweight query) to avoid N+1
-        # and to correctly resolve parents that may be filtered out.
+        # and to correctly resolve parents that may be filtered out. Scoped to
+        # the active org (the label tree never crosses orgs).
         id_to_row = {
-            row["id"]: row for row in Label.objects.values("id", "parent_id", "name")
+            row["id"]: row
+            for row in Label.objects.filter(org_id=self.get_active_org_id()).values(
+                "id", "parent_id", "name"
+            )
         }
 
         def full_path_key(label):
