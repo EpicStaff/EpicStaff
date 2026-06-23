@@ -53,6 +53,7 @@ import { FlowFilesButtonComponent } from '../components/flow-files-button/flow-f
 import { FlowGraphContextMenuComponent } from '../components/flow-graph-context-menu/flow-graph-context-menu.component';
 import { FlowSettingsPanelComponent } from '../components/flow-settings-panel/flow-settings-panel.component';
 import { FlowShortcutsButtonComponent } from '../components/flow-shortcuts-button/flow-shortcuts-button.component';
+import { CdtExportImportService } from '../components/node-panels/classification-decision-table-node-panel/cdt-export-import.service';
 import { NodePanelShellComponent } from '../components/node-panels/node-panel-shell/node-panel-shell.component';
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent } from '../components/note-edit-dialog/note-edit-dialog.component';
@@ -248,6 +249,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     private fitAfterNextFlowChange = false;
     private _preImportBackendIds: Set<number> | null = null;
+    private _importPositionSnapshot: Map<number, { x: number; y: number }> | null = null;
 
     private readonly destroy$ = new Subject<void>();
     private readonly userAdjustedConnectionIds = new Set<string>();
@@ -267,6 +269,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private readonly dialog = inject(Dialog);
     private readonly toastService = inject(ToastService);
     private readonly importExportService = inject(ImportExportService);
+    private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly injector = inject(Injector);
 
     private lastSeenFullSaveRequest = 0;
@@ -1266,8 +1269,19 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 continue;
             }
 
-            this.importExportService.cdtExport(node.backendId, 'csv').subscribe({
-                next: (blob) => this.downloadBlob(blob, node.node_name + '.csv'),
+            this.importExportService.cdtExport(node.backendId, 'json').subscribe({
+                next: (blob) => {
+                    blob.text().then((text) => {
+                        const parsed = JSON.parse(text) as Record<string, unknown>;
+                        const exportData = this.cdtExportImportService.partialExportNodeToCdtExportData(parsed);
+                        const csv = this.cdtExportImportService.exportToCsv(exportData);
+                        this.cdtExportImportService.downloadFile(
+                            csv,
+                            node.node_name + '.csv',
+                            'text/csv;charset=utf-8;'
+                        );
+                    });
+                },
                 error: () => this.toastService.error('Export failed', 3000, 'bottom-right'),
             });
         }
@@ -1285,32 +1299,60 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         if (!this.currentFlowId) return;
         const input = document.createElement('input');
         input.type = 'file';
-        input.accept = '.json';
+        input.accept = '.json,.csv';
         input.value = '';
         input.onchange = (e: Event) => {
             const file = (e.target as HTMLInputElement).files?.[0];
             if (!file || !this.currentFlowId) return;
-            this.importExportService.partialImport(this.currentFlowId, file).subscribe({
-                next: () => {
-                    this.toastService.success('Import successful', 3000, 'bottom-right');
-                    this._preImportBackendIds = new Set(
-                        this.flowService
-                            .nodes()
-                            .map((n) => n.backendId)
-                            .filter((id): id is number => id !== null)
-                    );
-                    this.fitAfterNextFlowChange = true;
-                    this.requestReload.emit();
-                },
-                error: (err: HttpErrorResponse) => {
-                    const body = typeof err.error === 'string' ? err.error : JSON.stringify(err.error ?? '');
-                    const match = body.match(/'detail':\s*'([^']+)'/);
-                    const message = match?.[1] ?? (err.error as Record<string, string>)?.['detail'] ?? 'Import failed';
-                    this.toastService.error(message, 3000, 'bottom-right');
-                },
-            });
+
+            if (file.name.toLowerCase().endsWith('.csv')) {
+                const reader = new FileReader();
+                reader.onload = (readEvent) => {
+                    const text = readEvent.target?.result;
+                    if (typeof text !== 'string') return;
+                    const parseResult = this.cdtExportImportService.parseCsv(text);
+                    if ('errors' in parseResult) {
+                        this.toastService.error(parseResult.errors[0], 3000, 'bottom-right');
+                        return;
+                    }
+                    const jsonStr = this.cdtExportImportService.cdtExportDataToPartialImportJson(parseResult.data);
+                    const jsonFile = new File([jsonStr], file.name.replace(/\.csv$/i, '.json'), {
+                        type: 'application/json',
+                    });
+                    this.doPartialImport(jsonFile);
+                };
+                reader.readAsText(file);
+            } else {
+                this.doPartialImport(file);
+            }
         };
         input.click();
+    }
+
+    private doPartialImport(file: File): void {
+        if (!this.currentFlowId) return;
+        this.importExportService.partialImport(this.currentFlowId, file).subscribe({
+            next: () => {
+                this.toastService.success('Import successful', 3000, 'bottom-right');
+                const currentNodes = this.flowService.nodes();
+                this._preImportBackendIds = new Set(
+                    currentNodes.map((n) => n.backendId).filter((id): id is number => id !== null)
+                );
+                this._importPositionSnapshot = new Map(
+                    currentNodes
+                        .filter((n): n is typeof n & { backendId: number } => n.backendId !== null)
+                        .map((n) => [n.backendId, { x: n.position.x, y: n.position.y }])
+                );
+                this.fitAfterNextFlowChange = true;
+                this.requestReload.emit();
+            },
+            error: (err: HttpErrorResponse) => {
+                const body = typeof err.error === 'string' ? err.error : JSON.stringify(err.error ?? '');
+                const match = body.match(/'detail':\s*'([^']+)'/);
+                const message = match?.[1] ?? (err.error as Record<string, string>)?.['detail'] ?? 'Import failed';
+                this.toastService.error(message, 3000, 'bottom-right');
+            },
+        });
     }
 
     private triggerPartialExport(nodeIds: string[]): void {
@@ -1431,23 +1473,34 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     private _shiftImportedNodes(flowState: FlowModel, preImportIds: Set<number>): FlowModel {
-        const existingNodes = flowState.nodes.filter((n) => n.backendId !== null && preImportIds.has(n.backendId));
         const newNodes = flowState.nodes.filter((n) => n.backendId === null || !preImportIds.has(n.backendId));
 
-        if (!newNodes.length || !existingNodes.length) return flowState;
+        if (!newNodes.length) return flowState;
 
-        const maxRightX = existingNodes.reduce((max, n) => Math.max(max, n.position.x + n.size.width), 0);
+        const snapshot = this._importPositionSnapshot;
+        this._importPositionSnapshot = null;
+
+        // maxRightX uses snapshot positions so previous imports' shifts are respected
+        const maxRightX = flowState.nodes
+            .filter((n) => n.backendId !== null && preImportIds.has(n.backendId))
+            .reduce((max, n) => {
+                const pos = snapshot?.get(n.backendId!) ?? n.position;
+                return Math.max(max, pos.x + n.size.width);
+            }, 0);
+
         const minNewX = newNodes.reduce((min, n) => Math.min(min, n.position.x), Infinity);
-
         const offsetX = maxRightX + 400 - minNewX;
         if (offsetX <= 0) return flowState;
 
         return {
             ...flowState,
-            nodes: [
-                ...existingNodes,
-                ...newNodes.map((n) => ({ ...n, position: { ...n.position, x: n.position.x + offsetX } })),
-            ],
+            nodes: flowState.nodes.map((n) => {
+                if (n.backendId !== null && preImportIds.has(n.backendId)) {
+                    const snapshotPos = snapshot?.get(n.backendId);
+                    return snapshotPos ? { ...n, position: snapshotPos } : n;
+                }
+                return { ...n, position: { ...n.position, x: n.position.x + offsetX } };
+            }),
         };
     }
 

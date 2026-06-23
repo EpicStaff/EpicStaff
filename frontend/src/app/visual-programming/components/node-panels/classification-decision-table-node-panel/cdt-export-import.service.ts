@@ -290,6 +290,148 @@ export class CdtExportImportService {
         };
     }
 
+    public cdtExportDataToPartialImportJson(data: CdtExportData): string {
+        const promptIdToFakeId = new Map<string, number>();
+        const promptConfigs = data.prompt_configs.map((prompt, index) => {
+            const fakeId = index + 1;
+            if (prompt.prompt_key) {
+                promptIdToFakeId.set(prompt.prompt_key, fakeId);
+            }
+            const result: Record<string, unknown> = {
+                id: fakeId,
+                prompt_key: prompt.prompt_key ?? '',
+                prompt_text: prompt.prompt_text ?? '',
+                llm_config: prompt.llm_config ?? null,
+                output_schema: prompt.output_schema ?? {},
+                result_variable: prompt.result_variable ?? 'prompt_result',
+                variable_mappings: prompt.variable_mappings ?? {},
+            };
+            return result;
+        });
+
+        const conditionGroups = data.condition_groups.map((group) => {
+            const promptFakeId = group.prompt_id != null ? (promptIdToFakeId.get(group.prompt_id) ?? null) : null;
+            const result: Record<string, unknown> = {
+                id: 0,
+                group_name: group.group_name ?? '',
+                order: group.order ?? 1,
+                expression: group.expression ?? null,
+                prompt: promptFakeId,
+                manipulation: group.manipulation ?? null,
+                continue_flag: group.continue_flag ?? false,
+                next_node_id: null,
+                dock_visible: group.dock_visible ?? true,
+                field_expressions: group.field_expressions ?? {},
+                field_manipulations: group.field_manipulations ?? {},
+                route_code: group.route_code ?? null,
+                section: group.section ?? null,
+                metadata: {},
+            };
+            return result;
+        });
+
+        const node: Record<string, unknown> = {
+            id: 0,
+            node_name: data.node_name ?? '',
+            pre_input_map: data.pre_input_map ?? {},
+            pre_output_variable_path: data.pre_output_variable_path ?? null,
+            post_input_map: data.post_input_map ?? {},
+            post_output_variable_path: data.post_output_variable_path ?? null,
+            default_llm_config: data.default_llm_config ?? null,
+            default_next_node_id: null,
+            next_error_node_id: null,
+            metadata: {},
+            condition_groups: conditionGroups,
+            prompt_configs: promptConfigs,
+        };
+
+        return JSON.stringify({ ClassificationDecisionTableNode: [node] }, null, 2);
+    }
+
+    public partialExportNodeToCdtExportData(nodeJson: Record<string, unknown>): CdtExportData {
+        const nodes = nodeJson['ClassificationDecisionTableNode'];
+        if (!Array.isArray(nodes) || nodes.length === 0) {
+            return {
+                node_name: '',
+                pre_python_code: { code: '', libraries: [] },
+                pre_input_map: {},
+                pre_output_variable_path: null,
+                post_python_code: { code: '', libraries: [] },
+                post_input_map: {},
+                post_output_variable_path: null,
+                default_llm_config: null,
+                condition_groups: [],
+                prompt_configs: [],
+            };
+        }
+
+        const node = (nodes[0] ?? {}) as Record<string, unknown>;
+
+        const rawPreCode = (node['pre_python_code'] ?? {}) as Record<string, unknown>;
+        const rawPostCode = (node['post_python_code'] ?? {}) as Record<string, unknown>;
+
+        const rawPromptConfigs = Array.isArray(node['prompt_configs'])
+            ? (node['prompt_configs'] as Record<string, unknown>[])
+            : [];
+
+        const promptConfigs: CdtExportPromptConfig[] = rawPromptConfigs.map((p) => this.normalizePromptConfig(p));
+
+        // Build a lookup from numeric prompt id → prompt_key
+        const promptIdToKey = new Map<number, string>();
+        rawPromptConfigs.forEach((p) => {
+            const id = p['id'];
+            const key = p['prompt_key'];
+            if (typeof id === 'number' && typeof key === 'string') {
+                promptIdToKey.set(id, key);
+            }
+        });
+
+        const rawConditionGroups = Array.isArray(node['condition_groups'])
+            ? (node['condition_groups'] as Record<string, unknown>[])
+            : [];
+
+        const conditionGroups: CdtExportConditionGroup[] = rawConditionGroups.map((g, index) => {
+            const promptIntId = typeof g['prompt'] === 'number' ? (g['prompt'] as number) : null;
+            const promptId = promptIntId != null ? (promptIdToKey.get(promptIntId) ?? null) : null;
+            return {
+                group_name: this.asString(g['group_name']),
+                order: typeof g['order'] === 'number' ? (g['order'] as number) : index + 1,
+                expression: this.asNullableString(g['expression']),
+                prompt_id: promptId,
+                manipulation: this.asNullableString(g['manipulation']),
+                continue_flag: g['continue_flag'] === true,
+                route_code: this.asNullableString(g['route_code']),
+                dock_visible: g['dock_visible'] !== false,
+                field_expressions: this.asStringRecord(g['field_expressions']),
+                field_manipulations: this.asStringRecord(g['field_manipulations']),
+                section: this.asNullableString(g['section']),
+            };
+        });
+
+        return {
+            node_name: this.asString(node['node_name']),
+            pre_python_code: {
+                code: this.asString(rawPreCode['code']),
+                libraries: this.asString(rawPreCode['libraries'])
+                    .split('\n')
+                    .filter((lib) => lib.trim().length > 0),
+            },
+            pre_input_map: this.asStringRecord(node['pre_input_map']),
+            pre_output_variable_path: this.asNullableString(node['pre_output_variable_path']),
+            post_python_code: {
+                code: this.asString(rawPostCode['code']),
+                libraries: this.asString(rawPostCode['libraries'])
+                    .split('\n')
+                    .filter((lib) => lib.trim().length > 0),
+            },
+            post_input_map: this.asStringRecord(node['post_input_map']),
+            post_output_variable_path: this.asNullableString(node['post_output_variable_path']),
+            default_llm_config: this.asNullableNumber(node['default_llm_config']),
+            condition_groups: conditionGroups,
+            prompt_configs: promptConfigs,
+        };
+    }
+
     public buildExportData(input: {
         nodeName: string;
         preCode: string;

@@ -42,6 +42,7 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { CdtExportImportService } from './cdt-export-import.service';
 import { ClassificationDecisionTableGridComponent } from './classification-decision-table-grid/classification-decision-table-grid.component';
 
 type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
@@ -101,6 +102,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private sidePanelService = inject(SidePanelService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly importExportService = inject(ImportExportService);
+    private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly toastService = inject(ToastService);
 
     // Sub-FormGroups for InputMapComponent in pre/post tabs.
@@ -576,18 +578,22 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     }
 
     public exportAsCsv(): void {
-        const backendId = this.node().backendId;
-        if (backendId == null) {
-            this.toastService.error('Save the node before exporting.');
-            return;
-        }
-        this.importExportService
-            .cdtExport(backendId, 'csv')
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (blob) => this.downloadBlob(blob, this.buildFileName('csv')),
-                error: () => this.toastService.error('Export failed.'),
-            });
+        const exportData = this.cdtExportImportService.buildExportData({
+            nodeName: this.form.value.node_name ?? '',
+            preCode: this.preCode,
+            preLibraries: this.parseLibraries(this.form.value.pre_libraries),
+            preInputMap: this.serializeInputMap('pre_input_map'),
+            preOutputVariablePath: this.form.value.pre_output_variable_path || null,
+            postCode: this.postCode,
+            postLibraries: this.parseLibraries(this.form.value.post_libraries),
+            postInputMap: this.serializeInputMap('post_input_map'),
+            postOutputVariablePath: this.form.value.post_output_variable_path || null,
+            defaultLlmConfig: this.form.value.default_llm_config || null,
+            conditionGroups: this.conditionGroups(),
+            prompts: this.prompts(),
+        });
+        const csv = this.cdtExportImportService.exportToCsv(exportData);
+        this.cdtExportImportService.downloadFile(csv, this.buildFileName('csv'), 'text/csv;charset=utf-8;');
     }
 
     private downloadBlob(blob: Blob, filename: string): void {
@@ -595,7 +601,9 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         const a = document.createElement('a');
         a.href = url;
         a.download = filename;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
         URL.revokeObjectURL(url);
     }
 
