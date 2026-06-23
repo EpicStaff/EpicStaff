@@ -9,7 +9,7 @@ import {
     VALUE_EDITOR_COLUMN_DEFS,
     VariableInputType,
     VariableSectionConfig,
-} from '../parameters-table.config';
+} from '../../parameters';
 
 export type VariableSectionMode = 'rows' | 'array-values';
 

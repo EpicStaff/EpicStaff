@@ -22,15 +22,16 @@ import { ConfirmationDialogService } from '../../../../shared/components/cofirm-
 import { ToggleSwitchComponent } from '../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
-import { JsonEditorComponent } from '../../../../shared/components/json-editor/json-editor.component';
+import { JsonEditorComponent, JsonError } from '../../../../shared/components/json-editor/json-editor.component';
 import { TextareaComponent } from '../../../../shared/components/textarea/textarea.component';
 import { CodeEditorComponent } from '../code-editor/code-editor.component';
-import { parseToolVariablesJson, serializeVariables, ToolVariable } from './components/parameters-table.config';
+import { parseToolVariablesJson, serializeVariables, ToolVariable } from './parameters';
 import {
     DrillStep,
     ParametersTableViewComponent,
 } from './components/parameters-table-view/parameters-table-view.component';
 import { toCreatePayload } from './models/create-custom-tool-form.model';
+import { isToolJsonSchemaValid, TOOL_VARIABLES_JSON_SCHEMA } from './schema/tool-variables-schema';
 
 enum ActiveEditor {
     None = 'none',
@@ -107,6 +108,9 @@ export class CreateCustomToolDialogComponent {
     public readonly jsonSectionExpanded = signal(false);
     public readonly parametersTableMode = signal(true);
     public readonly isJsonValid = signal(true);
+    public readonly jsonIssues = signal<JsonError[]>([]);
+    public readonly lastValidJson = signal('');
+    public readonly toolVariablesSchema = TOOL_VARIABLES_JSON_SCHEMA;
     public readonly pythonHasError = signal(false);
     public readonly isSaving = signal(false);
     public readonly isCopying = signal(false);
@@ -132,6 +136,10 @@ export class CreateCustomToolDialogComponent {
         this.tableVariables.set(parsedDefault.valid ? parsedDefault.variables : []);
 
         this.initialSnapshot = this.computeSnapshot();
+        const initialJson = this.form.controls.variablesJson.value;
+        if (isToolJsonSchemaValid(initialJson)) {
+            this.lastValidJson.set(initialJson);
+        }
 
         // Route backdrop click and Escape through the dirty-check guard.
         this.dialogRef.disableClose = true;
@@ -183,8 +191,8 @@ export class CreateCustomToolDialogComponent {
         }
 
         if (enabled) {
-            const parsed = parseToolVariablesJson(this.form.controls.variablesJson.value);
-            if (!parsed.valid) {
+            const value = this.form.controls.variablesJson.value;
+            if (!isToolJsonSchemaValid(value)) {
                 this.confirmDialog
                     .confirm({
                         title: 'Invalid Code Detected',
@@ -208,7 +216,7 @@ export class CreateCustomToolDialogComponent {
                 return;
             }
 
-            this.applyEnableTableMode(parsed.variables);
+            this.applyEnableTableMode(parseToolVariablesJson(value).variables);
             this.tableImportWasInvalid = false;
             return;
         }
@@ -219,12 +227,18 @@ export class CreateCustomToolDialogComponent {
         this.isJsonValid.set(true);
         this.tableImportWasInvalid = false;
         this.jsonSectionExpanded.set(true);
+        const serialized = this.form.controls.variablesJson.value;
+        if (isToolJsonSchemaValid(serialized)) {
+            this.lastValidJson.set(serialized);
+        }
     }
 
     private applyEnableTableMode(variables: ToolVariable[]): void {
         this.tableVariables.set(variables);
         this.parametersTableMode.set(true);
         this.jsonSectionExpanded.set(false);
+        // The JSON editor isn't visible in table mode; clear any pending issues.
+        this.jsonIssues.set([]);
         // If the JSON editor was occupying the right pane, swap it to Python
         // so the user keeps a useful editor visible instead of an empty panel.
         if (this.activeEditor() === ActiveEditor.Json) {
@@ -243,10 +257,28 @@ export class CreateCustomToolDialogComponent {
     public onJsonChange(json: string): void {
         this.form.controls.variablesJson.setValue(json);
         this.form.controls.variablesJson.markAsDirty();
+        if (isToolJsonSchemaValid(json)) {
+            this.lastValidJson.set(json);
+        }
     }
 
     public onJsonValidationChange(isValid: boolean): void {
         this.isJsonValid.set(isValid);
+    }
+
+    public onJsonErrorsChange(errors: JsonError[]): void {
+        this.jsonIssues.set(errors);
+    }
+
+    public revertToLastValidJson(): void {
+        const snapshot = this.lastValidJson();
+        if (!snapshot) {
+            return;
+        }
+        this.form.controls.variablesJson.setValue(snapshot);
+        this.form.controls.variablesJson.markAsDirty();
+        this.jsonIssues.set([]);
+        this.isJsonValid.set(true);
     }
 
     public onJsonEditorReady(editor: MonacoEditor.IStandaloneCodeEditor): void {

@@ -20,7 +20,7 @@ import {
     VARIABLE_SECTIONS,
     VariableInputType,
     variableToRowData,
-} from '../parameters-table.config';
+} from '../../parameters';
 import { VariableSectionComponent, VariableSectionMode } from '../variable-section/variable-section.component';
 import { BreadcrumbItem, VariablesBreadcrumbComponent } from '../variables-breadcrumb/variables-breadcrumb.component';
 

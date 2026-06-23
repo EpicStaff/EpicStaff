@@ -178,3 +178,46 @@
     height: 30px;
     animation: spin 1s linear infinite;
 }
+
+/* Validation errors panel */
+.json-errors {
+    margin-top: 8px;
+    border: 1px solid rgba(255, 85, 85, 0.4);
+    border-radius: 6px;
+    background-color: rgba(255, 85, 85, 0.06);
+    overflow: hidden;
+
+    .json-errors-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+        padding: 8px 12px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: #ff5555;
+        font-weight: 600;
+        font-size: 0.85rem;
+        text-align: left;
+    }
+
+    .json-errors-caret {
+        display: inline-block;
+        width: 0.8rem;
+        font-size: 0.7rem;
+    }
+
+    .json-errors-list {
+        margin: 0;
+        padding: 0 12px 10px 28px;
+        list-style: disc;
+
+        li {
+            color: #ff8a8a;
+            font-size: 0.8rem;
+            line-height: 1.4;
+            margin-bottom: 4px;
+        }
+    }
+}
