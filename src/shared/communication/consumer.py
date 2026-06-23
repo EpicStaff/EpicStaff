@@ -1,5 +1,5 @@
 import json
-from typing import Iterable, AsyncIterable
+from typing import Iterator, AsyncIterator, Any
 
 from .message import Message
 from .brokers import AbstractBroker
@@ -19,38 +19,53 @@ class Consumer:
         self.broker = broker
         self.storage = storage
 
-    def receive(self, channel: str) -> Iterable[Message]:
+    def receive(self, channel: str, timeout: float = 5.0) -> Message | None:
         """Receive messages from a channel synchronously.
 
         Args:
             channel: Channel to receive from.
         """
-        for data in self.broker.receive(channel):
-            msg_id = data["id"]
-            is_used_storage = data.pop("is_used_storage", False)
-            if is_used_storage:
-                payload = self.storage.get(msg_id)
-                data["payload"] = json.loads(payload) if payload else {}
+        data = self.broker.receive(channel, timeout=timeout)
+        if data is None:
+            return None
+        data = self._update_data_by_payload_from_storage_if_exists(data)
+        return Message(**data)
 
-            yield Message(**data)
-
-            if is_used_storage:
-                self.storage.remove(msg_id)
-
-    async def areceive(self, channel: str) -> AsyncIterable[Message]:
+    async def areceive(self, channel: str, timeout: float = 5.0) -> Message | None:
         """Receive messages from a channel asynchronously.
 
         Args:
             channel: Channel to receive from.
         """
-        async for data in self.broker.areceive(channel):
-            msg_id = data["id"]
-            is_used_storage = data.pop("is_used_storage", False)
-            if is_used_storage:
-                payload = await self.storage.aget(msg_id)
-                data["payload"] = json.loads(payload) if payload else {}
+        data = await self.broker.areceive(channel, timeout=timeout)
+        if data is None:
+            return None
+        data = await self._aupdate_data_by_payload_from_storage_if_exists(data)
+        return Message(**data)
 
+    def stream(self, channel: str) -> Iterator[Message]:
+        for data in self.broker.stream(channel):
+            data = self._update_data_by_payload_from_storage_if_exists(data)
             yield Message(**data)
 
-            if is_used_storage:
-                await self.storage.aremove(msg_id)
+
+    async def astream(self, channel: str) -> AsyncIterator[Message]:
+        async for data in self.broker.astream(channel):
+            data = await self._aupdate_data_by_payload_from_storage_if_exists(data)
+            yield Message(**data)
+
+    def _update_data_by_payload_from_storage_if_exists(self, data: dict[str, Any]) -> dict[str, Any]:
+        msg_id = data['id']
+        if data.pop("is_used_storage", False):
+            payload = self.storage.get(msg_id)
+            data["payload"] = json.loads(payload) if payload else {}
+            self.storage.remove(msg_id)
+        return data
+
+    async def _aupdate_data_by_payload_from_storage_if_exists(self, data: dict[str, Any]) -> dict[str, Any]:
+        msg_id = data['id']
+        if data.pop("is_used_storage", False):
+            payload = await self.storage.aget(msg_id)
+            data["payload"] = json.loads(payload) if payload else {}
+            await self.storage.aremove(msg_id)
+        return data
