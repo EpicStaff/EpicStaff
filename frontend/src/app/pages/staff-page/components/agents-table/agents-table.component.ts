@@ -121,6 +121,8 @@ export class AgentsTableComponent {
     private currentCellElement: HTMLElement | null = null;
     private globalClickUnlistener: (() => void) | null = null;
     private globalKeydownUnlistener: (() => void) | null = null;
+    
+    private childDialogOpen = false;
 
     @Output() dirtyChange = new EventEmitter<boolean>();
     @Output() autoSaveRequested = new EventEmitter<void>();
@@ -1652,6 +1654,10 @@ export class AgentsTableComponent {
 
             popupRef.instance.mergedTools = event.data?.mergedTools || [];
 
+            popupRef.instance.childDialogOpenChange.subscribe((open: boolean) => {
+                this.childDialogOpen = open;
+            });
+
             popupRef.instance.mergedToolsUpdated.subscribe(
                 (updatedMergedTools: { id: number; configName: string; toolName: string; type: string }[]) => {
                     if (this.currentPopupCell) {
@@ -1745,13 +1751,17 @@ export class AgentsTableComponent {
 
         // Attach a global keydown listener to close the popup on Escape key.
         this.globalKeydownUnlistener = this.renderer.listen('document', 'keydown', (evt: KeyboardEvent) => {
-            if (evt.key === 'Escape') {
+            // Let an open child dialog handle its own Escape without also closing the popup.
+            if (evt.key === 'Escape' && !this.childDialogOpen) {
                 this.closePopup();
             }
         });
     }
 
     private onDocumentClick(event: MouseEvent): void {
+        if (this.childDialogOpen) {
+            return;
+        }
         const target = event.target as HTMLElement;
         if (
             this.popupOverlayRef &&
@@ -1770,6 +1780,7 @@ export class AgentsTableComponent {
         }
         this._activePopupCommitFn = null;
         this.currentPopupCell = null;
+        this.childDialogOpen = false;
 
         // Remove the custom CSS class from the cell.
         if (this.currentCellElement) {

@@ -59,4 +59,9 @@ export class AppStorageService {
     clearAll(): void {
         this.storages.forEach((s) => s.clear());
     }
+
+    /** Clears each given storage once (duplicates are ignored). */
+    invalidate(storages: Iterable<StorageService>): void {
+        new Set(storages).forEach((s) => s.clear());
+    }
 }
