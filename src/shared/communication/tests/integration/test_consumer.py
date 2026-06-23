@@ -7,11 +7,11 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
-from communication.brokers.redis_ import RedisPubSubBroker
+from communication.brokers.redis_broker import RedisPubSubBroker
 from communication.consumer import Consumer
 from communication.message import Message
 from communication.producer import Producer
-from communication.storages.minio_ import MinioStorage
+from communication.storages.minio_storage import MinioStorage
 
 CHANNEL_PREFIX = "integ-consumer-channel"
 SMALL_THRESHOLD = 50

@@ -6,11 +6,11 @@ import redis as redis_lib
 
 pytestmark = pytest.mark.integration
 
-from communication.brokers.redis_ import RedisPubSubBroker
+from communication.brokers.redis_broker import RedisPubSubBroker
 from communication.message import Message
 from communication.producer import Producer
-from communication.storages.minio_ import MinioStorage
-from communication.storages.redis_ import RedisStorage
+from communication.storages.minio_storage import MinioStorage
+from communication.storages.redis_storage import RedisStorage
 
 CHANNEL = "integ-producer-channel"
 # Threshold small enough to force offloading with a modest payload.

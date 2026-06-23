@@ -5,7 +5,7 @@ import pytest
 from minio.error import S3Error
 
 from communication.errors import StorageOperationError
-from communication.storages.minio_ import MinioStorage
+from communication.storages.minio_storage import MinioStorage
 
 
 def _make_s3_error(code: str, key: str = "test-key") -> S3Error:
