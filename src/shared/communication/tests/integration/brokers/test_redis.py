@@ -6,123 +6,100 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
-from communication.brokers.redis_ import RedisPubSubBroker
+from communication.brokers.redis_broker import RedisPubSubBroker
 
 CHANNEL = "integ-broker-channel"
 TIMEOUT = 10  # seconds to wait for a message before failing
+SUBSCRIBE_GRACE = 0.5  # let the subscription activate before publishing
 
 
-class TestSyncRoundtrip:
-    def test_send_receive_roundtrip(self, redis_url):
-        """Publish a message from main thread; subscriber thread collects it."""
+class TestSyncReceive:
+    def test_receive_returns_published_message(self, redis_url):
         broker = RedisPubSubBroker(redis_url)
+        channel = CHANNEL + "-recv"
         data = {"id": "broker-integ-1", "payload": {"hello": "world"}}
 
-        received: list[dict] = []
-        ready = threading.Event()
-        done = threading.Event()
+        result: list = []
 
         def subscriber():
-            gen = broker.receive(CHANNEL)
-            ready.set()
-            try:
-                msg = next(iter(gen))
-                received.append(msg)
-            finally:
-                done.set()
+            result.append(broker.receive(channel, timeout=TIMEOUT))
 
         thread = threading.Thread(target=subscriber, daemon=True)
         thread.start()
+        time.sleep(SUBSCRIBE_GRACE)
+        broker.send(channel, data)
+        thread.join(timeout=TIMEOUT + 2)
 
-        # Wait until subscriber has subscribed before publishing.
-        ready.wait(timeout=5)
-        time.sleep(0.1)  # brief grace period for the pubsub subscription to activate
+        assert result == [data]
 
-        broker.send(CHANNEL, data)
-        done.wait(timeout=TIMEOUT)
-
-        assert received == [data]
-
-    def test_send_receive_multiple_messages(self, redis_url):
+    def test_receive_returns_none_on_timeout(self, redis_url):
         broker = RedisPubSubBroker(redis_url)
+        assert broker.receive(CHANNEL + "-empty", timeout=1.0) is None
+
+
+class TestAsyncReceive:
+    @pytest.mark.asyncio
+    async def test_areceive_returns_published_message(self, redis_url):
+        broker = RedisPubSubBroker(redis_url)
+        channel = CHANNEL + "-arecv"
+        data = {"id": "abroker-integ-1", "payload": {"async": True}}
+
+        task = asyncio.create_task(broker.areceive(channel, timeout=TIMEOUT))
+        await asyncio.sleep(SUBSCRIBE_GRACE)
+        await broker.asend(channel, data)
+        result = await asyncio.wait_for(task, timeout=TIMEOUT + 2)
+
+        assert result == data
+
+    @pytest.mark.asyncio
+    async def test_areceive_returns_none_on_timeout(self, redis_url):
+        broker = RedisPubSubBroker(redis_url)
+        assert await broker.areceive(CHANNEL + "-aempty", timeout=1.0) is None
+
+
+class TestSyncStream:
+    def test_stream_yields_published_messages_in_order(self, redis_url):
+        broker = RedisPubSubBroker(redis_url)
+        channel = CHANNEL + "-stream"
         messages = [{"id": f"broker-integ-m{i}", "payload": {"i": i}} for i in range(3)]
 
-        received: list[dict] = []
-        ready = threading.Event()
-        done = threading.Event()
+        received: list = []
 
         def subscriber():
-            gen = broker.receive(CHANNEL + "-multi")
-            ready.set()
-            for _ in messages:
-                received.append(next(iter(gen)))
-            done.set()
+            for msg in broker.stream(channel):
+                received.append(msg)
+                if len(received) >= len(messages):
+                    break
 
         thread = threading.Thread(target=subscriber, daemon=True)
         thread.start()
-
-        ready.wait(timeout=5)
-        time.sleep(0.1)
-
+        time.sleep(SUBSCRIBE_GRACE)
         for msg in messages:
-            broker.send(CHANNEL + "-multi", msg)
+            broker.send(channel, msg)
+        thread.join(timeout=TIMEOUT)
 
-        done.wait(timeout=TIMEOUT)
         assert received == messages
 
 
-class TestAsyncRoundtrip:
+class TestAsyncStream:
     @pytest.mark.asyncio
-    async def test_asend_areceive_roundtrip(self, redis_url):
+    async def test_astream_yields_published_messages_in_order(self, redis_url):
         broker = RedisPubSubBroker(redis_url)
-        data = {"id": "abroker-integ-1", "payload": {"async": True}}
+        channel = CHANNEL + "-astream"
+        messages = [{"id": f"abroker-integ-m{i}", "payload": {"i": i}} for i in range(3)]
 
-        received: list[dict] = []
+        received: list = []
 
-        async def subscriber_task():
-            async for msg in broker.areceive(CHANNEL + "-async"):
-                received.append(msg)
-                return  # stop after first message
-
-        task = asyncio.create_task(subscriber_task())
-
-        # Give the subscriber a moment to subscribe.
-        await asyncio.sleep(0.2)
-        await broker.asend(CHANNEL + "-async", data)
-
-        try:
-            await asyncio.wait_for(task, timeout=TIMEOUT)
-        except asyncio.TimeoutError:
-            task.cancel()
-            pytest.fail("Subscriber did not receive the message within timeout")
-
-        assert received == [data]
-
-    @pytest.mark.asyncio
-    async def test_asend_areceive_multiple_messages(self, redis_url):
-        broker = RedisPubSubBroker(redis_url)
-        messages = [
-            {"id": f"abroker-integ-m{i}", "payload": {"i": i}} for i in range(3)
-        ]
-
-        received: list[dict] = []
-
-        async def subscriber_task():
-            async for msg in broker.areceive(CHANNEL + "-async-multi"):
+        async def subscriber():
+            async for msg in broker.astream(channel):
                 received.append(msg)
                 if len(received) >= len(messages):
                     return
 
-        task = asyncio.create_task(subscriber_task())
-        await asyncio.sleep(0.2)
-
+        task = asyncio.create_task(subscriber())
+        await asyncio.sleep(SUBSCRIBE_GRACE)
         for msg in messages:
-            await broker.asend(CHANNEL + "-async-multi", msg)
-
-        try:
-            await asyncio.wait_for(task, timeout=TIMEOUT)
-        except asyncio.TimeoutError:
-            task.cancel()
-            pytest.fail("Subscriber did not receive all messages within timeout")
+            await broker.asend(channel, msg)
+        await asyncio.wait_for(task, timeout=TIMEOUT)
 
         assert received == messages
