@@ -92,21 +92,15 @@ class TestInlinePath:
         producer = Producer(broker, redis_storage, payload_size_threshold=1024**2)
         message = Message(payload={"async": "inline"})
 
-        received_data = []
-
-        async def subscriber():
-            async for data in broker.areceive(channel):
-                received_data.append(data)
-                return
-
-        task = asyncio.create_task(subscriber())
+        task = asyncio.create_task(broker.areceive(channel, timeout=10))
         await asyncio.sleep(0.2)
         await producer.asend(channel, message)
-        await asyncio.wait_for(task, timeout=10)
+        data = await asyncio.wait_for(task, timeout=12)
 
-        assert received_data[0]["id"] == message.id
-        assert received_data[0]["payload"] == {"async": "inline"}
-        assert "is_used_storage" not in received_data[0]
+        assert data is not None
+        assert data["id"] == message.id
+        assert data["payload"] == {"async": "inline"}
+        assert "is_used_storage" not in data
 
 
 # ---------------------------------------------------------------------------
@@ -159,19 +153,11 @@ class TestOffloadPath:
         big_payload = {"data": "Y" * (SMALL_THRESHOLD + 100)}
         message = Message(payload=big_payload)
 
-        received_data = []
-
-        async def subscriber():
-            async for data in broker.areceive(channel):
-                received_data.append(data)
-                return
-
-        task = asyncio.create_task(subscriber())
+        task = asyncio.create_task(broker.areceive(channel, timeout=10))
         await asyncio.sleep(0.2)
         await producer.asend(channel, message)
-        await asyncio.wait_for(task, timeout=10)
+        broker_data = await asyncio.wait_for(task, timeout=12)
 
-        broker_data = received_data[0]
         assert broker_data == {"id": message.id, "is_used_storage": True}
 
         stored = await minio_storage.aget(message.id)

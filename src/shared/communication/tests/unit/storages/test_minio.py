@@ -1,5 +1,6 @@
 import io
-from unittest.mock import MagicMock, patch, call
+from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
 
 import pytest
 from minio.error import S3Error
@@ -17,18 +18,27 @@ def _make_s3_error(code: str, key: str = "test-key") -> S3Error:
     )
 
 
-def _make_storage_with_mock(
-    bucket_exists_return=True,
-) -> tuple[MinioStorage, MagicMock]:
-    """Construct MinioStorage with a fully mocked Minio client.
+@contextmanager
+def _patched_minio(bucket_exists: bool = True):
+    """Patch the lazily-imported `minio` module with a mock client.
 
-    Returns the storage instance and the mock client for assertion.
+    `MinioStorage` reads `minio.Minio` and `minio.S3Error` from a module-level
+    global at call time, so the patch must stay active for the whole `with`
+    block — including during put/get/remove. Yields the mock Minio client.
     """
-    with patch("communication.storages.minio_.Minio") as MockMinio:
-        mock_client = MagicMock()
-        MockMinio.return_value = mock_client
-        mock_client.bucket_exists.return_value = bucket_exists_return
+    fake_minio = MagicMock()
+    fake_minio.S3Error = S3Error  # real class so `except` / handle_error work
+    client = MagicMock()
+    client.bucket_exists.return_value = bucket_exists
+    fake_minio.Minio.return_value = client
+    with patch("communication.storages.minio_storage.minio", fake_minio):
+        yield client
 
+
+@pytest.fixture
+def storage_and_client():
+    """MinioStorage backed by a mock client, with the `minio` patch held active."""
+    with _patched_minio() as client:
         storage = MinioStorage(
             host="localhost",
             port=9000,
@@ -36,36 +46,26 @@ def _make_storage_with_mock(
             secret_key="minioadmin",
             bucket="test-bucket",
         )
-    # Detach from the context manager — client already set on the instance
-    storage._client = mock_client
-    return storage, mock_client
+        yield storage, client
 
 
 class TestBucketInit:
     def test_bucket_exists_skips_make_bucket(self):
-        with patch("communication.storages.minio_.Minio") as MockMinio:
-            mock_client = MagicMock()
-            MockMinio.return_value = mock_client
-            mock_client.bucket_exists.return_value = True
-
+        with _patched_minio(bucket_exists=True) as client:
             MinioStorage("localhost", 9000, "k", "s", "bucket")
 
-        mock_client.make_bucket.assert_not_called()
+        client.make_bucket.assert_not_called()
 
     def test_bucket_missing_calls_make_bucket(self):
-        with patch("communication.storages.minio_.Minio") as MockMinio:
-            mock_client = MagicMock()
-            MockMinio.return_value = mock_client
-            mock_client.bucket_exists.return_value = False
-
+        with _patched_minio(bucket_exists=False) as client:
             MinioStorage("localhost", 9000, "k", "s", "bucket")
 
-        mock_client.make_bucket.assert_called_once_with("bucket")
+        client.make_bucket.assert_called_once_with("bucket")
 
 
 class TestPut:
-    def test_put_calls_put_object_with_correct_args(self):
-        storage, client = _make_storage_with_mock()
+    def test_put_calls_put_object_with_correct_args(self, storage_and_client):
+        storage, client = storage_and_client
         payload = b"hello bytes"
         storage.put("obj-key", payload)
 
@@ -74,13 +74,12 @@ class TestPut:
         assert call_kwargs["bucket_name"] == "test-bucket"
         assert call_kwargs["object_name"] == "obj-key"
         assert call_kwargs["length"] == len(payload)
-        # data should be a BytesIO with the right content
         data_arg = call_kwargs["data"]
         assert isinstance(data_arg, io.BytesIO)
         assert data_arg.read() == payload
 
-    def test_put_s3_error_raises_storage_operation_error(self):
-        storage, client = _make_storage_with_mock()
+    def test_put_s3_error_raises_storage_operation_error(self, storage_and_client):
+        storage, client = storage_and_client
         client.put_object.side_effect = _make_s3_error("InternalError")
 
         with pytest.raises(StorageOperationError) as exc_info:
@@ -93,8 +92,8 @@ class TestPut:
 
 
 class TestGet:
-    def test_get_returns_response_bytes(self):
-        storage, client = _make_storage_with_mock()
+    def test_get_returns_response_bytes(self, storage_and_client):
+        storage, client = storage_and_client
         expected = b"stored content"
 
         mock_response = MagicMock()
@@ -107,16 +106,16 @@ class TestGet:
         mock_response.close.assert_called_once()
         mock_response.release_conn.assert_called_once()
 
-    def test_get_no_such_key_returns_none(self):
-        storage, client = _make_storage_with_mock()
+    def test_get_no_such_key_returns_none(self, storage_and_client):
+        storage, client = storage_and_client
         client.get_object.side_effect = _make_s3_error("NoSuchKey")
 
         result = storage.get("missing-key")
 
         assert result is None
 
-    def test_get_other_s3_error_raises_storage_operation_error(self):
-        storage, client = _make_storage_with_mock()
+    def test_get_other_s3_error_raises_storage_operation_error(self, storage_and_client):
+        storage, client = storage_and_client
         client.get_object.side_effect = _make_s3_error("AccessDenied", "restricted-key")
 
         with pytest.raises(StorageOperationError) as exc_info:
@@ -129,8 +128,8 @@ class TestGet:
 
 
 class TestRemove:
-    def test_remove_calls_remove_object(self):
-        storage, client = _make_storage_with_mock()
+    def test_remove_calls_remove_object(self, storage_and_client):
+        storage, client = storage_and_client
         storage.remove("del-key")
 
         client.remove_object.assert_called_once_with(
@@ -138,8 +137,8 @@ class TestRemove:
             object_name="del-key",
         )
 
-    def test_remove_s3_error_raises_storage_operation_error(self):
-        storage, client = _make_storage_with_mock()
+    def test_remove_s3_error_raises_storage_operation_error(self, storage_and_client):
+        storage, client = storage_and_client
         client.remove_object.side_effect = _make_s3_error("InternalError")
 
         with pytest.raises(StorageOperationError) as exc_info:
@@ -153,8 +152,8 @@ class TestRemove:
 
 class TestAsyncDelegation:
     @pytest.mark.asyncio
-    async def test_aput_delegates_to_put(self):
-        storage, client = _make_storage_with_mock()
+    async def test_aput_delegates_to_put(self, storage_and_client):
+        storage, client = storage_and_client
         payload = b"async bytes"
         await storage.aput("akey", payload)
 
@@ -164,8 +163,8 @@ class TestAsyncDelegation:
         assert call_kwargs["object_name"] == "akey"
 
     @pytest.mark.asyncio
-    async def test_aget_delegates_to_get(self):
-        storage, client = _make_storage_with_mock()
+    async def test_aget_delegates_to_get(self, storage_and_client):
+        storage, client = storage_and_client
         expected = b"async stored"
         mock_response = MagicMock()
         mock_response.read.return_value = expected
@@ -175,16 +174,16 @@ class TestAsyncDelegation:
         assert result == expected
 
     @pytest.mark.asyncio
-    async def test_aget_no_such_key_returns_none(self):
-        storage, client = _make_storage_with_mock()
+    async def test_aget_no_such_key_returns_none(self, storage_and_client):
+        storage, client = storage_and_client
         client.get_object.side_effect = _make_s3_error("NoSuchKey")
 
         result = await storage.aget("missing-akey")
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_aremove_delegates_to_remove(self):
-        storage, client = _make_storage_with_mock()
+    async def test_aremove_delegates_to_remove(self, storage_and_client):
+        storage, client = storage_and_client
         await storage.aremove("adel-key")
 
         client.remove_object.assert_called_once_with(
@@ -193,8 +192,8 @@ class TestAsyncDelegation:
         )
 
     @pytest.mark.asyncio
-    async def test_aput_s3_error_raises_storage_operation_error(self):
-        storage, client = _make_storage_with_mock()
+    async def test_aput_s3_error_raises_storage_operation_error(self, storage_and_client):
+        storage, client = storage_and_client
         client.put_object.side_effect = _make_s3_error("InternalError")
 
         with pytest.raises(StorageOperationError) as exc_info:
@@ -203,8 +202,8 @@ class TestAsyncDelegation:
         assert exc_info.value.operation == "put"
 
     @pytest.mark.asyncio
-    async def test_aremove_s3_error_raises_storage_operation_error(self):
-        storage, client = _make_storage_with_mock()
+    async def test_aremove_s3_error_raises_storage_operation_error(self, storage_and_client):
+        storage, client = storage_and_client
         client.remove_object.side_effect = _make_s3_error("InternalError")
 
         with pytest.raises(StorageOperationError) as exc_info:
