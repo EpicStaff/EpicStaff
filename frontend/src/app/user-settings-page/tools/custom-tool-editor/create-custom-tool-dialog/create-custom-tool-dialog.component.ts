@@ -47,33 +47,6 @@ const DEFAULT_PYTHON_CODE = `def main() -> dict:
     return {"status": "ok"}
 `;
 
-const DEFAULT_VARIABLES_JSON = `[
-  {
-    "name": "query",
-    "type": "string",
-    "description": "Search query provided by the agent",
-    "input_type": "agent_input",
-    "required": true,
-    "default_value": null
-  },
-  {
-    "name": "api_key",
-    "type": "string",
-    "description": "API key configured by the user",
-    "input_type": "user_input",
-    "required": true,
-    "default_value": null
-  },
-  {
-    "name": "max_results",
-    "type": "number",
-    "description": "Maximum number of results. Agent may override the default.",
-    "input_type": "mixed",
-    "required": false,
-    "default_value": 10
-  }
-]`;
-
 const VARIABLES_SCHEMA_TOOLTIP =
     'Variables must be a JSON array. Each item defines one parameter: name, type, description, input_type, required, and default_value. input_type can be agent_input (agent supplies it), user_input (configured/default value, hidden from the agent), or mixed (agent may override configured/default value).';
 
@@ -115,7 +88,7 @@ export class CreateCustomToolDialogComponent {
         description: this.fb.control(this.selectedTool?.description ?? '', [Validators.required]),
         pythonCode: this.fb.control(this.selectedTool?.python_code?.code ?? DEFAULT_PYTHON_CODE, [Validators.required]),
         variablesJson: this.fb.control(
-            this.selectedTool ? this.initialVariablesJsonFromTool(this.selectedTool) : DEFAULT_VARIABLES_JSON,
+            this.selectedTool ? this.initialVariablesJsonFromTool(this.selectedTool) : '[]',
             [Validators.required]
         ),
         libraries: this.fb.control<string[]>(this.selectedTool?.python_code?.libraries ?? []),
@@ -139,6 +112,8 @@ export class CreateCustomToolDialogComponent {
     public readonly isCopying = signal(false);
     private tableImportWasInvalid = false;
 
+    private initialSnapshot = '';
+
     private monacoJsonEditor: MonacoEditor.IStandaloneCodeEditor | null = null;
 
     constructor() {
@@ -155,6 +130,8 @@ export class CreateCustomToolDialogComponent {
 
         const parsedDefault = parseToolVariablesJson(this.form.controls.variablesJson.value);
         this.tableVariables.set(parsedDefault.valid ? parsedDefault.variables : []);
+
+        this.initialSnapshot = this.computeSnapshot();
 
         // Route backdrop click and Escape through the dirty-check guard.
         this.dialogRef.disableClose = true;
@@ -308,7 +285,7 @@ export class CreateCustomToolDialogComponent {
         if (this.isSaving()) {
             return;
         }
-        if (!this.form.dirty) {
+        if (this.computeSnapshot() === this.initialSnapshot) {
             this.dialogRef.close();
             return;
         }
@@ -437,6 +414,27 @@ export class CreateCustomToolDialogComponent {
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe();
+    }
+
+    private computeSnapshot(): string {
+        const { name, description, pythonCode, libraries } = this.form.getRawValue();
+        return JSON.stringify({
+            name,
+            description,
+            pythonCode,
+            libraries: [...libraries].sort(),
+            variables: this.snapshotVariables(),
+        });
+    }
+
+    private snapshotVariables(): string {
+        if (this.parametersTableMode()) {
+            return JSON.stringify(serializeVariables(this.tableVariables()));
+        }
+        const parsed = parseToolVariablesJson(this.form.controls.variablesJson.value);
+        return parsed.valid
+            ? JSON.stringify(serializeVariables(parsed.variables))
+            : `invalid:${this.form.controls.variablesJson.value.trim()}`;
     }
 
     private initialVariablesJsonFromTool(tool: GetPythonCodeToolRequest): string {
