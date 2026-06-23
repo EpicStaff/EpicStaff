@@ -53,7 +53,9 @@ class GraphBulkSaveService:
         )
 
     @transaction.atomic
-    def save(self, graph: Graph, validated_input: dict) -> Graph:
+    def save(
+        self, graph: Graph, validated_input: dict
+    ) -> tuple["Graph", dict[str, int]]:
         expected_save_version = validated_input["save_version"]
         deleted_data = validated_input.get("deleted", {})
         all_errors: dict = {}
@@ -143,14 +145,14 @@ class GraphBulkSaveService:
             raise BulkSaveValidationError(all_errors)
 
         # Pass 2: atomic write
-        self._execute_writes(
+        temp_id_map = self._execute_writes(
             graph,
             deleted_data,
             node_saveables,
             edge_saveables,
             expected_save_version,
         )
-        return graph
+        return graph, temp_id_map
 
     def _validate_node_list(
         self,
@@ -476,8 +478,12 @@ class GraphBulkSaveService:
         node_saveables: list[_NodeSaveable],
         edge_saveables: list,
         expected_save_version: int,
-    ):
-        """Atomically delete, then save nodes, then save edges."""
+    ) -> dict[str, int]:
+        """Atomically delete, then save nodes, then save edges.
+
+        Returns the temp_id_map built during writes: maps each frontend temp uuid
+        string to the new DB integer id assigned on insert.
+        """
 
         # check if graph was changed meanwhile editing
         Graph.increment_version_if_current(pk=graph.pk, expected=expected_save_version)
@@ -493,6 +499,8 @@ class GraphBulkSaveService:
         # Edges second — temp refs resolved from the complete map.
         for es in edge_saveables:
             es.resolve_and_save(temp_id_map)
+
+        return temp_id_map
 
     def _execute_deletions(self, graph: Graph, deleted_data: dict):
         """Delete all requested entities in edges-before-nodes order."""

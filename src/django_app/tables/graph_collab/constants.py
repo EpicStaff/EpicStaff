@@ -1,3 +1,4 @@
+from django.conf import settings
 from pydantic import BaseModel
 
 from tables.graph_collab.protocol import (
@@ -13,6 +14,11 @@ from tables.graph_collab.protocol import (
 
 # Seconds between each cursor-batch flush to the browser.
 CURSOR_FLUSH_INTERVAL_SECONDS: float = 0.15
+
+# Seconds between each autosave flush to the database
+AUTOSAVE_FLUSH_INTERVAL_SECONDS: float = getattr(
+    settings, "AUTOSAVE_FLUSH_INTERVAL_SECONDS", 20.0
+)
 
 # Redis pub/sub channel prefix for per-graph cursor traffic.
 CURSOR_REDIS_CHANNEL_PREFIX: str = "cursors"

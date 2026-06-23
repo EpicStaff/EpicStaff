@@ -8,7 +8,10 @@ from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from pydantic import BaseModel
 
+from tables.graph_collab.autosave_loop import ensure_autosave_loop_running
+from tables.graph_collab.flush_service import flush_service
 from tables.graph_collab.graph_state_service import graph_state_service
+from tables.graph_collab.notifications import anotify_graph_saved
 from tables.services.redis_service import RedisService
 from tables.graph_collab.lock_service import lock_service
 from tables.graph_collab.presence_service import presence_service
@@ -27,7 +30,6 @@ from tables.graph_collab.protocol import (
     NodeLockedMessage,
     NodeUnlockedMessage,
     PresenceStateMessage,
-    RequestStateMessage,
     UserJoinedMessage,
     UserLeftMessage,
 )
@@ -76,10 +78,13 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             return
 
         self.group = _group_name(self.graph_id)
+
         # Per-field asyncio timer handles; keyed by "{node_id}:{field}".
         self._lock_timers: dict[str, asyncio.Task] = {}
+
         # Latest cursor position per remote user_id (echo-suppressed).
         self._pending_cursors: dict[int, dict] = {}
+
         # Dedicated Redis pubsub connection for this consumer (lossy cursor channel).
         self._cursor_pubsub = None
         self._cursor_reader_task: asyncio.Task | None = None
@@ -105,12 +110,20 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             UserJoinedMessage(editor=editor).model_dump(),
         )
 
-        # Serve live state or ask this client to seed it.
+        # If no snapshot is cached yet (first connector or post-clear), seed from the DB now.
         snapshot = await graph_state_service.get_snapshot(self.graph_id)
-        if snapshot is not None:
-            await self.send_json(GraphStateMessage(flow=snapshot).model_dump())
-        else:
-            await self.send_json(RequestStateMessage().model_dump())
+        if snapshot is None:
+            seeded = await graph_state_service.seed_from_db(self.graph_id)
+            if not seeded:
+                # Graph was deleted between the existence check and seed — close cleanly.
+                logger.warning(
+                    "Graph {} disappeared before snapshot could be seeded — closing connection",
+                    self.graph_id,
+                )
+                await self.close(code=4404)
+                return
+            snapshot = await graph_state_service.get_snapshot(self.graph_id)
+        await self.send_json(GraphStateMessage(flow=snapshot).model_dump())
 
         active_locks = lock_service.get_all_locks(self.graph_id)
         if active_locks:
@@ -127,6 +140,9 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
 
         # Start cursor pub/sub reader and flush tasks.
         await self._start_cursor_tasks()
+
+        # Ensure the global autosave loop is running (idempotent — no-op if already alive).
+        ensure_autosave_loop_running()
 
     async def disconnect(self, code):
         # Cancel cursor background tasks before doing anything else.
@@ -160,9 +176,36 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
                         group,
                         UserLeftMessage(user_id=user.pk).model_dump(),
                     )
-                # Clear live snapshot once the last editor leaves.
+
+                # Flush to DB and then clear the live snapshot once the last editor leaves
                 if presence_service.count_editors(graph_id) == 0:
-                    await graph_state_service.clear(graph_id)
+                    try:
+                        outcome = await flush_service.flush_if_dirty(graph_id)
+                        if outcome.saved:
+                            editor_user = (
+                                user
+                                if user and not isinstance(user, AnonymousUser)
+                                else None
+                            )
+                            await anotify_graph_saved(
+                                graph_id=graph_id,
+                                new_save_version=outcome.result.new_save_version,
+                                saved_at=outcome.result.saved_at,
+                                user=editor_user,
+                                temp_id_map=outcome.result.temp_id_map,
+                            )
+                        if outcome.safe_to_clear:
+                            await graph_state_service.clear(graph_id)
+                        else:
+                            logger.error(
+                                "Last-leave: final flush FAILED for graph {} — "
+                                "snapshot retained via TTL for recovery",
+                                graph_id,
+                            )
+                    except Exception as exc:
+                        logger.error(
+                            "Last-leave flush failed for graph {}: {}", graph_id, exc
+                        )
             await self.channel_layer.group_discard(group, self.channel_name)
 
     async def receive_json(self, content, **kwargs):
@@ -173,21 +216,14 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             await self._handle_cursor_moved(content)
             return
 
-        # Handle Client→Server graph_state seed before relay lookup.
+        # TODO DEPRECATED: Client→Server graph_state seed (old clients only).
+        # The server now seeds from DB on connect (seed_from_db) and does not
+        # need the client to push state.
         if message_type == "graph_state":
-            try:
-                message = GraphStateMessage.model_validate(content)
-            except pydantic.ValidationError as exc:
-                await self.send_json(
-                    ErrorMessage(
-                        code="invalid_payload",
-                        message=str(exc),
-                    ).model_dump()
-                )
-                return
-            # Seed only if absent — never let a late client clobber the snapshot.
-            if await graph_state_service.get_snapshot(self.graph_id) is None:
-                await graph_state_service.seed(self.graph_id, message.flow)
+            logger.debug(
+                "Received deprecated client-side graph_state seed from graph {} — ignoring",
+                self.graph_id,
+            )
             return
 
         # Handle lock claim — arbitrated through lock_service, not blindly relayed.
@@ -308,7 +344,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         )
         if not released:
             return
-        # TODO(EST-3020 Block 4): flush_to_db on backstop release
+
         logger.info(
             "Lock backstop: auto-released node {} field {} on graph {} for channel {}",
             node_id,
@@ -389,6 +425,9 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
     # --- Channel layer handlers: presence + notifications ---
 
     async def graph_saved(self, event):
+        await self.send_json(event)
+
+    async def save_failed(self, event):
         await self.send_json(event)
 
     async def user_joined(self, event):

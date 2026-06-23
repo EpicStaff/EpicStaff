@@ -875,8 +875,18 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
         return response
 
     @action(detail=True, methods=["post"], url_path="save")
-    @extend_schema(**_SAVE_FLOW_SWAGGER)
+    @extend_schema(**_SAVE_FLOW_SWAGGER, deprecated=True)
     def save_flow(self, request, pk=None):
+        """DEPRECATED: autosave via WebSocket is now the primary persistence path.
+
+        Retained for backwards compatibility. Will be removed in a future release.
+        Clients should not call this endpoint for new integrations.
+        """
+        logger.warning(
+            "DEPRECATED save_flow called for graph {} by user {}",
+            pk,
+            request.user.pk,
+        )
         input_serializer = GraphBulkSaveInputSerializer(data=request.data)
         if not input_serializer.is_valid():
             return Response(
@@ -885,7 +895,9 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
 
         graph = self.get_object()
         try:
-            GraphBulkSaveService().save(graph, input_serializer.validated_data)
+            graph, _ = GraphBulkSaveService().save(
+                graph, input_serializer.validated_data
+            )
         except BulkSaveValidationError as exc:
             return Response({"errors": exc.errors}, status=status.HTTP_400_BAD_REQUEST)
         # GraphSaveVersionConflictError propagates → DRF returns 409 automatically.

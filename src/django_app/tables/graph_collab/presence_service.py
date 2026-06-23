@@ -43,5 +43,13 @@ class GraphPresenceService:
         """Return True if at least one channel is connected for *graph_id*."""
         return self.count_editors(graph_id) > 0
 
+    def active_graph_ids(self) -> list[int]:
+        """Return a snapshot list of all graph ids with at least one active editor.
+
+        Returns a list copy of the internal dict keys so that callers iterating
+        with awaits in the loop do not observe concurrent add/remove mutations.
+        """
+        return list(self._store.keys())
+
 
 presence_service = GraphPresenceService()
