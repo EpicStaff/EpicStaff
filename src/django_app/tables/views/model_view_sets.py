@@ -197,7 +197,7 @@ from tables.views.mixins import (
     SuperadminWriteMixin,
 )
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
-from tables.services.rbac.permissions import HasOrgPermission
+from tables.services.rbac.permissions import HasOrgPermission, IsSuperadmin
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.serializers.model_serializers import (
     AgentReadSerializer,
@@ -1289,6 +1289,9 @@ class MemoryViewSet(
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
+    # TODO(EST-2423 deferred):  org-scope agent memory. MemoryDatabase has no org
+    # link (UUID pk; agent_id/user_id live inside the opaque JSON payload), so it
+    # needs a denormalized org before it can be scoped. Authenticated-only for now.
     queryset = MemoryDatabase.objects.all()
     serializer_class = MemorySerializer
     filter_backends = [DjangoFilterBackend]
@@ -1383,6 +1386,9 @@ class RealtimeTranscriptionConfigModelViewSet(
 
 
 class RealtimeSessionItemViewSet(viewsets.ReadOnlyModelViewSet):
+    # TODO(EST-2423 deferred): org-scope realtime session items. Keyed by an
+    # opaque connection_key with no org/agent FK; needs a denormalized org to
+    # scope. Authenticated-only for now.
     queryset = RealtimeSessionItem.objects.all()
     serializer_class = RealtimeSessionItemSerializer
 
@@ -1395,11 +1401,17 @@ class RealtimeAgentViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     serializer_class = RealtimeAgentSerializer
 
 
-class RealtimeAgentChatViewSet(ReadOnlyModelViewSet):
+class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet):
     """
     ViewSet for reading and deleting RealtimeAgentChat instances.
+
+    Scoped through the chat's realtime agent to its agent's org. Chats whose
+    rt_agent is NULL (orphaned) are not visible — acceptable for chat history.
     """
 
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.AGENTS
+    org_filter_path = "rt_agent__agent__org_id"
     queryset = RealtimeAgentChat.objects.all()
     serializer_class = RealtimeAgentChatSerializer
     filter_backends = [DjangoFilterBackend]
@@ -1774,6 +1786,9 @@ class LabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
 
 
 class VoiceSettingsView(generics.RetrieveUpdateAPIView):
+    # Global singleton holding the platform Twilio credentials (secret auth
+    # token) — superadmin only, both read and write.
+    permission_classes = [IsAuthenticated, IsSuperadmin]
     serializer_class = VoiceSettingsSerializer
 
     def get_object(self):
@@ -1804,6 +1819,9 @@ def _twilio_request(
 class TwilioPhoneNumbersView(generics.GenericAPIView):
     """Return the list of incoming phone numbers from Twilio."""
 
+    # Manages the platform Twilio account (uses the secret token) — superadmin only.
+    permission_classes = [IsAuthenticated, IsSuperadmin]
+
     @extend_schema(**TWILIO_PHONE_NUMBERS_GET)
     def get(self, request):
         vs = VoiceSettings.load()
@@ -1833,6 +1851,9 @@ class TwilioPhoneNumbersView(generics.GenericAPIView):
 
 class TwilioConfigureWebhookView(generics.GenericAPIView):
     """Set the VoiceUrl on a Twilio phone number to the configured voice stream URL."""
+
+    # Manages the platform Twilio account (uses the secret token) — superadmin only.
+    permission_classes = [IsAuthenticated, IsSuperadmin]
 
     @extend_schema(**TWILIO_CONFIGURE_WEBHOOK_POST)
     def post(self, request):

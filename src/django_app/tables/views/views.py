@@ -108,7 +108,11 @@ from tables.views.mixins import (
     OrgScopedServiceViewSetMixin,
 )
 from tables.models.knowledge_models import NaiveRag, GraphRag
-from tables.services.rbac.permissions import HasOrgPermission, IsSuperadmin
+from tables.services.rbac.permissions import (
+    HasOrgPermission,
+    IsSuperadmin,
+    IsSuperadminOrReadOnly,
+)
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.session_access import assert_session_org_access
 from tables.services.rbac.permission_assert import assert_org_permission
@@ -672,6 +676,10 @@ class AnswerToLLM(APIView):
         except Session.DoesNotExist:
             return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
 
+        # Org isolation: only a member of the session's (graph) org may answer it
+        # — same gate as stop/get-updates (FLOWS READ; superadmin bypass).
+        assert_session_org_access(request.user, session, Permission.READ)
+
         logger.info(
             f"{session.status} == {Session.SessionStatus.WAIT_FOR_USER} : {session.status == Session.SessionStatus.WAIT_FOR_USER}"
         )
@@ -715,6 +723,9 @@ class AnswerToLLM(APIView):
 
 
 class DefaultLLMConfigAPIView(APIView):
+    # Global default singleton: any member reads, only superadmin writes.
+    permission_classes = [IsSuperadminOrReadOnly]
+
     @extend_schema(**DEFAULT_LLM_CONFIG_GET)
     def get(self, request, *args, **kwargs):
         obj = DefaultLLMConfig.objects.first()
@@ -739,6 +750,9 @@ class DefaultLLMConfigAPIView(APIView):
 
 
 class DefaultEmbeddingConfigAPIView(APIView):
+    # Global default singleton: any member reads, only superadmin writes.
+    permission_classes = [IsSuperadminOrReadOnly]
+
     @extend_schema(**DEFAULT_EMBEDDING_CONFIG_GET)
     def get(self, request, *args, **kwargs):
         obj = DefaultEmbeddingConfig.objects.first()
