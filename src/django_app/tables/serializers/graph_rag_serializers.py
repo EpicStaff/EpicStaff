@@ -1,22 +1,24 @@
 from rest_framework import serializers
+
+from tables.constants.knowledge_constants import (
+    GRAPHRAG_MAX_CHUNK_OVERLAP,
+    GRAPHRAG_MAX_CHUNK_SIZE,
+    GRAPHRAG_MAX_MAX_CLUSTER_SIZE,
+    GRAPHRAG_MAX_MAX_GLEANINGS,
+    GRAPHRAG_MIN_CHUNK_OVERLAP,
+    GRAPHRAG_MIN_CHUNK_SIZE,
+    GRAPHRAG_MIN_MAX_CLUSTER_SIZE,
+    GRAPHRAG_MIN_MAX_GLEANINGS,
+    MAX_TOKEN_FIELD_VALUE,
+)
 from tables.models.knowledge_models import (
     GraphRag,
+    GraphRagChunkStrategyType,
     GraphRagDocument,
     GraphRagIndexConfig,
     GraphRagInputFileType,
-    GraphRagChunkStrategyType,
 )
 from tables.serializers.knowledge_serializers import BaseRagTypeSerializer
-from tables.constants.knowledge_constants import (
-    GRAPHRAG_MIN_CHUNK_SIZE,
-    GRAPHRAG_MAX_CHUNK_SIZE,
-    GRAPHRAG_MIN_CHUNK_OVERLAP,
-    GRAPHRAG_MAX_CHUNK_OVERLAP,
-    GRAPHRAG_MIN_MAX_GLEANINGS,
-    GRAPHRAG_MAX_MAX_GLEANINGS,
-    GRAPHRAG_MIN_MAX_CLUSTER_SIZE,
-    GRAPHRAG_MAX_MAX_CLUSTER_SIZE,
-)
 
 
 class GraphRagCreateSerializer(serializers.Serializer):
@@ -295,8 +297,8 @@ class GraphBasicSearchConfigInputSerializer(serializers.Serializer):
     max_context_tokens = serializers.IntegerField(
         required=False,
         min_value=100,
-        max_value=100000,
-        help_text="Maximum context tokens (100-100000)",
+        max_value=MAX_TOKEN_FIELD_VALUE,
+        help_text=f"Maximum context tokens (100 to {MAX_TOKEN_FIELD_VALUE})",
     )
 
 
@@ -342,8 +344,222 @@ class GraphLocalSearchConfigInputSerializer(serializers.Serializer):
     max_context_tokens = serializers.IntegerField(
         required=False,
         min_value=100,
-        max_value=100000,
-        help_text="Maximum context tokens (100-100000)",
+        max_value=MAX_TOKEN_FIELD_VALUE,
+        help_text=f"Maximum context tokens (100 to {MAX_TOKEN_FIELD_VALUE})",
+    )
+    community_level = serializers.IntegerField(
+        required=False,
+        min_value=0,
+        max_value=10,
+        help_text="Max Leiden community-hierarchy level (adaptive, not user-editable)",
+    )
+
+
+class GraphGlobalSearchConfigInputSerializer(serializers.Serializer):
+    """Input serializer for graph RAG global search config."""
+
+    dynamic_community_selection = serializers.BooleanField(
+        required=False,
+        help_text="Whether to use dynamic community selection",
+    )
+    map_prompt = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        help_text="Custom map prompt",
+    )
+    reduce_prompt = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        help_text="Custom reduce prompt",
+    )
+    knowledge_prompt = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        help_text="Custom knowledge prompt",
+    )
+    max_context_tokens = serializers.IntegerField(
+        required=False,
+        min_value=100,
+        max_value=MAX_TOKEN_FIELD_VALUE,
+        help_text=f"Maximum context tokens (100 to {MAX_TOKEN_FIELD_VALUE})",
+    )
+    data_max_tokens = serializers.IntegerField(
+        required=False,
+        min_value=100,
+        max_value=MAX_TOKEN_FIELD_VALUE,
+        help_text=f"Maximum data tokens (100 to {MAX_TOKEN_FIELD_VALUE})",
+    )
+    map_max_length = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=10000,
+        help_text="Maximum map output length (1-10000)",
+    )
+    reduce_max_length = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=10000,
+        help_text="Maximum reduce output length (1-10000)",
+    )
+    dynamic_search_threshold = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=10,
+        help_text="Dynamic search threshold (1-10)",
+    )
+    dynamic_search_keep_parent = serializers.BooleanField(
+        required=False, help_text="Whether to keep parent community in results"
+    )
+    dynamic_search_num_repeats = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=5,
+        help_text="Number of times to repeat dynamic search (1-5)",
+    )
+    dynamic_search_use_summary = serializers.BooleanField(
+        required=False, help_text="Whether to use summary for dynamic search"
+    )
+    dynamic_search_max_level = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=5,
+    )
+
+
+class GraphDriftSearchConfigInputSerializer(serializers.Serializer):
+    """Input serializer for graph RAG drift search config."""
+
+    # Prompts
+    prompt = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        help_text="Custom drift search prompt",
+    )
+    reduce_prompt = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        help_text="Custom drift search reduce prompt",
+    )
+    # Token configuration
+    data_max_tokens = serializers.IntegerField(
+        required=False,
+        min_value=100,
+        max_value=MAX_TOKEN_FIELD_VALUE,
+        help_text=f"Maximum data tokens (100 to {MAX_TOKEN_FIELD_VALUE})",
+    )
+    reduce_max_tokens = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=1,
+        max_value=MAX_TOKEN_FIELD_VALUE,
+        help_text="Maximum reduce response tokens",
+    )
+    reduce_max_completion_tokens = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=1,
+        max_value=MAX_TOKEN_FIELD_VALUE,
+        help_text="Maximum reduce completion tokens",
+    )
+    primer_llm_max_tokens = serializers.IntegerField(
+        required=False,
+        min_value=100,
+        max_value=MAX_TOKEN_FIELD_VALUE,
+        help_text=f"Maximum primer LLM tokens (100 to {MAX_TOKEN_FIELD_VALUE})",
+    )
+    local_search_max_data_tokens = serializers.IntegerField(
+        required=False,
+        min_value=100,
+        max_value=MAX_TOKEN_FIELD_VALUE,
+        help_text=f"Maximum context tokens for local search (100 to {MAX_TOKEN_FIELD_VALUE})",
+    )
+    local_search_llm_max_gen_tokens = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=1,
+        max_value=MAX_TOKEN_FIELD_VALUE,
+        help_text="Maximum LLM generated tokens in local search",
+    )
+    local_search_llm_max_gen_completion_tokens = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=1,
+        max_value=MAX_TOKEN_FIELD_VALUE,
+        help_text="Maximum LLM generated completion tokens in local search",
+    )
+    # Search behavior
+    concurrency = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=256,
+        help_text="Number of concurrent requests (1-256)",
+    )
+    drift_k_followups = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=100,
+        help_text="Number of top global results to retrieve (1-100)",
+    )
+    primer_folds = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=50,
+        help_text="Number of folds for search priming (1-50)",
+    )
+    n_depth = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=10,
+        help_text="Number of drift search steps to take (1-10)",
+    )
+    community_level = serializers.IntegerField(
+        required=False,
+        min_value=0,
+        max_value=10,
+        help_text="Max Leiden community-hierarchy level (adaptive, not user-editable)",
+    )
+    # Local search tuning
+    local_search_text_unit_prop = serializers.FloatField(
+        required=False,
+        min_value=0.0,
+        max_value=1.0,
+        help_text="Text unit proportion (0.0-1.0)",
+    )
+    local_search_community_prop = serializers.FloatField(
+        required=False,
+        min_value=0.0,
+        max_value=1.0,
+        help_text="Community proportion (0.0-1.0)",
+    )
+    local_search_top_k_mapped_entities = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=100,
+        help_text="Top K mapped entities (1-100)",
+    )
+    local_search_top_k_relationships = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=100,
+        help_text="Top K mapped relationships (1-100)",
+    )
+    # LLM generation
+    local_search_top_p = serializers.FloatField(
+        required=False,
+        min_value=0.0,
+        max_value=1.0,
+        help_text="Top-p for local search generation (0.0-1.0)",
+    )
+    local_search_n = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=10,
+        help_text="Number of completions in local search (1-10)",
     )
 
 
@@ -351,7 +567,7 @@ class GraphSearchConfigInputSerializer(serializers.Serializer):
     """Input serializer for graph RAG search config wrapper."""
 
     search_method = serializers.ChoiceField(
-        choices=["basic", "local"],
+        choices=["basic", "local", "global_search", "drift_search"],
         required=False,
         help_text="Active search method",
     )
@@ -362,4 +578,12 @@ class GraphSearchConfigInputSerializer(serializers.Serializer):
     local = GraphLocalSearchConfigInputSerializer(
         required=False,
         help_text="Local search configuration",
+    )
+    global_search = GraphGlobalSearchConfigInputSerializer(
+        required=False,
+        help_text="Global search configuration",
+    )
+    drift_search = GraphDriftSearchConfigInputSerializer(
+        required=False,
+        help_text="Drift search configuration",
     )

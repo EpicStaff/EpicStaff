@@ -35,11 +35,17 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 0.35rem;
     flex: 1;
     color: var(--color-text-primary);
     background: transparent;
     cursor: pointer;
     transition: all 0.2s ease;
+
+    .item-icon {
+        flex-shrink: 0;
+        transform: translateY(-1px);
+    }
 
     &:not(:last-child) {
         border-right: 1px solid var(--color-divider-subtle);
@@ -85,6 +91,10 @@
         flex: 1;
         position: relative;
         z-index: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
         border: none;
         background: transparent;
         color: var(--color-input-text-placeholder);
@@ -94,6 +104,10 @@
         cursor: pointer;
         transition: color 0.2s ease;
         padding: 0;
+
+        &-icon {
+            flex-shrink: 0;
+        }
 
         &--active {
             color: #fff;

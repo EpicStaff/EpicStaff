@@ -89,6 +89,7 @@
                 [searchConfigs]="agentToEdit?.search_configs || null"
                 [loadingKnowledgeSources]="isLoadingKnowledgeSources"
                 [loadingRags]="isLoadingRags"
+                [llmConfigId]="agentForm.get('llm_config')?.value ?? null"
             />
             <!--    Might be used un the future-->
             <!--    <app-llm-params-tab-->

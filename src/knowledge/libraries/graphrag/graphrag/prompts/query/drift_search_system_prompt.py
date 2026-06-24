@@ -11,7 +11,7 @@ You are a helpful assistant responding to questions about data in the tables pro
 
 ---Goal---
 
-Generate a response of the target length and format that responds to the user's question, summarizing all information in the input data tables appropriate for the response length and format, and incorporating any relevant general knowledge.
+Generate a response of the target length and format that responds to the user's question, summarizing all information in the input data tables appropriate for the response length and format, using ONLY the information present in those data tables and never adding general knowledge or training data. If the data tables do not cover the question, say that the available documents do not cover it.
 
 If you don't know the answer, just say so. Do not make anything up.
 
@@ -41,7 +41,7 @@ Pay close attention specifically to the Sources tables as it contains the most r
 
 ---Goal---
 
-Generate a response of the target length and format that responds to the user's question, summarizing all information in the input data tables appropriate for the response length and format, and incorporating any relevant general knowledge.
+Generate a response of the target length and format that responds to the user's question, summarizing all information in the input data tables appropriate for the response length and format, using ONLY the information present in those data tables and never adding general knowledge or training data. If the data tables do not cover the question, say that the available documents do not cover it.
 
 If you don't know the answer, just say so. Do not make anything up.
 
@@ -80,7 +80,7 @@ You are a helpful assistant responding to questions about data in the reports pr
 
 ---Goal---
 
-Generate a response of the target length and format that responds to the user's question, summarizing all information in the input reports appropriate for the response length and format, and incorporating any relevant general knowledge while being as specific, accurate and concise as possible.
+Generate a response of the target length and format that responds to the user's question, summarizing all information in the input reports appropriate for the response length and format, using ONLY the information present in those reports and never adding general knowledge or training data, while being as specific, accurate and concise as possible.
 
 If you don't know the answer, just say so. Do not make anything up.
 
@@ -96,9 +96,7 @@ For example:
 
 Do not include information where the supporting evidence for it is not provided.
 
-If you decide to use general knowledge, you should add a delimiter stating that the information is not supported by the data tables. For example:
-
-"Person X is the owner of Company Y and subject to many allegations of wrongdoing. [Data: General Knowledge (href)]"
+Do not use general knowledge or training data. Include only information that is supported by the provided reports; if the reports do not cover the question, state that the available documents do not cover it.
 
 ---Data Reports---
 
@@ -111,7 +109,7 @@ If you decide to use general knowledge, you should add a delimiter stating that 
 
 ---Goal---
 
-Generate a response of the target length and format that responds to the user's question, summarizing all information in the input reports appropriate for the response length and format, and incorporating any relevant general knowledge while being as specific, accurate and concise as possible.
+Generate a response of the target length and format that responds to the user's question, summarizing all information in the input reports appropriate for the response length and format, using ONLY the information present in those reports and never adding general knowledge or training data, while being as specific, accurate and concise as possible.
 
 If you don't know the answer, just say so. Do not make anything up.
 
@@ -127,9 +125,7 @@ For example:
 
 Do not include information where the supporting evidence for it is not provided.
 
-If you decide to use general knowledge, you should add a delimiter stating that the information is not supported by the data tables. For example:
-
-"Person X is the owner of Company Y and subject to many allegations of wrongdoing. [Data: General Knowledge (href)]".
+Do not use general knowledge or training data. Include only information that is supported by the provided reports; if the reports do not cover the question, state that the available documents do not cover it.
 
 Add sections and commentary to the response as appropriate for the length and format. Style the response in markdown. Now answer the following query using the data above:
 
@@ -145,7 +141,7 @@ This is a unique knowledge graph where edges are freeform text rather than verb 
 
 3. follow_up_queries: A list of follow-up queries that could be asked to further explore the topic. These should be formatted as a list of strings. Generate at least five good follow-up queries.
 
-Use this information to help you decide whether or not you need more information about the entities mentioned in the report. You may also use your general knowledge to think of entities which may help enrich your answer.
+Use this information to help you decide whether or not you need more information about the entities mentioned in the report. Base your reasoning and the intermediate_answer only on the provided community summaries; do not introduce entities, facts, or assumptions from general knowledge or training data. If the summaries do not contain information that answers the query, state that the available documents do not cover it instead of inventing details.
 
 You will also provide a full answer from the content you have available. Use the data provided to generate follow-up queries to help refine your search. Do not ask compound questions, for example: "What is the market cap of Apple and Microsoft?". Use your knowledge of the entity distribution to focus on entity types that will be useful for searching a broad area of the knowledge graph.
 

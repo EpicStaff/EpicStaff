@@ -73,8 +73,12 @@ services:
       AVATAR_ALLOWED_FORMATS: ${AVATAR_ALLOWED_FORMATS:-JPEG,PNG}
       MALLOC_ARENA_MAX: ${MALLOC_ARENA_MAX:-2}
       MALLOC_TRIM_INTERVAL_SECONDS: ${MALLOC_TRIM_INTERVAL_SECONDS:-60}
+      GRAPH_DATA_DIR: /home/user/root/app/graph_data
+      LITELLM_LOCAL_MODEL_COST_MAP: "True"
+      LITELLM_LOG: "WARNING"
     volumes:
       - media_data:/app/src/django_app/media
+      - graph_data:/home/user/root/app/graph_data:ro
     networks:
       - backend-network
     depends_on:

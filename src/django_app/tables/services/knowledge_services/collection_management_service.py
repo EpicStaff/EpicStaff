@@ -1,10 +1,23 @@
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Literal, Optional, List
 from django.db import transaction, models
+from django.db.models import Avg, Count
 from loguru import logger
 
+from src.shared.models.adaptive_context import CollectionMetrics
+from tables.exceptions import (
+    CollectionNotFoundException,
+    GraphRagArtifactMissingException,
+    GraphRagIndexNotReadyException,
+    NoGraphRagForCollectionException,
+)
 from tables.models import SourceCollection, DocumentMetadata, DocumentContent
 from tables.models.knowledge_models import BaseRagType, NaiveRag, GraphRag
-from tables.exceptions import CollectionNotFoundException
+from tables.models.knowledge_models.naive_rag_models import (
+    NaiveRagChunk,
+    NaiveRagDocumentConfig,
+)
+from tables.services.knowledge_services.graph_rag_service import GraphRagService
+from tables.utils.graph_data_paths import text_units_parquet_path
 
 
 class CollectionManagementService:
@@ -293,6 +306,97 @@ class CollectionManagementService:
         )
 
         return new_collection
+
+    @staticmethod
+    def get_collection_metrics(
+        collection_id: int,
+        rag_type: Literal["naive", "graph"],
+    ) -> CollectionMetrics:
+        """Aggregate collection statistics for the adaptive context endpoint.
+
+        Reuses `get_collection()` for the existence check (raises
+        `CollectionNotFoundException`). For naive: single aggregate query on
+        `NaiveRagChunk`. For graph: gates on `rag_status='completed'`
+        (database is authoritative) then reads `text_units.parquet` for
+        per-chunk counts that are not stored in the database.
+
+        Raises:
+            CollectionNotFoundException: collection does not exist.
+            NoGraphRagForCollectionException: graph requested but no
+                GraphRag is configured.
+            GraphRagIndexNotReadyException: GraphRag exists but
+                `rag_status != 'completed'`.
+        """
+        CollectionManagementService.get_collection(collection_id)
+
+        if rag_type == "naive":
+            return CollectionManagementService._get_naive_metrics(collection_id)
+        return CollectionManagementService._get_graph_metrics(collection_id)
+
+    @staticmethod
+    def _get_naive_metrics(collection_id: int) -> CollectionMetrics:
+        chunk_agg = NaiveRagChunk.objects.filter(
+            naive_rag_document_config__naive_rag__base_rag_type__source_collection_id=collection_id,
+        ).aggregate(total=Count("chunk_id"), avg=Avg("token_count"))
+
+        total_documents = NaiveRagDocumentConfig.objects.filter(
+            naive_rag__base_rag_type__source_collection_id=collection_id,
+        ).count()
+
+        return CollectionMetrics(
+            total_documents=total_documents,
+            total_chunks=chunk_agg["total"] or 0,
+            avg_chunk_size=float(chunk_agg["avg"] or 0),
+        )
+
+    @staticmethod
+    def _get_graph_metrics(collection_id: int) -> CollectionMetrics:
+        graph_rag = GraphRagService.get_or_none_graph_rag_by_collection(collection_id)
+        if graph_rag is None:
+            raise NoGraphRagForCollectionException(collection_id)
+
+        if graph_rag.rag_status != GraphRag.GraphRagStatus.COMPLETED:
+            raise GraphRagIndexNotReadyException(collection_id)
+
+        total_documents = graph_rag.graph_rag_documents.count()
+        total_chunks, avg_chunk_size = (
+            CollectionManagementService._read_text_units_parquet(graph_rag.graph_rag_id)
+        )
+
+        return CollectionMetrics(
+            total_documents=total_documents,
+            total_chunks=total_chunks,
+            avg_chunk_size=avg_chunk_size,
+        )
+
+    @staticmethod
+    def _read_text_units_parquet(graph_rag_id: int) -> tuple[int, float]:
+        """Read `n_tokens` column from text_units.parquet via pyarrow.
+
+        Raises `GraphRagArtifactMissingException` when the file is missing
+        despite `rag_status='completed'`. Silently returning (0, 0.0) used
+        to mask deployment problems (e.g., the django_app container missing
+        the knowledge worker's graph_data volume mount) by producing valid-
+        looking but useless suggestions — see EST-1429 review.
+        """
+        # pyarrow lazy-imported: heavy C-extension used only by this endpoint,
+        # keeping it out of Django startup path (no other module imports pyarrow).
+        import pyarrow.compute as pc
+        import pyarrow.parquet as pq
+
+        path = text_units_parquet_path(graph_rag_id)
+        if not path.exists():
+            logger.error(
+                f"GraphRag {graph_rag_id} marked completed but parquet missing at {path}"
+            )
+            raise GraphRagArtifactMissingException(graph_rag_id, str(path))
+
+        table = pq.read_table(path, columns=["n_tokens"])
+        total = table.num_rows
+        if total == 0:
+            return 0, 0.0
+        avg = pc.mean(table.column("n_tokens")).as_py()
+        return total, float(avg or 0.0)
 
     @staticmethod
     def get_rag_configurations(collection_id: int) -> List[Dict[str, Any]]:

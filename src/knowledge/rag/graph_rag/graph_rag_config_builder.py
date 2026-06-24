@@ -17,11 +17,6 @@ from graphrag.config.enums import (
     InputFileType,
     ChunkStrategyType,
 )
-from src.shared.models import GraphRagBasicSearchParams, GraphRagLocalSearchParams
-from rag.graph_rag.utils import (
-    build_basic_search_prompt,
-    build_local_search_prompt,
-)
 
 
 # Model ID constants used by GraphRagConfig
@@ -376,43 +371,3 @@ class GraphRagConfigBuilder:
         return TextEmbeddingConfig(
             model_id=DEFAULT_EMBEDDING_MODEL_ID,
         )
-
-    # ==================== Search Param Overlay ====================
-
-    def apply_basic_search_params(
-        self,
-        config: GraphRagConfig,
-        params: GraphRagBasicSearchParams,
-    ) -> None:
-        """
-        Overlay Redis-provided basic search params onto GraphRagConfig in-place.
-
-        Args:
-            config: Existing GraphRagConfig (loaded from file)
-            params: Basic search params from Redis message
-        """
-        config.basic_search.prompt = build_basic_search_prompt(params.prompt)
-        config.basic_search.k = params.k
-        config.basic_search.max_context_tokens = params.max_context_tokens
-
-    def apply_local_search_params(
-        self,
-        config: GraphRagConfig,
-        params: GraphRagLocalSearchParams,
-    ) -> None:
-        """
-        Overlay Redis-provided local search params onto GraphRagConfig in-place.
-
-        Args:
-            config: Existing GraphRagConfig (loaded from file)
-            params: Local search params from Redis message
-        """
-        config.local_search.prompt = build_local_search_prompt(params.prompt)
-        config.local_search.text_unit_prop = params.text_unit_prop
-        config.local_search.community_prop = params.community_prop
-        config.local_search.conversation_history_max_turns = (
-            params.conversation_history_max_turns
-        )
-        config.local_search.top_k_entities = params.top_k_entities
-        config.local_search.top_k_relationships = params.top_k_relationships
-        config.local_search.max_context_tokens = params.max_context_tokens

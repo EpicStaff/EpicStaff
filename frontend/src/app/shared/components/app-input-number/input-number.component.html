@@ -10,6 +10,7 @@
 <div
     class="input__wrapper"
     [class.input__wrapper--invalid]="isInvalid()"
+    [class.input__wrapper--warning]="isAboveWarning()"
     (mouseenter)="hovered.set(true)"
     (mouseleave)="hovered.set(false)"
 >
@@ -18,7 +19,7 @@
             type="button"
             class="input__step input__step--minus"
             (mousedown)="onStep(-1); $event.preventDefault()"
-            [disabled]="!canStepDown()"
+            [disabled]="isDisabled() || !canStepDown()"
         >
             −
         </button>
@@ -41,9 +42,17 @@
             type="button"
             class="input__step input__step--plus"
             (mousedown)="onStep(1); $event.preventDefault()"
-            [disabled]="!canStepUp()"
+            [disabled]="isDisabled() || !canStepUp()"
         >
             +
         </button>
     }
 </div>
+
+@if (isAboveMax() && errorMessage()) {
+    <small class="input__hint input__hint--error">{{ errorMessage() }}</small>
+} @else if (isBelowMin()) {
+    <small class="input__hint input__hint--error">Minimum value is {{ min() }}.</small>
+} @else if (isAboveWarning() && warningMessage()) {
+    <small class="input__hint input__hint--warning">{{ warningMessage() }}</small>
+}

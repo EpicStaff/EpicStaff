@@ -40,6 +40,7 @@ export interface AdvancedSettingsData {
     max_retry_limit: number | null;
     default_temperature: number | null;
     knowledge_collection?: number | null;
+    llm_config: number | null;
     fcm_llm_config: number | null;
     rag: AgentRag | null;
     search_configs: AgentSearchConfigs;
@@ -200,11 +201,15 @@ export class AdvancedSettingsDialogComponent implements OnInit {
     public save(): void {
         if (this.form.invalid) return;
 
-        const { search_configs, rag, ...rest } = this.form.value;
+        const { search_configs, rag, ...rest } = this.form.getRawValue();
+        const searchConfigsAvailable = this.data.llm_config != null;
         const result = {
             ...rest,
             rag,
-            search_configs: rag?.rag_type ? { ...this.data.search_configs, [rag.rag_type]: search_configs } : null,
+            search_configs:
+                searchConfigsAvailable && rag?.rag_type
+                    ? { ...this.data.search_configs, [rag.rag_type]: search_configs }
+                    : null,
         };
 
         // Update agentData with current form control values

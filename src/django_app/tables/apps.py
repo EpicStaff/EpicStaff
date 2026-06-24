@@ -46,6 +46,24 @@ class TablesConfig(AppConfig):
         if "runserver" in sys.argv:
             logger.info(f"{settings.DEBUG=}")
 
+        # Only start background jobs in the actual web-server process —
+        # not during migrate / collectstatic / makemigrations / test runs.
+        argv0 = sys.argv[0] if sys.argv else ""
+        is_web_server = (
+            "runserver" in sys.argv
+            or "gunicorn" in argv0
+            or "uvicorn" in argv0
+            or "daphne" in argv0
+        )
+        if is_web_server:
+            from tables.utils.llm_context_windows import (
+                start_litellm_refresh_if_owner,
+            )
+
+            # Elect a single owner across gunicorn workers: only one process
+            # fetches from GitHub daily; the rest read the shared snapshot.
+            start_litellm_refresh_if_owner()
+
         redis_service = RedisService()
         converter_service = ConverterService()
         session_manager_service = SessionManagerService(

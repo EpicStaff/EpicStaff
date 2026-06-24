@@ -161,6 +161,8 @@ class InvalidFileTypeException(DocumentUploadException):
 class CollectionNotFoundException(DocumentUploadException):
     """Raised when source collection is not found."""
 
+    status_code = 404
+
     def __init__(self, collection_id):
         self.collection_id = collection_id
         super().__init__(f"Source collection with id {collection_id} not found")
@@ -286,8 +288,58 @@ class GraphRagNotFoundException(RagException):
         super().__init__(f"GraphRag with id {graph_rag_id} not found")
 
 
+class NoGraphRagForCollectionException(RagException):
+    """Raised when a collection has no GraphRag configuration at all."""
+
+    status_code = 404
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"GraphRag for collection {collection_id} does not exist. "
+            f"Create a GraphRag for this collection first."
+        )
+
+
+class GraphRagIndexNotReadyException(RagException):
+    """Raised when GraphRag exists but its index has not finished building."""
+
+    status_code = 409
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"GraphRAG index for collection {collection_id} not ready. "
+            f"Run indexing and wait for rag_status='completed'."
+        )
+
+
+class GraphRagArtifactMissingException(RagException):
+    """Raised when GraphRag is marked completed but on-disk artifacts are missing.
+
+    Signals a desync between the database state and the filesystem — typically
+    a deployment misconfiguration (e.g., the indexer container's volume is
+    not mounted into the reader container) or a manually deleted parquet.
+    NOT a user-recoverable error.
+    """
+
+    status_code = 500
+
+    def __init__(self, graph_rag_id, missing_path):
+        self.graph_rag_id = graph_rag_id
+        self.missing_path = missing_path
+        super().__init__(
+            f"GraphRag {graph_rag_id} is marked 'completed' but its index "
+            f"artifact is missing at {missing_path}. Check that the "
+            f"knowledge worker's graph_data volume is mounted into this "
+            f"container and that indexing completed successfully."
+        )
+
+
 class LLMConfigNotFoundException(RagException):
     """Raised when LLM config is not found."""
+
+    status_code = 404
 
     def __init__(self, llm_id):
         self.llm_id = llm_id

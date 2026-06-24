@@ -32,7 +32,6 @@ TAG_MAP = [
     ("api/graph-session-messages", "Graph Session Messages"),
     ("api/graph-organization-users", "Graph Organization Users"),
     ("api/graph-organizations", "Graph Organizations"),
-    ("api/graph-rag", "Graph RAG"),
     ("api/graphs", "Graphs"),
     # Nodes
     ("api/pythonnodes", "Python Nodes"),
@@ -69,6 +68,7 @@ TAG_MAP = [
     ("api/tools", "Tools"),
     # Knowledge & RAG
     ("api/naive-rag", "Naive RAG"),
+    ("api/graph-rag", "Graph RAG"),
     ("api/source-collections", "Source Collections"),
     ("api/documents", "Documents"),
     ("api/process-rag-indexing", "RAG Indexing"),

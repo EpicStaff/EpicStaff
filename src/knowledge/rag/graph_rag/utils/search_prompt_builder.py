@@ -1,8 +1,8 @@
 from graphrag.prompts.query.basic_search_system_prompt import BASIC_SEARCH_SYSTEM_PROMPT
 from graphrag.prompts.query.local_search_system_prompt import LOCAL_SEARCH_SYSTEM_PROMPT
-from graphrag.prompts.query.drift_search_system_prompt import DRIFT_LOCAL_SYSTEM_PROMPT
-from graphrag.prompts.query.global_search_knowledge_system_prompt import (
-    GENERAL_KNOWLEDGE_INSTRUCTION,
+from graphrag.prompts.query.drift_search_system_prompt import (
+    DRIFT_LOCAL_SYSTEM_PROMPT,
+    DRIFT_REDUCE_PROMPT,
 )
 from graphrag.prompts.query.global_search_map_system_prompt import MAP_SYSTEM_PROMPT
 from graphrag.prompts.query.global_search_reduce_system_prompt import (
@@ -35,9 +35,28 @@ Do not override or ignore the data grounding rules.
 
 ---End of Additional Instructions---"""
 
+# The vendored drift local-stage prompt hardcodes "intermediate_answer ... exactly
+# 2000 characters long". That intermediate answer feeds the drift reduce stage, so a
+# fixed cap would truncate information before aggregation. We override the constraint
+# here instead of editing the vendored prompt.
+_DRIFT_LENGTH_OVERRIDE = """
 
-def _build_prompt(base_prompt: str, user_prompt: str | None = None) -> str:
-    prompt = base_prompt + _DATA_GROUNDING_RULES
+---Response Length Override---
+
+Disregard any fixed character-count requirement stated above for the intermediate_answer
+(e.g. "exactly 2000 characters long"). Instead, make the intermediate_answer as complete
+as the available data allows, matching the level of detail of the community summaries.
+Do not artificially truncate or pad it to a fixed length.
+
+---End of Response Length Override---"""
+
+
+def _build_prompt(
+    base_prompt: str, user_prompt: str | None = None, *, extra: str = ""
+) -> str:
+    # Order: base role/goal → data-grounding rules → stage-specific `extra` →
+    # user instructions last (recency), explicitly subordinated to grounding.
+    prompt = base_prompt + _DATA_GROUNDING_RULES + extra
     if user_prompt:
         prompt += _USER_PROMPT_WRAPPER.format(user_prompt=user_prompt)
     return prompt
@@ -52,16 +71,31 @@ def build_local_search_prompt(user_prompt: str | None = None) -> str:
 
 
 def build_drift_search_prompt(user_prompt: str | None = None) -> str:
-    return _build_prompt(DRIFT_LOCAL_SYSTEM_PROMPT, user_prompt)
+    return _build_prompt(
+        DRIFT_LOCAL_SYSTEM_PROMPT, user_prompt, extra=_DRIFT_LENGTH_OVERRIDE
+    )
+
+
+def build_drift_search_reduce_prompt(user_prompt: str | None = None) -> str:
+    return _build_prompt(DRIFT_REDUCE_PROMPT, user_prompt)
 
 
 def build_global_search_map_prompt(user_prompt: str | None = None) -> str:
     return _build_prompt(MAP_SYSTEM_PROMPT, user_prompt)
 
 
-def build_global_search_reduce_prompt(user_prompt: str | None = None) -> str:
-    return _build_prompt(REDUCE_SYSTEM_PROMPT, user_prompt)
+def build_global_search_reduce_prompt(
+    user_prompt: str | None = None,
+    knowledge_prompt: str | None = None,
+) -> str:
+    """Build the global-search reduce-stage system prompt.
 
-
-def build_global_search_knowledge_prompt(user_prompt: str | None = None) -> str:
-    return _build_prompt(GENERAL_KNOWLEDGE_INSTRUCTION, user_prompt)
+    Both map and reduce stages stay strictly grounded in the index — general
+    knowledge is never permitted. A ``knowledge_prompt``, if supplied, is applied
+    as an additional user instruction under the data-grounding rules: it can shape
+    the answer but cannot license general knowledge or training data.
+    """
+    user_instruction = (
+        "\n\n".join(p for p in (user_prompt, knowledge_prompt) if p) or None
+    )
+    return _build_prompt(REDUCE_SYSTEM_PROMPT, user_instruction)

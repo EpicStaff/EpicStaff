@@ -2,6 +2,7 @@ export * from './agent-search-config.model';
 export * from './api-error.model';
 export * from './auth';
 export * from './crew_run_message.model';
+export * from './defaults';
 export * from './embeddings/embedding.model';
 export * from './embeddings/embedding-config.model';
 export * from './http-status.enum';

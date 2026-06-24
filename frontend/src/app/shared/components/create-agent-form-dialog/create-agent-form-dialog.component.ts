@@ -258,14 +258,18 @@ export class CreateAgentFormComponent implements OnInit {
         }
         this.isSubmitting.set(true);
 
-        const formData = this.agentForm.value;
+        const formData = this.agentForm.getRawValue();
         const configuredToolIds = formData.configured_tools ?? [];
         const pythonToolIds = formData.python_code_tools ?? [];
         const mcpToolIds = formData.mcp_tools ?? [];
 
         const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds) as ToolUniqueName[];
 
-        const searchConfigs = formData.rag?.rag_type ? { [formData.rag.rag_type]: formData.search_configs } : null;
+        const searchConfigsAvailable = (formData.llm_config ?? null) != null;
+        const searchConfigs =
+            searchConfigsAvailable && formData.rag?.rag_type
+                ? { [formData.rag.rag_type]: formData.search_configs }
+                : null;
 
         const basePayload = {
             role: formData.role,

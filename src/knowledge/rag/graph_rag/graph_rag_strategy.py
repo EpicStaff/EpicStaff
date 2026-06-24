@@ -3,21 +3,29 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
+from graphrag.api.index import build_index
+from graphrag.api.query import basic_search, drift_search, global_search, local_search
+from graphrag.config.models.graph_rag_config import GraphRagConfig
 from loguru import logger
 
-from graphrag.api.index import build_index
-from graphrag.api.query import basic_search, local_search
-from graphrag.config.models.graph_rag_config import GraphRagConfig
-
-from rag.base_rag_strategy import BaseRAGStrategy
-from rag.graph_rag.graph_rag_file_manager import GraphRagFileManager
-from rag.graph_rag.graph_rag_config_builder import GraphRagConfigBuilder
+from rag.graph_rag.grounding_guard import apply_grounding_guard
 from src.shared.models import (
-    GraphRagSearchConfig,
     BaseKnowledgeSearchMessageResponse,
+    GraphRagDriftSearchParams,
+    GraphRagGlobalSearchParams,
+    GraphRagLocalSearchParams,
+    GraphRagSearchConfig,
     KnowledgeChunkResponse,
 )
+
+from rag.base_rag_strategy import BaseRAGStrategy
+from rag.graph_rag.graph_rag_config_builder import GraphRagConfigBuilder
+from rag.graph_rag.graph_rag_file_manager import GraphRagFileManager
+from rag.graph_rag.search_param_applier import apply_search_params
 from settings import UnitOfWork
+
+
+DEFAULT_RESPONSE_TYPE = "Multiple Paragraphs"
 
 
 class GraphRAGStrategy(BaseRAGStrategy):
@@ -27,10 +35,12 @@ class GraphRAGStrategy(BaseRAGStrategy):
     Uses knowledge graphs for enhanced retrieval with entity extraction,
     relationship mapping, and community-based summarization.
 
-    Components:
-    - GraphRagFileManager: Handles all file/folder operations
-    - GraphRagConfigBuilder: Builds GraphRagConfig from database settings
-    - ORMGraphRagStorage: Handles database operations (via UnitOfWork)
+    This class only orchestrates; each concern lives in its own module:
+    - GraphRagFileManager: file/folder operations and config persistence.
+    - GraphRagConfigBuilder: builds the index-time GraphRagConfig from DB settings.
+    - search_param_applier: overlays per-request search params onto that config.
+    - grounding_guard: post-generation correctness check (drops ungrounded answers).
+    - ORMGraphRagStorage: database operations (via UnitOfWork).
     """
 
     RAG_TYPE = "graph"
@@ -234,14 +244,7 @@ class GraphRAGStrategy(BaseRAGStrategy):
             graphrag_config = self.file_manager.load_config(root_folder)
 
             # Step 3: Apply search params from Redis message
-            if search_method == "local":
-                self.config_builder.apply_local_search_params(
-                    graphrag_config, search_params
-                )
-            else:
-                self.config_builder.apply_basic_search_params(
-                    graphrag_config, search_params
-                )
+            apply_search_params(graphrag_config, search_params)
 
             # Step 4: Execute search
             if search_method == "local":
@@ -250,6 +253,23 @@ class GraphRAGStrategy(BaseRAGStrategy):
                     root_folder=root_folder,
                     graphrag_config=graphrag_config,
                     query=query,
+                    search_params=search_params,
+                )
+            elif search_method == "global_search":
+                logger.info(f"Running global search for graph_rag_id: {graph_rag_id}")
+                response, context = self._run_global_search(
+                    root_folder=root_folder,
+                    graphrag_config=graphrag_config,
+                    query=query,
+                    search_params=search_params,
+                )
+            elif search_method == "drift_search":
+                logger.info(f"Running drift search for graph_rag_id: {graph_rag_id}")
+                response, context = self._run_drift_search(
+                    root_folder=root_folder,
+                    graphrag_config=graphrag_config,
+                    query=query,
+                    search_params=search_params,
                 )
             else:
                 logger.info(f"Running basic search for graph_rag_id: {graph_rag_id}")
@@ -258,6 +278,15 @@ class GraphRAGStrategy(BaseRAGStrategy):
                     graphrag_config=graphrag_config,
                     query=query,
                 )
+
+            # Step 4.5: Grounding guard — drop answers not backed by retrieved context
+            response = apply_grounding_guard(
+                query=query,
+                response=response,
+                context=context,
+                config=graphrag_config,
+                search_method=search_method,
+            )
 
             # Step 5: Build response with single-chunk extraction
             knowledge_chunks = self._extract_chunks_from_context(
@@ -318,6 +347,7 @@ class GraphRAGStrategy(BaseRAGStrategy):
         root_folder: Path,
         graphrag_config: GraphRagConfig,
         query: str,
+        search_params: GraphRagLocalSearchParams,
     ) -> tuple:
         """
         Run local search using entities, communities, community_reports,
@@ -344,8 +374,73 @@ class GraphRAGStrategy(BaseRAGStrategy):
                 text_units=text_units,
                 relationships=relationships,
                 covariates=covariates,
-                community_level=2,
-                response_type="Multiple Paragraphs",
+                community_level=search_params.community_level,
+                response_type=DEFAULT_RESPONSE_TYPE,
+                query=query,
+            )
+        )
+
+    def _run_global_search(
+        self,
+        root_folder: Path,
+        graphrag_config: GraphRagConfig,
+        query: str,
+        search_params: GraphRagGlobalSearchParams,
+    ) -> tuple:
+        """
+        Run global search using entities, communities, and community_reports.
+
+        Global search aggregates over the full community hierarchy, so it does
+        not require text_units, relationships or covariates.
+        """
+        entities = self._load_parquet(root_folder, "entities.parquet")
+        communities = self._load_parquet(root_folder, "communities.parquet")
+        community_reports = self._load_parquet(root_folder, "community_reports.parquet")
+
+        return asyncio.run(
+            global_search(
+                config=graphrag_config,
+                entities=entities,
+                communities=communities,
+                community_reports=community_reports,
+                community_level=search_params.dynamic_search_max_level,
+                dynamic_community_selection=search_params.dynamic_community_selection,
+                response_type=DEFAULT_RESPONSE_TYPE,
+                query=query,
+            )
+        )
+
+    def _run_drift_search(
+        self,
+        root_folder: Path,
+        graphrag_config: GraphRagConfig,
+        query: str,
+        search_params: GraphRagDriftSearchParams,
+    ) -> tuple:
+        """
+        Run drift search using entities, communities, community_reports,
+        text_units and relationships (same data shape as local, no covariates).
+        """
+        text_units = self._load_parquet(root_folder, "text_units.parquet")
+        entities = self._load_parquet(root_folder, "entities.parquet")
+        communities = self._load_parquet(root_folder, "communities.parquet")
+        community_reports = self._load_parquet(root_folder, "community_reports.parquet")
+        relationships = self._load_parquet(root_folder, "relationships.parquet")
+
+        ds = graphrag_config.drift_search
+        usable_reports = min(ds.drift_k_followups, len(community_reports))
+        ds.primer_folds = max(1, min(ds.primer_folds, usable_reports))
+
+        return asyncio.run(
+            drift_search(
+                config=graphrag_config,
+                entities=entities,
+                communities=communities,
+                community_reports=community_reports,
+                text_units=text_units,
+                relationships=relationships,
+                community_level=search_params.community_level,
+                response_type=DEFAULT_RESPONSE_TYPE,
                 query=query,
             )
         )
@@ -374,12 +469,16 @@ class GraphRAGStrategy(BaseRAGStrategy):
         """
         if not response:
             return []
+        if search_method.endswith("_search"):
+            chunk_source = f"graphrag_{search_method}"
+        else:
+            chunk_source = f"graphrag_{search_method}_search"
         return [
             KnowledgeChunkResponse(
                 chunk_order=1,
                 chunk_similarity=1.0,
                 chunk_text=str(response),
-                chunk_source=f"graphrag_{search_method}_search",
+                chunk_source=chunk_source,
             )
         ]
 

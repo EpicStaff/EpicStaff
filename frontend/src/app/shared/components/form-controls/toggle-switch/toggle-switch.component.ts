@@ -35,13 +35,18 @@ export class ToggleSwitchComponent implements ControlValueAccessor {
     tooltipText = input<string>('');
 
     @Input() checked = false;
+    @Input() disabled = false;
     @Output() checkedChange = new EventEmitter<boolean>();
 
     private readonly cdr = inject(ChangeDetectorRef);
 
     private onChange: (value: boolean) => void = () => {};
     private onTouched = () => {};
-    private isDisabled = false;
+    private cvaDisabled = false;
+
+    get isDisabled(): boolean {
+        return this.disabled || this.cvaDisabled;
+    }
 
     onToggle() {
         if (this.isDisabled) return;
@@ -65,6 +70,7 @@ export class ToggleSwitchComponent implements ControlValueAccessor {
     }
 
     setDisabledState(isDisabled: boolean): void {
-        this.isDisabled = isDisabled;
+        this.cvaDisabled = isDisabled;
+        this.cdr.markForCheck();
     }
 }

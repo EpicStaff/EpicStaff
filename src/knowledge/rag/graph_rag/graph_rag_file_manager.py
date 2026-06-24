@@ -1,12 +1,13 @@
 # TODO: move out string pathes to constants
 
 import json
-import os
 from pathlib import Path
 from typing import List, Optional, Dict
 from loguru import logger
 
 from graphrag.config.models.graph_rag_config import GraphRagConfig
+
+from src.shared.utils.graph_data_paths import find_src_dir, resolve_graph_data_dir
 
 from models.orm import GraphRagDocument
 
@@ -45,44 +46,20 @@ class GraphRagFileManager:
         self._explicit_base = None if base_dir is None else Path(base_dir)
 
     def _find_src_dir(self) -> Path:
-        """
-        Find the 'src' directory by walking up from this file's location.
-        Falls back to current working directory if not found.
-        """
-        current = Path(__file__).resolve()
-        for parent in current.parents:
-            if parent.name == "src":
-                return parent
-        logger.debug(
-            "Could not find 'src' in parents; falling back to cwd() as project root."
-        )
-        return Path.cwd()
+        """Locate the project's `src/` directory (delegates to shared util)."""
+        return find_src_dir()
 
     def _resolve_base_dir(self) -> Path:
         """
         Determine the base directory for graph data storage.
 
-        Resolution order:
-        1. Explicit base_dir passed to constructor
-        2. GRAPH_DATA_DIR environment variable (set in Docker)
-        3. Auto-detect by walking up from __file__ to find 'src' (local dev)
-
-        Returns:
-            Absolute path to the base directory
+        Resolution order (shared with django_app via
+        `src.shared.utils.graph_data_paths`):
+        1. Explicit base_dir passed to constructor.
+        2. GRAPH_DATA_DIR environment variable (set in Docker).
+        3. Auto-detect by walking up from `src/` (local dev).
         """
-        if self._explicit_base:
-            if self._explicit_base.is_absolute():
-                return self._explicit_base.resolve()
-            else:
-                src_dir = self._find_src_dir()
-                return (src_dir / self._explicit_base).resolve()
-
-        env_dir = os.environ.get("GRAPH_DATA_DIR")
-        if env_dir:
-            return Path(env_dir).resolve()
-
-        src_dir = self._find_src_dir()
-        return (src_dir / "knowledge" / "graph_data").resolve()
+        return resolve_graph_data_dir(self._explicit_base)
 
     # ==================== Folder Operations ====================
 

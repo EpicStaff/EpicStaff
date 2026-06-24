@@ -5,6 +5,11 @@ import { map, Observable } from 'rxjs';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config/config.service';
 import {
+    GraphSuggestRequest,
+    NaiveSuggestRequest,
+    SuggestResponse,
+} from '../../../shared/models/agent-search-config.model';
+import {
     CreateAgentRequest,
     GetAgentRequest,
     PartialUpdateAgentRequest,
@@ -85,5 +90,15 @@ export class AgentsService {
         return this.http.post<GetAgentRequest>(`${this.apiUrl}${agentId}/copy/`, agent, {
             headers: this.headers,
         });
+    }
+
+    suggestNaiveSearchParams(body: NaiveSuggestRequest): Observable<SuggestResponse> {
+        const url = `${this.configService.apiUrl}naive-rag/suggest-search-params/`;
+        return this.http.post<SuggestResponse>(url, body, { headers: this.headers });
+    }
+
+    suggestGraphSearchParams(body: GraphSuggestRequest): Observable<SuggestResponse> {
+        const url = `${this.configService.apiUrl}graph-rag/suggest-search-params/`;
+        return this.http.post<SuggestResponse>(url, body, { headers: this.headers });
     }
 }
