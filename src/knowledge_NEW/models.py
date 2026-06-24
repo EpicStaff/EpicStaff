@@ -122,9 +122,7 @@ class Document(Entity):
         self.status = DocumentStatusEnum.COMPLETED
         self.last_indexing_config = self.config.model_copy(deep=True)
         self.completed_at = utcnow()
-        self.error_code = DocumentErrorCode.NONE
-        self.error_message = None
-        self.failed_at = None
+        self.clear_error()
 
     def mark_failed(self, error_code: DocumentErrorCode, error_message: str) -> None:
         self.status = DocumentStatusEnum.FAILED

@@ -2,7 +2,7 @@
 
 from enums import DocumentErrorCode
 from errors import FileTextExtractingError, ChunkingError, EmbeddingError
-from status_rules import format_error_message
+from utils import format_error_message
 
 
 class IndexingErrorClassifier:
