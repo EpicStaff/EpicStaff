@@ -9,7 +9,7 @@ import {
     VALUE_EDITOR_COLUMN_DEFS,
     VariableInputType,
     VariableSectionConfig,
-} from '../parameters-table.config';
+} from '../../parameters';
 
 export type VariableSectionMode = 'rows' | 'array-values';
 
@@ -25,7 +25,6 @@ export class VariableSectionComponent {
     initialRows = input<Record<string, unknown>[]>([]);
     externalDuplicates = input<Map<string, Set<string>> | null>(null);
 
-    /** Cross-table row drag: stable tbody `cdkDropList` id; null disables connecting to other parameter tables. */
     rowDropListId = input<string | null>(null);
     rowDropListConnectedTo = input<string[]>([]);
     rowSyncRevision = input<number>(0);

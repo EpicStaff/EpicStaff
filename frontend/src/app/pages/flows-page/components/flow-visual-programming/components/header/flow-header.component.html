@@ -87,6 +87,25 @@
                 <span class="btn-label">Connect chat</span>
             </button>
         }
+       
+       <button
+            class="open-chat-button"
+            [appCollapseOnOverflow]="true"
+            collapseOnOverflowTarget=".btn-label"
+            collapseOnOverflowClass="btn--icon-only"
+            collapseOnOverflowRequireSelector=".open-chat-button__icon"
+            (click)="onToggleAssistant()"
+        >
+            <img
+                class="open-chat-button__icon"
+                src="/epicchat-widget/assets/images/shared/epicstaff-chat-logo.svg"
+                alt=""
+                width="20"
+                height="20"
+            />
+            <span class="btn-label">{{ isAssistantOpen ? 'Close chat' : 'Open chat' }}</span>
+        </button>
+       
         <div
             #saveSplitOrigin="cdkOverlayOrigin"
             cdkOverlayOrigin

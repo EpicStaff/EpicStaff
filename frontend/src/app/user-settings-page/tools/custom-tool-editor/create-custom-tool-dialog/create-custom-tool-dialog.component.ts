@@ -22,15 +22,16 @@ import { ConfirmationDialogService } from '../../../../shared/components/cofirm-
 import { ToggleSwitchComponent } from '../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
-import { JsonEditorComponent } from '../../../../shared/components/json-editor/json-editor.component';
+import { JsonEditorComponent, JsonError } from '../../../../shared/components/json-editor/json-editor.component';
 import { TextareaComponent } from '../../../../shared/components/textarea/textarea.component';
 import { CodeEditorComponent } from '../code-editor/code-editor.component';
-import { parseToolVariablesJson, serializeVariables, ToolVariable } from './components/parameters-table.config';
+import { parseToolVariablesJson, serializeVariables, ToolVariable } from './parameters';
 import {
     DrillStep,
     ParametersTableViewComponent,
 } from './components/parameters-table-view/parameters-table-view.component';
 import { toCreatePayload } from './models/create-custom-tool-form.model';
+import { isToolJsonSchemaValid, objectDefaultDataMarkers, TOOL_VARIABLES_JSON_SCHEMA } from './schema/tool-variables-schema';
 
 enum ActiveEditor {
     None = 'none',
@@ -46,33 +47,6 @@ interface CreateCustomToolDialogData {
 const DEFAULT_PYTHON_CODE = `def main() -> dict:
     return {"status": "ok"}
 `;
-
-const DEFAULT_VARIABLES_JSON = `[
-  {
-    "name": "query",
-    "type": "string",
-    "description": "Search query provided by the agent",
-    "input_type": "agent_input",
-    "required": true,
-    "default_value": null
-  },
-  {
-    "name": "api_key",
-    "type": "string",
-    "description": "API key configured by the user",
-    "input_type": "user_input",
-    "required": true,
-    "default_value": null
-  },
-  {
-    "name": "max_results",
-    "type": "number",
-    "description": "Maximum number of results. Agent may override the default.",
-    "input_type": "mixed",
-    "required": false,
-    "default_value": 10
-  }
-]`;
 
 const VARIABLES_SCHEMA_TOOLTIP =
     'Variables must be a JSON array. Each item defines one parameter: name, type, description, input_type, required, and default_value. input_type can be agent_input (agent supplies it), user_input (configured/default value, hidden from the agent), or mixed (agent may override configured/default value).';
@@ -115,7 +89,7 @@ export class CreateCustomToolDialogComponent {
         description: this.fb.control(this.selectedTool?.description ?? '', [Validators.required]),
         pythonCode: this.fb.control(this.selectedTool?.python_code?.code ?? DEFAULT_PYTHON_CODE, [Validators.required]),
         variablesJson: this.fb.control(
-            this.selectedTool ? this.initialVariablesJsonFromTool(this.selectedTool) : DEFAULT_VARIABLES_JSON,
+            this.selectedTool ? this.initialVariablesJsonFromTool(this.selectedTool) : '[]',
             [Validators.required]
         ),
         libraries: this.fb.control<string[]>(this.selectedTool?.python_code?.libraries ?? []),
@@ -134,18 +108,20 @@ export class CreateCustomToolDialogComponent {
     public readonly jsonSectionExpanded = signal(false);
     public readonly parametersTableMode = signal(true);
     public readonly isJsonValid = signal(true);
+    public readonly jsonIssues = signal<JsonError[]>([]);
+    public readonly lastValidJson = signal('');
+    public readonly toolVariablesSchema = TOOL_VARIABLES_JSON_SCHEMA;
+    public readonly objectDefaultMarkers = objectDefaultDataMarkers;
     public readonly pythonHasError = signal(false);
     public readonly isSaving = signal(false);
     public readonly isCopying = signal(false);
     private tableImportWasInvalid = false;
 
+    private initialSnapshot = '';
+
     private monacoJsonEditor: MonacoEditor.IStandaloneCodeEditor | null = null;
 
     constructor() {
-        // Re-layout the JSON Monaco editor whenever it becomes visible again.
-        // Both editors set `automaticLayout: true`, but the very first measure
-        // can be off when the right pane is animated/expanded - manually call
-        // layout() on the next microtask to be safe.
         effect(() => {
             const active = this.activeEditor();
             if (active === ActiveEditor.Json) {
@@ -156,7 +132,12 @@ export class CreateCustomToolDialogComponent {
         const parsedDefault = parseToolVariablesJson(this.form.controls.variablesJson.value);
         this.tableVariables.set(parsedDefault.valid ? parsedDefault.variables : []);
 
-        // Route backdrop click and Escape through the dirty-check guard.
+        this.initialSnapshot = this.computeSnapshot();
+        const initialJson = this.form.controls.variablesJson.value;
+        if (isToolJsonSchemaValid(initialJson)) {
+            this.lastValidJson.set(initialJson);
+        }
+
         this.dialogRef.disableClose = true;
         this.dialogRef.backdropClick.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.requestClose());
         this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
@@ -170,8 +151,6 @@ export class CreateCustomToolDialogComponent {
     public toggleEditor(target: ActiveEditor.Python | ActiveEditor.Json): void {
         const next = this.activeEditor() === target ? ActiveEditor.None : target;
         this.activeEditor.set(next);
-        // Selecting a target for the right pane closes its inline preview to
-        // avoid mounting two Monaco instances editing the same form control.
         if (next === ActiveEditor.Python) {
             this.pythonSectionExpanded.set(false);
         }
@@ -206,8 +185,8 @@ export class CreateCustomToolDialogComponent {
         }
 
         if (enabled) {
-            const parsed = parseToolVariablesJson(this.form.controls.variablesJson.value);
-            if (!parsed.valid) {
+            const value = this.form.controls.variablesJson.value;
+            if (!isToolJsonSchemaValid(value)) {
                 this.confirmDialog
                     .confirm({
                         title: 'Invalid Code Detected',
@@ -220,9 +199,6 @@ export class CreateCustomToolDialogComponent {
                     })
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe((result) => {
-                        // result === false  → "Switch Anyway" (cancel button)
-                        // result === true   → "Stay and Fix" (confirm button) → do nothing
-                        // result === 'close'→ user dismissed → do nothing
                         if (result === false) {
                             this.applyEnableTableMode([]);
                             this.tableImportWasInvalid = true;
@@ -231,25 +207,53 @@ export class CreateCustomToolDialogComponent {
                 return;
             }
 
-            this.applyEnableTableMode(parsed.variables);
+            this.applyEnableTableMode(parseToolVariablesJson(value).variables);
             this.tableImportWasInvalid = false;
             return;
         }
 
+        const tableView = this.parametersTableView();
+        if (tableView && !tableView.isValid()) {
+            tableView.validate();
+            this.confirmDialog
+                .confirm({
+                    title: 'Incomplete Fields',
+                    message: 'Some fields have errors and cannot be fully represented in JSON.',
+                    caution: 'If you switch to JSON now, incomplete fields may be <strong>dropped</strong>.',
+                    confirmText: 'Stay and Fix',
+                    cancelText: 'Switch Anyway',
+                    type: 'warning',
+                })
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe((result) => {
+                    if (result === false) {
+                        this.applyDisableTableMode();
+                    }
+                });
+            return;
+        }
+
+        this.applyDisableTableMode();
+    }
+
+    private applyDisableTableMode(): void {
         this.parametersTableMode.set(false);
         this.form.controls.variablesJson.setValue(JSON.stringify(serializeVariables(this.tableVariables()), null, 2));
         this.form.controls.variablesJson.markAsDirty();
         this.isJsonValid.set(true);
         this.tableImportWasInvalid = false;
         this.jsonSectionExpanded.set(true);
+        const serialized = this.form.controls.variablesJson.value;
+        if (isToolJsonSchemaValid(serialized)) {
+            this.lastValidJson.set(serialized);
+        }
     }
 
     private applyEnableTableMode(variables: ToolVariable[]): void {
         this.tableVariables.set(variables);
         this.parametersTableMode.set(true);
         this.jsonSectionExpanded.set(false);
-        // If the JSON editor was occupying the right pane, swap it to Python
-        // so the user keeps a useful editor visible instead of an empty panel.
+        this.jsonIssues.set([]);
         if (this.activeEditor() === ActiveEditor.Json) {
             this.activeEditor.set(ActiveEditor.Python);
         }
@@ -266,10 +270,28 @@ export class CreateCustomToolDialogComponent {
     public onJsonChange(json: string): void {
         this.form.controls.variablesJson.setValue(json);
         this.form.controls.variablesJson.markAsDirty();
+        if (isToolJsonSchemaValid(json)) {
+            this.lastValidJson.set(json);
+        }
     }
 
     public onJsonValidationChange(isValid: boolean): void {
         this.isJsonValid.set(isValid);
+    }
+
+    public onJsonErrorsChange(errors: JsonError[]): void {
+        this.jsonIssues.set(errors);
+    }
+
+    public revertToLastValidJson(): void {
+        const snapshot = this.lastValidJson();
+        if (!snapshot) {
+            return;
+        }
+        this.form.controls.variablesJson.setValue(snapshot);
+        this.form.controls.variablesJson.markAsDirty();
+        this.jsonIssues.set([]);
+        this.isJsonValid.set(true);
     }
 
     public onJsonEditorReady(editor: MonacoEditor.IStandaloneCodeEditor): void {
@@ -287,8 +309,6 @@ export class CreateCustomToolDialogComponent {
 
     public onVariablesChange(vars: ToolVariable[]): void {
         this.tableVariables.set(vars);
-        // Table-mode edits don't touch the JSON form control until save/toggle, so
-        // mark the form dirty here to make the unsaved-changes guard fire.
         this.form.controls.variablesJson.markAsDirty();
     }
 
@@ -308,7 +328,7 @@ export class CreateCustomToolDialogComponent {
         if (this.isSaving()) {
             return;
         }
-        if (!this.form.dirty) {
+        if (this.computeSnapshot() === this.initialSnapshot) {
             this.dialogRef.close();
             return;
         }
@@ -325,9 +345,6 @@ export class CreateCustomToolDialogComponent {
             })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
-                // result === true   → "Leave" (confirm button) → close
-                // result === false  → "Cancel" (cancel button) → stay
-                // result === 'close' → user dismissed → stay
                 if (result === true) {
                     this.dialogRef.close();
                 }
@@ -437,6 +454,27 @@ export class CreateCustomToolDialogComponent {
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe();
+    }
+
+    private computeSnapshot(): string {
+        const { name, description, pythonCode, libraries } = this.form.getRawValue();
+        return JSON.stringify({
+            name,
+            description,
+            pythonCode,
+            libraries: [...libraries].sort(),
+            variables: this.snapshotVariables(),
+        });
+    }
+
+    private snapshotVariables(): string {
+        if (this.parametersTableMode()) {
+            return JSON.stringify(serializeVariables(this.tableVariables()));
+        }
+        const parsed = parseToolVariablesJson(this.form.controls.variablesJson.value);
+        return parsed.valid
+            ? JSON.stringify(serializeVariables(parsed.variables))
+            : `invalid:${this.form.controls.variablesJson.value.trim()}`;
     }
 
     private initialVariablesJsonFromTool(tool: GetPythonCodeToolRequest): string {

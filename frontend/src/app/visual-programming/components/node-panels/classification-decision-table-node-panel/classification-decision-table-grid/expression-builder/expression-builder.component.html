@@ -1,0 +1,124 @@
+<div
+    class="eb-container"
+    [class.eb-container--right]="mode() === 'manipulation'"
+>
+    <!-- Toolbar row -->
+    <div class="eb-toolbar">
+        @for (token of tokens(); track token.label) {
+            <button
+                type="button"
+                [class]="'eb-chip eb-chip--' + token.category"
+                (mousedown)="$event.preventDefault()"
+                (click)="insertToken(token.insert)"
+            >
+                {{ token.label }}
+            </button>
+        }
+    </div>
+
+    <!-- Main body: editor + right panel -->
+    <div class="eb-body">
+        <!-- Left: textarea + inline mention dropdown -->
+        <div class="eb-editor-wrap">
+            <!-- Read-only tip lines rendered above the textarea -->
+            @if (tips().length > 0) {
+                <div class="eb-tips">
+                    @for (tip of tips(); track tip; let i = $index) {
+                        <div class="eb-tip-line">
+                            <span class="eb-tip-text">{{ tip }}</span>
+                            <button
+                                type="button"
+                                class="eb-tip-dismiss"
+                                (mousedown)="$event.preventDefault()"
+                                (click)="dismissTip(i)"
+                                aria-label="Dismiss tip"
+                            >
+                                ×
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
+
+            <textarea
+                #editor
+                class="eb-editor"
+                [value]="displayValue()"
+                (input)="onInput($event)"
+                (keydown)="onKeydown($event)"
+                (click)="onCaretUpdate($event)"
+                (keyup)="onCaretUpdate($event)"
+                spellcheck="false"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+            ></textarea>
+
+            <!-- @ mention dropdown -->
+            @if (mentionActive() && filteredMention().length > 0) {
+                <div
+                    class="eb-mention-dropdown"
+                    [style.top.px]="mentionTop()"
+                    [style.left.px]="mentionLeft()"
+                >
+                    @for (v of filteredMention(); track v; let i = $index) {
+                        <div
+                            class="eb-mention-item"
+                            [class.eb-mention-item--active]="i === mentionIndex()"
+                            (mousedown)="$event.preventDefault()"
+                            (click)="selectMention(v)"
+                        >
+                            {{ '@' }}{{ v }}
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Divider -->
+        <div class="eb-divider"></div>
+
+        <!-- Right: variable panel -->
+        <div class="eb-vars-panel">
+            <div class="eb-search-wrap">
+                <i class="ti ti-search eb-search-icon"></i>
+                <input
+                    type="text"
+                    class="eb-search"
+                    placeholder="Search object..."
+                    [ngModel]="searchTerm()"
+                    (ngModelChange)="searchTerm.set($event)"
+                />
+            </div>
+
+            <div class="eb-vars-list">
+                @for (v of filteredVars(); track v) {
+                    <div
+                        class="eb-var-row"
+                        (mousedown)="$event.preventDefault()"
+                        (click)="insertVariable(v)"
+                    >
+                        {{ '@' }}{{ v }}
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick templates row -->
+    <div class="eb-templates-row">
+        <span class="eb-templates-label">Quick templates:</span>
+        @for (tpl of templates(); track tpl) {
+            <button
+                type="button"
+                class="eb-template-btn"
+                [disabled]="!hasTemplateExample(tpl)"
+                [title]="hasTemplateExample(tpl) ? tpl : 'Coming soon'"
+                [attr.aria-disabled]="!hasTemplateExample(tpl) || null"
+                (click)="onTemplateClick(tpl)"
+            >
+                {{ tpl }}
+            </button>
+        }
+    </div>
+</div>

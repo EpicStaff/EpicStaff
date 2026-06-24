@@ -404,6 +404,7 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
 
     public onBulkDelete(): void {
         this.onDeleteSelected(Array.from(this.selectedIds()));
+        this.selectedIds.set(new Set());
     }
 
     public onExport(format: ExportFormat): void {

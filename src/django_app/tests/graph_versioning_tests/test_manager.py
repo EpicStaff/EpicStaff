@@ -620,3 +620,60 @@ def test_create_graph_from_snapshot_recreates_edge_with_remapped_node_ids(
     original_node_ids = {start_node.id, crew_node.id}
     assert new_edge.start_node_id not in original_node_ids
     assert new_edge.end_node_id not in original_node_ids
+
+
+# ---------------------------------------------------------------------------
+# Group H: regression — nodes missing from _GRAPH_RELATION_NAMES
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_restore_does_not_raise_integrity_error_for_classification_decision_table_node(
+    manager, graph
+):
+    """
+    Restore must not raise IntegrityError for ClassificationDecisionTableNode.
+
+    Before the fix, _wipe_graph_children() did not delete
+    classification_decision_table_node_list rows. The subsequent recreate
+    would violate unique_graph_node_name_for_classification_dt_node.
+    """
+    from tables.models import ClassificationDecisionTableNode
+
+    ClassificationDecisionTableNode.objects.create(
+        graph=graph,
+        node_name="classifier_node",
+    )
+    snapshot = manager.create_snapshot(graph)
+
+    # apply_snapshot_to_graph is the restore path: wipe + recreate
+    manager.apply_snapshot_to_graph(graph, snapshot, available_deps={})
+
+    assert graph.classification_decision_table_node_list.count() == 1
+    restored = graph.classification_decision_table_node_list.first()
+    assert restored.node_name == "classifier_node"
+
+
+@pytest.mark.django_db
+def test_restore_does_not_duplicate_schedule_trigger_node(manager, graph):
+    """
+    Restore must not accumulate duplicate ScheduleTriggerNode rows.
+
+    Before the fix, _wipe_graph_children() silently skipped
+    schedule_trigger_node_list, so each restore appended new rows
+    without removing the old ones.
+    """
+    from tables.models import ScheduleTriggerNode
+
+    ScheduleTriggerNode.objects.create(
+        graph=graph,
+        node_name="trigger_node",
+        is_active=False,
+    )
+    assert graph.schedule_trigger_node_list.count() == 1
+
+    snapshot = manager.create_snapshot(graph)
+
+    manager.apply_snapshot_to_graph(graph, snapshot, available_deps={})
+
+    assert graph.schedule_trigger_node_list.count() == 1

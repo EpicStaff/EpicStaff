@@ -34,6 +34,7 @@ import { SaveDropdownComponent } from './save-dropdown/save-dropdown.component';
 export class FlowHeaderComponent {
     @Input() graphName?: string;
     @Input() graphId?: number;
+    @Input() isAssistantOpen = false;
     @Input() isEpicChatEnabled = false;
     @Input() graph?: GraphDto;
     @Input() isSaving = false;
@@ -45,6 +46,7 @@ export class FlowHeaderComponent {
     @Output() run = new EventEmitter<void>();
     @Output() getCurl = new EventEmitter<void>();
     @Output() connectChat = new EventEmitter<void>();
+    @Output() toggleAssistant = new EventEmitter<void>();
     @Output() flowEdited = new EventEmitter<GraphDto>();
     @Output() saveVersion = new EventEmitter<void>();
     @Output() viewVersionHistory = new EventEmitter<void>();
@@ -86,6 +88,10 @@ export class FlowHeaderComponent {
 
     onConnectChat() {
         this.connectChat.emit();
+    }
+
+    onToggleAssistant() {
+        this.toggleAssistant.emit();
     }
 
     openRenameDialog(): void {

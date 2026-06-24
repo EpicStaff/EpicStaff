@@ -168,6 +168,11 @@ function buildCreatedNodeIdMap(
         responseGraph.schedule_trigger_node_list ?? [],
         existingIdsByType(NodeType.SCHEDULE_TRIGGER)
     );
+    mapByNewIds(
+        nodeDiff.classificationDecisionTableNodes.toCreate,
+        responseGraph.classification_decision_table_node_list ?? [],
+        existingIdsByType(NodeType.CLASSIFICATION_TABLE)
+    );
 
     return mapping;
 }

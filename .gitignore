@@ -261,7 +261,6 @@ src/knowledge/graph_data/
 *.pem
 *.crt!
 dev/dev.config.json
-dev/dev.env
 
 # AI Coding Assistant Configs
 .claude/

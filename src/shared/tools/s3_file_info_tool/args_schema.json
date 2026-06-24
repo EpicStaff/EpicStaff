@@ -1,0 +1,11 @@
+{
+  "title": "S3FileInfoArgs",
+  "type": "object",
+  "properties": {
+    "file_path": {
+      "type": "string",
+      "description": "S3 file path to get info about."
+    }
+  },
+  "required": ["file_path"]
+}

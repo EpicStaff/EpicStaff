@@ -1,0 +1,296 @@
+<div class="panel">
+    <div
+        class="drag-handle"
+        (mousedown)="onDragHandleMousedown($event)"
+    ></div>
+
+    <div
+        class="panel-header"
+        (mousedown)="onHeaderMousedown($event)"
+    >
+        <div class="panel-header__left">
+            <app-svg-icon
+                icon="tool"
+                size="1.25rem"
+                class="panel-header__icon"
+            />
+            <span class="panel-title">{{ flowName() }}</span>
+        </div>
+
+        <div class="panel-header-actions">
+            <button
+                #kebabOrigin
+                class="header-btn"
+                title="Menu"
+                (click)="onKebabClick()"
+            >
+                <app-svg-icon
+                    icon="dots-vertical"
+                    size="1.1rem"
+                />
+            </button>
+
+            @if (mode() === 'floating') {
+                <button
+                    class="header-btn"
+                    [title]="isFullHeight() ? 'Restore height' : 'Full height'"
+                    (click)="onExpandClick()"
+                >
+                    <app-svg-icon
+                        icon="expand-vertical"
+                        size="1.1rem"
+                    />
+                </button>
+            }
+
+            <button
+                class="header-btn"
+                [title]="mode() === 'docked' ? 'Float' : 'Dock'"
+                (click)="onToggleMode()"
+            >
+                <app-svg-icon
+                    [icon]="mode() === 'docked' ? 'arrows-maximize' : 'arrows-minimize'"
+                    size="1.1rem"
+                />
+            </button>
+
+            <button
+                class="header-btn"
+                title="Minimize"
+                (click)="close()"
+            >
+                <app-svg-icon
+                    icon="minimize"
+                    size="1.1rem"
+                />
+            </button>
+        </div>
+    </div>
+
+    <ng-template
+        cdkConnectedOverlay
+        [cdkConnectedOverlayOrigin]="kebabOrigin"
+        [cdkConnectedOverlayOpen]="kebabMenuOpen()"
+        [cdkConnectedOverlayPositions]="kebabOverlayPositions"
+        [cdkConnectedOverlayHasBackdrop]="true"
+        cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+        (backdropClick)="closeKebabMenu()"
+    >
+        <div
+            class="header-menu"
+            role="menu"
+        >
+            <button
+                class="header-menu__item"
+                role="menuitem"
+                (click)="onMenuItemClick('sessions')"
+            >
+                Sessions
+            </button>
+            <button
+                class="header-menu__item"
+                role="menuitem"
+                (click)="onMenuItemClick('settings')"
+            >
+                Settings
+            </button>
+            <div class="header-menu__divider"></div>
+            <button
+                class="header-menu__item"
+                role="menuitem"
+                (click)="onMenuItemClick('clear-history')"
+            >
+                Clear chat history
+            </button>
+            @if (mode() === 'floating') {
+                <button
+                    class="header-menu__item"
+                    role="menuitem"
+                    (click)="onMenuItemClick('reset-position')"
+                >
+                    Reset position
+                </button>
+            }
+        </div>
+    </ng-template>
+
+    @if (showSettings()) {
+        <app-flow-assistant-settings (closed)="showSettings.set(false)" />
+    }
+
+    <div class="panel-body">
+        @if (sidebarOpen()) {
+            <app-flow-assistant-sidebar
+                class="sidebar-overlay"
+                (selected)="closeSidebar()"
+            />
+        }
+
+        <div
+            class="chat-content"
+            (click)="onChatBodyClick()"
+        >
+            <div
+                #messagesContainer
+                class="messages-list"
+                (scroll)="onMessagesScroll()"
+            >
+                @for (message of messages(); track trackByIndex($index)) {
+                    @if (isUserMessage(message)) {
+                        <div class="message message--user">
+                            <div class="message__bubble">{{ message.content }}</div>
+                        </div>
+                    } @else if (isAssistantMessage(message)) {
+                        <div class="message message--assistant">
+                            <div class="message__text">
+                                @if (message.content) {
+                                    <markdown
+                                        [data]="message.content"
+                                        [inline]="false"
+                                    />
+                                }
+                                @if (message.ef_tables) {
+                                    @for (table of message.ef_tables; track $index) {
+                                        <app-flow-assistant-table [table]="table" />
+                                    }
+                                }
+                                @if (message.action_message?.length) {
+                                    <app-flow-assistant-actions
+                                        [actions]="message.action_message!"
+                                        (executed)="onActionExecuted($event)"
+                                    />
+                                }
+                                @if (liveToolsForAssistant($index); as liveTools) {
+                                    @if (liveTools.length > 0) {
+                                        <app-flow-assistant-tool-pill [tools]="liveTools" />
+                                    }
+                                }
+                            </div>
+                            @if (!isLastStreamingAssistant(message, $index)) {
+                                <button
+                                    type="button"
+                                    class="copy-btn"
+                                    [class.copy-btn--copied]="copiedMessageIndex() === $index"
+                                    (click)="copyAssistantMessage(message, $index)"
+                                    title="Copy message"
+                                    aria-label="Copy message"
+                                >
+                                    @if (copiedMessageIndex() === $index) {
+                                        <app-svg-icon
+                                            icon="check"
+                                            size="0.875rem"
+                                        />
+                                    } @else {
+                                        <app-svg-icon
+                                            icon="copy"
+                                            size="0.875rem"
+                                        />
+                                    }
+                                </button>
+                            }
+                            @if (isAssistantMessage(message) && message.interrupted) {
+                                <span class="message-interrupted">(stopped)</span>
+                            }
+                        </div>
+                    } @else if (isToolMessage(message)) {
+                        @if (!assistantService.liveToolCallIds().has(message.tool_call_id)) {
+                            <div class="message message--tool">
+                                <details class="tool-call">
+                                    <summary class="tool-call__summary">
+                                        <app-svg-icon
+                                            icon="tool"
+                                            size="0.875rem"
+                                        />
+                                        <span>{{ message.name }}</span>
+                                    </summary>
+                                    @if (message.content) {
+                                        <div class="tool-call__result">{{ message.content }}</div>
+                                    }
+                                </details>
+                            </div>
+                        }
+                    }
+                }
+
+                @if (currentStatus(); as status) {
+                    <div
+                        class="typing-indicator"
+                        role="status"
+                        aria-live="polite"
+                    >
+                        <span class="typing-indicator__dots">
+                            <span class="typing-indicator__dot"></span>
+                            <span class="typing-indicator__dot"></span>
+                            <span class="typing-indicator__dot"></span>
+                        </span>
+                        <span class="typing-indicator__text">{{ status }}</span>
+                    </div>
+                }
+            </div>
+
+            <div class="input-area">
+                @if (displayChips().length > 0) {
+                    <div class="prompt-chips">
+                        @for (chip of displayChips(); track $index) {
+                            <button
+                                class="prompt-chip"
+                                (click)="assistantService.executeAction(chip)"
+                            >
+                                {{ chip.text }}
+                            </button>
+                        }
+                    </div>
+                }
+                <div class="input-area__container">
+                    <textarea
+                        #messageInput
+                        class="input-area__textarea"
+                        placeholder="Ask about this flow..."
+                        rows="1"
+                        [value]="inputText()"
+                        (input)="onInputChange($event)"
+                        (keydown)="onKeydown($event)"
+                        [disabled]="isStreaming()"
+                    ></textarea>
+                    <div class="input-area__bottom-bar">
+                        @if (isStreaming()) {
+                            <button
+                                type="button"
+                                class="input-area__send-btn input-area__send-btn--stop"
+                                (click)="assistantService.cancelStream()"
+                                title="Stop generating"
+                                aria-label="Stop generating"
+                            >
+                                <app-svg-icon
+                                    icon="stop"
+                                    size="0.875rem"
+                                />
+                            </button>
+                        } @else {
+                            <button
+                                class="input-area__send-btn"
+                                [disabled]="sendDisabled()"
+                                (click)="sendMessage()"
+                                title="Send (Enter)"
+                            >
+                                <app-svg-icon
+                                    icon="send"
+                                    size="0.875rem"
+                                />
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (mode() === 'floating') {
+        @for (direction of resizeHandles; track direction) {
+            <div
+                class="float-resize-handle float-resize-handle--{{ direction }}"
+                (mousedown)="onFloatResizeHandleMousedown($event, direction)"
+            ></div>
+        }
+    }
+</div>

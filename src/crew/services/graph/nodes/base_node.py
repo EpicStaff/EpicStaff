@@ -153,10 +153,12 @@ class BaseNode(ABC):
         Raises:
             Exception: If there was an exception during the execution of the node.
         """
+        execution_order = 0
         try:
-            execution_order = self._calc_execution_order(
-                state=state, name=self.node_name
-            )
+            sysvars = state.get("system_variables") or {}
+            execution_order = sysvars.get("execution_order", 0)
+            sysvars["execution_order"] = execution_order + 1
+            state["system_variables"] = sysvars
             input_ = self.get_input(state=state)
             self.add_start_message(
                 writer=writer, input_=input_, execution_order=execution_order

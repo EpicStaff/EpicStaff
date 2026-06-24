@@ -950,12 +950,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
             .pipe(
                 tap((result) => {
                     if (result === 'dont-save') {
-                        this.pendingProjectUpdate = null;
-                        this.pendingAgentUpdates.clear();
-                        this.pendingTaskUpdates.clear();
-                        this.hasUnsavedChanges = false;
-                        this.recomputeUnsaved();
-                        this.cdr.markForCheck();
+                        this.discardPendingChanges();
                     }
                 }),
                 map((result) => result === 'save' || result === 'dont-save')
@@ -966,7 +961,9 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         this.pendingProjectUpdate = null;
         this.pendingAgentUpdates.clear();
         this.pendingTaskUpdates.clear();
-        this.hasUnsavedChanges = false;
+        this.agentsLocalDirty = false;
+        this.tasksLocalDirty = false;
+        this.tasksSection?.clearLocalDirtyAfterSave();
 
         this.recomputeUnsaved();
         this.cdr.markForCheck();
