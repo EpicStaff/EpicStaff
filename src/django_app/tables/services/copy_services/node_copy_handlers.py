@@ -1,9 +1,5 @@
 from typing import Callable
 
-from tables.constants.variables_constants import (
-    DOMAIN_ORGANIZATION_KEY,
-    DOMAIN_USER_KEY,
-)
 from tables.import_export.enums import NodeType
 from tables.models import Graph
 from tables.models.graph_models import (
@@ -14,8 +10,6 @@ from tables.models.graph_models import (
     DecisionTableNode,
     EndNode,
     FileExtractorNode,
-    GraphOrganization,
-    GraphOrganizationUser,
     GraphNote,
     PythonNode,
     ScheduleTriggerNode,
@@ -27,35 +21,18 @@ from tables.models.graph_models import (
     WebhookTriggerNode,
 )
 from tables.services.copy_services.helpers import copy_python_code, get_base_node_fields
-from tables.services.persistent_variables_service import PersistentVariablesService
 
 
 def copy_start_node(graph: Graph, node: StartNode) -> StartNode:
-    new_node = StartNode.objects.create(
+    # The owning-org GraphOrganization row is created once by GraphCopyService.
+    # TODO: persistent variables story — decide whether a copy should inherit
+    # the source graph's org/user persistent state (GraphOrganization /
+    # GraphOrganizationUser). For now a copy starts fresh.
+    return StartNode.objects.create(
         graph=graph,
         variables=node.variables,
         metadata=node.metadata,
     )
-    # TODO: rbac refactor
-    source_org = GraphOrganization.objects.filter(graph=node.graph).first()
-    if source_org:
-        service = PersistentVariablesService()
-        GraphOrganization.objects.create(
-            graph=graph,
-            organization=source_org.organization,
-            persistent_variables=service.extract(
-                node.variables, DOMAIN_ORGANIZATION_KEY
-            ),
-            user_variables=service.extract(node.variables, DOMAIN_USER_KEY),
-        )
-        for org_user in GraphOrganizationUser.objects.filter(graph=node.graph):
-            GraphOrganizationUser.objects.create(
-                graph=graph,
-                organization_user=org_user.organization_user,
-                persistent_variables=service.extract(node.variables, DOMAIN_USER_KEY),
-            )
-
-    return new_node
 
 
 def copy_end_node(graph: Graph, node: EndNode) -> EndNode:
