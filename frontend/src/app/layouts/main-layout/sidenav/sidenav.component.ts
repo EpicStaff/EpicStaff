@@ -126,6 +126,7 @@ export class LeftSidebarComponent implements AfterViewInit {
 
     public user = this.currentUserService.currentUserSignal;
     public isUserMenuOpen = signal<boolean>(false);
+    public showAccountTooltip = false;
 
     @ViewChild('epicChat', { static: false })
     private epicChat?: ElementRef<HTMLElement>;

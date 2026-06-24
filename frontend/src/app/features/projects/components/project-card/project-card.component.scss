@@ -139,29 +139,6 @@
         text-overflow: ellipsis;
         max-height: 4.2em;
     }
-
-    .tags-container {
-        margin-top: auto;
-        padding-left: 52px;
-
-        .tags {
-            display: flex;
-            flex-wrap: nowrap;
-            gap: 8px;
-            overflow: hidden;
-            white-space: nowrap;
-            align-items: center;
-
-            .more-tags {
-                font-size: 11px;
-                color: var(--color-text-secondary);
-                padding: 4px 8px;
-                border-radius: 12px;
-                flex-shrink: 0;
-                opacity: 0.8;
-            }
-        }
-    }
 }
 
 @keyframes bounce-wiggle {

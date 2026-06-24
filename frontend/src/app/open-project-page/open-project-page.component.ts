@@ -421,32 +421,13 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         this.subscription.unsubscribe();
     }
 
-    private normalizeDetails(input: { description: string; tags: string[] }) {
-        const description = (input.description ?? '').trim();
-
-        const tags = (input.tags ?? [])
-            .map((t) => String(t ?? '').trim())
-            .filter(Boolean)
-            .map((t) => (t.startsWith('#') ? t.slice(1) : t))
-            .map((t) => t.toLowerCase())
-            .sort();
-
-        return { description, tags };
-    }
-
-    public onDetailsChanged(change: { description: string; tags: string[] }): void {
+    public onDetailsChanged(change: { description: string }): void {
         if (!this.project) return;
 
-        const next = this.normalizeDetails(change);
-        const current = this.normalizeDetails({
-            description: this.project.description ?? '',
-            tags: ((this.project as unknown as Record<string, unknown>)['tags'] as string[]) ?? [], // якщо tags є в моделі
-        });
+        const nextDescription = (change.description ?? '').trim();
+        const currentDescription = (this.project.description ?? '').trim();
 
-        const isSame =
-            next.description === current.description && JSON.stringify(next.tags) === JSON.stringify(current.tags);
-
-        if (isSame) {
+        if (nextDescription === currentDescription) {
             this.pendingProjectUpdate = null;
             this.hasUnsavedChanges = false;
             this.cdr.markForCheck();
@@ -455,7 +436,6 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
 
         this.pendingProjectUpdate = {
             description: change.description ?? '',
-            tags: [...(change.tags ?? [])] as unknown as number[],
         };
 
         this.hasUnsavedChanges = true;
@@ -657,11 +637,6 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                     this.cdr.markForCheck();
                 },
             });
-    }
-
-    public get detailsTagsAsStrings(): string[] {
-        const tags = (this.project as any)?.tags ?? [];
-        return Array.isArray(tags) ? tags.map(String) : [];
     }
 
     private normalizeSettingValue(key: keyof GetProjectRequest, value: any): any {

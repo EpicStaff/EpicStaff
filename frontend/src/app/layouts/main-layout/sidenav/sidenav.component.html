@@ -103,8 +103,8 @@
                 class="sidenav-nav-item user-menu-item"
                 appClickOutside
                 (appClickOutside)="closeUserMenu()"
-                (mouseenter)="showProfileTooltip = true"
-                (mouseleave)="showProfileTooltip = false"
+                (mouseenter)="showAccountTooltip = true"
+                (mouseleave)="showAccountTooltip = false"
             >
                 <div class="tooltip-wrapper user-avatar-wrapper">
                     <div
@@ -116,6 +116,10 @@
                             [avatarUrl]="user.avatar_url"
                         />
                     </div>
+                    <app-tooltip
+                        text="Account"
+                        [visible]="showAccountTooltip && !isUserMenuOpen()"
+                    ></app-tooltip>
                     @if (isUserMenuOpen()) {
                         <app-user-menu
                             [user]="user"

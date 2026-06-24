@@ -91,7 +91,6 @@
                                     <app-details-content
                                         [projectId]="project.id"
                                         [description]="project.description ?? ''"
-                                        [tags]="detailsTagsAsStrings"
                                         (detailsChange)="onDetailsChanged($event)"
                                         (dirtyChange)="onDetailsDirtyChange($event)"
                                     ></app-details-content>
