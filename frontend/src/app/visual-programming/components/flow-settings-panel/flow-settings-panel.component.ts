@@ -2,6 +2,7 @@ import { DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, effect, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { AppIconComponent } from '../../../shared/components/app-icon/app-icon.component';
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -19,6 +20,7 @@ import { FlowSettingsService } from '../../services/flow-settings.service';
         TimezoneSelectorComponent,
         AppIconComponent,
         AppSvgIconComponent,
+        MatTooltip,
     ],
     templateUrl: './flow-settings-panel.component.html',
     styleUrl: './flow-settings-panel.component.scss',

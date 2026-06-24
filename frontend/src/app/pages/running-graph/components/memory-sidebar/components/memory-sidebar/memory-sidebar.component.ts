@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { Memory, MemoryType } from '../../models/memory.model';
@@ -8,7 +9,7 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
 @Component({
     selector: 'app-memories-sidebar',
     standalone: true,
-    imports: [CommonModule, MemoryItemComponent, AppSvgIconComponent],
+    imports: [CommonModule, MemoryItemComponent, AppSvgIconComponent, MatTooltipModule],
     template: `
         <!-- Memories Sidebar Overlay -->
         <div
@@ -26,6 +27,8 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
                 <h2>Session Memories ({{ memories.length }})</h2>
                 <button
                     class="close-button"
+                    matTooltip="Close"
+                    matTooltipPosition="above"
                     (click)="close.emit()"
                 >
                     <app-svg-icon

@@ -3,6 +3,7 @@ import { DialogModule } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output, signal } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterModule } from '@angular/router';
 
 import { FlowRenameDialogComponent } from '../../../../../../features/flows/components/flow-rename-dialog/flow-rename-dialog.component';
@@ -26,6 +27,7 @@ import { SaveDropdownComponent } from './save-dropdown/save-dropdown.component';
         OverlayModule,
         CollapseOnOverflowDirective,
         SaveDropdownComponent,
+        MatTooltipModule,
     ],
     templateUrl: './flow-header.component.html',
     styleUrls: ['./flow-header.component.scss'],

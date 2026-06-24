@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, EventEmitter, Input, Output } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../../../../../../../../shared/components/buttons/button/button.component';
@@ -10,7 +11,7 @@ import { GetPythonCodeToolRequest } from '../../../../../../models/python-code-t
     standalone: true,
     templateUrl: './custom-tool-card.component.html',
     styleUrls: ['./custom-tool-card.component.scss'],
-    imports: [AppSvgIconComponent, ToggleSwitchComponent, ButtonComponent],
+    imports: [AppSvgIconComponent, ToggleSwitchComponent, ButtonComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CustomToolCardComponent {

@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { expandCollapseAnimation } from '@shared/animations';
 import { CustomInputComponent, JsonEditorComponent, SelectComponent, SelectItem } from '@shared/components';
 import { FullLLMConfig, FullLLMConfigService } from '@shared/services';
@@ -33,6 +34,7 @@ import { DEFAULT_OUTPUT_SCHEMA } from './default-output-schema';
         CodeEditorComponent,
         CommonModule,
         JsonEditorComponent,
+        MatTooltipModule,
         SelectComponent,
     ],
     animations: [expandCollapseAnimation],

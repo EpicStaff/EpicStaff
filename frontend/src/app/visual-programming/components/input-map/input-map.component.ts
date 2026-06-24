@@ -115,7 +115,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                                 <button
                                     type="button"
                                     class="var-picker-btn"
-                                    title="Variable picker"
+                                    matTooltip="Variable picker"
+                                    matTooltipPosition="above"
                                     (click)="openPicker(i, $event)"
                                 >
                                     <i class="ti ti-braces"></i>
@@ -124,6 +125,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                                     icon="trash"
                                     size="1rem"
                                     class="delete-icon"
+                                    matTooltip="Remove"
+                                    matTooltipPosition="above"
                                     (click)="removePair(i)"
                                 ></app-svg-icon>
                             </div>
@@ -176,6 +179,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                                     icon="trash"
                                     size="1rem"
                                     class="delete-icon"
+                                    matTooltip="Remove"
+                                    matTooltipPosition="above"
                                     (click)="removeTestVariable(i)"
                                 ></app-svg-icon>
                             </div>

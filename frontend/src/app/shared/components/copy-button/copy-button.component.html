@@ -1,6 +1,8 @@
 <button
     (click)="copy($event)"
     [attr.aria-label]="ariaLabel"
+    matTooltip="Copy to clipboard"
+    matTooltipPosition="above"
 >
     <app-svg-icon
         icon="copy"

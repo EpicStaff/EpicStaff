@@ -13,6 +13,7 @@
         ></textarea>
         <button
             class="send-btn"
+            matTooltip="Send message"
             (click)="sendMessage()"
         >
             <app-svg-icon
@@ -65,6 +66,7 @@
             <button
                 class="control-btn"
                 [class.active]="isKeyboardMode()"
+                matTooltip="Toggle keyboard input"
                 (click)="toggleInputMode()"
             >
                 <app-svg-icon
@@ -77,6 +79,7 @@
             <button
                 class="control-btn"
                 [class.active]="isMicrophoneMuted()"
+                matTooltip="Mute microphone"
                 (click)="toggleRecording()"
             >
                 <app-svg-icon
@@ -91,6 +94,7 @@
             <!-- End conversation button -->
             <button
                 class="control-btn end-btn"
+                matTooltip="End conversation"
                 (click)="stopConversation()"
             >
                 <app-svg-icon

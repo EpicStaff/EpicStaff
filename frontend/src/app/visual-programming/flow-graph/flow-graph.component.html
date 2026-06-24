@@ -207,7 +207,8 @@
                         <button
                             type="button"
                             class="icon-button delete-icon"
-                            title="Delete connection"
+                            matTooltip="Delete connection"
+                            matTooltipPosition="above"
                             aria-label="Delete connection"
                             (click)="onDeleteConnection($event, connection.id)"
                         >
@@ -234,6 +235,8 @@
         <div class="top-left-actions__column">
             <button
                 class="domain-button"
+                matTooltip="Configure domain"
+                matTooltipPosition="right"
                 (click)="onDomainClick()"
             >
                 Domain
@@ -266,7 +269,8 @@
         <button
             #arrangeBtnRef
             class="arrange-btn"
-            title="Auto arrange"
+            matTooltip="Auto arrange"
+            matTooltipPosition="below"
             [disabled]="isArranging() || !(flowService.nodes().length >= 2 && hasUnarrangedChanges())"
             (click)="onAutoArrange()"
         >
@@ -278,7 +282,8 @@
         <button
             class="arrange-btn settings-icon-btn"
             (click)="openSettings()"
-            title="Flow Settings"
+            matTooltip="Flow settings"
+            matTooltipPosition="below"
         >
             <i class="ti ti-settings"></i>
         </button>

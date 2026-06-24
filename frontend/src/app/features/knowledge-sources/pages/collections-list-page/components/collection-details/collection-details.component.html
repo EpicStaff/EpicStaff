@@ -38,6 +38,8 @@
                 icon="trash"
                 class="details__action details__action--large"
                 size="1.5rem"
+                matTooltip="Delete collection"
+                matTooltipPosition="left"
                 (click)="onCollectionDelete()"
             />
         </div>
@@ -93,7 +95,11 @@
                                         size="0.75rem"
                                     />
 
-                                    <label (click)="fileInput.click()">
+                                    <label
+                                        matTooltip="Add file"
+                                        matTooltipPosition="above"
+                                        (click)="fileInput.click()"
+                                    >
                                         <app-svg-icon
                                             icon="plus"
                                             class="details__action details__action--medium"

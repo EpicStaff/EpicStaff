@@ -33,6 +33,7 @@ export class ToggleSwitchComponent implements ControlValueAccessor {
     label = input<string>('');
     required = input<boolean>(false);
     tooltipText = input<string>('');
+    ariaLabel = input<string>('');
 
     @Input() checked = false;
     @Output() checkedChange = new EventEmitter<boolean>();

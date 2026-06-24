@@ -11,6 +11,7 @@ import {
     Output,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { RouterModule } from '@angular/router';
 import { computeUniqueName } from '@shared/utils';
@@ -44,6 +45,7 @@ import { EditTitleDialogComponent } from './edit-name-dialog/edit-title-dialog.c
         ButtonComponent,
         SaveWithIndicatorComponent,
         UnsavedIndicatorComponent,
+        MatTooltipModule,
     ],
     templateUrl: './header.component.html',
     styleUrl: './header.component.scss',

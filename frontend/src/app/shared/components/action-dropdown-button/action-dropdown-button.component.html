@@ -20,6 +20,8 @@
     <button
         class="adb__chevron"
         [disabled]="disabled() || loading()"
+        matTooltip="More options"
+        matTooltipPosition="above"
         (click)="toggle($event)"
     >
         <app-svg-icon

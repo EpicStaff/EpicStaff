@@ -13,6 +13,7 @@ import {
     Signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, SelectComponent, SelectItem } from '@shared/components';
 import { ModelTypes } from '@shared/models';
 import {
@@ -37,7 +38,7 @@ type DialogComponentType =
 
 @Component({
     selector: 'app-default-llms-card',
-    imports: [CommonModule, AppSvgIconComponent, SelectComponent],
+    imports: [CommonModule, AppSvgIconComponent, SelectComponent, MatTooltipModule],
     templateUrl: './default-llms-card.component.html',
     styleUrls: ['./default-llms-card.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -12,6 +12,7 @@ import {
     Output,
     SimpleChanges,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { getProviderIconPath } from '@shared/utils';
 
@@ -27,7 +28,7 @@ interface SectionStates {
 
 @Component({
     selector: 'app-staff-agent-card',
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [CommonModule, AppSvgIconComponent, MatTooltipModule],
     templateUrl: './staff-agent-card.component.html',
     styleUrls: ['./staff-agent-card.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
