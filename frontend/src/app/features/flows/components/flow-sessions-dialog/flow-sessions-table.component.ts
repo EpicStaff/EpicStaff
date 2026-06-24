@@ -16,7 +16,12 @@ import { CheckboxComponent, IconButtonComponent, LoadingSpinnerComponent } from 
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
 import { GraphDto } from '../../models/graph.model';
-import { DurationFilter, GraphSessionLight, GraphSessionStatus, isTerminalSessionStatus } from '../../services/flows-sessions.service';
+import {
+    DurationFilter,
+    GraphSessionLight,
+    GraphSessionStatus,
+    isTerminalSessionStatus,
+} from '../../services/flows-sessions.service';
 import { DurationFilterDropdownComponent } from './duration-filter-dropdown.component';
 import { FlowNameFilterDropdownComponent } from './flow-name-filter-dropdown.component';
 import { FlowSessionStatusBadgeComponent } from './flow-session-status-badge.component';

@@ -53,7 +53,6 @@ export class ChatsSidebarItemComponent {
                     ...updatedAgent,
                     tools: this.agent.tools,
                     python_code_tools: this.agent.python_code_tools,
-                    configured_tools: this.agent.configured_tools,
                 };
 
                 // If this is the currently selected agent, update it in the service too

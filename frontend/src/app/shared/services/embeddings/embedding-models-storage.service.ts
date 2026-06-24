@@ -2,12 +2,13 @@ import { inject, Injectable, signal } from '@angular/core';
 import { CreateEmbeddingModelRequest, EmbeddingModel } from '@shared/models';
 import { catchError, Observable, of, tap, throwError } from 'rxjs';
 
+import { StorageService } from '../app-storage.service';
 import { EmbeddingModelsService } from './embeddings.service';
 
 @Injectable({
     providedIn: 'root',
 })
-export class EmbeddingModelsStorageService {
+export class EmbeddingModelsStorageService implements StorageService {
     private readonly embeddingModelsService = inject(EmbeddingModelsService);
 
     private modelsSignal = signal<EmbeddingModel[]>([]);
@@ -60,6 +61,11 @@ export class EmbeddingModelsStorageService {
             }
             return [model, ...current];
         });
+    }
+
+    clear(): void {
+        this.modelsSignal.set([]);
+        this.allModelsLoadedSignal.set(false);
     }
 
     private removeModelFromCache(id: number): void {

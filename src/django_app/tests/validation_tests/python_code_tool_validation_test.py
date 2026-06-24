@@ -1,164 +1,218 @@
 import pytest
+from unittest.mock import MagicMock
 from tables.exceptions import PythonCodeToolConfigSerializerError
-from tables.models.python_models import PythonCodeToolConfigField
+from tables.models.python_models import PythonCodeTool
 from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
-from tests.fixtures import *
 
 
-@pytest.mark.django_db
-def test_validate_invalid_configuration_type(validator, mock_tool):
-    """Test that validation fails if configuration is not a dictionary."""
+def make_tool(variables):
+    tool = MagicMock(spec=PythonCodeTool)
+    tool.variables = variables
+    return tool
+
+
+@pytest.fixture
+def validator():
+    return PythonCodeToolConfigValidator()
+
+
+def test_validate_invalid_configuration_type(validator):
+    tool = make_tool([])
     with pytest.raises(PythonCodeToolConfigSerializerError, match="must be an object"):
-        validator.validate("test_tool", mock_tool, configuration=[1, 2, 3])
+        validator.validate("test_tool", tool, configuration=[1, 2, 3])
 
 
-@pytest.mark.django_db
-def test_validate_happy_path_string(validator, mock_tool):
-    """Test successful validation of a simple string field."""
-    # Setup
-    field_name = "api_key"
-    mock_field = create_mock_field(
-        field_name, PythonCodeToolConfigField.FieldType.STRING, required=True
+def test_validate_happy_path_string(validator):
+    tool = make_tool(
+        [{"name": "api_key", "type": "string", "input_type": "user_input", "required": True}]
     )
-    mock_tool.get_tool_config_fields.return_value = {field_name: mock_field}
-
-    config = {field_name: "secret_123"}
-
-    # Execute
-    result = validator.validate("tool", mock_tool, config)
-
-    # Assert
-    assert result[field_name] == "secret_123"
+    result = validator.validate("tool", tool, {"api_key": "secret_123"})
+    assert result["api_key"] == "secret_123"
 
 
-@pytest.mark.django_db
-def test_validate_missing_required_field_raises_error(validator, mock_tool):
-    """Test that missing a required field raises an error."""
-    # Setup
-    field_name = "api_key"
-    mock_field = create_mock_field(
-        field_name, PythonCodeToolConfigField.FieldType.STRING, required=True
+def test_validate_missing_required_field_raises_error(validator):
+    tool = make_tool(
+        [{"name": "api_key", "type": "string", "input_type": "user_input", "required": True}]
     )
-    mock_tool.get_tool_config_fields.return_value = {field_name: mock_field}
-
-    config = {}  # Empty config
-
-    # Execute & Assert
     with pytest.raises(
-        PythonCodeToolConfigSerializerError, match=f"Field '{field_name}' is required"
+        PythonCodeToolConfigSerializerError, match="Field 'api_key' is required"
     ):
-        validator.validate("tool", mock_tool, config)
+        validator.validate("tool", tool, {})
 
 
-@pytest.mark.django_db
-def test_validate_missing_required_field_allowed_flag(mock_tool):
-    """Test that missing required fields are allowed if the validator is configured so."""
-    # Setup validator with flag=False
+def test_validate_missing_required_field_allowed_flag():
     validator = PythonCodeToolConfigValidator(validate_missing_required_fields=False)
-
-    field_name = "api_key"
-    mock_field = create_mock_field(
-        field_name, PythonCodeToolConfigField.FieldType.STRING, required=True
+    tool = make_tool(
+        [{"name": "api_key", "type": "string", "input_type": "user_input", "required": True}]
     )
-    mock_tool.get_tool_config_fields.return_value = {field_name: mock_field}
-
-    config = {}
-
-    # Execute
-    result = validator.validate("tool", mock_tool, config)
-
-    # Assert: Should pass, but value should be None (or absent depending on logic, here it will be None)
-    assert result[field_name] is None
+    result = validator.validate("tool", tool, {})
+    assert result["api_key"] is None
 
 
-@pytest.mark.django_db
-def test_validate_ignores_extra_config_fields(validator, mock_tool):
-    """Test that fields in config that aren't in the tool definition are ignored."""
-    # Setup: Tool has NO fields
-    mock_tool.get_tool_config_fields.return_value = {}
-
-    config = {"random_extra_field": "should_be_ignored"}
-
-    # Execute
-    result = validator.validate("tool", mock_tool, config)
-
-    # Assert
+def test_validate_ignores_extra_config_fields(validator):
+    tool = make_tool([])
+    result = validator.validate("tool", tool, {"random_extra_field": "should_be_ignored"})
     assert "random_extra_field" not in result
     assert result == {}
 
 
-# --- Type Casting Tests ---
+def test_validate_rejects_agent_input_field(validator):
+    tool = make_tool(
+        [{"name": "query", "type": "string", "input_type": "agent_input", "required": True}]
+    )
+    with pytest.raises(PythonCodeToolConfigSerializerError, match="set by the agent"):
+        validator.validate("tool", tool, {"query": "something"})
+
+
+def test_validate_mixed_variable_accepted(validator):
+    tool = make_tool(
+        [{"name": "limit", "type": "integer", "input_type": "mixed", "required": False}]
+    )
+    result = validator.validate("tool", tool, {"limit": 5})
+    assert result["limit"] == 5
 
 
 @pytest.mark.parametrize(
-    "data_type, input_val, expected_val",
+    "var_type, input_val, expected_val",
     [
-        (PythonCodeToolConfigField.FieldType.INTEGER, "10", 10),
-        (PythonCodeToolConfigField.FieldType.INTEGER, 10, 10),
-        (PythonCodeToolConfigField.FieldType.FLOAT, "10.5", 10.5),
-        (PythonCodeToolConfigField.FieldType.FLOAT, 10, 10.0),
-        (PythonCodeToolConfigField.FieldType.STRING, 123, "123"),
-        (PythonCodeToolConfigField.FieldType.BOOLEAN, 1, True),
-        (PythonCodeToolConfigField.FieldType.BOOLEAN, 0, False),
-        # Note: Python's bool("False") is True. This tests the specific implementation provided.
-        (PythonCodeToolConfigField.FieldType.BOOLEAN, "False", True),
-        (PythonCodeToolConfigField.FieldType.ANY, {"a": 1}, {"a": 1}),
-        (
-            PythonCodeToolConfigField.FieldType.LLM_CONFIG,
-            "5",
-            5,
-        ),  # Mapped to int in code
+        ("integer", "10", 10),
+        ("integer", 10, 10),
+        ("number", "10.5", 10.5),
+        ("number", 10, 10.0),
+        ("string", 123, "123"),
+        ("boolean", True, True),
+        ("boolean", False, False),
+        ("any", {"a": 1}, {"a": 1}),
     ],
 )
-@pytest.mark.django_db
-def test_casting_success(validator, mock_tool, data_type, input_val, expected_val):
-    """Test successful type casting for various field types."""
-    field_name = "test_field"
-    mock_field = create_mock_field(field_name, data_type, required=True)
-    mock_tool.get_tool_config_fields.return_value = {field_name: mock_field}
-
-    config = {field_name: input_val}
-
-    result = validator.validate("tool", mock_tool, config)
-    assert result[field_name] == expected_val
-
-
-@pytest.mark.django_db
-def test_casting_failure_raises_error(validator, mock_tool):
-    """Test that providing an invalid value for a type raises an error."""
-    field_name = "max_tokens"
-    # Integer field
-    mock_field = create_mock_field(
-        field_name, PythonCodeToolConfigField.FieldType.INTEGER, required=True
+def test_casting_success(validator, var_type, input_val, expected_val):
+    tool = make_tool(
+        [{"name": "field", "type": var_type, "input_type": "user_input", "required": True}]
     )
-    mock_tool.get_tool_config_fields.return_value = {field_name: mock_field}
-
-    # Pass a non-integer string
-    config = {field_name: "not_a_number"}
-
-    with pytest.raises(
-        PythonCodeToolConfigSerializerError, match="Error casting value"
-    ):
-        validator.validate("tool", mock_tool, config)
+    result = validator.validate("tool", tool, {"field": input_val})
+    assert result["field"] == expected_val
 
 
-@pytest.mark.django_db
-def test_validate_none_value_not_cast(validator, mock_tool):
-    """Test that if value is None (and allowed via missing_fields=False), casting is skipped."""
-    validator.validate_missing_required_fields = False
-
-    field_name = "count"
-    # Even if it's an INTEGER field
-    mock_field = create_mock_field(
-        field_name, PythonCodeToolConfigField.FieldType.INTEGER, required=True
+def test_casting_failure_raises_error(validator):
+    tool = make_tool(
+        [{"name": "max_tokens", "type": "integer", "input_type": "user_input", "required": True}]
     )
-    mock_tool.get_tool_config_fields.return_value = {field_name: mock_field}
+    with pytest.raises(PythonCodeToolConfigSerializerError, match="Error casting value"):
+        validator.validate("tool", tool, {"max_tokens": "not_a_number"})
 
-    config = {}  # Missing input
 
-    result = validator.validate("tool", mock_tool, config)
+def test_validate_none_value_not_cast():
+    validator = PythonCodeToolConfigValidator(validate_missing_required_fields=False)
+    tool = make_tool(
+        [{"name": "count", "type": "integer", "input_type": "user_input", "required": True}]
+    )
+    result = validator.validate("tool", tool, {})
+    assert result["count"] is None
 
-    # Should remain None, not cast to int(None) which would raise TypeError
-    assert result[field_name] is None
+
+def test_validate_nested_object(validator):
+    tool = make_tool([
+        {
+            "name": "settings",
+            "type": "object",
+            "input_type": "user_input",
+            "required": True,
+            "properties": {
+                "api_key": {"type": "string"},
+                "timeout": {"type": "integer"},
+            },
+            "required_properties": ["api_key"],
+        }
+    ])
+    result = validator.validate("tool", tool, {
+        "settings": {"api_key": "abc", "timeout": "30"}
+    })
+    assert result["settings"]["api_key"] == "abc"
+    assert result["settings"]["timeout"] == 30
+
+
+def test_validate_nested_object_missing_required(validator):
+    tool = make_tool([
+        {
+            "name": "settings",
+            "type": "object",
+            "input_type": "user_input",
+            "required": True,
+            "properties": {
+                "api_key": {"type": "string"},
+            },
+            "required_properties": ["api_key"],
+        }
+    ])
+    with pytest.raises(PythonCodeToolConfigSerializerError, match="api_key.*required"):
+        validator.validate("tool", tool, {"settings": {}})
+
+
+def test_validate_nested_object_wrong_type(validator):
+    tool = make_tool([
+        {
+            "name": "settings",
+            "type": "object",
+            "input_type": "user_input",
+            "required": True,
+            "properties": {"count": {"type": "integer"}},
+            "required_properties": [],
+        }
+    ])
+    with pytest.raises(PythonCodeToolConfigSerializerError, match="Expected an object"):
+        validator.validate("tool", tool, {"settings": "not_an_object"})
+
+
+def test_validate_array_with_items(validator):
+    tool = make_tool([
+        {
+            "name": "tags",
+            "type": "array",
+            "input_type": "user_input",
+            "required": False,
+            "items": {"type": "string"},
+        }
+    ])
+    result = validator.validate("tool", tool, {"tags": ["a", "b", "c"]})
+    assert result["tags"] == ["a", "b", "c"]
+
+
+def test_validate_array_wrong_type(validator):
+    tool = make_tool([
+        {
+            "name": "ids",
+            "type": "array",
+            "input_type": "user_input",
+            "required": False,
+            "items": {"type": "integer"},
+        }
+    ])
+    with pytest.raises(PythonCodeToolConfigSerializerError, match="Expected an array"):
+        validator.validate("tool", tool, {"ids": "not_an_array"})
+
+
+def test_validate_deeply_nested_object(validator):
+    tool = make_tool([
+        {
+            "name": "config",
+            "type": "object",
+            "input_type": "user_input",
+            "required": True,
+            "properties": {
+                "db": {
+                    "type": "object",
+                    "properties": {
+                        "port": {"type": "integer"},
+                    },
+                    "required": ["port"],
+                },
+            },
+            "required_properties": ["db"],
+        }
+    ])
+    result = validator.validate("tool", tool, {
+        "config": {"db": {"port": "5432"}}
+    })
+    assert result["config"]["db"]["port"] == 5432

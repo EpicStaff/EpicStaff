@@ -58,7 +58,9 @@ def test_save_version_default_description_is_empty(service, graph):
 def test_restore_version_returns_response_dict_structure(service, graph):
     version = service.save_version(graph, name="snap")
 
-    result = service.restore_version(version, backup=False)
+    result = service.restore_version(
+        version, backup=False, expected_save_version=graph.save_version
+    )
 
     assert result["restored"] is True
     assert result["graph_id"] == graph.id
@@ -77,7 +79,9 @@ def test_restore_version_round_trip_restores_crew_node(service, graph, crew):
     graph.crew_node_list.all().delete()
     assert graph.crew_node_list.count() == 0
 
-    service.restore_version(version, backup=False)
+    service.restore_version(
+        version, backup=False, expected_save_version=graph.save_version
+    )
 
     assert graph.crew_node_list.count() == 1
     restored_node = graph.crew_node_list.first()
@@ -105,7 +109,9 @@ def test_restore_version_with_missing_crew_returns_warnings_and_skips_node(
     # filter_snapshot skips the node during restore.
     crew.delete()
 
-    result = service.restore_version(version, backup=False)
+    result = service.restore_version(
+        version, backup=False, expected_save_version=graph.save_version
+    )
 
     assert len(result["warnings"]) > 0
     skipped = [w for w in result["warnings"] if w["type"] == "node_skipped"]
@@ -123,7 +129,9 @@ def test_restore_version_with_backup_true_creates_backup_version(service, graph)
     version = service.save_version(graph, name="original")
     before_count = GraphVersion.objects.count()
 
-    result = service.restore_version(version, backup=True)
+    result = service.restore_version(
+        version, backup=True, expected_save_version=graph.save_version
+    )
 
     assert result["auto_backup_version_id"] is not None
     assert GraphVersion.objects.count() == before_count + 1
@@ -136,7 +144,9 @@ def test_restore_version_with_backup_false_creates_no_backup(service, graph):
     version = service.save_version(graph, name="original")
     before_count = GraphVersion.objects.count()
 
-    result = service.restore_version(version, backup=False)
+    result = service.restore_version(
+        version, backup=False, expected_save_version=graph.save_version
+    )
 
     assert GraphVersion.objects.count() == before_count
     assert result["auto_backup_version_id"] is None
@@ -169,7 +179,9 @@ def test_restore_version_warnings_node_ids_are_remapped_to_new_ids(
     # Delete the LLMConfig — node is kept but FK will be nulled on restore
     llm_config.delete()
 
-    result = service.restore_version(version, backup=False)
+    result = service.restore_version(
+        version, backup=False, expected_save_version=graph.save_version
+    )
 
     fk_nulled_warnings = [w for w in result["warnings"] if w["type"] == "fk_nulled"]
     assert len(fk_nulled_warnings) > 0

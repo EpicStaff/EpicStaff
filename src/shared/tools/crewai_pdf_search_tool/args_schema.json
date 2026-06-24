@@ -20,7 +20,7 @@
       "default": 0.7
     },
     "limit": {
-      "type": "integer",
+      "type": "number",
       "description": "Optional limit of top results to return",
       "default": 5
     }

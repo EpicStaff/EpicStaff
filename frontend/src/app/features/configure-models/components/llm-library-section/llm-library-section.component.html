@@ -13,6 +13,7 @@
                         type="text"
                         class="search-input"
                         placeholder="Search configurations..."
+                        autocomplete="off"
                         [value]="searchQuery()"
                         (input)="onSearchChange($any($event.target).value)"
                     />

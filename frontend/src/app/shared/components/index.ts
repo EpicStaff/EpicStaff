@@ -9,6 +9,7 @@ export * from './checkbox/checkbox.component';
 export * from './chips-input/chips-input.component';
 export * from './chips-select/chips-select.component';
 export * from './cofirm-dialog';
+export * from './copy-button/copy-button.component';
 export * from './create-agent-form-dialog/create-agent-form-dialog.component';
 export * from './date-picker/date-picker.component';
 export * from './drag-drop-area/drag-drop-area.component';

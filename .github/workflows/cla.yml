@@ -1,0 +1,32 @@
+name: "CLA Assistant"
+
+on:
+  pull_request_target:
+    types: [opened, closed, synchronize]
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  cla-assistant:
+    # Toggle: set repo variable CLA_ENFORCED=true to enable. Unset/anything else = CLA bot off.
+    if: vars.CLA_ENFORCED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: "CLA Assistant"
+        if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
+        uses: contributor-assistant/github-action@v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        with:
+          path-to-signatures: 'signatures/cla.json'
+          path-to-document: 'CLA.md'
+          branch: 'cla-signatures'
+          allowlist: dependabot[bot]
+          custom-notsigned-prcomment: 'Thank you for your submission, we appreciate it. EpicStaff is a source-available project maintained by HYS Enterprise B.V. and distributed under the PolyForm Perimeter License 1.0.0. Before we can accept your contribution, we ask that you read and sign our Individual Contributor License Agreement (CLA). You can sign the CLA by posting a Pull Request comment in the same format as below.'

@@ -38,6 +38,9 @@ from .graph_nodes import (
     GraphData,
     SubGraphData,
     CodeAgentNodeData,
+    PromptConfigData,
+    ClassificationConditionGroupData,
+    ClassificationDecisionTableNodeData,
 )
 from .knowledge import (
     BaseRagSearchConfig,
@@ -68,13 +71,34 @@ from .tools import (
     ConfiguredToolData,
     McpToolData,
     PythonCodeData,
-    ArgsSchema,
     PythonCodeToolData,
     BaseToolData,
     RunToolParamsModel,
     ToolInitConfigurationModel,
     CodeResultData,
     CodeTaskData,
+)
+from .variables import (
+    VariableTypeInput,
+    VariableType,
+    StringVariable,
+    NumberVariable,
+    BooleanVariable,
+    ObjectVariable,
+    ArrayVariable,
+    Variable,
+    variable_adapter,
+    StringNestedVariable,
+    NumberNestedVariable,
+    BooleanNestedVariable,
+    ObjectNestedVariable,
+    ArrayNestedVariable,
+    NestedVariable,
+)
+from .variable_conversion import (
+    args_schema_to_variables,
+    json_schema_node_to_nested_variable,
+    _normalize_type,
 )
 
 __all__ = [
@@ -116,6 +140,9 @@ __all__ = [
     "GraphData",
     "SubGraphData",
     "CodeAgentNodeData",
+    "PromptConfigData",
+    "ClassificationConditionGroupData",
+    "ClassificationDecisionTableNodeData",
     # knowledge
     "BaseRagSearchConfig",
     "NaiveRagSearchConfig",
@@ -143,11 +170,30 @@ __all__ = [
     "ConfiguredToolData",
     "McpToolData",
     "PythonCodeData",
-    "ArgsSchema",
     "PythonCodeToolData",
     "BaseToolData",
     "RunToolParamsModel",
     "ToolInitConfigurationModel",
     "CodeResultData",
     "CodeTaskData",
+    # variables
+    "VariableTypeInput",
+    "VariableType",
+    "StringVariable",
+    "NumberVariable",
+    "BooleanVariable",
+    "ObjectVariable",
+    "ArrayVariable",
+    "Variable",
+    "variable_adapter",
+    "StringNestedVariable",
+    "NumberNestedVariable",
+    "BooleanNestedVariable",
+    "ObjectNestedVariable",
+    "ArrayNestedVariable",
+    "NestedVariable",
+    # variable_conversion
+    "args_schema_to_variables",
+    "json_schema_node_to_nested_variable",
+    "_normalize_type",
 ]

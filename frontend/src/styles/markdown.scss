@@ -219,6 +219,54 @@
     }
 }
 
+// Flow Assistant scoped bullet styles — mirrors EpicChat message-item bullet rendering.
+// Scoped to app-flow-assistant-panel .message__text to avoid bleeding into chats-page.
+// The panel's own ::ng-deep rules in flow-assistant-panel.component.scss override the
+// global .markdown-content ul/li rules for FA; these bullet symbols work alongside those.
+app-flow-assistant-panel .message__text {
+    ul {
+        list-style: none;
+        padding-left: 0;
+
+        li {
+            position: relative;
+            padding-left: 20px;
+            margin: 4px 0;
+            line-height: 20px;
+
+            &::before {
+                content: '•';
+                position: absolute;
+                left: 0;
+                font-weight: 600;
+            }
+
+            ul {
+                margin: 4px 0;
+                padding-left: 0;
+
+                li {
+                    padding-left: 24px;
+
+                    &::before {
+                        content: '◦';
+                        left: 4px;
+                    }
+
+                    ul li {
+                        padding-left: 28px;
+
+                        &::before {
+                            content: '▪';
+                            left: 8px;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 // Print styles
 @media print {
     .markdown-content {

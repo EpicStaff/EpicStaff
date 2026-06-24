@@ -171,8 +171,13 @@ def test_restore_returns_200_with_response_dict_structure(
     version = make_graph_version(name="snap")
     version_id = version["id"]
 
+    graph.refresh_from_db()
     restore_url = reverse("graph-versions-restore", args=[version_id])
-    response = auth_client.post(restore_url, format="json")
+    response = auth_client.post(
+        restore_url,
+        {"save_version": graph.save_version},
+        format="json",
+    )
 
     assert response.status_code == status.HTTP_200_OK, response.content
     assert response.data["restored"] is True
@@ -183,13 +188,18 @@ def test_restore_returns_200_with_response_dict_structure(
 
 @pytest.mark.django_db
 def test_restore_with_backup_true_creates_backup_version(
-    auth_client, make_graph_version
+    auth_client, graph, make_graph_version
 ):
     version = make_graph_version(name="snap-for-backup")
     version_id = version["id"]
 
+    graph.refresh_from_db()
     restore_url = reverse("graph-versions-restore", args=[version_id])
-    response = auth_client.post(restore_url + "?backup=true", format="json")
+    response = auth_client.post(
+        restore_url + "?backup=true",
+        {"save_version": graph.save_version},
+        format="json",
+    )
 
     assert response.status_code == status.HTTP_200_OK, response.content
     auto_backup_id = response.data["auto_backup_version_id"]
@@ -208,7 +218,7 @@ def test_restore_with_backup_true_creates_backup_version(
 def test_restore_nonexistent_version_returns_404(auth_client):
     restore_url = reverse("graph-versions-restore", args=[99999])
 
-    response = auth_client.post(restore_url, format="json")
+    response = auth_client.post(restore_url, {"save_version": 1}, format="json")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND, response.content
 
@@ -301,3 +311,55 @@ def test_create_graph_response_contains_warnings_list(
     assert response.status_code == status.HTTP_201_CREATED, response.content
     assert "warnings" in response.data
     assert isinstance(response.data["warnings"], list)
+
+
+# ---------------------------------------------------------------------------
+# Group F: Optimistic locking — restore_version
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_restore_version_success_increments_save_version(
+    auth_client, graph, make_graph_version
+):
+    """Correct save_version → 200, restore happens, save_version bumped."""
+    version = make_graph_version(name="for-lock-restore")
+    version_id = version["id"]
+
+    graph.refresh_from_db()
+    version_before = graph.save_version
+
+    restore_url = reverse("graph-versions-restore", args=[version_id])
+    response = auth_client.post(
+        restore_url,
+        {"save_version": version_before},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert response.data["restored"] is True
+    graph.refresh_from_db()
+    assert graph.save_version == version_before + 1
+
+
+@pytest.mark.django_db
+def test_restore_version_stale_save_version_returns_409(
+    auth_client, graph, make_graph_version
+):
+    """Stale save_version → 409, no restore side effects, no auto-backup."""
+    version = make_graph_version(name="for-stale-restore")
+    version_id = version["id"]
+
+    Graph.objects.filter(pk=graph.pk).update(save_version=50)
+    versions_before = GraphVersion.objects.filter(graph=graph).count()
+
+    restore_url = reverse("graph-versions-restore", args=[version_id])
+    response = auth_client.post(
+        restore_url + "?backup=true",
+        {"save_version": 1},  # stale
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT, response.content
+    # No new backup row should have been created
+    assert GraphVersion.objects.filter(graph=graph).count() == versions_before

@@ -6,12 +6,13 @@ import { MarkdownModule } from 'ngx-markdown';
 import { GetAgentRequest } from '../../../../../../features/staff/models/agent.model';
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-agent-finish-message',
     standalone: true,
-    imports: [CommonModule, MarkdownModule, NgxJsonViewerModule, AppSvgIconComponent],
+    imports: [CommonModule, MarkdownModule, NgxJsonViewerModule, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
         <div class="agent-flow-container">
@@ -78,6 +79,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
             *ngIf="agentFinishMessageData?.output"
         >
             <div class="result-content">
+                <app-copy-button [text]="cleanOutput(agentFinishMessageData?.output)" />
                 <ngx-json-viewer
                     *ngIf="isValidJson(agentFinishMessageData?.output)"
                     [json]="getParsedJson(agentFinishMessageData?.output)"
@@ -227,6 +229,10 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
                 transition: max-height 0.3s ease;
                 box-shadow: 0 4px 12px rgba(14, 14, 14, 0.25);
                 position: relative;
+
+                &:hover app-copy-button {
+                    opacity: 1;
+                }
             }
         `,
     ],

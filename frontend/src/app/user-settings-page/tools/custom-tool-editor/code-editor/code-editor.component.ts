@@ -37,6 +37,7 @@ export class CodeEditorComponent implements OnDestroy {
     @ViewChild('editorContainer', { static: true }) editorContainer!: ElementRef;
 
     @Input() public pythonCode: string = '';
+    @Input() public showHeader: boolean = true;
     @Output() public pythonCodeChange = new EventEmitter<string>();
     @Output() public errorChange = new EventEmitter<boolean>();
 

@@ -43,10 +43,21 @@ class ProfileView(APIView):
     )
     def get(self, request):
         _require_user_context(request)
-        user = self._service.get_profile(request.user)
+        active_org_id = self._extract_active_org_id(request)
+        user = self._service.get_profile(request.user, active_org_id=active_org_id)
         return Response(
             ProfileResponseSerializer(user, context={"request": request}).data
         )
+
+    @staticmethod
+    def _extract_active_org_id(request):
+        raw = request.headers.get("X-Organization-Id")
+        if not raw:
+            return None
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return None  # Soft-fail: profile is the boot endpoint.
 
     @extend_schema(
         summary="Update my profile",

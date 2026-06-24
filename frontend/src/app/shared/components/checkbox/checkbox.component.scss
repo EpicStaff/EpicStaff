@@ -49,9 +49,19 @@ input[type='checkbox']:indeterminate::after {
     border-radius: 1px;
 }
 
-input.multiselect {
-    border: 1px solid var(--color-ks-transparent-text-20);
-    background-color: var(--color-ks-transparent-text-20);
+input.secondary:checked,
+input.secondary:indeterminate {
+    border-color: var(--color-text-primary);
+    background: var(--color-text-primary);
+}
+
+input.secondary:checked::after {
+    border-color: var(--color-ks-primary);
+}
+
+input.secondary:indeterminate::after {
+    background: var(--color-ks-primary);
+    border-radius: 1px;
 }
 
 input:disabled {

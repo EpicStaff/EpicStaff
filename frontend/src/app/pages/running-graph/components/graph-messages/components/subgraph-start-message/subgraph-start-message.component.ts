@@ -4,12 +4,13 @@ import { NgxJsonViewerModule } from 'ngx-json-viewer';
 
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-subgraph-start-message',
     standalone: true,
-    imports: [CommonModule, NgxJsonViewerModule, AppSvgIconComponent],
+    imports: [CommonModule, NgxJsonViewerModule, AppSvgIconComponent, CopyButtonComponent],
     encapsulation: ViewEncapsulation.Emulated,
     animations: [expandCollapseAnimation],
     template: `
@@ -98,6 +99,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                             [@expandCollapse]="isInputsExpanded ? 'expanded' : 'collapsed'"
                         >
                             <div class="input-content">
+                                <app-copy-button [text]="inputJson" />
                                 <ngx-json-viewer
                                     [json]="getInput()"
                                     [expanded]="false"
@@ -126,6 +128,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                             [@expandCollapse]="isVariablesExpanded ? 'expanded' : 'collapsed'"
                         >
                             <div class="variables-content">
+                                <app-copy-button [text]="variablesJson" />
                                 <ngx-json-viewer
                                     [json]="getVariables()"
                                     [expanded]="false"
@@ -239,6 +242,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
 
             .input-content,
             .variables-content {
+                position: relative;
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
                 border-radius: 8px;
@@ -246,6 +250,10 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                 overflow: auto;
                 max-height: 400px;
                 margin-left: 23px;
+
+                &:hover app-copy-button {
+                    opacity: 1;
+                }
             }
 
             .state-history-content {
@@ -389,6 +397,14 @@ export class SubgraphStartMessageComponent {
     isMessageExpanded = false;
     isInputsExpanded = true;
     isVariablesExpanded = true;
+
+    get inputJson(): string {
+        return JSON.stringify(this.getInput(), null, 2);
+    }
+
+    get variablesJson(): string {
+        return JSON.stringify(this.getVariables(), null, 2);
+    }
 
     toggleMessage(): void {
         if (!this.hasContent()) return;

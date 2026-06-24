@@ -1,0 +1,148 @@
+<!-- Toolbar -->
+<div class="perm-toolbar">
+    <span class="perm-count">
+        Assigned Permissions:
+        <span class="count">({{ totalSelected() }})</span>
+    </span>
+    <div class="perm-actions">
+        @if (!readonly()) {
+            <button
+                class="action-item"
+                type="button"
+                (click)="selectAllClick.emit()"
+            >
+                <app-svg-icon
+                    icon="checkbox-checked"
+                    size="16px"
+                />
+                Select All
+            </button>
+            <button
+                class="action-item"
+                type="button"
+                (click)="clearAllClick.emit()"
+            >
+                <app-svg-icon
+                    icon="x"
+                    size="16px"
+                />
+                Clear All
+            </button>
+        }
+        <app-search
+            placeholder="Search permission..."
+            [(searchTerm)]="searchTerm"
+        />
+    </div>
+</div>
+
+<!-- Table -->
+<div
+    class="perm-table"
+    [style.--perm-row-grid]="gridTemplate()"
+>
+    <!-- Sticky column headers -->
+    <div class="perm-headers">
+        <label>Resource</label>
+        @for (action of catalog().actions; track action.code) {
+            <div class="action-col">
+                <app-svg-icon
+                    [icon]="actionIcon(action)"
+                    size="13px"
+                />
+                {{ actionLabel(action) }}
+            </div>
+        }
+    </div>
+
+    <!-- Groups -->
+    <div class="scrollable">
+        @for (group of filteredGroups(); track group.key) {
+            <div class="group">
+                <!-- Group header -->
+                <div
+                    class="group-header"
+                    (click)="toggleGroup(group.key)"
+                >
+                    <app-svg-icon
+                        [icon]="isGroupCollapsed(group.key) ? 'chevron-right' : 'chevron-down'"
+                        size="14px"
+                        class="collapse-icon"
+                    />
+                    <app-svg-icon
+                        [icon]="group.icon"
+                        size="14px"
+                        class="group-icon"
+                    />
+                    <span class="group-name">{{ group.label }}</span>
+                    <span class="group-count">
+                        {{ groupCounts().get(group.key)?.selected }} /
+                        {{ groupCounts().get(group.key)?.total }}
+                    </span>
+                    @if (!readonly()) {
+                        <div
+                            class="group-actions"
+                            (click)="$event.stopPropagation()"
+                        >
+                            <button
+                                class="action-item small"
+                                type="button"
+                                (click)="groupSelectAllClick.emit(group.key)"
+                            >
+                                <app-svg-icon
+                                    icon="checkbox-checked"
+                                    size="10px"
+                                />
+                                Select All
+                            </button>
+                            <button
+                                class="action-item small"
+                                type="button"
+                                (click)="groupClearClick.emit(group.key)"
+                            >
+                                <app-svg-icon
+                                    icon="x"
+                                    size="10px"
+                                />
+                                Clear
+                            </button>
+                        </div>
+                    }
+                </div>
+
+                <!-- Resources (collapsible with animation) -->
+                <div
+                    class="group-content"
+                    [class.is-collapsed]="isGroupCollapsed(group.key)"
+                >
+                    @for (resource of group.resources; track resource.code) {
+                        <div class="resource-row">
+                            <div class="resource-info">
+                                <span class="resource-name">{{ resource.label }}</span>
+                                <span class="resource-desc">{{ resourceDescription(resource.code) }}</span>
+                            </div>
+                            @for (action of catalog().actions; track action.code) {
+                                <div class="action-cell">
+                                    @if (isApplicable(resource, action)) {
+                                        <app-checkbox
+                                            [checked]="isChecked(resource.code, action.code)"
+                                            [disabled]="readonly()"
+                                            (checkedChange)="
+                                                permissionToggle.emit({
+                                                    resourceType: resource.code,
+                                                    action: action.code,
+                                                })
+                                            "
+                                        />
+                                    } @else {
+                                        <span class="empty-cell">—</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>

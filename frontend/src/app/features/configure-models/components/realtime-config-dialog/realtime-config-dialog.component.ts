@@ -67,7 +67,7 @@ export class RealtimeConfigDialogComponent {
         api_key: [(this.data.provider === 'openai' ? (this.data.config as OpenAIRealtimeConfig)?.api_key : null) ?? ''],
         model_name: [
             (this.data.provider === 'openai' ? (this.data.config as OpenAIRealtimeConfig)?.model_name : null) ??
-                'gpt-4o-realtime-preview',
+                'gpt-realtime-1.5',
             Validators.required,
         ],
         transcription_model_name: [

@@ -66,7 +66,13 @@ class GraphVersioningService:
         }
 
     @transaction.atomic
-    def restore_version(self, version: GraphVersion, *, backup: bool = False) -> dict:
+    def restore_version(
+        self,
+        version: GraphVersion,
+        *,
+        expected_save_version: int,
+        backup: bool = False,
+    ) -> dict:
         """
         Restore a graph to the state captured in ``version``.
 
@@ -100,6 +106,8 @@ class GraphVersioningService:
           successfully and the ID is a valid database row.
         """
         graph = version.graph
+        Graph.increment_version_if_current(pk=graph.pk, expected=expected_save_version)
+
         deps = version.dependencies or {}
 
         snapshot = self._manager.convert_snapshot_to_current_version(version.snapshot)

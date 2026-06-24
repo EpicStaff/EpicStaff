@@ -9,11 +9,14 @@ import {
     UpdateMeRequest,
     UserRole,
 } from '@shared/models';
-import { Observable } from 'rxjs';
+import { AppStorageService } from '@shared/services';
+import { map, Observable, of, switchMap } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
 import { ROLE_LABELS } from '../../features/role-base-access/constants/role-labels.constant';
 import { ConfigService } from '../config';
+import { ActiveOrgService } from './active-org.service';
+import { PermissionsService } from './permissions.service';
 
 @Injectable({
     providedIn: 'root',
@@ -21,6 +24,9 @@ import { ConfigService } from '../config';
 export class ProfileService {
     private readonly http = inject(HttpClient);
     private readonly configService = inject(ConfigService);
+    private readonly activeOrgService = inject(ActiveOrgService);
+    private readonly permissionsService = inject(PermissionsService);
+    private readonly appStorageService = inject(AppStorageService);
 
     private get baseUrl(): string {
         return `${this.configService.apiUrl}profile/`;
@@ -42,30 +48,36 @@ export class ProfileService {
         return highestRole !== null ? (ROLE_LABELS[highestRole] ?? '—') : '—';
     });
 
-    // TODO will be replaced with directive with migration to permission-verify logic
-    canManageOrgs = computed(() => {
-        const currentUser = this.currentUserSignal();
-        if (!currentUser) return false;
-
-        return currentUser.is_superadmin;
-    });
-
-    canManageUsers = computed(() => {
-        const currentUser = this.currentUserSignal();
-        if (!currentUser) return false;
-
-        return currentUser.is_superadmin || currentUser.memberships.some(({ role }) => role.id === UserRole.ORG_ADMIN);
-    });
-
-    canManageRoles = computed(() => {
-        const currentUser = this.currentUserSignal();
-        if (!currentUser) return false;
-
-        return currentUser.is_superadmin;
-    });
-
+    /** Simple single fetch — use for refreshing profile data mid-session. */
     getCurrentUser(): Observable<GetMeResponse> {
         return this.http.get<GetMeResponse>(this.baseUrl).pipe(tap((user) => this.setUser(user)));
+    }
+
+    /** Bootstrap: picks active org, then fetches active permissions.
+     *  Reuses cached profile if already fetched; otherwise fetches profile first.
+     *  Called once by the route resolver on app load. */
+    bootstrapUser(): Observable<GetMeResponse> {
+        const cachedUser = this.currentUserSignal();
+        const user$ = cachedUser
+            ? of(cachedUser)
+            : this.http.get<GetMeResponse>(this.baseUrl).pipe(tap((u) => this.setUser(u)));
+
+        return user$.pipe(
+            switchMap((user) => {
+                if (user.memberships.length === 0) {
+                    this.permissionsService.setActivePermissions(null);
+                    return of(user);
+                }
+
+                const cachedId = this.activeOrgService.activeOrgId();
+                const stillValid = cachedId !== null && user.memberships.some((m) => m.organization.id === cachedId);
+                const orgId = stillValid ? cachedId! : user.memberships[0].organization.id;
+                this.activeOrgService.set(orgId);
+
+                // Fetch active permissions with X-Organization-Id header now attached by the interceptor
+                return this.permissionsService.loadActivePermissions().pipe(map(() => user));
+            })
+        );
     }
 
     updateCurrentUser(dto: UpdateMeRequest): Observable<GetMeResponse> {
@@ -88,6 +100,14 @@ export class ProfileService {
 
     confirmPasswordChange(dto: PasswordChangeConfirmRequest): Observable<TokenPair> {
         return this.http.post<TokenPair>(`${this.baseUrl}password-change/confirm/`, dto);
+    }
+
+    /** Switches the active organization: clears all caches, sets the new org,
+     *  then reloads permissions for the new org context. Order MATTERS */
+    switchOrg(orgId: number): Observable<void> {
+        this.appStorageService.clearAll();
+        this.activeOrgService.set(orgId);
+        return this.permissionsService.loadActivePermissions().pipe(map(() => undefined));
     }
 
     clearCurrentUser(): void {

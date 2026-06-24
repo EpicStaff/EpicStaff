@@ -11,6 +11,7 @@ _EXCLUDED_GRAPH_SCALARS = (
     "uuid",
     "created_at",
     "updated_at",
+    "save_version",
 )
 
 
@@ -37,6 +38,8 @@ _GRAPH_RELATION_NAMES = (
     "audio_transcription_node_list",
     "start_node_list",
     "decision_table_node_list",
+    "classification_decision_table_node_list",
+    "schedule_trigger_node_list",
     "telegram_trigger_node_list",
     "end_node",
     "graph_note_list",

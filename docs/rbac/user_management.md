@@ -21,11 +21,11 @@ Base URL in examples: `http://localhost:8000`.
 | POST | `/api/admin/users/` | superadmin | Create a user; optionally assign to org+role |
 | POST | `/api/admin/users/{id}/grant-superadmin/` | superadmin | Set `is_superadmin=True` |
 | POST | `/api/admin/users/{id}/revoke-superadmin/` | superadmin | Set `is_superadmin=False` |
-| GET | `/api/admin/organizations/{org_id}/users/` | sa or oa | List members of one organization |
-| POST | `/api/admin/organizations/{org_id}/users/` | sa or oa | Create a user and link to organization |
-| POST | `/api/admin/organizations/{org_id}/assign-users/` | sa or oa | Batch-upsert memberships in organization (create or reassign roles) |
-| PATCH | `/api/admin/organizations/{org_id}/users/{user_id}/` | sa or oa | Change a user's role within the organization |
-| DELETE | `/api/admin/organizations/{org_id}/users/{user_id}/` | sa or oa | Remove user from organization |
+| GET | `/api/admin/organizations/{org_id}/users/` | `HasOrgPermission(USERS, READ)` | List members of one organization |
+| POST | `/api/admin/organizations/{org_id}/users/` | `HasOrgPermission(USERS, CREATE)` | Create a user and link to organization |
+| POST | `/api/admin/organizations/{org_id}/assign-users/` | `HasOrgPermission(USERS, UPDATE)` | Batch-upsert memberships in organization (create or reassign roles) |
+| PATCH | `/api/admin/organizations/{org_id}/users/{user_id}/` | `HasOrgPermission(USERS, UPDATE)` | Change a user's role within the organization |
+| DELETE | `/api/admin/organizations/{org_id}/users/{user_id}/` | `HasOrgPermission(USERS, DELETE)` | Remove user from organization |
 
 ---
 
@@ -107,6 +107,15 @@ Base URL in examples: `http://localhost:8000`.
   "message": "Superadmin privileges are required for this action."
 }
 ```
+
+The 403 envelope `code` for the `/api/admin/organizations/{org_id}/...`
+membership endpoints is now `permission_denied` (previously
+`superadmin_or_org_admin_required` — any caller that relied on the
+old code must switch). Authorization is resolved through
+`HasOrgPermission(USERS, <action>)` and yields the unified
+`permission_denied` envelope. See
+[roles_and_permissions.md](roles_and_permissions.md) for the
+permission resolution model.
 
 ---
 
@@ -306,13 +315,11 @@ Errors:
 
 ## Future steps
 
-- **Story 6** — bitmask permission enforcement on resources. `IsSuperadminOrOrgAdmin`
-  becomes a thin wrapper over a `PermissionResolver` service backed by Redis cache.
-  URL surface unchanged.
-- **Story 7** — active-org switching via `X-Organization-Id` header. `/api/profile/`
-  adds active-org resolution.
-- **Story 9** — custom roles. `assert_role_is_assignable` already gates cross-org
-  custom roles correctly; the same membership endpoint accepts a custom `role_id`.
+- **Custom roles** — `assert_role_is_assignable` already gates cross-org
+  custom roles correctly; the same membership endpoint will accept a custom `role_id`
+  once custom-role write endpoints land.
+- **Permission cache** — the `PermissionResolver` reserves a cache seam for a
+  future Redis layer; the resolver's public API does not change when added.
 - **Audit log** — when an audit-log surface lands, drop entries inside
   `UserManagementService` (one place, every flow). Until then, every write
   logs INFO via `loguru` for ops visibility.

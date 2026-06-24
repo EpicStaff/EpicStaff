@@ -5,12 +5,13 @@ import { MarkdownModule } from 'ngx-markdown';
 
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-task-message',
     standalone: true,
-    imports: [CommonModule, MarkdownModule, NgxJsonViewerModule, AppSvgIconComponent],
+    imports: [CommonModule, MarkdownModule, NgxJsonViewerModule, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
         <div class="agent-flow-container">
@@ -115,6 +116,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
                             [@expandCollapse]="isRawExpanded ? 'expanded' : 'collapsed'"
                         >
                             <div class="result-content">
+                                <app-copy-button [text]="getRawData()" />
                                 <!-- JSON Viewer when raw data is valid JSON -->
                                 <ngx-json-viewer
                                     *ngIf="isValidJson(getRawData())"
@@ -273,6 +275,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
         }
 
         .result-content {
+            position: relative;
             background-color: var(--gray-800);
             border: 1px solid var(--gray-750);
             border-radius: 8px;
@@ -281,6 +284,10 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
             margin-left: 23px;
             overflow-y: auto;
             max-height: 400px;
+
+            &:hover app-copy-button {
+                opacity: 1;
+            }
         }
 
         .markdown-content {

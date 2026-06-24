@@ -4,6 +4,7 @@ import {
     contentChildren,
     Directive,
     ElementRef,
+    input,
     NgZone,
     OnDestroy,
     Renderer2,
@@ -14,6 +15,7 @@ import {
     selector: '[appOverflowItem]',
 })
 export class OverflowItemDirective {
+    readonly appOverflowLabel = input('');
     constructor(readonly elRef: ElementRef<HTMLElement>) {}
 }
 
@@ -45,6 +47,7 @@ export class OverflowBadgeDirective {
 })
 export class OverflowItemsDirective implements AfterViewInit, OnDestroy {
     readonly overflowCount = signal(0);
+    readonly hiddenLabels = signal('');
 
     private readonly items = contentChildren(OverflowItemDirective);
     private readonly badge = contentChild(OverflowBadgeDirective);
@@ -123,7 +126,10 @@ export class OverflowItemsDirective implements AfterViewInit, OnDestroy {
 
         if (totalWidth <= containerWidth) {
             // Everything fits — no badge needed
-            this.ngZone.run(() => this.overflowCount.set(0));
+            this.ngZone.run(() => {
+                this.overflowCount.set(0);
+                this.hiddenLabels.set('');
+            });
             return;
         }
 
@@ -157,6 +163,15 @@ export class OverflowItemsDirective implements AfterViewInit, OnDestroy {
             this.renderer.setStyle(badgeEl, 'display', 'inline-flex');
         }
 
-        this.ngZone.run(() => this.overflowCount.set(hidden));
+        const labels = this.items()
+            .slice(visibleCount)
+            .map((d) => d.appOverflowLabel())
+            .filter((l) => l)
+            .join(', ');
+
+        this.ngZone.run(() => {
+            this.overflowCount.set(hidden);
+            this.hiddenLabels.set(labels);
+        });
     }
 }

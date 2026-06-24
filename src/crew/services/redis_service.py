@@ -11,7 +11,7 @@ from redis.client import PubSub
 from redis.retry import Retry
 from redis.backoff import ExponentialBackoff
 
-from src.crew.utils.singleton_meta import SingletonMeta
+from utils.singleton_meta import SingletonMeta
 
 SESSION_STATUS_CHANNEL = os.environ.get(
     "SESSION_STATUS_CHANNEL", "sessions:session_status"

@@ -1,16 +1,20 @@
 <!-- Node badge number -->
 <div
+   
     class="node-name-wrapper"
-    *ngIf="!noteNode && node.nodeNumber != null"
+   
+    *ngIf="!noteNode && node.nodeNumber != null && node.type !== NodeType.CLASSIFICATION_TABLE"
+
 >
     <div class="node-name-label">#{{ node.nodeNumber }}</div>
 </div>
 
 <!-- Control buttons positioned above the node -->
 <div
+   
     class="actions"
-    *ngIf="node.type !== NodeType.TABLE"
     (mousedown)="$event.stopPropagation()"
+
 >
     <!-- Edit Button for Note -->
     <div
@@ -30,14 +34,25 @@
     >
         <app-svg-icon icon="edit"></app-svg-icon>
     </div>
+    <!-- Delete Button -->
+    <div
+        *ngIf="node.type !== NodeType.START"
+        class="action-button delete-button"
+        title="Delete node"
+        (click)="onDeleteClick($event)"
+    >
+        <i class="ti ti-trash"></i>
+    </div>
 </div>
 
 <!-- Ports (skip all ports for table nodes as they render internally) -->
 @for (port of this.node.ports; track port.id) {
-    @if (node.type !== NodeType.TABLE) {
+    @if (node.type !== NodeType.TABLE && node.type !== NodeType.CLASSIFICATION_TABLE) {
         <div
             class="port-wrapper port-index-{{ $index }} port-position-{{ port.position }}"
             [style.--port-index]="$index"
+            (mouseenter)="portMouseenter.emit()"
+            (mouseleave)="portMouseleave.emit()"
         >
             <div
                 class="port-circle"
@@ -74,10 +89,7 @@
         (actualClick)="onEditClick()"
     >
         <!-- Header Section -->
-        <div
-            class="header"
-            *ngIf="node.type !== NodeType.TABLE"
-        >
+        <div class="header" *ngIf="node.type !== NodeType.TABLE && node.type !== NodeType.CLASSIFICATION_TABLE">
             <div class="icon-wrapper">
                 <i
                     [class]="node.icon"
@@ -130,6 +142,12 @@
             [node]="tableNode!"
             (actualClick)="onEditClick($event)"
         ></app-decision-table-node>
+    }    
+    @case (NodeType.CLASSIFICATION_TABLE) {
+        <app-classification-decision-table-node
+            [node]="tableNode!"
+            (actualClick)="onEditClick()"
+        ></app-classification-decision-table-node>
     }
     @default {
         <ng-container *ngTemplateOutlet="interactiveNode"></ng-container>

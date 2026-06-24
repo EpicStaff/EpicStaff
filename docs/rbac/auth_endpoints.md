@@ -74,6 +74,35 @@ Shape comes from `utils/exception_handler.custom_exception_handler`.
 
 ---
 
+## Active-organization header
+
+The `X-Organization-Id` header carries the **active organization** —
+the workspace the caller is currently operating in. It is required for
+active-context endpoints (those that need to know which workspace the
+caller is operating in): `/api/permissions/me/`, `/api/admin/roles/`
+(list and detail), and any future resource endpoint that scopes by
+current org. URL-nested admin endpoints
+(`/api/admin/organizations/{org_id}/...`) use the URL kwarg instead and
+do not need the header.
+
+When the header is missing or contains a non-integer value on a
+header-required endpoint, the response is `400` with code
+`org_context_required`. When the header points to an org the caller
+isn't a member of (and is not superadmin), `403` with code
+`org_membership_required`. Superadmin can set any `org_id` and bypasses
+the membership check.
+
+`/api/profile/` is the exception — when the header is absent, malformed,
+or points to an inaccessible org, both `active_organization_id` and
+`active_permissions` are returned as `null` (soft-fail) so the boot
+endpoint stays reachable for users with deactivated orgs or no
+memberships yet.
+
+See [roles_and_permissions.md](roles_and_permissions.md) for the full
+payload shapes of every header-required endpoint.
+
+---
+
 ## First-time setup
 
 ### GET `/api/auth/first-setup/`
@@ -561,6 +590,7 @@ curl -s http://localhost:8000/api/graphs/ -H "Authorization: Bearer $ACCESS" | j
 | Token introspection / API key validation | Only used by internal services; the FE typically does not call these. If it does, the endpoints require `X-Api-Key` now — JWT will get 403. |
 | Admin UI (`/admin/`) | **Removed.** `django.contrib.admin` was dropped because our custom `User` has no `is_staff` field. Anything that linked to `/admin/` must be removed or redirected. |
 | Active organization | Not wired up yet. `X-Organization-Id` header + active-org resolution on `/api/profile/` is Story 7. Until then, the FE can pick an org from `memberships[]` and display it, but there's no backend filtering by header. |
+| Active org header | `X-Organization-Id` required from this story onward on active-context endpoints. See [`roles_and_permissions.md`](roles_and_permissions.md). |
 | Permissions UI | All Story-2 endpoints effectively require `IsAuthenticated`; the bitmask permission checks land in later stories (9 / 13). Until then the FE gates UI actions purely on `is_superadmin` / role name. |
 | Env-seeded API key flows | If any FE flow uses `DJANGO_API_KEY` directly (unlikely — that's internal), those calls now need an owning user OR the FE must switch to JWT. |
 

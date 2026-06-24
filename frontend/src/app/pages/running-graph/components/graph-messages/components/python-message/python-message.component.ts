@@ -4,13 +4,14 @@ import { NgxJsonViewerModule } from 'ngx-json-viewer';
 
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { FormatExecutionDataPipe } from '../../../../../../shared/pipes/format-execution-data.pipe';
 import { GraphMessage, MessageType, PythonMessageData } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-python-message',
     standalone: true,
-    imports: [CommonModule, NgxJsonViewerModule, FormatExecutionDataPipe, AppSvgIconComponent],
+    imports: [CommonModule, NgxJsonViewerModule, FormatExecutionDataPipe, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
         <div class="python-flow-container">
@@ -183,6 +184,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                         >
                             <div class="raw-data-wrapper">
                                 <div class="raw-data-content">
+                                    <app-copy-button [text]="copyText" />
                                     <ngx-json-viewer
                                         [json]="getExecutionData() | formatExecutionData"
                                         [expanded]="false"
@@ -198,6 +200,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
     styles: [
         `
             .python-flow-container {
+                position: relative;
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
                 padding: var(--message-padding, 1.25rem);
@@ -307,12 +310,17 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
             }
 
             .raw-data-content {
+                position: relative;
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
                 border-radius: 8px;
                 padding: 1rem;
                 overflow: auto;
                 max-height: 600px;
+
+                &:hover app-copy-button {
+                    opacity: 1;
+                }
             }
 
             .raw-data-content ::ng-deep ngx-json-viewer,
@@ -483,5 +491,13 @@ export class PythonMessageComponent implements OnInit {
         const output = this.getOutput();
         // Show toggle button if content is longer than approximately 5 lines
         return output.split('\n').length > 5 || output.length > 500;
+    }
+
+    get copyText(): string {
+        const parts: string[] = [];
+        if (this.hasCode()) parts.push(`Code:\n${this.getCode()}`);
+        if (this.hasOutput()) parts.push(`Output:\n${this.getOutput()}`);
+        if (this.hasError()) parts.push(`Error:\n${this.getError()}`);
+        return parts.length > 0 ? parts.join('\n\n') : JSON.stringify(this.getExecutionData(), null, 2);
     }
 }

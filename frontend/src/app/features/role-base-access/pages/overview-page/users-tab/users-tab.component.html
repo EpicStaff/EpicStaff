@@ -57,13 +57,14 @@
         >
             @if (row['roles']?.length) {
                 <div
-                    class="role-badges"
+                    class="badges-cell"
                     appOverflowItems
                     #roleOverflow="overflowItems"
                 >
                     @if (row['isSuperadmin']) {
                         <span
                             appOverflowItem
+                            appOverflowLabel="Super Admin"
                             class="role-chip"
                             >Super Admin</span
                         >
@@ -71,6 +72,7 @@
                     @for (role of row['roles']; track role) {
                         <span
                             appOverflowItem
+                            [appOverflowLabel]="role"
                             class="role-chip"
                             >{{ role }}</span
                         >
@@ -78,6 +80,8 @@
                     <span
                         appOverflowBadge
                         class="overflow-badge"
+                        [matTooltip]="roleOverflow.hiddenLabels()"
+                        matTooltipPosition="above"
                         >+{{ roleOverflow.overflowCount() }}</span
                     >
                 </div>
@@ -93,13 +97,14 @@
         >
             @if (row['organizationDetails']?.length) {
                 <div
-                    class="org-badges"
+                    class="badges-cell"
                     appOverflowItems
                     #orgOverflow="overflowItems"
                 >
                     @for (org of row['organizationDetails']; track org.id) {
                         <app-org-avatar
                             appOverflowItem
+                            [appOverflowLabel]="org.name"
                             [name]="org.name"
                             [title]="org.name"
                         />
@@ -107,6 +112,8 @@
                     <span
                         appOverflowBadge
                         class="overflow-badge"
+                        [matTooltip]="orgOverflow.hiddenLabels()"
+                        matTooltipPosition="above"
                         >+{{ orgOverflow.overflowCount() }}</span
                     >
                 </div>
@@ -121,7 +128,7 @@
             let-row
         >
             @if (row['lastActive']) {
-                <div class="last-active">
+                <div class="date-cell">
                     <span class="date">{{ formatDate(row['lastActive']) }}</span>
                     <span class="relative">{{ getRelativeTime(row['lastActive']) }}</span>
                 </div>

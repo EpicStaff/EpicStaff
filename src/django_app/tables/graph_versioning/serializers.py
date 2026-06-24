@@ -34,3 +34,7 @@ class GraphVersionUpdateSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         return GraphVersionReadSerializer(instance, context=self.context).data
+
+
+class RestoreVersionInputSerializer(serializers.Serializer):
+    save_version = serializers.IntegerField(required=True)

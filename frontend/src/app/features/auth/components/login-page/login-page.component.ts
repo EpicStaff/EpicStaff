@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -18,6 +18,7 @@ import { interval, take } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
 import { AuthService } from '../../../../services/auth/auth.service';
+import { ToastService } from '../../../../services/notifications';
 
 @Component({
     selector: 'app-login-page',
@@ -35,11 +36,12 @@ import { AuthService } from '../../../../services/auth/auth.service';
     styleUrls: ['./login-page.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class LoginPageComponent {
+export class LoginPageComponent implements OnInit {
     private readonly authService = inject(AuthService);
     private readonly router = inject(Router);
     private readonly route = inject(ActivatedRoute);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly toast = inject(ToastService);
 
     readonly serverErrorsRef = new ServerErrorsRef();
 
@@ -54,6 +56,18 @@ export class LoginPageComponent {
 
     readonly loading = signal(false);
     readonly throttleSecondsLeft = signal(0);
+
+    ngOnInit() {
+        this.authService
+            .getStatus()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((status) => {
+                if (status.needs_setup) {
+                    this.toast.info('You need to have at least one account to login');
+                    void this.router.navigate(['/sign-up']);
+                }
+            });
+    }
 
     onSubmit(): void {
         this.form.markAllAsTouched();

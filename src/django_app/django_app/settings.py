@@ -15,6 +15,7 @@ import sys
 from datetime import timedelta
 from pathlib import Path
 
+from corsheaders.defaults import default_headers
 from django.core.management.utils import get_random_secret_key
 from dotenv import find_dotenv, load_dotenv
 from loguru import logger
@@ -117,19 +118,15 @@ REST_FRAMEWORK = {
 
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_HEADERS = [
-    "accept",
-    "accept-encoding",
-    "authorization",
-    "content-type",
+CORS_ALLOW_HEADERS = (
+    *default_headers,
     "dnt",
     "origin",
-    "user-agent",
-    "x-csrftoken",
-    "x-requested-with",
+    "accept-encoding",
     "x-twilio-account-sid",
     "x-twilio-auth-token",
-]
+    "x-organization-id",
+)
 
 JWT_SECRET = os.getenv("JWT_SECRET", SECRET_KEY)
 
@@ -291,9 +288,7 @@ FRONTEND_PASSWORD_RESET_PATH = os.getenv(
 
 SSE_TICKET_TTL_SECONDS = 30
 
-DEFAULT_ORGANIZATION_NAME = os.getenv(
-    "DEFAULT_ORGANIZATION_NAME", "Default Organization"
-)
+DEFAULT_ORGANIZATION_NAME = os.getenv("DEFAULT_ORGANIZATION_NAME", "Organization")
 
 # Story 6 — User profile
 PASSWORD_CHANGE_TICKET_TTL_SECONDS = int(
@@ -371,5 +366,6 @@ SPECTACULAR_SETTINGS = {
     "POSTPROCESSING_HOOKS": [
         "drf_spectacular.hooks.postprocess_schema_enums",
         "django_app.spectacular_hooks.assign_tags_postprocessing_hook",
+        "django_app.spectacular_hooks.add_org_header_postprocessing_hook",
     ],
 }

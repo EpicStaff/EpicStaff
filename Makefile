@@ -12,10 +12,12 @@ endif
 .DEFAULT_GOAL := help
 .PHONY: help \
         backup apply-backup stash-tags apply-tags switch \
-        dev dev-down dev-build dev-logs dev-restart dev-logs-s dev-rebuild-s rebuild-dev \
+        dev dev-init dev-down dev-build dev-logs dev-restart dev-logs-s dev-rebuild-s rebuild-dev \
         dev-voice dev-ngrok \
         prod-setup prod-init prod prod-build prod-up start-prod prod-down prod-logs prod-voice prod-ngrok \
-        clean docker-generate-certs
+        clean docker-generate-certs \
+        integration-test \
+        gen-env check-env
 
 # --- Help ---
 
@@ -70,45 +72,54 @@ endif
 # DEVELOPMENT Environment
 # ==========================================
 
-dev:
+dev-init:
+	@echo "--- Creating external volumes and networks ---"
+	@docker volume create sandbox_venvs      || true
+	@docker volume create crew_pgdata        || true
+	@docker volume create media_data         || true
+	@docker volume create graph_data         || true
+	@docker network create mcp-network       || true
+	@echo "--- Done ---"
+
+dev: dev-init
 	@echo "--- Starting development services ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env up -d
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env up -d
 
 dev-down:
 	@echo "--- Stopping development services ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env down
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env down
 
 dev-build:
 	@echo "--- Building development services ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env build
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env build
 
 dev-logs:
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env logs -f
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env logs -f
 
 dev-restart:
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env restart $(s)
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env restart $(s)
 
 dev-s:
 	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env restart $(s)
 
 dev-logs-s:
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env logs -f $(s)
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env logs -f $(s)
 
 dev-rebuild-s:
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env up --build -d $(s)
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env up --build -d $(s)
 
-rebuild-dev:
+rebuild-dev: dev-init
 	@echo "--- Rebuilding development services (no cache) ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env build --no-cache
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env up -d
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env build --no-cache
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env up -d
 
-dev-voice:
+dev-voice: dev-init
 	@echo "--- Starting development services with voice (ngrok) ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env --profile voice up -d
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env --profile voice up -d
 
-dev-ngrok:
+dev-ngrok: dev-init
 	@echo "--- Starting ngrok tunnel ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env --profile voice up ngrok
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env --profile voice up ngrok
 
 # ==========================================
 # PRODUCTION Environment
@@ -123,6 +134,7 @@ prod-init:
 	@docker volume create sandbox_venvs      || true
 	@docker volume create crew_pgdata        || true
 	@docker volume create media_data         || true
+	@docker volume create graph_data         || true
 	@docker network create mcp-network       || true
 	@echo "--- Done ---"
 
@@ -156,12 +168,24 @@ prod-ngrok:
 	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env $(PROD_ENV_ARG) --profile voice up ngrok
 
 # ==========================================
+# ENV FILE GENERATION
+# ==========================================
+
+gen-env:
+	@echo "--- Regenerating src/.dev.env, src/debug.env, src/.env.example from src/env.yaml ---"
+	@python scripts/generate_env.py
+
+check-env:
+	@echo "--- Checking generated env files match src/env.yaml ---"
+	@python scripts/generate_env.py --check
+
+# ==========================================
 # UTILITIES
 # ==========================================
 
 clean:
 	@echo "--- Cleaning up all environments and removing volumes ---"
-	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env down -v --remove-orphans
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env down -v --remove-orphans
 	@cd src && docker compose -f docker-compose.yaml -f docker-compose.override.yaml --env-file ./.env down -v --remove-orphans
 
 docker-generate-certs:
@@ -169,6 +193,41 @@ docker-generate-certs:
 	docker run --rm -v "$(CURDIR)/src/nginx/certs:/certs" -w /certs alpine \
 		sh -c "apk add openssl && openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout privkey.pem -out fullchain.pem -subj '/CN=$(domain)'"
 	@echo "SSL certificates generated for domain: $(domain)"
+
+# ==========================================
+# LOCAL DJANGO DEVELOPMENT
+# ==========================================
+
+# ==========================================
+# INTEGRATION TESTS
+# ==========================================
+
+# Overridable defaults (set via env or on command line)
+DJANGO_URL           ?= http://127.0.0.1:8000/api
+OPENAI_KEY           ?=
+DJANGO_TEST_USERNAME ?= admin
+DJANGO_TEST_PASSWORD ?= admin123!
+
+# f=<file>    — run a specific test file (default: all)
+# k=<keyword> — filter tests by keyword (-k)
+# ARGS=       — any extra pytest flags (e.g. ARGS="-s --tb=short")
+_ITEST_FILE  = $(if $(f),$(f),)
+_ITEST_KFLAG = $(if $(k),-k "$(k)",)
+
+integration-test:
+	@echo "--- Installing integration test dependencies ---"
+	@pip install -r integration_tests/requirements.txt -q
+	@echo "--- Running integration tests ---"
+ifeq ($(OS),Windows_NT)
+	@cd integration_tests && set "DJANGO_URL=$(DJANGO_URL)" && set "OPENAI_KEY=$(OPENAI_KEY)" && set "DJANGO_TEST_USERNAME=$(DJANGO_TEST_USERNAME)" && set "DJANGO_TEST_PASSWORD=$(DJANGO_TEST_PASSWORD)" && pytest $(_ITEST_FILE) $(_ITEST_KFLAG) -v $(ARGS)
+else
+	@cd integration_tests && \
+		DJANGO_URL=$(DJANGO_URL) \
+		OPENAI_KEY=$(OPENAI_KEY) \
+		DJANGO_TEST_USERNAME=$(DJANGO_TEST_USERNAME) \
+		DJANGO_TEST_PASSWORD=$(DJANGO_TEST_PASSWORD) \
+		pytest $(_ITEST_FILE) $(_ITEST_KFLAG) -v $(ARGS)
+endif
 
 # ==========================================
 # LOCAL DJANGO DEVELOPMENT
@@ -187,3 +246,12 @@ django-manage:
 
 django-tests:
 	@cd src/django_app && python -m pytest $(ARGS)
+
+# ==========================================
+# LOCAL CREW DEVELOPMENT
+# ==========================================
+
+crew-tests: export PYTHONPATH = $(CURDIR)
+
+crew-tests:
+	@cd src/crew && python -m pytest $(ARGS)

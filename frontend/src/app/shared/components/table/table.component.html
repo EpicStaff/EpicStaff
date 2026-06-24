@@ -7,6 +7,7 @@
         @if (selectable()) {
             <div class="table-cell checkbox">
                 <app-checkbox
+                    color="secondary"
                     [checked]="allSelected()"
                     [indeterminate]="indeterminate()"
                     (changed)="toggleAll()"
@@ -39,8 +40,9 @@
             <div
                 class="table-row"
                 [class.selected]="isSelected(item)"
+                [class.selectable]="selectable()"
                 [style.grid-template-columns]="gridTemplateColumns()"
-                (click)="rowClick.emit(item)"
+                (click)="onRowClick(item)"
             >
                 @if (selectable()) {
                     <div
@@ -48,6 +50,7 @@
                         (click)="$event.stopPropagation()"
                     >
                         <app-checkbox
+                            color="secondary"
                             [checked]="isSelected(item)"
                             (changed)="toggleRow(item)"
                         />

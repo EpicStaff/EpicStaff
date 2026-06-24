@@ -1,0 +1,67 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.section__header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 44px;
+    box-sizing: border-box;
+    padding: 0 16px;
+}
+
+.section__header--with-table {
+    border-bottom: 1px solid var(--color-divider-subtle);
+}
+
+.section__icon {
+    flex-shrink: 0;
+    color: var(--accent-color);
+}
+
+.section__label {
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 130%;
+    color: var(--accent-color);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.section__add-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--accent-color);
+    border-radius: 50%;
+    background: transparent;
+    color: var(--accent-color);
+    cursor: pointer;
+    flex-shrink: 0;
+    box-sizing: border-box;
+
+    &:hover {
+        background: rgba(104, 95, 255, 0.15);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
+    }
+}
+
+// Strip the DynamicTable's own card border — the section wrapper is already a card
+:host ::ng-deep app-dynamic-table .dt {
+    border: none;
+    border-radius: 0;
+}

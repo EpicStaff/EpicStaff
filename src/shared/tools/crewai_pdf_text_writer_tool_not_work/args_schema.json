@@ -16,7 +16,7 @@
       "description": "Tuple of (x, y) coordinates for text placement"
     },
     "font_size": {
-      "type": "integer",
+      "type": "number",
       "default": 12,
       "description": "Font size of the text"
     },
@@ -32,7 +32,7 @@
       "description": "Font name for standard fonts"
     },
     "page_number": {
-      "type": "integer",
+      "type": "number",
       "default": 0,
       "description": "Page number to add text to"
     },

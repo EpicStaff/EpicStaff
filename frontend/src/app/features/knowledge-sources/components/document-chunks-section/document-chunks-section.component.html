@@ -23,6 +23,27 @@
                     [isOverlay]="false"
                 />
             }
+            @case ('chunking_failed') {
+                <ng-container
+                    *ngTemplateOutlet="
+                        chunksHeader;
+                        context: {
+                            disabled: false,
+                            statusText: 'Failed',
+                            statusClass: 'failed',
+                            statusIcon: 'x',
+                            btnText: 'Retry chunk',
+                        }
+                    "
+                ></ng-container>
+                <div class="chunks__empty">
+                    <app-svg-icon
+                        icon="file-checked"
+                        size="3rem"
+                    />
+                    <span>Chunking failed. Press "Retry chunk" to try again.</span>
+                </div>
+            }
 
             @case ('fetching_chunks') {
                 <app-spinner

@@ -11,6 +11,7 @@ import {
     ResetPasswordResponse,
     TokenPair,
 } from '@shared/models';
+import { AppStorageService } from '@shared/services';
 import { catchError, finalize, map, Observable, of, shareReplay, tap, throwError } from 'rxjs';
 
 import { ConfigService } from '../config';
@@ -30,6 +31,7 @@ export class AuthService {
     private readonly configService = inject(ConfigService);
     private readonly router = inject(Router);
     private readonly currentUserService = inject(ProfileService);
+    private readonly appStorage = inject(AppStorageService);
 
     private readonly accessKey = 'auth.access';
     private readonly refreshKey = 'auth.refresh';
@@ -72,6 +74,7 @@ export class AuthService {
     logout(): Observable<void> {
         const refreshToken = this.getRefreshToken();
         this.currentUserService.clearCurrentUser();
+        this.appStorage.clearAll();
 
         if (!refreshToken) {
             this.removeTokensAndNavToLogin();

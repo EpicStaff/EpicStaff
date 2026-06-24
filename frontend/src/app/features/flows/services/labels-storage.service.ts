@@ -1,4 +1,5 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
+import { StorageService } from '@shared/services';
 import { Observable, of } from 'rxjs';
 import { catchError, shareReplay, tap } from 'rxjs/operators';
 
@@ -24,7 +25,7 @@ function buildTree(labels: LabelDto[]): LabelTreeNode[] {
 }
 
 @Injectable({ providedIn: 'root' })
-export class LabelsStorageService {
+export class LabelsStorageService implements StorageService {
     private readonly labelsApiService = inject(LabelsApiService);
 
     // --- State Signals ---
@@ -130,5 +131,11 @@ export class LabelsStorageService {
     // --- Filter Setter ---
     public setActiveLabelFilter(filter: 'all' | 'unlabeled' | number): void {
         this.activeLabelFilterSignal.set(filter);
+    }
+
+    clear(): void {
+        this.labelsSignal.set([]);
+        this.labelsLoaded.set(false);
+        this.activeLabelFilterSignal.set('all');
     }
 }

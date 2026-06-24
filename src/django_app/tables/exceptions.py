@@ -79,6 +79,22 @@ class ContentHashConflictError(CustomAPIExeption):
     default_code = "content_hash_conflict"
 
 
+class GraphSaveVersionConflictError(CustomAPIExeption):
+    status_code = 409
+    default_detail = (
+        "Graph has been modified by another user. Please refresh and try again."
+    )
+    default_code = "graph_version_conflict"
+
+    def __init__(self, current_version: int | None):
+        self.current_version = current_version
+        detail = {
+            "current_version": current_version,
+            "message": self.default_detail,
+        }
+        super().__init__(detail=detail, code=self.default_code)
+
+
 class SubGraphValidationError(CustomAPIExeption):
     status_code = 400
     default_detail = (
@@ -341,3 +357,30 @@ class BulkSaveValidationError(CustomAPIExeption):
     def __init__(self, errors: dict):
         self.errors = errors
         super().__init__(str(errors))
+
+
+class LLMConfigMissingError(CustomAPIExeption):
+    """Raised when FlowAssistant.llm_config is None."""
+
+    status_code = 400
+    default_detail = (
+        "No LLM config is set for this flow assistant. "
+        "Please configure one in the settings panel."
+    )
+    default_code = "flow_assistant_llm_config_missing"
+
+
+class LLMConfigInvalidError(CustomAPIExeption):
+    """Raised when the llm_config can't be loaded into a usable client."""
+
+    status_code = 400
+    default_detail = "LLM configuration is invalid."
+    default_code = "flow_assistant_llm_config_invalid"
+
+
+class ToolExecutionError(CustomAPIExeption):
+    """Raised when a tool callable raises during execution."""
+
+    status_code = 500
+    default_detail = "Tool execution failed."
+    default_code = "flow_assistant_tool_execution_failed"

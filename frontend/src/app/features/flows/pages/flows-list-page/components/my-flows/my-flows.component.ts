@@ -43,7 +43,6 @@ import { RunGraphService } from '../../../../services/run-graph-session.service'
 })
 export class MyFlowsComponent implements AfterViewChecked {
     private readonly flowsService = inject(FlowsStorageService);
-    private readonly flowsApiService = inject(FlowsApiService);
     private readonly runGraphService = inject(RunGraphService);
     private readonly router = inject(Router);
     private readonly dialog = inject(Dialog);
@@ -244,6 +243,7 @@ export class MyFlowsComponent implements AfterViewChecked {
                     name: flow.name,
                     description: flow.description,
                     label_ids: flow.label_ids,
+                    save_version: flow.save_version,
                 },
             },
             width: '500px',

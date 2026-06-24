@@ -20,7 +20,7 @@
             [columns]="columns"
             [data]="filteredOrganizations()"
             [selectable]="true"
-            [initialSelectedIds]="preselectedOrgIds()"
+            [initialSelectedIds]="selectionIds()"
             rowId="id"
             (selectionChange)="onSelection($event)"
         >
@@ -40,8 +40,11 @@
             >
                 <app-select
                     [items]="USER_ROLES"
-                    [(selectedValue)]="row['role']"
+                    [selectedValue]="row['role']"
+                    (selectedValueChange)="onRoleSelected(row, $event)"
                     placeholder="Select role"
+                    [class.row-unselected]="!selectedOrgIds().has(row['id'])"
+                    (click)="$event.stopPropagation()"
                 />
             </ng-template>
         </app-table>

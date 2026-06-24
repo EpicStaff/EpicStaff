@@ -128,6 +128,14 @@ export class AppTableComponent {
         return this.cellTemplates().find((t) => t.appTableCell() === key)?.template ?? null;
     }
 
+    onRowClick(item: TableRow): void {
+        if (this.selectable()) {
+            this.toggleRow(item);
+        }
+
+        this.rowClick.emit(item);
+    }
+
     onFilterChange(key: string, values: unknown[]): void {
         this.activeFilters.update((f) => ({ ...f, [key]: values }));
         this.filterChange.emit({

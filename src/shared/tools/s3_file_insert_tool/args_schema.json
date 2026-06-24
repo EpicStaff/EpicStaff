@@ -1,0 +1,19 @@
+{
+  "title": "S3FileInsertArgs",
+  "type": "object",
+  "properties": {
+    "file_path": {
+      "type": "string",
+      "description": "Path of the file in storage to insert into."
+    },
+    "line_number": {
+      "type": "integer",
+      "description": "1-based line number BEFORE which content will be inserted. Use 1 to insert at the very top. Use a line number past the end of the file to append."
+    },
+    "content": {
+      "type": "string",
+      "description": "Text to insert. May contain newlines to insert multiple lines at once."
+    }
+  },
+  "required": ["file_path", "line_number", "content"]
+}

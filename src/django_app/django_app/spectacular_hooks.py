@@ -204,3 +204,31 @@ def assign_tags_postprocessing_hook(result, generator, request, public, **kwargs
 
     result["tags"] = [{"name": tag} for tag in TAGS_ORDER]
     return result
+
+
+ORG_HEADER_SCHEME = "OrganizationId"
+
+
+def add_org_header_postprocessing_hook(result, generator, request, public, **kwargs):
+    components = result.setdefault("components", {})
+    security_schemes = components.setdefault("securitySchemes", {})
+    security_schemes[ORG_HEADER_SCHEME] = {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Organization-Id",
+        "description": (
+            "Active organization context. Required by org-scoped endpoints "
+            "(e.g. /api/admin/roles/). Click Authorize and paste the org UUID; "
+            "Swagger will send it on every request."
+        ),
+    }
+
+    for path_item in result.get("paths", {}).values():
+        for operation in path_item.values():
+            if not isinstance(operation, dict):
+                continue
+            security = operation.setdefault("security", [])
+            if not any(ORG_HEADER_SCHEME in entry for entry in security):
+                security.append({ORG_HEADER_SCHEME: []})
+
+    return result

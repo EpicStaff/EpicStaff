@@ -1,0 +1,35 @@
+<div class="dialog">
+    <!-- HEADER -->
+    <div class="header">
+        <span class="title">Role Information</span>
+        <app-svg-icon
+            (click)="onClose()"
+            class="close-btn"
+            icon="x"
+            size="20px"
+        />
+    </div>
+
+    <!-- ROLE IDENTITY -->
+    <div class="role-identity">
+        <app-user-avatar
+            [name]="role.name"
+            class="role-avatar"
+        />
+        <div class="role-info">
+            <span class="role-name">{{ role.name }}</span>
+            <span class="role-desc">{{ role.description }}</span>
+        </div>
+    </div>
+
+    <!-- PERMISSIONS (read-only) -->
+    <div class="content">
+        @if (catalog(); as cat) {
+            <app-permissions-table
+                [catalog]="cat"
+                [selectedPermissions]="selectedPermissions()"
+                [readonly]="true"
+            />
+        }
+    </div>
+</div>

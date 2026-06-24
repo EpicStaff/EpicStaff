@@ -1,0 +1,106 @@
+:host {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    width: 100%;
+}
+
+.empty {
+    font-size: 14px;
+    color: var(--text-secondary-60);
+}
+
+.admin-chips {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex-wrap: nowrap;
+}
+
+.chip-name {
+    font-size: 13px;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.admins-trigger {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    min-width: 0;
+    user-select: none;
+}
+
+.trigger-name {
+    font-size: 12px;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+}
+
+.overflow-count {
+    color: var(--text-secondary-60);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.chevron {
+    color: var(--text-secondary-60);
+    flex-shrink: 0;
+}
+
+.admins-panel {
+    position: fixed;
+    z-index: 1000;
+    background: var(--color-sidenav-background);
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+}
+
+.members-count {
+    font-size: 12px;
+    color: var(--text-secondary-60);
+}
+
+.member-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--color-divider-subtle);
+
+    &:last-child {
+        border-bottom: none;
+    }
+}
+
+.member-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    font-size: 12px;
+}
+
+.member-name {
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.member-email {
+    color: var(--text-secondary-60);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

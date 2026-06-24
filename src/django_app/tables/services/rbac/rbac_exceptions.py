@@ -246,3 +246,59 @@ class AvatarTooLargeError(CustomAPIExeption):
     status_code = 400
     default_detail = "Avatar file exceeds the maximum allowed size."
     default_code = "avatar_too_large"
+
+
+class BuiltInRoleImmutableError(CustomAPIExeption):
+    """Raised by RoleManagementService when an edit or delete targets a
+    Role with is_built_in=True. The four built-in roles (Superadmin,
+    Org Admin, Member, Viewer) are immutable by spec."""
+
+    status_code = 403
+    default_detail = "Built-in roles cannot be edited or deleted."
+    default_code = "built_in_role_immutable"
+
+
+class OrgContextRequiredError(CustomAPIExeption):
+    """Raised by OrgContextService when an endpoint requires an
+    X-Organization-Id header (or URL kwarg) and neither is present
+    or parseable as an int."""
+
+    status_code = 400
+    default_detail = "X-Organization-Id header is required for this endpoint."
+    default_code = "org_context_required"
+
+
+class OrgMembershipRequiredError(CustomAPIExeption):
+    """Raised by OrgContextService when the caller is not a member of
+    the requested org and is not superadmin. Membership against an
+    inactive org also raises this."""
+
+    status_code = 403
+    default_detail = "You are not a member of this organization."
+    default_code = "org_membership_required"
+
+
+class OrganizationMembershipNotFound(CustomAPIExeption):
+    """Raised when the X-Organization-Id header names an org the user is not a member of."""
+
+    status_code = 403
+    default_detail = "You are not a member of the specified organization."
+    default_code = "organization_membership_not_found"
+
+
+class UserHasNoOrganizationMembership(CustomAPIExeption):
+    """Raised when the user belongs to no organization at all."""
+
+    status_code = 400
+    default_detail = "Your account is not a member of any organization."
+    default_code = "no_organization_membership"
+
+
+class OrganizationContextAmbiguous(CustomAPIExeption):
+    """Raised when the user belongs to multiple orgs and no X-Organization-Id header is set."""
+
+    status_code = 400
+    default_detail = (
+        "Multiple organization memberships; please specify X-Organization-Id header."
+    )
+    default_code = "organization_context_ambiguous"

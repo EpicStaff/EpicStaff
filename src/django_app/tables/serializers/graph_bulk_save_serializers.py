@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from tables.serializers.model_serializers import (
     AudioTranscriptionNodeSerializer,
+    ClassificationDecisionTableNodeSerializer,
     CodeAgentNodeSerializer,
     ConditionalEdgeSerializer,
     CrewNodeSerializer,
@@ -68,6 +69,25 @@ class EndNodeBulkSerializer(BulkSaveEntityMixin, EndNodeSerializer):
 
 class SubGraphNodeBulkSerializer(BulkSaveEntityMixin, SubGraphNodeSerializer):
     pass
+
+
+class ClassificationDecisionTableNodeBulkSerializer(
+    BulkSaveEntityMixin, ClassificationDecisionTableNodeSerializer
+):
+    def get_validators(self):
+        # The UniqueTogetherValidator for (graph, node_name) fires during Pass 1
+        # (validation), before deletions run. If a node with the same name is being
+        # deleted and re-created in the same bulk-save request, the old record is
+        # still in the DB at validation time, causing a false positive error.
+        # The DB-level constraint still enforces correctness: deletions always
+        # precede inserts inside the atomic _execute_writes transaction.
+        from rest_framework.validators import UniqueTogetherValidator
+
+        return [
+            v
+            for v in super().get_validators()
+            if not isinstance(v, UniqueTogetherValidator)
+        ]
 
 
 class DecisionTableNodeBulkSerializer(BulkSaveEntityMixin, DecisionTableNodeSerializer):
@@ -208,6 +228,7 @@ class GraphBulkSaveInputSerializer(serializers.Serializer):
     Edge lists declared explicitly because edges are not in NODE_TYPE_REGISTRY
     """
 
+    save_version = serializers.IntegerField(required=True)
     edge_list = serializers.ListField(
         child=serializers.DictField(), required=False, default=list
     )

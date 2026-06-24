@@ -2,11 +2,11 @@ import { inject } from '@angular/core';
 import { Router, Routes } from '@angular/router';
 
 import { authGuard } from './core/guards/auth.guard';
+import { bootstrapGuard } from './core/guards/bootstrap.guard';
 import { guestGuard } from './core/guards/guest.guard';
 import { onboardingGuard } from './core/guards/onboarding.guard';
 import { UnsavedChangesGuard } from './core/guards/unsaved-changes.guard';
-import { superAdminGuard, workspaceGuard } from './core/guards/workspace.guard';
-import { currentUserResolver } from './core/resolvers/current-user.resolver';
+import { permissionGuard, superAdminGuard, workspaceGuard } from './core/guards/workspace.guard';
 import { MainLayoutComponent } from './layouts/main-layout/main-layout.component';
 import { RoutedAuthShellComponent } from './layouts/routed-auth-shell/routed-auth-shell.component';
 import { LastVisitedTabService } from './services/last-visited-tab.service';
@@ -56,7 +56,7 @@ export const routes: Routes = [
             {
                 path: '',
                 component: MainLayoutComponent,
-                resolve: { currentUser: currentUserResolver },
+                canActivate: [bootstrapGuard],
                 children: [
                     {
                         path: '',
@@ -264,13 +264,32 @@ export const routes: Routes = [
                                     import('./features/role-base-access/pages/overview-page/organizations-tab/organizations-tab.component').then(
                                         (m) => m.OrganizationsTabComponent
                                     ),
-                                canActivate: [superAdminGuard],
+                                canActivate: [permissionGuard],
+                                data: { permission: ['organizations', 'read'] },
                             },
                             {
                                 path: 'users',
                                 loadComponent: () =>
                                     import('./features/role-base-access/pages/overview-page/users-tab/users-tab.component').then(
                                         (m) => m.UsersTabComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: ['users', 'read'] },
+                            },
+                            {
+                                path: 'roles',
+                                loadComponent: () =>
+                                    import('./features/role-base-access/pages/overview-page/roles-tab/roles-tab.component').then(
+                                        (m) => m.RolesTabComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: ['roles', 'read'] },
+                            },
+                            {
+                                path: 'roles',
+                                loadComponent: () =>
+                                    import('./features/role-base-access/pages/overview-page/roles-tab/roles-tab.component').then(
+                                        (m) => m.RolesTabComponent
                                     ),
                             },
                         ],
