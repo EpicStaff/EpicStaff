@@ -81,7 +81,7 @@ class NaiveIndexer(AbstractIndexer):
         for document in documents:
             if (
                 document.status == DocumentStatusEnum.COMPLETED
-                and document.config_same_with_snapshot()
+                and not document.is_required_reindex()
             ):
                 logger.debug(
                     "Skipping document(id={}): already indexed with current params",
@@ -167,11 +167,14 @@ class NaiveIndexer(AbstractIndexer):
                 )
 
             async with uow:
+                await uow.naive_rag_repo.update_document(
+                    rag_id=request.rag_id,
+                    document=document,
+                )
                 if document.status == DocumentStatusEnum.COMPLETED:
                     await uow.naive_rag_repo.save_indexed_chunks(
                         document_id=document.id, chunks=document.indexed_chunks
                     )
-                await uow.naive_rag_repo.update_document(request.rag_id, document)
                 await uow.commit()
 
         if not has_completed_documents:

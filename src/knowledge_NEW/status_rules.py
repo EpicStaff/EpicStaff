@@ -6,11 +6,12 @@ __all__ = [
 ERROR_MESSAGE_MAX_LENGTH = 2000
 
 
-def _provider_error_message(exc: BaseException) -> str | None:
-    """The human-readable `message` from a provider error body, if present.
+def _error_body_message(exc: BaseException) -> str | None:
+    """The human-readable `message` carried in an exception's error body, if present.
 
-    OpenAI-style APIError exposes `exc.body == {"message": ..., "code": ...}`;
-    some providers nest it under `{"error": {"message": ...}}`.
+    Some clients attach a structured `body` to the exception — e.g. OpenAI-style
+    APIError with `exc.body == {"message": ..., "code": ...}`; some nest it under
+    `{"error": {"message": ...}}`.
     """
     body = getattr(exc, "body", None)
     if isinstance(body, dict):
@@ -23,16 +24,16 @@ def _provider_error_message(exc: BaseException) -> str | None:
 
 
 def format_error_message(exc: BaseException) -> str:
-    """The provider's human-readable `message` when available, else
-    `"TypeName: text"`. Truncated to ERROR_MESSAGE_MAX_LENGTH (with ellipsis).
+    """The human-readable `message` from the exception's error body when available,
+    else `"TypeName: text"`. Truncated to ERROR_MESSAGE_MAX_LENGTH (with ellipsis).
 
     Prefers the DBAPI exception (`exc.orig`) for DB errors: SQLAlchemy's own
     str() includes the SQL + bound params, leaking document content into logs.
     """
     base = getattr(exc, "orig", None) or exc
     raw = (
-        _provider_error_message(exc)
-        or _provider_error_message(base)
+        _error_body_message(exc)
+        or _error_body_message(base)
         or f"{type(exc).__name__}: {base}"
     )
     n = ERROR_MESSAGE_MAX_LENGTH
