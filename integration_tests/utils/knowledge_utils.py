@@ -9,7 +9,8 @@ from contextlib import ExitStack
 from models.request_models import KnowledgeSearchMessage
 from loguru import logger
 
-from utils.variables import DJANGO_URL, rhost
+from utils.variables import DJANGO_URL
+from utils.utils import get_headers
 
 
 # DJANGO_URL = "http://django_app:8000/api"
@@ -23,6 +24,27 @@ def validate_response(response):
         pdb.set_trace()
 
         raise Exception(f"API call failed: {response.status_code}, {response.text}")
+
+
+def get_rag_type_id_for_collection(collection_id: int) -> tuple[str, int]:
+    """
+    Fetch the naive RAG type and ID for a given collection from the API.
+
+    Returns:
+        Tuple of (rag_type, rag_id), e.g. ("naive", 6)
+    """
+    response = requests.get(
+        f"{DJANGO_URL}/source-collections/{collection_id}/available-rags/",
+        headers=get_headers(),
+    )
+    response.raise_for_status()
+    rag_configs = response.json()
+    naive_rag = next((r for r in rag_configs if r.get("rag_type") == "naive"), None)
+    if not naive_rag:
+        raise ValueError(
+            f"No naive RAG found for collection {collection_id}. Available: {rag_configs}"
+        )
+    return naive_rag["rag_type"], naive_rag["rag_id"]
 
 
 async def knowledge_search(knowledge_collection_id, query, redis_service) -> list[str]:
@@ -49,6 +71,8 @@ async def knowledge_search(knowledge_collection_id, query, redis_service) -> lis
 
     execution_uuid = f"test-knowledge-{random.randint(1,1000)}"
 
+    rag_type, rag_id = get_rag_type_id_for_collection(knowledge_collection_id)
+
     pubsub = await redis_service.async_subscribe(
         channel=knowledge_search_response_channel
     )
@@ -57,10 +81,15 @@ async def knowledge_search(knowledge_collection_id, query, redis_service) -> lis
         # Create and publish the search request
         execution_message = KnowledgeSearchMessage(
             collection_id=knowledge_collection_id,
+            rag_id=rag_id,
+            rag_type=rag_type,
             uuid=execution_uuid,
             query=query,
-            search_limit=3,
-            similarity_threshold=0.01,
+            rag_search_config={
+                "rag_type": rag_type,
+                "search_limit": 3,
+                "similarity_threshold": 0.01,
+            },
         )
 
         await redis_service.async_publish(
@@ -143,7 +172,7 @@ def create_source_collection(embedder_config_id: int) -> int:
             (f"files[{i}]", stack.enter_context(open(file["path"], "rb")))
             for i, file in enumerate(test_files)
         ]
-        response = requests.post(url, data=data, files=files, headers={"Host": rhost})
+        response = requests.post(url, data=data, files=files, headers=get_headers())
     validate_response(response)
     source_collection_data = response.json()
     return source_collection_data["collection_id"]
@@ -152,7 +181,7 @@ def create_source_collection(embedder_config_id: int) -> int:
 def knowledge_clean_up(collection_id: int):
     """Clean up the collection after testing."""
     url = f"{DJANGO_URL}/source-collections/{collection_id}/"
-    response = requests.delete(url, headers={"Host": rhost})
+    response = requests.delete(url, headers=get_headers())
 
     if response.ok:
         logger.info(f"Collection {collection_id} successfully deleted")
@@ -171,7 +200,7 @@ def check_statuses_for_embedding_creation(collection_id: int, max_timeout: int =
         time.sleep(3)
         response = requests.get(
             f"{DJANGO_URL}/collection_statuses/?collection_id={collection_id}",
-            headers={"Host": rhost},
+            headers=get_headers(),
         )
         validate_response(response)
         collection_status_data = response.json()
@@ -200,7 +229,7 @@ def check_statuses_for_embedding_creation(collection_id: int, max_timeout: int =
 def get_embedder_model(name: str = "text-embedding-3-small") -> int:
     """Get embedder model ID by name."""
     embedder_model_response = requests.get(
-        f"{DJANGO_URL}/embedding-models/?name={name}", headers={"Host": rhost}
+        f"{DJANGO_URL}/embedding-models/?name={name}", headers=get_headers()
     )
     validate_response(embedder_model_response)
 
@@ -224,7 +253,7 @@ def get_or_create_embedder_config(embedder_model_id: int) -> int:
     # Try to find existing config
     embedder_config_response = requests.get(
         f"{DJANGO_URL}/embedding-configs?custom_name={embedder_config_data['custom_name']}",
-        headers={"Host": rhost},
+        headers=get_headers(),
     )
     validate_response(embedder_config_response)
 
@@ -236,7 +265,7 @@ def get_or_create_embedder_config(embedder_model_id: int) -> int:
     embedder_config_response = requests.post(
         f"{DJANGO_URL}/embedding-configs/",
         json=embedder_config_data,
-        headers={"Host": rhost},
+        headers=get_headers(),
     )
     validate_response(embedder_config_response)
     embedder_config = embedder_config_response.json()

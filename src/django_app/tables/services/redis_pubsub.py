@@ -104,7 +104,7 @@ class RedisPubSub:
                     session.status = data["status"]
                     session.status_data = status_data
                     session.token_usage = status_data["total_token_usage"]
-                    session.save()
+                    session.save(force_update=True)
 
                     if session.status in [
                         Session.SessionStatus.END,
