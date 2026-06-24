@@ -279,6 +279,19 @@ services:
       # - /usr/bin/docker:/usr/bin/docker
     networks:
       - backend-network
+    depends_on:
+      django_app:
+        condition: service_healthy
+      crewdb:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      manager:
+        condition: service_started
+      crew:
+        condition: service_started
+      knowledge:
+        condition: service_started
 
 volumes:
   sandbox_venvs:
