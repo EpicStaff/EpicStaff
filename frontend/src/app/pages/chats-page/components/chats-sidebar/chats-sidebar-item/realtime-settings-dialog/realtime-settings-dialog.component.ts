@@ -204,7 +204,6 @@ export class RealtimeSettingsDialogComponent implements OnInit {
             backstory: this.data.agent.backstory,
             realtime_agent: realtimeAgentData,
             search_configs: searchConfigsData,
-            configured_tools: configured_tool,
             python_code_tools: python_code_tool,
             tool_ids: buildToolIdsArray(configured_tool, python_code_tool),
         };
