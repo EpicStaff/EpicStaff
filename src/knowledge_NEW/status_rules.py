@@ -6,7 +6,7 @@ __all__ = [
 ERROR_MESSAGE_MAX_LENGTH = 2000
 
 
-def _error_body_message(exc: BaseException) -> str | None:
+def extract_provider_message(exc: BaseException) -> str | None:
     """The human-readable `message` carried in an exception's error body, if present.
 
     Some clients attach a structured `body` to the exception — e.g. OpenAI-style
@@ -32,8 +32,8 @@ def format_error_message(exc: BaseException) -> str:
     """
     base = getattr(exc, "orig", None) or exc
     raw = (
-        _error_body_message(exc)
-        or _error_body_message(base)
+        extract_provider_message(exc)
+        or extract_provider_message(base)
         or f"{type(exc).__name__}: {base}"
     )
     n = ERROR_MESSAGE_MAX_LENGTH
