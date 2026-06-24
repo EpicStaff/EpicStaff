@@ -5,22 +5,18 @@
 .textarea-wrapper {
     display: flex;
     flex-direction: column;
-    gap: 6px;
 }
 
-.textarea {
+.textarea-field {
+    position: relative;
     width: 100%;
     padding: 0.5rem 0.75rem;
     border-radius: 10px;
     border: 1px solid var(--color-divider-subtle);
     background: var(--color-input-background);
-    font-size: 0.875rem;
-    resize: vertical;
     transition: border 0.2s ease;
-    color: var(--color-ks-text);
 
-    &:focus {
-        outline: none;
+    &:focus-within {
         border-color: var(--accent-color);
     }
 
@@ -28,8 +24,45 @@
         border-color: #e53935;
     }
 
-    &:disabled {
+    &.disabled {
         opacity: 0.7;
+    }
+}
+
+.textarea {
+    width: 100%;
+    box-sizing: border-box;
+    display: block;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    outline: none;
+    resize: none;
+    font-size: 0.875rem;
+    color: var(--color-ks-text);
+
+    &:disabled {
         cursor: not-allowed;
+    }
+}
+
+.resize-handle {
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    cursor: ns-resize;
+    color: var(--color-ks-text);
+    opacity: 0.4;
+    touch-action: none;
+    transition: opacity 0.15s ease;
+
+    &:hover {
+        opacity: 0.9;
     }
 }

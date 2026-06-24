@@ -41,6 +41,7 @@ class TablesConfig(AppConfig):
             llm_models,
             tags,
             session,
+            label,
         )
 
         if "runserver" in sys.argv:
@@ -83,6 +84,7 @@ class TablesConfig(AppConfig):
         entity_registry.register(crew.CrewStrategy())
         entity_registry.register(graph.GraphStrategy())
         entity_registry.register(session.SessionStrategy())
+        entity_registry.register(label.LabelStrategy())
         entity_registry.register(webhook.WebhookTriggerStrategy())
         entity_registry.register(tags.AgentTagStrategy())
         entity_registry.register(tags.CrewTagStrategy())

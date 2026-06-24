@@ -70,6 +70,14 @@ export class StepUserDetailsComponent {
         });
     }
 
+    trimEmail(): void {
+        const control = this.form.get('email');
+
+        if (control?.value) {
+            control.setValue(control.value.trim());
+        }
+    }
+
     get password(): string {
         return this.form.get('password')!.value;
     }

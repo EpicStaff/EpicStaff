@@ -4,6 +4,7 @@ import uuid
 
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models
+from django.db.models import F
 from django.utils import timezone
 from loguru import logger
 
@@ -16,6 +17,7 @@ from tables.models.base_models import (
     SoftDeleteMixin,
 )
 from tables.models.label_models import Label
+from tables.exceptions import GraphSaveVersionConflictError
 
 
 class GraphManager(models.Manager):
@@ -63,6 +65,25 @@ class Graph(TimestampMixin, models.Model):
     epicchat_enabled = models.BooleanField(
         default=False, help_text="If 'True' -> flow is connected to EpicChat widget."
     )
+    save_version = models.BigIntegerField(default=1)
+
+    @classmethod
+    def increment_version_if_current(cls, pk: int, expected: int) -> int:
+        """
+        Atomically increment save_version if the row's current save_version equals `expected`.
+        Returns the new save_version on success. Raises GraphSaveVersionConflictError on mismatch.
+        Must be called inside a transaction.atomic block by the caller.
+        """
+
+        updated = cls.objects.filter(pk=pk, save_version=expected).update(
+            save_version=F("save_version") + 1
+        )
+        if not updated:
+            current = (
+                cls.objects.filter(pk=pk).values_list("save_version", flat=True).first()
+            )
+            raise GraphSaveVersionConflictError(current_version=current)
+        return expected + 1
 
 
 class BaseNode(BaseGraphEntity, BaseGlobalNode):
@@ -140,13 +161,6 @@ class AudioTranscriptionNode(BaseNode):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="audio_transcription_node_list"
     )
-
-
-class LLMNode(BaseNode):
-    graph = models.ForeignKey(
-        "Graph", on_delete=models.CASCADE, related_name="llm_node_list"
-    )
-    llm_config = models.ForeignKey("LLMConfig", blank=False, on_delete=models.CASCADE)
 
 
 class EndNode(BaseGraphEntity, BaseGlobalNode):
@@ -292,6 +306,17 @@ class GraphSessionMessage(models.Model):
     execution_order = models.IntegerField(default=0)
     message_data = models.JSONField()
     uuid = models.UUIDField(null=False, editable=False, unique=True)
+    parent_subgraph_execution_id = models.UUIDField(
+        null=True, blank=True, db_index=True
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=["session", "parent_subgraph_execution_id", "id"],
+                name="gsm_session_parent_id_idx",
+            ),
+        ]
 
 
 class StartNode(BaseGraphEntity, BaseGlobalNode):
@@ -626,6 +651,141 @@ class ScheduleTriggerNode(BaseGraphEntity, BaseGlobalNode):
         }
         data_string = json.dumps(data, sort_keys=True, default=str).encode("utf-8")
         return hashlib.sha256(data_string).hexdigest()
+
+
+class ClassificationDecisionTableNode(BaseGraphEntity, BaseGlobalNode):
+    graph = models.ForeignKey(
+        "Graph",
+        on_delete=models.CASCADE,
+        related_name="classification_decision_table_node_list",
+    )
+    node_name = models.CharField(max_length=255, blank=True)
+    pre_python_code = models.ForeignKey(
+        "PythonCode",
+        on_delete=models.CASCADE,
+        null=True,
+        default=None,
+        related_name="cdt_pre_nodes",
+    )
+    pre_input_map = models.JSONField(default=dict, blank=True)
+    pre_output_variable_path = models.CharField(
+        max_length=512, null=True, default=None, blank=True
+    )
+    post_python_code = models.ForeignKey(
+        "PythonCode",
+        on_delete=models.CASCADE,
+        null=True,
+        default=None,
+        related_name="cdt_post_nodes",
+    )
+    post_input_map = models.JSONField(default=dict, blank=True)
+    post_output_variable_path = models.CharField(
+        max_length=512, null=True, default=None, blank=True
+    )
+    prompts = models.JSONField(default=dict, blank=True)
+    default_llm_config = models.ForeignKey(
+        "LLMConfig",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cdt_nodes_as_default",
+    )
+    default_next_node_id = models.BigIntegerField(null=True, default=None)
+    next_error_node_id = models.BigIntegerField(null=True, default=None)
+
+    def clean(self):
+        super().clean()
+
+        if self.default_next_node_id:
+            default_next_node = BaseGlobalNode.find_globally(self.default_next_node_id)
+            if not default_next_node:
+                raise ValidationError(
+                    {
+                        "default_next_node_id": f"Default next node with ID '{self.default_next_node_id}' not found."
+                    }
+                )
+
+        if self.next_error_node_id:
+            next_error_node = BaseGlobalNode.find_globally(self.next_error_node_id)
+            if not next_error_node:
+                raise ValidationError(
+                    {
+                        "next_error_node_id": f"Error node with ID '{self.next_error_node_id}' not found."
+                    }
+                )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["graph", "node_name"],
+                name="unique_graph_node_name_for_classification_dt_node",
+            )
+        ]
+
+
+class ClassificationDecisionTablePrompt(TimestampMixin, models.Model):
+    cdt_node = models.ForeignKey(
+        "ClassificationDecisionTableNode",
+        on_delete=models.CASCADE,
+        related_name="prompt_configs",
+    )
+    prompt_key = models.CharField(max_length=255)
+    prompt_text = models.TextField(blank=True, default="")
+    llm_config = models.ForeignKey(
+        "LLMConfig",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cdt_prompts",
+    )
+    output_schema = models.JSONField(default=dict, blank=True)
+    result_variable = models.CharField(max_length=255, default="prompt_result")
+    variable_mappings = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        unique_together = ("cdt_node", "prompt_key")
+
+
+class ClassificationConditionGroup(BaseGraphEntity, models.Model):
+    classification_decision_table_node = models.ForeignKey(
+        "ClassificationDecisionTableNode",
+        on_delete=models.CASCADE,
+        related_name="condition_groups",
+    )
+    group_name = models.CharField(max_length=255, blank=False)
+    order = models.PositiveIntegerField(blank=False, default=0)
+    expression = models.TextField(null=True, default=None, blank=True)
+    prompt_id = models.CharField(max_length=255, null=True, default=None, blank=True)
+    manipulation = models.TextField(null=True, default=None, blank=True)
+    continue_flag = models.BooleanField(default=False)
+    next_node_id = models.BigIntegerField(null=True, default=None)
+    dock_visible = models.BooleanField(default=True)
+    field_expressions = models.JSONField(default=dict, blank=True)
+    field_manipulations = models.JSONField(default=dict, blank=True)
+    route_code = models.CharField(max_length=128, null=True, default=None, blank=True)
+    section = models.CharField(max_length=128, null=True, default=None, blank=True)
+
+    class Meta:
+        ordering = ["order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["classification_decision_table_node", "route_code"],
+                condition=models.Q(route_code__isnull=False),
+                name="unique_route_code_per_cdt_node",
+            )
+        ]
+
+    def clean(self):
+        super().clean()
+
+        if self.next_node_id is not None:
+            next_node = BaseGlobalNode.find_globally(self.next_node_id)
+            if not next_node:
+                raise ValidationError(
+                    {
+                        "next_node_id": f"Error node with ID '{self.next_node_id}' not found."
+                    }
+                )
 
 
 class GraphNote(BaseGraphEntity, BaseGlobalNode):

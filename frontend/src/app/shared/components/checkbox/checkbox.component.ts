@@ -17,12 +17,10 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 export class CheckboxComponent implements ControlValueAccessor {
     indeterminate = input<boolean>(false);
     checked = model<boolean>(false);
-    mod = input<'default' | 'multiselect'>('default');
+    color = input<'primary' | 'secondary'>('primary');
     disabled = input<boolean>(false);
 
     changed = output<boolean>();
-
-    variant = input<'default' | 'mainColor'>('default');
 
     private onChange: (value: boolean) => void = () => {};
     private onTouched = () => {};

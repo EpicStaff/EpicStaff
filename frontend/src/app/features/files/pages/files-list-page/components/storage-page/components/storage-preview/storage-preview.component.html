@@ -233,12 +233,10 @@
                             }
                         }
                         @case ('docx') {
-                            @if (docxHtml()) {
-                                <div
-                                    class="storage-preview__docx"
-                                    [innerHTML]="docxHtml()"
-                                ></div>
-                            }
+                            <div
+                                #docxContainer
+                                class="storage-preview__docx"
+                            ></div>
                         }
                         @case ('unsupported') {
                             <div class="storage-preview__unsupported">

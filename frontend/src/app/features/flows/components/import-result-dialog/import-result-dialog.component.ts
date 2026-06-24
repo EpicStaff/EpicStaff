@@ -17,14 +17,14 @@ import {
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 
-import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
-import { DEFAULT_ENTITY_ICON, ENTITY_ICONS } from '../../../../shared/constants/entity-icons.constants';
 import {
     EntityTypeResult,
     ImportResult,
     ImportResultDialogData,
     ImportResultItem,
-} from '../../models/import-result.model';
+} from '../../../../core/models/import-result.model';
+import { AppIconComponent } from '../../../../shared/components/app-icon/app-icon.component';
+import { DEFAULT_ENTITY_ICON, ENTITY_ICONS } from '../../../../shared/constants/entity-icons.constants';
 
 @Component({
     selector: 'app-import-result-dialog',

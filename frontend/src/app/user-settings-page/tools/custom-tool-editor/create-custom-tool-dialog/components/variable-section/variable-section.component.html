@@ -1,0 +1,57 @@
+<div
+    class="section__drop-target"
+    cdkDropList
+    [id]="rows().length === 0 && !isArrayValuesMode() ? (rowDropListId() ?? '') : ''"
+    [cdkDropListData]="rows()"
+    [cdkDropListConnectedTo]="rows().length === 0 && !isArrayValuesMode() ? rowDropListConnectedTo() : []"
+    [cdkDropListDisabled]="isArrayValuesMode() || rows().length > 0 || !rowDropListId()"
+    (cdkDropListEntered)="onEmptySectionDropEnter()"
+    (cdkDropListExited)="onEmptySectionDropExit()"
+    (cdkDropListDropped)="onCrossListDrop($any($event))"
+>
+    <div
+        class="section__header"
+        [class.section__header--with-table]="rows().length > 0"
+    >
+        <app-svg-icon
+            [icon]="isArrayValuesMode() ? 'square-brackets' : config().icon"
+            size="1rem"
+            class="section__icon"
+        />
+        <span class="section__label">{{ config().label }}</span>
+        <button
+            type="button"
+            class="section__add-btn"
+            (click)="addRow()"
+            [title]="isArrayValuesMode() ? 'Add element' : 'Add row'"
+        >
+            <app-svg-icon
+                icon="plus"
+                size="1rem"
+            />
+        </button>
+    </div>
+
+    <app-dynamic-table
+        #table
+        title=""
+        [icon]="null"
+        [showHeader]="false"
+        [columnDefs]="effectiveColumnDefs()"
+        [initialRows]="rows()"
+        [allowColumnDrag]="false"
+        [allowRowDrag]="true"
+        [allowRowRemove]="true"
+        [rowNavigable]="isNavigableRow"
+        [navigateCellKey]="'default_value'"
+        [isCellDisabled]="isCellDisabled"
+        [externalDuplicates]="externalDuplicates()"
+        [getCellExtraValidators]="cellExtraValidators()"
+        [rowDropListId]="!isArrayValuesMode() && rows().length > 0 ? rowDropListId() : null"
+        [rowDropListConnectedTo]="!isArrayValuesMode() && rows().length > 0 ? rowDropListConnectedTo() : []"
+        [rowSyncRevision]="effectiveRowSyncRevision()"
+        (rowsChange)="onRowsChange($event)"
+        (navigateRow)="onNavigate($event)"
+        (crossListDrop)="onCrossListDrop($any($event))"
+    />
+</div>

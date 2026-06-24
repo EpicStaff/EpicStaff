@@ -44,6 +44,7 @@ import { RunGraphPageService } from '../../services/run-graph-page.service';
 import { WarningMessagesComponent } from '../warning-messages/warning-messages.component';
 import { AgentFinishMessageComponent } from './components/agent-finish/agent-finish.component';
 import { AgentMessageComponent } from './components/agent-message/agent-message.component';
+import { ClassificationDtMessageComponent } from './components/classification-dt-message/classification-dt-message.component';
 import { CodeAgentStreamMessageComponent } from './components/code-agent-stream-message/code-agent-stream-message.component';
 import { ErrorMessageComponent } from './components/error-message/error-message.component';
 import { ExtractedChunksMessageComponent } from './components/extracted-chunks/extracted-chunks-message.component';
@@ -87,6 +88,9 @@ const RENDERABLE_MESSAGE_TYPES: ReadonlySet<string> = new Set([
     MessageType.CODE_AGENT_STREAM,
     MessageType.SUBGRAPH_START,
     MessageType.SUBGRAPH_FINISH,
+    MessageType.CONDITION_GROUP,
+    MessageType.CONDITION_GROUP_MANIPULATION,
+    MessageType.CLASSIFICATION_PROMPT,
 ]);
 
 interface MessageViewEntry {
@@ -141,6 +145,7 @@ const TERMINAL_STATUSES = new Set<GraphSessionStatus>([
         WaitForUserInputComponent,
         UserMessageComponent,
         ExtractedChunksMessageComponent,
+        ClassificationDtMessageComponent,
         WarningMessagesComponent,
         SubgraphStartMessageComponent,
         SubgraphFinishMessageComponent,
@@ -194,9 +199,13 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
     private readonly PAGE_SIZE = 20;
     private seenKeys = new Set<string>();
+    private hasReconciledTerminal = false;
     private currentOffset = 0;
     public isLoadingMore = false;
     public hasMore = true;
+    private loadingSubgraphIds = new Set<string>();
+    private subgraphOffsets = new Map<string, number>();
+    private subgraphHasMore = new Map<string, boolean>();
 
     private isFinishing = false;
     private finishTimer: ReturnType<typeof setTimeout> | null = null;
@@ -271,7 +280,13 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             this.sessionStatusChanged.emit(status);
             this.statusWaitForUser = status === GraphSessionStatus.WAITING_FOR_USER;
             this.showUserInputWithDelay = this.statusWaitForUser;
-
+            this.checkIfFinish();
+            // Bugfix: when the run reaches a terminal status, reconcile the full message list
+            // from the server so any messages the realtime SSE stream missed are backfilled (once).
+            if (TERMINAL_STATUSES.has(status) && !this.hasReconciledTerminal) {
+                this.hasReconciledTerminal = true;
+                this.reconcileMessagesFromServer();
+            }
             this.cdr.markForCheck();
         });
 
@@ -337,6 +352,19 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
         if (distanceFromBottom < 200 && this.hasMore && !this.isLoadingMore) {
             this.loadMoreMessages();
+        }
+
+        if (distanceFromBottom < 200) {
+            this.drillPaths.forEach((path, rootKey) => {
+                const currentKey = path[path.length - 1] ?? rootKey;
+                const message = this.messageByKey.get(currentKey);
+                const execId = (message?.message_data as unknown as Record<string, unknown>)?.[
+                    'subgraph_execution_id'
+                ] as string | undefined;
+                if (execId && this.subgraphHasMore.get(execId) && !this.loadingSubgraphIds.has(execId)) {
+                    this.loadMoreSubgraphPage(execId);
+                }
+            });
         }
 
         this.updateScrollButtonsVisibility();
@@ -453,9 +481,13 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             this.messages = [];
             this.visibleMessageEntries = [];
             this.seenKeys = new Set<string>();
+            this.hasReconciledTerminal = false;
             this.currentOffset = 0;
             this.isLoadingMore = false;
             this.hasMore = true;
+            this.loadingSubgraphIds = new Set<string>();
+            this.subgraphOffsets = new Map<string, number>();
+            this.subgraphHasMore = new Map<string, boolean>();
             this.drillPaths.clear();
             this.breadcrumbsByRoot.clear();
             this.filteredBreadcrumbsByRoot.clear();
@@ -491,6 +523,8 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                     if (!TERMINAL_STATUSES.has(session.status)) {
                         this.sseEnabled = true;
                         this.sseService.startStream(this.sessionId!);
+                    } else {
+                        this.sseService.setStatus(session.status);
                     }
                     this.loadMoreMessages();
                 },
@@ -774,6 +808,15 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     }
 
     public onViewNestedMessages(message: GraphMessage): void {
+        if (!this.sseEnabled) {
+            const subgraphExecutionId = (message.message_data as unknown as Record<string, unknown>)[
+                'subgraph_execution_id'
+            ] as string | undefined;
+            if (subgraphExecutionId) {
+                this.loadSubgraphMessages(subgraphExecutionId, 0);
+            }
+        }
+
         const context = this.getMessageContext(message);
         if (!context || !context.isSubgraphStart) return;
         const rootKey = this.getRootKeyForContext(context);
@@ -995,6 +1038,66 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         this.messages = [...this.messages, ...toAdd].sort((a, b) => a.execution_order - b.execution_order);
     }
 
+    private insertSubgraphMessages(subgraphExecutionId: string, incoming: GraphMessage[]): void {
+        const toAdd = incoming.filter((m) => {
+            const key = this.getMessageKey(m);
+            if (this.seenKeys.has(key)) return false;
+            this.seenKeys.add(key);
+            return true;
+        });
+        if (toAdd.length === 0) return;
+
+        const finishIdx = this.messages.findIndex(
+            (m) =>
+                m.message_data.message_type === MessageType.SUBGRAPH_FINISH &&
+                (m.message_data as unknown as Record<string, unknown>)['subgraph_execution_id'] === subgraphExecutionId
+        );
+
+        toAdd.sort((a, b) => a.execution_order - b.execution_order);
+
+        if (finishIdx !== -1) {
+            // Insert just before subgraph_finish — each new page accumulates at the bottom
+            this.messages = [...this.messages.slice(0, finishIdx), ...toAdd, ...this.messages.slice(finishIdx)];
+        } else {
+            // subgraph_finish not yet loaded — fall back to inserting after subgraph_start
+            const startIdx = this.messages.findIndex(
+                (m) =>
+                    m.message_data.message_type === MessageType.SUBGRAPH_START &&
+                    (m.message_data as unknown as Record<string, unknown>)['subgraph_execution_id'] ===
+                        subgraphExecutionId
+            );
+            if (startIdx === -1) return;
+            this.messages = [...this.messages.slice(0, startIdx + 1), ...toAdd, ...this.messages.slice(startIdx + 1)];
+        }
+    }
+
+    private loadSubgraphMessages(subgraphExecutionId: string, offset: number): void {
+        if (this.loadingSubgraphIds.has(subgraphExecutionId) || !this.sessionId) return;
+        this.loadingSubgraphIds.add(subgraphExecutionId);
+
+        this.graphSessionService
+            .getSessionMessages(+this.sessionId, this.PAGE_SIZE, offset, subgraphExecutionId)
+            .pipe(takeUntil(this.destroy$))
+            .subscribe({
+                next: (response) => {
+                    this.insertSubgraphMessages(subgraphExecutionId, response.results);
+                    this.subgraphOffsets.set(subgraphExecutionId, offset + this.PAGE_SIZE);
+                    this.subgraphHasMore.set(subgraphExecutionId, response.next !== null);
+                    this.loadingSubgraphIds.delete(subgraphExecutionId);
+                    this.rebuildMessageState(this.messages);
+                    this.cdr.markForCheck();
+                },
+                error: () => {
+                    this.loadingSubgraphIds.delete(subgraphExecutionId);
+                },
+            });
+    }
+
+    private loadMoreSubgraphPage(subgraphExecutionId: string): void {
+        const offset = this.subgraphOffsets.get(subgraphExecutionId) ?? 0;
+        this.loadSubgraphMessages(subgraphExecutionId, offset);
+    }
+
     public loadMoreMessages(): void {
         if (this.isLoadingMore || !this.hasMore || !this.sessionId) return;
         this.isLoadingMore = true;
@@ -1011,12 +1114,48 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                     this.hasMore = response.next !== null;
                     this.isLoadingMore = false;
                     this.cdr.markForCheck();
+                    if (this.hasMore && this.isInsideOpenSubgraph()) {
+                        this.loadMoreMessages();
+                    }
                 },
                 error: () => {
                     this.isLoadingMore = false;
                     this.cdr.markForCheck();
                 },
             });
+    }
+
+    // Bugfix (safe reconcile): once the run reaches a terminal status the backend has
+    // persisted every message, so re-fetch the full list and merge it. mergeMessages() dedups
+    // via seenKeys, so this only ADDS messages the realtime SSE stream missed (no duplicates).
+    // Deliberately separate from loadMoreMessages() so it never touches the scroll-pagination
+    // state and isn't affected by it.
+    private reconcileMessagesFromServer(offset = 0): void {
+        if (!this.sessionId) return;
+        this.graphSessionService
+            .getSessionMessages(+this.sessionId, this.PAGE_SIZE, offset)
+            .pipe(takeUntil(this.destroy$))
+            .subscribe({
+                next: (response) => {
+                    this.mergeMessages(response.results);
+                    this.rebuildMessageState(this.messages);
+                    this.processMessages();
+                    this.messagesChanged.emit(this.messages);
+                    this.cdr.markForCheck();
+                    if (response.next !== null) {
+                        this.reconcileMessagesFromServer(offset + this.PAGE_SIZE);
+                    }
+                },
+            });
+    }
+
+    private isInsideOpenSubgraph(): boolean {
+        if (!this.messageContexts.length) return false;
+        const last = this.messageContexts[this.messageContexts.length - 1];
+        let postDepth = last.depth;
+        if (last.isSubgraphStart) postDepth++;
+        else if (last.isSubgraphFinish && postDepth > 0) postDepth--;
+        return postDepth > 0;
     }
 
     private rebuildMessageState(messages: GraphMessage[]): void {

@@ -190,6 +190,28 @@ This pair is fresh. Every other refresh token for the user is now blacklisted; t
 
 ---
 
+## Active organization
+
+`/api/profile/` accepts an optional `X-Organization-Id` header. When present and the caller is a member of that org (or is superadmin), the response includes:
+
+- `active_organization_id`: int — echoes the header.
+- `active_permissions`: object — same shape as `GET /api/permissions/me/` (is_superadmin, role, permissions).
+
+When the header is absent OR points to an org the caller cannot access OR contains a non-integer value, both fields are `null` and the rest of the response is unchanged. The endpoint NEVER returns 403 for this case — it's the FE's boot endpoint and must remain reachable.
+
+## Switching organizations (FE flow)
+
+1. On login, call `GET /api/profile/` (no header). Read `memberships[]`.
+2. Pick an active org from `memberships[]` (or remember last choice from local state).
+3. Set `X-Organization-Id: <id>` as a default header on every subsequent request via your HTTP interceptor.
+4. Refetch `GET /api/profile/` with the header to get `active_permissions`. Cache in FE state.
+5. On org switch: update the header, refetch `/profile/`, replace cached state.
+6. If a gated endpoint returns 403 `org_membership_required` mid-session (org deactivated, membership removed): clear the header, redirect to org-picker.
+
+See [roles_and_permissions.md](roles_and_permissions.md) for the catalog endpoint, /permissions/me/ details, and the role-list endpoints used by FE pickers.
+
+---
+
 ## Errors
 
 Every error follows the project envelope:

@@ -126,6 +126,17 @@ class SessionExportAllSerializer(serializers.Serializer):
 class ImportRequestSerializer(serializers.Serializer):
     file = serializers.FileField()
     preserve_uuids = serializers.BooleanField(default=False, required=False)
+    replace_existing = serializers.BooleanField(default=False, required=False)
+    import_labels = serializers.BooleanField(default=True, required=False)
+
+    def validate(self, attrs):
+        if attrs.get("replace_existing") and not attrs.get("preserve_uuids"):
+            raise serializers.ValidationError(
+                {
+                    "replace_existing": "replace_existing=True requires preserve_uuids=True."
+                }
+            )
+        return attrs
 
 
 class RunPythonCodeSerializer(serializers.Serializer):

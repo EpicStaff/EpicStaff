@@ -75,7 +75,12 @@ export class VersionHistoryPanelComponent implements OnInit {
         private unsavedChangesDialogService: UnsavedChangesDialogService,
         private cdr: ChangeDetectorRef,
         @Inject(DIALOG_DATA)
-        public data: { graphId: number; hasUnsavedChanges?: () => boolean; saveCurrentState?: () => Observable<void> },
+        public data: {
+            graphId: number;
+            graphSaveVersion?: () => number | undefined;
+            hasUnsavedChanges?: () => boolean;
+            saveCurrentState?: () => Observable<void>;
+        },
         public dialogRef: DialogRef<GraphRestoreResponse | undefined>,
         private router: Router,
         private createGraphWarningsService: CreateGraphWarningsService
@@ -230,10 +235,22 @@ export class VersionHistoryPanelComponent implements OnInit {
                 switchMap((result) => {
                     if (result === 'save') {
                         const save$ = this.data.saveCurrentState?.() ?? of(void 0);
-                        return save$.pipe(switchMap(() => this.flowApiService.restoreGraphVersion(version.id, true)));
+                        return save$.pipe(
+                            switchMap(() =>
+                                this.flowApiService.restoreGraphVersion(
+                                    version.id,
+                                    true,
+                                    this.data.graphSaveVersion?.()
+                                )
+                            )
+                        );
                     }
                     if (result === 'dont-save') {
-                        return this.flowApiService.restoreGraphVersion(version.id, false);
+                        return this.flowApiService.restoreGraphVersion(
+                            version.id,
+                            false,
+                            this.data.graphSaveVersion?.()
+                        );
                     }
                     return EMPTY;
                 }),

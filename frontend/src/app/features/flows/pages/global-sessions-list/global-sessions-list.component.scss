@@ -176,21 +176,6 @@
     font-size: 13px;
     color: var(--color-text-secondary);
     white-space: nowrap;
-
-    select {
-        background: var(--color-background-body);
-        border: 1px solid var(--color-divider-regular, #333);
-        border-radius: 4px;
-        color: var(--color-text-primary);
-        font-size: 13px;
-        padding: 3px 6px;
-        cursor: pointer;
-        outline: none;
-
-        &:focus {
-            border-color: var(--accent-color);
-        }
-    }
 }
 
 .panel-divider {
@@ -332,7 +317,10 @@
     .preview-body {
         flex: 1;
         min-height: 0;
-        overflow-y: auto;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        padding: 5px;
         --color-nodes-background: rgba(60, 60, 72, 0.65);
     }
 

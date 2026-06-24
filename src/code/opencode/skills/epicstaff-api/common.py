@@ -7,10 +7,10 @@ import json
 import urllib.request
 import urllib.error
 from pathlib import Path
-from datetime import datetime
 
 _SKILL_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = Path(__file__).resolve().parents[3]
+
 
 def _load_env():
     """Load key=value pairs from .env. Checks skill dir first, then src/.env."""
@@ -32,11 +32,16 @@ def _load_env():
                         env[key] = v.strip()
     return env
 
+
 _env = _load_env()
 
 _DJANGO_PORT = os.environ.get("DJANGO_PORT", _env.get("DJANGO_PORT", "8000"))
 _INSIDE_CONTAINER = os.path.exists("/.dockerenv")
-_DEFAULT_API_URL = f"http://django_app:{_DJANGO_PORT}/api" if _INSIDE_CONTAINER else f"http://localhost:{_DJANGO_PORT}/api"
+_DEFAULT_API_URL = (
+    f"http://django_app:{_DJANGO_PORT}/api"
+    if _INSIDE_CONTAINER
+    else f"http://localhost:{_DJANGO_PORT}/api"
+)
 BASE_URL = os.environ.get("API_BASE_URL", _env.get("API_BASE_URL", _DEFAULT_API_URL))
 _API_HOST_HEADER = {"Host": "localhost"} if "django_app" in BASE_URL else {}
 REPO_ROOT = _REPO_ROOT
@@ -46,12 +51,33 @@ TOOLS_DIR = _MY_EPICSTAFF / "tools"
 PROJECTS_DIR = _MY_EPICSTAFF / "projects"
 
 READ_ONLY_COMMANDS = {
-    "list", "get", "nodes", "edges", "connections", "route-map",
-    "cdt", "cdt-code", "cdt-prompts",
-    "sessions", "session", "session-inspect", "session-timings", "vars", "history", "trace", "crew-input",
-    "crews", "agents", "tools", "tool",
-    "oc-status", "oc-sessions", "oc-messages", "oc-session",
-    "verify", "export-compare",
+    "list",
+    "get",
+    "nodes",
+    "edges",
+    "connections",
+    "route-map",
+    "cdt",
+    "cdt-code",
+    "cdt-prompts",
+    "sessions",
+    "session",
+    "session-inspect",
+    "session-timings",
+    "vars",
+    "history",
+    "trace",
+    "crew-input",
+    "crews",
+    "agents",
+    "tools",
+    "tool",
+    "oc-status",
+    "oc-sessions",
+    "oc-messages",
+    "oc-session",
+    "verify",
+    "export-compare",
     "test-flow",
 }
 
@@ -65,6 +91,7 @@ def _set_base_url(url):
 # API helpers
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _rewrite_pagination_url(next_url):
     """Rewrite Django pagination URLs to use the actual BASE_URL origin.
 
@@ -74,6 +101,7 @@ def _rewrite_pagination_url(next_url):
     the correct backend.
     """
     from urllib.parse import urlparse
+
     parsed = urlparse(next_url)
     base_parsed = urlparse(BASE_URL)
     # Strip the BASE_URL path prefix (e.g. "/api") from the next_url path
@@ -81,7 +109,7 @@ def _rewrite_pagination_url(next_url):
     api_prefix = base_parsed.path.rstrip("/")
     rel = parsed.path
     if api_prefix and rel.startswith(api_prefix):
-        rel = rel[len(api_prefix):]
+        rel = rel[len(api_prefix) :]
     qs = f"?{parsed.query}" if parsed.query else ""
     return f"{BASE_URL}/{rel.lstrip('/')}{qs}"
 
@@ -95,10 +123,16 @@ def api_get(path, params=None):
     req = urllib.request.Request(url, headers=_API_HOST_HEADER)
     with urllib.request.urlopen(req) as resp:
         data = json.loads(resp.read())
-    results = data.get("results", data) if isinstance(data, dict) and "results" in data else data
+    results = (
+        data.get("results", data)
+        if isinstance(data, dict) and "results" in data
+        else data
+    )
     if isinstance(data, dict) and data.get("next"):
         while data.get("next"):
-            nreq = urllib.request.Request(_rewrite_pagination_url(data["next"]), headers=_API_HOST_HEADER)
+            nreq = urllib.request.Request(
+                _rewrite_pagination_url(data["next"]), headers=_API_HOST_HEADER
+            )
             with urllib.request.urlopen(nreq) as resp:
                 data = json.loads(resp.read())
             results.extend(data.get("results", []))
@@ -117,14 +151,22 @@ def api_get_page(path, params=None):
     req = urllib.request.Request(url, headers=_API_HOST_HEADER)
     with urllib.request.urlopen(req) as resp:
         data = json.loads(resp.read())
-    return data.get("results", data) if isinstance(data, dict) and "results" in data else data
+    return (
+        data.get("results", data)
+        if isinstance(data, dict) and "results" in data
+        else data
+    )
 
 
 def api_patch(path, payload):
     url = f"{BASE_URL}/{path.lstrip('/')}"
     body = json.dumps(payload).encode()
-    req = urllib.request.Request(url, data=body, method="PATCH",
-                                headers={"Content-Type": "application/json", **_API_HOST_HEADER})
+    req = urllib.request.Request(
+        url,
+        data=body,
+        method="PATCH",
+        headers={"Content-Type": "application/json", **_API_HOST_HEADER},
+    )
     with urllib.request.urlopen(req) as resp:
         return json.loads(resp.read())
 
@@ -132,8 +174,12 @@ def api_patch(path, payload):
 def api_post(path, payload):
     url = f"{BASE_URL}/{path.lstrip('/')}"
     body = json.dumps(payload).encode()
-    req = urllib.request.Request(url, data=body, method="POST",
-                                headers={"Content-Type": "application/json", **_API_HOST_HEADER})
+    req = urllib.request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json", **_API_HOST_HEADER},
+    )
     with urllib.request.urlopen(req) as resp:
         return json.loads(resp.read())
 
@@ -147,6 +193,7 @@ def api_delete(path):
 # ═══════════════════════════════════════════════════════════════════════════
 # Graph / node helpers
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _get_graph(graph_id):
     return api_get(f"/graphs/{graph_id}/")
@@ -175,12 +222,19 @@ def _flows_dir(graph_id):
 
 # All node-list keys in the graph API response
 _NODE_LIST_KEYS = [
-    "start_node_list", "end_node_list", "python_node_list",
-    "crew_node_list", "llm_node_list", "code_agent_node_list",
-    "file_extractor_node_list", "audio_transcription_node_list",
-    "webhook_trigger_node_list", "telegram_trigger_node_list",
-    "classification_decision_table_node_list", "decision_table_node_list",
-    "note_node_list", "subgraph_node_list",
+    "start_node_list",
+    "end_node_list",
+    "python_node_list",
+    "crew_node_list",
+    "code_agent_node_list",
+    "file_extractor_node_list",
+    "audio_transcription_node_list",
+    "webhook_trigger_node_list",
+    "telegram_trigger_node_list",
+    "classification_decision_table_node_list",
+    "decision_table_node_list",
+    "note_node_list",
+    "subgraph_node_list",
 ]
 
 
@@ -226,13 +280,17 @@ def resolve_node_id(name, graph):
             return nid
         if norm in _normalize_slug(node_name):
             return nid
-    print(f"Node '{name}' not found in flow. Available: {', '.join(sorted(m.keys()))}", file=sys.stderr)
+    print(
+        f"Node '{name}' not found in flow. Available: {', '.join(sorted(m.keys()))}",
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Slug / file parsing helpers
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _normalize_slug(slug):
     return re.sub(r"[-_\s]+", "_", slug.lower()).strip("_")
@@ -252,24 +310,35 @@ def _match_node(slug, nodes, slug_map):
                 return n
     for n in nodes:
         nn = _normalize_slug(
-            n.get("node_name", "").replace("(", "").replace(")", "")
-            .replace("#", "").replace("  ", " "))
+            n.get("node_name", "")
+            .replace("(", "")
+            .replace(")", "")
+            .replace("#", "")
+            .replace("  ", " ")
+        )
         if nn == norm or norm in nn or nn in norm:
             return n
     return None
 
 
 CG_SEMANTIC_FIELDS = {
-    "order", "group_name", "expression", "prompt_id", "manipulation",
-    "continue_flag", "route_code", "dock_visible",
-    "field_expressions", "field_manipulations",
+    "order",
+    "group_name",
+    "expression",
+    "prompt_id",
+    "manipulation",
+    "continue_flag",
+    "route_code",
+    "dock_visible",
+    "field_expressions",
+    "field_manipulations",
 }
 CG_META_RENAMES = {"continue": "continue_flag"}
 
 
 def _canonicalize_groups(groups):
     result = []
-    for g in (groups or []):
+    for g in groups or []:
         canon = {}
         for k, v in g.items():
             key = CG_META_RENAMES.get(k, k)
@@ -277,7 +346,11 @@ def _canonicalize_groups(groups):
                 canon[key] = v
         for f in CG_SEMANTIC_FIELDS:
             if f not in canon:
-                canon[f] = None if f not in ("field_expressions", "field_manipulations") else {}
+                canon[f] = (
+                    None
+                    if f not in ("field_expressions", "field_manipulations")
+                    else {}
+                )
         result.append(canon)
     result.sort(key=lambda g: g.get("order", 0))
     return result
@@ -444,6 +517,7 @@ def _read_value(args):
 OPENCODE_CONTAINER = "sandbox"
 OPENCODE_PORT = int(os.environ.get("OPENCODE_PORT", _env.get("OPENCODE_PORT", "4096")))
 
+
 def _is_inside_container():
     """Detect if we're running inside a Docker container."""
     return os.path.exists("/.dockerenv") or os.environ.get("API_BASE_URL")
@@ -454,6 +528,7 @@ def _oc_curl(path, method="GET", timeout=10):
     url = f"http://localhost:{OPENCODE_PORT}{path}"
     if _is_inside_container():
         import urllib.request
+
         try:
             req = urllib.request.Request(url, method=method)
             with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -464,13 +539,20 @@ def _oc_curl(path, method="GET", timeout=10):
             return None
     else:
         import subprocess
+
         cmd = ["docker", "exec", OPENCODE_CONTAINER, "curl", "-s", "-X", method, url]
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=timeout
+            )
             if result.returncode != 0:
                 return None
             return json.loads(result.stdout) if result.stdout.strip() else None
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError) as e:
+        except (
+            subprocess.TimeoutExpired,
+            json.JSONDecodeError,
+            FileNotFoundError,
+        ) as e:
             print(f"  Error reaching OpenCode: {e}", file=sys.stderr)
             return None
 
@@ -478,6 +560,7 @@ def _oc_curl(path, method="GET", timeout=10):
 # ═══════════════════════════════════════════════════════════════════════════
 # Tool slug helper
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _tool_slug(name):
     return _normalize_slug(re.sub(r"\s*\(\d+\)\s*$", "", name))

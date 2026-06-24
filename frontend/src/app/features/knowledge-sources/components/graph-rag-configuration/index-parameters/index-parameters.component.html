@@ -71,8 +71,11 @@
         <div>
             <app-chips-input
                 formControlName="entity_types"
+                inputPlaceholder="Enter entity type"
+                separatorPlaceholder="Add comma separated entity types to invite"
                 [minItemLength]="1"
                 [maxItemLength]="20"
+                [showSeparatorToggle]="true"
             />
             <app-validation-errors [control]="getControl('entity_types')!" />
         </div>
@@ -124,6 +127,8 @@
             [fullHeight]="true"
             [jsonData]="jsonData()"
             [editorOptions]="editorOptions"
+            (jsonChange)="onJsonChange($event)"
+            (validationChange)="onJsonValidChange($event)"
         />
     </div>
 </div>

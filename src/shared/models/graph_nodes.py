@@ -3,8 +3,8 @@ from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
-from .ai_providers import LLMData
 from .agents import CrewData
+from .ai_providers import LLMData
 from .tools import PythonCodeData
 
 
@@ -44,15 +44,6 @@ class AudioTranscriptionNodeData(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class LLMNodeData(BaseModel):
-    node_name: str
-    llm_data: LLMData
-    input_map: dict[str, Any]
-    output_variable_path: str | None = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class ConditionData(BaseModel):
     condition: str
 
@@ -77,6 +68,42 @@ class DecisionTableNodeData(BaseModel):
     next_error_node: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PromptConfigData(BaseModel):
+    prompt_text: str
+    llm_id: int | None = None
+    output_schema: dict[str, Any] | str = {}
+    result_variable: str = "prompt_result"
+    variable_mappings: dict[str, str] = {}
+    llm_data: LLMData | None = None
+
+
+class ClassificationConditionGroupData(BaseModel):
+    group_name: str
+    expression: str | None = None
+    prompt_id: str | None = None
+    manipulation: str | None = None
+    continue_flag: bool = False
+    next_node: str | None = None
+    dock_visible: bool = True
+    order: int = 0
+    field_expressions: dict[str, str] = {}
+    field_manipulations: dict[str, str] = {}
+
+
+class ClassificationDecisionTableNodeData(BaseModel):
+    node_name: str
+    pre_python_code: PythonCodeData | None = None
+    pre_input_map: dict[str, str] = {}
+    pre_output_variable_path: str | None = None
+    post_python_code: PythonCodeData | None = None
+    post_input_map: dict[str, str] = {}
+    post_output_variable_path: str | None = None
+    condition_groups: list[ClassificationConditionGroupData] = []
+    prompts: dict[str, PromptConfigData] = {}
+    default_next_node: str | None = None
+    next_error_node: str | None = None
 
 
 class CodeAgentNodeData(BaseModel):
@@ -180,11 +207,13 @@ class GraphData(BaseModel):
     file_extractor_node_list: list[FileExtractorNodeData] = []
     audio_transcription_node_list: list[AudioTranscriptionNodeData] = []
     subgraph_node_list: list[SubGraphNodeData] = []
-    llm_node_list: list[LLMNodeData] = []
     code_agent_node_list: list[CodeAgentNodeData] = []
     edge_list: list[EdgeData] = []
     conditional_edge_list: list[ConditionalEdgeData] = []
     decision_table_node_list: list[DecisionTableNodeData] = []
+    classification_decision_table_node_list: list[
+        ClassificationDecisionTableNodeData
+    ] = []
     entrypoint: str
     end_node: EndNodeData | None
     telegram_trigger_node_data_list: list[TelegramTriggerNodeData] = []

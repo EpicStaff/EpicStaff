@@ -13,9 +13,9 @@ import {
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { RouterModule } from '@angular/router';
+import { computeUniqueName } from '@shared/utils';
 import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
-import { v4 as uuidv4 } from 'uuid';
+import { map, switchMap, takeUntil } from 'rxjs/operators';
 
 import { FlowsApiService } from '../../features/flows/services/flows-api.service';
 import { RunGraphService } from '../../features/flows/services/run-graph-session.service';
@@ -26,9 +26,9 @@ import { ButtonComponent } from '../../shared/components/buttons/button/button.c
 import { ConfirmationDialogService } from '../../shared/components/cofirm-dialog/confimation-dialog.service';
 import { SaveWithIndicatorComponent } from '../../shared/components/save-with-indicator/save-with-indicator.component';
 import { UnsavedIndicatorComponent } from '../../shared/components/unsaved-indicator/unsaved-indicator.component';
-import { NODE_COLORS } from '../../visual-programming/core/enums/node-config';
-import { NODE_ICONS } from '../../visual-programming/core/enums/node-config';
 import { NodeType } from '../../visual-programming/core/enums/node-type';
+import { ProjectNodeModel } from '../../visual-programming/core/models/node.model';
+import { NodeFactoryService } from '../../visual-programming/services/node-factory.service';
 import { ProjectStateService } from '../services/project-state.service';
 import { EditTitleDialogComponent } from './edit-name-dialog/edit-title-dialog.component';
 
@@ -66,7 +66,8 @@ export class HeaderComponent implements OnInit, OnDestroy {
         private toastService: ToastService,
         private cdr: ChangeDetectorRef,
         private flowsApiService: FlowsApiService,
-        private confirmationDialog: ConfirmationDialogService
+        private confirmationDialog: ConfirmationDialogService,
+        private nodeFactoryService: NodeFactoryService
     ) {}
 
     ngOnInit(): void {
@@ -164,42 +165,41 @@ export class HeaderComponent implements OnInit, OnDestroy {
                 type: 'info',
             })
             .subscribe((result) => {
-                // Only proceed if result is exactly true (user clicked confirm)
                 if (result === true) {
                     const project = this.project;
-                    const nodeId = uuidv4();
-                    const node = {
-                        id: nodeId,
-                        backendId: null,
+                    const node: ProjectNodeModel = this.nodeFactoryService.createNode(NodeType.PROJECT, {
+                        data: project!,
                         position: { x: 200, y: 200 },
-                        ports: null,
-                        parentId: null,
-                        type: NodeType.PROJECT,
-                        node_name: `${project!.name} (#1)`,
-                        data: project,
-                        color: NODE_COLORS[NodeType.PROJECT],
-                        icon: NODE_ICONS[NodeType.PROJECT],
-                        input_map: {},
-                        output_variable_path: null,
-                        size: { width: 330, height: 60 },
-                    };
+                    }) as ProjectNodeModel;
                     const metadata = {
                         nodes: [node],
                         connections: [],
                         groups: [],
                     };
                     this.flowsApiService
-                        .createGraph({
-                            name: `${project!.name} Flow`,
-                            description: '',
-                            metadata,
-                            tags: [],
-                        })
-                        .subscribe((response: { id: string | number }) => {
-                            this.router.navigate(['/flows', response.id]);
+                        .getGraphsLight()
+                        .pipe(
+                            map((graphs) =>
+                                computeUniqueName(
+                                    `${project!.name} Flow`,
+                                    graphs.map((g) => g.name)
+                                )
+                            ),
+                            switchMap((uniqueName) =>
+                                this.flowsApiService.createGraph({
+                                    name: uniqueName,
+                                    description: '',
+                                    metadata,
+                                    tags: [],
+                                })
+                            ),
+                            takeUntil(this.destroy$)
+                        )
+                        .subscribe({
+                            next: (response) => this.router.navigate(['/flows', response.id]),
+                            error: () => this.toastService.error('Failed to create flow'),
                         });
                 }
-                // If result is false or 'close', the action is cancelled (do nothing)
             });
     }
 

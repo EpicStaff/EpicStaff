@@ -37,7 +37,7 @@ class BaseTagStrategy(EntityImportExportStrategy):
     def extract_dependencies_from_instance(self, instance):
         return {}
 
-    def create_entity(self, data, id_mapper: IDMapper):
+    def create_entity(self, data, id_mapper: IDMapper, **kwargs):
         serializer = self.serializer_class(data=data)
         serializer.is_valid(raise_exception=True)
         return serializer.save()

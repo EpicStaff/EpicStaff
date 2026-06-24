@@ -10,8 +10,9 @@
 <div class="wrapper">
     <div class="input">
         <app-custom-input
-            [placeholder]="inputPlaceholder()"
+            [placeholder]="activePlaceholder()"
             [formControl]="inputControl"
+            (keydown)="onKeydown($event)"
         />
 
         <app-svg-icon
@@ -23,6 +24,16 @@
         />
     </div>
     <app-validation-errors [control]="inputControl" />
+
+    @if (showSeparatorToggle()) {
+        <label class="separator-toggle">
+            <app-checkbox
+                [checked]="separatorEnabled()"
+                (changed)="separatorEnabled.set($event)"
+            />
+            <span>{{ separatorLabel() }}</span>
+        </label>
+    }
 
     <div class="chips">
         @for (item of value(); track $index; let i = $index) {

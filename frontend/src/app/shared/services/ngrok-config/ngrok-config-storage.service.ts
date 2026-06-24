@@ -3,12 +3,13 @@ import { CreateNgrokConfigRequest, GetNgrokConfigResponse } from '@shared/models
 import { catchError, Observable, of, throwError } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
+import { StorageService } from '../app-storage.service';
 import { NgrokConfigApiService } from './ngrok-config-api.service';
 
 @Injectable({
     providedIn: 'root',
 })
-export class NgrokConfigStorageService {
+export class NgrokConfigStorageService implements StorageService {
     private configsSignal = signal<GetNgrokConfigResponse[]>([]);
     public readonly configs = this.configsSignal.asReadonly();
     public configsLoaded = signal<boolean>(false);
@@ -73,6 +74,11 @@ export class NgrokConfigStorageService {
     private createConfigsInCache(configs: GetNgrokConfigResponse[]): void {
         this.configsSignal.set(configs);
         this.configsLoaded.set(true);
+    }
+
+    clear(): void {
+        this.configsSignal.set([]);
+        this.configsLoaded.set(false);
     }
 
     private deleteConfigFromCache(id: number): void {

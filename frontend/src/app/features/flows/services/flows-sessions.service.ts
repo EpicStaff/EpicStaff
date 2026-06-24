@@ -212,12 +212,16 @@ export class GraphSessionService {
     getSessionMessages(
         sessionId: number | string,
         limit: number,
-        offset: number
+        offset: number,
+        parentSubgraphExecutionId?: string
     ): Observable<ApiGetRequest<GraphMessage>> {
-        const params = new HttpParams()
+        let params = new HttpParams()
             .set('session_id', sessionId.toString())
             .set('limit', limit.toString())
             .set('offset', offset.toString());
+        if (parentSubgraphExecutionId) {
+            params = params.set('parent_subgraph_execution_id', parentSubgraphExecutionId);
+        }
         return this.http.get<ApiGetRequest<GraphMessage>>(this.configService.apiUrl + 'graph-session-messages/', {
             params,
         });

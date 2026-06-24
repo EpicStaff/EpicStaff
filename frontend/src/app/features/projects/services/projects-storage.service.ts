@@ -1,4 +1,5 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
+import { StorageService } from '@shared/services';
 import { catchError, delay, map, Observable, of, tap } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
@@ -9,7 +10,7 @@ import { ProjectsApiService } from './projects-api.service';
 @Injectable({
     providedIn: 'root',
 })
-export class ProjectsStorageService {
+export class ProjectsStorageService implements StorageService {
     private readonly projectsApiService = inject(ProjectsApiService);
 
     // --- State Signals ---
@@ -244,5 +245,13 @@ export class ProjectsStorageService {
     public refreshTemplates(): Observable<GetProjectRequest[]> {
         this.templatesLoaded.set(false);
         return this.getTemplates(true);
+    }
+
+    clear(): void {
+        this.projectsSignal.set([]);
+        this.projectsLoaded.set(false);
+        this.templatesSignal.set([]);
+        this.templatesLoaded.set(false);
+        this.filterSignal.set(null);
     }
 }

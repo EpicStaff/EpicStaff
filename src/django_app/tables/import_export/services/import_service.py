@@ -7,6 +7,7 @@ from tables.import_export.id_mapper import IDMapper
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.enums import NodeType, EntityType
 from tables.import_export.constants import DEPENDENCY_ORDER
+from tables.import_export.schemas import ImportSettings
 
 
 class ImportService:
@@ -14,8 +15,14 @@ class ImportService:
         self.registry = registry
 
     def import_data(
-        self, export_data: dict, main_entity: str, preserve_uuids: bool = False
+        self,
+        export_data: dict,
+        main_entity: str,
+        settings: ImportSettings = None,
     ):
+        if settings is None:
+            settings = ImportSettings()
+
         id_mapper = IDMapper()
 
         with transaction.atomic():
@@ -34,7 +41,7 @@ class ImportService:
                             strategy,
                             id_mapper,
                             entity_type == main_entity,
-                            preserve_uuids=preserve_uuids,
+                            settings=settings,
                         )
                 else:
                     for entity_data in entities:
@@ -44,6 +51,7 @@ class ImportService:
                             strategy,
                             id_mapper,
                             entity_type == main_entity,
+                            settings=settings,
                         )
 
         return id_mapper, self.registry
@@ -62,7 +70,14 @@ class ImportService:
         return sorted_keys
 
     def _import_single_entity(
-        self, entity_data, entity_type, strategy, id_mapper, is_main, **kwargs
+        self,
+        entity_data,
+        entity_type,
+        strategy,
+        id_mapper,
+        is_main,
+        settings: ImportSettings = None,
+        **kwargs,
     ):
         old_id = entity_data["id"]
 
@@ -72,7 +87,11 @@ class ImportService:
 
         was_created = existing is None
 
-        instance = strategy.import_entity(entity_data, id_mapper, is_main, **kwargs)
+        instance = strategy.import_entity(
+            entity_data, id_mapper, is_main, settings=settings
+        )
+        if instance is None:
+            return
         id_mapper.map(entity_type, old_id, instance.id, was_created)
 
     def _resolve_graph_order(self, graphs: List[dict]) -> List[dict]:

@@ -42,13 +42,13 @@ class DependencyCollector:
         if not instance:
             return
 
-        self.collected[entity_type][entity_id] = instance
-
         dependencies = strategy.extract_dependencies_from_instance(instance)
 
         for dep_type, dep_ids in dependencies.items():
             for dep_id in dep_ids:
                 self.collect(dep_type, dep_id)
+
+        self.collected[entity_type][entity_id] = instance
 
     def to_dict(self) -> dict:
         """Convert collected entities to exportable dict"""

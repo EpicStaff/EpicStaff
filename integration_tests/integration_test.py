@@ -51,15 +51,7 @@ def test_create_and_run_session():
         },
         output_variable_path="variables",
     )
-    create_llm_node(
-        llm_config_id=config_id,
-        node_name="llm_node1",
-        graph_id=graph_id,
-        input_map={
-            "query": "variables.query",
-        },
-        output_variable_path="variables",
-    )
+    # TODO: LLMNode removed — rewire option_1 branch to a crew_node or python_node
     create_start_node(graph_id=graph_id)
     create_hash_message_python_node(graph_id=graph_id)
     create_option_1_python_node(graph_id=graph_id)
@@ -68,12 +60,11 @@ def test_create_and_run_session():
     create_edge(start_key="hash_message", end_key="user_crew_node", graph=graph_id)
     create_user_name_conditional_edge(source="user_crew_node", graph=graph_id)
 
-    create_edge(start_key="option_1", end_key="llm_node1", graph=graph_id)
+    create_edge(start_key="option_1", end_key="__end_node__", graph=graph_id)
     create_edge(start_key="option_2", end_key="author_crew_node", graph=graph_id)
     create_edge(start_key="author_crew_node", end_key="wiki_crew_node", graph=graph_id)
     create_end_node(graph_id=graph_id)
     create_edge(start_key="wiki_crew_node", end_key="__end_node__", graph=graph_id)
-    create_edge(start_key="llm_node1", end_key="__end_node__", graph=graph_id)
 
     # Run sessions
     session1 = run_session(

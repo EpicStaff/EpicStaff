@@ -13,7 +13,6 @@ from tables.models import (
     Edge,
     PythonCode,
     PythonCodeTool,
-    PythonCodeToolConfigField,
     RealtimeAgent,
     AgentPythonCodeTools,
     AgentConfiguredTools,
@@ -59,7 +58,10 @@ def rich_seeded_db(
         name="custom_tool1",
         description="description",
         python_code=code,
-        args_schema={"arg1": "a", "arg2": "b"},
+        variables=[
+            {"name": "arg1", "type": "string", "description": "", "default_value": None, "input_type": "agent_input", "required": True},
+            {"name": "arg2", "type": "string", "description": "", "default_value": None, "input_type": "agent_input", "required": True},
+        ],
     )
 
     # --- Agents ---

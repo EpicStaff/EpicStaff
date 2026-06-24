@@ -8,27 +8,26 @@ from crewai import Agent, Crew, Task
 from langchain_core.tools import BaseTool
 from langgraph.types import StreamWriter
 
-from src.crew.services.graph.events import StopEvent
-from src.crew.utils.parse_llm import parse_llm, parse_memory_llm, parse_memory_embedder
-from src.crew.callbacks.session_callback_factory import CrewCallbackFactory
-from src.crew.services.schema_converter.converter import generate_model_from_schema
-from src.crew.services.run_python_code_service import RunPythonCodeService
-from src.crew.services.knowledge_search_service import KnowledgeSearchService
-from src.crew.utils.singleton_meta import SingletonMeta
-from src.crew.services.redis_service import RedisService
+from services.graph.events import StopEvent
+from utils.parse_llm import parse_llm, parse_memory_llm, parse_memory_embedder
+from callbacks.session_callback_factory import CrewCallbackFactory
+from services.schema_converter.converter import generate_model_from_schema
+from services.run_python_code_service import RunPythonCodeService
+from services.knowledge_search_service import KnowledgeSearchService
+from utils.singleton_meta import SingletonMeta
+from services.redis_service import RedisService
 from src.shared.models import (
     AgentData,
-    ConfiguredToolData,
     CrewData,
     McpToolData,
     PythonCodeToolData,
     TaskData,
 )
 
-from src.crew.settings import PGVECTOR_MEMORY_CONFIG
+from settings import PGVECTOR_MEMORY_CONFIG
 
-from src.crew.services.crew.proxy_tool_factory import ProxyToolFactory
-from src.crew.services.crew.mcp_tool_factory import CrewaiMcpToolFactory
+from services.crew.mcp_tool_factory import CrewaiMcpToolFactory
+from services.crew.tool_factories import PythonCodeToolFactory
 
 
 class CrewParserService(metaclass=SingletonMeta):
@@ -41,11 +40,8 @@ class CrewParserService(metaclass=SingletonMeta):
         mcp_tool_factory: CrewaiMcpToolFactory,
     ):
         self.redis_service = redis_service
-
-        self.proxy_tool_factory = ProxyToolFactory(
-            host=manager_host,
-            port=manager_port,
-            python_code_executor_service=python_code_executor_service,
+        self.python_code_tool_factory = PythonCodeToolFactory(
+            executor=python_code_executor_service,
         )
         self.mcp_tool_factory = mcp_tool_factory
 
@@ -210,14 +206,10 @@ class CrewParserService(metaclass=SingletonMeta):
         tool_map = {}
         for base_tool_data in crew_data.tools:
             if isinstance(base_tool_data.data, PythonCodeToolData):
-                tool = self.proxy_tool_factory.create_python_code_proxy_tool(
-                    python_code_tool_data=base_tool_data.data,
+                tool = self.python_code_tool_factory.create(
+                    data=base_tool_data.data,
                     global_kwargs=global_kwargs,
                     stop_event=stop_event,
-                )
-            elif isinstance(base_tool_data.data, ConfiguredToolData):
-                tool = self.proxy_tool_factory.create_proxy_tool(
-                    tool_data=base_tool_data.data, stop_event=stop_event
                 )
             elif isinstance(base_tool_data.data, McpToolData):
                 tool = await self.mcp_tool_factory.create(

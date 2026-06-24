@@ -1,6 +1,5 @@
 from rest_framework import serializers
 
-from tables.serializers.model_serializers.llm_serializers import LLMConfigSerializer
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.models.crew_models import Crew
 from tables.serializers.model_serializers.crew_serializers import (
@@ -14,7 +13,6 @@ from tables.models.graph_models import (
     CrewNode,
     Edge,
     FileExtractorNode,
-    LLMNode,
     PythonNode,
     SubGraphNode,
     TaskNode,
@@ -70,17 +68,6 @@ class AudioTranscriptionNodeSerializer(
     class Meta:
         model = AudioTranscriptionNode
         fields = "__all__"
-
-
-class LLMNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
-    class Meta:
-        model = LLMNode
-        fields = "__all__"
-
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        data["llm_config_detail"] = LLMConfigSerializer(instance.llm_config).data
-        return data
 
 
 class CodeAgentNodeSerializer(serializers.ModelSerializer):

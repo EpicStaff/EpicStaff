@@ -658,7 +658,8 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         return testArray.controls.reduce((acc: Record<string, string>, c) => {
             const key = (c.value.key as string)?.trim();
             if (key) {
-                acc[key] = previouslySaved[key] ?? '';
+                const currentFormValue = (c.value.value as string) ?? '';
+                acc[key] = previouslySaved[key] ?? currentFormValue;
             }
             return acc;
         }, {});

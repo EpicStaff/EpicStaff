@@ -11,7 +11,7 @@
       "description": "Query string to search in JSON content"
     },
     "limit": {
-      "type": "integer",
+      "type": "number",
       "description": "Optional maximum number of results"
     }
   },

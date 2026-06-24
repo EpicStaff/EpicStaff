@@ -16,7 +16,7 @@
       "default": 0.7
     },
     "limit": {
-      "type": "integer",
+      "type": "number",
       "description": "Maximum number of search results",
       "default": 5
     }

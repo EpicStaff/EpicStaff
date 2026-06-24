@@ -11,7 +11,7 @@ from redis.client import PubSub
 from redis.retry import Retry
 from redis.backoff import ExponentialBackoff
 
-from src.crew.utils.singleton_meta import SingletonMeta
+from utils.singleton_meta import SingletonMeta
 
 SESSION_STATUS_CHANNEL = os.environ.get(
     "SESSION_STATUS_CHANNEL", "sessions:session_status"
@@ -42,8 +42,12 @@ class AsyncPubSubGroup:
         self._reader_task = asyncio.create_task(self._message_reader())
 
     async def _message_reader(self):
-        try:
-            while True:
+        while True:
+            try:
+                if self._pubsub is None:
+                    self._pubsub = self._redis.pubsub()
+                    await self._pubsub.subscribe(self._channel)
+
                 msg = await self._pubsub.get_message(
                     ignore_subscribe_messages=True, timeout=0.01
                 )
@@ -53,8 +57,16 @@ class AsyncPubSubGroup:
 
                 for sub in self._subscribers:
                     await sub.update(msg)
-        except Exception as e:
-            logger.error(f"Error in AsyncPubSubGroup message reader: {e}")
+            except Exception as e:
+                logger.error(
+                    f"AsyncPubSubGroup reader disconnected, reconnecting in 1s: {e}"
+                )
+                try:
+                    await self._pubsub.close()
+                except Exception:
+                    pass
+                self._pubsub = None
+                await asyncio.sleep(1)
 
     def subscribe(self, subscriber):
         self._subscribers.append(subscriber)

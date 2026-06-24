@@ -1,6 +1,7 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
+import { StorageService } from '@shared/services';
 import { Observable, of } from 'rxjs';
-import { catchError, delay, shareReplay, switchMap, tap } from 'rxjs/operators';
+import { catchError, delay, shareReplay, tap } from 'rxjs/operators';
 
 import { EMPTY_FLOWS_FILTER, FlowsFilterState } from '../models/flow-filter.model';
 import { CreateGraphDtoRequest, GetGraphLightRequest, GraphDto, UpdateGraphDtoRequest } from '../models/graph.model';
@@ -13,7 +14,7 @@ const TEMPLATE_FLOWS: GraphDto[] = [];
 @Injectable({
     providedIn: 'root',
 })
-export class FlowsStorageService {
+export class FlowsStorageService implements StorageService {
     private readonly flowsApiService = inject(FlowsApiService);
     private readonly labelsStorage = inject(LabelsStorageService);
 
@@ -199,24 +200,26 @@ export class FlowsStorageService {
         );
     }
 
-    public patchUpdateFlow(id: number, updateData: Partial<GraphDto>): Observable<GraphDto> {
-        return this.getFlowById(id).pipe(
-            switchMap((currentFlow: GraphDto | undefined) => {
-                if (!currentFlow) throw new Error('Flow not found for patching');
-                const updatedPayload: UpdateGraphDtoRequest = {
-                    id: currentFlow.id,
-                    name: updateData.name || currentFlow.name,
-                    description: updateData.description || currentFlow.description,
-                    metadata: updateData.metadata || currentFlow.metadata,
-                    tags: updateData.tags || currentFlow.tags || [],
-                };
-                return this.updateFlow(updatedPayload);
+    public patchUpdateFlow(id: number, updateData: Partial<GraphDto>, saveVersion: number): Observable<GraphDto> {
+        return this.flowsApiService.patchGraph(id, { ...updateData, save_version: saveVersion }).pipe(
+            tap((updatedFlow) => {
+                const currentFlows = this.flowsSignal();
+                const index = currentFlows.findIndex((f) => f.id === updatedFlow.id);
+                if (index !== -1) {
+                    const updatedFlowsList = [...currentFlows];
+                    updatedFlowsList[index] = { ...currentFlows[index], ...updatedFlow };
+                    this.flowsSignal.set(updatedFlowsList);
+                }
             })
         );
     }
 
-    public updateFlowLabels(id: number, labelIds: number[]): Observable<GraphDto> {
-        return this.flowsApiService.patchGraph(id, { label_ids: labelIds }).pipe(
+    public updateFlowLabels(id: number, labelIds: number[], saveVersion?: number): Observable<GraphDto> {
+        const body: Partial<GraphDto> = { label_ids: labelIds };
+        if (saveVersion !== undefined) {
+            body.save_version = saveVersion;
+        }
+        return this.flowsApiService.patchGraph(id, body).pipe(
             tap((updatedFlow) => {
                 const currentFlows = this.flowsSignal();
                 const index = currentFlows.findIndex((f) => f.id === updatedFlow.id);
@@ -317,5 +320,15 @@ export class FlowsStorageService {
         } else {
             this.selectAllFlows();
         }
+    }
+
+    clear(): void {
+        this.flowsSignal.set([]);
+        this.flowsLoaded.set(false);
+        this.templatesSignal.set([]);
+        this.templatesLoaded.set(false);
+        this.filterSignal.set(EMPTY_FLOWS_FILTER);
+        this.selectMode.set(false);
+        this.selectedFlowIds.set([]);
     }
 }

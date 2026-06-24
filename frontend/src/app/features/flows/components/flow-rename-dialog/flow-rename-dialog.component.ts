@@ -13,7 +13,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
-import { finalize, map, switchMap } from 'rxjs/operators';
+import { finalize } from 'rxjs/operators';
 
 import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
 import { FlowsStorageService } from '../../services/flows-storage.service';
@@ -22,7 +22,7 @@ import { LabelDropdownComponent } from '../label-dropdown/label-dropdown.compone
 interface FlowRenameData {
     flowName: string;
     title?: string;
-    flow?: { id: number; name: string; description: string; label_ids?: number[] };
+    flow?: { id: number; name: string; description: string; label_ids?: number[]; save_version?: number };
 }
 
 @Component({
@@ -220,16 +220,12 @@ export class FlowRenameDialogComponent implements OnInit, OnDestroy {
             this.cdr.markForCheck();
 
             this.flowsStorage
-                .patchUpdateFlow(this.data.flow.id, {
-                    name: this.newName,
-                    description: this.description,
-                })
+                .patchUpdateFlow(
+                    this.data.flow.id,
+                    { name: this.newName, description: this.description, label_ids: this.selectedLabelIds },
+                    this.data.flow.save_version!
+                )
                 .pipe(
-                    switchMap((updatedFlow) =>
-                        this.flowsStorage
-                            .updateFlowLabels(updatedFlow.id, this.selectedLabelIds)
-                            .pipe(map(() => updatedFlow))
-                    ),
                     finalize(() => {
                         this.isSubmitting = false;
                         this.cdr.markForCheck();

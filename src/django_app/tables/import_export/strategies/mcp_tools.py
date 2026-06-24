@@ -27,7 +27,7 @@ class McpToolStrategy(EntityImportExportStrategy):
     def export_entity(self, instance: McpTool) -> dict:
         return self.serializer_class(instance).data
 
-    def create_entity(self, data: dict, id_mapper: IDMapper) -> McpTool:
+    def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> McpTool:
         if "name" in data:
             existing_names = McpTool.objects.values_list("name", flat=True)
             data["name"] = ensure_unique_identifier(

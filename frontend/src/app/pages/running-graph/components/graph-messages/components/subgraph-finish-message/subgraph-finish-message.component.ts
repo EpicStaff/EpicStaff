@@ -4,6 +4,7 @@ import { NgxJsonViewerModule } from 'ngx-json-viewer';
 
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import {
     FinishSubflowMessageData,
     GraphMessage,
@@ -14,7 +15,7 @@ import {
 @Component({
     selector: 'app-subgraph-finish-message',
     standalone: true,
-    imports: [CommonModule, NgxJsonViewerModule, AppSvgIconComponent],
+    imports: [CommonModule, NgxJsonViewerModule, AppSvgIconComponent, CopyButtonComponent],
     encapsulation: ViewEncapsulation.Emulated,
     animations: [expandCollapseAnimation],
     template: `
@@ -66,6 +67,7 @@ import {
                             [@expandCollapse]="isOutputExpanded ? 'expanded' : 'collapsed'"
                         >
                             <div class="output-content">
+                                <app-copy-button [text]="outputJson" />
                                 <ngx-json-viewer
                                     [json]="getOutput()"
                                     [expanded]="false"
@@ -94,6 +96,7 @@ import {
                             [@expandCollapse]="isVariablesExpanded ? 'expanded' : 'collapsed'"
                         >
                             <div class="variables-content">
+                                <app-copy-button [text]="variablesJson" />
                                 <ngx-json-viewer
                                     [json]="getVariables()"
                                     [expanded]="false"
@@ -207,6 +210,7 @@ import {
 
             .output-content,
             .variables-content {
+                position: relative;
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
                 border-radius: 8px;
@@ -214,6 +218,10 @@ import {
                 overflow: auto;
                 max-height: 400px;
                 margin-left: 23px;
+
+                &:hover app-copy-button {
+                    opacity: 1;
+                }
             }
 
             .state-history-content {
@@ -297,6 +305,14 @@ export class SubgraphFinishMessageComponent {
     isOutputExpanded = true;
     isVariablesExpanded = false;
     isStateHistoryExpanded = true;
+
+    get outputJson(): string {
+        return JSON.stringify(this.getOutput(), null, 2);
+    }
+
+    get variablesJson(): string {
+        return JSON.stringify(this.getVariables(), null, 2);
+    }
 
     toggleMessage(): void {
         this.isMessageExpanded = !this.isMessageExpanded;

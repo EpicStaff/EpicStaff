@@ -1,4 +1,5 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
+import { StorageService } from '@shared/services';
 import { Observable, of } from 'rxjs';
 import { catchError, shareReplay, tap } from 'rxjs/operators';
 
@@ -8,7 +9,7 @@ import { ProjectTagsApiService } from './project-tags-api.service';
 @Injectable({
     providedIn: 'root',
 })
-export class ProjectTagsStorageService {
+export class ProjectTagsStorageService implements StorageService {
     private readonly projectTagsApiService = inject(ProjectTagsApiService);
 
     // --- State Signals ---
@@ -97,5 +98,10 @@ export class ProjectTagsStorageService {
     public refreshTags(): void {
         this.tagsLoaded.set(false);
         this.getTags(true).subscribe();
+    }
+
+    clear(): void {
+        this.tagsSignal.set([]);
+        this.tagsLoaded.set(false);
     }
 }

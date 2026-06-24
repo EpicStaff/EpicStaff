@@ -1,0 +1,31 @@
+@if (table().rows.length > 0) {
+    <div class="table-wrapper">
+        <table class="ef-table">
+            <thead>
+                <tr>
+                    @for (col of resolvedColumns(); track col.key) {
+                        <th
+                            [class.sortable]="isSortable()"
+                            [class.sort-active]="isSortActive(col.key)"
+                            (click)="toggleSort(col.key)"
+                        >
+                            <span>{{ col.title ?? col.key }}</span>
+                            @if (isSortable() && isSortActive(col.key)) {
+                                <span class="sort-indicator">{{ sortDir() === 'asc' ? '↑' : '↓' }}</span>
+                            }
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @for (row of displayedRows(); track $index) {
+                    <tr>
+                        @for (col of resolvedColumns(); track col.key) {
+                            <td>{{ formatCell(row[col.key], col) }}</td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

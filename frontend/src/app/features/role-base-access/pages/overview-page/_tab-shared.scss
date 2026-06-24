@@ -40,16 +40,27 @@
         background: transparent;
         color: var(--inactive-purple);
         cursor: pointer;
+        transition: all 0.3s ease;
 
         &:hover {
+            color: var(--accent-color);
             border-color: var(--accent-color);
         }
+    }
+
+    // Avatar + text entity row (user, admin)
+    .user-cell {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
     }
 
     .user-info {
         display: flex;
         flex-direction: column;
         line-height: 100%;
+        min-width: 0;
     }
 
     .user-name {
@@ -58,6 +69,55 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+    }
+
+    // Overflow items row (roles, orgs, admins badges)
+    .badges-cell {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+        flex-wrap: nowrap;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    .overflow-badge {
+        display: none; // shown via inline style by OverflowItemsDirective when needed
+        align-items: center;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 12px;
+        color: var(--text-secondary-60);
+        background: var(--transparent-white-8);
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    // Date + relative time column
+    .date-cell {
+        display: flex;
+        flex-direction: column;
+        line-height: 100%;
+
+        .date {
+            font-size: 14px;
+            color: var(--text);
+        }
+
+        .relative {
+            font-size: 12px;
+            color: var(--text-secondary-60);
+        }
+    }
+
+    .cell-text {
+        font-size: 14px;
+        color: var(--text-secondary-60);
+    }
+
+    .empty-value {
+        color: var(--text-secondary-60);
     }
 
     .actions-cell {
@@ -95,6 +155,10 @@
                 background: var(--color-status-error-hover, rgba(239, 68, 68, 0.25));
                 color: var(--color-status-error, #ef4444);
             }
+        }
+
+        &--muted {
+            color: var(--text-secondary-60);
         }
     }
 }

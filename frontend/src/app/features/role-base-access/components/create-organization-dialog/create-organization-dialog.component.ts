@@ -71,7 +71,9 @@ export class CreateOrganizationDialogComponent implements OnInit {
     isUsersLoading = signal(true);
     isSubmitting = signal(false);
     selectedUsers = signal<TableRow[]>([]);
+    selectedUserIds = computed(() => new Set(this.selectedUsers().map((r) => r['id'] as number)));
     initialSelectedUserIds = signal<number[]>([]);
+    selectionIds = signal<number[]>([]);
 
     readonly columns: AppTableColumnDef[] = [
         { key: 'user', label: 'User', width: '1fr' },
@@ -94,6 +96,15 @@ export class CreateOrganizationDialogComponent implements OnInit {
 
     onSelection(items: TableRow[]): void {
         this.selectedUsers.set(items);
+    }
+
+    onRoleSelected(row: TableRow, value: unknown): void {
+        row['role'] = value;
+        const rowId = row['id'] as number;
+        const currentIds = this.selectedUsers().map((r) => r['id'] as number);
+        if (!currentIds.includes(rowId)) {
+            this.selectionIds.set([...currentIds, rowId]);
+        }
     }
 
     onCancel(): void {
@@ -184,6 +195,7 @@ export class CreateOrganizationDialogComponent implements OnInit {
                             .filter((u) => u.memberships.some((m) => m.organization.id === this.organizationId))
                             .map((u) => u.id);
                         this.initialSelectedUserIds.set(preselected);
+                        this.selectionIds.set(preselected);
                     }
 
                     this.isUsersLoading.set(false);

@@ -22,7 +22,7 @@
       "default": null
     },
     "port": {
-      "type": "integer",
+      "type": "number",
       "description": "Database port number",
       "default": null
     },
@@ -47,12 +47,12 @@
       "default": null
     },
     "pool_size": {
-      "type": "integer",
+      "type": "number",
       "description": "Maximum number of connections in the pool",
       "default": 5
     },
     "max_overflow": {
-      "type": "integer",
+      "type": "number",
       "description": "Maximum overflow connections beyond pool size",
       "default": 10
     },

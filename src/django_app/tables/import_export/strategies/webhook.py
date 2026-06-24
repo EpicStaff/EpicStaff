@@ -22,7 +22,7 @@ class WebhookTriggerStrategy(EntityImportExportStrategy):
     def export_entity(self, instance: Any) -> dict:
         return self.serializer_class(instance).data
 
-    def create_entity(self, data: dict, id_mapper: IDMapper) -> Any:
+    def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> Any:
         serializer = self.serializer_class(data=data)
         serializer.is_valid(raise_exception=True)
         return serializer.save()

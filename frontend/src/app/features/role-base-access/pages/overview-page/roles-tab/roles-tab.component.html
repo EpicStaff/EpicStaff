@@ -1,0 +1,84 @@
+<div class="toolbar">
+    <app-search
+        placeholder="Search..."
+        [width]="'240px'"
+        [(searchTerm)]="searchTerm"
+    />
+    <span class="count-label">{{ filteredRoles().length }} of {{ rolesService.roles().length }} roles</span>
+    <div class="toolbar-actions">
+        <!-- TODO: re-enable when custom role CRUD is available on the backend -->
+        <!--
+        <app-button
+            type="primary"
+            leftIcon="plus"
+            (click)="onCreateRole()"
+        >
+            Create Role
+        </app-button>
+        -->
+    </div>
+</div>
+
+<app-table
+    [columns]="columns"
+    [data]="filteredRoles()"
+    [selectable]="false"
+    rowId="id"
+>
+    <!-- ROLE NAME -->
+    <ng-template
+        appTableCell="name"
+        let-row
+    >
+        <span class="role-name">{{ row['name'] }}</span>
+    </ng-template>
+
+    <!-- DESCRIPTION -->
+    <ng-template
+        appTableCell="description"
+        let-row
+    >
+        <span class="description-text">{{ row['description'] }}</span>
+    </ng-template>
+
+    <!-- MEMBERS -->
+    <ng-template
+        appTableCell="members"
+        let-row
+    >
+        <span class="cell-text">{{ row['members'] }}</span>
+    </ng-template>
+
+    <!-- ACTIONS -->
+    <ng-template
+        appTableCell="actions"
+        let-row
+    >
+        <div class="actions-cell">
+            <button
+                class="action-btn"
+                type="button"
+                title="View"
+                (click)="onViewRole(row)"
+            >
+                <app-svg-icon
+                    icon="eye"
+                    size="16px"
+                />
+            </button>
+            @if (!row['isBuiltIn']) {
+                <button
+                    class="action-btn danger"
+                    type="button"
+                    title="Delete"
+                    (click)="onDeleteRole(row)"
+                >
+                    <app-svg-icon
+                        icon="trash"
+                        size="16px"
+                    />
+                </button>
+            }
+        </div>
+    </ng-template>
+</app-table>

@@ -447,28 +447,6 @@ def create_crew_node(
     return response.json()["id"]
 
 
-def create_llm_node(
-    llm_config_id: int,
-    node_name: str,
-    graph_id: int,
-    input_map: dict,
-    output_variable_path: str | None = None,
-) -> int:
-    llm_node_data = {
-        "llm_config": llm_config_id,
-        "node_name": node_name,
-        "graph": graph_id,
-        "input_map": input_map,
-        "output_variable_path": output_variable_path,
-    }
-
-    response = requests.post(
-        f"{DJANGO_URL}/llmnodes/", json=llm_node_data, headers={"Host": rhost}
-    )
-    validate_response(response)
-    return response.json()["id"]
-
-
 def create_edge(start_key: str, end_key: str, graph: int) -> int:
     edge_data = {"start_key": start_key, "end_key": end_key, "graph": graph}
 

@@ -4,6 +4,7 @@ from django.db import models
 
 
 class ResourceType(models.TextChoices):
+    ORGANIZATIONS = "organizations", "Organizations"
     FLOWS = "flows", "Flows"
     AGENTS = "agents", "Agents"
     TOOLS = "tools", "Tools"
@@ -22,7 +23,7 @@ class Permission(IntFlag):
     UPDATE = 4
     DELETE = 8
     EXPORT = 16
-    DOWNLOAD = 32
+    # 32 retired (was DOWNLOAD; folded into EXPORT — same logic).
     USE = 64
     LIST = 128
 

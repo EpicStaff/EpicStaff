@@ -6,17 +6,26 @@ from pathlib import Path
 from datetime import datetime
 
 from common import (
-    api_get, api_get_page, _get_graph, _get_cdt_nodes,
-    _discover_files, _read_from_file, _read_from_db, _read_from_metadata,
-    _canonical_json, _oc_curl,
+    api_get,
+    api_get_page,
+    _get_graph,
+    _get_cdt_nodes,
+    _discover_files,
+    _read_from_file,
+    _read_from_db,
+    _read_from_metadata,
+    _canonical_json,
+    _oc_curl,
     build_id_to_name_map,
-    FLOWS_DIR, _flows_dir,
+    FLOWS_DIR,
+    _flows_dir,
 )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Flow Inspection
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def cmd_list(args):
     """List all flows."""
@@ -34,9 +43,11 @@ def cmd_get(args):
     print(f"Flow: [{data['id']}] {data['name']}")
     print(f"Description: {data.get('description', '—')}")
     node_types = [
-        ("start_node_list", "Start"), ("end_node_list", "End"),
-        ("python_node_list", "Python"), ("llm_node_list", "LLM"),
-        ("crew_node_list", "Crew"), ("decision_table_node_list", "Decision Table"),
+        ("start_node_list", "Start"),
+        ("end_node_list", "End"),
+        ("python_node_list", "Python"),
+        ("crew_node_list", "Crew"),
+        ("decision_table_node_list", "Decision Table"),
         ("classification_decision_table_node_list", "CDT"),
         ("webhook_trigger_node_list", "Webhook Trigger"),
         ("telegram_trigger_node_list", "Telegram Trigger"),
@@ -52,12 +63,14 @@ def cmd_nodes(args):
     """List all nodes with DB IDs."""
     graph = _get_graph(args.graph_id)
     node_lists = [
-        ("start_node_list", "start"), ("end_node_list", "end"),
-        ("python_node_list", "python"), ("crew_node_list", "crew"),
+        ("start_node_list", "start"),
+        ("end_node_list", "end"),
+        ("python_node_list", "python"),
+        ("crew_node_list", "crew"),
         ("classification_decision_table_node_list", "cdt"),
         ("decision_table_node_list", "dt"),
-        ("webhook_trigger_node_list", "webhook"), ("telegram_trigger_node_list", "telegram"),
-        ("llm_node_list", "llm"),
+        ("webhook_trigger_node_list", "webhook"),
+        ("telegram_trigger_node_list", "telegram"),
         ("code_agent_node_list", "code-agent"),
     ]
     print(f"Nodes in flow {args.graph_id}:\n")
@@ -92,15 +105,17 @@ def cmd_edges(args):
     """
     graph = _get_graph(args.graph_id)
     id_to_name = build_id_to_name_map(graph)
-    all_edges = api_get(f"/edges/")
+    all_edges = api_get("/edges/")
     if isinstance(all_edges, dict):
         all_edges = all_edges.get("results", [])
     edges = [e for e in all_edges if e.get("graph") == args.graph_id]
     print(f"DB edges for flow {args.graph_id} ({len(edges)}):\n")
     for e in edges:
-        src = id_to_name.get(e['start_node_id'], f"?#{e['start_node_id']}")
-        tgt = id_to_name.get(e['end_node_id'], f"?#{e['end_node_id']}")
-        print(f"  {src} → {tgt}  (id={e['id']}, {e['start_node_id']}→{e['end_node_id']})")
+        src = id_to_name.get(e["start_node_id"], f"?#{e['start_node_id']}")
+        tgt = id_to_name.get(e["end_node_id"], f"?#{e['end_node_id']}")
+        print(
+            f"  {src} → {tgt}  (id={e['id']}, {e['start_node_id']}→{e['end_node_id']})"
+        )
 
 
 def cmd_connections(args):
@@ -121,9 +136,13 @@ def cmd_connections(args):
     if ce_list:
         print(f"\nConditional edges ({len(ce_list)}):\n")
         for ce in ce_list:
-            src = id_to_name.get(ce.get("source_node_id"), f"?#{ce.get('source_node_id')}")
+            src = id_to_name.get(
+                ce.get("source_node_id"), f"?#{ce.get('source_node_id')}"
+            )
             then = id_to_name.get(ce.get("then_node_id"), f"?#{ce.get('then_node_id')}")
-            print(f"  {src} → {then}  (ce id={ce['id']}, condition={ce.get('condition', '?')})")
+            print(
+                f"  {src} → {then}  (ce id={ce['id']}, condition={ce.get('condition', '?')})"
+            )
 
     # DT condition group routing
     dt_types = [
@@ -138,7 +157,9 @@ def cmd_connections(args):
             print(f"\n{label} '{dt['node_name']}' routing:")
             for g in groups:
                 next_node = g.get("next_node", "")
-                print(f"  [{g.get('order','-')}] {g.get('group_name','?')} → {next_node or '(empty)'}")
+                print(
+                    f"  [{g.get('order','-')}] {g.get('group_name','?')} → {next_node or '(empty)'}"
+                )
             default = dt.get("default_next_node")
             error = dt.get("next_error_node")
             if default:
@@ -150,7 +171,6 @@ def cmd_connections(args):
 def cmd_route_map(args):
     """Verify CDT/DT route maps from DB condition groups."""
     graph = _get_graph(args.graph_id)
-    id_to_name = build_id_to_name_map(graph)
 
     dt_types = [
         ("classification_decision_table_node_list", "CDT"),
@@ -179,7 +199,9 @@ def cmd_route_map(args):
             else:
                 has_groups = len(groups) > 0
                 if has_groups:
-                    print(f"  ⚠️  {label} '{db_name}': has {len(groups)} groups but no next_node routing")
+                    print(
+                        f"  ⚠️  {label} '{db_name}': has {len(groups)} groups but no next_node routing"
+                    )
                     all_ok = False
                 else:
                     print(f"  ℹ️  {label} '{db_name}': no condition groups")
@@ -202,6 +224,7 @@ def cmd_route_map(args):
 # ═══════════════════════════════════════════════════════════════════════════
 # CDT Operations
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def cmd_cdt(args):
     """Show CDT node details."""
@@ -277,7 +300,7 @@ def cmd_cdt_prompts(args):
             rv = pdata.get("result_variable", "")
             llm = pdata.get("llm_id", "")
             pt = (pdata.get("prompt_text", "") or "")[:80]
-            print(f"  {pid}: result_variable=\"{rv}\" llm_id={llm}")
+            print(f'  {pid}: result_variable="{rv}" llm_id={llm}')
             print(f"    prompt: {pt}...")
 
 
@@ -286,9 +309,17 @@ def cmd_cdt_prompts(args):
 # ═══════════════════════════════════════════════════════════════════════════
 
 INTERESTING_OUTPUT_KEYS = [
-    "user_message_text", "route_code", "route_label", "is_leader",
-    "raw", "message_id_already_seen", "chat_id", "result",
-    "start_route_code", "end_route_code", "stage",
+    "user_message_text",
+    "route_code",
+    "route_label",
+    "is_leader",
+    "raw",
+    "message_id_already_seen",
+    "chat_id",
+    "result",
+    "start_route_code",
+    "end_route_code",
+    "stage",
 ]
 COMPACT_SKIP_TYPES = {"condition_group", "condition_group_manipulation"}
 
@@ -304,7 +335,7 @@ def _format_output(out, max_len=120):
             if k in out:
                 v = str(out[k])
                 if len(v) > max_len:
-                    v = v[:max_len - 3] + "..."
+                    v = v[: max_len - 3] + "..."
                 parts.append(f"{k}={v}")
         if parts:
             return " | ".join(parts)
@@ -342,7 +373,7 @@ def _print_session(session_id, messages, compact=False, json_mode=False):
     print(f"\n{'='*80}")
     print(f"SESSION {session_id}  ({len(messages)} messages)")
     if trigger_text:
-        print(f"User message: \"{trigger_text}\"")
+        print(f'User message: "{trigger_text}"')
     print(f"{'='*80}")
 
     for m in messages:
@@ -397,16 +428,23 @@ def cmd_sessions(args):
     print(f"Last {len(sessions)} sessions ({scope}):")
     for s in sessions:
         graph_label = f" flow={s.get('graph','?')}" if not args.graph_id else ""
-        print(f"  Session {s['id']}:{graph_label} status={s['status']}, created={s.get('created_at','?')[:19]}")
+        print(
+            f"  Session {s['id']}:{graph_label} status={s['status']}, created={s.get('created_at','?')[:19]}"
+        )
     for s in reversed(sessions):
-        msgs = api_get("/graph-session-messages/", {"session_id": s["id"], "ordering": "id", "limit": 100})
+        msgs = api_get(
+            "/graph-session-messages/",
+            {"session_id": s["id"], "ordering": "id", "limit": 100},
+        )
         _print_session(s["id"], msgs, compact=args.compact, json_mode=args.json)
 
 
 def cmd_session(args):
     """Show specific session(s)."""
     for sid in args.session_ids:
-        msgs = api_get("/graph-session-messages/", {"session_id": sid, "ordering": "id"})
+        msgs = api_get(
+            "/graph-session-messages/", {"session_id": sid, "ordering": "id"}
+        )
         if not msgs:
             print(f"\nSession {sid}: no messages found")
             continue
@@ -415,9 +453,11 @@ def cmd_session(args):
 
 def cmd_session_inspect(args):
     """Inspect what each node received as input and produced as output."""
-    full = getattr(args, 'full', False)
+    full = getattr(args, "full", False)
     for sid in args.session_ids:
-        msgs = api_get("/graph-session-messages/", {"session_id": sid, "ordering": "id"})
+        msgs = api_get(
+            "/graph-session-messages/", {"session_id": sid, "ordering": "id"}
+        )
         if not msgs:
             print(f"\nSession {sid}: no messages found")
             continue
@@ -444,7 +484,11 @@ def cmd_session_inspect(args):
                 print(f"\n  {name} (output):")
                 for k, v in out.items():
                     if full:
-                        vstr = json.dumps(v, indent=2, default=str) if isinstance(v, (dict, list)) else str(v)
+                        vstr = (
+                            json.dumps(v, indent=2, default=str)
+                            if isinstance(v, (dict, list))
+                            else str(v)
+                        )
                     else:
                         vstr = str(v)
                         if len(vstr) > 120:
@@ -460,7 +504,9 @@ def cmd_session_inspect(args):
 def cmd_session_timings(args):
     """Show per-node timing breakdown for session(s)."""
     for sid in args.session_ids:
-        msgs = api_get("/graph-session-messages/", {"session_id": sid, "ordering": "id"})
+        msgs = api_get(
+            "/graph-session-messages/", {"session_id": sid, "ordering": "id"}
+        )
         if not msgs:
             print(f"\nSession {sid}: no messages found")
             continue
@@ -500,7 +546,6 @@ def cmd_session_timings(args):
             ts = e["ts"]
             mtype = e["type"]
             name = e["name"]
-            offset_s = (ts - t0).total_seconds()
             delta_ms = (ts - prev_ts).total_seconds() * 1000 if prev_ts else 0
             prev_ts = ts
 
@@ -516,7 +561,7 @@ def cmd_session_timings(args):
                 node_durations[name] = node_durations.get(name, 0) + dur
 
         if node_durations:
-            print(f"\n  Node durations:")
+            print("\n  Node durations:")
             for name, dur in sorted(node_durations.items(), key=lambda x: -x[1]):
                 pct = (dur / total_s * 100) if total_s > 0 else 0
                 bar = "█" * int(pct / 2)
@@ -590,7 +635,9 @@ def cmd_history(args):
 
 def cmd_trace(args):
     """Trace message_history through a session."""
-    msgs = api_get("/graph-session-messages/", {"session_id": args.session_id, "ordering": "id"})
+    msgs = api_get(
+        "/graph-session-messages/", {"session_id": args.session_id, "ordering": "id"}
+    )
     if not msgs:
         print(f"No messages for session {args.session_id}")
         return
@@ -610,7 +657,9 @@ def cmd_trace(args):
 
 def cmd_crew_input(args):
     """Show Crew node input/output."""
-    msgs = api_get("/graph-session-messages/", {"session_id": args.session_id, "ordering": "id"})
+    msgs = api_get(
+        "/graph-session-messages/", {"session_id": args.session_id, "ordering": "id"}
+    )
     if not msgs:
         print(f"No messages for session {args.session_id}")
         return
@@ -620,7 +669,9 @@ def cmd_crew_input(args):
         md = m.get("message_data", {})
         mtype = md.get("message_type", "")
         name = m.get("name", "?")
-        if mtype == "start" and ("reply" in name.lower() or "crew" in name.lower() or "#" in name):
+        if mtype == "start" and (
+            "reply" in name.lower() or "crew" in name.lower() or "#" in name
+        ):
             inp = md.get("input", {})
             if not isinstance(inp, dict):
                 continue
@@ -650,6 +701,7 @@ def cmd_crew_input(args):
 # ═══════════════════════════════════════════════════════════════════════════
 # Verify / Export compare
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def cmd_verify(args):
     """Three-way verify: file <-> DB <-> metadata."""
@@ -682,21 +734,32 @@ def cmd_verify(args):
                 file_db = fj == dj
                 file_meta = fj == mj if mj else False
                 db_meta = dj == mj if mj else False
-            s = lambda ok: "✅" if ok else "❌"
-            target = f"CDT '{node_name}'" if spec.kind == "cdt" else f"Python '{node_name}'"
+
+            def s(ok):
+                return "✅" if ok else "❌"
+
+            target = (
+                f"CDT '{node_name}'" if spec.kind == "cdt" else f"Python '{node_name}'"
+            )
             print(f"  {fname} → {target}")
-            print(f"      File↔DB={s(file_db)}  File↔Meta={s(file_meta)}  DB↔Meta={s(db_meta)}")
+            print(
+                f"      File↔DB={s(file_db)}  File↔Meta={s(file_meta)}  DB↔Meta={s(db_meta)}"
+            )
             if file_db and file_meta and db_meta:
                 total_ok += 1
             else:
                 total_issues += 1
                 if verbose and isinstance(file_data, str) and not file_db:
-                    print(f"      File↔DB: file_len={len(file_data)} db_len={len(db_data or '')}")
+                    print(
+                        f"      File↔DB: file_len={len(file_data)} db_len={len(db_data or '')}"
+                    )
         except Exception as e:
             print(f"  ❌ {Path(spec.path).name}: {e}")
             total_issues += 1
     print(f"\n{'─'*50}")
-    print(f"  Checked: {total_ok + total_issues}  Synced: {total_ok}  Issues: {total_issues}")
+    print(
+        f"  Checked: {total_ok + total_issues}  Synced: {total_ok}  Issues: {total_issues}"
+    )
     if total_issues:
         print("  Run 'push' to sync, or 'pull' to update local files.")
         sys.exit(1)
@@ -732,7 +795,10 @@ def cmd_export_compare(args):
             detail = "" if match else f" code: {len(e_code)}c vs {len(c_code)}c"
             print(f"  {status} {name}{detail}")
 
-    export_cdt = {n["node_name"]: n for n in export.get("classification_decision_table_node_list", [])}
+    export_cdt = {
+        n["node_name"]: n
+        for n in export.get("classification_decision_table_node_list", [])
+    }
     current_cdts = _get_cdt_nodes(graph_id)
     current_cdt = {n["node_name"]: n for n in current_cdts}
     print(f"\nCDT nodes: export={len(export_cdt)} current={len(current_cdt)}")
@@ -744,14 +810,20 @@ def cmd_export_compare(args):
             print(f"  ➕ {name}: IN CURRENT ONLY")
         else:
             issues = []
-            eg, cg = len(e.get("condition_groups", [])), len(c.get("condition_groups", []))
+            eg, cg = (
+                len(e.get("condition_groups", [])),
+                len(c.get("condition_groups", [])),
+            )
             if eg != cg:
                 issues.append(f"groups: {eg} vs {cg}")
             ep = len(e.get("prompts", {})), len(c.get("prompts", {}))
             if ep[0] != ep[1]:
                 issues.append(f"prompts: {ep[0]} vs {ep[1]}")
             for field in ("pre_computation_code", "post_computation_code"):
-                el, cl = len((e.get(field) or "").strip()), len((c.get(field) or "").strip())
+                el, cl = (
+                    len((e.get(field) or "").strip()),
+                    len((c.get(field) or "").strip()),
+                )
                 if el != cl:
                     short = field.replace("_computation_code", "")
                     issues.append(f"{short}: {el} vs {cl}")
@@ -764,7 +836,7 @@ def cmd_export_compare(args):
             print(f"  {status} {name}: {' | '.join(issues) if issues else 'identical'}")
 
     export_edges = export.get("edge_list", [])
-    current_edges = api_get(f"/edges/", {"graph": graph_id})
+    current_edges = api_get("/edges/", {"graph": graph_id})
     if isinstance(current_edges, dict):
         current_edges = current_edges.get("results", [])
     print(f"\nEdges: export={len(export_edges)} current={len(current_edges)}")
@@ -773,6 +845,7 @@ def cmd_export_compare(args):
 # ═══════════════════════════════════════════════════════════════════════════
 # OpenCode read operations
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def cmd_oc_status(args):
     """Show OpenCode session statuses (idle/busy)."""
@@ -808,6 +881,7 @@ def cmd_oc_sessions(args):
         status = statuses.get(sid, {}).get("type", "idle")
         if updated:
             from datetime import datetime
+
             ts = datetime.fromtimestamp(updated / 1000).strftime("%Y-%m-%d %H:%M:%S")
         else:
             ts = "?"
@@ -816,6 +890,7 @@ def cmd_oc_sessions(args):
         stale_mark = ""
         if status != "idle" and updated:
             import time as _time
+
             age_min = (_time.time() * 1000 - updated) / 60000
             if age_min > 5:
                 stale_mark = f" ⚠️  STALE ({age_min:.0f}min since last update)"
@@ -914,7 +989,9 @@ def cmd_oc_session(args):
 
     # No data found
     if oc_sid:
-        print(f"No messages found for OC session {oc_sid} (container may have been rebuilt).")
+        print(
+            f"No messages found for OC session {oc_sid} (container may have been rebuilt)."
+        )
         if not es_sid:
             print("Tip: pass an EpicStaff session ID (numeric) to use Django fallback.")
     else:
@@ -970,7 +1047,7 @@ def _print_oc_session_from_oc(oc_sid, msgs, es_sid=None):
                         print(text[:1000])
                         print(f"  [...truncated, {len(text)} chars total]")
                     else:
-                        print(f"  📝 Answer:")
+                        print("  📝 Answer:")
                         print(text)
                 elif pt == "tool":
                     state = p.get("state", {}) or {}
@@ -1022,8 +1099,6 @@ def _print_oc_session_from_django(es_sid, oc_sid=None):
             inp = md.get("input", {})
             if isinstance(inp, dict):
                 prompt = inp.get("prompt", "")
-                tools_mode = inp.get("tools", "")
-                action = inp.get("action", "")
 
         elif mt == "code_agent_stream":
             text = md.get("text", "")
@@ -1039,7 +1114,7 @@ def _print_oc_session_from_django(es_sid, oc_sid=None):
     # Print prompt
     if prompt:
         print(f"{'─' * 60}")
-        print(f"👤 PROMPT")
+        print("👤 PROMPT")
         print(f"{'─' * 60}")
         if len(prompt) > 500:
             print(f"{prompt[:500]}...")
@@ -1082,7 +1157,7 @@ def _print_oc_session_from_django(es_sid, oc_sid=None):
     # Print output metadata
     if output_data and isinstance(output_data, dict):
         print(f"{'─' * 60}")
-        print(f"📊 OUTPUT")
+        print("📊 OUTPUT")
         print(f"{'─' * 60}")
         for k, v in output_data.items():
             if k == "message":
@@ -1101,6 +1176,7 @@ def _print_oc_session_from_django(es_sid, oc_sid=None):
 # ═══════════════════════════════════════════════════════════════════════════
 # Flow Testing (structural)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def cmd_test_flow(args):
     """Verify flow structure: nodes, edges, connections, CDT groups, local files."""
@@ -1141,7 +1217,6 @@ def cmd_test_flow(args):
         "cdt": graph.get("classification_decision_table_node_list", []),
         "dt": graph.get("decision_table_node_list", []),
         "crew": graph.get("crew_node_list", []),
-        "llm": graph.get("llm_node_list", []),
         "code-agent": graph.get("code_agent_node_list", []),
         "file-extractor": graph.get("file_extractor_node_list", []),
         "audio": graph.get("audio_transcription_node_list", []),
@@ -1168,8 +1243,8 @@ def cmd_test_flow(args):
     if verbose:
         id_to_name = build_id_to_name_map(graph)
         for e in edges:
-            src = id_to_name.get(e.get('start_node_id'), f"?#{e.get('start_node_id')}")
-            tgt = id_to_name.get(e.get('end_node_id'), f"?#{e.get('end_node_id')}")
+            src = id_to_name.get(e.get("start_node_id"), f"?#{e.get('start_node_id')}")
+            tgt = id_to_name.get(e.get("end_node_id"), f"?#{e.get('end_node_id')}")
             print(f"      {src} \u2192 {tgt}")
 
     # 4. Node metadata (positions) — each node should have its own metadata field
@@ -1182,9 +1257,16 @@ def cmd_test_flow(args):
                 nodes_with_pos += 1
             else:
                 nodes_without_pos.append(n.get("node_name", "?"))
-    _check("Node metadata (positions)", nodes_with_pos > 0 or total_nodes == 0,
-           f"{nodes_with_pos}/{total_nodes} nodes have positions" +
-           (f" — missing: {', '.join(nodes_without_pos[:5])}" if nodes_without_pos else ""))
+    _check(
+        "Node metadata (positions)",
+        nodes_with_pos > 0 or total_nodes == 0,
+        f"{nodes_with_pos}/{total_nodes} nodes have positions"
+        + (
+            f" — missing: {', '.join(nodes_without_pos[:5])}"
+            if nodes_without_pos
+            else ""
+        ),
+    )
 
     # 5. Edge node IDs vs known node IDs
     all_node_ids = set()
@@ -1193,14 +1275,17 @@ def cmd_test_flow(args):
             all_node_ids.add(n.get("id"))
     bad_edges = []
     for e in edges:
-        sid = e.get('start_node_id')
-        eid = e.get('end_node_id')
+        sid = e.get("start_node_id")
+        eid = e.get("end_node_id")
         if sid not in all_node_ids:
             bad_edges.append(f"unknown source id: {sid}")
         if eid not in all_node_ids:
             bad_edges.append(f"unknown target id: {eid}")
-    _check("All edge endpoints are valid nodes", len(bad_edges) == 0,
-           "; ".join(bad_edges[:3]) if bad_edges else "")
+    _check(
+        "All edge endpoints are valid nodes",
+        len(bad_edges) == 0,
+        "; ".join(bad_edges[:3]) if bad_edges else "",
+    )
 
     # 6. CDT groups
     cdt_nodes = graph.get("classification_decision_table_node_list", [])
@@ -1221,7 +1306,9 @@ def cmd_test_flow(args):
         has_sessions = isinstance(sessions, list) and len(sessions) > 0
     except Exception:
         has_sessions = False
-    print(f"  {'i'} INFO  Has session history  \u2014 {'yes' if has_sessions else 'no sessions yet'}")
+    print(
+        f"  {'i'} INFO  Has session history  \u2014 {'yes' if has_sessions else 'no sessions yet'}"
+    )
 
     # 9. Three-way verify (optional)
     if do_verify:
@@ -1244,30 +1331,43 @@ def cmd_test_flow(args):
                             if file_data.strip() != (db_data or "").strip():
                                 mismatches += 1
                                 if verbose:
-                                    print(f"      MISMATCH (file vs DB): {Path(spec.path).name}")
+                                    print(
+                                        f"      MISMATCH (file vs DB): {Path(spec.path).name}"
+                                    )
                             if meta_data and file_data.strip() != meta_data.strip():
                                 mismatches += 1
                                 if verbose:
-                                    print(f"      MISMATCH (file vs metadata): {Path(spec.path).name}")
+                                    print(
+                                        f"      MISMATCH (file vs metadata): {Path(spec.path).name}"
+                                    )
                         else:
                             fj = _canonical_json(file_data)
                             dj = _canonical_json(db_data)
                             if fj != dj:
                                 mismatches += 1
                                 if verbose:
-                                    print(f"      MISMATCH (file vs DB): {Path(spec.path).name}")
+                                    print(
+                                        f"      MISMATCH (file vs DB): {Path(spec.path).name}"
+                                    )
                             if meta_data:
                                 mj = _canonical_json(meta_data)
                                 if fj != mj:
                                     mismatches += 1
                                     if verbose:
-                                        print(f"      MISMATCH (file vs metadata): {Path(spec.path).name}")
+                                        print(
+                                            f"      MISMATCH (file vs metadata): {Path(spec.path).name}"
+                                        )
                     except Exception as e:
                         mismatches += 1
                         if verbose:
                             print(f"      ERROR: {Path(spec.path).name}: {e}")
-                _check("Local files match DB + metadata", mismatches == 0,
-                       f"{mismatches} mismatches" if mismatches else f"{len(specs)} files checked")
+                _check(
+                    "Local files match DB + metadata",
+                    mismatches == 0,
+                    f"{mismatches} mismatches"
+                    if mismatches
+                    else f"{len(specs)} files checked",
+                )
             else:
                 _check("Local files exist", False, f"no recognized files at {flow_dir}")
         else:

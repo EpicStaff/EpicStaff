@@ -1,6 +1,5 @@
 from tables.graph_versioning.handlers import (
     CrewNodeHandler,
-    LLMNodeHandler,
     SubgraphNodeHandler,
     CodeAgentNodeHandler,
     WebhookTriggerNodeHandler,
@@ -59,76 +58,6 @@ def test_crew_handler_warning_has_no_node_id_field(crew_node_dict):
     handler = CrewNodeHandler()
 
     _, warning = handler.handle(crew_node_dict, missing_id=crew_node_dict["crew"])
-
-    assert "node_id" not in warning
-
-
-# ---------------------------------------------------------------------------
-# LLMNodeHandler
-# ---------------------------------------------------------------------------
-
-
-def test_llm_handler_finds_missing_id(llm_node_dict, full_missing_sets):
-    # Arrange
-    handler = LLMNodeHandler()
-
-    # Act
-    missing_id = handler.find_missing_id(llm_node_dict, full_missing_sets)
-
-    # Assert
-    assert missing_id == llm_node_dict["llm_config"]
-
-
-def test_llm_handler_returns_none_when_dep_available(llm_node_dict, empty_missing_sets):
-    # Arrange
-    handler = LLMNodeHandler()
-
-    # Act
-    missing_id = handler.find_missing_id(llm_node_dict, empty_missing_sets)
-
-    # Assert
-    assert missing_id is None
-
-
-def test_llm_handler_handle_returns_should_skip_true(llm_node_dict):
-    # Arrange
-    handler = LLMNodeHandler()
-
-    # Act
-    should_skip, _ = handler.handle(
-        llm_node_dict, missing_id=llm_node_dict["llm_config"]
-    )
-
-    # Assert
-    assert should_skip is True
-
-
-def test_llm_handler_warning_type_is_node_skipped(llm_node_dict):
-    # Arrange
-    handler = LLMNodeHandler()
-
-    # Act
-    _, warning = handler.handle(llm_node_dict, missing_id=llm_node_dict["llm_config"])
-
-    # Assert
-    assert warning["type"] == "node_skipped"
-
-
-def test_llm_handler_warning_contains_dependency_label(llm_node_dict):
-    # Arrange
-    handler = LLMNodeHandler()
-
-    # Act
-    _, warning = handler.handle(llm_node_dict, missing_id=llm_node_dict["llm_config"])
-
-    # Assert
-    assert "LLMConfig" in warning["reason"]
-
-
-def test_llm_handler_warning_has_no_node_id_field(llm_node_dict):
-    handler = LLMNodeHandler()
-
-    _, warning = handler.handle(llm_node_dict, missing_id=llm_node_dict["llm_config"])
 
     assert "node_id" not in warning
 
@@ -430,10 +359,9 @@ def test_telegram_trigger_handler_warning_fields(telegram_trigger_node_dict):
 # ---------------------------------------------------------------------------
 
 
-def test_handler_registry_contains_all_six_node_types():
+def test_handler_registry_contains_all_five_node_types():
     expected_types = {
         NodeType.CREW_NODE,
-        NodeType.LLM_NODE,
         NodeType.SUBGRAPH_NODE,
         NodeType.CODE_AGENT_NODE,
         NodeType.WEBHOOK_TRIGGER_NODE,
@@ -445,10 +373,6 @@ def test_handler_registry_contains_all_six_node_types():
 
 def test_handler_registry_crew_node_maps_to_crew_handler():
     assert isinstance(HANDLER_REGISTRY[NodeType.CREW_NODE], CrewNodeHandler)
-
-
-def test_handler_registry_llm_node_maps_to_llm_handler():
-    assert isinstance(HANDLER_REGISTRY[NodeType.LLM_NODE], LLMNodeHandler)
 
 
 def test_handler_registry_subgraph_node_maps_to_subgraph_handler():

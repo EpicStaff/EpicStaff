@@ -323,11 +323,13 @@ tr.preview-row td.preview-cell {
         --message-padding: 0.5rem 1rem;
     }
 
-    max-height: 500px;
-    overflow-y: auto;
+    --graph-messages-host-height: auto;
+    --graph-messages-container-height: auto;
+    --graph-messages-max-height: 500px;
+
     border-top: 1px solid var(--border-color, #2a2a3a);
     background: rgba(0, 0, 0, 0.32);
-    padding: 0;
+    padding: 5px;
 }
 
 .view-btn--active {

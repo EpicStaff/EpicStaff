@@ -32,3 +32,8 @@ from .agent_models import (
     Surface,
     ResolvedSurface,
 )
+from .flow_assistant_models import (
+    FlowAssistant,
+    FlowAssistantConversation,
+    FlowAssistantMessage,
+)

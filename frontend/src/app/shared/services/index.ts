@@ -1,3 +1,4 @@
+export * from './app-storage.service';
 export * from './dropdown-manager.service';
 export * from './embeddings/embedding-config-storage.service';
 export * from './embeddings/embedding-configs.service';

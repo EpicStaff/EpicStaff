@@ -2,6 +2,7 @@ import {
     AfterViewInit,
     ChangeDetectionStrategy,
     Component,
+    computed,
     DestroyRef,
     inject,
     input,
@@ -11,14 +12,18 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { RadioButtonComponent, SelectItem } from '@shared/components';
-import { MATERIAL_FORMS } from '@shared/material-forms';
 import { EMPTY, merge, Observable, skip } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, switchMap, tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
-import { CollectionGraphRag, CreateGraphRagIndexConfigRequest, GraphRagFileType } from '../../models/graph-rag.model';
+import {
+    CollectionGraphRag,
+    CreateGraphRagIndexConfigRequest,
+    GraphRagDocument,
+    GraphRagFileType,
+} from '../../models/graph-rag.model';
 import { RagConfiguration } from '../../models/rag-configuration';
 import { GraphRagService } from '../../services/graph-rag.service';
 import { GraphRagFilesListComponent } from './files-list/files-list.component';
@@ -32,7 +37,6 @@ import { AppGraphRagParametersComponent } from './index-parameters/index-paramet
     imports: [
         RadioButtonComponent,
         GraphRagFilesListComponent,
-        MATERIAL_FORMS,
         AppGraphRagParametersComponent,
         AppSvgIconComponent,
         HelpTooltipComponent,
@@ -46,6 +50,8 @@ export class GraphRagConfigurationComponent implements OnInit, AfterViewInit, Ra
     graphRag = input.required<CollectionGraphRag>();
 
     selectedFormat = signal<GraphRagFileType>('text');
+    documents = signal<GraphRagDocument[]>([]);
+    hasNonTxtDocuments = computed(() => this.documents().some((doc) => !doc.file_name.endsWith('.txt')));
     format$ = toObservable(this.selectedFormat);
 
     formatOptions: SelectItem[] = [
@@ -66,8 +72,9 @@ export class GraphRagConfigurationComponent implements OnInit, AfterViewInit, Ra
     @ViewChild('indexParameters', { static: true }) indexParameters!: AppGraphRagParametersComponent;
 
     ngOnInit() {
-        const format = this.graphRag().index_config.file_type;
-        this.selectedFormat.set(format);
+        const graphRag = this.graphRag();
+        this.selectedFormat.set(graphRag.index_config.file_type);
+        this.documents.set(graphRag.documents);
     }
 
     ngAfterViewInit(): void {
@@ -94,7 +101,7 @@ export class GraphRagConfigurationComponent implements OnInit, AfterViewInit, Ra
     }
 
     getConfigurationData(): CreateGraphRagIndexConfigRequest | false {
-        if (this.indexParameters.form.invalid) {
+        if (this.indexParameters.form.invalid || !this.indexParameters.isJsonValid()) {
             this.toastService.error('Form value invalid');
             return false;
         }

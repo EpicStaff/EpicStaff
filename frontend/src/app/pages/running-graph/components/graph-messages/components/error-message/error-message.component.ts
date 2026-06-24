@@ -3,12 +3,13 @@ import { Component, Input } from '@angular/core';
 
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { GraphMessage } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-error-message',
     standalone: true,
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [CommonModule, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
         <div class="error-container">
@@ -57,6 +58,7 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
                                 class="result-content"
                                 [ngClass]="{ collapsed: isCollapsed && shouldShowToggle() }"
                             >
+                                <app-copy-button [text]="getFormattedErrorDetails()" />
                                 <pre>{{ getFormattedErrorDetails() }}</pre>
                             </div>
                             <button
@@ -188,6 +190,7 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
             }
 
             .result-content {
+                position: relative;
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
                 border-radius: 8px;
@@ -202,6 +205,10 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
 
                 &.collapsed {
                     max-height: 200px;
+                }
+
+                &:hover app-copy-button {
+                    opacity: 1;
                 }
             }
 

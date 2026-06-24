@@ -41,7 +41,7 @@ class BaseProviderModelStrategy(EntityImportExportStrategy):
             deps[self.tag_entity] = set(instance.tags.values_list("id", flat=True))
         return deps
 
-    def create_entity(self, data, id_mapper: IDMapper):
+    def create_entity(self, data, id_mapper: IDMapper, **kwargs):
         if "name" in data:
             existing_names = self.model_class.objects.values_list("name", flat=True)
             data["name"] = ensure_unique_identifier(

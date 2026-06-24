@@ -17,8 +17,10 @@ import {
     ActionDropdownItem,
     AppSvgIconComponent,
     PaginationControlsComponent,
+    SelectComponent,
+    SelectItem,
 } from '@shared/components';
-import { finalize, Observable, Subject, takeUntil } from 'rxjs';
+import { catchError, EMPTY, finalize, interval, Observable, Subject, switchMap, takeUntil } from 'rxjs';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
 import { ExportFormat, ImportExportService } from '../../../../core/services/import-export.service';
@@ -45,160 +47,9 @@ import {
         RouterModule,
         GraphMessagesComponent,
         ActionDropdownButtonComponent,
+        SelectComponent,
     ],
-    template: `<div class="global-sessions-wrapper">
-        <div class="global-sessions-header">
-            <div class="flows-prefix">
-                <app-svg-icon
-                    icon="arrow-left"
-                    size="20px"
-                    class="back-arrow"
-                />
-                <span routerLink="/flows">Flows</span>
-                <span class="slash">/All sessions</span>
-            </div>
-        </div>
-        <div class="global-sessions-content" #contentRef>
-        <div class="left-panel">
-            <div class="filter-controls">
-                <div class="right-actions">
-                    <button
-                        class="delete-btn"
-                        [class.invisible]="selectedIds().size === 0"
-                        (click)="onBulkDelete()"
-                    >
-                        Delete Selected ({{ selectedIds().size }})
-                    </button>
-                    <app-action-dropdown-button
-                            [label]="'Export (' + (selectedIds().size === 0 ? totalCount() : selectedIds().size) + ')'"
-                            [items]="exportItems"
-                            [disabled]="isDeleting() || isExporting() || (selectedIds().size === 0 && totalCount() === 0)"
-                            (mainClick)="onExport('json')"
-                            (itemClick)="onExportItemSelected($event)"
-                        />
-                    <span
-                        [class.invisible]="selectedIds().size > 0"
-                        class="results-length"
-                    >
-                        {{ totalCount() }} Results
-                    </span>
-                </div>
-            </div>
-            <div class="table-container">
-                <app-flow-sessions-table
-                    [sessions]="sessions()"
-                    [showFlowName]="true"
-                    [showDuration]="true"
-                    [sortable]="true"
-                    [sortOrder]="sortOrder()"
-                    [statusFilter]="statusFilter()"
-                    [flows]="availableFlows()"
-                    [flowNameFilter]="flowFilter()"
-                    (flowNameFilterChange)="onFlowFilterChange($event)"
-                    [durationFilter]="durationFilter()"
-                    (durationFilterChange)="onDurationFilterChange($event)"
-                    [isLoading]="!isLoaded()"
-                    [showEmptyState]="isLoaded() && sessions().length === 0"
-                    [externalPreview]="true"
-                    [selectedIds]="selectedIds()"
-                    (deleteSelected)="onDeleteSelected($event)"
-                    (viewSession)="onViewSession($event)"
-                    (stopSession)="onStopSession($event)"
-                    (sortChange)="onSortChange($event)"
-                    (statusFilterChange)="onStatusFilterChange($event)"
-                    (previewSession)="onPreviewSession($event)"
-                    (selectedIdsChange)="selectedIds.set($event)"
-                ></app-flow-sessions-table>
-            </div>
-
-                <div class="pagination-container">
-                    @if (isLoaded() && totalCount() > pageSize()) {
-                        <app-pagination-controls
-                            [pageSize]="pageSize()"
-                            [totalCount]="totalCount()"
-                            [currentPage]="currentPage()"
-                            [maxPagesToShow]="5"
-                            (pageChange)="onPageChange($event)"
-                        ></app-pagination-controls>
-                    }
-                    <label class="page-size-selector">
-                        <span>Sessions per page</span>
-                        <select
-                            [value]="pageSize()"
-                            (change)="onPageSizeChange(+$any($event.target).value)"
-                        >
-                            <option value="10">10</option>
-                            <option value="20">20</option>
-                            <option value="50">50</option>
-                        </select>
-                    </label>
-                </div>
-            </div>
-            
-            <div
-                class="panel-divider"
-                [class.panel-divider--open]="isPanelOpen()"
-                (mousedown)="isPanelOpen() && startResize($event)"
-            >
-                <button
-                    class="panel-toggle-btn"
-                    (click)="togglePanel(); $event.stopPropagation()"
-                    [title]="isPanelOpen() ? 'Close panel' : 'Open panel'"
-                >
-                    <app-svg-icon
-                        [icon]="isPanelOpen() ? 'arrow-right' : 'arrow-left'"
-                        size="12px"
-                    >
-                    </app-svg-icon>
-                </button>
-            </div>
-
-            <!-- RIGHT PANEL: session details -->
-            <div
-                class="right-panel"
-                [class.right-panel--open]="isPanelOpen()"
-                [style.width]="isPanelOpen() ? rightPanelWidth() + '%' : '0'"
-            >
-                @if (previewSession(); as session) {
-                    <div class="preview-header">
-                        <div class="preview-header-left">
-                            <div class="preview-header-icon">
-                                <app-svg-icon
-                                    icon="heartbeat"
-                                    size="18px"
-                                />
-                            </div>
-                            <span class="preview-header-title">Session execution</span>
-                        </div>
-                        <div class="preview-header-right">
-                            <span class="preview-session-id-badge">#{{ session.id }}</span>
-                            <button
-                                class="preview-open-btn"
-                                (click)="onViewSession(session.id)"
-                                title="Open session"
-                            >
-                                <app-svg-icon
-                                    icon="arrow-up-right"
-                                    size="16px"
-                                />
-                            </button>
-                        </div>
-                    </div>
-                    <div class="preview-body">
-                        <app-graph-messages
-                            [graphId]="session.graph_id"
-                            [sessionId]="session.id.toString()"
-                            [compact]="true"
-                        ></app-graph-messages>
-                    </div>
-                } @else {
-                    <div class="preview-empty">
-                        <span>Click Preview to view session details</span>
-                    </div>
-                }
-            </div>
-        </div>
-    </div>`,
+    templateUrl: './global-sessions-list.component.html',
     styleUrls: ['./global-sessions-list.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -209,6 +60,11 @@ export class GlobalSessionsListComponent {
     public isLoaded = signal<boolean>(false);
     public currentPage = signal(1);
     public pageSize = signal(10);
+    public readonly pageSizeItems: SelectItem[] = [
+        { name: '10', value: 10 },
+        { name: '20', value: 20 },
+        { name: '50', value: 50 },
+    ];
     public statusFilter = signal<string[]>(['all']);
     public sortOrder = signal<'asc' | 'desc'>('desc');
     public flowFilter = signal<string | null>(null);
@@ -227,6 +83,8 @@ export class GlobalSessionsListComponent {
     public isDeleting = signal(false);
     private reloadTrigger = signal(0);
     private cancelLoad$ = new Subject<void>();
+    private cancelPolling$ = new Subject<void>();
+    private static readonly POLL_INTERVAL_MS = 5000;
     private destroyRef = inject(DestroyRef);
 
     readonly exportItems: ActionDropdownItem[] = [
@@ -264,7 +122,11 @@ export class GlobalSessionsListComponent {
     }
 
     public togglePanel(): void {
+        const closing = this.isPanelOpen();
         this.isPanelOpen.update((v) => !v);
+        if (closing) {
+            this.previewSession.set(null);
+        }
     }
 
     public startResize(event: MouseEvent): void {
@@ -333,6 +195,7 @@ export class GlobalSessionsListComponent {
     public onPreviewSession(sessionId: number | null): void {
         if (sessionId === null) {
             this.previewSession.set(null);
+            this.isPanelOpen.set(false);
             return;
         }
         const session = this.sessions().find((s) => s.id === sessionId) ?? null;
@@ -379,6 +242,12 @@ export class GlobalSessionsListComponent {
                         ids.forEach((id) => next.delete(id));
                         return next;
                     });
+                    const previewedSession = this.previewSession();
+                    if (previewedSession && ids.includes(previewedSession.id)) {
+                        this.previewSession.set(null);
+                        this.isPanelOpen.set(false);
+                    }
+
                     const remaining = this.sessions().filter((s) => !ids.includes(s.id));
                     if (remaining.length === 0 && this.currentPage() > 1) {
                         this.currentPage.set(this.currentPage() - 1);
@@ -449,6 +318,7 @@ export class GlobalSessionsListComponent {
         durationFilter?: DurationFilter | null
     ): void {
         this.cancelLoad$.next();
+        this.cancelPolling$.next();
         this.isLoaded.set(false);
         const ordering = sort === 'asc' ? 'created_at' : '-created_at';
         this.graphSessionService
@@ -459,6 +329,7 @@ export class GlobalSessionsListComponent {
                     this.sessions.set(response.results);
                     this.totalCount.set(response.count);
                     this.isLoaded.set(true);
+                    this.startBackgroundRefresh();
                 },
                 error: () => {
                     this.totalCount.set(0);
@@ -467,6 +338,32 @@ export class GlobalSessionsListComponent {
                     this.pageSize.set(10);
                     this.currentPage.set(1);
                 },
+            });
+    }
+
+    private startBackgroundRefresh(): void {
+        interval(GlobalSessionsListComponent.POLL_INTERVAL_MS)
+            .pipe(
+                switchMap(() => {
+                    const ordering = this.sortOrder() === 'asc' ? 'created_at' : '-created_at';
+                    return this.graphSessionService
+                        .getGlobalSessions(
+                            this.pageSize(),
+                            (this.currentPage() - 1) * this.pageSize(),
+                            this.statusFilter(),
+                            ordering,
+                            this.flowFilter(),
+                            this.isErrorCauseFilter(),
+                            this.durationFilter()
+                        )
+                        .pipe(catchError(() => EMPTY));
+                }),
+                takeUntil(this.cancelPolling$),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((response) => {
+                this.sessions.set(response.results);
+                this.totalCount.set(response.count);
             });
     }
 }

@@ -32,33 +32,19 @@
                                 [activeColor]="activeColor"
                             ></app-custom-input>
 
-                            <div class="select-field">
-                                <label class="select-label">Agent Mode</label>
-                                <select
-                                    formControlName="agent_mode"
-                                    class="select-input"
-                                    [style.--active-color]="activeColor"
-                                >
-                                    <option value="build">Build</option>
-                                    <option value="plan">Plan</option>
-                                </select>
-                            </div>
+                            <app-select
+                                label="Agent Mode"
+                                formControlName="agent_mode"
+                                [items]="agentModeItems"
+                                placeholder="Select mode"
+                            />
 
-                            <div class="select-field">
-                                <label class="select-label">LLM Config</label>
-                                <select
-                                    formControlName="llm_config"
-                                    class="select-input"
-                                    [style.--active-color]="activeColor"
-                                >
-                                    <option [ngValue]="null">— None —</option>
-                                    @for (cfg of llmConfigs; track cfg.id) {
-                                        <option [ngValue]="cfg.id">
-                                            {{ cfg.custom_name || 'Config #' + cfg.id }}
-                                        </option>
-                                    }
-                                </select>
-                            </div>
+                            <app-select
+                                label="LLM Config"
+                                formControlName="llm_config"
+                                [items]="llmConfigItems()"
+                                placeholder="— None —"
+                            />
 
                             <app-custom-input
                                 label="Session ID"
@@ -248,31 +234,19 @@
                         [activeColor]="activeColor"
                     ></app-custom-input>
 
-                    <div class="select-field">
-                        <label class="select-label">Agent Mode</label>
-                        <select
-                            formControlName="agent_mode"
-                            class="select-input"
-                            [style.--active-color]="activeColor"
-                        >
-                            <option value="build">Build</option>
-                            <option value="plan">Plan</option>
-                        </select>
-                    </div>
+                    <app-select
+                        label="Agent Mode"
+                        formControlName="agent_mode"
+                        [items]="agentModeItems"
+                        placeholder="Select mode"
+                    />
 
-                    <div class="select-field">
-                        <label class="select-label">LLM Config</label>
-                        <select
-                            formControlName="llm_config"
-                            class="select-input"
-                            [style.--active-color]="activeColor"
-                        >
-                            <option [ngValue]="null">— None —</option>
-                            @for (cfg of llmConfigs; track cfg.id) {
-                                <option [ngValue]="cfg.id">{{ cfg.custom_name || 'Config #' + cfg.id }}</option>
-                            }
-                        </select>
-                    </div>
+                    <app-select
+                        label="LLM Config"
+                        formControlName="llm_config"
+                        [items]="llmConfigItems()"
+                        placeholder="— None —"
+                    />
 
                     <app-custom-input
                         label="Session ID"

@@ -35,6 +35,7 @@ import { CreateNodeRequest } from '../../../core/models/node-creation.types';
                 transition: background 0.2s ease;
                 gap: 16px;
                 overflow: hidden;
+                min-width: 0;
             }
             li:hover {
                 background: #2a2a2a;

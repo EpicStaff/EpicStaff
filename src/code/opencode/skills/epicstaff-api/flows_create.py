@@ -1,9 +1,8 @@
 """Flow create operations — create new flows, nodes, edges, and metadata."""
 
 import sys
-import json
 
-from common import api_get, api_post, api_patch, api_delete, _get_graph, build_id_to_name_map, resolve_node_id
+from common import api_get, api_post, api_patch, api_delete, _get_graph, resolve_node_id
 
 # Vertical gap between stacked nodes
 _NODE_STACK_GAP = 60
@@ -17,11 +16,18 @@ def _collect_all_node_positions(graph):
     """
     result = []
     for list_key in (
-        "start_node_list", "end_node_list", "python_node_list", "crew_node_list",
-        "code_agent_node_list", "llm_node_list", "file_extractor_node_list",
-        "audio_transcription_node_list", "webhook_trigger_node_list",
-        "telegram_trigger_node_list", "decision_table_node_list",
-        "classification_decision_table_node_list", "note_node_list",
+        "start_node_list",
+        "end_node_list",
+        "python_node_list",
+        "crew_node_list",
+        "code_agent_node_list",
+        "file_extractor_node_list",
+        "audio_transcription_node_list",
+        "webhook_trigger_node_list",
+        "telegram_trigger_node_list",
+        "decision_table_node_list",
+        "classification_decision_table_node_list",
+        "note_node_list",
         "subgraph_node_list",
     ):
         for n in graph.get(list_key, []):
@@ -104,7 +110,7 @@ def cmd_create_flow(args):
         "parentId": None,
     }
     api_patch(f"/startnodes/{start_id}/", {"metadata": start_meta})
-    print(f"  Node metadata initialized.")
+    print("  Node metadata initialized.")
     return result
 
 
@@ -134,7 +140,7 @@ def cmd_create_start_node(args):
     }
     api_patch(f"/startnodes/{start_id}/", {"metadata": start_meta})
     print(f"  Position: x={x}, y={y}")
-    print(f"  Node metadata set.")
+    print("  Node metadata set.")
     return result
 
 
@@ -160,7 +166,9 @@ def cmd_create_node(args):
     # Set position on node's own metadata field
     graph = _get_graph(graph_id)
     all_nodes = _collect_all_node_positions(graph)
-    position = _auto_position(all_nodes, x=getattr(args, "x", None), y=getattr(args, "y", None))
+    position = _auto_position(
+        all_nodes, x=getattr(args, "x", None), y=getattr(args, "y", None)
+    )
     node_meta = {
         "position": position,
         "color": _NODE_DEFAULTS["python"]["color"],
@@ -215,7 +223,9 @@ def cmd_create_code_agent_node(args):
     # Set position on node's own metadata field
     graph = _get_graph(graph_id)
     all_nodes = _collect_all_node_positions(graph)
-    position = _auto_position(all_nodes, x=getattr(args, "x", None), y=getattr(args, "y", None))
+    position = _auto_position(
+        all_nodes, x=getattr(args, "x", None), y=getattr(args, "y", None)
+    )
     node_meta = {
         "position": position,
         "color": _NODE_DEFAULTS["code-agent"]["color"],
@@ -261,7 +271,9 @@ def cmd_create_webhook(args):
     # Set position on node's own metadata field
     graph = _get_graph(graph_id)
     all_nodes = _collect_all_node_positions(graph)
-    position = _auto_position(all_nodes, x=getattr(args, "x", None), y=getattr(args, "y", None))
+    position = _auto_position(
+        all_nodes, x=getattr(args, "x", None), y=getattr(args, "y", None)
+    )
     node_meta = {
         "position": position,
         "color": _NODE_DEFAULTS["webhook-trigger"]["color"],
@@ -340,7 +352,10 @@ def cmd_delete_edge(args):
             api_delete(f"/edges/{e['id']}/")
             print(f"Deleted edge {e['id']}: {args.start_node} → {args.end_node}")
             return
-    print(f"Edge {args.start_node} → {args.end_node} not found in flow {graph_id}", file=sys.stderr)
+    print(
+        f"Edge {args.start_node} → {args.end_node} not found in flow {graph_id}",
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 
@@ -350,13 +365,18 @@ def cmd_create_edge(args):
     graph = _get_graph(graph_id)
     start_id = resolve_node_id(args.start_node, graph)
     end_id = resolve_node_id(args.end_node, graph)
-    result = api_post("/edges/", {
-        "start_node_id": start_id,
-        "end_node_id": end_id,
-        "graph": graph_id,
-    })
+    result = api_post(
+        "/edges/",
+        {
+            "start_node_id": start_id,
+            "end_node_id": end_id,
+            "graph": graph_id,
+        },
+    )
     eid = result.get("id")
-    print(f"Created edge {eid}: {args.start_node} \u2192 {args.end_node} ({start_id}\u2192{end_id})")
+    print(
+        f"Created edge {eid}: {args.start_node} \u2192 {args.end_node} ({start_id}\u2192{end_id})"
+    )
     return result
 
 
@@ -441,7 +461,6 @@ _NODE_TYPE_ENDPOINTS = {
     "python_node_list": "/pythonnodes/",
     "crew_node_list": "/crew-nodes/",
     "code_agent_node_list": "/code-agent-nodes/",
-    "llm_node_list": "/llmnodes/",
     "file_extractor_node_list": "/file-extractor-nodes/",
     "audio_transcription_node_list": "/audio-transcription-nodes/",
     "webhook_trigger_node_list": "/webhook-trigger-nodes/",
@@ -451,7 +470,6 @@ _NODE_TYPE_ENDPOINTS = {
     "note_node_list": "/note-nodes/",
     "subgraph_node_list": "/subgraph-nodes/",
 }
-
 
 
 def cmd_init_metadata(args):
@@ -478,7 +496,6 @@ def cmd_init_metadata(args):
         ("decision_table_node_list", "table"),
         ("crew_node_list", "project"),
         ("code_agent_node_list", "code-agent"),
-        ("llm_node_list", "llm"),
         ("file_extractor_node_list", "file-extractor"),
         ("audio_transcription_node_list", "audio"),
         ("note_node_list", "note"),
@@ -510,8 +527,14 @@ def cmd_init_metadata(args):
     roots = [n for n in node_info if n not in targets or n == "__start__"]
 
     trigger_types = {"webhook-trigger", "telegram-trigger"}
-    trigger_roots = [n for n in roots if n != "__start__" and node_info[n]["type"] in trigger_types]
-    other_roots = [n for n in roots if n != "__start__" and node_info[n]["type"] not in trigger_types]
+    trigger_roots = [
+        n for n in roots if n != "__start__" and node_info[n]["type"] in trigger_types
+    ]
+    other_roots = [
+        n
+        for n in roots
+        if n != "__start__" and node_info[n]["type"] not in trigger_types
+    ]
 
     y_slot = 0
     if "__start__" in node_info:
@@ -521,7 +544,9 @@ def cmd_init_metadata(args):
         placed[name] = {"x": step_x, "y": y_slot * _NODE_STACK_GAP}
         y_slot += 1
     for i, name in enumerate(other_roots):
-        root_x = step_x + step_gap if ("__start__" in node_info or trigger_roots) else step_x
+        root_x = (
+            step_x + step_gap if ("__start__" in node_info or trigger_roots) else step_x
+        )
         placed[name] = {"x": root_x, "y": i * _NODE_STACK_GAP}
 
     # Walk edges to place remaining nodes
@@ -569,6 +594,8 @@ def cmd_init_metadata(args):
         }
         api_patch(f"{endpoint}{node_id}/", {"metadata": node_meta})
         patched += 1
-        print(f"  {info['type']:30s} {name:30s} x={pos['x']:>6} y={pos['y']:>6}  (id={node_id})")
+        print(
+            f"  {info['type']:30s} {name:30s} x={pos['x']:>6} y={pos['y']:>6}  (id={node_id})"
+        )
 
     print(f"\nInitialized metadata on {patched} nodes in flow {graph_id}.")

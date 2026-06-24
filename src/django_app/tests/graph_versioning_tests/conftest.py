@@ -29,16 +29,6 @@ def crew_node_dict():
 
 
 @pytest.fixture
-def llm_node_dict():
-    return {
-        "id": 20,
-        "node_type": NodeType.LLM_NODE,
-        "node_name": "LLM Node",
-        "llm_config": _LLM_CONFIG_ID,
-    }
-
-
-@pytest.fixture
 def subgraph_node_dict():
     return {
         "id": 30,

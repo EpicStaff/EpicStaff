@@ -3,14 +3,14 @@ import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy } from
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { ButtonComponent, TabButtonComponent } from '@shared/components';
+import { tap } from 'rxjs/operators';
 
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/directives/hide-inline-subtitle-on-overflow.directive';
-import { CustomToolDialogComponent } from '../../../../user-settings-page/tools/custom-tool-editor/custom-tool-dialog.component';
+import { CreateCustomToolDialogComponent } from '../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
 import { McpToolDialogComponent } from '../../components/mcp-tool-dialog/mcp-tool-dialog.component';
 import { GetMcpToolRequest } from '../../models/mcp-tool.model';
 import { GetPythonCodeToolRequest } from '../../models/python-code-tool.model';
-import { CustomToolsService } from '../../services/custom-tools/custom-tools.service';
 import { ToolsEventsService } from '../../services/tools-events.service';
 import { ToolsSearchService } from '../../services/tools-search.service';
 
@@ -44,7 +44,6 @@ export class ToolsListPageComponent implements OnDestroy {
         private readonly cdkDialog: Dialog,
         private readonly cdr: ChangeDetectorRef,
         private readonly router: Router,
-        private readonly customToolsService: CustomToolsService,
         private readonly toolsEventsService: ToolsEventsService,
         private readonly toolsSearchService: ToolsSearchService
     ) {}
@@ -91,21 +90,19 @@ export class ToolsListPageComponent implements OnDestroy {
     }
 
     public openCustomToolDialog(): void {
-        this.customToolsService.getPythonCodeTools().subscribe((tools) => {
-            const dialogRef = this.cdkDialog.open<GetPythonCodeToolRequest>(CustomToolDialogComponent, {
-                data: { pythonTools: tools },
-                disableClose: true,
-            });
+        const dialogRef = this.cdkDialog.open<GetPythonCodeToolRequest>(CreateCustomToolDialogComponent);
 
-            dialogRef.closed.subscribe((result) => {
-                if (result) {
-                    // Emit event to notify custom tools component
-                    this.toolsEventsService.emitCustomToolCreated(result);
-                    this.router.navigate(['/tools/custom']);
-                    this.cdr.markForCheck();
-                }
-            });
-        });
+        dialogRef.closed
+            .pipe(
+                tap((result) => {
+                    if (result) {
+                        this.toolsEventsService.emitCustomToolCreated(result);
+                        this.router.navigate(['/tools/custom']);
+                        this.cdr.markForCheck();
+                    }
+                })
+            )
+            .subscribe();
     }
 
     public openMcpToolDialog(): void {
@@ -116,13 +113,17 @@ export class ToolsListPageComponent implements OnDestroy {
             autoFocus: true,
         });
 
-        dialogRef.closed.subscribe((result) => {
-            if (result) {
-                // Emit event to notify MCP tools component
-                this.toolsEventsService.emitMcpToolCreated(result);
-                this.router.navigate(['/tools/mcp']);
-                this.cdr.markForCheck();
-            }
-        });
+        dialogRef.closed
+            .pipe(
+                tap((result) => {
+                    if (result) {
+                        // Emit event to notify MCP tools component
+                        this.toolsEventsService.emitMcpToolCreated(result);
+                        this.router.navigate(['/tools/mcp']);
+                        this.cdr.markForCheck();
+                    }
+                })
+            )
+            .subscribe();
     }
 }

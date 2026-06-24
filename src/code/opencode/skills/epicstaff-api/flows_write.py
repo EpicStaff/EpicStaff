@@ -6,16 +6,29 @@ import time
 from pathlib import Path
 
 from common import (
-    api_get, api_post, api_patch, _get_graph, _get_cdt_nodes, _get_pn_nodes, _get_wh_nodes,
-    _flows_dir, _normalize_slug, _match_node, _discover_files,
-    _read_value, _oc_curl,
-    SLUG_TO_CDT_NAME, SLUG_TO_PN_NAME, SLUG_TO_WH_NAME,
+    api_get,
+    api_post,
+    api_patch,
+    _get_graph,
+    _get_cdt_nodes,
+    _get_pn_nodes,
+    _get_wh_nodes,
+    _flows_dir,
+    _normalize_slug,
+    _match_node,
+    _discover_files,
+    _read_value,
+    _oc_curl,
+    SLUG_TO_CDT_NAME,
+    SLUG_TO_PN_NAME,
+    SLUG_TO_WH_NAME,
 )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Push / Pull
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _push_cdt(spec, content, graph_id):
     node = _match_node(spec.slug, _get_cdt_nodes(graph_id), SLUG_TO_CDT_NAME)
@@ -24,8 +37,14 @@ def _push_cdt(spec, content, graph_id):
         return False
     node_id, node_name = node["id"], node["node_name"]
     if spec.field == "condition_groups":
-        clean = [{k: v for k, v in g.items()
-                  if k not in ("id", "classification_decision_table_node")} for g in content]
+        clean = [
+            {
+                k: v
+                for k, v in g.items()
+                if k not in ("id", "classification_decision_table_node")
+            }
+            for g in content
+        ]
         db_payload = {"condition_groups": clean}
     elif spec.field == "prompts":
         if isinstance(content, list):
@@ -46,14 +65,21 @@ def _push_cdt(spec, content, graph_id):
 def _push_python(spec, content, graph_id):
     node = _match_node(spec.slug, _get_pn_nodes(graph_id), SLUG_TO_PN_NAME)
     if not node:
-        print(f"  ❌ {Path(spec.path).name}: Python node not found for slug '{spec.slug}'")
+        print(
+            f"  ❌ {Path(spec.path).name}: Python node not found for slug '{spec.slug}'"
+        )
         return False
     node_id = node["id"]
     node_name = node.get("node_name", "?")
     libs = (node.get("python_code", {}) or {}).get("libraries", "")
     if "def main(" not in content:
-        print(f"  ⚠️  {Path(spec.path).name}: no 'def main(...)' — Python nodes require a main() entrypoint")
-    api_patch(f"/pythonnodes/{node_id}/", {"python_code": {"code": content, "libraries": libs}})
+        print(
+            f"  ⚠️  {Path(spec.path).name}: no 'def main(...)' — Python nodes require a main() entrypoint"
+        )
+    api_patch(
+        f"/pythonnodes/{node_id}/",
+        {"python_code": {"code": content, "libraries": libs}},
+    )
     print(f"  ✅ {Path(spec.path).name} → Python '{node_name}'  [DB]")
     return True
 
@@ -61,14 +87,21 @@ def _push_python(spec, content, graph_id):
 def _push_webhook(spec, content, graph_id):
     node = _match_node(spec.slug, _get_wh_nodes(graph_id), SLUG_TO_WH_NAME)
     if not node:
-        print(f"  ❌ {Path(spec.path).name}: Webhook node not found for slug '{spec.slug}'")
+        print(
+            f"  ❌ {Path(spec.path).name}: Webhook node not found for slug '{spec.slug}'"
+        )
         return False
     node_id = node["id"]
     node_name = node.get("node_name", "?")
     libs = (node.get("python_code", {}) or {}).get("libraries", [])
     if "def main(" not in content:
-        print(f"  ⚠️  {Path(spec.path).name}: no 'def main(...)' — Webhook nodes require a main() entrypoint")
-    api_patch(f"/webhook-trigger-nodes/{node_id}/", {"python_code": {"code": content, "libraries": libs}})
+        print(
+            f"  ⚠️  {Path(spec.path).name}: no 'def main(...)' — Webhook nodes require a main() entrypoint"
+        )
+    api_patch(
+        f"/webhook-trigger-nodes/{node_id}/",
+        {"python_code": {"code": content, "libraries": libs}},
+    )
     print(f"  ✅ {Path(spec.path).name} → Webhook '{node_name}'  [DB]")
     return True
 
@@ -87,7 +120,11 @@ def cmd_push(args):
         try:
             with open(spec.path) as f:
                 raw = f.read()
-            content = json.loads(raw) if spec.field in ("condition_groups", "prompts") else raw
+            content = (
+                json.loads(raw)
+                if spec.field in ("condition_groups", "prompts")
+                else raw
+            )
             if spec.kind == "cdt":
                 success = _push_cdt(spec, content, args.graph_id)
             elif spec.kind == "webhook":
@@ -122,7 +159,9 @@ def cmd_pull(args):
     print(f"Pulling from flow {args.graph_id} into {outdir}/\n")
     for node in cdts:
         name = node["node_name"]
-        slug = _normalize_slug(name.replace("(", "").replace(")", "").replace("#", "").replace("  ", " "))
+        slug = _normalize_slug(
+            name.replace("(", "").replace(")", "").replace("#", "").replace("  ", " ")
+        )
         for stage in ("pre", "post"):
             code = node.get(f"{stage}_computation_code") or ""
             if code.strip():
@@ -133,8 +172,14 @@ def cmd_pull(args):
         groups = node.get("condition_groups", [])
         if groups:
             p = outdir / f"cdt_{slug}_groups.json"
-            clean = [{k: v for k, v in g.items()
-                      if k not in ("id", "classification_decision_table_node")} for g in groups]
+            clean = [
+                {
+                    k: v
+                    for k, v in g.items()
+                    if k not in ("id", "classification_decision_table_node")
+                }
+                for g in groups
+            ]
             p.write_text(json.dumps(clean, indent=2))
             print(f"  {p.name} ({len(groups)} groups)")
             count += 1
@@ -146,7 +191,9 @@ def cmd_pull(args):
             count += 1
     for node in pns:
         name = node.get("node_name", "?")
-        slug = _normalize_slug(name.replace("(", "").replace(")", "").replace("#", "").replace("  ", " "))
+        slug = _normalize_slug(
+            name.replace("(", "").replace(")", "").replace("#", "").replace("  ", " ")
+        )
         pc = node.get("python_code", {})
         code = pc.get("code", "") if isinstance(pc, dict) else ""
         if code.strip():
@@ -156,7 +203,9 @@ def cmd_pull(args):
             count += 1
     for node in whs:
         name = node.get("node_name", "?")
-        slug = _normalize_slug(name.replace("(", "").replace(")", "").replace("#", "").replace("  ", " "))
+        slug = _normalize_slug(
+            name.replace("(", "").replace(")", "").replace("#", "").replace("  ", " ")
+        )
         pc = node.get("python_code", {})
         code = pc.get("code", "") if isinstance(pc, dict) else ""
         if code.strip():
@@ -171,6 +220,7 @@ def cmd_pull(args):
 # Patching
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def cmd_patch_cdt(args):
     """Patch a CDT field in DB."""
     node_name = args.node_name
@@ -184,12 +234,14 @@ def cmd_patch_cdt(args):
     cdts = _get_cdt_nodes(graph_id)
     matches = [c for c in cdts if c["node_name"] == node_name]
     if not matches:
-        print(f"Error: CDT '{node_name}' not found in flow {graph_id}.", file=sys.stderr)
+        print(
+            f"Error: CDT '{node_name}' not found in flow {graph_id}.", file=sys.stderr
+        )
         sys.exit(1)
     cdt_id = matches[0]["id"]
     print(f"PATCHing CDT '{node_name}' (id={cdt_id}), field='{field}'")
-    result = api_patch(f"/classification-decision-table-node/{cdt_id}/", {field: value})
-    print(f"  DB updated.")
+    api_patch(f"/classification-decision-table-node/{cdt_id}/", {field: value})
+    print("  DB updated.")
 
 
 def cmd_patch_python(args):
@@ -211,10 +263,16 @@ def cmd_patch_python(args):
     libs = (db_node.get("python_code", {}) or {}).get("libraries", "")
     print(f"PATCHing Python node '{node_name}' (id={node_id})")
     if "def main(" not in value:
-        print(f"  ⚠️  WARNING: Code does not contain 'def main(...)'. Python nodes require a main() entrypoint.")
-        print(f"     The crew executor calls main() with the node's input_map keys as keyword arguments.")
-    api_patch(f"/pythonnodes/{node_id}/", {"python_code": {"code": value, "libraries": libs}})
-    print(f"  DB updated.")
+        print(
+            "  ⚠️  WARNING: Code does not contain 'def main(...)'. Python nodes require a main() entrypoint."
+        )
+        print(
+            "     The crew executor calls main() with the node's input_map keys as keyword arguments."
+        )
+    api_patch(
+        f"/pythonnodes/{node_id}/", {"python_code": {"code": value, "libraries": libs}}
+    )
+    print("  DB updated.")
 
 
 def cmd_patch_webhook(args):
@@ -236,9 +294,14 @@ def cmd_patch_webhook(args):
     libs = (db_node.get("python_code", {}) or {}).get("libraries", [])
     print(f"PATCHing Webhook node '{node_name}' (id={node_id})")
     if "def main(" not in value:
-        print(f"  ⚠️  WARNING: Code does not contain 'def main(...)'. Webhook nodes require a main() entrypoint.")
-    api_patch(f"/webhook-trigger-nodes/{node_id}/", {"python_code": {"code": value, "libraries": libs}})
-    print(f"  DB updated.")
+        print(
+            "  ⚠️  WARNING: Code does not contain 'def main(...)'. Webhook nodes require a main() entrypoint."
+        )
+    api_patch(
+        f"/webhook-trigger-nodes/{node_id}/",
+        {"python_code": {"code": value, "libraries": libs}},
+    )
+    print("  DB updated.")
 
 
 def cmd_patch_code_agent(args):
@@ -253,7 +316,10 @@ def cmd_patch_code_agent(args):
             db_node = cn
             break
     if not db_node:
-        print(f"Code Agent node '{node_name}' not found in flow {graph_id}", file=sys.stderr)
+        print(
+            f"Code Agent node '{node_name}' not found in flow {graph_id}",
+            file=sys.stderr,
+        )
         sys.exit(1)
     node_id = db_node["id"]
 
@@ -273,7 +339,9 @@ def cmd_patch_code_agent(args):
     if getattr(args, "output_variable_path", None):
         db_payload["output_variable_path"] = args.output_variable_path
     if getattr(args, "libraries", None):
-        db_payload["libraries"] = [l.strip() for l in args.libraries.split(",") if l.strip()]
+        db_payload["libraries"] = [
+            lib.strip() for lib in args.libraries.split(",") if lib.strip()
+        ]
     if getattr(args, "session_id", None) is not None:
         db_payload["session_id"] = args.session_id
     if getattr(args, "output_schema_file", None):
@@ -283,15 +351,20 @@ def cmd_patch_code_agent(args):
         db_payload["agent_mode"] = args.agent_mode
 
     if not db_payload:
-        print("No fields to patch. Use --value, --llm-config, --system-prompt, --input-map, --output-variable-path, or --libraries.", file=sys.stderr)
+        print(
+            "No fields to patch. Use --value, --llm-config, --system-prompt, --input-map, --output-variable-path, or --libraries.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     print(f"PATCHing Code Agent node '{node_name}' (id={node_id})")
     for k, v in db_payload.items():
-        label = repr(v) if not isinstance(v, str) or len(v) < 80 else repr(v[:77] + "...")
+        label = (
+            repr(v) if not isinstance(v, str) or len(v) < 80 else repr(v[:77] + "...")
+        )
         print(f"  {k} = {label}")
     api_patch(f"/code-agent-nodes/{node_id}/", db_payload)
-    print(f"  DB updated.")
+    print("  DB updated.")
 
 
 def cmd_patch_dt(args):
@@ -306,7 +379,10 @@ def cmd_patch_dt(args):
             db_node = dn
             break
     if not db_node:
-        print(f"Decision Table node '{node_name}' not found in flow {graph_id}", file=sys.stderr)
+        print(
+            f"Decision Table node '{node_name}' not found in flow {graph_id}",
+            file=sys.stderr,
+        )
         sys.exit(1)
     node_id = db_node["id"]
 
@@ -325,28 +401,33 @@ def cmd_patch_dt(args):
         db_payload["next_error_node"] = args.error_node
 
     if not db_payload:
-        print("No fields to patch. Use --groups, --default-next-node, or --error-node.", file=sys.stderr)
+        print(
+            "No fields to patch. Use --groups, --default-next-node, or --error-node.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     print(f"PATCHing Decision Table '{node_name}' (id={node_id})")
     if "condition_groups" in db_payload:
         print(f"  condition_groups: {len(db_payload['condition_groups'])} groups")
         for g in db_payload["condition_groups"]:
-            print(f"    [{g.get('order','-')}] {g.get('group_name','?')} → {g.get('next_node','default')} | expr: {g.get('expression','')}")
+            print(
+                f"    [{g.get('order','-')}] {g.get('group_name','?')} → {g.get('next_node','default')} | expr: {g.get('expression','')}"
+            )
     if "default_next_node" in db_payload:
         print(f"  default_next_node: {db_payload['default_next_node']}")
     if "next_error_node" in db_payload:
         print(f"  next_error_node: {db_payload['next_error_node']}")
 
     api_patch(f"/decision-table-node/{node_id}/", db_payload)
-    print(f"  DB updated.")
+    print("  DB updated.")
 
 
 def cmd_patch_libraries(args):
     """Patch libraries on a Python node in DB."""
     graph_id = args.graph_id
     node_name = args.node_name
-    libs = [l.strip() for l in args.libraries.split(",") if l.strip()]
+    libs = [lib.strip() for lib in args.libraries.split(",") if lib.strip()]
     graph = _get_graph(graph_id)
     py_nodes = graph.get("python_node_list", [])
     db_node = None
@@ -355,11 +436,15 @@ def cmd_patch_libraries(args):
             db_node = pn
             break
     if not db_node:
-        print(f"Python node '{node_name}' not found in flow {graph_id}", file=sys.stderr)
+        print(
+            f"Python node '{node_name}' not found in flow {graph_id}", file=sys.stderr
+        )
         sys.exit(1)
     node_id = db_node["id"]
     code = (db_node.get("python_code", {}) or {}).get("code", "")
-    api_patch(f"/pythonnodes/{node_id}/", {"python_code": {"code": code, "libraries": libs}})
+    api_patch(
+        f"/pythonnodes/{node_id}/", {"python_code": {"code": code, "libraries": libs}}
+    )
     print(f"  DB node {node_id} libraries: {libs}")
 
 
@@ -379,7 +464,10 @@ def cmd_patch_node_meta(args):
         print(f"  output_variable_path set: {args.output_variable_path}")
 
     if not db_payload:
-        print("No fields to patch. Use --input-map or --output-variable-path.", file=sys.stderr)
+        print(
+            "No fields to patch. Use --input-map or --output-variable-path.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     # Patch DB node — detect type from graph node lists
@@ -387,7 +475,6 @@ def cmd_patch_node_meta(args):
         "python_node_list": "/pythonnodes/",
         "crew_node_list": "/crew-nodes/",
         "code_agent_node_list": "/code-agent-nodes/",
-        "llm_node_list": "/llmnodes/",
         "file_extractor_node_list": "/file-extractor-nodes/",
         "audio_transcription_node_list": "/audio-transcription-nodes/",
     }
@@ -425,10 +512,14 @@ def cmd_patch_start_vars(args):
         final = start.get("variables", {})
         final.update(new_vars)
     api_patch(f"/startnodes/{start_id}/", {"variables": final})
-    print(f"Start node {start_id} variables updated{' (replaced)' if getattr(args, 'replace', False) else ''}.")
+    print(
+        f"Start node {start_id} variables updated{' (replaced)' if getattr(args, 'replace', False) else ''}."
+    )
     for k, v in final.items():
         vtype = type(v).__name__
-        vpreview = str(v)[:80] if not isinstance(v, dict) else f"{{...}} ({len(v)} keys)"
+        vpreview = (
+            str(v)[:80] if not isinstance(v, dict) else f"{{...}} ({len(v)} keys)"
+        )
         print(f"  {k}: {vtype} = {vpreview}")
 
 
@@ -444,7 +535,6 @@ def cmd_rename_node(args):
         "python_node_list": "/pythonnodes/",
         "crew_node_list": "/crew-nodes/",
         "code_agent_node_list": "/code-agent-nodes/",
-        "llm_node_list": "/llmnodes/",
         "file_extractor_node_list": "/file-extractor-nodes/",
         "audio_transcription_node_list": "/audio-transcription-nodes/",
         "webhook_trigger_node_list": "/webhook-trigger-nodes/",
@@ -457,7 +547,9 @@ def cmd_rename_node(args):
             if db_node.get("node_name") == old_name:
                 node_id = db_node["id"]
                 api_patch(f"{endpoint}{node_id}/", {"node_name": new_name})
-                print(f"  DB node {node_id} ({list_key.replace('_list','')}): '{old_name}' → '{new_name}'")
+                print(
+                    f"  DB node {node_id} ({list_key.replace('_list','')}): '{old_name}' → '{new_name}'"
+                )
                 print(f"\nRenamed '{old_name}' → '{new_name}'")
                 return
 
@@ -480,6 +572,7 @@ def cmd_sync_metadata(args):
 # ═══════════════════════════════════════════════════════════════════════════
 # OpenCode abort
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def cmd_oc_abort(args):
     """Abort any in-flight request on an OpenCode session."""
@@ -507,6 +600,7 @@ def cmd_oc_abort(args):
 # Run Session
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def cmd_run_session(args):
     """Trigger a flow session and poll until it completes or times out."""
     gid = args.graph_id
@@ -518,7 +612,7 @@ def cmd_run_session(args):
         try:
             variables = json.loads(var_json)
         except json.JSONDecodeError:
-            print(f"Error: --variables must be valid JSON", file=sys.stderr)
+            print("Error: --variables must be valid JSON", file=sys.stderr)
             sys.exit(1)
 
     print(f"Starting session for flow {gid}...")
@@ -548,7 +642,12 @@ def cmd_run_session(args):
             print(f"  [{waited:>4}s] Status: {status}")
             last_status = status
 
-        if isinstance(status, str) and status.lower() in ("done", "completed", "error", "stopped"):
+        if isinstance(status, str) and status.lower() in (
+            "done",
+            "completed",
+            "error",
+            "stopped",
+        ):
             break
 
     print(f"\nSession {session_id} final status: {last_status}")
@@ -558,7 +657,9 @@ def cmd_run_session(args):
         session = api_get(f"/sessions/{session_id}/")
         print(f"  Duration: {session.get('duration', '?')}s")
         if session.get("status_data"):
-            print(f"  Status data: {json.dumps(session['status_data'], indent=2)[:500]}")
+            print(
+                f"  Status data: {json.dumps(session['status_data'], indent=2)[:500]}"
+            )
     except Exception:
         pass
 

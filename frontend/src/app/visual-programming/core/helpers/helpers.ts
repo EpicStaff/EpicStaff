@@ -22,7 +22,10 @@ import { DEFAULT_TOOL_NODE_PORTS } from '../rules/tool-ports/tool-node-default-p
 import { DEFAULT_WEBHOOK_TRIGGER_NODE_PORTS } from '../rules/webhook-trigger-ports/webhook-trigger-default-ports';
 
 export const isDecisionPortRole = (role: string) =>
-    role.startsWith('decision-out-') || role === 'decision-default' || role === 'decision-error';
+    role.startsWith('decision-out-') ||
+    role.startsWith('decision-route-') ||
+    role === 'decision-default' ||
+    role === 'decision-error';
 
 export function parsePortId(portId: string): { nodeId: string; portRole: string } | null {
     const underscoreIndex = portId.indexOf('_');
@@ -56,6 +59,8 @@ export function getPortsForType(nodeType: NodeType): BasePort[] {
         case NodeType.START:
             return DEFAULT_START_NODE_PORTS;
         case NodeType.TABLE:
+            return DEFAULT_TABLE_NODE_PORTS;
+        case NodeType.CLASSIFICATION_TABLE:
             return DEFAULT_TABLE_NODE_PORTS;
         case NodeType.FILE_EXTRACTOR:
             return DEFAULT_FILE_EXTRACTOR_NODE_PORTS;
@@ -237,6 +242,22 @@ export function generatePortsForNode(newNodeId: string, nodeType: NodeType, data
         const conditionGroups: ConditionGroup[] = tableData?.condition_groups ?? [];
         return generatePortsForDecisionTableNode(newNodeId, conditionGroups);
     }
+
+    if (nodeType === NodeType.CLASSIFICATION_TABLE) {
+        const tableData =
+            (
+                data as {
+                    table?: {
+                        condition_groups?: ConditionGroup[];
+                        default_next_node?: unknown;
+                        next_error_node?: unknown;
+                    };
+                }
+            )?.table ?? {};
+        const conditionGroups = tableData?.condition_groups ?? [];
+        return generatePortsForClassificationDecisionTableNode(newNodeId, conditionGroups);
+    }
+
     const portsConfig: BasePort[] = getPortsForType(nodeType);
     return portsConfig.map((config) => ({
         ...config,
@@ -444,4 +465,90 @@ export function isBackwardConnection(connection: ConnectionModel, nodes: BaseNod
     }
 
     return false;
+}
+
+export function generatePortsForClassificationDecisionTableNode(
+    nodeId: string,
+    conditionGroups: ConditionGroup[]
+): ViewPort[] {
+    const inputPortConfig = DEFAULT_TABLE_NODE_PORTS.find((p) => p.port_type === 'input');
+    const inputPort = {
+        ...(inputPortConfig ?? {
+            port_type: 'input',
+            role: 'table-in',
+            multiple: true,
+            label: 'In',
+            allowedConnections: [
+                'project-out',
+                'python-out',
+                'edge-out',
+                'table-out',
+                'start-start',
+                'llm-out-right',
+                'file-extractor-out',
+            ],
+            position: 'left',
+            color: '#00aaff',
+        }),
+        id: `${nodeId}_table-in` as `${string}_${string}`,
+    };
+
+    // Extract unique route codes where dock_visible is not explicitly false
+    const uniqueRouteCodes = new Map<string, string>();
+    conditionGroups
+        .filter((group) => group.dock_visible !== false)
+        .forEach((group) => {
+            const key = group.route_code ?? group.group_name;
+            if (key && !uniqueRouteCodes.has(key)) {
+                uniqueRouteCodes.set(key, key);
+            }
+        });
+
+    const defaultOutputConfig = DEFAULT_TABLE_NODE_PORTS.find((p) => p.port_type === 'output');
+
+    const outputPorts: ViewPort[] = Array.from(uniqueRouteCodes.keys()).map((routeCode) => {
+        const normalizedRouteCode = routeCode.toLowerCase().replace(/\s+/g, '-');
+
+        return {
+            ...(defaultOutputConfig ?? {
+                port_type: 'output',
+                allowedConnections: [
+                    'project-in',
+                    'python-in',
+                    'edge-in',
+                    'table-in',
+                    'llm-out-left',
+                    'end-in',
+                    'decision-out-in',
+                    'file-extractor-in',
+                ],
+                position: 'right',
+                color: '#00aaff',
+                multiple: false,
+            }),
+            role: `decision-route-${routeCode}`,
+            label: routeCode,
+            id: `${nodeId}_decision-route-${normalizedRouteCode}` as `${string}_${string}`,
+        };
+    });
+
+    const specialPorts: ViewPort[] = [];
+
+    if (defaultOutputConfig) {
+        specialPorts.push({
+            ...defaultOutputConfig,
+            role: 'decision-default',
+            label: 'Default',
+            id: `${nodeId}_decision-default` as `${string}_${string}`,
+        });
+
+        specialPorts.push({
+            ...defaultOutputConfig,
+            role: 'decision-error',
+            label: 'Error',
+            id: `${nodeId}_decision-error` as `${string}_${string}`,
+        });
+    }
+
+    return [inputPort, ...outputPorts, ...specialPorts];
 }

@@ -7,12 +7,12 @@
       "description": "Mandatory file full path to read the file"
     },
     "start_line": {
-      "type": "integer",
+      "type": "number",
       "description": "Line number to start reading from (1-indexed)",
       "default": 1
     },
     "line_count": {
-      "type": ["integer", "null"],
+      "type": "number",
       "description": "Number of lines to read. If null, reads the entire file",
       "default": null
     }

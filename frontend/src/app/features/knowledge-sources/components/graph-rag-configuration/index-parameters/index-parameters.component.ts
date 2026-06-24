@@ -38,11 +38,16 @@ export class AppGraphRagParametersComponent implements OnInit {
     selectedFormat = input<GraphRagFileType>('text');
 
     formValue = signal<Partial<GraphRagIndexConfig> | null>(null);
+    isJsonValid = signal(true);
     jsonData = computed(() => {
-        return JSON.stringify({
-            file_type: this.selectedFormat(),
-            ...this.formValue(),
-        });
+        return JSON.stringify(
+            {
+                file_type: this.selectedFormat(),
+                ...this.formValue(),
+            },
+            null,
+            2
+        );
     });
 
     form!: FormGroup;
@@ -58,8 +63,8 @@ export class AppGraphRagParametersComponent implements OnInit {
         wordWrapBreakAfterCharacters: ',',
         wordWrapBreakBeforeCharacters: '}]',
         tabSize: 2,
-        readOnly: true,
     };
+    private patchingFromJson = false;
     chunkStrategyOptions: SelectItem[] = [
         {
             name: 'tokens',
@@ -73,9 +78,11 @@ export class AppGraphRagParametersComponent implements OnInit {
 
     ngOnInit(): void {
         this.initForm();
-        this.form.valueChanges
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((value) => this.formValue.set(value));
+        this.form.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((value) => {
+            if (!this.patchingFromJson) {
+                this.formValue.set(value);
+            }
+        });
     }
 
     initForm(): void {
@@ -95,6 +102,39 @@ export class AppGraphRagParametersComponent implements OnInit {
             ],
         });
         this.formValue.set(this.form.value);
+    }
+
+    onJsonValidChange(isValid: boolean): void {
+        this.isJsonValid.set(isValid);
+    }
+
+    onJsonChange(json: string): void {
+        if (!this.isJsonValid()) return;
+
+        try {
+            const parsed = JSON.parse(json);
+            const formKeys = Object.keys(this.form.controls);
+            const patch: Record<string, unknown> = {};
+
+            for (const key of formKeys) {
+                if (!(key in parsed)) continue;
+
+                if (key === 'entity_types') {
+                    const items = parsed[key];
+                    if (!Array.isArray(items) || items.some((t: string) => t.length < 1 || t.length > 20)) {
+                        continue;
+                    }
+                }
+
+                patch[key] = parsed[key];
+            }
+
+            this.patchingFromJson = true;
+            this.form.patchValue(patch);
+            this.patchingFromJson = false;
+        } catch {
+            // invalid JSON, ignore
+        }
     }
 
     getControl(control: string): AbstractControl | null | undefined {

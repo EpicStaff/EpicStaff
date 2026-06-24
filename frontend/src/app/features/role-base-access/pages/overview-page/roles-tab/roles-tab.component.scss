@@ -1,0 +1,20 @@
+@use '../tab-shared' as shared;
+
+@include shared.tab-base;
+
+.role-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.description-text {
+    font-size: 14px;
+    color: var(--text-secondary-60);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

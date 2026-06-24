@@ -32,8 +32,7 @@ class SessionTimeoutService:
         """
         Start the session timeout monitoring service
         """
-        pubsub = await self.redis_service.async_subscribe(self.session_schema_channel)
-        asyncio.create_task(self._listen_for_session_starts(pubsub))
+        asyncio.create_task(self._listen_for_session_starts())
         logger.info("Session Timeout Service started.")
 
     async def initial_check_all_sessions_for_timeout(self):
@@ -80,28 +79,33 @@ class SessionTimeoutService:
         except Exception as e:
             logger.error(f"Error checking all sessions for timeout: {e}")
 
-    async def _listen_for_session_starts(self, pubsub):
+    async def _listen_for_session_starts(self):
         """
         Asynchronously listen for new session start messages
         """
-        try:
-            async for message in pubsub.listen():
-                if message["type"] == "message":
-                    try:
-                        data = json.loads(message["data"].decode("utf-8"))
-                        session_id = data.get("id")
-                        if session_id is not None:
-                            await self._handle_session_start(session_id)
-                        else:
-                            logger.warning(
-                                f"Can not get session ID from message: {message['data']}"
-                            )
-                    except Exception as e:
-                        logger.error(f"Error processing session start message: {e}")
-        except Exception as e:
-            logger.exception(f"Error in session start listener: {e}")
-        finally:
-            await pubsub.unsubscribe(self.session_schema_channel)
+        while True:
+            try:
+                pubsub = await self.redis_service.async_subscribe(
+                    self.session_schema_channel
+                )
+                async for message in pubsub.listen():
+                    if message["type"] == "message":
+                        try:
+                            data = json.loads(message["data"].decode("utf-8"))
+                            session_id = data.get("id")
+                            if session_id is not None:
+                                await self._handle_session_start(session_id)
+                            else:
+                                logger.warning(
+                                    f"Can not get session ID from message: {message['data']}"
+                                )
+                        except Exception as e:
+                            logger.error(f"Error processing session start message: {e}")
+            except Exception as e:
+                logger.error(
+                    f"Redis session listener disconnected, reconnecting in 1s: {e}"
+                )
+                await asyncio.sleep(1)
 
     def _clean_timeout_tasks_pool(self, session_id: int) -> None:
         if session_id in self.timeout_tasks_pool:

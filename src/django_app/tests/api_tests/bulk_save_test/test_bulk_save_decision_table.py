@@ -83,6 +83,7 @@ def test_create_dtn_with_default_and_error_routing(
 ):
     """Create DTN with default_next_node_id and next_error_node_id pointing to existing nodes."""
     payload = {
+        "save_version": graph.save_version,
         "decision_table_node_list": [
             {
                 "graph": graph.id,
@@ -112,6 +113,7 @@ def test_create_dtn_with_routing_temp_ids(auth_client, graph):
     temp_b = "aaaa0002-0002-0002-0002-aaaaaaaaaaaa"
 
     payload = {
+        "save_version": graph.save_version,
         "python_node_list": [
             _make_python_node_payload(graph.id, temp_a, "pn_default"),
             _make_python_node_payload(graph.id, temp_b, "pn_error"),
@@ -145,6 +147,7 @@ def test_create_dtn_with_groups_routing_to_real_nodes(
     auth_client, graph, python_node_a, python_node_b
 ):
     payload = {
+        "save_version": graph.save_version,
         "decision_table_node_list": [
             {
                 "graph": graph.id,
@@ -189,6 +192,7 @@ def test_create_dtn_with_groups_routing_via_temp_ids(auth_client, graph):
     temp_b = "bbbb0002-0002-0002-0002-bbbbbbbbbbbb"
 
     payload = {
+        "save_version": graph.save_version,
         "python_node_list": [
             _make_python_node_payload(graph.id, temp_a, "pn_high"),
             _make_python_node_payload(graph.id, temp_b, "pn_low"),
@@ -225,6 +229,7 @@ def test_create_dtn_mixed_real_and_temp_routing(auth_client, graph, python_node_
     temp_new = "cccc0001-0001-0001-0001-cccccccccccc"
 
     payload = {
+        "save_version": graph.save_version,
         "python_node_list": [
             _make_python_node_payload(graph.id, temp_new, "pn_new"),
         ],
@@ -280,6 +285,7 @@ def test_update_dtn_clear_all_groups(auth_client, graph, decision_table_node):
     )
 
     payload = {
+        "save_version": graph.save_version,
         "decision_table_node_list": [
             {
                 "id": decision_table_node.id,
@@ -316,6 +322,7 @@ def test_update_dtn_replace_groups_with_temp_routing(
 
     temp_pn = "dddd0001-0001-0001-0001-dddddddddddd"
     payload = {
+        "save_version": graph.save_version,
         "python_node_list": [
             _make_python_node_payload(graph.id, temp_pn, "pn_replacement"),
         ],
@@ -365,6 +372,7 @@ def test_update_dtn_replace_groups_with_temp_routing(
 @pytest.mark.django_db
 def test_create_dtn_group_with_all_fields(auth_client, graph, python_node_a):
     payload = {
+        "save_version": graph.save_version,
         "decision_table_node_list": [
             {
                 "graph": graph.id,
@@ -405,6 +413,7 @@ def test_dtn_with_edge_chain_to_new_python_nodes(auth_client, graph):
     temp_pn2 = "eeee0003-0003-0003-0003-eeeeeeeeeeee"
 
     payload = {
+        "save_version": graph.save_version,
         "python_node_list": [
             _make_python_node_payload(graph.id, temp_pn1, "chain_1"),
             _make_python_node_payload(graph.id, temp_pn2, "chain_2"),
@@ -466,6 +475,7 @@ def test_dtn_both_default_next_id_and_temp_id_rejected(
 ):
     temp = "ffff0001-0001-0001-0001-ffffffffffff"
     payload = {
+        "save_version": graph.save_version,
         "python_node_list": [
             _make_python_node_payload(graph.id, temp, "pn_unused"),
         ],
@@ -490,6 +500,7 @@ def test_dtn_group_both_next_node_id_and_temp_id_rejected(
 ):
     temp = "ffff0002-0002-0002-0002-ffffffffffff"
     payload = {
+        "save_version": graph.save_version,
         "python_node_list": [
             _make_python_node_payload(graph.id, temp, "pn_unused"),
         ],
@@ -522,6 +533,7 @@ def test_dtn_group_both_next_node_id_and_temp_id_rejected(
 @pytest.mark.django_db
 def test_dtn_unknown_default_next_temp_id_rejected(auth_client, graph):
     payload = {
+        "save_version": graph.save_version,
         "decision_table_node_list": [
             {
                 "graph": graph.id,
@@ -539,6 +551,7 @@ def test_dtn_unknown_default_next_temp_id_rejected(auth_client, graph):
 @pytest.mark.django_db
 def test_dtn_group_unknown_next_node_temp_id_rejected(auth_client, graph):
     payload = {
+        "save_version": graph.save_version,
         "decision_table_node_list": [
             {
                 "graph": graph.id,
@@ -567,6 +580,7 @@ def test_dtn_group_unknown_next_node_temp_id_rejected(auth_client, graph):
 @pytest.mark.django_db
 def test_dtn_nonexistent_default_next_node_id_rejected(auth_client, graph):
     payload = {
+        "save_version": graph.save_version,
         "decision_table_node_list": [
             {
                 "graph": graph.id,

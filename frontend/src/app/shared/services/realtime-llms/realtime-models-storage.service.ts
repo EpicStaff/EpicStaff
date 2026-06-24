@@ -2,12 +2,13 @@ import { inject, Injectable, signal } from '@angular/core';
 import { CreateRealtimeModel, RealtimeModel } from '@shared/models';
 import { catchError, Observable, of, tap, throwError } from 'rxjs';
 
+import { StorageService } from '../app-storage.service';
 import { RealtimeModelsService } from './real-time-models.service';
 
 @Injectable({
     providedIn: 'root',
 })
-export class RealtimeModelsStorageService {
+export class RealtimeModelsStorageService implements StorageService {
     private readonly realtimeModelsService = inject(RealtimeModelsService);
 
     private modelsSignal = signal<RealtimeModel[]>([]);
@@ -53,6 +54,11 @@ export class RealtimeModelsStorageService {
             }
             return [model, ...current];
         });
+    }
+
+    clear(): void {
+        this.modelsSignal.set([]);
+        this.allModelsLoadedSignal.set(false);
     }
 
     private removeModelFromCache(id: number): void {

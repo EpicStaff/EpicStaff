@@ -110,6 +110,15 @@
             color: var(--accent-color, #2196f3);
             font-size: 16px;
         }
+
+        &.delete-button i {
+            color: #aaa;
+            font-size: 16px;
+        }
+
+        &.delete-button:hover i {
+            color: #ff6b6b;
+        }
     }
 
     .interactive-node-body {

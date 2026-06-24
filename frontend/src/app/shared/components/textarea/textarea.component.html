@@ -8,14 +8,46 @@
         />
     }
 
-    <textarea
-        class="textarea"
+    <div
+        class="textarea-field"
         [class.invalid]="invalid()"
-        [attr.rows]="rows()"
-        [placeholder]="placeholder()"
-        [disabled]="disabled()"
-        [value]="value()"
-        (input)="handleInput($event)"
-        (blur)="handleBlur()"
-    ></textarea>
+        [class.disabled]="disabled()"
+    >
+        <textarea
+            #textareaRef
+            class="textarea"
+            [attr.rows]="rows()"
+            [placeholder]="placeholder()"
+            [disabled]="disabled()"
+            [value]="value()"
+            (input)="handleInput($event)"
+            (blur)="handleBlur()"
+        ></textarea>
+
+        @if (!disabled()) {
+            <span
+                class="resize-handle"
+                title="Drag to resize"
+                (pointerdown)="onResizeStart($event)"
+                (pointermove)="onResizeMove($event)"
+                (pointerup)="onResizeEnd($event)"
+                (pointercancel)="onResizeEnd($event)"
+            >
+                <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 10 10"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                >
+                    <path
+                        d="M9 1L1 9M9 5L5 9"
+                        stroke="currentColor"
+                        stroke-width="1.25"
+                        stroke-linecap="round"
+                    />
+                </svg>
+            </span>
+        }
+    </div>
 </div>

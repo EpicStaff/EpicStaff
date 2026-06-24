@@ -63,7 +63,7 @@ class CrewStrategy(EntityImportExportStrategy):
     def export_entity(self, instance: Crew) -> dict:
         return self.serializer_class(instance).data
 
-    def create_entity(self, data: dict, id_mapper: IDMapper) -> Crew:
+    def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> Crew:
         if "name" in data:
             existing_names = Crew.objects.values_list("name", flat=True)
             data["name"] = ensure_unique_identifier(

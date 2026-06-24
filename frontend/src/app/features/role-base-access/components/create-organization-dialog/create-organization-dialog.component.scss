@@ -76,6 +76,10 @@
     }
 }
 
+app-select.row-unselected {
+    opacity: 0.35;
+}
+
 .user-cell {
     display: flex;
     align-items: center;

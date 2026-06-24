@@ -28,6 +28,7 @@
             </label>
 
             <app-custom-input
+                (blur)="trimEmail()"
                 placeholder="Enter user email..."
                 formControlName="email"
             />

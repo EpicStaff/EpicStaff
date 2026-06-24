@@ -127,13 +127,13 @@ export class FlowsApiService {
         });
     }
 
-    restoreGraphVersion(id: number, backup = true): Observable<GraphRestoreResponse> {
+    restoreGraphVersion(id: number, backup = true, saveVersion?: number): Observable<GraphRestoreResponse> {
         const params = backup ? new HttpParams().set('backup', 'true') : undefined;
-        return this.http.post<GraphRestoreResponse>(
-            `${this.configService.apiUrl}graph-versions/${id}/restore/`,
-            {},
-            { headers: this.httpHeaders, params }
-        );
+        const body = saveVersion !== undefined ? { save_version: saveVersion } : {};
+        return this.http.post<GraphRestoreResponse>(`${this.configService.apiUrl}graph-versions/${id}/restore/`, body, {
+            headers: this.httpHeaders,
+            params,
+        });
     }
 
     deleteGraphVersion(id: number): Observable<void> {

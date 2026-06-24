@@ -80894,6 +80894,7 @@ var _AuthTokenService = class _AuthTokenService {
   constructor() {
     this.tokenSignal = signal(null, ...ngDevMode ? [{ debugName: "tokenSignal" }] : []);
     this.apiBaseUrlSignal = signal(null, ...ngDevMode ? [{ debugName: "apiBaseUrlSignal" }] : []);
+    this.organizationIdSignal = signal(null, ...ngDevMode ? [{ debugName: "organizationIdSignal" }] : []);
   }
   setToken(token) {
     const next = token?.trim() || null;
@@ -80908,6 +80909,17 @@ var _AuthTokenService = class _AuthTokenService {
   }
   getApiBaseUrl() {
     return this.apiBaseUrlSignal();
+  }
+  setOrganizationId(id) {
+    if (id === null || id === void 0) {
+      this.organizationIdSignal.set(null);
+      return;
+    }
+    const next = String(id).trim() || null;
+    this.organizationIdSignal.set(next);
+  }
+  getOrganizationId() {
+    return this.organizationIdSignal();
   }
 };
 _AuthTokenService.\u0275fac = function AuthTokenService_Factory(__ngFactoryType__) {
@@ -85016,6 +85028,7 @@ var _ChatComponent = class _ChatComponent {
     this.isDockMode = false;
     this.apiBaseUrl = "";
     this.accessToken = "";
+    this.organizationId = "";
     this.basicAuthLogin = "";
     this.basicAuthPassword = "";
     this.epChatCommand = null;
@@ -85086,6 +85099,7 @@ var _ChatComponent = class _ChatComponent {
   ngOnInit() {
     this.authTokenService.setApiBaseUrl(this.apiBaseUrl);
     this.authTokenService.setToken(this.accessToken);
+    this.authTokenService.setOrganizationId(this.organizationId);
     this.setGlobalBasePath();
     this.applyThemeConfig();
     this.chatSessionId = Date.now();
@@ -85127,6 +85141,9 @@ var _ChatComponent = class _ChatComponent {
     if (changes["accessToken"]) {
       this.authTokenService.setToken(this.accessToken);
       this.apiSyncDone = false;
+    }
+    if (changes["organizationId"]) {
+      this.authTokenService.setOrganizationId(this.organizationId);
     }
     if (changes["apiBaseUrl"] || changes["accessToken"]) {
       if (!this.apiSyncPending) {
@@ -85963,7 +85980,7 @@ _ChatComponent.\u0275cmp = /* @__PURE__ */ \u0275\u0275defineComponent({ type: _
   if (rf & 2) {
     \u0275\u0275attribute("data-theme", ctx.themeAttr);
   }
-}, inputs: { uniqueUserId: "uniqueUserId", userData: "userData", title: "title", basePath: "basePath", chatWidth: "chatWidth", chatHeight: "chatHeight", chatTop: "chatTop", chatLeft: "chatLeft", chatRight: "chatRight", chatBottom: "chatBottom", chatIconPath: "chatIconPath", chatIconSize: "chatIconSize", dateLocale: "dateLocale", chatPosition: "chatPosition", isMonoAgent: "isMonoAgent", defaultAgentName: "defaultAgentName", defaultAgentDescription: "defaultAgentDescription", defaultAgentFlowUrl: "defaultAgentFlowUrl", defaultAgentFlowId: "defaultAgentFlowId", hideToggleButton: "hideToggleButton", fileAttachmentDisabled: "fileAttachmentDisabled", dockEnabled: "dockEnabled", isDockMode: "isDockMode", apiBaseUrl: "apiBaseUrl", accessToken: "accessToken", basicAuthLogin: "basicAuthLogin", basicAuthPassword: "basicAuthPassword", epChatCommand: "epChatCommand", messageTimeout: "messageTimeout", themeConfig: "themeConfig", themePreset: "themePreset", theme: "theme" }, outputs: { epChatCommandResult: "epChatCommandResult", epChatEvent: "epChatEvent" }, features: [\u0275\u0275ProvidersFeature([ChatParentBridgeService]), \u0275\u0275NgOnChangesFeature], decls: 3, vars: 3, consts: [["epClickOutside", "", "epResizableChat", "", 1, "ep-popup", 3, "ep-popup--dock", "ngStyle", "config", "resizeDisabled"], [3, "popupState", "currentAgent", "newAgentParams"], ["aria-hidden", "true", 1, "ep-chat-click-area", 3, "click"], [3, "clicked", "iconPath", "chatIconSize", "unreadCount"], ["epClickOutside", "", "epResizableChat", "", 1, "ep-popup", 3, "epClickOutside", "ngStyle", "config", "resizeDisabled"], [3, "closed", "infoClicked", "dragClicked", "collapseClicked", "toggleFullHeightClicked", "dockClicked", "agentSelected", "clearChatHistory", "createAgent", "editAgent", "removeAgent", "setDefaultPosition", "currentAgent", "agents", "isMonoAgent", "dockEnabled", "isDockMode"], [3, "actionClick", "messages", "isTyping", "scrollMode"], [3, "sendMessage", "stop", "isTyping", "messages", "currentAgent", "fileAttachmentEnabled"], [3, "closed", "popupState", "currentAgent", "newAgentParams"]], template: function ChatComponent_Template(rf, ctx) {
+}, inputs: { uniqueUserId: "uniqueUserId", userData: "userData", title: "title", basePath: "basePath", chatWidth: "chatWidth", chatHeight: "chatHeight", chatTop: "chatTop", chatLeft: "chatLeft", chatRight: "chatRight", chatBottom: "chatBottom", chatIconPath: "chatIconPath", chatIconSize: "chatIconSize", dateLocale: "dateLocale", chatPosition: "chatPosition", isMonoAgent: "isMonoAgent", defaultAgentName: "defaultAgentName", defaultAgentDescription: "defaultAgentDescription", defaultAgentFlowUrl: "defaultAgentFlowUrl", defaultAgentFlowId: "defaultAgentFlowId", hideToggleButton: "hideToggleButton", fileAttachmentDisabled: "fileAttachmentDisabled", dockEnabled: "dockEnabled", isDockMode: "isDockMode", apiBaseUrl: "apiBaseUrl", accessToken: "accessToken", organizationId: "organizationId", basicAuthLogin: "basicAuthLogin", basicAuthPassword: "basicAuthPassword", epChatCommand: "epChatCommand", messageTimeout: "messageTimeout", themeConfig: "themeConfig", themePreset: "themePreset", theme: "theme" }, outputs: { epChatCommandResult: "epChatCommandResult", epChatEvent: "epChatEvent" }, features: [\u0275\u0275ProvidersFeature([ChatParentBridgeService]), \u0275\u0275NgOnChangesFeature], decls: 3, vars: 3, consts: [["epClickOutside", "", "epResizableChat", "", 1, "ep-popup", 3, "ep-popup--dock", "ngStyle", "config", "resizeDisabled"], [3, "popupState", "currentAgent", "newAgentParams"], ["aria-hidden", "true", 1, "ep-chat-click-area", 3, "click"], [3, "clicked", "iconPath", "chatIconSize", "unreadCount"], ["epClickOutside", "", "epResizableChat", "", 1, "ep-popup", 3, "epClickOutside", "ngStyle", "config", "resizeDisabled"], [3, "closed", "infoClicked", "dragClicked", "collapseClicked", "toggleFullHeightClicked", "dockClicked", "agentSelected", "clearChatHistory", "createAgent", "editAgent", "removeAgent", "setDefaultPosition", "currentAgent", "agents", "isMonoAgent", "dockEnabled", "isDockMode"], [3, "actionClick", "messages", "isTyping", "scrollMode"], [3, "sendMessage", "stop", "isTyping", "messages", "currentAgent", "fileAttachmentEnabled"], [3, "closed", "popupState", "currentAgent", "newAgentParams"]], template: function ChatComponent_Template(rf, ctx) {
   if (rf & 1) {
     \u0275\u0275conditionalCreate(0, ChatComponent_Conditional_0_Template, 2, 3);
     \u0275\u0275conditionalCreate(1, ChatComponent_Conditional_1_Template, 4, 17, "div", 0);
@@ -86051,6 +86068,8 @@ var ChatComponent = _ChatComponent;
   }], apiBaseUrl: [{
     type: Input
   }], accessToken: [{
+    type: Input
+  }], organizationId: [{
     type: Input
   }], basicAuthLogin: [{
     type: Input
@@ -86190,14 +86209,22 @@ function markedOptionsFactory() {
 var authInterceptor = (req, next) => {
   const authTokenService = inject2(AuthTokenService);
   const token = authTokenService.getToken();
+  const organizationId = authTokenService.getOrganizationId();
   const apiBaseUrl = authTokenService.getApiBaseUrl();
-  if (!token || req.headers.has("Authorization")) {
-    return next(req);
-  }
   if (apiBaseUrl && !req.url.startsWith(apiBaseUrl)) {
     return next(req);
   }
-  return next(req.clone({ setHeaders: { Authorization: `Bearer ${token}` } }));
+  const setHeaders = {};
+  if (token && !req.headers.has("Authorization")) {
+    setHeaders["Authorization"] = `Bearer ${token}`;
+  }
+  if (organizationId && !req.headers.has("X-Organization-Id")) {
+    setHeaders["X-Organization-Id"] = organizationId;
+  }
+  if (Object.keys(setHeaders).length === 0) {
+    return next(req);
+  }
+  return next(req.clone({ setHeaders }));
 };
 
 // src/app/app.module.ts

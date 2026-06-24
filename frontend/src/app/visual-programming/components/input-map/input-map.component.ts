@@ -512,7 +512,9 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
 
     private readonly destroyRef = inject(DestroyRef);
     private readonly keySubs = new WeakMap<AbstractControl, Subscription>();
+    private readonly testKeySubs = new WeakMap<AbstractControl, Subscription>();
     private readonly lastKnownKeys = new WeakMap<AbstractControl, string>();
+    private readonly lastKnownTestKeys = new WeakMap<AbstractControl, string>();
     private isSyncing = false;
 
     private readonly pythonCodeRunService = inject(PythonCodeRunService);
@@ -638,6 +640,7 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
                 }
             });
 
+            this.teardownAllTestKeySubs();
             this.testPairs.clear({ emitEvent: false });
             this.normalModeSnapshot
                 .filter((item) => item.key?.trim() !== '')
@@ -652,6 +655,7 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
                     );
                 });
 
+            this.attachKeyMirroringToAllTestPairs();
             this.testPairs.markAsPristine();
         } else {
             const changed = this.syncTestKeysToNormalMode();
@@ -708,6 +712,7 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
                                     value: [String(value)],
                                 })
                             );
+                            this.mirrorTestPairKey(this.testPairs.at(this.testPairs.length - 1));
                         }
                     }
                     this.testPairs.markAsDirty();
@@ -727,9 +732,14 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
                 value: [''],
             })
         );
+        this.mirrorTestPairKey(this.testPairs.at(this.testPairs.length - 1));
     }
 
     removeTestVariable(index: number): void {
+        const removed = this.testPairs.at(index);
+        this.testKeySubs.get(removed)?.unsubscribe();
+        this.testKeySubs.delete(removed);
+        this.lastKnownTestKeys.delete(removed);
         this.testPairs.removeAt(index);
         this.testPairs.markAsDirty();
     }
@@ -749,12 +759,25 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
         const currentTestKeys = new Set(testValues.map((item) => item.key?.trim() ?? '').filter((k) => k !== ''));
 
         const removedKeys = new Set<string>();
-        snapshotKeys.forEach((k) => {
-            if (!currentTestKeys.has(k)) removedKeys.add(k);
+        snapshot.forEach((item) => {
+            const k = item.key?.trim() ?? '';
+            if (k !== '' && !currentTestKeys.has(k)) removedKeys.add(k);
         });
-        const addedKeys = new Set<string>();
-        currentTestKeys.forEach((k) => {
-            if (!snapshotKeys.has(k)) addedKeys.add(k);
+
+        // A rename surfaces as removed(old)+added(new); positional zip lets the new key
+        // inherit the original value instead of resetting to the 'variables.' placeholder.
+        const removedSnapshotValues = snapshot
+            .map((item) => ({ key: item.key?.trim() ?? '', value: item.value ?? '' }))
+            .filter((item) => item.key !== '' && removedKeys.has(item.key));
+
+        const addedKeys: string[] = [];
+        const seenAdded = new Set<string>();
+        testValues.forEach((item) => {
+            const k = item.key?.trim() ?? '';
+            if (k !== '' && !snapshotKeys.has(k) && !seenAdded.has(k)) {
+                seenAdded.add(k);
+                addedKeys.push(k);
+            }
         });
 
         let changed = false;
@@ -767,15 +790,19 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
             }
         }
 
-        for (const newKey of addedKeys) {
+        addedKeys.forEach((newKey, idx) => {
+            if (this.findInputPairIndexByKey(newKey) !== -1) {
+                return; // already present via mirror — skip
+            }
+            const inheritedValue = removedSnapshotValues[idx]?.value ?? 'variables.';
             this.pairs.push(
                 this.fb.group({
                     key: [newKey],
-                    value: ['variables.'],
+                    value: [inheritedValue],
                 })
             );
             changed = true;
-        }
+        });
 
         this.attachKeyMirroringToAllPairs();
 
@@ -857,6 +884,60 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
         const target = key.trim();
         if (target === '') return -1;
         return this.testPairs.controls.findIndex((c) => ((c.value.key as string) ?? '').trim() === target);
+    }
+
+    private findInputPairIndexByKey(key: string): number {
+        const target = key.trim();
+        if (target === '') return -1;
+        return this.pairs.controls.findIndex((c) => ((c.value.key as string) ?? '').trim() === target);
+    }
+
+    private mirrorTestPairKey(testPairCtrl: AbstractControl): void {
+        const keyCtrl = testPairCtrl.get('key');
+        if (!keyCtrl) return;
+
+        this.lastKnownTestKeys.set(testPairCtrl, ((keyCtrl.value as string) ?? '').trim());
+
+        const sub = keyCtrl.valueChanges
+            .pipe(distinctUntilChanged(), takeUntilDestroyed(this.destroyRef))
+            .subscribe((raw: string) => {
+                if (this.isSyncing) return;
+
+                const oldKey = this.lastKnownTestKeys.get(testPairCtrl) ?? '';
+                const newKey = (raw ?? '').trim();
+                if (oldKey === newKey) return;
+                this.lastKnownTestKeys.set(testPairCtrl, newKey);
+
+                const inputIdx = oldKey ? this.findInputPairIndexByKey(oldKey) : -1;
+                if (inputIdx === -1) return;
+
+                this.isSyncing = true;
+                try {
+                    this.pairs.at(inputIdx).get('key')?.setValue(newKey, { emitEvent: false });
+                    const pairCtrl = this.pairs.at(inputIdx);
+                    this.lastKnownKeys.set(pairCtrl, newKey);
+                } finally {
+                    this.isSyncing = false;
+                }
+            });
+
+        this.testKeySubs.set(testPairCtrl, sub);
+    }
+
+    private attachKeyMirroringToAllTestPairs(): void {
+        for (const ctrl of this.testPairs.controls) {
+            if (!this.testKeySubs.has(ctrl)) {
+                this.mirrorTestPairKey(ctrl);
+            }
+        }
+    }
+
+    private teardownAllTestKeySubs(): void {
+        for (const ctrl of this.testPairs.controls) {
+            this.testKeySubs.get(ctrl)?.unsubscribe();
+            this.testKeySubs.delete(ctrl);
+            this.lastKnownTestKeys.delete(ctrl);
+        }
     }
 
     openPicker(rowIndex: number, event: MouseEvent): void {

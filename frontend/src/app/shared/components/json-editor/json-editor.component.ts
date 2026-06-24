@@ -8,6 +8,7 @@ import {
     HostBinding,
     Input,
     OnChanges,
+    OnDestroy,
     Output,
     SimpleChanges,
     ViewChild,
@@ -20,6 +21,12 @@ import { ToastService } from '../../../services/notifications';
 import { ResizableDirective } from '../../../user-settings-page/tools/custom-tool-editor/directives/resizable.directive';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
+export interface JsonError {
+    line: number;
+    column?: number;
+    message: string;
+}
+
 @Component({
     selector: 'app-json-editor',
     imports: [FormsModule, NgIf, MonacoEditorModule, ResizableDirective, AppSvgIconComponent],
@@ -28,7 +35,7 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
     changeDetection: ChangeDetectionStrategy.OnPush,
     standalone: true,
 })
-export class JsonEditorComponent implements OnChanges {
+export class JsonEditorComponent implements OnChanges, OnDestroy {
     @ViewChild('editorContainer', { static: true }) public editorContainer!: ElementRef;
 
     @Input() public jsonData: string = '{}';
@@ -38,6 +45,8 @@ export class JsonEditorComponent implements OnChanges {
     @Input() public title: string = 'JSON Editor';
     @Input() public collapsible: boolean = false;
     @Input() public allowCopy: boolean = false;
+    @Input() public jsonSchema?: object;
+    @Input() public extraValidate?: (json: string) => { message: string; startOffset: number; endOffset: number }[];
     @Input() public editorOptions: MonacoEditor.IStandaloneEditorConstructionOptions = {
         theme: 'vs-dark',
         language: 'json',
@@ -56,6 +65,7 @@ export class JsonEditorComponent implements OnChanges {
 
     @Output() public jsonChange = new EventEmitter<string>();
     @Output() public validationChange = new EventEmitter<boolean>();
+    @Output() public errorsChange = new EventEmitter<JsonError[]>();
     @Output() public editorReady = new EventEmitter<MonacoEditor.IStandaloneCodeEditor>();
 
     public collapsed: boolean = true;
@@ -65,6 +75,22 @@ export class JsonEditorComponent implements OnChanges {
     private monacoEditor: MonacoEditor.IStandaloneCodeEditor | null = null;
     private isProgrammaticChange: boolean = false;
     private lastExternalValue: string = '{}';
+
+    private static schemaSeq = 0;
+    private readonly schemaId = `inmemory://json-editor-schema/${JsonEditorComponent.schemaSeq++}.json`;
+    private markersDisposable: { dispose(): void } | null = null;
+
+    private get monacoGlobal(): any {
+        return (window as unknown as { monaco?: any }).monaco ?? null;
+    }
+
+    private get schemaMode(): boolean {
+        return !!this.jsonSchema && !!this.monacoGlobal;
+    }
+
+    private get usesMarkers(): boolean {
+        return (!!this.jsonSchema || !!this.extraValidate) && !!this.monacoGlobal;
+    }
 
     @HostBinding('class.collapsed')
     get hostCollapsed() {
@@ -102,7 +128,20 @@ export class JsonEditorComponent implements OnChanges {
         this.monacoEditor.updateOptions(this.editorOptions);
         this.setValueAndFormat(this.jsonData || '{}');
         this.editorReady.emit(editor);
+        if (this.usesMarkers) {
+            if (this.schemaMode) {
+                this.registerSchema();
+            }
+            this.setupMarkerListener();
+            this.runExtraValidation();
+            this.emitMarkers();
+        }
         this.cdr.markForCheck();
+    }
+
+    public ngOnDestroy(): void {
+        this.markersDisposable?.dispose();
+        this.unregisterSchema();
     }
 
     public onJsonChange(newValue: string): void {
@@ -115,8 +154,18 @@ export class JsonEditorComponent implements OnChanges {
         try {
             JSON.parse(newValue);
             this.jsonIsValid = true;
-        } catch {
+            if (!this.usesMarkers) {
+                this.errorsChange.emit([]);
+            }
+        } catch (e) {
             this.jsonIsValid = false;
+            if (!this.usesMarkers) {
+                this.errorsChange.emit([this.buildJsonError(newValue, e)]);
+            }
+        }
+
+        if (this.usesMarkers) {
+            this.runExtraValidation();
         }
 
         this.validationChange.emit(this.jsonIsValid);
@@ -126,6 +175,35 @@ export class JsonEditorComponent implements OnChanges {
 
     public onToggle(): void {
         this.collapsed = !this.collapsed;
+    }
+
+    private buildJsonError(raw: string, err: unknown): JsonError {
+        const message = err instanceof Error ? err.message : String(err);
+
+        const lineCol = message.match(/line (\d+) column (\d+)/i);
+        if (lineCol) {
+            return {
+                line: Number(lineCol[1]),
+                column: Number(lineCol[2]),
+                message: this.cleanJsonErrorMessage(message),
+            };
+        }
+
+        const posMatch = message.match(/at position (\d+)/i);
+        if (posMatch) {
+            const pos = Number(posMatch[1]);
+            const upto = raw.slice(0, pos);
+            const line = 1 + (upto.match(/\n/g)?.length ?? 0);
+            const column = pos - raw.lastIndexOf('\n', pos - 1);
+            return { line, column, message: this.cleanJsonErrorMessage(message) };
+        }
+
+        return { line: 1, column: 1, message: this.cleanJsonErrorMessage(message) };
+    }
+
+    private cleanJsonErrorMessage(message: string): string {
+        const cleaned = message.replace(/\s*in JSON at position.*$/i, '').trim();
+        return cleaned || message;
     }
 
     public onCopy(): void {
@@ -143,14 +221,117 @@ export class JsonEditorComponent implements OnChanges {
         this.monacoEditor?.getAction('editor.action.formatDocument')?.run();
     }
 
+    private registerSchema(): void {
+        const monaco = this.monacoGlobal;
+        const modelUri = this.monacoEditor?.getModel()?.uri?.toString();
+        if (!monaco?.languages?.json || !modelUri) {
+            return;
+        }
+        const defaults = monaco.languages.json.jsonDefaults;
+        const current = defaults.diagnosticsOptions?.schemas ?? [];
+        const others = current.filter((s: { uri?: string }) => s.uri !== this.schemaId);
+        defaults.setDiagnosticsOptions({
+            ...defaults.diagnosticsOptions,
+            validate: true,
+            schemaValidation: 'error',
+            schemas: [...others, { uri: this.schemaId, fileMatch: [modelUri], schema: this.jsonSchema }],
+        });
+    }
+
+    private unregisterSchema(): void {
+        const monaco = this.monacoGlobal;
+        if (!monaco?.languages?.json) {
+            return;
+        }
+        const defaults = monaco.languages.json.jsonDefaults;
+        const current = defaults.diagnosticsOptions?.schemas ?? [];
+        defaults.setDiagnosticsOptions({
+            ...defaults.diagnosticsOptions,
+            schemas: current.filter((s: { uri?: string }) => s.uri !== this.schemaId),
+        });
+    }
+
+    private setupMarkerListener(): void {
+        const monaco = this.monacoGlobal;
+        if (!monaco?.editor?.onDidChangeMarkers) {
+            return;
+        }
+        this.markersDisposable = monaco.editor.onDidChangeMarkers((uris: { toString(): string }[]) => {
+            const myUri = this.monacoEditor?.getModel()?.uri?.toString();
+            if (myUri && uris.some((u) => u.toString() === myUri)) {
+                this.emitMarkers();
+            }
+        });
+    }
+
+    private emitMarkers(): void {
+        const monaco = this.monacoGlobal;
+        const model = this.monacoEditor?.getModel();
+        if (!monaco?.editor || !model) {
+            return;
+        }
+        const markers = monaco.editor.getModelMarkers({ resource: model.uri }) as Array<{
+            severity: number;
+            startLineNumber: number;
+            startColumn: number;
+            message: string;
+        }>;
+        const errorSeverity = monaco.MarkerSeverity?.Error ?? 8;
+        const seen = new Set<string>();
+        const errors: JsonError[] = [];
+        for (const m of markers) {
+            if (m.severity !== errorSeverity) {
+                continue;
+            }
+            const key = `${m.startLineNumber}:${m.startColumn}:${m.message}`;
+            if (seen.has(key)) {
+                continue;
+            }
+            seen.add(key);
+            errors.push({ line: m.startLineNumber, column: m.startColumn, message: m.message });
+        }
+        errors.sort((a, b) => a.line - b.line || (a.column ?? 0) - (b.column ?? 0));
+        this.errorsChange.emit(errors);
+        this.cdr.markForCheck();
+    }
+
+    private runExtraValidation(): void {
+        const monaco = this.monacoGlobal;
+        const model = this.monacoEditor?.getModel();
+        if (!this.extraValidate || !monaco?.editor || !model) {
+            return;
+        }
+        const markers = this.extraValidate(model.getValue()).map((m) => {
+            const start = model.getPositionAt(m.startOffset);
+            const end = model.getPositionAt(m.endOffset);
+            return {
+                severity: monaco.MarkerSeverity?.Error ?? 8,
+                message: m.message,
+                startLineNumber: start.lineNumber,
+                startColumn: start.column,
+                endLineNumber: end.lineNumber,
+                endColumn: end.column,
+            };
+        });
+        monaco.editor.setModelMarkers(model, 'json-editor-extra', markers);
+    }
+
     private setValueAndFormat(value: string): void {
         this.isProgrammaticChange = true;
         this.monacoEditor?.setValue(value);
+        if (!this.jsonIsValid) {
+            this.jsonIsValid = true;
+            this.validationChange.emit(true);
+            if (!this.usesMarkers) {
+                this.errorsChange.emit([]);
+            }
+        }
         this.monacoEditor
             ?.getAction('editor.action.formatDocument')
             ?.run()
             ?.then(() => {
                 this.isProgrammaticChange = false;
+                this.runExtraValidation();
             });
     }
 }

@@ -66,7 +66,7 @@ class AgentStrategy(EntityImportExportStrategy):
     def export_entity(self, instance: Agent) -> dict:
         return self.serializer_class(instance).data
 
-    def create_entity(self, data: dict, id_mapper: IDMapper) -> Agent:
+    def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> Agent:
         llm_config, fcm_llm_config = self._get_llm_configs(data, id_mapper)
         python_tools, mcp_tools = self._get_tools(data, id_mapper)
         realtime_data = data.pop("realtime_agent", None)

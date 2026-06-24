@@ -3,12 +3,13 @@ import { CreateEmbeddingConfigRequest, EmbeddingConfig, GetEmbeddingConfigReques
 import { catchError, finalize, Observable, of, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
+import { StorageService } from '../app-storage.service';
 import { EmbeddingConfigsService } from './embedding-configs.service';
 
 @Injectable({
     providedIn: 'root',
 })
-export class EmbeddingConfigStorageService {
+export class EmbeddingConfigStorageService implements StorageService {
     private readonly embeddingConfigsService = inject(EmbeddingConfigsService);
 
     private configsRequest$?: Observable<EmbeddingConfig[]>;
@@ -80,6 +81,12 @@ export class EmbeddingConfigStorageService {
 
     markConfigsOutdated(): void {
         this.configsLoaded.set(false);
+    }
+
+    clear(): void {
+        this.configsSignal.set([]);
+        this.configsLoaded.set(false);
+        this.configsRequest$ = undefined;
     }
 
     private mergeConfigsIntoCache(incoming: EmbeddingConfig[]): void {
