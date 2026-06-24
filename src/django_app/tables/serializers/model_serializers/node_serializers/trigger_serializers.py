@@ -13,6 +13,7 @@ from tables.validators.schedule_trigger_validator import (
     ScheduleTriggerValidator,
 )
 from tables.services.schedule_trigger_service import ScheduleTriggerService
+from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.models.webhook_models import WebhookTrigger, ProviderType
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
@@ -50,8 +51,6 @@ class WebhookTriggerNodeSerializer(
         ] + BaseGraphEntityMixin.Meta.common_fields
 
     def _wait_for_tunnel_url(self, webhook_trigger):
-        from tables.services.webhook_trigger_service import WebhookTriggerService
-
         if webhook_trigger is None:
             return
         service = WebhookTriggerService()

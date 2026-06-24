@@ -10,6 +10,7 @@ from tables.models.webhook_models import (
 )
 from tables.models.python_models import PythonCode
 from tables.models import Agent, PythonCodeTool, ToolConfig, McpTool
+from utils.logger import logger
 
 
 class NestedAgentExportMixin:
@@ -266,6 +267,18 @@ class WebhookCreationMixin:
                 path=path, provider_type=provider_type
             )
             created = True
+        except WebhookTrigger.MultipleObjectsReturned:
+            logger.warning(
+                "Multiple WebhookTrigger rows found for path=%r — "
+                "expected at most one. Using the first result.",
+                path,
+            )
+            trigger = WebhookTrigger.objects.filter(path=path).first()
+            if trigger is None:
+                raise serializers.ValidationError(
+                    f"WebhookTrigger with path={path!r} disappeared during lookup."
+                )
+            created = False
 
         if not created and trigger.provider_type != provider_type:
             # Provider changed — delete the old config to avoid orphan
