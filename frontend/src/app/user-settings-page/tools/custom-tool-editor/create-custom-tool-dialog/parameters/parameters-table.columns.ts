@@ -139,8 +139,6 @@ export const VARIABLE_SECTIONS = [
     },
 ] as const satisfies readonly VariableSectionConfig[];
 
-// Strip the `required` column for the single-row "array items" sub-view —
-// an item schema has no required flag at the backend.
 export function arrayItemColumnDefs(base: readonly TableColumnDef[]): TableColumnDef[] {
     return base.filter((col) => col.key !== 'required');
 }

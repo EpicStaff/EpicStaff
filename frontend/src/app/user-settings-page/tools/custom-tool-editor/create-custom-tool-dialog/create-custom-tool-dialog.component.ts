@@ -122,10 +122,6 @@ export class CreateCustomToolDialogComponent {
     private monacoJsonEditor: MonacoEditor.IStandaloneCodeEditor | null = null;
 
     constructor() {
-        // Re-layout the JSON Monaco editor whenever it becomes visible again.
-        // Both editors set `automaticLayout: true`, but the very first measure
-        // can be off when the right pane is animated/expanded - manually call
-        // layout() on the next microtask to be safe.
         effect(() => {
             const active = this.activeEditor();
             if (active === ActiveEditor.Json) {
@@ -142,7 +138,6 @@ export class CreateCustomToolDialogComponent {
             this.lastValidJson.set(initialJson);
         }
 
-        // Route backdrop click and Escape through the dirty-check guard.
         this.dialogRef.disableClose = true;
         this.dialogRef.backdropClick.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.requestClose());
         this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
@@ -156,8 +151,6 @@ export class CreateCustomToolDialogComponent {
     public toggleEditor(target: ActiveEditor.Python | ActiveEditor.Json): void {
         const next = this.activeEditor() === target ? ActiveEditor.None : target;
         this.activeEditor.set(next);
-        // Selecting a target for the right pane closes its inline preview to
-        // avoid mounting two Monaco instances editing the same form control.
         if (next === ActiveEditor.Python) {
             this.pythonSectionExpanded.set(false);
         }
@@ -206,9 +199,6 @@ export class CreateCustomToolDialogComponent {
                     })
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe((result) => {
-                        // result === false  → "Switch Anyway" (cancel button)
-                        // result === true   → "Stay and Fix" (confirm button) → do nothing
-                        // result === 'close'→ user dismissed → do nothing
                         if (result === false) {
                             this.applyEnableTableMode([]);
                             this.tableImportWasInvalid = true;
@@ -263,10 +253,7 @@ export class CreateCustomToolDialogComponent {
         this.tableVariables.set(variables);
         this.parametersTableMode.set(true);
         this.jsonSectionExpanded.set(false);
-        // The JSON editor isn't visible in table mode; clear any pending issues.
         this.jsonIssues.set([]);
-        // If the JSON editor was occupying the right pane, swap it to Python
-        // so the user keeps a useful editor visible instead of an empty panel.
         if (this.activeEditor() === ActiveEditor.Json) {
             this.activeEditor.set(ActiveEditor.Python);
         }
@@ -322,8 +309,6 @@ export class CreateCustomToolDialogComponent {
 
     public onVariablesChange(vars: ToolVariable[]): void {
         this.tableVariables.set(vars);
-        // Table-mode edits don't touch the JSON form control until save/toggle, so
-        // mark the form dirty here to make the unsaved-changes guard fire.
         this.form.controls.variablesJson.markAsDirty();
     }
 
@@ -360,9 +345,6 @@ export class CreateCustomToolDialogComponent {
             })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
-                // result === true   → "Leave" (confirm button) → close
-                // result === false  → "Cancel" (cancel button) → stay
-                // result === 'close' → user dismissed → stay
                 if (result === true) {
                     this.dialogRef.close();
                 }

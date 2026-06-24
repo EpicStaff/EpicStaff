@@ -223,9 +223,6 @@ function propertiesToChildren(
     return result;
 }
 
-// Lenient: accept any object with valid identity fields. Unknown / malformed
-// `type` values are coerced to 'any' by normalizeType — we never reject a row,
-// otherwise the UI silently drops it and saving wipes the variables list.
 function isBackendVariable(value: unknown): value is BackendToolVariable {
     if (!isObjectRecord(value)) return false;
     if (

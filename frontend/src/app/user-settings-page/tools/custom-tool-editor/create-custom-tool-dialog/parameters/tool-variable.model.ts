@@ -30,8 +30,6 @@ export interface ToolVariable {
     items?: ItemsSchema;
 }
 
-// Backend payload schema (per EST-1529 spec): object/array variables carry their
-// nested shape under `properties`/`required_properties` (object) or `item` (array).
 export interface PropertySchema {
     type: ToolVariableType;
     description?: string;

@@ -112,9 +112,6 @@ function isElementValid(v: ToolVariable): boolean {
     return hasRequiredValue(v);
 }
 
-// Walks the variable tree and validates each variable individually plus
-// uniqueness of names within the same level (siblings). Used as the canonical
-// pre-save check, since FormControls only exist for currently-visible cells.
 export function validateVariablesTree(vars: ToolVariable[], asArrayElements = false): boolean {
     const names: string[] = [];
     for (const v of vars) {

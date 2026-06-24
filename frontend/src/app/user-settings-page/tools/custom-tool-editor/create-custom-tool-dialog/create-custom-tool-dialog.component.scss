@@ -85,8 +85,6 @@
         }
     }
 
-    // Right pane goes edge-to-edge with the modal so we put the side padding
-    // on the form-pane only and let the editor-pane fill its share completely.
     .dialog-content {
         flex: 1;
         min-height: 0;
@@ -373,8 +371,6 @@
     }
 
     .inline-editor-host {
-        // Bounded height so an expanded inline editor doesn't push siblings
-        // out of view; the form pane scrolls around it.
         height: 320px;
         display: flex;
         flex-direction: column;

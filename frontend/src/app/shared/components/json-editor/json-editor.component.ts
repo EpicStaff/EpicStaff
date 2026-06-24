@@ -233,8 +233,6 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
         defaults.setDiagnosticsOptions({
             ...defaults.diagnosticsOptions,
             validate: true,
-            // Report schema violations (bad enum, unknown property, etc.) as errors
-            // so they surface in the panel alongside syntax errors, not as warnings.
             schemaValidation: 'error',
             schemas: [...others, { uri: this.schemaId, fileMatch: [modelUri], schema: this.jsonSchema }],
         });
