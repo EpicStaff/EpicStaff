@@ -5,14 +5,17 @@ from errors import (
     EmbeddingError,
     ChunkingError,
     FileTextExtractingError,
+    NoDocumentsToIndexError,
+    UnsupportedError,
 )
-from enums import IndexStatusEnum, DocumentStatusEnum
+from enums import IndexStatusEnum, DocumentStatusEnum, DocumentErrorCode
 from models import IndexRequest, IndexedChunk
 from orchestrators.indexing.base import AbstractIndexer
 from database.unit_of_work import SQLAlchemyUnitOfWork
 from services.chunkers import build_chunker
 from services.embedders import build_embedder
 from services.file_text_extractors import build_file_text_extractor
+from services.indexing_error_classifier import IndexingErrorClassifier
 
 
 class NaiveIndexer(AbstractIndexer):
@@ -62,19 +65,76 @@ class NaiveIndexer(AbstractIndexer):
             "RAG(id={}) has {} documents to index", request.rag_id, len(documents)
         )
 
+        if not documents:
+            raise NoDocumentsToIndexError(request.rag_id)
+
+        async with uow:
+            await uow.naive_rag_repo.update_rag_status(
+                rag_id=request.rag_id,
+                status=IndexStatusEnum.PROCESSING,
+            )
+            await uow.commit()
+
         has_completed_documents = False
         has_failed_documents = False
+
         for document in documents:
+            if (
+                document.status == DocumentStatusEnum.COMPLETED
+                and not document.is_required_reindex()
+            ):
+                logger.debug(
+                    "Skipping document(id={}): already indexed with current params",
+                    document.id,
+                )
+                has_completed_documents = True
+                continue
+
             try:
                 if document.preview_chunks:
                     preview_chunks = document.preview_chunks
                 else:
+                    document.status = DocumentStatusEnum.CHUNKING
+                    async with uow:
+                        await uow.naive_rag_repo.update_document(
+                            request.rag_id, document
+                        )
+                        await uow.commit()
                     extractor = build_file_text_extractor(document.extension)
                     text = await extractor.extract(document.content)
                     chuncker = build_chunker(
                         document.config.chunk_strategy, document.config
                     )
                     preview_chunks = await chuncker.chunk(text)
+                    if preview_chunks:
+                        document.status = DocumentStatusEnum.CHUNKED
+                        async with uow:
+                            await uow.naive_rag_repo.update_document(
+                                request.rag_id, document
+                            )
+                            await uow.commit()
+
+                if not preview_chunks:
+                    logger.warning(
+                        "Document(id={}) produced 0 chunks, marking failed",
+                        document.id,
+                    )
+                    document.mark_failed(
+                        error_code=DocumentErrorCode.NO_CHUNKS_PRODUCED,
+                        error_message="Document produced 0 chunks",
+                    )
+                    has_failed_documents = True
+                    async with uow:
+                        await uow.naive_rag_repo.update_document(
+                            request.rag_id, document
+                        )
+                        await uow.commit()
+                    continue
+
+                document.status = DocumentStatusEnum.INDEXING
+                async with uow:
+                    await uow.naive_rag_repo.update_document(request.rag_id, document)
+                    await uow.commit()
 
                 # TODO: embed batch of chunks instead of one per time.
                 indexed_chunks = [
@@ -85,15 +145,20 @@ class NaiveIndexer(AbstractIndexer):
                     for ph in preview_chunks
                 ]
 
-            except (FileTextExtractingError, ChunkingError, EmbeddingError) as exc:
+            except (
+                FileTextExtractingError,
+                ChunkingError,
+                EmbeddingError,
+                UnsupportedError,
+            ) as exc:
+                document.mark_failed(*IndexingErrorClassifier.classify(exc))
                 has_failed_documents = True
-                document.status = DocumentStatusEnum.FAILED
                 logger.warning("Could not index document(id={}): {}", document.id, exc)
 
             else:
-                has_completed_documents = True
                 document.indexed_chunks = indexed_chunks
-                document.status = DocumentStatusEnum.COMPLETED
+                document.mark_completed()
+                has_completed_documents = True
                 logger.debug(
                     "Indexed document(id={}) into {} chunks (reused preview: {})",
                     document.id,

@@ -2,8 +2,14 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from enums import DocumentStatusEnum, EmbedderProviderEnum, IndexStatusEnum, RAGStrategy
-from errors import EmbeddingError, EmbedderUnavailableError
+from enums import (
+    DocumentStatusEnum,
+    DocumentErrorCode,
+    EmbedderProviderEnum,
+    IndexStatusEnum,
+    RAGStrategy,
+)
+from errors import EmbeddingError, EmbedderUnavailableError, NoDocumentsToIndexError
 from models import EmbeddingConfig, IndexRequest, PreviewChunk
 from orchestrators.indexing.strategies import naive_indexer
 from orchestrators.indexing.strategies.naive_indexer import NaiveIndexer
@@ -67,11 +73,14 @@ async def test_all_documents_succeed_marks_completed():
 
     assert doc1.status == DocumentStatusEnum.COMPLETED
     assert doc2.status == DocumentStatusEnum.COMPLETED
-    assert uow.naive_rag_repo.update_document.await_count == 2
     assert uow.naive_rag_repo.save_indexed_chunks.await_count == 2
     assert extractor.extract.await_count == 2
 
-    uow.naive_rag_repo.update_rag_status.assert_awaited_once_with(
+    assert (
+        uow.naive_rag_repo.update_rag_status.await_args_list[0].kwargs["status"]
+        == IndexStatusEnum.PROCESSING
+    )
+    uow.naive_rag_repo.update_rag_status.assert_awaited_with(
         rag_id=_REQUEST.rag_id,
         status=IndexStatusEnum.COMPLETED,
     )
@@ -127,7 +136,7 @@ async def test_mixed_results_marks_warning():
 
     uow.naive_rag_repo.save_indexed_chunks.assert_awaited_once()
 
-    uow.naive_rag_repo.update_rag_status.assert_awaited_once_with(
+    uow.naive_rag_repo.update_rag_status.assert_awaited_with(
         rag_id=_REQUEST.rag_id,
         status=IndexStatusEnum.WARNING,
     )
@@ -152,21 +161,74 @@ async def test_all_documents_fail_marks_failed():
 
     assert doc.status == DocumentStatusEnum.FAILED
     uow.naive_rag_repo.save_indexed_chunks.assert_not_awaited()
-    uow.naive_rag_repo.update_rag_status.assert_awaited_once_with(
+    uow.naive_rag_repo.update_rag_status.assert_awaited_with(
         rag_id=_REQUEST.rag_id,
         status=IndexStatusEnum.FAILED,
     )
 
 
-async def test_no_documents_marks_failed():
+async def test_no_documents_raises():
     uow = FakeUoW(embedding_config=_EMBEDDING_CONFIG, documents=[])
 
     with patch.object(naive_indexer, "build_embedder", return_value=_embedder_mock()):
-        await NaiveIndexer().index(_REQUEST, uow)
+        with pytest.raises(NoDocumentsToIndexError):
+            await NaiveIndexer().index(_REQUEST, uow)
 
     uow.naive_rag_repo.update_document.assert_not_awaited()
     uow.naive_rag_repo.save_indexed_chunks.assert_not_awaited()
-    uow.naive_rag_repo.update_rag_status.assert_awaited_once_with(
+    uow.naive_rag_repo.update_rag_status.assert_not_awaited()
+
+
+async def test_already_indexed_document_is_skipped_keeps_completed():
+    doc = make_document(doc_id=1)
+    doc.status = DocumentStatusEnum.COMPLETED
+    doc.last_indexing_config = doc.config
+    uow = FakeUoW(embedding_config=_EMBEDDING_CONFIG, documents=[doc])
+    extractor = _extractor_mock()
+    chunker = _chunker_mock()
+    embedder = _embedder_mock()
+
+    with (
+        patch.object(naive_indexer, "build_embedder", return_value=embedder),
+        patch.object(naive_indexer, "build_chunker", return_value=chunker),
+        patch.object(
+            naive_indexer, "build_file_text_extractor", return_value=extractor
+        ),
+    ):
+        await NaiveIndexer().index(_REQUEST, uow)
+
+    assert doc.status == DocumentStatusEnum.COMPLETED
+    extractor.extract.assert_not_awaited()
+    embedder.embed.assert_not_awaited()
+    uow.naive_rag_repo.save_indexed_chunks.assert_not_awaited()
+    uow.naive_rag_repo.update_rag_status.assert_awaited_with(
+        rag_id=_REQUEST.rag_id,
+        status=IndexStatusEnum.COMPLETED,
+    )
+
+
+async def test_document_with_no_chunks_marks_failed():
+    doc = make_document(doc_id=1)
+    uow = FakeUoW(embedding_config=_EMBEDDING_CONFIG, documents=[doc])
+    extractor = _extractor_mock()
+    chunker = Mock()
+    chunker.chunk = AsyncMock(return_value=[])
+    embedder = _embedder_mock()
+
+    with (
+        patch.object(naive_indexer, "build_embedder", return_value=embedder),
+        patch.object(naive_indexer, "build_chunker", return_value=chunker),
+        patch.object(
+            naive_indexer, "build_file_text_extractor", return_value=extractor
+        ),
+    ):
+        await NaiveIndexer().index(_REQUEST, uow)
+
+    assert doc.status == DocumentStatusEnum.FAILED
+    assert doc.error_code == DocumentErrorCode.NO_CHUNKS_PRODUCED
+    embedder.embed.assert_not_awaited()
+    uow.naive_rag_repo.save_indexed_chunks.assert_not_awaited()
+    uow.naive_rag_repo.update_rag_status.assert_awaited_with(
         rag_id=_REQUEST.rag_id,
         status=IndexStatusEnum.FAILED,
     )

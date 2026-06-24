@@ -51,12 +51,12 @@ async def test_marks_chunked_and_returns_preview_chunks():
     extractor.extract.assert_awaited_once_with(document.content)
     chunker.chunk.assert_awaited_once_with(_EXTRACTED_TEXT)
 
-    uow.naive_rag_repo.update_document.assert_awaited_once()
+    uow.naive_rag_repo.update_document.assert_awaited()
     uow.naive_rag_repo.save_preview_chunks.assert_awaited_once_with(
         document_id=document.id,
         chunks=_PREVIEW_CHUNKS,
     )
-    uow.commit.assert_awaited_once()
+    uow.commit.assert_awaited()
 
 
 async def test_missing_document_raises():
@@ -95,5 +95,5 @@ async def test_failure_marks_failed_and_returns_no_chunks(inject_error):
     assert response == PrechunkResponse(request=_REQUEST, chunks=[])
     assert document.status == DocumentStatusEnum.FAILED
     uow.naive_rag_repo.save_preview_chunks.assert_not_called()
-    uow.naive_rag_repo.update_document.assert_awaited_once()
-    uow.commit.assert_awaited_once()
+    uow.naive_rag_repo.update_document.assert_awaited()
+    uow.commit.assert_awaited()

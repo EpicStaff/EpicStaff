@@ -15,6 +15,7 @@ __all__ = [
     "ChunkingError",
     "EmbeddingError",
     "DocumentNotFound",
+    "NoDocumentsToIndexError",
     "EmbedderUnavailableError",
 ]
 
@@ -49,6 +50,11 @@ class EmbeddingError(KnowledgeError):
 
 class DocumentNotFound(KnowledgeError):
     pass
+
+
+class NoDocumentsToIndexError(KnowledgeError):
+    def __init__(self, rag_id: Any):
+        super().__init__(f"RAG(id={rag_id}) has no documents to index.")
 
 
 class EmbedderUnavailableError(KnowledgeError):
