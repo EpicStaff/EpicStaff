@@ -1,11 +1,17 @@
 from loguru import logger
 
 from enums import DocumentStatusEnum
-from errors import FileTextExtractingError, ChunkingError, DocumentNotFound
+from errors import (
+    FileTextExtractingError,
+    ChunkingError,
+    DocumentNotFound,
+    UnsupportedError,
+)
 from models import PrechunkRequest, PrechunkResponse
 from database.unit_of_work import SQLAlchemyUnitOfWork
 from services.chunkers import build_chunker
 from services.file_text_extractors import build_file_text_extractor
+from services.indexing_error_classifier import IndexingErrorClassifier
 from orchestrators.prechunking.base import AbstractPrechunker
 
 
@@ -57,11 +63,11 @@ class NaivePrechunker(AbstractPrechunker):
             chunker = build_chunker(document.config.chunk_strategy, document.config)
             preview_chunks = await chunker.chunk(text)
 
-        except (FileTextExtractingError, ChunkingError) as exc:
+        except (FileTextExtractingError, ChunkingError, UnsupportedError) as exc:
+            document.mark_failed(*IndexingErrorClassifier.classify(exc))
             logger.warning("Could not prechunk document(id={}): {}", document.id, exc)
-            document.status = DocumentStatusEnum.FAILED
         else:
-            document.status = DocumentStatusEnum.CHUNKED
+            document.mark_chunked_if_new_config()
             document.preview_chunks = preview_chunks
             logger.info(
                 "Prechunked document(id={}) into {} chunks",

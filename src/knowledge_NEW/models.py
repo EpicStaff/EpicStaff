@@ -133,6 +133,14 @@ class Document(Entity):
         self.failed_at = utcnow()
         self.completed_at = None
 
+    def mark_chunked_if_new_config(self) -> None:
+        if self.config_same_with_snapshot():
+            self.status = DocumentStatusEnum.COMPLETED
+        else:
+            self.status = DocumentStatusEnum.CHUNKED
+            self.completed_at = None
+        self.clear_error()
+
     def clear_error(self) -> None:
         self.error_code = DocumentErrorCode.NONE
         self.error_message = None
