@@ -5,6 +5,10 @@ from django.db import transaction
 from tables.models.webhook_models import WebhookTrigger
 from tables.models.python_models import PythonCode
 from tables.models import Agent, PythonCodeTool, ToolConfig, McpTool
+from tables.serializers.org_scoped_fields import (
+    org_visible_queryset,
+    resolve_active_org_id,
+)
 
 
 class NestedAgentExportMixin:
@@ -212,6 +216,45 @@ class ToolsConnectionMixin:
         """
         raise NotImplementedError
 
+    def validate_tool_ids(self, value: list[str]) -> list[str]:
+        """Fail-fast org-isolation check on `tool_ids` (runs in is_valid(),
+        before any row is written). A tool from another org — or a non-existent
+        one — is rejected exactly like a missing pk, no existence leak. Skipped
+        when there is no request in context (import / internal paths)."""
+        request = self.context.get("request")
+        if request is None or not value:
+            return value
+
+        org_id = resolve_active_org_id(request)
+        tools_dict = self._resolve_tool_ids(value)
+        prefix_to_model = {
+            prefix: model
+            for model, (_through, prefix, _fk) in self._get_tools_models_map().items()
+        }
+        for prefix, ids in tools_dict.items():
+            model = prefix_to_model.get(prefix)
+            if model is None:
+                raise serializers.ValidationError(
+                    {"tool_ids": [f'Unknown tool type "{prefix}".']}
+                )
+            visible = {
+                str(pk)
+                for pk in org_visible_queryset(model, org_id)
+                .filter(id__in=ids)
+                .values_list("id", flat=True)
+            }
+            missing = [str(i) for i in ids if str(i) not in visible]
+            if missing:
+                raise serializers.ValidationError(
+                    {
+                        "tool_ids": [
+                            f'Invalid pk "{prefix}:{m}" - object does not exist.'
+                            for m in missing
+                        ]
+                    }
+                )
+        return value
+
     def _sync_tools(self, instance: Model, fk_to_instance: str, tool_ids: list[str]):
         """
         Synchronize tools for an instance.
@@ -227,6 +270,10 @@ class ToolsConnectionMixin:
         tools_dict = self._resolve_tool_ids(tool_ids)
         tools_map = self._get_tools_models_map()
 
+        # Resolve the active org so a tool from another org can't be attached
+        request = self.context.get("request")
+        org_id = resolve_active_org_id(request) if request is not None else None
+
         with transaction.atomic():
             for tool_model, (through_model, prefix, fk_field) in tools_map.items():
                 through_model.objects.filter(**{fk_to_instance: instance.pk}).delete()
@@ -235,9 +282,15 @@ class ToolsConnectionMixin:
                 if not ids:
                     continue
 
-                db_ids = tool_model.objects.filter(id__in=ids).values_list(
-                    "id", flat=True
+                # Defense in depth: only link tools visible to the active org
+                # (validate_tool_ids already rejected cross-org ids on the API
+                # path; this also protects any non-validated caller)
+                base = (
+                    org_visible_queryset(tool_model, org_id)
+                    if org_id is not None
+                    else tool_model.objects.all()
                 )
+                db_ids = list(base.filter(id__in=ids).values_list("id", flat=True))
 
                 through_model.objects.bulk_create(
                     [

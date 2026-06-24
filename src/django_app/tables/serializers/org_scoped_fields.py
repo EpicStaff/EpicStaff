@@ -1,3 +1,4 @@
+from django.db.models import Q
 from rest_framework import serializers
 
 from tables.services.rbac.org_context_service import OrgContextService
@@ -12,6 +13,27 @@ def resolve_active_org_id(request) -> int:
         org_id = OrgContextService().resolve(request=request)
         request._rbac_active_org_id = org_id
     return org_id
+
+
+def org_visible_queryset(model, org_id):
+    """Rows of `model` visible to `org_id`, applying the same scoping rules as
+    the org viewset mixins — so non-FK reference resolution (e.g. the
+    string-encoded `tool_ids`) honours org isolation identically:
+
+    - **hybrid** (`built_in` flag, e.g. PythonCodeTool): built-ins + own-org rows;
+    - **hybrid** (`is_custom` flag, e.g. *Model): built-ins (is_custom=False) + own-org;
+    - **strict** (has `org`, no flag, e.g. McpTool / PythonCodeToolConfig / configs):
+      own-org rows only;
+    - **global** (no `org` field, e.g. the deprecated ToolConfig): all rows.
+    """
+    field_names = {f.name for f in model._meta.get_fields()}
+    if "org" not in field_names:
+        return model.objects.all()
+    if "built_in" in field_names:
+        return model.objects.filter(Q(built_in=True) | Q(org_id=org_id))
+    if "is_custom" in field_names:
+        return model.objects.filter(Q(is_custom=False) | Q(org_id=org_id))
+    return model.objects.filter(org_id=org_id)
 
 
 class OrgScopedPrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
