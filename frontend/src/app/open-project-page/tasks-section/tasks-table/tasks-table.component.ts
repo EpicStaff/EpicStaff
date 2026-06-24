@@ -138,8 +138,9 @@ export class TasksTableComponent implements OnChanges {
     private currentCellElement: HTMLElement | null = null;
     private globalClickUnlistener: (() => void) | null = null;
     private globalKeydownUnlistener: (() => void) | null = null;
+   
+    private childDialogOpen = false;
 
-    // Track drag state for header drop detection
     private isDragOutsideRows = false;
     private draggedTaskData: TableFullTask | null = null;
     private dragMouseUpListener: (() => void) | null = null;
@@ -1631,6 +1632,10 @@ export class TasksTableComponent implements OnChanges {
 
             popupRef.instance.mergedTools = event.data?.mergedTools || [];
 
+            popupRef.instance.childDialogOpenChange.subscribe((open: boolean) => {
+                this.childDialogOpen = open;
+            });
+
             popupRef.instance.mergedToolsUpdated.subscribe((updatedMergedTools) => {
                 const mergedToolsClone = (updatedMergedTools ?? []).map((t) => ({ ...t }));
                 const taskData = rowNode.data as TableFullTask;
@@ -1650,13 +1655,18 @@ export class TasksTableComponent implements OnChanges {
 
         // Attach a global keydown listener to close the popup on Escape key.
         this.globalKeydownUnlistener = this.renderer.listen('document', 'keydown', (evt: KeyboardEvent) => {
-            if (evt.key === 'Escape') {
+            // Let an open child dialog handle its own Escape without also closing the popup.
+            if (evt.key === 'Escape' && !this.childDialogOpen) {
                 this.closePopup();
             }
         });
     }
 
     private onDocumentClick(event: MouseEvent): void {
+      
+        if (this.childDialogOpen) {
+            return;
+        }
         const target = event.target as HTMLElement;
         if (
             this.popupOverlayRef &&
@@ -1675,6 +1685,7 @@ export class TasksTableComponent implements OnChanges {
         }
         this._activePopupCommitFn = null;
         this.currentPopupCell = null;
+        this.childDialogOpen = false;
 
         // Remove the custom CSS class from the cell.
         if (this.currentCellElement) {

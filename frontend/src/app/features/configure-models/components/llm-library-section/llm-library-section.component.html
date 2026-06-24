@@ -18,6 +18,7 @@
                         type="text"
                         class="llm-library__search-input"
                         placeholder="Search configurations..."
+                        autocomplete="off"
                         [value]="searchQuery()"
                         (input)="onSearchChange($any($event.target).value)"
                     />

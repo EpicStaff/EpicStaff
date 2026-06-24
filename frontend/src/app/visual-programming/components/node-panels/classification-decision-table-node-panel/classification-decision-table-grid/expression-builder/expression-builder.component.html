@@ -9,7 +9,7 @@
                 type="button"
                 [class]="'eb-chip eb-chip--' + token.category"
                 (mousedown)="$event.preventDefault()"
-                (click)="insertToken(token.label)"
+                (click)="insertToken(token.insert)"
             >
                 {{ token.label }}
             </button>

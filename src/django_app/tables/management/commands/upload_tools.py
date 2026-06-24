@@ -6,6 +6,9 @@ from tables.models import PythonCodeTool, PythonCode
 import yaml
 from django.db import transaction
 from loguru import logger
+from src.shared.models import (
+    args_schema_to_variables as _shared_args_schema_to_variables,
+)
 
 
 @dataclass
@@ -78,26 +81,7 @@ def get_code_file(tool_path: Path, code_file_name: str) -> str:
 
 
 def args_schema_to_variables(args_schema: dict) -> list[dict]:
-    properties = args_schema.get("properties", {})
-    required_names = set(args_schema.get("required", []))
-    variables = []
-    for name, prop in properties.items():
-        var = {
-            "name": name,
-            "type": prop.get("type", "string"),
-            "description": prop.get("description", ""),
-            "default_value": prop.get("default", None),
-            "input_type": "agent_input",
-            "required": name in required_names,
-        }
-        if prop.get("properties"):
-            var["properties"] = prop["properties"]
-        if prop.get("required"):
-            var["required_properties"] = prop["required"]
-        if prop.get("items"):
-            var["item"] = prop["items"]
-        variables.append(var)
-    return variables
+    return _shared_args_schema_to_variables(args_schema)
 
 
 def create_or_update_python_tool(
@@ -106,7 +90,6 @@ def create_or_update_python_tool(
     requirements: str,
     entrypoint: str,
     description: str,
-    args_schema: dict,
     variables: list[dict],
     use_storage: bool = False,
 ) -> PythonCodeTool:
@@ -131,7 +114,6 @@ def create_or_update_python_tool(
         python_code_obj.entrypoint = entrypoint
         python_code_obj.libraries = requirements
         python_tool_obj.description = description
-        python_tool_obj.args_schema = args_schema
         python_tool_obj.variables = variables
         python_tool_obj.use_storage = use_storage
         python_tool_obj.save()
@@ -166,7 +148,6 @@ def upload_tools():
                     requirements=requirements_string,
                     entrypoint=entrypoint,
                     description=description,
-                    args_schema=args_schema,
                     variables=variables,
                     use_storage=tool_data.use_storage,
                 )

@@ -12,6 +12,7 @@ import { ConfirmationDialogService } from '../../../../shared/components/cofirm-
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { LlmModelSelectorComponent } from '../../../../shared/components/llm-model-selector/llm-model-selector.component';
+import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
 import { FullLLMConfig, FullLLMConfigService } from '../../../../shared/services/llms/full-llm-config.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { NodeType } from '../../../core/enums/node-type';
@@ -43,6 +44,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         CodeEditorComponent,
         HelpTooltipComponent,
         AppSvgIconComponent,
+        SelectComponent,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
     styleUrls: ['./classification-decision-table-node-panel.component.scss'],
@@ -157,11 +159,11 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             });
     }
 
-    public availableNodes = computed(() => {
+    public availableNodeItems = computed<SelectItem[]>(() => {
         const nodes = this.flowService.nodes();
         const currentNodeId = this.node().id;
 
-        return nodes
+        const nodeItems = nodes
             .filter(
                 (node) =>
                     node.type !== NodeType.NOTE &&
@@ -172,8 +174,10 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             )
             .map((node) => ({
                 value: node.id,
-                label: node.node_name || node.id,
+                name: node.node_name || node.id,
             }));
+
+        return [{ name: 'Select Node', value: '' }, ...nodeItems];
     });
 
     get activeColor(): string {

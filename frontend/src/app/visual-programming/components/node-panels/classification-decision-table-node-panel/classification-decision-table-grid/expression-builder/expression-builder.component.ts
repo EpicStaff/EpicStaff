@@ -21,38 +21,39 @@ export type ExpressionBuilderMode = 'expression' | 'manipulation';
 export type TokenCategory = 'primary' | 'logical' | 'keyword' | 'comparison' | 'math';
 
 export interface Token {
-    label: string;
+    label: string; // text shown on the toolbar chip
+    insert: string; // text inserted into the expression (Python form)
     category: TokenCategory;
 }
 
 const EXPRESSION_TOKENS: Token[] = [
-    { label: '@', category: 'primary' },
-    { label: 'AND', category: 'logical' },
-    { label: 'NOT', category: 'logical' },
-    { label: 'IN', category: 'logical' },
-    { label: 'IS', category: 'logical' },
-    { label: 'TRUE', category: 'keyword' },
-    { label: 'FALSE', category: 'keyword' },
-    { label: 'NONE', category: 'keyword' },
-    { label: '>', category: 'comparison' },
-    { label: '<', category: 'comparison' },
-    { label: '==', category: 'comparison' },
-    { label: '!=', category: 'comparison' },
-    { label: '>=', category: 'comparison' },
-    { label: '<=', category: 'comparison' },
+    { label: '@', insert: '@', category: 'primary' },
+    { label: 'AND', insert: 'and', category: 'logical' },
+    { label: 'NOT', insert: 'not', category: 'logical' },
+    { label: 'IN', insert: 'in', category: 'logical' },
+    { label: 'IS', insert: 'is', category: 'logical' },
+    { label: 'TRUE', insert: 'True', category: 'keyword' },
+    { label: 'FALSE', insert: 'False', category: 'keyword' },
+    { label: 'NONE', insert: 'None', category: 'keyword' },
+    { label: '>', insert: '>', category: 'comparison' },
+    { label: '<', insert: '<', category: 'comparison' },
+    { label: '==', insert: '==', category: 'comparison' },
+    { label: '!=', insert: '!=', category: 'comparison' },
+    { label: '>=', insert: '>=', category: 'comparison' },
+    { label: '<=', insert: '<=', category: 'comparison' },
 ];
 
 const MANIPULATION_TOKENS: Token[] = [
-    { label: '@', category: 'primary' },
-    { label: '+', category: 'math' },
-    { label: '-', category: 'math' },
-    { label: '/', category: 'math' },
-    { label: '*', category: 'math' },
-    { label: '()', category: 'math' },
-    { label: '%', category: 'math' },
-    { label: '//', category: 'math' },
-    { label: '**', category: 'math' },
-    { label: '=', category: 'math' },
+    { label: '@', insert: '@', category: 'primary' },
+    { label: '+', insert: '+', category: 'math' },
+    { label: '-', insert: '-', category: 'math' },
+    { label: '/', insert: '/', category: 'math' },
+    { label: '*', insert: '*', category: 'math' },
+    { label: '()', insert: '()', category: 'math' },
+    { label: '%', insert: '%', category: 'math' },
+    { label: '//', insert: '//', category: 'math' },
+    { label: '**', insert: '**', category: 'math' },
+    { label: '=', insert: '=', category: 'math' },
 ];
 
 const EXPRESSION_TEMPLATES = ['Required field', 'Range of values', 'After a point'];

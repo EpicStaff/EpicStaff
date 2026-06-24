@@ -11,6 +11,7 @@ import {
     ElementRef,
     HostListener,
     inject,
+    Injector,
     OnDestroy,
     OnInit,
     signal,
@@ -83,6 +84,7 @@ import { rewriteLegacyOnceScheduleName } from '../../../../visual-programming/ut
 import {
     buildBulkSavePayload,
     buildUuidToBackendIdMap,
+    clearStaleIds,
     cloneFlowState,
     getConnectionDiff,
     getNodeDiff,
@@ -113,6 +115,7 @@ import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
 })
 export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanComponentDeactivate {
     private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public initialNodeId: string | null = null;
@@ -273,14 +276,15 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         if (!this.graph?.id) return EMPTY;
 
         const previous = this.loadedFlowState();
-        const nodeDiff = getNodeDiff(previous, flowState);
-        const idMap = buildUuidToBackendIdMap(flowState.nodes);
-        const connectionDiff = getConnectionDiff(previous, flowState, idMap);
+        const flowToSave = clearStaleIds(previous, flowState);
+        const nodeDiff = getNodeDiff(previous, flowToSave);
+        const idMap = buildUuidToBackendIdMap(flowToSave.nodes);
+        const connectionDiff = getConnectionDiff(previous, flowToSave, idMap);
         const payload = buildBulkSavePayload(
             this.graph.id,
             nodeDiff,
             connectionDiff,
-            flowState,
+            flowToSave,
             idMap,
             this.graphState()!.save_version
         );
@@ -297,7 +301,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             tap(({ graph, flows }) => {
                 this.graphState.set(graph);
                 this.availableFlowLights.set(flows);
-                const patchedFlow = patchFlowStateWithBackendIds(flowState, previous, nodeDiff, graph);
+                const patchedFlow = patchFlowStateWithBackendIds(flowToSave, previous, nodeDiff, graph);
 
                 this.flowService.setFlow(patchedFlow);
                 // Sync isActive from the save response: patchFlowStateWithBackendIds only assigns
@@ -418,7 +422,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public saveCurrentState(): Observable<void> {
         if (!this.hasUnsavedChanges()) return of(void 0);
-        return toObservable(this.isSaving).pipe(
+        return toObservable(this.isSaving, { injector: this.injector }).pipe(
             filter((saving) => !saving),
             take(1),
             switchMap(() => this.saveFlowState(this.currentFlowState(), false))

@@ -158,6 +158,11 @@
                             <app-help-tooltip
                                 text="Configure the JSON parameters your custom tool accepts."
                             ></app-help-tooltip>
+                            @if (!parametersTableMode() && jsonIssues().length) {
+                                <span class="parameters-issue-label">
+                                    Issues detected. Switching modes may lose changes
+                                </span>
+                            }
                         </div>
                         <div class="parameters-mode-switch">
                             <span>Table mode</span>
@@ -190,6 +195,20 @@
                                         [text]="variablesSchemaTooltip"
                                         position="top"
                                     ></app-help-tooltip>
+                                    @if (jsonIssues().length && lastValidJson()) {
+                                        <button
+                                            type="button"
+                                            class="revert-action"
+                                            title="Revert to the last valid JSON — the most recent version with no errors"
+                                            aria-label="Revert to the last valid JSON"
+                                            (click)="revertToLastValidJson()"
+                                        >
+                                            <app-svg-icon
+                                                icon="refresh"
+                                                size="1rem"
+                                            ></app-svg-icon>
+                                        </button>
+                                    }
                                 </div>
                                 <div class="editor-card-actions">
                                     <button
@@ -237,9 +256,12 @@
                                     <app-json-editor
                                         [showHeader]="false"
                                         [fullHeight]="true"
+                                        [jsonSchema]="toolVariablesSchema"
+                                        [extraValidate]="objectDefaultMarkers"
                                         [jsonData]="form.controls.variablesJson.value"
                                         (jsonChange)="onJsonChange($event)"
                                         (validationChange)="onJsonValidationChange($event)"
+                                        (errorsChange)="onJsonErrorsChange($event)"
                                         (editorReady)="onJsonEditorReady($event)"
                                     ></app-json-editor>
                                 </div>
@@ -331,8 +353,11 @@
                                 [showHeader]="false"
                                 [jsonData]="form.controls.variablesJson.value"
                                 [fullHeight]="true"
+                                [jsonSchema]="toolVariablesSchema"
+                                [extraValidate]="objectDefaultMarkers"
                                 (jsonChange)="onJsonChange($event)"
                                 (validationChange)="onJsonValidationChange($event)"
+                                (errorsChange)="onJsonErrorsChange($event)"
                                 (editorReady)="onJsonEditorReady($event)"
                             ></app-json-editor>
                         }

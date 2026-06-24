@@ -128,7 +128,7 @@ export function composeExpression(parts: Record<string, string>, orderedVarNames
         }
     }
 
-    return clauses.join(' AND ');
+    return clauses.join(' and ');
 }
 
 export interface ParsedManipulation {

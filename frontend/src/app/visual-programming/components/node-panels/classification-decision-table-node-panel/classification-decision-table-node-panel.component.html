@@ -27,15 +27,12 @@
                                 >Default Next Node
                                 <app-help-tooltip text="Fallback route when no condition matches" />
                             </label>
-                            <select
+                            <app-select
+                                label=""
+                                placeholder="Select Node"
                                 formControlName="default_next_node"
-                                class="header-select"
-                            >
-                                <option value="">Select Node</option>
-                                @for (node of availableNodes(); track node.value) {
-                                    <option [value]="node.value">{{ node.label }}</option>
-                                }
-                            </select>
+                                [items]="availableNodeItems()"
+                            />
                         </div>
 
                         <div class="header-field">
@@ -43,15 +40,12 @@
                                 >Error Next Node
                                 <app-help-tooltip text="Route taken if evaluation fails" />
                             </label>
-                            <select
+                            <app-select
+                                label=""
+                                placeholder="Select Node"
                                 formControlName="next_error_node"
-                                class="header-select"
-                            >
-                                <option value="">Select Node</option>
-                                @for (node of availableNodes(); track node.value) {
-                                    <option [value]="node.value">{{ node.label }}</option>
-                                }
-                            </select>
+                                [items]="availableNodeItems()"
+                            />
                         </div>
                     </div>
 

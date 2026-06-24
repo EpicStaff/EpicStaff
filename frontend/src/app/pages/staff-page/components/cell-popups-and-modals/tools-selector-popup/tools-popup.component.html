@@ -14,18 +14,44 @@
         </div>
 
         <div class="menu-header">
-            <button
-                [class.active]="selectedMenu === 'custom'"
-                (click)="toggleToolType('custom')"
-            >
-                Custom Tools
-            </button>
-            <button
-                [class.active]="selectedMenu === 'mcp'"
-                (click)="toggleToolType('mcp')"
-            >
-                MCP Tools
-            </button>
+            <div class="menu-tabs">
+                <button
+                    [class.active]="selectedMenu === 'custom'"
+                    (click)="toggleToolType('custom')"
+                >
+                    Custom Tools
+                </button>
+                <button
+                    [class.active]="selectedMenu === 'mcp'"
+                    (click)="toggleToolType('mcp')"
+                >
+                    MCP Tools
+                </button>
+            </div>
+
+            @if (selectedMenu === 'custom') {
+                <app-button
+                    type="primary"
+                    mod="small"
+                    iconSize="0.9rem"
+                    class="btn-primary header-create-btn"
+                    [leftIcon]="'plus'"
+                    (click)="openCustomToolDialog()"
+                >
+                    Create custom tool
+                </app-button>
+            } @else if (selectedMenu === 'mcp') {
+                <app-button
+                    type="primary"
+                    mod="small"
+                    iconSize="0.9rem"
+                    class="btn-primary header-create-btn"
+                    [leftIcon]="'plus'"
+                    (click)="openMcpToolDialog()"
+                >
+                    Add MCP tool
+                </app-button>
+            }
         </div>
     </div>
 
@@ -106,16 +132,6 @@
                     (toolToggled)="onPythonToolToggle($event)"
                 >
                 </app-python-tool-item>
-                <div class="add-tool-button-container">
-                    <app-button
-                        type="primary"
-                        class="btn-primary add-tool-btn"
-                        [leftIcon]="'plus'"
-                        (click)="openCustomToolDialog()"
-                    >
-                        Create custom tool
-                    </app-button>
-                </div>
             </div>
         </div>
 
@@ -164,16 +180,6 @@
                     (toolToggled)="onMcpToolToggle($event)"
                 >
                 </app-mcp-tool-item>
-                <div class="add-tool-button-container">
-                    <app-button
-                        type="primary"
-                        class="btn-primary add-tool-btn"
-                        [leftIcon]="'plus'"
-                        (click)="openMcpToolDialog()"
-                    >
-                        Add MCP Tool
-                    </app-button>
-                </div>
             </div>
         </div>
     </div>
