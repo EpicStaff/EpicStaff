@@ -7,6 +7,7 @@ from tables.constants.variables_constants import (
 from tables.models.graph_models import GraphOrganization
 
 
+# TODO: refactor, persistant variables story
 class PersistentVariablesService:
     def extract(self, variables: dict, domain_key: str) -> dict:
         """Extract persistent variable values from StartNode variables for a given domain."""
@@ -22,7 +23,6 @@ class PersistentVariablesService:
             self._set_by_path(result, path, value)
         return result
 
-    # TODO: rbac refactor
     def sync_graph_organization(
         self,
         graph_organization: GraphOrganization,

@@ -74,6 +74,7 @@ class StartNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
 
         return instance
 
+    # TODO: refactor, persistant variables story
     def validate(self, attrs):
         variables = attrs.get("variables")
         actual_variables = variables.get(DOMAIN_VARIABLES_KEY, {})
