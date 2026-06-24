@@ -17,6 +17,7 @@ from pgvector.sqlalchemy import Vector
 
 from database.config import BaseModel
 from utils import utcnow
+from enums import DocumentErrorCode
 
 
 class NaiveRag(BaseModel):
@@ -64,7 +65,9 @@ class NaiveRagDocumentConfig(BaseModel):
     additional_params = Column(JSON, default=dict)
     status = Column(String(20), default="new")
     created_at = Column(DateTime, default=utcnow)
-    processed_at = Column(DateTime, nullable=True)
+    completed_at = Column(
+        "processed_at", DateTime, nullable=True
+    )  # need to change this name in django models
 
     naive_rag_id = Column(
         Integer,
@@ -76,6 +79,13 @@ class NaiveRagDocumentConfig(BaseModel):
         ForeignKey("tables_documentmetadata.document_id"),
         nullable=False,
     )
+    error_message = Column(Text, nullable=True)
+    error_code = Column(String(32), nullable=False, default=DocumentErrorCode.NONE)
+    failed_at = Column(DateTime, nullable=True)
+    indexed_chunk_strategy = Column(String(20), nullable=True)
+    indexed_chunk_size = Column(Integer, nullable=True)
+    indexed_chunk_overlap = Column(Integer, nullable=True)
+    indexed_additional_params = Column(JSON, nullable=True)
 
     naive_rag = relationship(
         "NaiveRag",

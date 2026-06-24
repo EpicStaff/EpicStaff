@@ -4,6 +4,7 @@ __all__ = [
     "RAGStrategy",
     "ChunkStrategyEnum",
     "DocumentStatusEnum",
+    "DocumentErrorCode",
     "EmbedderProviderEnum",
     "GraphSearchMethodEnum",
     "IndexStatusEnum",
@@ -27,12 +28,22 @@ class ChunkStrategyEnum(StrEnum):
 
 class DocumentStatusEnum(StrEnum):
     NEW = "new"
-    PROCESSING = "processing"
     CHUNKING = "chunking"
     CHUNKED = "chunked"
+    INDEXING = "indexing"
     COMPLETED = "completed"
     WARNING = "warning"
     FAILED = "failed"
+
+
+class DocumentErrorCode(StrEnum):
+    CHUNKING_FAILED = "chunking_failed"
+    NO_CHUNKS_PRODUCED = "no_chunks_produced"
+    EMBEDDING_FAILED = "embedding_failed"
+    EMBEDDER_AUTH = "embedder_auth"
+    EMBEDDER_RATE_LIMIT = "embedder_rate_limit"
+    UNKNOWN = "unknown"
+    NONE = "none"
 
 
 class EmbedderProviderEnum(StrEnum):

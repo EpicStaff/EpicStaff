@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from typing import (
     Any,
@@ -17,10 +18,12 @@ from pydantic import (
 from enums import (
     ChunkStrategyEnum,
     DocumentStatusEnum,
+    DocumentErrorCode,
     EmbedderProviderEnum,
     RAGStrategy,
     GraphSearchMethodEnum,
 )
+from utils import utcnow
 
 __all__ = [
     "ValueObject",
@@ -97,12 +100,46 @@ class Document(Entity):
     content: bytes = Field(frozen=True)
     config: ChunkingConfig = Field(frozen=True)
     status: DocumentStatusEnum
+    last_indexing_config: ChunkingConfig | None = None
     preview_chunks: list[PreviewChunk] = Field(default_factory=list)
     indexed_chunks: list[IndexedChunk] = Field(default_factory=list)
+    error_code: DocumentErrorCode = DocumentErrorCode.NONE
+    error_message: Optional[str] = None
+    failed_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
 
     @computed_field
     def extension(self) -> str:
         return Path(self.name).suffix
+
+    def config_same_with_snapshot(self) -> bool:
+        return (
+            self.last_indexing_config is not None
+            and self.config == self.last_indexing_config
+        )
+
+    def mark_completed(self) -> None:
+        self.status = DocumentStatusEnum.COMPLETED
+        self.last_indexing_config = self.config
+        self.completed_at = utcnow()
+        self.error_code = DocumentErrorCode.NONE
+        self.error_message = None
+        self.failed_at = None
+
+    def mark_failed(self, error_code: DocumentErrorCode, error_message: str) -> None:
+        self.status = DocumentStatusEnum.FAILED
+        self.error_code = error_code
+        self.error_message = error_message
+        self.failed_at = utcnow()
+        self.completed_at = None
+
+    def clear_error(self) -> None:
+        self.error_code = DocumentErrorCode.NONE
+        self.error_message = None
+        self.failed_at = None
+
+    def clear_indexed_snapshot(self) -> None:
+        self.last_indexing_config = None
 
 
 class EmbeddingConfig(BaseModel):

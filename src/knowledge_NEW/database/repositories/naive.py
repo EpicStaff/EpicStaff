@@ -21,6 +21,7 @@ from models import (
     IndexedChunk,
     ChunkingConfig,
 )
+from utils import utcnow
 
 
 class NaiveRagSQLAlchemyRepository(AbstractSQLAlchemyRepository):
@@ -84,6 +85,22 @@ class NaiveRagSQLAlchemyRepository(AbstractSQLAlchemyRepository):
             .values(rag_status=status)
         )
 
+    async def set_error_message(self, rag_id: int, message: str | None):
+        """Set (or clear) the aggregate error message of RAG `rag_id`."""
+        await self._session.execute(
+            update(NaiveRag)
+            .where(NaiveRag.naive_rag_id == rag_id)
+            .values(error_message=message)
+        )
+
+    async def set_indexed_at(self, rag_id: int):
+        """Stamp `indexed_at` on RAG `rag_id` (called on full completion)."""
+        await self._session.execute(
+            update(NaiveRag)
+            .where(NaiveRag.naive_rag_id == rag_id)
+            .values(indexed_at=utcnow())
+        )
+
     async def save_preview_chunks(self, document_id: int, chunks: list[PreviewChunk]):
         """Replace the preview chunks of document `document_id` with `chunks`."""
         await self._session.execute(
@@ -144,14 +161,25 @@ class NaiveRagSQLAlchemyRepository(AbstractSQLAlchemyRepository):
         await self._session.flush()
 
     async def update_document(self, rag_id: int, document: Document):
-        """Set the status of `document` in RAG `rag_id`."""
+        """Set updates of `document` in RAG `rag_id`."""
+        config = document.last_indexing_config
         await self._session.execute(
             update(NaiveRagDocumentConfig)
             .where(
                 NaiveRagDocumentConfig.naive_rag_document_id == document.id,
                 NaiveRagDocumentConfig.naive_rag_id == rag_id,
             )
-            .values(status=document.status)
+            .values(
+                status=document.status,
+                indexed_chunk_strategy=config.chunk_strategy if config else None,
+                indexed_chunk_size=config.chunk_size if config else None,
+                indexed_chunk_overlap=config.chunk_overlap if config else None,
+                indexed_additional_params=config.extra if config else None,
+                error_code=document.error_code,
+                error_message=document.error_message,
+                failed_at=document.failed_at,
+                completed_at=document.completed_at,
+            )
         )
 
     async def search_chunks(
@@ -223,6 +251,16 @@ class NaiveRagSQLAlchemyRepository(AbstractSQLAlchemyRepository):
                 extra=config.additional_params or {},
             ),
             status=config.status,
+            last_indexing_config=(
+                ChunkingConfig(
+                    chunk_strategy=config.indexed_chunk_strategy,
+                    chunk_size=config.indexed_chunk_size,
+                    chunk_overlap=config.indexed_chunk_overlap,
+                    extra=config.indexed_additional_params or {},
+                )
+                if config.indexed_chunk_size is not None
+                else None
+            ),
             preview_chunks=[
                 PreviewChunk(
                     text=pc.text,
@@ -232,4 +270,8 @@ class NaiveRagSQLAlchemyRepository(AbstractSQLAlchemyRepository):
                 )
                 for pc in sorted(config.preview_chunks, key=lambda c: c.chunk_index)
             ],
+            error_code=config.error_code,
+            error_message=config.error_message,
+            failed_at=config.failed_at,
+            completed_at=config.completed_at,
         )
