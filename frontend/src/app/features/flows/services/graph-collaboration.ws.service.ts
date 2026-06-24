@@ -1,15 +1,15 @@
 import { inject, Injectable, signal } from '@angular/core';
+import { IPoint } from '@foblex/2d';
 import { Subject } from 'rxjs';
 import { debounceTime, filter, throttleTime } from 'rxjs';
-import { IPoint } from '@foblex/2d';
-import { ConfigService } from '../../../services/config/config.service';
-import { WsTicketService } from '../../../services/auth/ws-ticket.service';
+import { NodeType } from 'src/app/visual-programming/core/enums/node-type';
+
 import { ProfileService } from '../../../services/auth/profile.service';
-import { NodeModel } from '../../../visual-programming/core/models/node.model';
+import { WsTicketService } from '../../../services/auth/ws-ticket.service';
+import { ConfigService } from '../../../services/config/config.service';
 import { ConnectionModel } from '../../../visual-programming/core/models/connection.model';
-import { FlowModel } from '../../../visual-programming/core/models/flow.model';
-import { NodeNameValidatorService } from 'src/app/visual-programming/services/node-name-validator.service';
-import { mapEndNodeToModel } from 'src/app/visual-programming/utils/load/nodes/end-node.mapper';
+import { NodeModel } from '../../../visual-programming/core/models/node.model';
+import { GraphDto } from '../models/graph.model';
 
 export interface EditorInfo {
     user_id: number;
@@ -21,7 +21,6 @@ type ServerMessage =
     | PresenceStateMessage
     | UserJoinedMessage
     | UserLeftMessage
-    | RequestStateMessage
     | GraphStateMessage
     | GraphSavedMessage
     | WsErrorMessage
@@ -37,31 +36,35 @@ type ServerMessage =
     | SelectionChangedMessage
     | NodeLockedMessage
     | NodeUnlockedMessage
-    | LockStateMessage
+    | LockStateMessage;
 
-type PresenceStateMessage  = { type: 'presence_state'; editors: EditorInfo[] };
-type UserJoinedMessage     = { type: 'user_joined'; editor: EditorInfo };
-type UserLeftMessage       = { type: 'user_left'; user_id: number };
-type RequestStateMessage   = { type: 'request_state' };
+type PresenceStateMessage = { type: 'presence_state'; editors: EditorInfo[] };
+type UserJoinedMessage = { type: 'user_joined'; editor: EditorInfo };
+type UserLeftMessage = { type: 'user_left'; user_id: number };
 type WsErrorMessage = { type: 'error'; code: string; message: string };
 
-export type GraphStateMessage                   = { type: 'graph_state';                    flow: FlowModel };
-export type NodeCreatedMessage                  = { type: 'node_created';                   node: NodeModel;                editor: EditorInfo };
-export type NodeUpdatedMessage                  = { type: 'node_updated';                   node: NodeModel;                editor: EditorInfo };
-export type NodesDeletedMessage                 = { type: 'nodes_deleted';                  node_ids: string[];             editor: EditorInfo };
-export type ConnectionCreatedMessage            = { type: 'connection_created';             connection: ConnectionModel;    editor: EditorInfo}
-export type ConnectionDeletedMessage            = { type: 'connection_deleted';             connection_id: string;          editor: EditorInfo };
-export type ConnectionsDeletedMessage           = { type: 'connections_deleted';            connection_ids: string[];       editor: EditorInfo };
-export type ConnectionWaypointsUpdatedMessage   = { type: 'connection_waypoints_updated';   connection_id: string;          waypoints: IPoint[]; editor: EditorInfo};
-export type CursorMovedMessage                  = { type: 'cursor_moved';                  x: number; y: number;            editor: EditorInfo};
-export type CursorData                          = { x: number; y: number; editor: EditorInfo };
-export type CursorBatchMessage                  = { type: 'cursor_batch';                  cursors: CursorData[] };
-export type SelectionChangedMessage             = { type: 'selection_changed';              node_ids: string[];             editor: EditorInfo};
-export type NodeLockedMessage                   = { type: 'node_locked';                    node_id: string;                field: string;      editor: EditorInfo};
-export type NodeUnlockedMessage                 = { type: 'node_unlocked';                  node_id: string;                field: string;      editor: EditorInfo};
-export type LockStateMessage                   = { type: 'lock_state';                     locks: Record<string, Record<string, EditorInfo>>};
+export type GraphStateMessage = { type: 'graph_state'; flow: GraphDto };
+export type NodeCreatedMessage = { type: 'node_created'; node: NodeModel; editor: EditorInfo };
+export type NodeUpdatedMessage = { type: 'node_updated'; node: NodeModel; editor: EditorInfo };
+export type NodesDeletedMessage = { type: 'nodes_deleted'; node_ids: string[]; editor: EditorInfo };
+export type ConnectionCreatedMessage = { type: 'connection_created'; connection: ConnectionModel; editor: EditorInfo };
+export type ConnectionDeletedMessage = { type: 'connection_deleted'; connection_id: string; editor: EditorInfo };
+export type ConnectionsDeletedMessage = { type: 'connections_deleted'; connection_ids: string[]; editor: EditorInfo };
+export type ConnectionWaypointsUpdatedMessage = {
+    type: 'connection_waypoints_updated';
+    connection_id: string;
+    waypoints: IPoint[];
+    editor: EditorInfo;
+};
+export type CursorMovedMessage = { type: 'cursor_moved'; x: number; y: number; editor: EditorInfo };
+export type CursorData = { x: number; y: number; editor: EditorInfo };
+export type CursorBatchMessage = { type: 'cursor_batch'; cursors: CursorData[] };
+export type SelectionChangedMessage = { type: 'selection_changed'; node_ids: string[]; editor: EditorInfo };
+export type NodeLockedMessage = { type: 'node_locked'; node_id: string; field: string; editor: EditorInfo };
+export type NodeUnlockedMessage = { type: 'node_unlocked'; node_id: string; field: string; editor: EditorInfo };
+export type LockStateMessage = { type: 'lock_state'; locks: Record<string, Record<string, EditorInfo>> };
 
-export type GraphSavedMessage    = {
+export type GraphSavedMessage = {
     type: 'graph_saved';
     graph_id: number;
     new_save_version: number;
@@ -71,8 +74,45 @@ export type GraphSavedMessage    = {
 
 type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'reconnecting';
 
-@Injectable ({'providedIn': 'root'})
+export function nodeTypeToListKey(type: NodeType): string | null {
+    switch (type) {
+        case NodeType.AGENT:
+        case NodeType.TASK:
+        case NodeType.PROJECT:
+            return 'crew_node_list';
+        case NodeType.PYTHON:
+            return 'python_node_list';
+        case NodeType.FILE_EXTRACTOR:
+            return 'file_extractor_node_list';
+        case NodeType.AUDIO_TO_TEXT:
+            return 'audio_transcription_node_list';
+        case NodeType.START:
+            return 'start_node_list';
+        case NodeType.END:
+            return 'end_node_list';
+        case NodeType.SUBGRAPH:
+            return 'subgraph_node_list';
+        case NodeType.TABLE:
+            return 'decision_table_node_list';
+        case NodeType.NOTE:
+            return 'graph_note_list';
+        case NodeType.WEBHOOK_TRIGGER:
+            return 'webhook_trigger_node_list';
+        case NodeType.TELEGRAM_TRIGGER:
+            return 'telegram_trigger_node_list';
+        case NodeType.SCHEDULE_TRIGGER:
+            return 'schedule_trigger_node_list';
+        case NodeType.CODE_AGENT:
+            return 'code_agent_node_list';
+        case NodeType.EDGE:
+            return 'conditional_edge_list';
+        default:
+            console.warn(`[WS] No list_key for NodeType: ${type}`);
+            return null;
+    }
+}
 
+@Injectable({ providedIn: 'root' })
 export class GraphCollaborationWsService {
     private configService = inject(ConfigService);
     private wsTicketService = inject(WsTicketService);
@@ -92,7 +132,6 @@ export class GraphCollaborationWsService {
 
     public graphSaved$ = new Subject<GraphSavedMessage>();
     public graphState$ = new Subject<GraphStateMessage>();
-    public stateRequested$ = new Subject<void>();
     public nodeCreated$ = new Subject<NodeCreatedMessage>();
     public nodeUpdated$ = new Subject<NodeUpdatedMessage>();
     public nodesDeleted$ = new Subject<NodesDeletedMessage>();
@@ -105,8 +144,8 @@ export class GraphCollaborationWsService {
     public nodeLocked$ = new Subject<NodeLockedMessage>();
     public nodeUnlocked$ = new Subject<NodeUnlockedMessage>();
 
-    private readonly cursorPipe$ = new Subject<{x: number; y: number}>();
-    private readonly waypointPipe$ = new Subject<{ connection_id: string; waypoints: IPoint[] }>();
+    private readonly cursorPipe$ = new Subject<{ x: number; y: number }>();
+    private readonly waypointPipe$ = new Subject<{ connection_id: string; waypoints: IPoint[]; listKey: string }>();
     private lastNodeDragSendAt = 0;
     private lastSentCursorX = 0;
     private lastSentCursorY = 0;
@@ -114,22 +153,29 @@ export class GraphCollaborationWsService {
     constructor() {
         this.cursorPipe$
             .pipe(
-                filter(({ x, y }) => Math.abs(x - this.lastSentCursorX) >= 5 || Math.abs(y - this.lastSentCursorY) >= 5),
+                filter(
+                    ({ x, y }) => Math.abs(x - this.lastSentCursorX) >= 5 || Math.abs(y - this.lastSentCursorY) >= 5
+                ),
                 throttleTime(150)
             )
-            .subscribe(({x, y}) => {
+            .subscribe(({ x, y }) => {
                 this.lastSentCursorX = x;
                 this.lastSentCursorY = y;
                 const editor = this.buildEditorInfo();
-                if (editor) this.sendRaw({type: 'cursor_moved', x, y, editor});
+                if (editor) this.sendRaw({ type: 'cursor_moved', x, y, editor });
             });
 
-        this.waypointPipe$
-            .pipe(debounceTime(200))
-            .subscribe(({ connection_id, waypoints }) => {
-                const editor = this.buildEditorInfo();
-                if (editor) this.sendRaw({ type: 'connection_waypoints_updated', connection_id, waypoints, editor });
-            });
+        this.waypointPipe$.pipe(debounceTime(200)).subscribe(({ connection_id, waypoints, listKey }) => {
+            const editor = this.buildEditorInfo();
+            if (editor)
+                this.sendRaw({
+                    type: 'connection_waypoints_updated',
+                    connection_id,
+                    waypoints,
+                    list_key: listKey,
+                    editor,
+                });
+        });
     }
     public connect(graphId: number) {
         if (this.currentGraphId === graphId && this.socket) return;
@@ -152,14 +198,12 @@ export class GraphCollaborationWsService {
             error: (err) => {
                 console.error('Failed to fetch WS ticket:', err);
                 this.handleConnectionLoss();
-            }
+            },
         });
     }
 
     private openSocket(ticket: string): void {
-        const wsBase = this.configService.apiUrl
-            .replace(/\/api\/$/, '')
-            .replace(/^http/, 'ws');
+        const wsBase = this.configService.apiUrl.replace(/\/api\/$/, '').replace(/^http/, 'ws');
         const url = `${wsBase}/ws/graphs/${this.currentGraphId}/edit/?ticket=${encodeURIComponent(ticket)}`;
         this.socket = new WebSocket(url);
 
@@ -176,7 +220,7 @@ export class GraphCollaborationWsService {
             } catch {
                 console.error('[WS] Failed to parse message:', event.data);
             }
-        }
+        };
 
         this.socket.onclose = (event) => {
             console.log('[WS] Closed, code:', event.code);
@@ -184,12 +228,11 @@ export class GraphCollaborationWsService {
             if (!this.isManualDisconnect) {
                 this.handleConnectionLoss();
             }
-        }
+        };
 
         this.socket.onerror = (err) => {
-            console.error('[WS] Error:', err)
-        }
-
+            console.error('[WS] Error:', err);
+        };
     }
 
     private handleMessage(message: ServerMessage): void {
@@ -198,14 +241,12 @@ export class GraphCollaborationWsService {
                 this.editors.set(message.editors);
                 break;
             case 'user_joined':
-                this.editors.update((editors) => 
-                    editors.some((e) => e.user_id === message.editor.user_id) ? editors : [... editors, message.editor]
+                this.editors.update((editors) =>
+                    editors.some((e) => e.user_id === message.editor.user_id) ? editors : [...editors, message.editor]
                 );
                 break;
             case 'user_left':
-                this.editors.update((editors) =>
-                editors.filter((e) => e.user_id !== message.user_id)
-                );
+                this.editors.update((editors) => editors.filter((e) => e.user_id !== message.user_id));
                 //remove all users field lockings
                 this.lockedNodeFields.update((m) => {
                     const next = new Map(m);
@@ -215,7 +256,7 @@ export class GraphCollaborationWsService {
                         else next.set(nodeId, filtered);
                     }
                     return next;
-                })
+                });
                 break;
             case 'lock_state':
                 this.lockedNodeFields.set(
@@ -226,9 +267,6 @@ export class GraphCollaborationWsService {
                         ])
                     )
                 );
-                break;
-            case 'request_state':
-                this.stateRequested$.next();
                 break;
             case 'graph_state':
                 this.graphState$.next(message);
@@ -263,7 +301,12 @@ export class GraphCollaborationWsService {
             case 'cursor_batch':
                 if (Array.isArray(message.cursors)) {
                     for (const cursor of message.cursors) {
-                        this.cursorMoved$.next({ type: 'cursor_moved', x: cursor.x, y: cursor.y, editor: cursor.editor });
+                        this.cursorMoved$.next({
+                            type: 'cursor_moved',
+                            x: cursor.x,
+                            y: cursor.y,
+                            editor: cursor.editor,
+                        });
                     }
                 }
                 break;
@@ -297,36 +340,38 @@ export class GraphCollaborationWsService {
         }
     }
 
-    public sendGraphState(flow: FlowModel): void {
-        this.sendRaw({ type: 'graph_state', flow });
-    }
-
     public sendNodeCreated(node: NodeModel): void {
+        const list_key = nodeTypeToListKey(node.type);
+        if (!list_key) return;
         const editor = this.buildEditorInfo();
-        if (editor) this.sendRaw({type: 'node_created', node, editor})
+        if (editor) this.sendRaw({ type: 'node_created', node, list_key, editor });
     }
 
     public sendNodeUpdated(node: NodeModel): void {
+        const list_key = nodeTypeToListKey(node.type);
+        if (!list_key) return;
         const editor = this.buildEditorInfo();
-        if (editor) this.sendRaw({type: 'node_updated', node, editor})
+        if (editor) this.sendRaw({ type: 'node_updated', node, list_key, editor });
     }
 
     public sendNodePositionDuringDrag(node: NodeModel): void {
         const now = Date.now();
         if (now - this.lastNodeDragSendAt < 150) return;
         this.lastNodeDragSendAt = now;
+        const list_key = nodeTypeToListKey(node.type);
+        if (!list_key) return;
         const editor = this.buildEditorInfo();
-        if (editor) this.sendRaw({ type: 'node_updated', node, editor });
+        if (editor) this.sendRaw({ type: 'node_updated', node, list_key, editor });
     }
 
     public sendNodesDeleted(node_ids: string[]): void {
         const editor = this.buildEditorInfo();
-        if (editor) this.sendRaw({type: 'nodes_deleted', node_ids, editor});
+        if (editor) this.sendRaw({ type: 'nodes_deleted', node_ids, editor });
     }
 
-    public sendConnectionCreated(connection: ConnectionModel): void {
+    public sendConnectionCreated(connection: ConnectionModel, listKey: string): void {
         const editor = this.buildEditorInfo();
-        if (editor) this.sendRaw({type: 'connection_created', connection, editor});
+        if (editor) this.sendRaw({ type: 'connection_created', connection, list_key: listKey, editor });
     }
 
     public sendConnectionDeleted(connection_id: string): void {
@@ -339,12 +384,12 @@ export class GraphCollaborationWsService {
         if (editor) this.sendRaw({ type: 'connections_deleted', connection_ids, editor });
     }
 
-    public sendConnectionWaypointsUpdated(connection_id: string, waypoints: IPoint[]): void {
-        this.waypointPipe$.next({ connection_id, waypoints });
+    public sendConnectionWaypointsUpdated(connection_id: string, waypoints: IPoint[], listKey: string): void {
+        this.waypointPipe$.next({ connection_id, waypoints, listKey });
     }
 
     public sendCursorMoved(x: number, y: number): void {
-        this.cursorPipe$.next({x, y});
+        this.cursorPipe$.next({ x, y });
     }
 
     public sendSelectionChanged(node_ids: string[]): void {
@@ -365,12 +410,12 @@ export class GraphCollaborationWsService {
     private buildEditorInfo(): EditorInfo | null {
         const user = this.profileService.currentUserSignal();
         if (!user) return null;
-        return {user_id: user.id, display_name: user.display_name, avatar_url: user.avatar_url};
+        return { user_id: user.id, display_name: user.display_name, avatar_url: user.avatar_url };
     }
 
     private sendRaw(payload: object): void {
         if (this.socket?.readyState === WebSocket.OPEN) {
-            this.socket.send(JSON.stringify(payload))
+            this.socket.send(JSON.stringify(payload));
         }
     }
 
@@ -379,7 +424,7 @@ export class GraphCollaborationWsService {
         this.socket = null;
 
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.error(`[WS] Max reconnect attempts reached. Giving up.`)
+            console.error(`[WS] Max reconnect attempts reached. Giving up.`);
             this.connectionStatus.set('disconnected');
             return;
         }
@@ -392,17 +437,13 @@ export class GraphCollaborationWsService {
                 this.openConnection();
             }
         }, delay);
-
     }
 
     private calculateReconnectDelay(): number {
-        return Math.min(
-            this.baseReconnectDelayMs * Math.pow(2, this.reconnectAttempts - 1),
-            this.maxReconnectDelayMs
-        );
+        return Math.min(this.baseReconnectDelayMs * Math.pow(2, this.reconnectAttempts - 1), this.maxReconnectDelayMs);
     }
 
-    private cleanUp():void {
+    private cleanUp(): void {
         if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
             this.reconnectTimeout = null;
@@ -417,5 +458,4 @@ export class GraphCollaborationWsService {
         this.connectionStatus.set('disconnected');
         this.lockedNodeFields.set(new Map());
     }
-
 }

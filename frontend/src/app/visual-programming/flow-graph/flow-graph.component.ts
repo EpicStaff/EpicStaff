@@ -5,8 +5,8 @@ import {
     ChangeDetectorRef,
     Component,
     computed,
-    ElementRef,
     effect,
+    ElementRef,
     EventEmitter,
     inject,
     Injector,
@@ -27,6 +27,7 @@ import {
     EFResizeHandleType,
     EFZoomDirection,
     F_CONNECTION_BUILDERS,
+    FCanvasChangeEvent,
     FCanvasComponent,
     FConnectionContent,
     FConnectionGradient,
@@ -38,12 +39,15 @@ import {
     FFlowComponent,
     FFlowModule,
     FReassignConnectionEvent,
+    FSelectionChangeEvent,
     FZoomDirective,
     ICurrentSelection,
-    FCanvasChangeEvent,
-    FSelectionChangeEvent
 } from '@foblex/flow';
 import { Subject, takeUntil } from 'rxjs';
+import {
+    EditorInfo,
+    GraphCollaborationWsService,
+} from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
 import { ToastService } from '../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -57,13 +61,13 @@ import { FlowShortcutsButtonComponent } from '../components/flow-shortcuts-butto
 import { NodePanelShellComponent } from '../components/node-panels/node-panel-shell/node-panel-shell.component';
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent } from '../components/note-edit-dialog/note-edit-dialog.component';
-import { GraphLiveCursorsComponent, CursorState } from './graph-live-cursors/graph-live-cursors.component';
 import { ProjectDialogComponent } from '../components/project-dialog/project-dialog.component';
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { ShortcutListenerDirective } from '../core/directives/shortcut-listener.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
 import { NodeType } from '../core/enums/node-type';
 import { computeAutoArrangePositions } from '../core/helpers/auto-arrange.util';
+import { getAvatarColor } from '../core/helpers/avatar-colors';
 import { BackwardArcPathBuilder, computeBackwardArcPoints } from '../core/helpers/backward-arc.path-builder';
 import { getMinimapClassForNode } from '../core/helpers/get-minimap-class.util';
 import { defineSourceTargetPair, isBackwardConnection, isConnectionValid } from '../core/helpers/helpers';
@@ -94,8 +98,7 @@ import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
 import { createFlowConnection } from '../utils/connection.factory';
 import { normalizeFlowPorts } from '../utils/load';
-import { EditorInfo, GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
-import { getAvatarColor } from '../core/helpers/avatar-colors';
+import { CursorState, GraphLiveCursorsComponent } from './graph-live-cursors/graph-live-cursors.component';
 
 function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
     if (a.length !== b.length) return false;
@@ -269,7 +272,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             }
         }
         return result;
-    })
+    });
 
     protected readonly nodeLockedMap = computed<Map<string, EditorInfo>>(() => {
         const result = new Map<string, EditorInfo>();
@@ -288,55 +291,52 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             this.openNodePanel(this.initialNodeId);
         }
 
-        this.wsService.cursorMoved$
-            .pipe(takeUntil(this.destroy$))
-            .subscribe((msg) => {
-                const userId = msg.editor.user_id;
+        this.wsService.cursorMoved$.pipe(takeUntil(this.destroy$)).subscribe((msg) => {
+            const userId = msg.editor.user_id;
 
-                const prev = this.cursorTimeouts.get(userId);
-                if (prev) clearTimeout(prev);
+            const prev = this.cursorTimeouts.get(userId);
+            if (prev) clearTimeout(prev);
 
-                this.remoteCursors.update((m) => {
-                    const next = new Map(m);
-                    next.set(userId, { x: msg.x, y: msg.y, editor: msg.editor, fading: false });
-                    return next;
-                });
-                
-                const fadeTimeout = setTimeout(() => {
-                    this.remoteCursors.update((m) => {
-                        const next = new Map(m);
-                        const cursor = next.get(userId);
-                        if (cursor) next.set(userId, { ...cursor, fading: true });
-                        return next;
-                    });
-                    setTimeout(() => {
-                        this.remoteCursors.update((m) => {
-                            const next = new Map(m);
-                            next.delete(userId);
-                            return next;
-                        });
-                        this.cursorTimeouts.delete(userId);
-                    }, 400);
-                }, 3000);
-
-                this.cursorTimeouts.set(userId, fadeTimeout);
+            this.remoteCursors.update((m) => {
+                const next = new Map(m);
+                next.set(userId, { x: msg.x, y: msg.y, editor: msg.editor, fading: false });
+                return next;
             });
 
-            this.wsService.selectionChanged$
-                .pipe(takeUntil(this.destroy$))
-                .subscribe((msg) => {
-                    this.remoteSelections.update((m) => {
+            const fadeTimeout = setTimeout(() => {
+                this.remoteCursors.update((m) => {
+                    const next = new Map(m);
+                    const cursor = next.get(userId);
+                    if (cursor) next.set(userId, { ...cursor, fading: true });
+                    return next;
+                });
+                setTimeout(() => {
+                    this.remoteCursors.update((m) => {
                         const next = new Map(m);
-                        if (msg.node_ids.length === 0) {
-                            next.delete(msg.editor.user_id);
-                        } else {
-                            next.set(msg.editor.user_id, msg.node_ids);
-                        }
+                        next.delete(userId);
                         return next;
                     });
-                });
+                    this.cursorTimeouts.delete(userId);
+                }, 400);
+            }, 3000);
 
-            effect(() => {
+            this.cursorTimeouts.set(userId, fadeTimeout);
+        });
+
+        this.wsService.selectionChanged$.pipe(takeUntil(this.destroy$)).subscribe((msg) => {
+            this.remoteSelections.update((m) => {
+                const next = new Map(m);
+                if (msg.node_ids.length === 0) {
+                    next.delete(msg.editor.user_id);
+                } else {
+                    next.set(msg.editor.user_id, msg.node_ids);
+                }
+                return next;
+            });
+        });
+
+        effect(
+            () => {
                 const editorIds = new Set(this.wsService.editors().map((e) => e.user_id));
                 this.remoteSelections.update((m) => {
                     const toDelete = [...m.keys()].filter((uid) => !editorIds.has(uid));
@@ -345,7 +345,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     toDelete.forEach((uid) => next.delete(uid));
                     return next;
                 });
-            }, { injector: this.injector })
+            },
+            { injector: this.injector }
+        );
     }
 
     public ngOnChanges(changes: SimpleChanges): void {
@@ -415,7 +417,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.flowService.removeConnection(event.connectionId);
         this.wsService.sendConnectionDeleted(event.connectionId);
         this.flowService.addConnection(updatedConnection);
-        this.wsService.sendConnectionCreated(updatedConnection);
+        this.wsService.sendConnectionCreated(updatedConnection, this.getConnectionListKey(updatedConnection));
 
         this.toastService.success('Connection reassigned successfully', 3000, 'bottom-right');
     }
@@ -463,7 +465,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         );
 
         this.flowService.addConnection(newConnection);
-        this.wsService.sendConnectionCreated(newConnection)
+        this.wsService.sendConnectionCreated(newConnection, this.getConnectionListKey(newConnection));
 
         const nodes = this.flowService.nodes();
         const intersects = getConnectionIntersectingNodes(newConnection, nodes);
@@ -588,7 +590,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         if (waypoints.length > existingCount) {
             this.userAdjustedConnectionIds.add(connectionId);
             this.flowService.updateConnectionWaypoints(connectionId, waypoints, true);
-            this.wsService.sendConnectionWaypointsUpdated(connectionId, waypoints)
+            this.wsService.sendConnectionWaypointsUpdated(
+                connectionId,
+                waypoints,
+                this.getConnectionListKey(connection)
+            );
             return;
         }
 
@@ -608,7 +614,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             isSameElements ? waypoints : normalizedWaypoints,
             normalizedWaypoints.length > 0
         );
-        this.wsService.sendConnectionWaypointsUpdated(connectionId, isSameElements ? waypoints : normalizedWaypoints)
+        this.wsService.sendConnectionWaypointsUpdated(
+            connectionId,
+            isSameElements ? waypoints : normalizedWaypoints,
+            this.getConnectionListKey(connection)
+        );
     }
 
     public onNodeDroppedFromPanel(event: FCreateNodeEvent): void {
@@ -663,7 +673,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         );
         const newNode = this.nodeFactory.createNode(event.type, { ...event.overrides, position });
         this.flowService.addNode(newNode);
-        this.wsService.sendNodeCreated(newNode)
+        this.wsService.sendNodeCreated(newNode);
     }
 
     public onOpenNodePanel(node: NodeModel): void {
@@ -961,7 +971,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
             if (freePos.x !== current.position.x || freePos.y !== current.position.y) {
                 this.flowService.updateNode({ ...current, position: freePos });
-                this.wsService.sendNodeUpdated({...current, position: freePos})
+                this.wsService.sendNodeUpdated({ ...current, position: freePos });
                 autoAlignedNodeIds.add(id);
             } else {
                 this.wsService.sendNodeUpdated(current);
@@ -1019,7 +1029,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onCanvasChange(event: FCanvasChangeEvent): void {
-        this.canvasTransform.set({ x: event.position.x, y: event.position.y, scale: event.scale});
+        this.canvasTransform.set({ x: event.position.x, y: event.position.y, scale: event.scale });
     }
 
     protected openSettings(): void {
@@ -1189,12 +1199,16 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     //Broadcast nodes order after Auto arrange
                     const nodesAfterArrange = this.flowService.nodes();
                     for (const node of nodesAfterArrange) {
-                        this.wsService.sendNodeUpdated(node)
+                        this.wsService.sendNodeUpdated(node);
                     }
                     const connectionsAfterArrange = this.flowService.connections();
                     for (const connection of connectionsAfterArrange) {
                         const waypoints = connection.waypoints ?? [];
-                        this.wsService.sendConnectionWaypointsUpdated(connection.id, waypoints);
+                        this.wsService.sendConnectionWaypointsUpdated(
+                            connection.id,
+                            waypoints,
+                            this.getConnectionListKey(connection)
+                        );
                     }
                     this._arrangingLock = false;
                     this.isArranging.set(false);
@@ -1310,7 +1324,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             fConnectionIds: selections.fConnectionIds,
         });
         if (nodeIdsToDelete.length > 0) {
-            this.wsService.sendNodesDeleted(nodeIdsToDelete)
+            this.wsService.sendNodesDeleted(nodeIdsToDelete);
         }
         if (selections.fConnectionIds.length > 0) {
             this.wsService.sendConnectionsDeleted(selections.fConnectionIds);
@@ -1353,6 +1367,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     private getDecisionTableVisualHeight(node: NodeModel): number {
         return normalizeTableNodeSize(node).size.height;
+    }
+
+    private getConnectionListKey(connection: ConnectionModel): string {
+        const sourceNode = this.flowService.nodes().find((n) => n.id === connection.sourceNodeId);
+        return sourceNode?.type === NodeType.TABLE || sourceNode?.type === NodeType.EDGE
+            ? 'conditional_edge_list'
+            : 'edge_list';
     }
 
     private normalizeWaypointsForConnection(connection: ConnectionModel, waypoints: IPoint[] | undefined): IPoint[] {

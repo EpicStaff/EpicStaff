@@ -32,6 +32,7 @@ import {
     take,
     tap,
 } from 'rxjs';
+import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { EpicChatService } from '../../../../features/epic-chat/epic-chat.service';
@@ -54,9 +55,9 @@ import { FlowsStorageService } from '../../../../features/flows/services/flows-s
 import { RunGraphService } from '../../../../features/flows/services/run-graph-session.service';
 import { FlowMessagesPanelComponent } from '../../../../pages/running-graph/components/flow-messages-panel/flow-messages-panel.component';
 import { RunSessionSSEService } from '../../../../pages/running-graph/services/graph-session-sse.service';
+import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config/config.service';
 import { ToastService } from '../../../../services/notifications/toast.service';
-import { ProfileService } from '../../../../services/auth/profile.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.component';
 import { UnsavedChangesDialogService } from '../../../../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
@@ -87,7 +88,6 @@ import { FlowUnsavedStateService } from '../../services/flow-unsaved-state.servi
 import { FlowHeaderComponent } from './components/header/flow-header.component';
 import { ShortcutsModalComponent } from './components/shortcuts-modal/shortcuts-modal.component';
 import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
-import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
 //.
 @Component({
@@ -198,34 +198,29 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((node) => this.handleNodeSaveRequest(node));
 
-        this.wsService.graphSaved$
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((event) => {
-                this.graphState.update((state) =>
-                    state ? { ...state, save_version: event.new_save_version } : state
-                );
-                const currentUserId = this.profileService.currentUserSignal()?.id;
-                if (event.saved_by.user_id !== currentUserId) {
-                    const savedBy = event.saved_by.display_name ?? `User ${event.saved_by.user_id}`;
-                    this.savedByBanner.set(savedBy);
-                }
-            });
+        this.wsService.graphSaved$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
+            this.graphState.update((state) => (state ? { ...state, save_version: event.new_save_version } : state));
+            const currentUserId = this.profileService.currentUserSignal()?.id;
+            if (event.saved_by.user_id !== currentUserId) {
+                const savedBy = event.saved_by.display_name ?? `User ${event.saved_by.user_id}`;
+                this.savedByBanner.set(savedBy);
+            }
+        });
 
-        this.wsService.graphState$
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((msg) => {
-                const normalizedFlow = normalizeFlowPorts(msg.flow);
-                this.flowService.setFlow(normalizedFlow);
-            });
+        this.wsService.graphState$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            let flowModel = mapGraphDtoToFlowModel(msg.flow);
+            flowModel = this.addStartNodeIfNeeded(flowModel);
+            const normalizedFlow = normalizeFlowPorts(flowModel);
+            this.flowService.setFlow(normalizedFlow);
+        });
 
         this.wsService.nodeCreated$
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((msg) => this.flowService.addNode(msg.node));
 
-        this.wsService.nodeUpdated$
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((msg) => {
-                this.flowService.updateNode(msg.node)});
+        this.wsService.nodeUpdated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            this.flowService.updateNode(msg.node);
+        });
 
         this.wsService.nodesDeleted$
             .pipe(takeUntilDestroyed(this.destroyRef))
@@ -246,14 +241,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.wsService.connectionWaypointsUpdated$
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((msg) => this.flowService.updateConnectionWaypoints(msg.connection_id, msg.waypoints));
-
-        this.wsService.stateRequested$
-            .pipe(
-                takeUntilDestroyed(this.destroyRef),
-                filter(() => this.isLoaded())
-            )
-            .subscribe(() => this.wsService.sendGraphState(this.flowService.getFlowState()));
-
     }
 
     public ngOnInit(): void {
@@ -436,7 +423,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     return this.saveNodeToBackend(node, true);
                 }
                 if (err.status === 409) {
-                    this.toastService.warning('This graph was modified by another user. Please refresh to see the latest changes.');
+                    this.toastService.warning(
+                        'This graph was modified by another user. Please refresh to see the latest changes.'
+                    );
                 } else {
                     this.toastService.error(`Failed to save node: ${err?.error?.error || 'Unknown error'}`);
                 }
