@@ -85,8 +85,6 @@
         }
     }
 
-    // Right pane goes edge-to-edge with the modal so we put the side padding
-    // on the form-pane only and let the editor-pane fill its share completely.
     .dialog-content {
         flex: 1;
         min-height: 0;
@@ -237,6 +235,40 @@
         min-width: 0;
     }
 
+    .parameters-issue-label {
+        font-size: 12px;
+        font-weight: 500;
+        color: #ff6b6b;
+        background: rgba(255, 85, 85, 0.1);
+        border: 1px solid rgba(255, 85, 85, 0.4);
+        border-radius: 6px;
+        padding: 4px 10px;
+        line-height: 1.2;
+        white-space: nowrap;
+    }
+
+    .editor-card-title .revert-action {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: 1px solid var(--accent-color);
+        border-radius: 8px;
+        background: transparent;
+        color: var(--accent-color);
+        cursor: pointer;
+        transition:
+            background-color 0.2s ease,
+            color 0.2s ease;
+
+        &:hover {
+            background: var(--accent-color);
+            color: #fff;
+        }
+    }
+
     .parameters-mode-switch {
         display: flex;
         align-items: center;
@@ -339,8 +371,6 @@
     }
 
     .inline-editor-host {
-        // Bounded height so an expanded inline editor doesn't push siblings
-        // out of view; the form pane scrolls around it.
         height: 320px;
         display: flex;
         flex-direction: column;
