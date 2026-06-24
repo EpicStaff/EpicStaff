@@ -14,8 +14,9 @@ from tables.serializers.user_management_serializers import (
     UserCreateRequestSerializer,
     UserResponseSerializer,
 )
+from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.authentication import JwtOrApiKeyAuthentication
-from tables.services.rbac.permissions import IsSuperadmin, IsSuperadminOrOrgAdmin
+from tables.services.rbac.permissions import HasOrgPermission, IsSuperadmin
 from tables.services.rbac.user_management_service import UserManagementService
 from tables.services.rbac.user_validation_service import UserValidationService
 
@@ -127,11 +128,25 @@ class OrganizationMembershipAdminViewSet(viewsets.ViewSet):
     """Per-org membership management. Nested under
     /api/admin/organizations/{org_id}/users/...
 
-    Allowed for superadmin globally OR Org Admin of the org_id in the URL.
+    Authorization: superadmin globally OR a role with USERS permission
+    in the org_id from the URL.
     """
 
     authentication_classes = [JwtOrApiKeyAuthentication]
-    permission_classes = [IsAuthenticated, IsSuperadminOrOrgAdmin]
+    # Order matters: IsAuthenticated runs first so HasOrgPermission can
+    # rely on request.user.is_authenticated.
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+
+    # Required by HasOrgPermission. Missing this attribute raises
+    # ImproperlyConfigured on first request.
+    rbac_resource_type = ResourceType.USERS
+    rbac_action_map = {
+        "list": Permission.READ,
+        "create": Permission.CREATE,
+        "partial_update": Permission.UPDATE,
+        "destroy": Permission.DELETE,
+        "assign_users": Permission.UPDATE,
+    }
 
     _service = UserManagementService()
     _validator = UserValidationService()

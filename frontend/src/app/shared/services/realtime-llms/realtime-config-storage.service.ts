@@ -7,12 +7,13 @@ import {
 import { catchError, finalize, Observable, of, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
+import { StorageService } from '../app-storage.service';
 import { RealtimeModelConfigsService } from './real-time-model-config.service';
 
 @Injectable({
     providedIn: 'root',
 })
-export class RealtimeConfigStorageService {
+export class RealtimeConfigStorageService implements StorageService {
     private readonly realtimeModelConfigsService = inject(RealtimeModelConfigsService);
 
     private configsRequest$?: Observable<RealtimeModelConfig[]>;
@@ -84,6 +85,12 @@ export class RealtimeConfigStorageService {
 
     markConfigsOutdated(): void {
         this.configsLoaded.set(false);
+    }
+
+    clear(): void {
+        this.configsSignal.set([]);
+        this.configsLoaded.set(false);
+        this.configsRequest$ = undefined;
     }
 
     private mergeConfigsIntoCache(incoming: RealtimeModelConfig[]): void {

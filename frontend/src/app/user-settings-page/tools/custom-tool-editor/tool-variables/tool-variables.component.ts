@@ -14,6 +14,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { ArgsSchema } from '../../../../features/tools/models/python-code-tool.model';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -22,7 +23,7 @@ import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip
 @Component({
     selector: 'app-tool-variables',
     standalone: true,
-    imports: [CommonModule, FormsModule, AppSvgIconComponent, HelpTooltipComponent],
+    imports: [CommonModule, FormsModule, AppSvgIconComponent, HelpTooltipComponent, MatTooltipModule],
     templateUrl: './tool-variables.component.html',
     styleUrls: ['./tool-variables.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

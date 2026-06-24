@@ -55,7 +55,7 @@
                 [columns]="columns"
                 [data]="filteredUsers()"
                 [selectable]="true"
-                [initialSelectedIds]="initialSelectedUserIds()"
+                [initialSelectedIds]="selectionIds()"
                 rowId="id"
                 (selectionChange)="onSelection($event)"
             >
@@ -81,8 +81,11 @@
                 >
                     <app-select
                         [items]="USER_ROLES"
-                        [(selectedValue)]="row['role']"
+                        [selectedValue]="row['role']"
+                        (selectedValueChange)="onRoleSelected(row, $event)"
                         placeholder="Select role"
+                        [class.row-unselected]="!selectedUserIds().has(row['id'])"
+                        (click)="$event.stopPropagation()"
                     />
                 </ng-template>
             </app-table>

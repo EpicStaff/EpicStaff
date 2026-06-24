@@ -1,0 +1,55 @@
+<div class="settings-panel">
+    <div class="settings-header">
+        <span class="settings-title">Assistant Settings</span>
+        <button
+            class="close-btn"
+            title="Close settings"
+            (click)="closePanel()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="1rem"
+            />
+        </button>
+    </div>
+
+    <form
+        class="settings-form"
+        [formGroup]="form"
+        (ngSubmit)="save()"
+    >
+        <div class="form-field">
+            <label
+                class="form-label"
+                for="llm-config-select"
+                >LLM Configuration</label
+            >
+            @if (isLoadingConfigs()) {
+                <div class="form-loading">Loading configurations…</div>
+            } @else if (llmConfigs().length === 0) {
+                <div class="form-empty-state">No LLM configurations found. Configure an LLM in settings first.</div>
+            } @else {
+                <select
+                    id="llm-config-select"
+                    class="form-select"
+                    formControlName="llm_config"
+                >
+                    <option [ngValue]="null">— Use default —</option>
+                    @for (cfg of llmConfigs(); track cfg.id) {
+                        <option [ngValue]="cfg.id">{{ cfg.custom_name }}</option>
+                    }
+                </select>
+            }
+        </div>
+
+        <div class="settings-actions">
+            <button
+                type="submit"
+                class="btn btn--primary"
+                [disabled]="!isDirty || isSaving()"
+            >
+                {{ isSaving() ? 'Saving…' : 'Save' }}
+            </button>
+        </div>
+    </form>
+</div>

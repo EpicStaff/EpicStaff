@@ -2,12 +2,13 @@ import { inject, Injectable, signal } from '@angular/core';
 import { LLMProvider, ModelTypes } from '@shared/models';
 import { catchError, Observable, of, tap, throwError } from 'rxjs';
 
+import { StorageService } from '../app-storage.service';
 import { LLMProvidersService } from './llm-providers.service';
 
 @Injectable({
     providedIn: 'root',
 })
-export class LlmProvidersStorageService {
+export class LlmProvidersStorageService implements StorageService {
     private readonly llmProvidersService = inject(LLMProvidersService);
 
     // All providers (unfiltered)
@@ -37,6 +38,13 @@ export class LlmProvidersStorageService {
                 return throwError(() => err);
             })
         );
+    }
+
+    clear(): void {
+        this.providersSignal.set([]);
+        this.providersLoaded.set(false);
+        this.providersByTypeSignal.set(new Map());
+        this.providerTypesLoaded.set(new Set());
     }
 
     getProvidersByType(type: ModelTypes, forceRefresh = false): Observable<LLMProvider[]> {

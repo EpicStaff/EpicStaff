@@ -3,12 +3,13 @@ import { CreateRealtimeTranscriptionModelRequest, GetRealtimeTranscriptionModelR
 import { catchError, Observable, of, tap, throwError } from 'rxjs';
 import { map } from 'rxjs/operators';
 
+import { StorageService } from '../app-storage.service';
 import { RealtimeTranscriptionModelsService } from './transcription-models.service';
 
 @Injectable({
     providedIn: 'root',
 })
-export class TranscriptionModelsStorageService {
+export class TranscriptionModelsStorageService implements StorageService {
     private readonly transcriptionModelsService = inject(RealtimeTranscriptionModelsService);
 
     private modelsSignal = signal<GetRealtimeTranscriptionModelRequest[]>([]);
@@ -58,6 +59,11 @@ export class TranscriptionModelsStorageService {
             }
             return [model, ...current];
         });
+    }
+
+    clear(): void {
+        this.modelsSignal.set([]);
+        this.allModelsLoadedSignal.set(false);
     }
 
     private removeModelFromCache(id: number): void {

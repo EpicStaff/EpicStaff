@@ -4,7 +4,6 @@ import {
     ChangeDetectionStrategy,
     Component,
     computed,
-    contentChild,
     DestroyRef,
     ElementRef,
     inject,
@@ -23,7 +22,6 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../buttons';
 import { CheckboxComponent } from '../checkbox/checkbox.component';
 import { SelectItem } from '../select/select.component';
-import { MultiSelectTriggerDirective } from './multi-select-trigger.directive';
 
 interface GroupedItems {
     group: string | null;
@@ -46,19 +44,17 @@ export class MultiSelectComponent implements OnInit {
     selectionChange = output<unknown[]>();
 
     grouped = input<boolean>(false);
+    showSearch = input<boolean>(true);
+    checkboxPosition = input<'left' | 'right'>('right');
+    color = input<'primary' | 'white'>('primary');
+
+    /** When true the default trigger button is not rendered.
+     *  Use openAt(element) to open the dropdown anchored to an external element. */
+    hideTrigger = input<boolean>(false);
 
     isOpen = signal(false);
     search = signal('');
     tempSelected = signal<unknown[]>([]);
-
-    selectedLabels = computed<string | null>(() => {
-        const selected = this.selectedValues();
-        if (!selected.length) return null;
-        return this.items()
-            .filter((i) => selected.includes(i.value))
-            .map((i) => i.name)
-            .join(', ');
-    });
 
     groupedFiltered = computed<GroupedItems[]>(() => {
         const search = this.search().toLowerCase();
@@ -94,8 +90,7 @@ export class MultiSelectComponent implements OnInit {
         }));
     });
 
-    readonly triggerDir = contentChild(MultiSelectTriggerDirective);
-    @ViewChild('defaultTrigger') defaultTrigger?: ElementRef<HTMLElement>;
+    @ViewChild('triggerBtn') triggerBtn!: ElementRef<HTMLElement>;
     @ViewChild('dropdownTemplate') dropdownTemplate!: TemplateRef<unknown>;
 
     private overlayRef!: OverlayRef;
@@ -113,36 +108,47 @@ export class MultiSelectComponent implements OnInit {
         this.isOpen() ? this.close() : this.openDropdown();
     }
 
-    openDropdown() {
-        const triggerEl = this.triggerDir()?.elementRef ?? this.defaultTrigger!;
+    openDropdown(): void {
+        this.openAt(this.triggerBtn.nativeElement);
+    }
 
-        if (!this.overlayRef) {
-            const positionStrategy = this.overlayPositionBuilder
-                .flexibleConnectedTo(triggerEl)
-                .withPositions([
-                    {
-                        originX: 'start',
-                        originY: 'bottom',
-                        overlayX: 'start',
-                        overlayY: 'top',
-                        offsetY: 4,
-                    },
-                ])
-                .withPush(true);
+    openAt(originElement: HTMLElement, seedValues?: unknown[]): void {
+        const positionStrategy = this.overlayPositionBuilder
+            .flexibleConnectedTo(originElement)
+            .withPositions([
+                // Preferred: below, left-aligned with trigger
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+                // Below, right-aligned with trigger (when right edge would clip)
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+                // Above, left-aligned (when bottom would clip)
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
+                // Above, right-aligned (corner)
+                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+            ])
+            .withPush(false)
+            .withFlexibleDimensions(false)
+            .withViewportMargin(8);
 
-            this.overlayRef = this.overlay.create({
-                positionStrategy,
-                scrollStrategy: this.overlay.scrollStrategies.reposition(),
-                hasBackdrop: true,
-                backdropClass: 'transparent-backdrop',
-            });
-
-            this.overlayRef
-                .backdropClick()
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe(() => this.close());
+        if (this.overlayRef) {
+            this.overlayRef.detach();
+            this.overlayRef.dispose();
+            this.overlayRef = undefined!;
         }
 
+        this.overlayRef = this.overlay.create({
+            positionStrategy,
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            hasBackdrop: true,
+            backdropClass: 'transparent-backdrop',
+        });
+
+        this.overlayRef
+            .backdropClick()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.close());
+
+        this.tempSelected.set([...(seedValues ?? this.selectedValues())]);
+        this.search.set('');
         const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);
         this.overlayRef.attach(portal);
         this.isOpen.set(true);

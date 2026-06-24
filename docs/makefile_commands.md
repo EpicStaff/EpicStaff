@@ -10,6 +10,7 @@ All commands must be run from the **project root directory** (where `Makefile` l
 - [Development Environment](#development-environment)
 - [Production Environment](#production-environment)
 - [Branch Switching](#branch-switching)
+- [Env File Generation](#env-file-generation)
 - [Utilities](#utilities)
 - [Local Django Development](#local-django-development)
 - [Typical Workflows](#typical-workflows)
@@ -30,7 +31,21 @@ make help
 
 ## Development Environment
 
-Uses `docker-compose.yaml` + `docker-compose.dev.yaml` with env files `.env` and `dev/dev.env`.
+Uses `docker-compose.yaml` + `docker-compose.dev.yaml` with env file `.dev.env`.
+
+> **Note:** `src/.dev.env` is generated from `src/env.yaml` and is gitignored. On a fresh clone, run `make gen-env` once before `make dev` to create it.
+
+### `make dev-init`
+
+Create all external Docker volumes and the `mcp-network` required by the dev stack. Idempotent — safe to run when volumes already exist.
+
+Creates: `sandbox_venvs`, `crew_pgdata`, `media_data`, `graph_data`, `mcp-network`.
+
+`make dev`, `make rebuild-dev`, `make dev-voice`, and `make dev-ngrok` all run `dev-init` automatically as a prerequisite, so you rarely need to call this directly.
+
+```bash
+make dev-init
+```
 
 ### `make dev`
 
@@ -207,6 +222,41 @@ make apply-backup
 
 ---
 
+## Env File Generation
+
+`src/env.yaml` is the single source of truth for all three env files. Edit it,
+then regenerate. Never hand-edit the generated files — `--check` will catch drift.
+
+### `make gen-env`
+
+Regenerate `src/.dev.env`, `src/debug.env`, and `src/.env.example` from `src/env.yaml`.
+
+```bash
+make gen-env
+```
+
+### `make check-env`
+
+Compare the three env files on disk to what `src/env.yaml` would generate. Exits 1 with a
+unified diff if any file has drifted; exits 0 if all files are clean. Use in CI or as a
+pre-commit check. `make check-env` always checks all three files; to check a single file
+use the CLI directly (`python scripts/generate_env.py --check --env debug`).
+
+```bash
+make check-env
+```
+
+You can also target a single file:
+
+```bash
+python scripts/generate_env.py --env dev
+python scripts/generate_env.py --env debug
+python scripts/generate_env.py --env example
+python scripts/generate_env.py --check --env debug
+```
+
+---
+
 ## Utilities
 
 ### `make clean`
@@ -336,6 +386,18 @@ curl -X POST http://localhost:8000/api/auth/reset-user/ \
 ---
 
 ## Typical Workflows
+
+### First-time dev setup (fresh clone)
+
+```bash
+# Generate src/.dev.env from src/env.yaml (run once, and again after env.yaml changes)
+make gen-env
+
+# Create external volumes/network and start all dev services
+make dev
+```
+
+Open http://localhost (or http://localhost:4200 for the direct live-reload server).
 
 ### Start the development environment
 

@@ -2,12 +2,13 @@ import { computed, inject, Injectable, signal } from '@angular/core';
 import { CreateLlmModelRequest, LLMModel } from '@shared/models';
 import { catchError, Observable, of, tap, throwError } from 'rxjs';
 
+import { StorageService } from '../app-storage.service';
 import { LLMModelsService } from './llm-models.service';
 
 @Injectable({
     providedIn: 'root',
 })
-export class LlmModelsStorageService {
+export class LlmModelsStorageService implements StorageService {
     private readonly llmModelsService = inject(LLMModelsService);
 
     private modelsSignal = signal<LLMModel[]>([]);
@@ -123,6 +124,12 @@ export class LlmModelsStorageService {
             }
             return [model, ...current];
         });
+    }
+
+    clear(): void {
+        this.modelsSignal.set([]);
+        this.loadedProviderIds.set(new Set());
+        this.allModelsLoadedSignal.set(false);
     }
 
     private removeModelFromCache(id: number): void {

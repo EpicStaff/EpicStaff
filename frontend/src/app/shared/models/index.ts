@@ -17,5 +17,4 @@ export * from './role-based-access';
 export * from './RunCrewSession.model';
 export * from './tag.model';
 export * from './task-message.model';
-export * from './tool_config.model';
 export * from './user-message.model';

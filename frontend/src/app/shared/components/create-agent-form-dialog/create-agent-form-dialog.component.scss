@@ -49,6 +49,8 @@
 
     &__sidebar {
         width: 600px;
+        display: flex;
+        flex-direction: column;
         flex-shrink: 0;
         padding: 0 1.5rem 1.5rem 1.5rem;
         border-left: 1px solid var(--color-divider-subtle);
@@ -84,6 +86,6 @@
 }
 
 .visible-tab {
-    height: auto;
+    flex: 1;
     overflow: auto;
 }

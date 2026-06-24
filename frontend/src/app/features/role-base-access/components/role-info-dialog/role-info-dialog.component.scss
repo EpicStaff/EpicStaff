@@ -1,0 +1,75 @@
+.dialog {
+    height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--color-nodes-sidepanel-bg);
+    border-radius: 12px;
+    border: 1px solid var(--color-divider-subtle);
+
+    .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px 40px;
+        flex-shrink: 0;
+        border-bottom: 1px solid var(--color-divider-subtle);
+
+        .title {
+            font-size: 1.25rem;
+        }
+
+        .close-btn {
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 50%;
+            border: 1px solid var(--accent-color);
+            color: var(--accent-color);
+            transition: opacity 0.3s ease;
+
+            &:hover {
+                opacity: 0.7;
+            }
+        }
+    }
+
+    .role-identity {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        padding: 20px 40px 0 40px;
+
+        .role-avatar {
+            width: 80px;
+            height: 80px;
+            font-size: 28px;
+            font-weight: 500;
+            border-radius: 50%;
+        }
+
+        .role-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .role-name {
+            font-size: 24px;
+            font-weight: 500;
+            color: var(--text);
+        }
+
+        .role-desc {
+            font-size: 14px;
+            color: var(--text-secondary-60);
+        }
+    }
+
+    .content {
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        padding: 20px 40px;
+    }
+}

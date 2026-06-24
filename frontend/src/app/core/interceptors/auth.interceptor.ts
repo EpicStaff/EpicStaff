@@ -14,7 +14,7 @@ export const authInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, ne
 
     return next(authReq).pipe(
         catchError((err: HttpErrorResponse) => {
-            if ((err.status !== 401 && err.status !== 403) || isAuthEndpoint) {
+            if (err.status !== 401 || isAuthEndpoint) {
                 return throwError(() => err);
             }
 

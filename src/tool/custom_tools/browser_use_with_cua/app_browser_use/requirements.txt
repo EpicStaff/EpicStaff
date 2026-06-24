@@ -1,4 +1,4 @@
-browser-use
-openai>=1.0.0
-python-dotenv
-fastmcp
+browser-use>=0.6.0,<1.0.0
+openai>=1.99.9,<2.0.0
+python-dotenv==1.1.0
+fastmcp==2.12.5

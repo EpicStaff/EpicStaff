@@ -1,11 +1,11 @@
 <div class="stats-row">
-    @if (isOrgsLoading()) {
-        <app-loading-spinner
-            size="md"
-            message="Loading data..."
-        />
-    } @else {
-        @for (stat of stats(); track stat.label) {
+    @for (stat of stats(); track stat.label) {
+        @if (stat.loading) {
+            <app-loading-spinner
+                size="md"
+                message="Loading data..."
+            />
+        } @else {
             <app-stat-card [data]="stat" />
         }
     }
@@ -20,8 +20,8 @@
             mod="small"
             leftIcon="plus"
             (click)="onCreateOrganization()"
-            >Create Organization</app-button
-        >
+            >Create Organization
+        </app-button>
     </div>
 
     @if (isOrgsLoading()) {

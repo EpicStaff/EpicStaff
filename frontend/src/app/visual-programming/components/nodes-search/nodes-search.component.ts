@@ -13,6 +13,7 @@ import {
     ViewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { NodeModel } from '../../core/models/node.model';
@@ -21,7 +22,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
 @Component({
     selector: 'app-nodes-search',
     standalone: true,
-    imports: [CommonModule, FormsModule, SearchNodeItemComponent, AppSvgIconComponent],
+    imports: [CommonModule, FormsModule, SearchNodeItemComponent, AppSvgIconComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="nodes-search-container">
@@ -30,7 +31,8 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 <button
                     class="search-button"
                     (click)="toggleSearchInput()"
-                    [attr.title]="isSearchVisible() ? 'Close search' : 'Search nodes'"
+                    [matTooltip]="isSearchVisible() ? 'Close search' : 'Search nodes'"
+                    matTooltipPosition="right"
                     [class.active]="isSearchVisible()"
                 >
                     <app-svg-icon
@@ -56,7 +58,8 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                         *ngIf="searchQuery"
                         class="clear-button"
                         (click)="clearSearch()"
-                        title="Clear search"
+                        matTooltip="Clear search"
+                        matTooltipPosition="right"
                     >
                         <app-svg-icon icon="x"></app-svg-icon>
                     </button>

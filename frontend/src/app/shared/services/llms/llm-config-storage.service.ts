@@ -3,12 +3,13 @@ import { CreateLLMConfigRequest, GetLlmConfigRequest, UpdateLLMConfigRequest } f
 import { catchError, finalize, Observable, of, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
+import { StorageService } from '../app-storage.service';
 import { LLMConfigService } from './llm-config.service';
 
 @Injectable({
     providedIn: 'root',
 })
-export class LlmConfigStorageService {
+export class LlmConfigStorageService implements StorageService {
     private readonly llmConfigService = inject(LLMConfigService);
 
     private configsRequest$?: Observable<GetLlmConfigRequest[]>;
@@ -80,6 +81,12 @@ export class LlmConfigStorageService {
 
     markConfigsOutdated(): void {
         this.configsLoaded.set(false);
+    }
+
+    clear(): void {
+        this.configsSignal.set([]);
+        this.configsLoaded.set(false);
+        this.configsRequest$ = undefined;
     }
 
     private mergeConfigsIntoCache(incoming: GetLlmConfigRequest[]): void {

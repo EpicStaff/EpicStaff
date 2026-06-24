@@ -2,9 +2,9 @@ from typing import Any
 
 from langgraph.types import StreamWriter
 
-from src.crew.models.state import State
-from src.crew.services.graph.events import StopEvent
-from src.crew.services.graph.nodes import BaseNode
+from models.state import State
+from services.graph.events import StopEvent
+from services.graph.nodes import BaseNode
 
 
 class ScheduleTriggerNode(BaseNode):

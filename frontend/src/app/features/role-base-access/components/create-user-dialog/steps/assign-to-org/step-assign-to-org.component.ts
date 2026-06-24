@@ -41,6 +41,7 @@ export class StepAssignToOrgComponent implements OnInit {
     searchTerm = signal('');
     isOrgsLoading = signal<boolean>(false);
     selectedOrganizations = signal<TableRow[]>([]);
+    selectedOrgIds = computed(() => new Set(this.selectedOrganizations().map((r) => r['id'] as number)));
 
     filteredOrganizations = computed(() => {
         const term = this.searchTerm().toLowerCase().trim();
@@ -53,7 +54,7 @@ export class StepAssignToOrgComponent implements OnInit {
         { key: 'role', label: 'Role', width: '1fr' },
     ];
 
-    preselectedOrgIds = signal<number[]>([]);
+    selectionIds = signal<number[]>([]);
 
     ngOnInit(): void {
         const memberships = this.existingMemberships();
@@ -66,11 +67,20 @@ export class StepAssignToOrgComponent implements OnInit {
         }));
 
         this.organizationsTableData.set(rows);
-        this.preselectedOrgIds.set(memberships.map((m) => m.organization.id));
+        this.selectionIds.set(memberships.map((m) => m.organization.id));
     }
 
     onSelection(items: TableRow[]): void {
         this.selectedOrganizations.set(items);
+    }
+
+    onRoleSelected(row: TableRow, value: unknown): void {
+        row['role'] = value;
+        const rowId = row['id'] as number;
+        const currentIds = this.selectedOrganizations().map((r) => r['id'] as number);
+        if (!currentIds.includes(rowId)) {
+            this.selectionIds.set([...currentIds, rowId]);
+        }
     }
 
     getAssignments(): OrgAssignment[] {

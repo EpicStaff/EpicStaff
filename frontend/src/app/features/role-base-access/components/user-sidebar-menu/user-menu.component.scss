@@ -11,7 +11,6 @@
     border-radius: 8px;
     min-width: 220px;
     max-width: 300px;
-    padding: 8px 0;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
@@ -48,16 +47,11 @@
 .menu-divider {
     height: 1px;
     background-color: var(--color-divider-subtle);
-    margin: 4px 0;
-}
-
-.menu-section {
-    padding: 0 16px;
 }
 
 .section-label {
     font-size: 14px;
-    padding: 8px 0;
+    padding: 8px 16px;
     color: var(--text-secondary-60);
 }
 
@@ -72,9 +66,13 @@
 .org-row {
     display: flex;
     align-items: center;
-    //cursor: pointer;
+    cursor: pointer;
     transition: background-color 0.15s ease;
-    padding: 4px 0;
+    padding: 4px 16px;
+
+    &:hover:not(.disabled) {
+        background-color: var(--color-secondary-btn-background-hover);
+    }
 
     &.active {
         color: var(--accent-color);
@@ -83,6 +81,11 @@
             color: var(--accent-color);
             font-weight: 500;
         }
+    }
+
+    &.disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
     }
 }
 
@@ -107,7 +110,7 @@
     display: flex;
     align-items: center;
     width: 100%;
-    padding: 4px 0;
+    padding: 6px 16px;
     background: none;
     border: none;
     cursor: pointer;
@@ -115,9 +118,13 @@
     color: var(--text);
     font-size: 14px;
     transition: background-color 0.15s ease;
+    &:hover {
+        background-color: var(--color-secondary-btn-background-hover);
+    }
 
     &.danger {
         color: var(--color-ks-status-failed);
+        padding: 10px 16px;
 
         .nav-icon {
             width: 24px;

@@ -1,4 +1,4 @@
-import { FullMembership } from '@shared/models';
+import { ActivePermissions, FullMembership } from '@shared/models';
 
 export interface GetMeResponse {
     id: number;
@@ -9,6 +9,8 @@ export interface GetMeResponse {
     created_at: string;
     updated_at: string;
     memberships: FullMembership[];
+    active_organization_id: number | null;
+    active_permissions: ActivePermissions | null;
     avatar_url: string | null;
 }
 

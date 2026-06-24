@@ -77,4 +77,10 @@ export class UndoRedoService {
     public setRedoStack(stack: FlowModel[]): void {
         this.redoStack.set(stack);
     }
+
+    /** Resets undo & redo history. Use after an irreversible action (e.g. DT→CDT conversion). */
+    public clear(): void {
+        this.undoStack.set([]);
+        this.redoStack.set([]);
+    }
 }

@@ -6,6 +6,9 @@ from tables.models import PythonCodeTool, PythonCode
 import yaml
 from django.db import transaction
 from loguru import logger
+from src.shared.models import (
+    args_schema_to_variables as _shared_args_schema_to_variables,
+)
 
 
 @dataclass
@@ -16,6 +19,7 @@ class ToolData:
     code_file: str
     entrypoint: str
     requirements: str
+    use_storage: bool = False
 
 
 BASE_FOLDER_PATH: Path = Path("../shared/tools").absolute().resolve()
@@ -41,6 +45,7 @@ def get_tool_data(tool_path: Path) -> ToolData:
         code_file=tool_data.get("code-file", ""),
         entrypoint=tool_data.get("entrypoint", ""),
         requirements=tool_data.get("requirements", ""),
+        use_storage=tool_data.get("use-storage", False),
     )
 
 
@@ -75,13 +80,18 @@ def get_code_file(tool_path: Path, code_file_name: str) -> str:
     return code
 
 
+def args_schema_to_variables(args_schema: dict) -> list[dict]:
+    return _shared_args_schema_to_variables(args_schema)
+
+
 def create_or_update_python_tool(
     name: str,
     code: str,
     requirements: str,
     entrypoint: str,
     description: str,
-    args_schema: dict,
+    variables: list[dict],
+    use_storage: bool = False,
 ) -> PythonCodeTool:
     python_tool_obj = PythonCodeTool.objects.filter(name=name).first()
 
@@ -93,8 +103,9 @@ def create_or_update_python_tool(
             name=name,
             python_code=python_code_obj,
             description=description,
-            args_schema=args_schema,
+            variables=variables,
             built_in=True,
+            use_storage=use_storage,
         )
         return python_tool_obj
     else:
@@ -103,7 +114,8 @@ def create_or_update_python_tool(
         python_code_obj.entrypoint = entrypoint
         python_code_obj.libraries = requirements
         python_tool_obj.description = description
-        python_tool_obj.args_schema = args_schema
+        python_tool_obj.variables = variables
+        python_tool_obj.use_storage = use_storage
         python_tool_obj.save()
         python_code_obj.save()
         return python_tool_obj
@@ -119,6 +131,7 @@ def upload_tools():
                 args_schema = get_args_schema(
                     tool_path=tool_path, args_schema_file_name=tool_data.args_schema
                 )
+                variables = args_schema_to_variables(args_schema)
                 code = get_code_file(
                     tool_path=tool_path, code_file_name=tool_data.code_file
                 )
@@ -135,7 +148,8 @@ def upload_tools():
                     requirements=requirements_string,
                     entrypoint=entrypoint,
                     description=description,
-                    args_schema=args_schema,
+                    variables=variables,
+                    use_storage=tool_data.use_storage,
                 )
                 tool_name_set.add(name)
             except FileNotFoundError as e:

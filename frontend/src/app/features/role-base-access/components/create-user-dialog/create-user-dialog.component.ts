@@ -13,7 +13,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent, LoadingSpinnerComponent } from '@shared/components';
 import { FullMembership, Organization } from '@shared/models';
-import { catchError, forkJoin, map, Observable, of, switchMap } from 'rxjs';
+import { catchError, forkJoin, map, Observable, of, switchMap, throwError } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
 import { ProfileService } from '../../../../services/auth/profile.service';
@@ -128,10 +128,7 @@ export class CreateUserDialogComponent implements OnInit {
                     }
                     return of(user.id);
                 }),
-                catchError((err: HttpErrorResponse) => {
-                    this.toast.error(err.error?.message ?? 'Failed to create user');
-                    return of(null);
-                })
+                catchError((err: HttpErrorResponse) => throwError(() => err))
             );
         }
 
@@ -142,10 +139,7 @@ export class CreateUserDialogComponent implements OnInit {
             .createUser(firstAssignment.orgId, { email, password, role_id: firstAssignment.roleId })
             .pipe(
                 map((user) => user.id),
-                catchError((err: HttpErrorResponse) => {
-                    this.toast.error(err.error?.message ?? 'Failed to create user');
-                    return of(null);
-                })
+                catchError((err: HttpErrorResponse) => throwError(() => err))
             );
     }
 
@@ -160,12 +154,9 @@ export class CreateUserDialogComponent implements OnInit {
         }
 
         const requests = Array.from(byOrg.entries()).map(([orgId, items]) =>
-            this.userService.assignUsersToOrg(orgId, { assignments: items }).pipe(
-                catchError((err: HttpErrorResponse) => {
-                    this.toast.error(err.error?.message ?? 'Failed to assign users');
-                    return of(false);
-                })
-            )
+            this.userService
+                .assignUsersToOrg(orgId, { assignments: items })
+                .pipe(catchError((err: HttpErrorResponse) => throwError(() => err)))
         );
 
         return forkJoin(requests).pipe(map(() => true));
@@ -185,12 +176,9 @@ export class CreateUserDialogComponent implements OnInit {
         if (!removals.length) return of(true);
         return forkJoin(
             removals.map(({ orgId, userId }) =>
-                this.userService.removeUserFromOrg(orgId, userId).pipe(
-                    catchError((err: HttpErrorResponse) => {
-                        this.toast.error(err.error?.message ?? 'Failed to remove user from organization');
-                        return of(null);
-                    })
-                )
+                this.userService
+                    .removeUserFromOrg(orgId, userId)
+                    .pipe(catchError((err: HttpErrorResponse) => throwError(() => err)))
             )
         ).pipe(map(() => true));
     }
@@ -203,19 +191,13 @@ export class CreateUserDialogComponent implements OnInit {
         if (wantsSuperadmin && !wasSuperadmin) {
             return this.adminUserService.grantSuperadmin(userId).pipe(
                 map(() => true as boolean),
-                catchError((err: HttpErrorResponse) => {
-                    this.toast.error(err.error?.message ?? 'Failed to grant superadmin');
-                    return of(false);
-                })
+                catchError((err: HttpErrorResponse) => throwError(() => err))
             );
         }
         if (!wantsSuperadmin && wasSuperadmin) {
             return this.adminUserService.revokeSuperadmin(userId).pipe(
                 map(() => true as boolean),
-                catchError((err: HttpErrorResponse) => {
-                    this.toast.error(err.error?.message ?? 'Failed to revoke superadmin');
-                    return of(false);
-                })
+                catchError((err: HttpErrorResponse) => throwError(() => err))
             );
         }
 

@@ -1,0 +1,59 @@
+<div class="dialog">
+    <div class="header">
+        <span class="title">{{ isEditMode ? 'Edit Role' : 'Create Role' }}</span>
+        <div class="actions">
+            <app-button
+                type="outline-primary"
+                (click)="onCancel()"
+            >
+                Cancel
+            </app-button>
+            <!-- TODO: re-enable when custom role CRUD is available on the backend -->
+            <!--
+            <app-button
+                type="primary"
+                (click)="onSubmit()"
+            >
+                {{ isEditMode ? 'Save' : 'Create' }}
+            </app-button>
+            -->
+        </div>
+    </div>
+
+    <form
+        class="subheader"
+        [formGroup]="form"
+    >
+        <div class="control">
+            <label class="label">Role Name <span class="required">*</span></label>
+            <app-custom-input
+                placeholder="Enter the name..."
+                formControlName="name"
+            />
+        </div>
+        <app-validation-errors [control]="form.get('name')!" />
+        <div class="control">
+            <label class="label">Description</label>
+            <app-custom-input
+                placeholder="Enter the description..."
+                formControlName="description"
+            />
+        </div>
+        <app-validation-errors [control]="form.get('description')!" />
+    </form>
+
+    <!-- CONTENT: permissions -->
+    <div class="content">
+        @if (catalog(); as cat) {
+            <app-permissions-table
+                [catalog]="cat"
+                [selectedPermissions]="selectedPermissions()"
+                (permissionToggle)="onPermissionToggle($event)"
+                (selectAllClick)="onSelectAll()"
+                (clearAllClick)="onClearAll()"
+                (groupSelectAllClick)="onGroupSelectAll($event)"
+                (groupClearClick)="onGroupClear($event)"
+            />
+        }
+    </div>
+</div>

@@ -2,6 +2,7 @@ import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     AppTableCellDirective,
@@ -18,15 +19,10 @@ import { GetOrganizationResponse } from '@shared/models';
 import { finalize } from 'rxjs';
 
 import { ToastService } from '../../../../../services/notifications';
-import {
-    OverflowBadgeDirective,
-    OverflowItemDirective,
-    OverflowItemsDirective,
-} from '../../../../../shared/directives/overflow-items.directive';
+import { AdminsCellComponent } from '../../../components/admins-cell/admins-cell.component';
 import { CreateOrganizationDialogComponent } from '../../../components/create-organization-dialog/create-organization-dialog.component';
 import { OrgAvatarComponent } from '../../../components/org-avatar/org-avatar.component';
 import { StatusBadgeComponent } from '../../../components/status-badge/status-badge.component';
-import { UserAvatarComponent } from '../../../components/user-avatar/user-avatar.component';
 import { OrganizationsStorageService } from '../../../services/admin/organizations-storage.service';
 
 const STATUS_ITEMS: SelectItem[] = [
@@ -47,11 +43,9 @@ const STATUS_ITEMS: SelectItem[] = [
         LoadingSpinnerComponent,
         StatusBadgeComponent,
         OrgAvatarComponent,
-        UserAvatarComponent,
-        OverflowItemsDirective,
-        OverflowItemDirective,
-        OverflowBadgeDirective,
+        AdminsCellComponent,
         DatePipe,
+        MatTooltip,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -71,7 +65,7 @@ export class OrganizationsTabComponent implements OnInit {
         { key: 'members', label: 'Members', width: '1fr' },
         { key: 'created', label: 'Created', width: '1.5fr' },
         { key: 'status', label: 'Status', width: '1.5fr', filterItems: STATUS_ITEMS },
-        { key: 'actions', label: 'Actions', width: '1fr', align: 'center' },
+        { key: 'actions', label: 'Actions', width: '130px', align: 'center' },
     ];
 
     organizations = this.organizationStorage.organizations;

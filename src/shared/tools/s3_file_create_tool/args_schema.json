@@ -1,0 +1,15 @@
+{
+  "title": "S3FileCreateArgs",
+  "type": "object",
+  "properties": {
+    "file_path": {
+      "type": "string",
+      "description": "S3 file path to create or overwrite."
+    },
+    "content": {
+      "type": "string",
+      "description": "Initial file content. Defaults to empty string."
+    }
+  },
+  "required": ["file_path"]
+}

@@ -14,6 +14,7 @@ import {
     signal,
     ViewChild,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { TerminalLogEntry } from './terminal-log.model';
@@ -23,7 +24,7 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
 @Component({
     standalone: true,
     selector: 'app-python-terminal',
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [CommonModule, AppSvgIconComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div
@@ -44,7 +45,8 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
                             [class.status-processing]="status() === 'processing'"
                             [class.status-done]="status() === 'done'"
                             [class.status-error]="status() === 'error'"
-                            [title]="statusTitle()"
+                            [matTooltip]="statusTitle()"
+                            matTooltipPosition="above"
                             [attr.aria-label]="statusTitle()"
                         ></span>
                     }
@@ -55,7 +57,8 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
                         <button
                             type="button"
                             class="icon-btn"
-                            title="Clear terminal"
+                            matTooltip="Clear terminal"
+                            matTooltipPosition="above"
                             aria-label="Clear terminal"
                             (click)="clearLogs.emit()"
                         >
@@ -68,7 +71,8 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
                     <button
                         type="button"
                         class="icon-btn"
-                        [title]="isCollapsed() ? 'Show terminal' : 'Hide terminal'"
+                        [matTooltip]="isCollapsed() ? 'Show terminal' : 'Hide terminal'"
+                        matTooltipPosition="above"
                         [attr.aria-label]="isCollapsed() ? 'Show terminal' : 'Hide terminal'"
                         (click)="toggleCollapsed()"
                     >

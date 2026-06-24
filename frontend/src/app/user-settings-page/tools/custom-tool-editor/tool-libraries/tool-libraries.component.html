@@ -26,6 +26,7 @@
                 <button
                     class="delete-library-btn"
                     (click)="removeLibrary(i); $event.preventDefault()"
+                    matTooltip="Delete library"
                 >
                     <app-svg-icon
                         icon="x"
@@ -45,6 +46,7 @@
                 <button
                     class="add-library-btn"
                     (click)="addLibrary(); $event.preventDefault()"
+                    matTooltip="Add library"
                 >
                     <app-svg-icon
                         icon="plus"

@@ -16,7 +16,7 @@
       "default": null
     },
     "limit": {
-      "type": "integer",
+      "type": "number",
       "description": "Optional maximum number of results to return",
       "default": null
     }

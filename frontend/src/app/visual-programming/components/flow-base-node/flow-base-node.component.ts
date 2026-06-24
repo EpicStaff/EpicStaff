@@ -9,6 +9,7 @@ import {
     Output,
     signal,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
 
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -37,6 +38,7 @@ import { CustomPortId } from '../../core/models/port.model';
 import { FlowService } from '../../services/flow.service';
 import { ConditionalEdgeNodeComponent } from '../nodes-components/conditional-edge/conditional-edge.component';
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
+import { ClassificationDecisionTableNodeComponent } from '../nodes-components/classification-decision-table-node/classification-decision-table-node.component';
 import { GraphNoteComponent } from '../nodes-components/graph-note/graph-note.component';
 import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay.component';
 
@@ -53,10 +55,12 @@ import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay
         ClickOrDragDirective,
         ConditionalEdgeNodeComponent,
         DecisionTableNodeComponent,
+        ClassificationDecisionTableNodeComponent,
         GraphNoteComponent,
         FlowNodeVariablesOverlayComponent,
         GoToButtonComponent,
         AppSvgIconComponent,
+        MatTooltipModule,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
@@ -76,6 +80,8 @@ export class FlowBaseNodeComponent {
     @Input() showVariables: boolean = false;
 
     @Output() projectExpandToggled = new EventEmitter<ProjectNodeModel>();
+    @Output() portMouseenter = new EventEmitter<void>();
+    @Output() portMouseleave = new EventEmitter<void>();
 
     public NodeType = NodeType;
     public readonly eResizeHandleType = EFResizeHandleType;
@@ -146,6 +152,8 @@ export class FlowBaseNodeComponent {
                 return 'type-start';
             case NodeType.TABLE:
                 return 'type-table';
+            case NodeType.CLASSIFICATION_TABLE:
+                return 'type-table';
             case NodeType.NOTE:
                 return 'type-note';
             default:
@@ -179,7 +187,9 @@ export class FlowBaseNodeComponent {
     }
 
     public get tableNode() {
-        return this.node.type === NodeType.TABLE ? (this.node as DecisionTableNodeModel) : null;
+        return this.node.type === NodeType.TABLE || this.node.type === NodeType.CLASSIFICATION_TABLE
+            ? (this.node as any)
+            : null;
     }
 
     public get startNode() {

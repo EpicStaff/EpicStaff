@@ -1,11 +1,12 @@
 import { inject, Injectable, signal } from '@angular/core';
+import { StorageService } from '@shared/services';
 import { Observable, of, tap } from 'rxjs';
 
 import { GetDefaultModelsResponse, UpdateDefaultModelsRequest } from '../models/default-models.model';
 import { DefaultModelsService } from './default-models.service';
 
 @Injectable({ providedIn: 'root' })
-export class DefaultModelsStorageService {
+export class DefaultModelsStorageService implements StorageService {
     private readonly defaultModelsApiService = inject(DefaultModelsService);
 
     private defaultModelsSignal = signal<GetDefaultModelsResponse | null>(null);
@@ -36,6 +37,11 @@ export class DefaultModelsStorageService {
     }
 
     markDefaultModelsOutdated(): void {
+        this.modelsLoaded.set(false);
+    }
+
+    clear(): void {
+        this.defaultModelsSignal.set(null);
         this.modelsLoaded.set(false);
     }
 }

@@ -54,6 +54,11 @@ except ImportError:
 @contextmanager
 def temporary_temperature(llm: LLM, temp: float):
     """Temporarily set LLM temperature for knowledge query generation, restoring original value after."""
+    if getattr(llm, "temperature", None) is None:
+        # PatchedLLM sets temperature=None for models that don't support it (e.g. claude-4.x).
+        # Don't reintroduce it here — yield as no-op to avoid "temperature deprecated" errors.
+        yield
+        return
     original = llm.temperature
     llm.temperature = temp
     try:

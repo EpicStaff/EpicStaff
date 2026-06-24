@@ -1,5 +1,6 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { CreateOrganizationRequest, GetOrganizationResponse, UpdateOrganizationRequest } from '@shared/models';
+import { StorageService } from '@shared/services';
 import { catchError, delay, Observable, of, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
@@ -8,7 +9,7 @@ import { AdminOrganizationsService } from './organizations.service';
 @Injectable({
     providedIn: 'root',
 })
-export class OrganizationsStorageService {
+export class OrganizationsStorageService implements StorageService {
     private organizationsSignal = signal<GetOrganizationResponse[]>([]);
     private organizationsLoaded = signal<boolean>(false);
     public readonly organizations = this.organizationsSignal.asReadonly();
@@ -80,6 +81,11 @@ export class OrganizationsStorageService {
             }
             return [...orgs];
         });
+    }
+
+    clear(): void {
+        this.organizationsSignal.set([]);
+        this.organizationsLoaded.set(false);
     }
 
     private setActiveInCache(id: number, isActive: boolean): void {

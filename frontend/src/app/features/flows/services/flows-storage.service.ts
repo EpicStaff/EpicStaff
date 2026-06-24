@@ -1,4 +1,5 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
+import { StorageService } from '@shared/services';
 import { Observable, of } from 'rxjs';
 import { catchError, delay, shareReplay, tap } from 'rxjs/operators';
 
@@ -13,7 +14,7 @@ const TEMPLATE_FLOWS: GraphDto[] = [];
 @Injectable({
     providedIn: 'root',
 })
-export class FlowsStorageService {
+export class FlowsStorageService implements StorageService {
     private readonly flowsApiService = inject(FlowsApiService);
     private readonly labelsStorage = inject(LabelsStorageService);
 
@@ -319,5 +320,15 @@ export class FlowsStorageService {
         } else {
             this.selectAllFlows();
         }
+    }
+
+    clear(): void {
+        this.flowsSignal.set([]);
+        this.flowsLoaded.set(false);
+        this.templatesSignal.set([]);
+        this.templatesLoaded.set(false);
+        this.filterSignal.set(EMPTY_FLOWS_FILTER);
+        this.selectMode.set(false);
+        this.selectedFlowIds.set([]);
     }
 }

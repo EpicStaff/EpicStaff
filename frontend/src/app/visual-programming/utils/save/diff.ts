@@ -1,8 +1,10 @@
 import { NodeType } from '../../core/enums/node-type';
+import { PromptConfig } from '../../core/models/classification-decision-table.model';
 import { ConnectionModel } from '../../core/models/connection.model';
 import { FlowModel } from '../../core/models/flow.model';
 import {
     AudioToTextNodeModel,
+    ClassificationDecisionTableNodeModel,
     CodeAgentNodeModel,
     DecisionTableNodeModel,
     EndNodeModel,
@@ -252,6 +254,78 @@ function toCodeAgentComparable(node: CodeAgentNodeModel): unknown {
     };
 }
 
+interface CdtConditionGroupUi {
+    group_name: string;
+    order?: number;
+    expression?: string | null;
+    prompt_id?: string | null;
+    manipulation?: string | null;
+    continue_flag?: boolean;
+    continue?: boolean;
+    route_code?: string | null;
+    next_node?: string | null;
+    dock_visible?: boolean;
+    field_expressions?: Record<string, unknown>;
+    field_manipulations?: Record<string, unknown>;
+    section?: string | null;
+}
+
+function toCdtComparable(node: ClassificationDecisionTableNodeModel, allNodes: NodeModel[]): unknown {
+    const tableData = node.data?.table;
+    const resolveRef = (uuid: string | null): number | `temp:${string}` | null => {
+        if (!uuid) return null;
+        const backendId = allNodes.find((n) => n.id === uuid)?.backendId ?? null;
+        return backendId != null ? backendId : (`temp:${uuid}` as const);
+    };
+
+    const preCode = tableData?.pre_computation?.code || tableData?.pre_computation_code || null;
+    const postCode = tableData?.post_computation?.code || tableData?.post_computation_code || null;
+
+    return {
+        node_name: node.node_name,
+        pre_computation_code: preCode,
+        condition_groups: ((tableData?.condition_groups || []) as CdtConditionGroupUi[])
+            .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER))
+            .map((g, idx) => ({
+                group_name: g.group_name,
+                order: typeof g.order === 'number' ? g.order : idx + 1,
+                expression: g.expression || null,
+                prompt_id: g.prompt_id || null,
+                manipulation: g.manipulation || null,
+                continue_flag: !!(g.continue_flag ?? g.continue),
+                route_code: g.route_code || null,
+                section: g.section ?? null,
+                next_node_id: resolveRef(g.next_node ?? null),
+                dock_visible: g.dock_visible !== false,
+                field_expressions: g.field_expressions || {},
+                field_manipulations: (g.field_manipulations || {}) as Record<string, string>,
+            })),
+        prompt_configs: Object.entries((tableData?.prompts || {}) as Record<string, PromptConfig>)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([key, cfg]) => ({
+                prompt_key: key,
+                prompt_text: cfg.prompt_text ?? '',
+                llm_config: cfg.llm_config ?? null,
+                output_schema: cfg.output_schema ?? null,
+                result_variable: cfg.result_variable ?? '',
+                variable_mappings: cfg.variable_mappings ?? {},
+            })),
+        default_llm_config: tableData?.default_llm_config ?? null,
+        default_next_node: tableData?.default_next_node || null,
+        next_error_node: tableData?.next_error_node || null,
+        pre_input_map: tableData?.pre_computation?.input_map || tableData?.pre_input_map || {},
+        pre_output_variable_path:
+            tableData?.pre_computation?.output_variable_path || tableData?.pre_output_variable_path || null,
+        post_computation_code: postCode,
+        post_input_map: tableData?.post_computation?.input_map || tableData?.post_input_map || {},
+        post_output_variable_path:
+            tableData?.post_computation?.output_variable_path || tableData?.post_output_variable_path || null,
+        pre_libraries: tableData?.pre_computation?.libraries || [],
+        post_libraries: tableData?.post_computation?.libraries || [],
+        metadata: toNodeMetadata(node),
+    };
+}
+
 export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffByType {
     return {
         startNodes: diffNodesByBackendId(
@@ -324,6 +398,11 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<CodeAgentNodeModel>(current.nodes, NodeType.CODE_AGENT),
             toCodeAgentComparable
         ),
+        classificationDecisionTableNodes: diffNodesByBackendId(
+            nodesByType<ClassificationDecisionTableNodeModel>(previous.nodes, NodeType.CLASSIFICATION_TABLE),
+            nodesByType<ClassificationDecisionTableNodeModel>(current.nodes, NodeType.CLASSIFICATION_TABLE),
+            (n) => toCdtComparable(n, current.nodes)
+        ),
     };
 }
 
@@ -333,7 +412,12 @@ function getPlainConnections(flow: FlowModel): ConnectionModel[] {
         const source = nodeById.get(conn.sourceNodeId);
         const target = nodeById.get(conn.targetNodeId);
         if (!source || !target) return false;
-        if (source.type === NodeType.TABLE || source.type === NodeType.EDGE) return false;
+        if (
+            source.type === NodeType.TABLE ||
+            source.type === NodeType.CLASSIFICATION_TABLE ||
+            source.type === NodeType.EDGE
+        )
+            return false;
         if (target.type === NodeType.EDGE) return false;
         return true;
     });

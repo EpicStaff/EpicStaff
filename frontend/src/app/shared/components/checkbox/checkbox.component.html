@@ -2,8 +2,7 @@
     type="checkbox"
     [indeterminate]="indeterminate()"
     [checked]="checked()"
-    [class]="mod()"
-    [class.variant-main-color]="variant() === 'mainColor'"
+    [class.secondary]="color() === 'secondary'"
     [disabled]="disabled()"
     (change)="toggleCheckbox($event)"
 />

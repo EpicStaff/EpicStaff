@@ -7,15 +7,26 @@ class ProfileResponseSerializer(UserResponseSerializer):
     """GET / PATCH / POST-avatar response for /api/profile/.
 
     Strict superset of UserResponseSerializer:
-    same fields, plus `avatar_url`. Memberships are filtered to active
+    same fields, plus `avatar_url`, `active_organization_id`,
+    `active_permissions`. Memberships are filtered to active
     organizations at the queryset layer (UserProfileService.get_profile),
     so this serializer stays shape-stable.
     """
 
     avatar_url = serializers.SerializerMethodField()
+    active_organization_id = serializers.IntegerField(
+        source="_active_organization_id", allow_null=True, default=None, read_only=True
+    )
+    active_permissions = serializers.JSONField(
+        source="_active_permissions", allow_null=True, default=None, read_only=True
+    )
 
     class Meta(UserResponseSerializer.Meta):
-        fields = UserResponseSerializer.Meta.fields + ["avatar_url"]
+        fields = UserResponseSerializer.Meta.fields + [
+            "avatar_url",
+            "active_organization_id",
+            "active_permissions",
+        ]
         read_only_fields = fields
 
     def get_avatar_url(self, user):

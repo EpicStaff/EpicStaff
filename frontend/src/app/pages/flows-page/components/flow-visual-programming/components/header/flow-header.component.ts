@@ -3,6 +3,7 @@ import { DialogModule } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output, signal } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterModule } from '@angular/router';
 
 import { FlowRenameDialogComponent } from '../../../../../../features/flows/components/flow-rename-dialog/flow-rename-dialog.component';
@@ -26,6 +27,7 @@ import { SaveDropdownComponent } from './save-dropdown/save-dropdown.component';
         OverlayModule,
         CollapseOnOverflowDirective,
         SaveDropdownComponent,
+        MatTooltipModule,
     ],
     templateUrl: './flow-header.component.html',
     styleUrls: ['./flow-header.component.scss'],
@@ -34,6 +36,7 @@ import { SaveDropdownComponent } from './save-dropdown/save-dropdown.component';
 export class FlowHeaderComponent {
     @Input() graphName?: string;
     @Input() graphId?: number;
+    @Input() isAssistantOpen = false;
     @Input() isEpicChatEnabled = false;
     @Input() graph?: GraphDto;
     @Input() isSaving = false;
@@ -45,6 +48,7 @@ export class FlowHeaderComponent {
     @Output() run = new EventEmitter<void>();
     @Output() getCurl = new EventEmitter<void>();
     @Output() connectChat = new EventEmitter<void>();
+    @Output() toggleAssistant = new EventEmitter<void>();
     @Output() flowEdited = new EventEmitter<GraphDto>();
     @Output() saveVersion = new EventEmitter<void>();
     @Output() viewVersionHistory = new EventEmitter<void>();
@@ -86,6 +90,10 @@ export class FlowHeaderComponent {
 
     onConnectChat() {
         this.connectChat.emit();
+    }
+
+    onToggleAssistant() {
+        this.toggleAssistant.emit();
     }
 
     openRenameDialog(): void {

@@ -4,9 +4,10 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationDialogService, LoadingSpinnerComponent } from '@shared/components';
+import { tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../../../services/notifications';
-import { CustomToolDialogComponent } from '../../../../../../user-settings-page/tools/custom-tool-editor/custom-tool-dialog.component';
+import { CreateCustomToolDialogComponent } from '../../../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
 import { GetPythonCodeToolRequest } from '../../../../models/python-code-tool.model';
 import { CustomToolsService } from '../../../../services/custom-tools/custom-tools.service';
 import { ToolsEventsService } from '../../../../services/tools-events.service';
@@ -85,26 +86,33 @@ export class CustomToolsComponent implements OnInit {
     }
 
     public onConfigure(tool: GetPythonCodeToolRequest): void {
-        const dialogRef = this.dialog.open<GetPythonCodeToolRequest>(CustomToolDialogComponent, {
+        const dialogRef = this.dialog.open<GetPythonCodeToolRequest>(CreateCustomToolDialogComponent, {
             data: {
                 pythonTools: this.tools(),
                 selectedTool: tool,
             },
-            disableClose: true,
         });
 
-        dialogRef.closed.subscribe((result) => {
-            if (result) {
-                // Update local state with the updated tool
-                const currentTools = this.allTools();
-                const index = currentTools.findIndex((t) => t.id === result.id);
-                if (index !== -1) {
-                    const updatedTools = [...currentTools];
-                    updatedTools[index] = result;
-                    this.allTools.set(updatedTools);
-                }
-            }
-        });
+        dialogRef.closed
+            .pipe(
+                tap((result) => {
+                    if (!result) {
+                        return;
+                    }
+
+                    const currentTools = this.allTools();
+                    const index = currentTools.findIndex((t) => t.id === result.id);
+                    if (index !== -1) {
+                        const updatedTools = [...currentTools];
+                        updatedTools[index] = result;
+                        this.allTools.set(updatedTools);
+                    } else {
+                        this.addNewTool(result);
+                    }
+                }),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe();
     }
 
     public onDelete(tool: GetPythonCodeToolRequest): void {
