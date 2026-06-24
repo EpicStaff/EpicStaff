@@ -106,6 +106,13 @@ function isValidShape(node: unknown, allowedKeys: Set<string>, required: string[
         return false;
     }
 
+    if (node['type'] === 'object' && isPlainObject(node['default_value'])) {
+        const props = isPlainObject(node['properties']) ? node['properties'] : {};
+        for (const key of Object.keys(node['default_value'])) {
+            if (!(key in props)) return false;
+        }
+    }
+
     return true;
 }
 
@@ -118,4 +125,118 @@ export function isToolJsonSchemaValid(json: string): boolean {
     }
     if (!Array.isArray(parsed)) return false;
     return parsed.every((item) => isValidShape(item, TOP_LEVEL_KEYS, VARIABLE_REQUIRED, true));
+}
+
+export interface JsonRangeMarker {
+    message: string;
+    startOffset: number;
+    endOffset: number;
+}
+
+function collectOrphanDefaultKeys(node: unknown): string[] {
+    if (!isPlainObject(node)) return [];
+    const orphans: string[] = [];
+
+    if (node['type'] === 'object' && isPlainObject(node['default_value'])) {
+        const props = isPlainObject(node['properties']) ? node['properties'] : {};
+        for (const key of Object.keys(node['default_value'])) {
+            if (!(key in props)) orphans.push(key);
+        }
+    }
+
+    if (isPlainObject(node['properties'])) {
+        for (const child of Object.values(node['properties'])) {
+            orphans.push(...collectOrphanDefaultKeys(child));
+        }
+    }
+    if ('item' in node) {
+        orphans.push(...collectOrphanDefaultKeys(node['item']));
+    }
+
+    return orphans;
+}
+
+function scanTopLevelItemSpans(raw: string): { start: number; end: number }[] {
+    const spans: { start: number; end: number }[] = [];
+    let i = 0;
+    while (i < raw.length && raw[i] !== '[') i++;
+    if (i >= raw.length) return spans;
+    i++;
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let itemStart = -1;
+
+    for (; i < raw.length; i++) {
+        const c = raw[i];
+        if (inString) {
+            if (escaped) escaped = false;
+            else if (c === '\\') escaped = true;
+            else if (c === '"') inString = false;
+            continue;
+        }
+        if (c === '"') {
+            if (depth === 0 && itemStart === -1) itemStart = i;
+            inString = true;
+            continue;
+        }
+        if (c === '{' || c === '[') {
+            if (depth === 0 && itemStart === -1) itemStart = i;
+            depth++;
+            continue;
+        }
+        if (c === '}' || c === ']') {
+            if (depth === 0) {
+                if (itemStart !== -1) spans.push({ start: itemStart, end: i });
+                break;
+            }
+            depth--;
+            if (depth === 0) {
+                spans.push({ start: itemStart, end: i + 1 });
+                itemStart = -1;
+            }
+            continue;
+        }
+        if (depth === 0) {
+            if (c === ',') {
+                if (itemStart !== -1) {
+                    spans.push({ start: itemStart, end: i });
+                    itemStart = -1;
+                }
+            } else if (!/\s/.test(c) && itemStart === -1) {
+                itemStart = i;
+            }
+        }
+    }
+
+    return spans;
+}
+
+export function objectDefaultDataMarkers(json: string): JsonRangeMarker[] {
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(json);
+    } catch {
+        return [];
+    }
+    if (!Array.isArray(parsed)) return [];
+
+    const spans = scanTopLevelItemSpans(json);
+    const markers: JsonRangeMarker[] = [];
+
+    parsed.forEach((item, index) => {
+        const orphans = collectOrphanDefaultKeys(item);
+        const span = spans[index];
+        if (orphans.length && span) {
+            const keys = orphans.map((k) => `"${k}"`).join(', ');
+            markers.push({
+                message: `default_value has key(s) not declared in properties: ${keys}. These are lost when switching to table mode.`,
+                startOffset: span.start,
+                endOffset: span.end,
+            });
+        }
+    });
+
+    return markers;
 }

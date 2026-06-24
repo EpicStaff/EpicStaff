@@ -45,9 +45,8 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     @Input() public title: string = 'JSON Editor';
     @Input() public collapsible: boolean = false;
     @Input() public allowCopy: boolean = false;
-    // When provided, the editor validates against this JSON Schema using Monaco's
-    // native JSON language service and emits the resulting markers via errorsChange.
     @Input() public jsonSchema?: object;
+    @Input() public extraValidate?: (json: string) => { message: string; startOffset: number; endOffset: number }[];
     @Input() public editorOptions: MonacoEditor.IStandaloneEditorConstructionOptions = {
         theme: 'vs-dark',
         language: 'json',
@@ -89,6 +88,10 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
         return !!this.jsonSchema && !!this.monacoGlobal;
     }
 
+    private get usesMarkers(): boolean {
+        return (!!this.jsonSchema || !!this.extraValidate) && !!this.monacoGlobal;
+    }
+
     @HostBinding('class.collapsed')
     get hostCollapsed() {
         return this.collapsible && this.collapsed;
@@ -125,9 +128,12 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
         this.monacoEditor.updateOptions(this.editorOptions);
         this.setValueAndFormat(this.jsonData || '{}');
         this.editorReady.emit(editor);
-        if (this.schemaMode) {
-            this.registerSchema();
+        if (this.usesMarkers) {
+            if (this.schemaMode) {
+                this.registerSchema();
+            }
             this.setupMarkerListener();
+            this.runExtraValidation();
             this.emitMarkers();
         }
         this.cdr.markForCheck();
@@ -148,14 +154,18 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
         try {
             JSON.parse(newValue);
             this.jsonIsValid = true;
-            if (!this.schemaMode) {
+            if (!this.usesMarkers) {
                 this.errorsChange.emit([]);
             }
         } catch (e) {
             this.jsonIsValid = false;
-            if (!this.schemaMode) {
+            if (!this.usesMarkers) {
                 this.errorsChange.emit([this.buildJsonError(newValue, e)]);
             }
+        }
+
+        if (this.usesMarkers) {
+            this.runExtraValidation();
         }
 
         this.validationChange.emit(this.jsonIsValid);
@@ -287,13 +297,34 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
         this.cdr.markForCheck();
     }
 
+    private runExtraValidation(): void {
+        const monaco = this.monacoGlobal;
+        const model = this.monacoEditor?.getModel();
+        if (!this.extraValidate || !monaco?.editor || !model) {
+            return;
+        }
+        const markers = this.extraValidate(model.getValue()).map((m) => {
+            const start = model.getPositionAt(m.startOffset);
+            const end = model.getPositionAt(m.endOffset);
+            return {
+                severity: monaco.MarkerSeverity?.Error ?? 8,
+                message: m.message,
+                startLineNumber: start.lineNumber,
+                startColumn: start.column,
+                endLineNumber: end.lineNumber,
+                endColumn: end.column,
+            };
+        });
+        monaco.editor.setModelMarkers(model, 'json-editor-extra', markers);
+    }
+
     private setValueAndFormat(value: string): void {
         this.isProgrammaticChange = true;
         this.monacoEditor?.setValue(value);
         if (!this.jsonIsValid) {
             this.jsonIsValid = true;
             this.validationChange.emit(true);
-            if (!this.schemaMode) {
+            if (!this.usesMarkers) {
                 this.errorsChange.emit([]);
             }
         }
@@ -302,6 +333,7 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
             ?.run()
             ?.then(() => {
                 this.isProgrammaticChange = false;
+                this.runExtraValidation();
             });
     }
 }

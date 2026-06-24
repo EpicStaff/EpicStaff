@@ -31,7 +31,7 @@ import {
     ParametersTableViewComponent,
 } from './components/parameters-table-view/parameters-table-view.component';
 import { toCreatePayload } from './models/create-custom-tool-form.model';
-import { isToolJsonSchemaValid, TOOL_VARIABLES_JSON_SCHEMA } from './schema/tool-variables-schema';
+import { isToolJsonSchemaValid, objectDefaultDataMarkers, TOOL_VARIABLES_JSON_SCHEMA } from './schema/tool-variables-schema';
 
 enum ActiveEditor {
     None = 'none',
@@ -111,6 +111,7 @@ export class CreateCustomToolDialogComponent {
     public readonly jsonIssues = signal<JsonError[]>([]);
     public readonly lastValidJson = signal('');
     public readonly toolVariablesSchema = TOOL_VARIABLES_JSON_SCHEMA;
+    public readonly objectDefaultMarkers = objectDefaultDataMarkers;
     public readonly pythonHasError = signal(false);
     public readonly isSaving = signal(false);
     public readonly isCopying = signal(false);
@@ -221,6 +222,31 @@ export class CreateCustomToolDialogComponent {
             return;
         }
 
+        const tableView = this.parametersTableView();
+        if (tableView && !tableView.isValid()) {
+            tableView.validate();
+            this.confirmDialog
+                .confirm({
+                    title: 'Incomplete Fields',
+                    message: 'Some fields have errors and cannot be fully represented in JSON.',
+                    caution: 'If you switch to JSON now, incomplete fields may be <strong>dropped</strong>.',
+                    confirmText: 'Stay and Fix',
+                    cancelText: 'Switch Anyway',
+                    type: 'warning',
+                })
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe((result) => {
+                    if (result === false) {
+                        this.applyDisableTableMode();
+                    }
+                });
+            return;
+        }
+
+        this.applyDisableTableMode();
+    }
+
+    private applyDisableTableMode(): void {
         this.parametersTableMode.set(false);
         this.form.controls.variablesJson.setValue(JSON.stringify(serializeVariables(this.tableVariables()), null, 2));
         this.form.controls.variablesJson.markAsDirty();
