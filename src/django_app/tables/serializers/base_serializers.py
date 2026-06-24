@@ -6,7 +6,6 @@ from tables.models.webhook_models import (
     WebhookTrigger,
 )
 from tables.serializers.utils.mixins import WebhookCreationMixin
-from tables.services.webhook_trigger_service import WebhookTriggerService
 from rest_framework import serializers
 from utils.logger import logger
 
@@ -75,6 +74,8 @@ class WebhookTriggerNestedSerializer(WebhookCreationMixin, serializers.ModelSeri
             LocalhostConfigInlineSerializer(localhost).data if localhost else None
         )
         try:
+            from tables.services.webhook_trigger_service import WebhookTriggerService
+
             rep["live_url"] = WebhookTriggerService().get_tunnel_url_for_trigger(
                 instance
             )
