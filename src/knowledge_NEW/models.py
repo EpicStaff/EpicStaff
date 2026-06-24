@@ -112,15 +112,15 @@ class Document(Entity):
     def extension(self) -> str:
         return Path(self.name).suffix
 
-    def config_same_with_snapshot(self) -> bool:
+    def is_required_reindex(self) -> bool:
         return (
-            self.last_indexing_config is not None
-            and self.config == self.last_indexing_config
+            self.last_indexing_config is None
+            or self.config != self.last_indexing_config
         )
 
     def mark_completed(self) -> None:
         self.status = DocumentStatusEnum.COMPLETED
-        self.last_indexing_config = self.config
+        self.last_indexing_config = self.config.model_copy(deep=True)
         self.completed_at = utcnow()
         self.error_code = DocumentErrorCode.NONE
         self.error_message = None
@@ -134,11 +134,11 @@ class Document(Entity):
         self.completed_at = None
 
     def mark_chunked_if_new_config(self) -> None:
-        if self.config_same_with_snapshot():
-            self.status = DocumentStatusEnum.COMPLETED
-        else:
+        if self.is_required_reindex():
             self.status = DocumentStatusEnum.CHUNKED
             self.completed_at = None
+        else:
+            self.status = DocumentStatusEnum.COMPLETED
         self.clear_error()
 
     def clear_error(self) -> None:
