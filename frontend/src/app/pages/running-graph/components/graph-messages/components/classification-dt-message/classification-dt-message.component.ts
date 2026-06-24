@@ -17,7 +17,7 @@ import {
     animations: [expandCollapseAnimation],
     template: `
         <!-- Condition Group -->
-        <ng-container *ngIf="isConditionGroup()">
+        @if (isConditionGroup()) {
             <div class="dt-flow-container">
                 <div
                     class="dt-header"
@@ -54,27 +54,24 @@ import {
                     [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
                 >
                     <div class="dt-content">
-                        <div
-                            class="detail-row"
-                            *ngIf="getConditionData()?.expression"
-                        >
-                            <span class="detail-label">Expression</span>
-                            <code class="detail-value code">{{ getConditionData()?.expression }}</code>
-                        </div>
-                        <div
-                            class="detail-row"
-                            *ngIf="!getConditionData()?.expression"
-                        >
-                            <span class="detail-label">Expression</span>
-                            <span class="detail-value muted">(always true)</span>
-                        </div>
+                        @if (getConditionData()?.expression) {
+                            <div class="detail-row">
+                                <span class="detail-label">Expression</span>
+                                <code class="detail-value code">{{ getConditionData()?.expression }}</code>
+                            </div>
+                        } @else {
+                            <div class="detail-row">
+                                <span class="detail-label">Expression</span>
+                                <span class="detail-value muted">(always true)</span>
+                            </div>
+                        }
                     </div>
                 </div>
             </div>
-        </ng-container>
+        }
 
         <!-- Classification Prompt -->
-        <ng-container *ngIf="isClassificationPrompt()">
+        @if (isClassificationPrompt()) {
             <div class="dt-flow-container prompt-container">
                 <div
                     class="dt-header"
@@ -147,20 +144,19 @@ import {
                         </div>
 
                         <!-- Usage -->
-                        <div
-                            class="detail-row"
-                            *ngIf="getPromptData()?.usage"
-                        >
-                            <span class="detail-label">Tokens</span>
-                            <span class="detail-value">{{ getPromptData()?.usage?.['total_tokens'] || 0 }}</span>
-                        </div>
+                        @if (getPromptData()?.usage) {
+                            <div class="detail-row">
+                                <span class="detail-label">Tokens</span>
+                                <span class="detail-value">{{ getPromptData()?.usage?.['total_tokens'] || 0 }}</span>
+                            </div>
+                        }
                     </div>
                 </div>
             </div>
-        </ng-container>
+        }
 
         <!-- Condition Group Manipulation -->
-        <ng-container *ngIf="isManipulation()">
+        @if (isManipulation()) {
             <div class="dt-flow-container manipulation-container">
                 <div
                     class="dt-header"
@@ -190,7 +186,7 @@ import {
                     </div>
                 </div>
             </div>
-        </ng-container>
+        }
     `,
     styles: [
         `

@@ -1291,10 +1291,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.triggerPartialExport([]);
     }
 
-    public onExportAllAsCsv(): void {
-        // Unused — removed from UI
-    }
-
     public onImportNodes(): void {
         if (!this.currentFlowId) return;
         const input = document.createElement('input');
