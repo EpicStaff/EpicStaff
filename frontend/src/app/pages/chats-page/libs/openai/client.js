@@ -236,7 +236,6 @@ export class RealtimeClient extends RealtimeEventHandler {
    * @returns {true}
    */
   _resetConfig() {
-    console.log("realtime", JSON.stringify(this.realtime));
     this.sessionCreated = false;
     this.tools = {};
     this.sessionConfig = JSON.parse(JSON.stringify(this.defaultSessionConfig));
