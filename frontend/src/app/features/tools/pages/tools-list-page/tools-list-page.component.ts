@@ -33,7 +33,6 @@ import { ToolsSearchService } from '../../services/tools-search.service';
 })
 export class ToolsListPageComponent implements OnDestroy {
     public tabs = [
-        // { label: 'Built-in', link: 'built-in' },
         { label: 'Custom', link: 'custom' },
         { label: 'MCP', link: 'mcp' },
     ];

@@ -222,7 +222,6 @@ export class AgentsTableComponent {
             role: '',
             goal: '',
             backstory: '',
-            configured_tools: [],
             python_code_tools: [],
             mcp_tools: [],
             llm_config: null,
@@ -256,7 +255,6 @@ export class AgentsTableComponent {
             fullLlmConfig: undefined,
             fullFcmLlmConfig: undefined,
             fullRealtimeConfig: undefined,
-            fullConfiguredTools: [],
             fullPythonTools: [],
             fullMcpTools: [],
             mergedTools: [],
@@ -680,9 +678,6 @@ export class AgentsTableComponent {
             llm_config: llmConfigId,
             fcm_llm_config: agentData.fcm_llm_config ?? agentData.fullFcmLlmConfig?.id ?? null,
             realtime_agent: realtime_agent, // Use the properly structured realtime_agent object
-            configured_tools: mergedTools
-                .filter((tool: { id: number; type: string }) => tool.type === 'tool-config')
-                .map((tool: { id: number; type: string }) => tool.id),
             python_code_tools: mergedTools
                 .filter((tool: { id: number; type: string }) => tool.type === 'python-tool')
                 .map((tool: { id: number; type: string }) => tool.id),
@@ -762,14 +757,12 @@ export class AgentsTableComponent {
             }
 
             const parsedData = this.parseAgentData(row);
-            const configuredToolIds = parsedData.configured_tools || [];
             const pythonToolIds = parsedData.python_code_tools || [];
             const mcpToolIds = parsedData.mcp_tools || [];
-            const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds);
+            const toolIds = buildToolIdsArray(pythonToolIds, mcpToolIds);
 
             const createAgentData: CreateAgentRequest = {
                 ...parsedData,
-                configured_tools: configuredToolIds,
                 python_code_tools: pythonToolIds,
                 mcp_tools: mcpToolIds,
                 tool_ids: toolIds,
@@ -826,16 +819,14 @@ export class AgentsTableComponent {
         const parsedUpdateData = this.parseAgentData(row);
 
         // Build tool_ids array for update
-        const updateConfiguredToolIds = parsedUpdateData.configured_tools || [];
         const updatePythonToolIds = parsedUpdateData.python_code_tools || [];
         const updateMcpToolIds = parsedUpdateData.mcp_tools || [];
-        const updateToolIds = buildToolIdsArray(updateConfiguredToolIds, updatePythonToolIds, updateMcpToolIds);
+        const updateToolIds = buildToolIdsArray(updatePythonToolIds, updateMcpToolIds);
 
         // Update the agent using the id if all fields are valid
         const updateAgentData: UpdateAgentRequest = {
             ...parsedUpdateData,
             id: Number(row.id),
-            configured_tools: updateConfiguredToolIds,
             python_code_tools: updatePythonToolIds,
             mcp_tools: updateMcpToolIds,
             tool_ids: updateToolIds,
@@ -961,9 +952,6 @@ export class AgentsTableComponent {
         };
 
         const allToolsPreBuilding = {
-            configured_tools: this.rowData[index].mergedTools
-                .filter((tool: { id: number; type: string }) => tool.type === 'tool-config')
-                .map((tool: { id: number; type: string }) => tool.id),
             python_code_tools: this.rowData[index].mergedTools
                 .filter((tool: { id: number; type: string }) => tool.type === 'python-tool')
                 .map((tool: { id: number; type: string }) => tool.id),
@@ -973,11 +961,10 @@ export class AgentsTableComponent {
         };
 
         // Build tool_ids array for settings update
-        const settingsConfiguredToolIds = allToolsPreBuilding.configured_tools || [];
         const settingsPythonToolIds = allToolsPreBuilding.python_code_tools || [];
         const settingsMcpToolIds = allToolsPreBuilding.mcp_tools || [];
 
-        const settingsToolIds = buildToolIdsArray(settingsConfiguredToolIds, settingsPythonToolIds, settingsMcpToolIds);
+        const settingsToolIds = buildToolIdsArray(settingsPythonToolIds, settingsMcpToolIds);
 
         const parsedUpdateData = this.parseAgentData(this.rowData[index]);
 
@@ -989,7 +976,6 @@ export class AgentsTableComponent {
             const createAgentData: CreateAgentRequest = {
                 ...parsedUpdateData,
                 realtime_agent,
-                configured_tools: settingsConfiguredToolIds,
                 python_code_tools: settingsPythonToolIds,
                 mcp_tools: settingsMcpToolIds,
                 tool_ids: settingsToolIds as ToolUniqueName[],
@@ -1001,7 +987,6 @@ export class AgentsTableComponent {
                 ...parsedUpdateData,
                 id: +updatedAgent.id,
                 realtime_agent,
-                configured_tools: settingsConfiguredToolIds,
                 python_code_tools: settingsPythonToolIds,
                 mcp_tools: settingsMcpToolIds,
                 tool_ids: settingsToolIds,
@@ -1218,15 +1203,13 @@ export class AgentsTableComponent {
 
         const parsedAgentData = this.parseAgentData(newAgentData);
 
-        const configuredToolIds = parsedAgentData.configured_tools || [];
         const pythonToolIds = parsedAgentData.python_code_tools || [];
         const mcpToolIds = parsedAgentData.mcp_tools || [];
-        const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds);
+        const toolIds = buildToolIdsArray(pythonToolIds, mcpToolIds);
 
         const createAgentData: CreateAgentRequest = {
             ...parsedAgentData,
             realtime_agent,
-            configured_tools: configuredToolIds,
             python_code_tools: pythonToolIds,
             mcp_tools: mcpToolIds,
             tool_ids: toolIds as ToolUniqueName[],
@@ -1606,17 +1589,15 @@ export class AgentsTableComponent {
 
                         const parsedData = this.parseAgentData(freshRowData);
 
-                        const configuredToolIds = parsedData.configured_tools || [];
                         const pythonToolIds = parsedData.python_code_tools || [];
                         const mcpToolIds = parsedData.mcp_tools || [];
-                        const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds);
+                        const toolIds = buildToolIdsArray(pythonToolIds, mcpToolIds);
 
                         const rowId = String(freshRowData.id);
 
                         if (isTempRow) {
                             const createAgentData: CreateAgentRequest = {
                                 ...parsedData,
-                                configured_tools: configuredToolIds,
                                 python_code_tools: pythonToolIds,
                                 mcp_tools: mcpToolIds,
                                 tool_ids: toolIds,
@@ -1627,7 +1608,6 @@ export class AgentsTableComponent {
                             const updateAgentData: UpdateAgentRequest = {
                                 ...parsedData,
                                 id: Number(freshRowData.id),
-                                configured_tools: configuredToolIds,
                                 python_code_tools: pythonToolIds,
                                 mcp_tools: mcpToolIds,
                                 tool_ids: toolIds,
@@ -1684,15 +1664,13 @@ export class AgentsTableComponent {
                                 this.cdr.markForCheck();
                             } else {
                                 const parsedData = this.parseAgentData(rowData);
-                                const configuredToolIds = parsedData.configured_tools || [];
                                 const pythonToolIds = parsedData.python_code_tools || [];
                                 const mcpToolIds = parsedData.mcp_tools || [];
-                                const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds);
+                                const toolIds = buildToolIdsArray(pythonToolIds, mcpToolIds);
 
                                 const updateAgentData: UpdateAgentRequest = {
                                     ...parsedData,
                                     id: Number(rowData.id),
-                                    configured_tools: configuredToolIds,
                                     python_code_tools: pythonToolIds,
                                     mcp_tools: mcpToolIds,
                                     tool_ids: toolIds,
@@ -2003,7 +1981,6 @@ export class AgentsTableComponent {
                 rag: payload.rag ?? null,
                 llm_config: payload.llm_config ?? null,
                 fcm_llm_config: payload.fcm_llm_config ?? null,
-                configured_tools: payload.configured_tools ?? [],
                 python_code_tools: payload.python_code_tools ?? [],
                 mcp_tools: payload.mcp_tools ?? [],
                 search_configs: payload.search_configs ?? tempRow.search_configs,
@@ -2040,7 +2017,6 @@ export class AgentsTableComponent {
             rag: payload.rag ?? null,
             llm_config: payload.llm_config ?? null,
             fcm_llm_config: payload.fcm_llm_config ?? null,
-            configured_tools: payload.configured_tools ?? [],
             python_code_tools: payload.python_code_tools ?? [],
             mcp_tools: payload.mcp_tools ?? [],
             search_configs: payload.search_configs ?? tempRow.search_configs,
@@ -2134,7 +2110,6 @@ export class AgentsTableComponent {
             role: '',
             goal: '',
             backstory: '',
-            configured_tools: [],
             python_code_tools: [],
             mcp_tools: [],
             mergedTools: [],
@@ -2487,10 +2462,6 @@ export class AgentsTableComponent {
     private buildComparablePayload(agent: TableFullAgent): Record<string, unknown> {
         const parsed = this.parseAgentData(agent);
 
-        const configured = (agent.mergedTools ?? [])
-            .filter((t: { id: number; type: string }) => t.type === 'tool-config')
-            .map((t: { id: number; type: string }) => t.id);
-
         const python = (agent.mergedTools ?? [])
             .filter((t: { id: number; type: string }) => t.type === 'python-tool')
             .map((t: { id: number; type: string }) => t.id);
@@ -2499,11 +2470,10 @@ export class AgentsTableComponent {
             .filter((t: { id: number; type: string }) => t.type === 'mcp-tool')
             .map((t: { id: number; type: string }) => t.id);
 
-        const tool_ids = buildToolIdsArray(configured, python, mcp);
+        const tool_ids = buildToolIdsArray(python, mcp);
 
         const updateLikePayload = {
             ...parsed,
-            configured_tools: configured,
             python_code_tools: python,
             mcp_tools: mcp,
             tool_ids,
@@ -2542,7 +2512,6 @@ export class AgentsTableComponent {
             if (k.endsWith('Warning')) delete p[k];
         }
 
-        p['configured_tools'] = Array.isArray(p['configured_tools']) ? [...p['configured_tools']].sort() : [];
         p['python_code_tools'] = Array.isArray(p['python_code_tools']) ? [...p['python_code_tools']].sort() : [];
         p['mcp_tools'] = Array.isArray(p['mcp_tools']) ? [...p['mcp_tools']].sort() : [];
         p['tool_ids'] = Array.isArray(p['tool_ids']) ? [...p['tool_ids']].sort() : [];
