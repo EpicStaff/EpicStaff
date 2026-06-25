@@ -1,6 +1,7 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     AppTableCellDirective,
@@ -21,7 +22,7 @@ import { RolesService } from '../../../services/admin/roles.service';
     templateUrl: './roles-tab.component.html',
     styleUrls: ['./roles-tab.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [AppTableComponent, AppTableCellDirective, AppSvgIconComponent, SearchComponent],
+    imports: [AppTableComponent, AppTableCellDirective, AppSvgIconComponent, SearchComponent, MatTooltip],
 })
 export class RolesTabComponent implements OnInit {
     private dialog = inject(Dialog);

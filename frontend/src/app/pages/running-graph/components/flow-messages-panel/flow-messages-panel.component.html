@@ -12,6 +12,7 @@
     <button
         [disabled]="!hasNextSession"
         (click)="goToNextSession()"
+        matTooltip="Next session"
         class="btn-switch-session"
     >
         <div class="icon-arrow">
@@ -71,6 +72,7 @@
     <button
         [disabled]="!hasPreviousSession"
         (click)="goToPreviousSession()"
+        matTooltip="Previous session"
         class="btn-switch-session"
     >
         <div class="icon-arrow">
@@ -98,6 +100,7 @@
 
     <button
         (click)="close.emit()"
+        matTooltip="Close"
         class="btn-switch-session"
     >
         <div>

@@ -146,6 +146,8 @@
                         <button
                             type="button"
                             class="toggle-icon-button"
+                            [matTooltip]="isCodeEditorFullWidth() ? 'Collapse editor' : 'Expand editor'"
+                            matTooltipPosition="right"
                             (click)="toggleCodeEditorFullWidth()"
                         >
                             <svg

@@ -1,0 +1,11 @@
+{
+  "title": "S3FolderListArgs",
+  "type": "object",
+  "properties": {
+    "folder_path": {
+      "type": "string",
+      "description": "S3 folder path to list contents of."
+    }
+  },
+  "required": ["folder_path"]
+}

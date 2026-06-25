@@ -32,7 +32,7 @@
                             (click)="toggleSize()"
                             [disabled]="isMediaLocked()"
                             [attr.aria-label]="size() === 'wide' ? 'Minimize' : 'Expand'"
-                            [attr.title]="size() === 'wide' ? 'Minimize' : 'Expand'"
+                            [matTooltip]="size() === 'wide' ? 'Minimize' : 'Expand'"
                         >
                             <app-svg-icon
                                 [icon]="size() === 'wide' ? 'arrows-minimize' : 'arrows-maximize'"
@@ -46,6 +46,7 @@
                                 class="shortcuts__close-btn"
                                 (click)="closed.emit()"
                                 aria-label="Close"
+                                matTooltip="Close"
                             >
                                 <app-svg-icon
                                     class="shortcuts__close-icon"

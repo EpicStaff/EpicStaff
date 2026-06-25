@@ -14,6 +14,7 @@ import {
     ViewChild,
     ViewChildren,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 
@@ -29,7 +30,7 @@ import { DEFAULT_ENTITY_ICON, ENTITY_ICONS } from '../../../../shared/constants/
 @Component({
     selector: 'app-import-result-dialog',
     standalone: true,
-    imports: [CommonModule, AppIconComponent],
+    imports: [CommonModule, AppIconComponent, MatTooltipModule],
     templateUrl: './import-result-dialog.component.html',
     styleUrls: ['./import-result-dialog.component.scss'],
     animations: [

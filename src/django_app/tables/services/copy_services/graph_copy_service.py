@@ -1,6 +1,10 @@
 from tables.import_export.utils import ensure_unique_identifier
 from tables.models import Graph
-from tables.models.graph_models import ConditionalEdge, Edge
+from tables.models.graph_models import (
+    ClassificationConditionGroup,
+    ConditionalEdge,
+    Edge,
+)
 from tables.services.copy_services.base_copy_service import BaseCopyService
 from tables.services.copy_services.helpers import copy_python_code
 from tables.services.copy_services.node_copy_handlers import NODE_COPY_HANDLERS
@@ -58,6 +62,7 @@ class GraphCopyService(BaseCopyService):
             )
 
         self._remap_decision_table_references(new_graph, node_id_map)
+        self._remap_classification_decision_table_references(new_graph, node_id_map)
         self._remap_metadata_node_ids(new_graph, node_id_map)
 
         return new_graph
@@ -85,6 +90,38 @@ class GraphCopyService(BaseCopyService):
                 )
 
             for group in dt_node.condition_groups.all():
+                if group.next_node_id and group.next_node_id in node_id_map:
+                    group.next_node_id = node_id_map[group.next_node_id]
+                    group.save(update_fields=["next_node_id"])
+
+    def _remap_classification_decision_table_references(
+        self, graph: Graph, node_id_map: dict[int, int]
+    ) -> None:
+        for cdt_node in graph.classification_decision_table_node_list.all():
+            updated = False
+
+            if (
+                cdt_node.default_next_node_id
+                and cdt_node.default_next_node_id in node_id_map
+            ):
+                cdt_node.default_next_node_id = node_id_map[
+                    cdt_node.default_next_node_id
+                ]
+                updated = True
+
+            if (
+                cdt_node.next_error_node_id
+                and cdt_node.next_error_node_id in node_id_map
+            ):
+                cdt_node.next_error_node_id = node_id_map[cdt_node.next_error_node_id]
+                updated = True
+
+            if updated:
+                cdt_node.save(
+                    update_fields=["default_next_node_id", "next_error_node_id"]
+                )
+
+            for group in cdt_node.condition_groups.all():
                 if group.next_node_id and group.next_node_id in node_id_map:
                     group.next_node_id = node_id_map[group.next_node_id]
                     group.save(update_fields=["next_node_id"])

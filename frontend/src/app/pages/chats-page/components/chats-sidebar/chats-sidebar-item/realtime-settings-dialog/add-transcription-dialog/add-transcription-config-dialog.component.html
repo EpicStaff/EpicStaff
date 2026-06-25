@@ -61,15 +61,18 @@
                 <label for="apiKey">API Key</label>
                 <div class="input-with-icon">
                     <input
-                        [type]="showApiKey ? 'text' : 'password'"
+                        [type]="apiKeyInputType"
                         id="apiKey"
                         formControlName="api_key"
+                        autocomplete="off"
                         placeholder="Enter API key"
                         class="text-input"
+                        [class.masked]="apiKeyMasked"
                     />
                     <button
                         type="button"
                         class="eye-button"
+                        [matTooltip]="showApiKey ? 'Hide API key' : 'Show API key'"
                         (click)="toggleApiKeyVisibility()"
                     >
                         @if (showApiKey) {

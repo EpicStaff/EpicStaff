@@ -236,25 +236,19 @@ export class RealtimeSettingsDialogComponent implements OnInit {
             };
 
             const getToolIds = (tools: { data: { id: number }; unique_name: string }[]) => {
-                const configured_tool: number[] = [];
                 const python_code_tool: number[] = [];
 
-                tools.forEach(({ data, unique_name }) => {
-                    const parts = unique_name.split(':');
-                    if (parts[0] === 'configured-tool') {
-                        configured_tool.push(data.id);
-                    } else {
-                        python_code_tool.push(data.id);
-                    }
+                tools.forEach(({ data }) => {
+                    python_code_tool.push(data.id);
                 });
 
-                return { configured_tool, python_code_tool };
+                return { python_code_tool };
             };
 
-            const { configured_tool, python_code_tool } = getToolIds(this.data.agent.tools);
+            const { python_code_tool } = getToolIds(this.data.agent.tools);
 
             // Build tool_ids array for settings update
-            const settingsToolIds = buildToolIdsArray(configured_tool, python_code_tool);
+            const settingsToolIds = buildToolIdsArray(python_code_tool);
 
             const updatedAgent: PartialUpdateAgentRequest = {
                 id: this.data.agent.id,
@@ -263,7 +257,6 @@ export class RealtimeSettingsDialogComponent implements OnInit {
                 backstory: this.data.agent.backstory,
                 realtime_agent: realtimeAgentData,
                 search_configs: searchConfigsData,
-                configured_tools: configured_tool,
                 python_code_tools: python_code_tool,
                 tool_ids: settingsToolIds,
             };

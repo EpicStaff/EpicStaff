@@ -1,0 +1,52 @@
+@use '../../_ep-tokens' as ep;
+
+:host {
+    @include ep.epicchat-tokens;
+}
+
+.actions-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    padding: 6px 12px;
+    border-radius: var(--ep-button-radius);
+    font-size: 12px;
+    font-weight: 600;
+    background-color: var(--ep-color-accent);
+    color: var(--ep-color-accent-contrast);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+
+    &:hover {
+        background-color: var(--ep-button-primary-hover-bg);
+    }
+}
+
+.action-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 28px;
+    padding: 4px 10px;
+    border-radius: var(--ep-button-radius);
+    font-size: 12px;
+    background-color: transparent;
+    color: var(--ep-color-accent);
+    border: 1px solid var(--ep-color-accent);
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+
+    &:hover {
+        background-color: var(--ep-color-accent-soft);
+    }
+}

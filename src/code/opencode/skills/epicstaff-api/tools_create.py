@@ -1,8 +1,7 @@
 """Tool create operations — create new Python code tools."""
 
-import json
 
-from common import api_post, api_get
+from common import api_post
 
 
 def cmd_create_tool(args):

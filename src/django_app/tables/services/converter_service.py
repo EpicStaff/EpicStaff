@@ -7,6 +7,8 @@ from src.shared.models import (
     AgentData,
     AudioTranscriptionNodeData,
     BaseToolData,
+    ClassificationConditionGroupData,
+    ClassificationDecisionTableNodeData,
     ConditionalEdgeData,
     ConditionData,
     ConditionGroupData,
@@ -28,6 +30,7 @@ from src.shared.models import (
     PythonCodeData,
     PythonCodeToolData,
     PythonNodeData,
+    PromptConfigData,
     RagSearchConfig,
     RealtimeAgentChatData,
     ScheduleTriggerNodeData,
@@ -63,6 +66,8 @@ from tables.models.knowledge_models.naive_rag_models import AgentNaiveRag
 from tables.models.graph_models import (
     AudioTranscriptionNode,
     Condition,
+    ClassificationConditionGroup,
+    ClassificationDecisionTableNode,
     ConditionalEdge,
     ConditionGroup,
     CrewNode,
@@ -155,7 +160,22 @@ class ConverterService(metaclass=SingletonMeta):
 
         return None
 
-    def convert_crew_to_pydantic(self, crew_id: int) -> CrewData:
+    def _resolve_allowed_paths_for_graph(self, graph_id: int) -> list[str]:
+        return list(
+            GraphStorageFile.objects.filter(graph_id=graph_id)
+            .select_related("storage_file")
+            .values_list("storage_file__path", flat=True)
+        )
+
+    def _resolve_org_prefix_for_graph(self, graph_id: int) -> str | None:
+        graph_org = GraphOrganization.objects.filter(graph_id=graph_id).first()
+        if graph_org is not None:
+            return f"org_{graph_org.organization_id}"
+        return None
+
+    def convert_crew_to_pydantic(
+        self, crew_id: int, graph_id: int | None = None, session_id: int | None = None
+    ) -> CrewData:
         crew = (
             Crew.objects.select_related(
                 "manager_llm_config__model__llm_provider",
@@ -215,7 +235,9 @@ class ConverterService(metaclass=SingletonMeta):
         crew_base_tools: list[BaseToolData] = []
 
         for task in task_list:
-            base_tools = self._get_task_base_tools(task=task)
+            base_tools = self._get_task_base_tools(
+                task=task, graph_id=graph_id, session_id=session_id
+            )
             crew_base_tools.extend(base_tools)  # TODO: make it unique
             assert not (
                 crew.process == "sequential" and task.agent is None
@@ -288,7 +310,9 @@ class ConverterService(metaclass=SingletonMeta):
             agent = agent.fill_with_defaults(
                 crew_id=crew_id, crew_temperature=crew.default_temperature
             )
-            agent_base_tools = self._get_agent_base_tools(agent=agent)
+            agent_base_tools = self._get_agent_base_tools(
+                agent=agent, graph_id=graph_id, session_id=session_id
+            )
             crew_base_tools.extend(agent_base_tools)
 
             llm = self.convert_llm_config_to_pydantic(agent.llm_config)
@@ -355,7 +379,12 @@ class ConverterService(metaclass=SingletonMeta):
 
         return crew_data
 
-    def _get_agent_base_tools(self, agent: Agent) -> list[BaseToolData]:
+    def _get_agent_base_tools(
+        self,
+        agent: Agent,
+        graph_id: int | None = None,
+        session_id: int | None = None,
+    ) -> list[BaseToolData]:
         python_tools = [entry.pythoncodetool for entry in agent.python_code_tools.all()]
         python_tool_configs = [
             entry.pythoncodetoolconfig for entry in agent.python_code_tool_configs.all()
@@ -364,27 +393,48 @@ class ConverterService(metaclass=SingletonMeta):
         mcp_tools = [entry.mcptool for entry in agent.mcp_tools.all()]
 
         all_tools = python_tools + python_tool_configs + configured_tools + mcp_tools
-        return [self.convert_tool_to_base_tool_pydantic(tool) for tool in all_tools]
+        return [
+            self.convert_tool_to_base_tool_pydantic(
+                tool, graph_id=graph_id, session_id=session_id
+            )
+            for tool in all_tools
+        ]
 
-    def _get_task_base_tools(self, task: Task) -> list[BaseToolData]:
+    def _get_task_base_tools(
+        self,
+        task: Task,
+        graph_id: int | None = None,
+        session_id: int | None = None,
+    ) -> list[BaseToolData]:
         tools = (
             [entry.tool for entry in task.task_configured_tool_list.all()]
             + [entry.tool for entry in task.task_python_code_tool_list.all()]
             + [entry.tool for entry in task.task_python_code_tool_config_list.all()]
             + [entry.tool for entry in task.task_mcp_tool_list.all()]
         )
-        return [self.convert_tool_to_base_tool_pydantic(tool) for tool in tools]
+        return [
+            self.convert_tool_to_base_tool_pydantic(
+                tool, graph_id=graph_id, session_id=session_id
+            )
+            for tool in tools
+        ]
 
     def convert_tool_to_base_tool_pydantic(
         self,
         tool: PythonCodeTool | ToolConfig | McpTool | PythonCodeToolConfig,
+        graph_id: int | None = None,
+        session_id: int | None = None,
     ) -> BaseToolData:
         if isinstance(tool, PythonCodeTool):
             unique_name = f"python-code-tool:{tool.pk}"
-            data = self.convert_python_code_tool_to_pydantic(tool)
+            data = self.convert_python_code_tool_to_pydantic(
+                tool, graph_id=graph_id, session_id=session_id
+            )
         elif isinstance(tool, PythonCodeToolConfig):
             unique_name = f"python-code-tool-config:{tool.pk}"
-            data = self.convert_python_code_tool_config_to_pydantic(tool)
+            data = self.convert_python_code_tool_config_to_pydantic(
+                tool, graph_id=graph_id, session_id=session_id
+            )
         elif isinstance(tool, ToolConfig):
             unique_name = f"configured-tool:{tool.pk}"
             data = self.convert_configured_tool_to_pydantic(tool)
@@ -527,12 +577,25 @@ class ConverterService(metaclass=SingletonMeta):
         }
 
     def convert_python_code_tool_to_pydantic(
-        self, python_code_tool: PythonCodeTool
-    ) -> PythonCodeToolData:
+        self,
+        python_code_tool: PythonCodeTool,
+        graph_id: int | None = None,
+        session_id: int | None = None,
+    ) -> PythonCodeToolData:      
+        storage_allowed_paths = None
+        storage_org_prefix = None
+        if python_code_tool.use_storage and graph_id is not None:
+            storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)        
+        
         variables = python_code_tool.variables or []
         user_defaults = self._get_user_input_defaults(variables)
         python_code_data = self.convert_python_code_to_pydantic(
-            python_code_tool.python_code
+            python_code_tool.python_code,
+            use_storage=python_code_tool.use_storage,
+            storage_allowed_paths=storage_allowed_paths,
+            storage_org_prefix=storage_org_prefix,
+            session_id=session_id,
         )
         merged_kwargs = {**user_defaults, **(python_code_data.global_kwargs or {})}
         python_code_data = PythonCodeData(
@@ -547,7 +610,10 @@ class ConverterService(metaclass=SingletonMeta):
         )
 
     def convert_python_code_tool_config_to_pydantic(
-        self, python_code_tool_config: PythonCodeToolConfig
+        self,
+        python_code_tool_config: PythonCodeToolConfig,
+        graph_id: int | None = None,
+        session_id: int | None = None,
     ) -> PythonCodeToolData:
         python_code_tool: PythonCodeTool = python_code_tool_config.tool
         python_configuration = python_code_tool_config.configuration
@@ -556,6 +622,11 @@ class ConverterService(metaclass=SingletonMeta):
             python_configuration, dict
         ), "Error reading python tool configuration. How did you even pass validation?"
 
+        storage_allowed_paths = None
+        storage_org_prefix = None
+        if python_code_tool.use_storage and graph_id is not None:
+            storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
         variables = python_code_tool.variables or []
         user_defaults = self._get_user_input_defaults(variables)
         global_kwargs = {**user_defaults, **python_configuration}
@@ -563,7 +634,11 @@ class ConverterService(metaclass=SingletonMeta):
         python_code: PythonCode = python_code_tool.python_code
         python_code.global_kwargs = global_kwargs
         python_code_data = self.convert_python_code_to_pydantic(
-            python_code_tool.python_code
+            python_code_tool.python_code,
+            use_storage=python_code_tool.use_storage,
+            storage_allowed_paths=storage_allowed_paths,
+            storage_org_prefix=storage_org_prefix,
+            session_id=session_id,
         )
 
         return PythonCodeToolData(
@@ -670,20 +745,12 @@ class ConverterService(metaclass=SingletonMeta):
         session_id: int | None = None,
     ) -> PythonNodeData:
         storage_allowed_paths = None
-        if python_node.use_storage and graph_id is not None:
-            storage_allowed_paths = list(
-                GraphStorageFile.objects.filter(graph_id=graph_id)
-                .select_related("storage_file")
-                .values_list("storage_file__path", flat=True)
-            )
-            if session_id is not None:
-                storage_allowed_paths.append(f"sessions/{session_id}/")
-
         storage_org_prefix = None
         if python_node.use_storage and graph_id is not None:
-            graph_org = GraphOrganization.objects.filter(graph_id=graph_id).first()
-            if graph_org is not None:
-                storage_org_prefix = f"org_{graph_org.organization_id}"
+            storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if session_id is not None:
+                storage_allowed_paths.append(f"sessions/{session_id}/")
+            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
 
         python_code_data = self.convert_python_code_to_pydantic(
             python_code=python_node.python_code,
@@ -734,6 +801,72 @@ class ConverterService(metaclass=SingletonMeta):
             next_node=resolver(condition_group.next_node_id),
         )
 
+    def convert_classification_decision_table_node_to_pydantic(
+        self,
+        node: ClassificationDecisionTableNode,
+        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+    ):
+        condition_groups = [
+            ClassificationConditionGroupData(
+                group_name=cg.group_name,
+                expression=cg.expression,
+                prompt_id=cg.prompt_id,
+                manipulation=cg.manipulation,
+                continue_flag=cg.continue_flag,
+                next_node=resolver(cg.next_node_id) if cg.next_node_id else None,
+                dock_visible=cg.dock_visible,
+                order=cg.order,
+                field_expressions=cg.field_expressions or {},
+                field_manipulations=cg.field_manipulations or {},
+            )
+            for cg in node.condition_groups.all()
+        ]
+
+        prompts_dict = {}
+        default_llm_config = node.default_llm_config
+
+        for pc in node.prompt_configs.all():
+            llm_config_obj = pc.llm_config or default_llm_config
+            llm_data = None
+            llm_id = None
+            if llm_config_obj:
+                llm_id = llm_config_obj.id
+                llm_data = self.convert_llm_config_to_pydantic(llm_config_obj)
+            prompts_dict[pc.prompt_key] = PromptConfigData(
+                prompt_text=pc.prompt_text,
+                llm_id=llm_id,
+                output_schema=pc.output_schema or {},
+                result_variable=pc.result_variable or "prompt_result",
+                variable_mappings=pc.variable_mappings or {},
+                llm_data=llm_data,
+            )
+
+        pre_python_code_data = None
+        if node.pre_python_code is not None:
+            pre_python_code_data = self.convert_python_code_to_pydantic(
+                node.pre_python_code
+            )
+
+        post_python_code_data = None
+        if node.post_python_code is not None:
+            post_python_code_data = self.convert_python_code_to_pydantic(
+                node.post_python_code
+            )
+
+        return ClassificationDecisionTableNodeData(
+            node_name=resolver(node.id),
+            pre_python_code=pre_python_code_data,
+            pre_input_map=node.pre_input_map or {},
+            pre_output_variable_path=node.pre_output_variable_path,
+            post_python_code=post_python_code_data,
+            post_input_map=node.post_input_map or {},
+            post_output_variable_path=node.post_output_variable_path,
+            condition_groups=condition_groups,
+            prompts=prompts_dict,
+            default_next_node=resolver(node.default_next_node_id),
+            next_error_node=resolver(node.next_error_node_id),
+        )
+
     def convert_decision_table_node_to_pydantic(
         self,
         decision_table_node: DecisionTableNode,
@@ -751,11 +884,17 @@ class ConverterService(metaclass=SingletonMeta):
         )
 
     def convert_crew_node_to_pydantic(
-        self, crew_node: CrewNode, resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER
+        self,
+        crew_node: CrewNode,
+        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+        graph_id: int | None = None,
+        session_id: int | None = None,
     ) -> CrewNodeData:
         crew: Crew = crew_node.crew
         validate_tool_configs(crew)
-        crew_data = self.convert_crew_to_pydantic(crew_id=crew.pk)
+        crew_data = self.convert_crew_to_pydantic(
+            crew_id=crew.pk, graph_id=graph_id, session_id=session_id
+        )
         return CrewNodeData(
             node_name=resolver(crew_node.id),
             crew=crew_data,

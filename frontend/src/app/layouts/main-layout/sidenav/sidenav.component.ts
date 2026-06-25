@@ -5,6 +5,7 @@ import {
     ChangeDetectionStrategy,
     Component,
     CUSTOM_ELEMENTS_SCHEMA,
+    DestroyRef,
     ElementRef,
     inject,
     signal,
@@ -12,7 +13,6 @@ import {
 } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { ClickOutsideDirective } from '@shared/directives';
-import { environment } from 'src/environments/environment';
 
 import { ConfigureModelsDialogService } from '../../../features/configure-models/services/configure-models-dialog.service';
 import { EpicChatService } from '../../../features/epic-chat/epic-chat.service';
@@ -56,6 +56,7 @@ interface NavItem {
 })
 export class LeftSidebarComponent implements AfterViewInit {
     private currentUserService = inject(ProfileService);
+    private destroyRef = inject(DestroyRef);
 
     public topNavItems: NavItem[];
     public bottomNavItems: NavItem[];
@@ -63,6 +64,7 @@ export class LeftSidebarComponent implements AfterViewInit {
     public apiBaseUrl: string;
     public accessToken: string;
     public showLogoTooltip = false;
+    public showProfileTooltip = false;
     public readonly epicChatThemeConfig = {
         semantic: {
             surface: 'var(--color-background-body)',
@@ -124,6 +126,7 @@ export class LeftSidebarComponent implements AfterViewInit {
 
     public user = this.currentUserService.currentUserSignal;
     public isUserMenuOpen = signal<boolean>(false);
+    public showAccountTooltip = false;
 
     @ViewChild('epicChat', { static: false })
     private epicChat?: ElementRef<HTMLElement>;
@@ -143,7 +146,7 @@ export class LeftSidebarComponent implements AfterViewInit {
 
         // Bad approach to use window.location because ui and backend can be on different domains
         // fixed localhost vs 127.0.0.1 problem in widget code
-        this.apiBaseUrl = environment.apiUrl;
+        this.apiBaseUrl = this.configService.apiUrl;
         this.accessToken = this.authService.getAccessToken() ?? '';
         this.topNavItems = [
             {

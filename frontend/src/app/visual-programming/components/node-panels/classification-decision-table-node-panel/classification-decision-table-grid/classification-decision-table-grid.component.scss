@@ -1,0 +1,690 @@
+:host {
+    display: block;
+}
+
+.decision-table-grid-container {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.grid-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 0.5rem;
+    flex-shrink: 0;
+
+    h3 {
+        margin: 0;
+        color: #ffffffb3;
+        font-size: 1rem;
+        font-weight: 400;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+
+        .tooltip-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            color: #a89fff;
+            background: rgba(104, 95, 255, 0.2);
+            border: 1px solid rgba(104, 95, 255, 0.35);
+            font-size: 0.75rem;
+            cursor: help;
+            transition:
+                background 0.2s ease,
+                color 0.2s ease;
+
+            &:hover {
+                color: #fff;
+                background: rgba(104, 95, 255, 0.45);
+                border-color: rgba(104, 95, 255, 0.6);
+            }
+        }
+    }
+}
+
+.grid-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.grid-header-secondary-btn {
+    height: 32px;
+    padding: 0 12px;
+    border-radius: 6px;
+    background: transparent;
+    border: 1px solid #2b2d30;
+    color: var(--color-text-primary);
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.grid-header-secondary-btn:hover:not(:disabled) {
+    border-color: var(--purple-primary);
+}
+
+.grid-header-secondary-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.grid-header-icon-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    border: 1px solid #2b2d30;
+    background: transparent;
+    color: var(--purple-primary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease;
+}
+
+.grid-header-icon-btn:hover {
+    background: rgba(255, 80, 80, 0.08);
+}
+
+.group-menu-dropdown {
+    background: #27272b;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    min-width: 180px;
+    padding: 4px 0;
+}
+
+.group-menu-item {
+    padding: 0.45rem 0.75rem;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.85);
+    cursor: pointer;
+    transition: background 0.1s ease;
+
+    &:hover {
+        background: rgba(104, 95, 255, 0.2);
+        color: #fff;
+    }
+}
+
+.grid-header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.add-condition-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: var(--accent-color);
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    padding: 0.4rem 0.85rem;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+
+    &:hover {
+        background: #7a6fff;
+    }
+
+    i {
+        font-size: 0.9rem;
+    }
+}
+
+.field-column-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.field-controls-divider {
+    width: 1px;
+    height: 18px;
+    background: rgba(255, 255, 255, 0.15);
+    margin: 0 0.2rem;
+}
+
+.field-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.75rem;
+    font-family: 'Menlo', 'Monaco', monospace;
+
+    .field-chip-prefix {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 15px;
+        height: 15px;
+        border-radius: 3px;
+        font-size: 0.6rem;
+        font-weight: 700;
+        font-family: system-ui, sans-serif;
+        flex-shrink: 0;
+    }
+
+    &--expr {
+        background: rgba(104, 95, 255, 0.2);
+        border: 1px solid rgba(104, 95, 255, 0.4);
+
+        .field-chip-prefix {
+            background: rgba(104, 95, 255, 0.6);
+            color: #fff;
+        }
+    }
+
+    &--manip {
+        background: rgba(255, 165, 0, 0.15);
+        border: 1px solid rgba(255, 165, 0, 0.4);
+
+        .field-chip-prefix {
+            background: rgba(255, 165, 0, 0.6);
+            color: #fff;
+        }
+    }
+
+    .field-chip-remove {
+        font-size: 0.65rem;
+        cursor: pointer;
+        opacity: 0.6;
+        transition: opacity 0.15s ease;
+
+        &:hover {
+            opacity: 1;
+            color: #ff5449;
+        }
+    }
+
+    &--hidden {
+        opacity: 0.45;
+        border-style: dashed;
+        border-color: rgba(255, 165, 0, 0.4);
+        background: rgba(255, 165, 0, 0.08);
+        cursor: pointer;
+        transition:
+            opacity 0.15s ease,
+            background 0.15s ease;
+
+        i {
+            font-size: 0.75rem;
+            color: rgba(255, 165, 0, 0.7);
+        }
+
+        &:hover {
+            opacity: 0.8;
+            background: rgba(255, 165, 0, 0.15);
+        }
+    }
+}
+
+.field-picker-wrapper {
+    position: relative;
+}
+
+.add-field-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.6rem;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &--expr:hover {
+        background: rgba(104, 95, 255, 0.15);
+        border-color: rgba(104, 95, 255, 0.4);
+        color: #fff;
+    }
+
+    &--manip:hover {
+        background: rgba(255, 165, 0, 0.12);
+        border-color: rgba(255, 165, 0, 0.4);
+        color: #fff;
+    }
+}
+
+.grid-wrapper {
+    position: relative;
+    width: 100%;
+    overflow: visible;
+    padding-left: 28px;
+
+    // When at least one params group is absent, reserve space above the ag-grid
+    // for the floating "+" button row.
+    &.has-above-btns {
+        padding-top: 36px;
+    }
+}
+
+.group-overlays {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 28px;
+    z-index: 1;
+}
+
+.group-overlay {
+    position: absolute;
+    left: 0;
+    width: 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    pointer-events: auto;
+}
+
+.group-overlay-chevron {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    margin-left: 2px;
+    border: 1px solid var(--color-text-primary);
+    border-radius: 4px;
+    background: #212325;
+    color: var(--color-text-primary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.group-overlay-chevron app-svg-icon {
+    transform: rotate(90deg);
+    transition: transform 0.15s ease;
+}
+
+.group-overlay-chevron.collapsed app-svg-icon {
+    transform: rotate(0deg);
+}
+
+.group-overlay-chevron ::ng-deep svg {
+    fill: currentColor;
+}
+
+.group-overlay-bracket {
+    margin-left: 13px;
+    margin-top: 0;
+    width: 10px;
+    flex: 1;
+    border-left: 1px solid var(--color-text-primary);
+    border-bottom: 1px solid var(--color-text-primary);
+    border-bottom-left-radius: 8px;
+    box-sizing: border-box;
+}
+
+.group-overlay-chevron.active {
+    border-color: var(--purple-primary);
+    color: var(--purple-primary);
+}
+
+.group-overlay-bracket.active {
+    border-left-color: var(--purple-primary);
+    border-bottom-color: var(--purple-primary);
+}
+
+.row-drop-indicator {
+    position: absolute;
+    left: 28px;
+    right: 0;
+    height: 2px;
+    background: var(--purple-primary);
+    z-index: 3;
+    pointer-events: none;
+    box-shadow: 0 0 4px rgba(104, 95, 255, 0.6);
+}
+
+.hidden-col-badge {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    background: #27272b;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    z-index: 25;
+    padding: 0;
+    box-sizing: border-box;
+    transition:
+        background 0.15s ease,
+        color 0.15s ease,
+        border-color 0.15s ease;
+    top: 0;
+
+    &:hover {
+        background: var(--inactive-purple);
+        color: #fff;
+        border-color: rgba(104, 95, 255, 0.7);
+    }
+
+    i {
+        font-size: 0.7rem;
+        line-height: 1;
+    }
+}
+
+// Above-grid "+" button: shown centered above Expression/Manipulation column
+// when the corresponding params group is empty (no field variables added yet).
+.col-above-add-btn {
+    position: absolute;
+    top: 16px;
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    background: transparent;
+    border: 1px solid var(--accent-color);
+    color: var(--accent-color);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    z-index: 20;
+    padding: 0;
+    box-sizing: border-box;
+    transform: translateX(-50%);
+    transition:
+        background 0.15s ease,
+        color 0.15s ease,
+        border-color 0.15s ease;
+
+    &:hover {
+        background: rgba(104, 95, 255, 0.15);
+        color: #a89fff;
+        border-color: #a89fff;
+    }
+
+    i {
+        font-size: 0.85rem;
+        line-height: 1;
+    }
+}
+
+.context-menu {
+    position: fixed;
+    z-index: 10000;
+    background: #27272b;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    min-width: 160px;
+    padding: 4px 0;
+}
+
+.context-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.85);
+    cursor: pointer;
+    transition: background 0.1s ease;
+
+    i {
+        font-size: 1rem;
+        color: rgba(255, 255, 255, 0.5);
+    }
+
+    &:hover {
+        background: rgba(104, 95, 255, 0.2);
+        color: #fff;
+
+        i {
+            color: rgba(104, 95, 255, 0.9);
+        }
+    }
+
+    &--danger {
+        color: var(--error-color, #ff3b30);
+
+        i {
+            color: var(--error-color, #ff3b30);
+            opacity: 0.8;
+        }
+
+        &:hover {
+            background: rgba(255, 59, 48, 0.15);
+            color: var(--error-color, #ff3b30);
+
+            i {
+                color: var(--error-color, #ff3b30);
+                opacity: 1;
+            }
+        }
+    }
+}
+
+.context-menu-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 3px 0;
+}
+
+:host ::ng-deep {
+    // Override ag-grid's default blue focus/range-selection colours with the project accent purple.
+    // CSS variable approach covers the majority of states; direct class overrides cover any
+    // cases where ag-grid ignores the variables (e.g. quartz theme hard-coded outlines).
+    .ag-theme-quartz,
+    .ag-root-wrapper {
+        --ag-cell-focus-border-color: var(--accent-color);
+        --ag-range-selection-border-color: var(--accent-color);
+        --ag-range-selection-background-color: rgba(104, 95, 255, 0.1);
+        --ag-range-selection-border-style: solid;
+        --ag-input-focus-border-color: var(--accent-color);
+        // Kill the blue box-shadow ag-grid quartz applies to focused inputs
+        --ag-input-focus-box-shadow: none;
+        --ag-selected-row-background-color: rgba(104, 95, 255, 0.08);
+    }
+
+    // Suppress browser-native blue outline on any input/focusable element inside a cell
+    .ag-cell input:focus,
+    .ag-cell textarea:focus,
+    .ag-cell select:focus,
+    .ag-cell-inline-editing input:focus,
+    .ag-cell-inline-editing textarea:focus,
+    .ag-cell-focus,
+    .ag-cell-focus:focus {
+        outline: none !important;
+        box-shadow: none !important;
+    }
+
+    // Exactly ONE 1px purple border on the focused cell — only while the grid has DOM focus.
+    // Covers both the plain-focus case and the focus+range-selected case.
+    // No second ring, no box-shadow.
+    .ag-root-wrapper:focus-within {
+        .ag-cell-focus:not(.ag-cell-range-selected),
+        .ag-cell-range-selected.ag-cell-focus,
+        .ag-cell-range-single-cell.ag-cell-focus {
+            border: 1px solid var(--accent-color) !important;
+            outline: none !important;
+            box-shadow: none !important;
+        }
+    }
+
+    // When the grid wrapper has lost DOM focus, remove all visible focus/range indicators.
+    .ag-root-wrapper:not(:focus-within) {
+        .ag-cell-focus,
+        .ag-cell-range-selected,
+        .ag-cell-range-single-cell {
+            border: 1px solid transparent !important;
+            box-shadow: none !important;
+            background: transparent !important;
+        }
+    }
+
+    // Inline-editing cell: single purple border on the CELL wrapper, no box-shadow ring
+    .ag-cell-inline-editing {
+        border: 1px solid var(--accent-color) !important;
+        outline: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+    }
+
+    // Fix Issue 1 — suppress the inner input's own border/box-shadow so only ONE
+    // border (the cell's purple ring above) is visible for agTextCellEditor columns.
+    .ag-cell-inline-editing .ag-input-field-input,
+    .ag-cell-inline-editing .ag-text-field-input,
+    .ag-cell-inline-editing input {
+        border: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+        background: transparent !important;
+        width: 100% !important;
+        height: 100% !important;
+        padding: 0 8px !important;
+    }
+
+    // Fix Issue 2 — range-selected cells that are NOT the active focus cell must
+    // not show any visible border or tint. Using transparent border (not none) to
+    // avoid layout shifts caused by border-width changes.
+    .ag-cell-range-selected:not(.ag-cell-focus):not(.ag-cell-inline-editing),
+    .ag-cell-range-single-cell:not(.ag-cell-focus):not(.ag-cell-inline-editing) {
+        background: transparent !important;
+        border: 1px solid transparent !important;
+        box-shadow: none !important;
+    }
+
+    .decision-grid {
+        .ag-checkbox-input-wrapper {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px !important;
+
+            &.ag-checked {
+                background-color: #ffffff !important;
+
+                &::after {
+                    color: var(--accent-color) !important;
+                    font-size: 10px !important;
+                }
+            }
+
+            &:not(.ag-checked) {
+                background-color: transparent !important;
+                border-color: rgba(255, 255, 255, 0.3) !important;
+            }
+        }
+
+        flex: 1;
+        min-height: 0;
+        .ag-root-wrapper,
+        .ag-root {
+            overflow: visible !important;
+        }
+
+        .ag-header {
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .ti-x:hover {
+            color: rgba(255, 255, 255, 0.9) !important;
+        }
+
+        [col-id='actions'] .icon-header i {
+            color: var(--accent-color) !important;
+        }
+
+        .cell-warning {
+            background-color: rgba(255, 59, 48, 0.15) !important;
+            border: 1px solid #ff3b30 !important;
+        }
+
+        .ag-header-cell-resize::after {
+            height: 100% !important;
+            top: 0 !important;
+        }
+
+        // Frozen column separator — 2px right border on the pinned-left container
+        .ag-pinned-left-cols-container,
+        .ag-pinned-left-header {
+            border-right: 4px solid #3f4144 !important;
+        }
+    }
+
+    // Bug fix: when a popup cell editor is open (e.g. ExpressionBuilder), AG Grid adds
+    // .ag-cell-popup-editing to the host cell but does NOT hide the cell renderer.
+    // The MonacoCellRendererComponent renders content that bleeds through/above the popup.
+    // Hide all direct children of the popup-editing cell except the popup editor wrapper itself.
+    .ag-cell.ag-cell-popup-editing > *:not(.ag-popup-editor):not(.ag-cell-edit-wrapper) {
+        visibility: hidden !important;
+    }
+
+    // Handle autoHeight layout - let AG Grid handle overflow naturally
+    .ag-layout-auto-height {
+        .ag-center-cols-container,
+        .ag-center-cols-viewport {
+            min-height: 0px !important;
+        }
+    }
+
+    // When empty: min-height 150px
+    .decision-grid.empty-state {
+        .ag-layout-auto-height {
+            .ag-center-cols-container,
+            .ag-center-cols-viewport {
+                min-height: 150px !important;
+            }
+        }
+    }
+}
+
+// Flex-center content in spanned (merged) expression/field cells so that
+// row-spanning cells render their content vertically centered.
+:host ::ng-deep .ag-cell.ag-cell-value[col-id='expression'],
+:host ::ng-deep .ag-cell.ag-cell-value[col-id^='field_'] {
+    display: flex;
+    align-items: center;
+}
+
+:host ::ng-deep .ag-header-cell[col-id='selection'] {
+    border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+:host ::ng-deep .ag-cell[col-id='selection'] .ag-cell-wrapper > .ag-row-drag,
+:host ::ng-deep .ag-cell[col-id='selection'] .ag-cell-wrapper > .ag-drag-handle,
+:host ::ng-deep .ag-cell[col-id='selection'] .ag-cell-wrapper > .ag-selection-checkbox {
+    display: none !important;
+}
+
+:host ::ng-deep .ag-cell[col-id='selection'] .ag-cell-wrapper > .ag-row-drag:active {
+    cursor: grabbing;
+}

@@ -1,11 +1,12 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-icon-button',
     standalone: true,
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltip],
     template: `
         <button
             type="button"
@@ -15,6 +16,7 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
             (click)="onButtonClick()"
             [disabled]="disabled"
             [attr.aria-label]="ariaLabel"
+            [matTooltip]="tooltip"
         >
             <app-svg-icon
                 [icon]="icon"
@@ -59,6 +61,7 @@ export class IconButtonComponent {
     @Input() icon: string = '';
     @Input() size: string = '1.5rem';
     @Input() ariaLabel: string = '';
+    @Input() tooltip: string = '';
     @Input() disabled: boolean = false;
     @Output() onClick = new EventEmitter<void>();
 

@@ -97,7 +97,18 @@ class SubGraphNode:
 
         subgraph_input = self._prepare_subgraph_input(state)
 
-        self._send_start_message(state, subgraph_input, writer, subgraph_execution_id)
+        sysvars = state.get("system_variables") or {}
+        state["system_variables"] = sysvars  # ensure attached before deep-copy
+
+        start_order = sysvars.get("execution_order", 0)
+        sysvars["execution_order"] = start_order + 1
+        self._send_start_message(
+            state,
+            subgraph_input,
+            writer,
+            subgraph_execution_id,
+            execution_order=start_order,
+        )
 
         subgraph_state = self._create_subgraph_state(state, subgraph_input)
         compiled_subgraph = self.build(initial_state=subgraph_input)
@@ -106,18 +117,28 @@ class SubGraphNode:
             compiled_subgraph, subgraph_state, writer, subgraph_execution_id
         )
 
+        # advance parent counter past the range the child consumed
+        child_order = (result.get("system_variables") or {}).get(
+            "execution_order", sysvars["execution_order"]
+        )
+        sysvars["execution_order"] = max(sysvars["execution_order"], child_order)
+
         updated_state = self._process_subgraph_result(state, subgraph_input, result)
 
+        finish_order = sysvars["execution_order"]
+        sysvars["execution_order"] = finish_order + 1
         self._send_finish_message(
             updated_state,
             result["variables"].model_dump(),
             writer,
             subgraph_execution_id,
+            execution_order=finish_order,
         )
 
         return {
             "variables": updated_state["variables"],
             "state_history": updated_state["state_history"],
+            "system_variables": sysvars,
         }
 
     def _prepare_subgraph_input(self, state) -> dict:
@@ -125,7 +146,12 @@ class SubGraphNode:
         return map_variables_to_input(state["variables"], self.input_map)
 
     def _send_start_message(
-        self, state, subgraph_input, writer: StreamWriter, subgraph_execution_id
+        self,
+        state,
+        subgraph_input,
+        writer: StreamWriter,
+        subgraph_execution_id,
+        execution_order: int = 0,
     ):
         """Send subgraph start message to writer."""
         start_message_data = SubGraphStartMessageData(
@@ -137,7 +163,7 @@ class SubGraphNode:
         graph_message = GraphMessage(
             session_id=self.session_id,
             name=self.node_name,
-            execution_order=0,
+            execution_order=execution_order,
             message_data=start_message_data,
         )
         writer(graph_message)
@@ -247,6 +273,7 @@ class SubGraphNode:
         subgraph_output,
         writer: StreamWriter,
         subgraph_execution_id,
+        execution_order: int = 0,
     ):
         """Send subgraph finish message to writer."""
         finish_message_data = SubGraphFinishMessageData(
@@ -259,7 +286,7 @@ class SubGraphNode:
         graph_message = GraphMessage(
             session_id=self.session_id,
             name=self.node_name,
-            execution_order=0,
+            execution_order=execution_order,
             message_data=finish_message_data,
         )
         writer(graph_message)

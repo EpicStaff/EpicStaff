@@ -66,6 +66,8 @@
                 [class.search-bar__nav-btn--disabled]="isPrevDisabled()"
                 [disabled]="isPrevDisabled()"
                 (click)="onPrev()"
+                matTooltip="Previous match"
+                matTooltipPosition="above"
             >
                 <app-svg-icon
                     icon="chevron-left"
@@ -78,6 +80,8 @@
                 [class.search-bar__nav-btn--disabled]="isNextDisabled()"
                 [disabled]="isNextDisabled()"
                 (click)="onNext()"
+                matTooltip="Next match"
+                matTooltipPosition="above"
             >
                 <app-svg-icon
                     icon="chevron-right"

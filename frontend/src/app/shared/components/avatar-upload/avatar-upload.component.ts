@@ -1,5 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { take } from 'rxjs';
 
 import { ToastService } from '../../../services/notifications';
@@ -11,7 +12,7 @@ import { ImageCropperDialogComponent } from './image-cropper-dialog/image-croppe
     selector: 'app-avatar-upload',
     templateUrl: './avatar-upload.component.html',
     styleUrls: ['./avatar-upload.component.scss'],
-    imports: [FileUploaderComponent, AppSvgIconComponent],
+    imports: [FileUploaderComponent, AppSvgIconComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AvatarUploadComponent {

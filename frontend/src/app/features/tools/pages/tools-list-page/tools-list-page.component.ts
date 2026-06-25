@@ -1,6 +1,7 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { ButtonComponent, TabButtonComponent } from '@shared/components';
 import { tap } from 'rxjs/operators';
@@ -26,6 +27,7 @@ import { ToolsSearchService } from '../../services/tools-search.service';
         FormsModule,
         AppSvgIconComponent,
         HideInlineSubtitleOnOverflowDirective,
+        MatTooltipModule,
     ],
     templateUrl: './tools-list-page.component.html',
     styleUrls: ['./tools-list-page.component.scss'],
@@ -33,7 +35,6 @@ import { ToolsSearchService } from '../../services/tools-search.service';
 })
 export class ToolsListPageComponent implements OnDestroy {
     public tabs = [
-        // { label: 'Built-in', link: 'built-in' },
         { label: 'Custom', link: 'custom' },
         { label: 'MCP', link: 'mcp' },
     ];

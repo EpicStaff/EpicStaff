@@ -10,6 +10,7 @@
 <label class="switch">
     <input
         type="checkbox"
+        [attr.aria-label]="ariaLabel() || label() || 'Toggle'"
         [checked]="checked"
         (click)="$event.preventDefault(); onToggle()"
     />

@@ -8,6 +8,7 @@ export enum NodeType {
     EDGE = 'edge',
     START = 'start',
     TABLE = 'table',
+    CLASSIFICATION_TABLE = 'classification-decision-table',
     NOTE = 'note',
     FILE_EXTRACTOR = 'file-extractor',
     WEBHOOK_TRIGGER = 'webhook-trigger',

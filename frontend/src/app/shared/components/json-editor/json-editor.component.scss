@@ -1,7 +1,6 @@
 :host ::ng-deep .monaco-editor {
     --vscode-focusBorder: transparent !important;
 
-    // Fix line number gutter padding
     .margin-view-overlays {
         padding-left: 0 !important;
         padding-right: 0 !important;
@@ -55,7 +54,7 @@
                 .json-icon {
                     font-size: 1.2rem;
                     margin-right: 0.5rem;
-                    color: #e6bf3f; // Purple color for JSON icon
+                    color: #e6bf3f;
                 }
             }
 
@@ -135,11 +134,10 @@
         min-height: 300px;
     }
 
-    /* Static resize handle below the editor container */
     .editor-resize-handle {
         width: 100%;
         height: 16px;
-        background: #2b2b2b; // add a background for visibility
+        background: #2b2b2b;
         cursor: ns-resize;
         display: flex;
         align-items: center;
@@ -163,7 +161,6 @@
     }
 }
 
-/* Spinner animation */
 @keyframes spin {
     to {
         transform: rotate(360deg);
@@ -177,4 +174,46 @@
     width: 30px;
     height: 30px;
     animation: spin 1s linear infinite;
+}
+
+.json-errors {
+    margin-top: 8px;
+    border: 1px solid rgba(255, 85, 85, 0.4);
+    border-radius: 6px;
+    background-color: rgba(255, 85, 85, 0.06);
+    overflow: hidden;
+
+    .json-errors-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+        padding: 8px 12px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: #ff5555;
+        font-weight: 600;
+        font-size: 0.85rem;
+        text-align: left;
+    }
+
+    .json-errors-caret {
+        display: inline-block;
+        width: 0.8rem;
+        font-size: 0.7rem;
+    }
+
+    .json-errors-list {
+        margin: 0;
+        padding: 0 12px 10px 28px;
+        list-style: disc;
+
+        li {
+            color: #ff8a8a;
+            font-size: 0.8rem;
+            line-height: 1.4;
+            margin-bottom: 4px;
+        }
+    }
 }

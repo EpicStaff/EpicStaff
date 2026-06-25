@@ -49,7 +49,8 @@
                 <div
                     *ngIf="cardState === 'adding'"
                     class="icon-container add-icon-container"
-                    title="Add Agent"
+                    matTooltip="Add agent"
+                    matTooltipPosition="left"
                     (click)="onAddAgentClick()"
                 >
                     <app-svg-icon
@@ -62,7 +63,8 @@
                 <div
                     *ngIf="cardState !== 'adding'"
                     class="icon-container remove-icon-container"
-                    title="Remove Agent"
+                    matTooltip="Remove agent"
+                    matTooltipPosition="left"
                     (click)="onRemoveAgentClick()"
                 >
                     <app-svg-icon
@@ -190,7 +192,6 @@
                                     *ngIf="tool.type !== 'python-tool'"
                                     icon="tools"
                                     size="16px"
-                                    [class.tool-config]="tool.type === 'tool-config'"
                                 />
                                 <span class="tool-name">{{ getToolDisplayName(tool) }}</span>
                             </div>

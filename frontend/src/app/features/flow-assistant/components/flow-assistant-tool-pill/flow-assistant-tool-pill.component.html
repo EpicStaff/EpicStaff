@@ -1,0 +1,30 @@
+<div class="tool-pill">
+    <button
+        type="button"
+        class="tool-pill__header"
+        (click)="toggle()"
+        [attr.aria-expanded]="expanded()"
+    >
+        <app-svg-icon
+            [icon]="expanded() ? 'chevron-down' : 'chevron-right'"
+            size="0.75rem"
+        />
+        <span class="tool-pill__count"> Used {{ tools().length }} {{ tools().length === 1 ? 'tool' : 'tools' }} </span>
+    </button>
+
+    @if (expanded()) {
+        <ul class="tool-pill__list">
+            @for (tool of tools(); track tool.callId) {
+                <li class="tool-pill__item">
+                    <div class="tool-pill__item-label">{{ tool.label }}</div>
+                    @if (hasArgs(tool)) {
+                        <div class="tool-pill__item-args">{{ formatArgs(tool.args) }}</div>
+                    }
+                    @if (tool.content) {
+                        <div class="tool-pill__item-result">{{ truncateResult(tool.content) }}</div>
+                    }
+                </li>
+            }
+        </ul>
+    }
+</div>

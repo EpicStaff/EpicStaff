@@ -4,6 +4,8 @@
         <button
             class="storage-tree__header-close"
             aria-label="Close panel"
+            matTooltip="Close"
+            matTooltipPosition="below"
             (click)="closeSidebar.emit()"
         >
             <app-svg-icon
@@ -18,6 +20,8 @@
         <button
             class="storage-tree__toolbar-btn"
             aria-label="Add folder"
+            matTooltip="Create folder"
+            matTooltipPosition="above"
             (click)="onAddFolderClick()"
         >
             <app-svg-icon
@@ -28,6 +32,8 @@
         <button
             class="storage-tree__toolbar-btn"
             aria-label="More options"
+            matTooltip="More options"
+            matTooltipPosition="above"
             (click)="onMoreOptionsClick($event)"
         >
             <app-svg-icon
@@ -124,6 +130,8 @@
                     <button
                         class="storage-tree__hover-btn storage-tree__hover-btn--plus"
                         aria-label="Add folder"
+                        matTooltip="Create folder"
+                        matTooltipPosition="above"
                         (click)="onAddFolderClickForNode($event, node)"
                     >
                         <app-svg-icon
@@ -134,6 +142,8 @@
                     <button
                         class="storage-tree__hover-btn"
                         aria-label="More"
+                        matTooltip="More options"
+                        matTooltipPosition="above"
                         (click)="onKebabClick($event, node)"
                     >
                         <app-svg-icon
@@ -176,6 +186,8 @@
             class="storage-tree__rename-btn storage-tree__rename-btn--cancel"
             type="button"
             aria-label="Cancel rename"
+            matTooltip="Cancel"
+            matTooltipPosition="above"
             (mousedown)="$event.preventDefault()"
             (click)="onRenameCancel($event)"
         >
@@ -188,6 +200,8 @@
             class="storage-tree__rename-btn storage-tree__rename-btn--confirm"
             type="button"
             aria-label="Confirm rename"
+            matTooltip="Confirm"
+            matTooltipPosition="above"
             (mousedown)="$event.preventDefault()"
             (click)="onRenameConfirm()"
         >

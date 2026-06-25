@@ -1,6 +1,7 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import {
     SelectStorageFilesDialogComponent,
@@ -13,7 +14,7 @@ import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app
 
 @Component({
     selector: 'app-flow-files-button',
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, MatTooltip],
     templateUrl: './flow-files-button.component.html',
     styleUrls: ['./flow-files-button.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

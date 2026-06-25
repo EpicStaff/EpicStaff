@@ -126,6 +126,14 @@ export interface ScheduleTriggerNodeModel extends BaseNodeModel {
     data: ScheduleTriggerNodeData;
 }
 
+export interface ClassificationDecisionTableNodeModel extends BaseNodeModel {
+    type: NodeType.CLASSIFICATION_TABLE;
+    data: {
+        name?: string;
+        table: any;
+    };
+}
+
 export interface EndNodeData {
     output_map: Record<string, unknown>;
 }
@@ -163,5 +171,6 @@ export type NodeModel =
     | WebhookTriggerNodeModel
     | TelegramTriggerNodeModel
     | ScheduleTriggerNodeModel
+    | ClassificationDecisionTableNodeModel
     | EndNodeModel
     | CodeAgentNodeModel;
