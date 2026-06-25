@@ -42,13 +42,20 @@ type ServerMessage =
     | SelectionChangedMessage
     | NodeLockedMessage
     | NodeUnlockedMessage
-    | LockStateMessage;
+    | LockStateMessage
+    | SaveFailedMessage;
 
 type PresenceStateMessage = { type: 'presence_state'; editors: EditorInfo[] };
 type UserJoinedMessage = { type: 'user_joined'; editor: EditorInfo };
 type UserLeftMessage = { type: 'user_left'; user_id: number };
 type WsErrorMessage = { type: 'error'; code: string; message: string };
 
+export type SaveFailedMessage = {
+    type: 'save_failed';
+    graph_id: number;
+    reason: string;
+    saved_at: string;
+};
 export type GraphStateMessage = { type: 'graph_state'; flow: GraphDto };
 export type NodeCreatedMessage = {
     type: 'node_created';
@@ -179,6 +186,7 @@ export class GraphCollaborationWsService {
     public readonly lockedNodeFields = signal<Map<string, Map<string, EditorInfo>>>(new Map());
 
     public graphSaved$ = new Subject<GraphSavedMessage>();
+    public saveFailed$ = new Subject<SaveFailedMessage>();
     public graphState$ = new Subject<GraphStateMessage>();
     public nodeCreated$ = new Subject<NodeCreatedMessage>();
     public nodeUpdated$ = new Subject<NodeUpdatedMessage>();
@@ -325,6 +333,9 @@ export class GraphCollaborationWsService {
                 break;
             case 'graph_saved':
                 this.graphSaved$.next(message);
+                break;
+            case 'save_failed':
+                this.saveFailed$.next(message);
                 break;
             case 'node_created':
                 this.nodeCreated$.next(message);

@@ -218,7 +218,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             if (event.saved_by.user_id !== currentUserId) {
                 const savedBy = event.saved_by.display_name ?? `User ${event.saved_by.user_id}`;
                 this.savedByBanner.set(savedBy);
+                this.savedFlowState.set(cloneFlowState(this.currentFlowState()));
             }
+        });
+
+        this.wsService.saveFailed$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
+            this.toastService.error(`Auto-save failed: ${event.reason}`, 5000, 'bottom-right');
         });
 
         this.wsService.graphState$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
