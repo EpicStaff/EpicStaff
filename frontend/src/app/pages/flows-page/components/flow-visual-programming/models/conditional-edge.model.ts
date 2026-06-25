@@ -1,8 +1,4 @@
-import {
-    CreatePythonCodeRequest,
-    CustomPythonCode,
-    GetPythonCodeRequest,
-} from '../../../../../features/tools/models/python-code.model';
+import { CustomPythonCode, GetPythonCodeRequest } from '../../../../../features/tools/models/python-code.model';
 
 export interface ConditionalEdge {
     id: number;
@@ -11,21 +7,6 @@ export interface ConditionalEdge {
     python_code: GetPythonCodeRequest;
     input_map: Record<string, unknown>;
     metadata: Record<string, unknown>;
-}
-export interface GetConditionalEdgeRequest {
-    id: number;
-    graph: number;
-    source_node_id: number;
-    python_code: GetPythonCodeRequest;
-    input_map: Record<string, unknown>;
-    metadata: Record<string, unknown>;
-}
-export interface CreateConditionalEdgeRequest {
-    graph: number;
-    source_node_id: number | null;
-    python_code: CreatePythonCodeRequest;
-    input_map: Record<string, unknown>;
-    metadata?: Record<string, unknown>;
 }
 
 export interface CustomConditionalEdgeModelForNode {

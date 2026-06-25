@@ -35,7 +35,7 @@ export class ImportExportService {
 
     private get sessionsApiUrl(): string {
         return this.configService.apiUrl + 'sessions/';
-    }    
+    }
 
     importFlow(file: File, settings: ImportFlowRequestOptions): Observable<ImportResult> {
         const formData = new FormData();
@@ -63,11 +63,11 @@ export class ImportExportService {
         );
     }
 
-    exportSession(id: number, format: ExportFormat): Observable<Blob> {
-        return this.http.get(`${this.sessionsApiUrl}${id}/export/?export_format=${format}`, {
-            responseType: 'blob',
-        });
-    }
+    // exportSession(id: number, format: ExportFormat): Observable<Blob> {
+    //     return this.http.get(`${this.sessionsApiUrl}${id}/export/?export_format=${format}`, {
+    //         responseType: 'blob',
+    //     });
+    // }
 
     bulkExportSessions(ids: number[], format: ExportFormat): Observable<Blob> {
         return this.http.post(
