@@ -50,10 +50,25 @@ type UserLeftMessage = { type: 'user_left'; user_id: number };
 type WsErrorMessage = { type: 'error'; code: string; message: string };
 
 export type GraphStateMessage = { type: 'graph_state'; flow: GraphDto };
-export type NodeCreatedMessage = { type: 'node_created'; node: NodeModel; editor: EditorInfo };
-export type NodeUpdatedMessage = { type: 'node_updated'; node: NodeModel; editor: EditorInfo };
+export type NodeCreatedMessage = {
+    type: 'node_created';
+    node: Record<string, unknown>;
+    list_key: string;
+    editor: EditorInfo;
+};
+export type NodeUpdatedMessage = {
+    type: 'node_updated';
+    node: Record<string, unknown>;
+    list_key: string;
+    editor: EditorInfo;
+};
 export type NodesDeletedMessage = { type: 'nodes_deleted'; refs: EntryDeleteRef[]; editor: EditorInfo };
-export type ConnectionCreatedMessage = { type: 'connection_created'; connection: ConnectionModel; editor: EditorInfo };
+export type ConnectionCreatedMessage = {
+    type: 'connection_created';
+    connection: Record<string, unknown>;
+    list_key: string;
+    editor: EditorInfo;
+};
 export type ConnectionDeletedMessage = {
     type: 'connection_deleted';
     connection_id: number | null;
@@ -64,8 +79,9 @@ export type ConnectionDeletedMessage = {
 export type ConnectionsDeletedMessage = { type: 'connections_deleted'; refs: EntryDeleteRef[]; editor: EditorInfo };
 export type ConnectionWaypointsUpdatedMessage = {
     type: 'connection_waypoints_updated';
-    connection_id: string;
+    connection_id: number | string;
     waypoints: IPoint[];
+    list_key: string;
     editor: EditorInfo;
 };
 export type CursorMovedMessage = { type: 'cursor_moved'; x: number; y: number; editor: EditorInfo };
@@ -124,6 +140,25 @@ export function nodeTypeToListKey(type: NodeType): string | null {
     }
 }
 
+export function nodeToWsPayload(node: NodeModel): Record<string, unknown> {
+    const { id, backendId, ...rest } = node as unknown as Record<string, unknown>;
+    return backendId != null ? { ...rest, id: backendId } : { ...rest, temp_id: id };
+}
+
+export function connectionToWsPayload(
+    conn: ConnectionModel,
+    sourceNode: NodeModel,
+    targetNode: NodeModel
+): Record<string, unknown> {
+    const connId = conn.data?.id != null ? { id: conn.data.id } : { temp_id: conn.id };
+    const startRef =
+        sourceNode.backendId != null ? { start_node_id: sourceNode.backendId } : { start_temp_id: sourceNode.id };
+    const endRef =
+        targetNode.backendId != null ? { end_node_id: targetNode.backendId } : { end_temp_id: targetNode.id };
+    const waypoints = conn.waypoints ?? [];
+    return { ...connId, ...startRef, ...endRef, waypoints, metadata: { waypoints } };
+}
+
 @Injectable({ providedIn: 'root' })
 export class GraphCollaborationWsService {
     private configService = inject(ConfigService);
@@ -157,7 +192,11 @@ export class GraphCollaborationWsService {
     public nodeUnlocked$ = new Subject<NodeUnlockedMessage>();
 
     private readonly cursorPipe$ = new Subject<{ x: number; y: number }>();
-    private readonly waypointPipe$ = new Subject<{ connection_id: string; waypoints: IPoint[]; listKey: string }>();
+    private readonly waypointPipe$ = new Subject<{
+        connection_id: number | string;
+        waypoints: IPoint[];
+        listKey: string;
+    }>();
     private lastNodeDragSendAt = 0;
     private lastSentCursorX = 0;
     private lastSentCursorY = 0;
@@ -356,14 +395,14 @@ export class GraphCollaborationWsService {
         const list_key = nodeTypeToListKey(node.type);
         if (!list_key) return;
         const editor = this.buildEditorInfo();
-        if (editor) this.sendRaw({ type: 'node_created', node, list_key, editor });
+        if (editor) this.sendRaw({ type: 'node_created', node: nodeToWsPayload(node), list_key, editor });
     }
 
     public sendNodeUpdated(node: NodeModel): void {
         const list_key = nodeTypeToListKey(node.type);
         if (!list_key) return;
         const editor = this.buildEditorInfo();
-        if (editor) this.sendRaw({ type: 'node_updated', node, list_key, editor });
+        if (editor) this.sendRaw({ type: 'node_updated', node: nodeToWsPayload(node), list_key, editor });
     }
 
     public sendNodePositionDuringDrag(node: NodeModel): void {
@@ -373,7 +412,7 @@ export class GraphCollaborationWsService {
         const list_key = nodeTypeToListKey(node.type);
         if (!list_key) return;
         const editor = this.buildEditorInfo();
-        if (editor) this.sendRaw({ type: 'node_updated', node, list_key, editor });
+        if (editor) this.sendRaw({ type: 'node_updated', node: nodeToWsPayload(node), list_key, editor });
     }
 
     public sendNodesDeleted(refs: EntryDeleteRef[]): void {
@@ -381,9 +420,20 @@ export class GraphCollaborationWsService {
         if (editor) this.sendRaw({ type: 'nodes_deleted', refs, editor });
     }
 
-    public sendConnectionCreated(connection: ConnectionModel, listKey: string): void {
+    public sendConnectionCreated(
+        conn: ConnectionModel,
+        listKey: string,
+        sourceNode: NodeModel,
+        targetNode: NodeModel
+    ): void {
         const editor = this.buildEditorInfo();
-        if (editor) this.sendRaw({ type: 'connection_created', connection, list_key: listKey, editor });
+        if (editor)
+            this.sendRaw({
+                type: 'connection_created',
+                connection: connectionToWsPayload(conn, sourceNode, targetNode),
+                list_key: listKey,
+                editor,
+            });
     }
 
     public sendConnectionDeleted(ref: EntryDeleteRef): void {
@@ -403,7 +453,8 @@ export class GraphCollaborationWsService {
         if (editor) this.sendRaw({ type: 'connections_deleted', refs, editor });
     }
 
-    public sendConnectionWaypointsUpdated(connection_id: string, waypoints: IPoint[], listKey: string): void {
+    public sendConnectionWaypointsUpdated(conn: ConnectionModel, waypoints: IPoint[], listKey: string): void {
+        const connection_id: number | string = conn.data?.id ?? conn.id;
         this.waypointPipe$.next({ connection_id, waypoints, listKey });
     }
 

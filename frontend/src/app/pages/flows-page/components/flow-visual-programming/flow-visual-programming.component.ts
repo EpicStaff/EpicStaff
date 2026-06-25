@@ -65,10 +65,12 @@ import { NodeType } from '../../../../visual-programming/core/enums/node-type';
 import { FlowModel } from '../../../../visual-programming/core/models/flow.model';
 import { ScheduleTriggerNodeModel } from '../../../../visual-programming/core/models/node.model';
 import { NodeModel } from '../../../../visual-programming/core/models/node.model';
+import { CustomPortId } from '../../../../visual-programming/core/models/port.model';
 import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/flow-graph.component';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
+import { createFlowConnection } from '../../../../visual-programming/utils/connection.factory';
 import {
     createStartNode,
     hasStartNode,
@@ -76,6 +78,7 @@ import {
     normalizeFlowPorts,
 } from '../../../../visual-programming/utils/load';
 import { rewriteLegacyOnceScheduleName } from '../../../../visual-programming/utils/load/nodes/schedule-trigger-node.mapper';
+import { getInputPortRole, getOutputPortRole } from '../../../../visual-programming/utils/node-port-roles';
 import {
     buildBulkSavePayload,
     buildUuidToBackendIdMap,
@@ -214,12 +217,39 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             this.flowService.setFlow(normalizedFlow);
         });
 
-        this.wsService.nodeCreated$
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((msg) => this.flowService.addNode(msg.node));
+        this.wsService.nodeCreated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            const p = msg.node as Record<string, unknown>;
+            if (p['temp_id']) {
+                const { temp_id, ...rest } = p;
+                this.flowService.addNode({ ...rest, id: temp_id, backendId: null } as unknown as NodeModel);
+            }
+        });
 
         this.wsService.nodeUpdated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
-            this.flowService.updateNode(msg.node);
+            const p = msg.node as Record<string, unknown>;
+            if (p['temp_id']) {
+                const existing = this.flowService.nodes().find((n) => n.id === p['temp_id']);
+                if (existing) {
+                    const { temp_id, ...rest } = p;
+                    this.flowService.updateNode({
+                        ...existing,
+                        ...rest,
+                        id: temp_id,
+                        backendId: null,
+                    } as unknown as NodeModel);
+                }
+            } else if (typeof p['id'] === 'number') {
+                const existing = this.flowService.nodes().find((n) => n.backendId === p['id']);
+                if (existing) {
+                    const { id, ...rest } = p;
+                    this.flowService.updateNode({
+                        ...existing,
+                        ...rest,
+                        id: existing.id,
+                        backendId: id,
+                    } as unknown as NodeModel);
+                }
+            }
         });
 
         this.wsService.nodesDeleted$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
@@ -236,9 +266,42 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             }
         });
 
-        this.wsService.connectionCreated$
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((msg) => this.flowService.addConnection(msg.connection));
+        this.wsService.connectionCreated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            const p = msg.connection as Record<string, unknown>;
+            const nodes = this.flowService.nodes();
+            const sourceNode =
+                p['start_node_id'] != null
+                    ? nodes.find((n) => n.backendId === p['start_node_id'])
+                    : nodes.find((n) => n.id === p['start_temp_id']);
+            const targetNode =
+                p['end_node_id'] != null
+                    ? nodes.find((n) => n.backendId === p['end_node_id'])
+                    : nodes.find((n) => n.id === p['end_temp_id']);
+            if (!sourceNode || !targetNode) {
+                console.warn('[WS] connection_created: cannot resolve nodes', p);
+                return;
+            }
+            const sourcePortId: CustomPortId = `${sourceNode.id}_${getOutputPortRole(sourceNode.type)}`;
+            const targetPortId: CustomPortId = `${targetNode.id}_${getInputPortRole(targetNode.type)}`;
+            const conn = createFlowConnection(sourceNode.id, targetNode.id, sourcePortId, targetPortId);
+            const connId = (p['temp_id'] as string | undefined) ?? String(p['id']);
+            const data =
+                typeof p['id'] === 'number'
+                    ? {
+                          id: p['id'] as number,
+                          start_node_id: (p['start_node_id'] as number) ?? 0,
+                          end_node_id: (p['end_node_id'] as number) ?? 0,
+                          graph: 0,
+                          metadata: (p['metadata'] as Record<string, unknown>) ?? {},
+                      }
+                    : null;
+            this.flowService.addConnection({
+                ...conn,
+                id: connId,
+                data,
+                waypoints: p['waypoints'] as typeof conn.waypoints,
+            });
+        });
 
         this.wsService.connectionDeleted$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
             let fId: string | undefined;
@@ -262,9 +325,13 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             if (fIds.length > 0) this.flowService.removeConnectionsInBatch(fIds);
         });
 
-        this.wsService.connectionWaypointsUpdated$
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((msg) => this.flowService.updateConnectionWaypoints(msg.connection_id, msg.waypoints));
+        this.wsService.connectionWaypointsUpdated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            const fId =
+                typeof msg.connection_id === 'number'
+                    ? this.flowService.connections().find((c) => c.data?.id === msg.connection_id)?.id
+                    : this.flowService.connections().find((c) => c.id === msg.connection_id)?.id;
+            if (fId) this.flowService.updateConnectionWaypoints(fId, msg.waypoints);
+        });
     }
 
     public ngOnInit(): void {

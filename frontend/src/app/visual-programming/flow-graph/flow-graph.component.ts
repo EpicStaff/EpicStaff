@@ -420,7 +420,16 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.flowService.removeConnection(event.connectionId);
         this.wsService.sendConnectionDeleted(deleteRef);
         this.flowService.addConnection(updatedConnection);
-        this.wsService.sendConnectionCreated(updatedConnection, this.getConnectionListKey(updatedConnection));
+        const reassignSourceNode = this.flowService.nodes().find((n) => n.id === newSourceNodeId);
+        const reassignTargetNode = this.flowService.nodes().find((n) => n.id === newTargetNodeId);
+        if (reassignSourceNode && reassignTargetNode) {
+            this.wsService.sendConnectionCreated(
+                updatedConnection,
+                this.getConnectionListKey(updatedConnection),
+                reassignSourceNode,
+                reassignTargetNode
+            );
+        }
 
         this.toastService.success('Connection reassigned successfully', 3000, 'bottom-right');
     }
@@ -468,7 +477,17 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         );
 
         this.flowService.addConnection(newConnection);
-        this.wsService.sendConnectionCreated(newConnection, this.getConnectionListKey(newConnection));
+        const connNodes = this.flowService.nodes();
+        const connSourceNode = connNodes.find((n) => n.id === sourceNodeId);
+        const connTargetNode = connNodes.find((n) => n.id === targetNodeId);
+        if (connSourceNode && connTargetNode) {
+            this.wsService.sendConnectionCreated(
+                newConnection,
+                this.getConnectionListKey(newConnection),
+                connSourceNode,
+                connTargetNode
+            );
+        }
 
         const nodes = this.flowService.nodes();
         const intersects = getConnectionIntersectingNodes(newConnection, nodes);
@@ -593,11 +612,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         if (waypoints.length > existingCount) {
             this.userAdjustedConnectionIds.add(connectionId);
             this.flowService.updateConnectionWaypoints(connectionId, waypoints, true);
-            this.wsService.sendConnectionWaypointsUpdated(
-                connectionId,
-                waypoints,
-                this.getConnectionListKey(connection)
-            );
+            this.wsService.sendConnectionWaypointsUpdated(connection, waypoints, this.getConnectionListKey(connection));
             return;
         }
 
@@ -618,7 +633,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             normalizedWaypoints.length > 0
         );
         this.wsService.sendConnectionWaypointsUpdated(
-            connectionId,
+            connection,
             isSameElements ? waypoints : normalizedWaypoints,
             this.getConnectionListKey(connection)
         );
@@ -1208,7 +1223,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     for (const connection of connectionsAfterArrange) {
                         const waypoints = connection.waypoints ?? [];
                         this.wsService.sendConnectionWaypointsUpdated(
-                            connection.id,
+                            connection,
                             waypoints,
                             this.getConnectionListKey(connection)
                         );
