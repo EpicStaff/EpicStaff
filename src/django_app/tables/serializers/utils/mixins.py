@@ -284,8 +284,18 @@ class WebhookCreationMixin:
             # Provider changed — delete the old config to avoid orphan
             if trigger.provider_type == ProviderType.NGROK:
                 NgrokWebhookConfig.objects.filter(trigger=trigger).delete()
+                logger.info(
+                    "Deleted NgrokWebhookConfig for trigger pk=%s (provider_type=%s)",
+                    trigger.pk,
+                    trigger.provider_type,
+                )
             elif trigger.provider_type == ProviderType.LOCALHOST:
                 LocalhostWebhookConfig.objects.filter(trigger=trigger).delete()
+                logger.info(
+                    "Deleted LocalhostWebhookConfig for trigger pk=%s (provider_type=%s)",
+                    trigger.pk,
+                    trigger.provider_type,
+                )
             trigger.provider_type = provider_type
             trigger.save(update_fields=["provider_type"])
 

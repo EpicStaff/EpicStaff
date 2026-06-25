@@ -44,6 +44,7 @@ class WebhookTriggerNestedSerializer(WebhookCreationMixin, serializers.ModelSeri
         # Update the existing trigger in place (no get_or_create) so a
         # provider_type change re-points the same row instead of spawning
         # a new WebhookTrigger.
+        old_provider = instance.provider_type
         new_provider = validated_data.get("provider_type", instance.provider_type)
         instance.path = validated_data.get("path", instance.path)
         instance.provider_type = new_provider
@@ -52,16 +53,30 @@ class WebhookTriggerNestedSerializer(WebhookCreationMixin, serializers.ModelSeri
         ngrok_data = validated_data.get("ngrok_config")
         localhost_data = validated_data.get("localhost_config")
 
+        if new_provider != old_provider:
+            if old_provider == ProviderType.NGROK:
+                NgrokWebhookConfig.objects.filter(trigger=instance).delete()
+                logger.info(
+                    "Deleted NgrokWebhookConfig for trigger pk=%s (provider_type=%s)",
+                    instance.pk,
+                    old_provider,
+                )
+            elif old_provider == ProviderType.LOCALHOST:
+                LocalhostWebhookConfig.objects.filter(trigger=instance).delete()
+                logger.info(
+                    "Deleted LocalhostWebhookConfig for trigger pk=%s (provider_type=%s)",
+                    instance.pk,
+                    old_provider,
+                )
+
         if new_provider == ProviderType.NGROK and ngrok_data:
             NgrokWebhookConfig.objects.update_or_create(
                 trigger=instance, defaults=ngrok_data
             )
-            LocalhostWebhookConfig.objects.filter(trigger=instance).delete()
         elif new_provider == ProviderType.LOCALHOST and localhost_data:
             LocalhostWebhookConfig.objects.update_or_create(
                 trigger=instance, defaults=localhost_data
             )
-            NgrokWebhookConfig.objects.filter(trigger=instance).delete()
 
         return instance
 

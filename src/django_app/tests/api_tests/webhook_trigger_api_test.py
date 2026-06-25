@@ -8,6 +8,7 @@ from tables.models.webhook_models import (
     ProviderType,
     WebhookTrigger,
 )
+from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 
 
 @pytest.mark.django_db
@@ -147,3 +148,109 @@ class TestWebhookTriggerAndNodeAPI:
         trigger = WebhookTrigger.objects.get(path="myLocalhostWebhook")
         assert trigger.provider_type == ProviderType.LOCALHOST
         assert LocalhostWebhookConfig.objects.filter(trigger=trigger).exists()
+
+
+@pytest.mark.django_db
+class TestWebhookTriggerProviderSwitchCleanup:
+    """Cover WebhookTriggerNestedSerializer.update — switching provider_type
+    must delete the orphan config from the previous provider in both
+    directions, and when the provider is cleared entirely."""
+
+    def _update(self, instance, data):
+        serializer = WebhookTriggerNestedSerializer()
+        return serializer.update(instance, data)
+
+    def test_switch_ngrok_to_localhost_deletes_ngrok_config(self):
+        trigger = WebhookTrigger.objects.create(
+            path="switchNgrokToLocal", provider_type=ProviderType.NGROK
+        )
+        NgrokWebhookConfig.objects.create(trigger=trigger, name="ng", auth_token="tok")
+
+        self._update(
+            trigger,
+            {
+                "provider_type": ProviderType.LOCALHOST,
+                "localhost_config": {"name": "lh", "domain": "localhost:8080"},
+            },
+        )
+
+        trigger.refresh_from_db()
+        assert trigger.provider_type == ProviderType.LOCALHOST
+        assert LocalhostWebhookConfig.objects.filter(trigger=trigger).exists()
+        assert not NgrokWebhookConfig.objects.filter(trigger=trigger).exists()
+
+    def test_switch_localhost_to_ngrok_deletes_localhost_config(self):
+        trigger = WebhookTrigger.objects.create(
+            path="switchLocalToNgrok", provider_type=ProviderType.LOCALHOST
+        )
+        LocalhostWebhookConfig.objects.create(
+            trigger=trigger, name="lh", domain="localhost:8080"
+        )
+
+        self._update(
+            trigger,
+            {
+                "provider_type": ProviderType.NGROK,
+                "ngrok_config": {"name": "ng", "auth_token": "tok", "domain": None},
+            },
+        )
+
+        trigger.refresh_from_db()
+        assert trigger.provider_type == ProviderType.NGROK
+        assert NgrokWebhookConfig.objects.filter(trigger=trigger).exists()
+        assert not LocalhostWebhookConfig.objects.filter(trigger=trigger).exists()
+
+    def test_update_deletes_orphan_independent_of_new_config_presence(self):
+        """Internal `update()` contract: cleanup of the old provider's config
+        must not depend on the new provider's config being supplied.
+
+        Note: via the API, `validate()` rejects provider=ngrok/localhost
+        without the matching config, so this exact payload can't reach the
+        endpoint — but the cleanup must not be coupled to config presence
+        (the original bug nested deletion inside the `and X_data` branch).
+        The real API-reachable case of this class of bug is covered by
+        `test_clear_provider_deletes_existing_config`."""
+        trigger = WebhookTrigger.objects.create(
+            path="switchNoData", provider_type=ProviderType.NGROK
+        )
+        NgrokWebhookConfig.objects.create(trigger=trigger, name="ng", auth_token="tok")
+
+        self._update(trigger, {"provider_type": ProviderType.LOCALHOST})
+
+        trigger.refresh_from_db()
+        assert trigger.provider_type == ProviderType.LOCALHOST
+        assert not NgrokWebhookConfig.objects.filter(trigger=trigger).exists()
+
+    def test_clear_provider_deletes_existing_config(self):
+        trigger = WebhookTrigger.objects.create(
+            path="clearProvider", provider_type=ProviderType.LOCALHOST
+        )
+        LocalhostWebhookConfig.objects.create(
+            trigger=trigger, name="lh", domain="localhost:8080"
+        )
+
+        self._update(trigger, {"provider_type": None})
+
+        trigger.refresh_from_db()
+        assert trigger.provider_type is None
+        assert not LocalhostWebhookConfig.objects.filter(trigger=trigger).exists()
+
+    def test_no_provider_change_keeps_config(self):
+        """Same provider + new config data updates in place, no deletion."""
+        trigger = WebhookTrigger.objects.create(
+            path="sameProvider", provider_type=ProviderType.NGROK
+        )
+        NgrokWebhookConfig.objects.create(trigger=trigger, name="ng", auth_token="old")
+
+        self._update(
+            trigger,
+            {
+                "provider_type": ProviderType.NGROK,
+                "ngrok_config": {"name": "ng", "auth_token": "new", "domain": None},
+            },
+        )
+
+        trigger.refresh_from_db()
+        assert trigger.provider_type == ProviderType.NGROK
+        cfg = NgrokWebhookConfig.objects.get(trigger=trigger)
+        assert cfg.auth_token == "new"
