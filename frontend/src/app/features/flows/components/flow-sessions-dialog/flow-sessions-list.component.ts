@@ -22,6 +22,8 @@ import {
     IconButtonComponent,
     PaginationControlsComponent,
 } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { catchError, EMPTY, finalize, interval, map, merge, Subject, switchMap, takeUntil } from 'rxjs';
 import { NodeGroup } from 'src/app/shared/models/node-group.model';
 
@@ -50,6 +52,7 @@ import { FlowSessionsTableComponent } from './flow-sessions-table.component';
         FlowSessionNodeFilterDropdownComponent,
         IconButtonComponent,
         ActionDropdownButtonComponent,
+        HasPermissionDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -434,4 +437,7 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
     public onExportItemSelected(item: ActionDropdownItem): void {
         this.onExport(item.value as ExportFormat);
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

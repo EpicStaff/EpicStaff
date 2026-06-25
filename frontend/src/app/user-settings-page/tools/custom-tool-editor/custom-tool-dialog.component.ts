@@ -29,6 +29,8 @@ import {
     HelpTooltipComponent,
     JsonEditorComponent,
 } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import {
     ArgsSchema,
@@ -59,6 +61,7 @@ interface DialogData {
         ButtonComponent,
         HelpTooltipComponent,
         JsonEditorComponent,
+        HasPermissionDirective,
     ],
     templateUrl: './custom-tool-dialog.component.html',
     styleUrls: ['./custom-tool-dialog.component.scss'],
@@ -294,4 +297,7 @@ export class CustomToolDialogComponent implements OnInit, AfterViewInit {
         this.editorHasError = hasError;
         this.cdr.markForCheck();
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

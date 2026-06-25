@@ -8,6 +8,7 @@
         </span>
 
         <app-button
+            *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]"
             [type]="collections().length ? 'primary' : 'outline-primary'"
             [leftIcon]="'plus'"
             (click)="onCreateCollection.emit()"
@@ -28,6 +29,7 @@
             <p class="collections-sidebar__empty">No collections yet</p>
 
             <app-button
+                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]"
                 type="outline-primary"
                 (click)="onCreateCollection.emit()"
             >

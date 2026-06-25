@@ -124,13 +124,25 @@
                 (click)="close()"
                 >Close</app-button
             >
-            <app-button
-                type="primary"
-                [disabled]="form.invalid || !isInputsJsonValid()"
-                (click)="createTool()"
-            >
-                {{ selectedTool ? 'Update' : 'Create' }}
-            </app-button>
+            @if (selectedTool) {
+                <app-button
+                    *appHasPermission="[ResourceCode.Tools, ActionCode.Update]"
+                    type="primary"
+                    [disabled]="form.invalid || !isInputsJsonValid()"
+                    (click)="createTool()"
+                >
+                    Update
+                </app-button>
+            } @else {
+                <app-button
+                    *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
+                    type="primary"
+                    [disabled]="form.invalid || !isInputsJsonValid()"
+                    (click)="createTool()"
+                >
+                    Create
+                </app-button>
+            }
         </div>
     </form>
 </div>

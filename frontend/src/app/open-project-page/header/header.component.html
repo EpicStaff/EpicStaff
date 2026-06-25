@@ -23,6 +23,7 @@
                 </span>
 
                 <app-svg-icon
+                    *appHasPermission="[ResourceCode.Projects, ActionCode.Update]"
                     icon="edit"
                     size="1rem"
                     class="project-name__edit"
@@ -35,6 +36,7 @@
 
     <div class="action-buttons">
         <app-save-with-indicator
+            *appHasPermission="[ResourceCode.Projects, ActionCode.Update]"
             [label]="'Save'"
             [hasUnsavedChanges]="hasUnsavedChanges"
             [isSaving]="isSaving"
@@ -42,6 +44,7 @@
             (save)="onSaveClick()"
         ></app-save-with-indicator>
         <app-button
+            *appHasPermission="[ResourceCode.Flows, ActionCode.Create]"
             type="secondary"
             [leftIcon]="'plus'"
             class="create-flow-btn"

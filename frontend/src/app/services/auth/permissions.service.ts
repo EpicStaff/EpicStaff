@@ -43,6 +43,10 @@ export class PermissionsService implements StorageService {
         return Array.isArray(actions) && actions.includes(action);
     }
 
+    canAny(resource: ResourceCode, actions: ActionCode[]): boolean {
+        return actions.some((action) => this.can(resource, action));
+    }
+
     get isSuperadmin(): boolean {
         return this._isSuperadmin();
     }
