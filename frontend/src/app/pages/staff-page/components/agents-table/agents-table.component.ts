@@ -42,7 +42,6 @@ import {
     MergedConfig,
     TableFullAgent,
 } from '../../../../features/staff/services/full-agent.service';
-import { RealtimeAgentService } from '../../../../features/staff/services/realtime-agent.service';
 import { AgentsService } from '../../../../features/staff/services/staff.service';
 import { ToastService } from '../../../../services/notifications/toast.service';
 import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog/confimation-dialog.service';
@@ -123,7 +122,7 @@ export class AgentsTableComponent {
     private currentCellElement: HTMLElement | null = null;
     private globalClickUnlistener: (() => void) | null = null;
     private globalKeydownUnlistener: (() => void) | null = null;
-    
+
     private childDialogOpen = false;
 
     @Output() dirtyChange = new EventEmitter<boolean>();
@@ -142,7 +141,6 @@ export class AgentsTableComponent {
         private agentsService: AgentsService,
         private renderer: Renderer2,
         private toastService: ToastService,
-        private realtimeAgentService: RealtimeAgentService,
         private confirmationDialogService: ConfirmationDialogService,
         public dialog: Dialog
     ) {}
