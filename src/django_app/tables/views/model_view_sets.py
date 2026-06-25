@@ -4,6 +4,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import NOT_PROVIDED, IntegerField, Prefetch
@@ -253,6 +254,7 @@ from tables.swagger_schemas.twilio_schemas import (
     TWILIO_CONFIGURE_WEBHOOK_POST,
 )
 from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
+from tables.graph_collab.notifications import GraphEditNotifier
 from utils.logger import logger
 
 redis_service = RedisService()
@@ -835,6 +837,19 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
         )
         return Response(data, status=status.HTTP_200_OK)
 
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        instance = self.get_object()
+        instance.refresh_from_db(fields=["save_version"])
+
+        GraphEditNotifier.notify_graph_saved(
+            graph_id=instance.pk,
+            new_save_version=instance.save_version,
+            user=request.user,
+            saved_at=timezone.now().isoformat(),
+        )
+        return response
+
     @action(detail=True, methods=["post"], url_path="save")
     @extend_schema(**_SAVE_FLOW_SWAGGER)
     def save_flow(self, request, pk=None):
@@ -852,6 +867,14 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
         # GraphSaveVersionConflictError propagates → DRF returns 409 automatically.
 
         refreshed = self.get_queryset().get(pk=pk)
+
+        GraphEditNotifier.notify_graph_saved(
+            graph_id=refreshed.pk,
+            new_save_version=refreshed.save_version,
+            user=request.user,
+            saved_at=timezone.now().isoformat(),
+        )
+
         return Response(GraphSerializer(refreshed).data, status=status.HTTP_200_OK)
 
 
@@ -960,6 +983,19 @@ class GraphVersionViewSet(viewsets.ModelViewSet):
             expected_save_version=expected_save_version,
             backup=backup,
         )
+
+        graph_id = result["graph_id"]
+        new_save_version = Graph.objects.values("save_version").get(pk=graph_id)[
+            "save_version"
+        ]
+
+        GraphEditNotifier.notify_graph_saved(
+            graph_id=graph_id,
+            new_save_version=new_save_version,
+            user=request.user,
+            saved_at=timezone.now().isoformat(),
+        )
+
         return Response(result, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="create-graph")

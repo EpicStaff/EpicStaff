@@ -94,6 +94,8 @@ import { FlowUnsavedStateService } from '../../services/flow-unsaved-state.servi
 import { FlowHeaderComponent } from './components/header/flow-header.component';
 import { ShortcutsModalComponent } from './components/shortcuts-modal/shortcuts-modal.component';
 import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
+import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
+import { ProfileService } from '../../../../services/auth/profile.service';
 
 //.
 @Component({
@@ -115,14 +117,18 @@ import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
 })
 export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanComponentDeactivate {
     private readonly destroyRef = inject(DestroyRef);
+    private readonly wsService = inject(GraphCollaborationWsService);
+    private readonly profileService = inject(ProfileService);
     private readonly injector = inject(Injector);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
+    public readonly isEpicChatEnabled: boolean;
     public initialNodeId: string | null = null;
     public isLoaded = signal(false);
     private readonly graphState = signal<GraphDto | null>(null);
     private readonly availableFlowLights = signal<GetGraphLightRequest[]>([]);
     private readonly savedFlowState = signal<FlowModel>({ nodes: [], connections: [] });
+    protected readonly collaborationEditors = this.wsService.editors;
     public readonly loadedFlowState = computed<FlowModel>(() => {
         const graph = this.graphState();
         if (!graph) return { nodes: [], connections: [] };
@@ -181,6 +187,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         private readonly sidePanelService: SidePanelService,
         private readonly llmConfigStorageService: LlmConfigStorageService
     ) {
+        this.isEpicChatEnabled = this.configService.isEpicChatEnabled;
         this.routeParamMap = toSignal(this.route.paramMap, { initialValue: this.route.snapshot.paramMap });
         this.routeQueryParamMap = toSignal(this.route.queryParamMap, {
             initialValue: this.route.snapshot.queryParamMap,
@@ -203,6 +210,22 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.sidePanelService.saveNodeRequest$
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((node) => this.handleNodeSaveRequest(node));
+
+        this.wsService.graphSaved$
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((event) => {
+                const currentId = this.profileService.currentUserSignal()?.id;
+                if (event.saved_by.user_id === currentId) return;
+
+                const savedBy = event.saved_by.display_name ?? `User ${event.saved_by.user_id}`;
+                this.toastService.info(`Graph was saved by ${savedBy}`, 4000, 'bottom-right');
+
+                if (!this.hasUnsavedChangesSignal()) {
+                    this.graphState.update((state) =>
+                        state ? { ...state, save_version: event.new_save_version } : state
+                    );
+                }
+            })
     }
 
     public ngOnInit(): void {
@@ -224,6 +247,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 takeUntilDestroyed(this.destroyRef),
                 tap(({ graph, flows }) => {
                     this.applyLoadedGraphState(graph, flows, showRefreshToast);
+                    this.wsService.connect(graph.id);
                 }),
                 catchError(() => {
                     this.toastService.error('Failed to load graph');
@@ -643,6 +667,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public ngOnDestroy(): void {
         this.flowUnsavedStateService.unregister();
         this.runSessionSSEService.stopStream();
+        this.wsService.disconnect();
     }
 
     private addStartNodeIfNeeded(flowModel: FlowModel): FlowModel {

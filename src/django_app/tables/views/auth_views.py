@@ -26,7 +26,7 @@ from tables.services.rbac.first_setup_service import FirstSetupService
 from tables.services.rbac.password_recovery_service import PasswordRecoveryService
 from tables.services.rbac.rbac_exceptions import InvalidRefreshTokenError
 from tables.services.rbac.reset_user_service import ResetUserService
-from tables.services.rbac.sse_ticket_service import SseTicketService
+from tables.services.rbac.ticket_service import sse_ticket_service, ws_ticket_service
 from tables.swagger_schemas.auth_schema import (
     API_KEY_VALIDATE_GET,
     FIRST_SETUP_GET,
@@ -37,6 +37,7 @@ from tables.swagger_schemas.auth_schema import (
     SSE_TICKET_POST,
     SWAGGER_TOKEN_POST,
     TOKEN_INTROSPECT_POST,
+    WS_TICKET_POST,
 )
 from tables.throttles import LoginThrottle, PasswordResetRequestThrottle
 
@@ -86,8 +87,6 @@ class SseTicketView(APIView):
     authentication_classes = [JwtOrApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
-    _service = SseTicketService()
-
     @extend_schema(**SSE_TICKET_POST)
     def post(self, request):
         if not getattr(request.user, "is_authenticated", False) or not hasattr(
@@ -97,7 +96,30 @@ class SseTicketView(APIView):
                 {"detail": "This endpoint requires a user context."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        ticket, ttl = self._service.issue(request.user)
+        ticket, ttl = sse_ticket_service.issue(request.user)
+        return Response({"ticket": ticket, "expires_in": ttl})
+
+
+class WsTicketView(APIView):
+    """
+    Issue a single-use WebSocket ticket bound to the calling user.
+    The client appends `?ticket=<value>` when opening the WS connection
+    because WebSocket connections cannot carry an Authorization header.
+    """
+
+    authentication_classes = [JwtOrApiKeyAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(**WS_TICKET_POST)
+    def post(self, request):
+        if not getattr(request.user, "is_authenticated", False) or not hasattr(
+            request.user, "email"
+        ):
+            return Response(
+                {"detail": "This endpoint requires a user context."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        ticket, ttl = ws_ticket_service.issue(request.user)
         return Response({"ticket": ticket, "expires_in": ttl})
 
 
