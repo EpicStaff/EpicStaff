@@ -28,9 +28,17 @@ from .default_models import DefaultModels
 from .agent_models import (
     AgentDefinition,
     DefaultAgentDefinitionConfig,
-    InlineSurface,
     Surface,
-    ResolvedSurface,
+    ToolMode,
+    SurfacePythonTool,
+    SurfaceMcpTool,
+    SurfaceStorageItem,
+    SurfaceKnowledge,
+    SurfaceNaiveSearchConfig,
+    SurfaceGraphBasicSearchConfig,
+    SurfaceGraphLocalSearchConfig,
+    SurfacePlace,
+    AgentDefaultSurface,
 )
 from .flow_assistant_models import (
     FlowAssistant,

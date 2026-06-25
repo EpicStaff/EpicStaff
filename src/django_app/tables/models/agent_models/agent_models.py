@@ -58,11 +58,10 @@ class AgentDefinition(AbstractDefaultFillableModel):
         max_length=255,
         help_text="Stable identifier (slug-like) unique within an organization. Used to reference this agent from flows, code, and the UI.",
     )
-    role = models.CharField(
-        max_length=255,
+    description = models.TextField(
         blank=True,
         default="",
-        help_text="Short human-readable persona label, e.g. 'Senior Researcher'.",
+        help_text="Human-readable description of this agent — its purpose, persona, or capabilities. E.g. 'Senior Researcher focused on market analysis'.",
     )
     instructions = models.TextField(
         help_text="Free-form prompt for the agent. Put behavior, goals, tone, and constraints here.",
@@ -84,15 +83,6 @@ class AgentDefinition(AbstractDefaultFillableModel):
         related_name="fcm_agent_definitions",
         default=None,
         help_text="Optional dedicated LLM for function/tool-call routing. Falls back to llm_config when null.",
-    )
-    default_surface = models.ForeignKey(
-        "Surface",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        default=None,
-        related_name="default_for_agents",
-        help_text="Surface applied to this agent by default when a node does not specify one. Null means no default surface.",
     )
 
     # Execution config
@@ -127,11 +117,20 @@ class AgentDefinition(AbstractDefaultFillableModel):
         help_text="Sampling temperature applied when the LLMConfig leaves it unset. Null falls back to DefaultAgentDefinitionConfig.",
     )
 
+    # Surface linkage (through AgentDefaultSurface)
+    default_surface_list = models.ManyToManyField(
+        "Surface",
+        through="AgentDefaultSurface",
+        related_name="default_in_agents",
+        blank=True,
+        help_text="Surfaces applied to this agent by default, per place (flow/chat/all). Managed via AgentDefaultSurface through table.",
+    )
+
     def get_default_model(self):
         return DefaultAgentDefinitionConfig.load()
 
     def __repr__(self) -> str:
-        return f"AgentDefinition(id={self.pk}, name={self.name!r}, role={self.role!r})"
+        return f"AgentDefinition(id={self.pk}, name={self.name!r})"
 
     class Meta:
         constraints = [
@@ -139,4 +138,38 @@ class AgentDefinition(AbstractDefaultFillableModel):
                 fields=["organization", "name"],
                 name="unique_agent_definition_name_per_organization",
             )
+        ]
+
+
+class SurfacePlace(models.TextChoices):
+    ALL = "all", "All Places"
+    FLOW = "flow", "Flow"
+    CHAT = "chat", "Chat"
+
+
+class AgentDefaultSurface(models.Model):
+    agent_definition = models.ForeignKey(
+        AgentDefinition,
+        on_delete=models.CASCADE,
+        related_name="default_surfaces",
+        help_text="Agent definition this default surface assignment belongs to.",
+    )
+    surface = models.ForeignKey(
+        "Surface",
+        on_delete=models.CASCADE,
+        related_name="default_for",
+        help_text="Surface assigned as the default for this agent in the given place.",
+    )
+    place = models.CharField(
+        max_length=5,
+        choices=SurfacePlace.choices,
+        help_text="Context where this surface is the default: 'all' for any place, 'flow' for flow execution, 'chat' for chat sessions.",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["agent_definition", "surface", "place"],
+                name="uniq_agent_default_surface",
+            ),
         ]

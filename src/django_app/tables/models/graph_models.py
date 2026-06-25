@@ -11,7 +11,6 @@ from loguru import logger
 from tables.models.base_models import (
     BaseGlobalNode,
     BaseGraphEntity,
-    InlineSurfaceMixin,
     TimestampMixin,
     ContentHashMixin,
     SoftDeleteMixin,
@@ -926,7 +925,7 @@ class SessionStorageFile(models.Model):
         ]
 
 
-class TaskNode(BaseNode, InlineSurfaceMixin):
+class TaskNode(BaseNode):
     graph = models.ForeignKey(
         "Graph",
         on_delete=models.CASCADE,
@@ -941,12 +940,6 @@ class TaskNode(BaseNode, InlineSurfaceMixin):
         default=None,
         related_name="task_nodes",
         help_text="AgentDefinition that executes this task. Null allowed — runtime surfaces a missing-agent error.",
-    )
-    surfaces = models.ManyToManyField(
-        "Surface",
-        blank=True,
-        related_name="task_nodes",
-        help_text="Reusable Surface bundles whose resources are merged at runtime for this task.",
     )
     instructions = models.TextField(
         blank=True,
@@ -964,7 +957,7 @@ class TaskNode(BaseNode, InlineSurfaceMixin):
     )
 
 
-class AgentNode(BaseNode, InlineSurfaceMixin):
+class AgentNode(BaseNode):
     """Node representing an agent that executes an ordered list of sub-tasks (AgentNodeTask) with shared surfaces."""
 
     graph = models.ForeignKey(
@@ -981,12 +974,6 @@ class AgentNode(BaseNode, InlineSurfaceMixin):
         default=None,
         related_name="agent_nodes",
         help_text="AgentDefinition that executes this node's tasks. Null allowed — runtime surfaces a missing-agent error.",
-    )
-    surfaces = models.ManyToManyField(
-        "Surface",
-        blank=True,
-        related_name="agent_nodes",
-        help_text="Reusable Surface bundles whose resources are merged at runtime and shared across all sub-tasks.",
     )
 
 

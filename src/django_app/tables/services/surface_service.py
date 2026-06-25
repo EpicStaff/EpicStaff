@@ -1,68 +1,23 @@
+from __future__ import annotations
+
 from django.core import exceptions as dj_exceptions
+from django.db import transaction
 
 from tables.exceptions import SurfaceValidationError
-from tables.models.agent_models.surface_models import ResolvedSurface, Surface
-
-SURFACE_M2M_FIELDS = (
-    "allowed_agents",
-    "allowed_python_tools",
-    "disabled_python_tools",
-    "allowed_mcp_tools",
-    "disabled_mcp_tools",
-    "allowed_knowledge_collections",
-    "disabled_knowledge_collections",
-    "allowed_storage_files",
-    "disabled_storage_files",
+from tables.models.agent_models.agent_models import AgentDefaultSurface
+from tables.models.agent_models.surface_models import (
+    Surface,
+    SurfaceGraphBasicSearchConfig,
+    SurfaceGraphLocalSearchConfig,
+    SurfaceKnowledge,
+    SurfaceMcpTool,
+    SurfaceNaiveSearchConfig,
+    SurfacePythonTool,
+    SurfaceStorageItem,
 )
 
 
 class SurfaceService:
-    @staticmethod
-    def combine(*surfaces: Surface) -> ResolvedSurface:
-        """
-        Apply deny-wins across ALL surfaces. For each resource type:
-        allowed_union = union by pk from every surface's allowed_X;
-        effective = objects whose pk is not in any surface's disabled_X.
-        Instructions concatenated in argument order, separated by '\\n\\n'.
-        """
-        instructions_parts = [
-            getattr(s, "additional_instructions", "") or ""
-            for s in surfaces
-            if getattr(s, "additional_instructions", "")
-        ]
-
-        def _cross_surface_effective(allowed_attr, disabled_attr):
-            allowed_by_pk: dict[int, object] = {}
-
-            for surface in surfaces:
-                for obj in getattr(surface, allowed_attr).all():
-                    if obj.pk not in allowed_by_pk:
-                        allowed_by_pk[obj.pk] = obj
-
-            disabled_pks: set[int] = set()
-
-            for surface in surfaces:
-                for obj in getattr(surface, disabled_attr).all():
-                    disabled_pks.add(obj.pk)
-
-            return [obj for pk, obj in allowed_by_pk.items() if pk not in disabled_pks]
-
-        return ResolvedSurface(
-            additional_instructions="\n\n".join(instructions_parts),
-            python_tools=_cross_surface_effective(
-                "allowed_python_tools", "disabled_python_tools"
-            ),
-            mcp_tools=_cross_surface_effective(
-                "allowed_mcp_tools", "disabled_mcp_tools"
-            ),
-            knowledge_collections=_cross_surface_effective(
-                "allowed_knowledge_collections", "disabled_knowledge_collections"
-            ),
-            storage_files=_cross_surface_effective(
-                "allowed_storage_files", "disabled_storage_files"
-            ),
-        )
-
     @staticmethod
     def validate_surface_data(*, instance, organization, attrs):
         if instance is not None:
@@ -71,19 +26,26 @@ class SurfaceService:
                 organization_id=instance.organization_id,
                 name=instance.name,
                 description=instance.description,
-                additional_instructions=instance.additional_instructions,
+                instructions=instance.instructions,
+                allow_creation=instance.allow_creation,
             )
         else:
             candidate = Surface()
 
-        for field_name in ("name", "description", "additional_instructions"):
+        for field_name in (
+            "name",
+            "description",
+            "instructions",
+            "allow_creation",
+            "owner_agent",
+        ):
             if field_name in attrs:
                 setattr(candidate, field_name, attrs[field_name])
 
         candidate.organization = organization
 
         try:
-            candidate.full_clean(exclude=list(SURFACE_M2M_FIELDS) + ["organization"])
+            candidate.full_clean()
         except dj_exceptions.ValidationError as exc:
             if hasattr(exc, "message_dict"):
                 raise SurfaceValidationError(detail=exc.message_dict)
@@ -92,24 +54,29 @@ class SurfaceService:
         return attrs
 
     @staticmethod
+    @transaction.atomic
     def create_surface(*, organization, validated_data):
-        m2m_values = {
-            name: validated_data.pop(name, None) for name in SURFACE_M2M_FIELDS
-        }
+        python_tools_data = validated_data.pop("python_tools", [])
+        mcp_tools_data = validated_data.pop("mcp_tools", [])
+        storage_items_data = validated_data.pop("storage_items", [])
+        knowledge_data = validated_data.pop("knowledge", [])
 
         surface = Surface.objects.create(organization=organization, **validated_data)
 
-        for m2m_name, value in m2m_values.items():
-            if value is not None:
-                getattr(surface, m2m_name).set(value)
+        SurfaceService._replace_python_tools(surface, python_tools_data)
+        SurfaceService._replace_mcp_tools(surface, mcp_tools_data)
+        SurfaceService._replace_storage_items(surface, storage_items_data)
+        SurfaceService._replace_knowledge(surface, knowledge_data)
 
         return surface
 
     @staticmethod
+    @transaction.atomic
     def update_surface(*, instance, validated_data, partial):
-        m2m_values = {
-            name: validated_data.pop(name, None) for name in SURFACE_M2M_FIELDS
-        }
+        python_tools_data = validated_data.pop("python_tools", None)
+        mcp_tools_data = validated_data.pop("mcp_tools", None)
+        storage_items_data = validated_data.pop("storage_items", None)
+        knowledge_data = validated_data.pop("knowledge", None)
 
         scalar_keys = list(validated_data.keys())
 
@@ -122,44 +89,114 @@ class SurfaceService:
         else:
             instance.save()
 
-        for m2m_name in SURFACE_M2M_FIELDS:
-            value = m2m_values[m2m_name]
+        if python_tools_data is not None or not partial:
+            SurfaceService._replace_python_tools(instance, python_tools_data or [])
 
-            if partial:
-                if value is not None:
-                    getattr(instance, m2m_name).set(value)
-            else:
-                getattr(instance, m2m_name).set(value if value is not None else [])
+        if mcp_tools_data is not None or not partial:
+            SurfaceService._replace_mcp_tools(instance, mcp_tools_data or [])
 
-        if (
-            partial
-            and not scalar_keys
-            and any(v is not None for v in m2m_values.values())
-        ):
-            instance.save(update_fields=["updated_at"])
+        if storage_items_data is not None or not partial:
+            SurfaceService._replace_storage_items(instance, storage_items_data or [])
+
+        if knowledge_data is not None or not partial:
+            SurfaceService._replace_knowledge(instance, knowledge_data or [])
 
         return instance
 
     @staticmethod
-    def resolve_surface(surface):
-        return surface.resolve()
+    def _replace_python_tools(surface, items):
+        SurfacePythonTool.objects.filter(surface=surface).delete()
+
+        SurfacePythonTool.objects.bulk_create(
+            [
+                SurfacePythonTool(
+                    surface=surface,
+                    python_tool=item["python_tool"],
+                    mode=item["mode"],
+                )
+                for item in items
+            ]
+        )
 
     @staticmethod
-    def combine_by_ids(*, organization, surface_ids):
-        surfaces_by_id = {
-            s.pk: s
-            for s in Surface.objects.filter(
-                organization=organization, id__in=surface_ids
+    def _replace_mcp_tools(surface, items):
+        SurfaceMcpTool.objects.filter(surface=surface).delete()
+
+        SurfaceMcpTool.objects.bulk_create(
+            [
+                SurfaceMcpTool(
+                    surface=surface,
+                    mcp_tool=item["mcp_tool"],
+                    mode=item["mode"],
+                )
+                for item in items
+            ]
+        )
+
+    @staticmethod
+    def _replace_storage_items(surface, items):
+        SurfaceStorageItem.objects.filter(surface=surface).delete()
+
+        SurfaceStorageItem.objects.bulk_create(
+            [
+                SurfaceStorageItem(
+                    surface=surface,
+                    storage_file=item["storage_file"],
+                    can_list=item.get("can_list", False),
+                    can_view=item.get("can_view", False),
+                    can_edit=item.get("can_edit", False),
+                    can_delete=item.get("can_delete", False),
+                )
+                for item in items
+            ]
+        )
+
+    @staticmethod
+    def _replace_knowledge(surface, items):
+        SurfaceKnowledge.objects.filter(surface=surface).delete()
+
+        for item in items:
+            sk = SurfaceKnowledge.objects.create(
+                surface=surface,
+                collection=item["collection"],
             )
-        }
 
-        missing = set(surface_ids) - surfaces_by_id.keys()
+            naive_config_data = item.get("naive_search_config")
+            graph_basic_data = item.get("graph_basic_search_config")
+            graph_local_data = item.get("graph_local_search_config")
 
-        if missing:
-            raise SurfaceValidationError(
-                detail={"surface_ids": [f"Surfaces not found: {sorted(missing)}"]}
-            )
+            if naive_config_data is not None:
+                SurfaceNaiveSearchConfig.objects.create(
+                    surface_knowledge=sk,
+                    **naive_config_data,
+                )
 
-        ordered = [surfaces_by_id[pk] for pk in surface_ids]
+            if graph_basic_data is not None:
+                SurfaceGraphBasicSearchConfig.objects.create(
+                    surface_knowledge=sk,
+                    **graph_basic_data,
+                )
 
-        return SurfaceService.combine(*ordered)
+            if graph_local_data is not None:
+                SurfaceGraphLocalSearchConfig.objects.create(
+                    surface_knowledge=sk,
+                    **graph_local_data,
+                )
+
+
+class AgentDefinitionSurfaceService:
+    @staticmethod
+    @transaction.atomic
+    def set_default_surfaces(*, agent_definition, items):
+        AgentDefaultSurface.objects.filter(agent_definition=agent_definition).delete()
+
+        AgentDefaultSurface.objects.bulk_create(
+            [
+                AgentDefaultSurface(
+                    agent_definition=agent_definition,
+                    surface=item["surface"],
+                    place=item["place"],
+                )
+                for item in items
+            ]
+        )

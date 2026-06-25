@@ -17,7 +17,6 @@ TAG_MAP = [
     # Agents
     ("api/template-agents", "Template Agents"),
     ("api/agent-definitions", "Agent Definitions"),
-    ("api/inline-surfaces", "Inline Surfaces"),
     ("api/surfaces", "Surfaces"),
     ("api/agent-tags", "Agent Tags"),
     ("api/code-agent-nodes", "Code Agent Nodes"),
@@ -105,7 +104,6 @@ TAGS_ORDER = [
     "Agents",
     "Agent Definitions",
     "Surfaces",
-    "Inline Surfaces",
     "Agent Tags",
     "Code Agent Nodes",
     "Crews",

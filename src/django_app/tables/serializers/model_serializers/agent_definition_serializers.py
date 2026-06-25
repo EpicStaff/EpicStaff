@@ -1,27 +1,49 @@
+from __future__ import annotations
+
 from rest_framework import serializers
 
-from tables.models.agent_models import AgentDefinition, Surface
+from tables.models.agent_models.agent_models import (
+    AgentDefaultSurface,
+    AgentDefinition,
+    SurfacePlace,
+)
+from tables.models.agent_models.surface_models import Surface
 from tables.models.llm_models import LLMConfig
+from tables.services.surface_service import AgentDefinitionSurfaceService
+from tables.validators.surface_validator import SurfaceValidator
+
+
+class AgentDefaultSurfaceReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AgentDefaultSurface
+        fields = ["surface", "place"]
+
+
+class AgentDefaultSurfaceWriteSerializer(serializers.Serializer):
+    surface = serializers.PrimaryKeyRelatedField(queryset=Surface.objects.all())
+    place = serializers.ChoiceField(choices=SurfacePlace.choices)
 
 
 class AgentDefinitionReadSerializer(serializers.ModelSerializer):
+    default_surfaces = AgentDefaultSurfaceReadSerializer(many=True, read_only=True)
+
     class Meta:
         model = AgentDefinition
         fields = [
             "id",
             "organization",
             "name",
-            "role",
+            "description",
             "instructions",
             "llm_config",
             "fcm_llm_config",
-            "default_surface",
             "max_iter",
             "max_rpm",
             "max_execution_time",
             "cache",
             "max_retry_limit",
             "default_temperature",
+            "default_surfaces",
         ]
         read_only_fields = fields
 
@@ -37,25 +59,58 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
-    default_surface = serializers.PrimaryKeyRelatedField(
-        queryset=Surface.objects.all(),
-        required=False,
-        allow_null=True,
-    )
+    default_surfaces = AgentDefaultSurfaceWriteSerializer(many=True, required=False)
 
     class Meta:
         model = AgentDefinition
         fields = [
             "name",
-            "role",
+            "description",
             "instructions",
             "llm_config",
             "fcm_llm_config",
-            "default_surface",
             "max_iter",
             "max_rpm",
             "max_execution_time",
             "cache",
             "max_retry_limit",
             "default_temperature",
+            "default_surfaces",
         ]
+
+    def validate(self, attrs):
+        default_surfaces_data = attrs.get("default_surfaces")
+
+        if default_surfaces_data is not None:
+            organization = self.context.get("organization")
+            agent_definition = self.instance
+
+            if organization is not None and agent_definition is not None:
+                SurfaceValidator.validate_agent_default_surfaces(
+                    items=default_surfaces_data,
+                    agent_definition=agent_definition,
+                    organization=organization,
+                )
+
+        return attrs
+
+    def create(self, validated_data):
+        default_surfaces_data = validated_data.pop("default_surfaces", [])
+        instance = super().create(validated_data)
+        AgentDefinitionSurfaceService.set_default_surfaces(
+            agent_definition=instance,
+            items=default_surfaces_data,
+        )
+        return instance
+
+    def update(self, instance, validated_data):
+        default_surfaces_data = validated_data.pop("default_surfaces", None)
+        instance = super().update(instance, validated_data)
+
+        if default_surfaces_data is not None:
+            AgentDefinitionSurfaceService.set_default_surfaces(
+                agent_definition=instance,
+                items=default_surfaces_data,
+            )
+
+        return instance

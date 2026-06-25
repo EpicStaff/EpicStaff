@@ -1,10 +1,33 @@
-from .agent_models import AgentDefinition, DefaultAgentDefinitionConfig
-from .surface_models import InlineSurface, ResolvedSurface, Surface
+from .agent_models import (
+    AgentDefinition,
+    DefaultAgentDefinitionConfig,
+    SurfacePlace,
+    AgentDefaultSurface,
+)
+from .surface_models import (
+    Surface,
+    ToolMode,
+    SurfacePythonTool,
+    SurfaceMcpTool,
+    SurfaceStorageItem,
+    SurfaceKnowledge,
+    SurfaceNaiveSearchConfig,
+    SurfaceGraphBasicSearchConfig,
+    SurfaceGraphLocalSearchConfig,
+)
 
 __all__ = [
     "AgentDefinition",
     "DefaultAgentDefinitionConfig",
-    "InlineSurface",
-    "ResolvedSurface",
+    "SurfacePlace",
+    "AgentDefaultSurface",
     "Surface",
+    "ToolMode",
+    "SurfacePythonTool",
+    "SurfaceMcpTool",
+    "SurfaceStorageItem",
+    "SurfaceKnowledge",
+    "SurfaceNaiveSearchConfig",
+    "SurfaceGraphBasicSearchConfig",
+    "SurfaceGraphLocalSearchConfig",
 ]

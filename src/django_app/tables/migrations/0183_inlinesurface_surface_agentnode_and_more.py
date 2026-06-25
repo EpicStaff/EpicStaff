@@ -12,106 +12,6 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name="InlineSurface",
-            fields=[
-                (
-                    "id",
-                    models.BigAutoField(
-                        auto_created=True,
-                        primary_key=True,
-                        serialize=False,
-                        verbose_name="ID",
-                    ),
-                ),
-                ("created_at", models.DateTimeField(auto_now_add=True)),
-                ("updated_at", models.DateTimeField(auto_now=True)),
-                (
-                    "allowed_knowledge_collections",
-                    models.ManyToManyField(
-                        blank=True,
-                        help_text="SourceCollection instances explicitly allowed by this surface.",
-                        related_name="+",
-                        to="tables.sourcecollection",
-                    ),
-                ),
-                (
-                    "allowed_mcp_tools",
-                    models.ManyToManyField(
-                        blank=True,
-                        help_text="McpTool instances explicitly allowed by this surface.",
-                        related_name="+",
-                        to="tables.mcptool",
-                    ),
-                ),
-                (
-                    "allowed_python_tools",
-                    models.ManyToManyField(
-                        blank=True,
-                        help_text="PythonCodeTool instances explicitly allowed by this surface.",
-                        related_name="+",
-                        to="tables.pythoncodetool",
-                    ),
-                ),
-                (
-                    "allowed_storage_files",
-                    models.ManyToManyField(
-                        blank=True,
-                        help_text="StorageFile instances explicitly allowed by this surface.",
-                        related_name="+",
-                        to="tables.storagefile",
-                    ),
-                ),
-                (
-                    "disabled_knowledge_collections",
-                    models.ManyToManyField(
-                        blank=True,
-                        help_text="SourceCollection instances explicitly denied by this surface. Deny wins over any allow.",
-                        related_name="+",
-                        to="tables.sourcecollection",
-                    ),
-                ),
-                (
-                    "disabled_mcp_tools",
-                    models.ManyToManyField(
-                        blank=True,
-                        help_text="McpTool instances explicitly denied by this surface. Deny wins over any allow.",
-                        related_name="+",
-                        to="tables.mcptool",
-                    ),
-                ),
-                (
-                    "disabled_python_tools",
-                    models.ManyToManyField(
-                        blank=True,
-                        help_text="PythonCodeTool instances explicitly denied by this surface. Deny wins over any allow.",
-                        related_name="+",
-                        to="tables.pythoncodetool",
-                    ),
-                ),
-                (
-                    "disabled_storage_files",
-                    models.ManyToManyField(
-                        blank=True,
-                        help_text="StorageFile instances explicitly denied by this surface. Deny wins over any allow.",
-                        related_name="+",
-                        to="tables.storagefile",
-                    ),
-                ),
-                (
-                    "organization",
-                    models.ForeignKey(
-                        help_text="Organization this surface belongs to.",
-                        on_delete=django.db.models.deletion.CASCADE,
-                        related_name="%(class)ss",
-                        to="tables.organization",
-                    ),
-                ),
-            ],
-            options={
-                "abstract": False,
-            },
-        ),
-        migrations.CreateModel(
             name="Surface",
             fields=[
                 (
@@ -141,92 +41,18 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 (
-                    "additional_instructions",
+                    "instructions",
                     models.TextField(
                         blank=True,
                         default="",
-                        help_text="Free-form text appended to the agent prompt when this surface is resolved. Empty string means no extra instructions.",
+                        help_text="Free-form text appended to the agent prompt when this surface is active. Empty string means no extra instructions.",
                     ),
                 ),
                 (
-                    "allowed_agents",
-                    models.ManyToManyField(
-                        blank=True,
-                        help_text="AgentDefinition instances permitted to select this surface. Empty set means any agent in the organization may use it.",
-                        related_name="allowed_surfaces",
-                        to="tables.agentdefinition",
-                    ),
-                ),
-                (
-                    "allowed_knowledge_collections",
-                    models.ManyToManyField(
-                        blank=True,
-                        help_text="SourceCollection instances explicitly allowed by this surface.",
-                        related_name="+",
-                        to="tables.sourcecollection",
-                    ),
-                ),
-                (
-                    "allowed_mcp_tools",
-                    models.ManyToManyField(
-                        blank=True,
-                        help_text="McpTool instances explicitly allowed by this surface.",
-                        related_name="+",
-                        to="tables.mcptool",
-                    ),
-                ),
-                (
-                    "allowed_python_tools",
-                    models.ManyToManyField(
-                        blank=True,
-                        help_text="PythonCodeTool instances explicitly allowed by this surface.",
-                        related_name="+",
-                        to="tables.pythoncodetool",
-                    ),
-                ),
-                (
-                    "allowed_storage_files",
-                    models.ManyToManyField(
-                        blank=True,
-                        help_text="StorageFile instances explicitly allowed by this surface.",
-                        related_name="+",
-                        to="tables.storagefile",
-                    ),
-                ),
-                (
-                    "disabled_knowledge_collections",
-                    models.ManyToManyField(
-                        blank=True,
-                        help_text="SourceCollection instances explicitly denied by this surface. Deny wins over any allow.",
-                        related_name="+",
-                        to="tables.sourcecollection",
-                    ),
-                ),
-                (
-                    "disabled_mcp_tools",
-                    models.ManyToManyField(
-                        blank=True,
-                        help_text="McpTool instances explicitly denied by this surface. Deny wins over any allow.",
-                        related_name="+",
-                        to="tables.mcptool",
-                    ),
-                ),
-                (
-                    "disabled_python_tools",
-                    models.ManyToManyField(
-                        blank=True,
-                        help_text="PythonCodeTool instances explicitly denied by this surface. Deny wins over any allow.",
-                        related_name="+",
-                        to="tables.pythoncodetool",
-                    ),
-                ),
-                (
-                    "disabled_storage_files",
-                    models.ManyToManyField(
-                        blank=True,
-                        help_text="StorageFile instances explicitly denied by this surface. Deny wins over any allow.",
-                        related_name="+",
-                        to="tables.storagefile",
+                    "allow_creation",
+                    models.BooleanField(
+                        default=False,
+                        help_text="Surface-wide permission: when True, the agent may create new storage files within this surface.",
                     ),
                 ),
                 (
@@ -234,8 +60,20 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         help_text="Organization this surface belongs to.",
                         on_delete=django.db.models.deletion.CASCADE,
-                        related_name="%(class)ss",
+                        related_name="surfaces",
                         to="tables.organization",
+                    ),
+                ),
+                (
+                    "owner_agent",
+                    models.ForeignKey(
+                        blank=True,
+                        default=None,
+                        help_text="Agent that owns this surface. Null means shared — any agent or place may use it. Set means agent-specific — only that agent.",
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="owned_surfaces",
+                        to="tables.agentdefinition",
                     ),
                 ),
             ],
@@ -289,44 +127,10 @@ class Migration(migrations.Migration):
                         to="tables.graph",
                     ),
                 ),
-                (
-                    "inline_surface",
-                    models.OneToOneField(
-                        blank=True,
-                        default=None,
-                        help_text="Node-local inline surface carrying ad-hoc tools/files/knowledge for this node only. Null until assigned.",
-                        null=True,
-                        on_delete=django.db.models.deletion.SET_NULL,
-                        related_name="+",
-                        to="tables.inlinesurface",
-                    ),
-                ),
-                (
-                    "surfaces",
-                    models.ManyToManyField(
-                        blank=True,
-                        help_text="Reusable Surface bundles whose resources are merged at runtime and shared across all sub-tasks.",
-                        related_name="agent_nodes",
-                        to="tables.surface",
-                    ),
-                ),
             ],
             options={
                 "abstract": False,
             },
-        ),
-        migrations.AddField(
-            model_name="agentdefinition",
-            name="default_surface",
-            field=models.ForeignKey(
-                blank=True,
-                default=None,
-                help_text="Surface applied to this agent by default when a node does not specify one. Null means no default surface.",
-                null=True,
-                on_delete=django.db.models.deletion.SET_NULL,
-                related_name="default_for_agents",
-                to="tables.surface",
-            ),
         ),
         migrations.CreateModel(
             name="TaskNode",
@@ -395,27 +199,6 @@ class Migration(migrations.Migration):
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="task_node_list",
                         to="tables.graph",
-                    ),
-                ),
-                (
-                    "inline_surface",
-                    models.OneToOneField(
-                        blank=True,
-                        default=None,
-                        help_text="Node-local inline surface carrying ad-hoc tools/files/knowledge for this node only. Null until assigned.",
-                        null=True,
-                        on_delete=django.db.models.deletion.SET_NULL,
-                        related_name="+",
-                        to="tables.inlinesurface",
-                    ),
-                ),
-                (
-                    "surfaces",
-                    models.ManyToManyField(
-                        blank=True,
-                        help_text="Reusable Surface bundles whose resources are merged at runtime for this task.",
-                        related_name="task_nodes",
-                        to="tables.surface",
                     ),
                 ),
             ],

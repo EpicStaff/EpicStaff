@@ -93,12 +93,11 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 (
-                    "role",
-                    models.CharField(
+                    "description",
+                    models.TextField(
                         blank=True,
                         default="",
-                        help_text="Short human-readable persona label, e.g. 'Senior Researcher'.",
-                        max_length=255,
+                        help_text="Human-readable description of this agent — its purpose, persona, or capabilities. E.g. 'Senior Researcher focused on market analysis'.",
                     ),
                 ),
                 (

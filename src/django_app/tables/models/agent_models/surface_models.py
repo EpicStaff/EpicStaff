@@ -1,87 +1,22 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
 from django.db import models
 
 from tables.models.base_models import TimestampMixin
 
 
-@dataclass
-class ResolvedSurface:
-    additional_instructions: str
-    python_tools: list = field(default_factory=list)
-    mcp_tools: list = field(default_factory=list)
-    knowledge_collections: list = field(default_factory=list)
-    storage_files: list = field(default_factory=list)
+class ToolMode(models.TextChoices):
+    ALLOW = "allow"
+    DENY = "deny"
 
 
-def _minus(allowed_qs, disabled_qs):
-    disabled_pks = {o.pk for o in disabled_qs}
-    return [o for o in allowed_qs if o.pk not in disabled_pks]
-
-
-class BaseSurface(TimestampMixin, models.Model):
+class Surface(TimestampMixin, models.Model):
     organization = models.ForeignKey(
         "Organization",
         on_delete=models.CASCADE,
-        related_name="%(class)ss",
+        related_name="surfaces",
         help_text="Organization this surface belongs to.",
     )
-    allowed_python_tools = models.ManyToManyField(
-        "PythonCodeTool",
-        blank=True,
-        related_name="+",
-        help_text="PythonCodeTool instances explicitly allowed by this surface.",
-    )
-    disabled_python_tools = models.ManyToManyField(
-        "PythonCodeTool",
-        blank=True,
-        related_name="+",
-        help_text="PythonCodeTool instances explicitly denied by this surface. Deny wins over any allow.",
-    )
-    allowed_mcp_tools = models.ManyToManyField(
-        "McpTool",
-        blank=True,
-        related_name="+",
-        help_text="McpTool instances explicitly allowed by this surface.",
-    )
-    disabled_mcp_tools = models.ManyToManyField(
-        "McpTool",
-        blank=True,
-        related_name="+",
-        help_text="McpTool instances explicitly denied by this surface. Deny wins over any allow.",
-    )
-    allowed_knowledge_collections = models.ManyToManyField(
-        "SourceCollection",
-        blank=True,
-        related_name="+",
-        help_text="SourceCollection instances explicitly allowed by this surface.",
-    )
-    disabled_knowledge_collections = models.ManyToManyField(
-        "SourceCollection",
-        blank=True,
-        related_name="+",
-        help_text="SourceCollection instances explicitly denied by this surface. Deny wins over any allow.",
-    )
-    allowed_storage_files = models.ManyToManyField(
-        "StorageFile",
-        blank=True,
-        related_name="+",
-        help_text="StorageFile instances explicitly allowed by this surface.",
-    )
-    disabled_storage_files = models.ManyToManyField(
-        "StorageFile",
-        blank=True,
-        related_name="+",
-        help_text="StorageFile instances explicitly denied by this surface. Deny wins over any allow.",
-    )
-
-    class Meta(TimestampMixin.Meta):
-        abstract = True
-
-
-class Surface(BaseSurface):
     name = models.CharField(
         max_length=255,
         help_text="Stable identifier unique within the organization. Used as the user-facing name for this surface.",
@@ -91,20 +26,26 @@ class Surface(BaseSurface):
         default="",
         help_text="Optional human-readable description shown in the UI. Empty string means no description.",
     )
-    additional_instructions = models.TextField(
+    instructions = models.TextField(
         blank=True,
         default="",
-        help_text="Free-form text appended to the agent prompt when this surface is resolved. Empty string means no extra instructions.",
+        help_text="Free-form text appended to the agent prompt when this surface is active. Empty string means no extra instructions.",
     )
-    allowed_agents = models.ManyToManyField(
+    owner_agent = models.ForeignKey(
         "AgentDefinition",
+        on_delete=models.CASCADE,
+        null=True,
         blank=True,
-        related_name="allowed_surfaces",
-        help_text="AgentDefinition instances permitted to select this surface. Empty set means any agent in the organization may use it.",
+        default=None,
+        related_name="owned_surfaces",
+        help_text="Agent that owns this surface. Null means shared — any agent or place may use it. Set means agent-specific — only that agent.",
+    )
+    allow_creation = models.BooleanField(
+        default=False,
+        help_text="Surface-wide permission: when True, the agent may create new storage files within this surface.",
     )
 
-    class Meta(BaseSurface.Meta):
-        abstract = False
+    class Meta(TimestampMixin.Meta):
         constraints = [
             models.UniqueConstraint(
                 fields=["organization", "name"],
@@ -115,31 +56,203 @@ class Surface(BaseSurface):
     def __repr__(self) -> str:
         return f"Surface(id={self.pk}, name={self.name!r})"
 
-    def resolve(self) -> ResolvedSurface:
-        return ResolvedSurface(
-            additional_instructions=self.additional_instructions,
-            python_tools=_minus(
-                self.allowed_python_tools.all(), self.disabled_python_tools.all()
-            ),
-            mcp_tools=_minus(
-                self.allowed_mcp_tools.all(), self.disabled_mcp_tools.all()
-            ),
-            knowledge_collections=_minus(
-                self.allowed_knowledge_collections.all(),
-                self.disabled_knowledge_collections.all(),
-            ),
-            storage_files=_minus(
-                self.allowed_storage_files.all(), self.disabled_storage_files.all()
-            ),
-        )
 
-    def is_available_to(self, agent_definition) -> bool:
-        if not self.allowed_agents.exists():
-            return True
+class SurfacePythonTool(models.Model):
+    surface = models.ForeignKey(
+        Surface,
+        on_delete=models.CASCADE,
+        related_name="python_tools",
+        help_text="Surface this entry belongs to.",
+    )
+    python_tool = models.ForeignKey(
+        "PythonCodeTool",
+        on_delete=models.CASCADE,
+        related_name="+",
+        help_text="PythonCodeTool being allowed or denied on this surface.",
+    )
+    mode = models.CharField(
+        max_length=5,
+        choices=ToolMode.choices,
+        help_text="Whether this tool is explicitly allowed or denied for this surface.",
+    )
 
-        return self.allowed_agents.filter(pk=agent_definition.pk).exists()
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["surface", "python_tool"],
+                name="uniq_surface_python_tool",
+            ),
+        ]
 
 
-class InlineSurface(BaseSurface):
-    class Meta(BaseSurface.Meta):
-        abstract = False
+class SurfaceMcpTool(models.Model):
+    surface = models.ForeignKey(
+        Surface,
+        on_delete=models.CASCADE,
+        related_name="mcp_tools",
+        help_text="Surface this entry belongs to.",
+    )
+    mcp_tool = models.ForeignKey(
+        "McpTool",
+        on_delete=models.CASCADE,
+        related_name="+",
+        help_text="McpTool being allowed or denied on this surface.",
+    )
+    mode = models.CharField(
+        max_length=5,
+        choices=ToolMode.choices,
+        help_text="Whether this tool is explicitly allowed or denied for this surface.",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["surface", "mcp_tool"],
+                name="uniq_surface_mcp_tool",
+            ),
+        ]
+
+
+class SurfaceStorageItem(models.Model):
+    surface = models.ForeignKey(
+        Surface,
+        on_delete=models.CASCADE,
+        related_name="storage_items",
+        help_text="Surface this storage permission entry belongs to.",
+    )
+    storage_file = models.ForeignKey(
+        "StorageFile",
+        on_delete=models.CASCADE,
+        related_name="+",
+        help_text="StorageFile whose access is being configured for this surface.",
+    )
+    can_list = models.BooleanField(
+        default=False,
+        help_text="Agent may list (enumerate) this file or folder within the surface.",
+    )
+    can_view = models.BooleanField(
+        default=False,
+        help_text="Agent may read/view the content of this file within the surface.",
+    )
+    can_edit = models.BooleanField(
+        default=False,
+        help_text="Agent may modify or overwrite this file within the surface.",
+    )
+    can_delete = models.BooleanField(
+        default=False,
+        help_text="Agent may delete this file within the surface.",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["surface", "storage_file"],
+                name="uniq_surface_storage_item",
+            ),
+        ]
+
+
+class SurfaceKnowledge(models.Model):
+    surface = models.ForeignKey(
+        Surface,
+        on_delete=models.CASCADE,
+        related_name="knowledge",
+        help_text="Surface this knowledge collection is attached to.",
+    )
+    collection = models.ForeignKey(
+        "SourceCollection",
+        on_delete=models.CASCADE,
+        related_name="+",
+        help_text="SourceCollection available within this surface.",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["surface", "collection"],
+                name="uniq_surface_knowledge",
+            ),
+        ]
+
+
+class SurfaceNaiveSearchConfig(models.Model):
+    surface_knowledge = models.OneToOneField(
+        SurfaceKnowledge,
+        on_delete=models.CASCADE,
+        related_name="naive_search_config",
+        help_text="SurfaceKnowledge entry this naive search configuration applies to.",
+    )
+    search_limit = models.PositiveIntegerField(
+        default=3,
+        blank=True,
+        help_text="Integer between 0 and 1000 for knowledge",
+    )
+    similarity_threshold = models.DecimalField(
+        max_digits=3,
+        decimal_places=2,
+        default=0.2,
+        blank=True,
+        help_text="Float between 0.00 and 1.00 for knowledge",
+    )
+
+
+class SurfaceGraphBasicSearchConfig(models.Model):
+    surface_knowledge = models.OneToOneField(
+        SurfaceKnowledge,
+        on_delete=models.CASCADE,
+        related_name="graph_basic_search_config",
+        help_text="SurfaceKnowledge entry this GraphRAG basic search configuration applies to.",
+    )
+    prompt = models.TextField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text="The basic search prompt to use.",
+    )
+    k = models.IntegerField(
+        default=10,
+        help_text="The number of text units to include in search context.",
+    )
+    max_context_tokens = models.IntegerField(
+        default=12000,
+        help_text="The maximum tokens.",
+    )
+
+
+class SurfaceGraphLocalSearchConfig(models.Model):
+    surface_knowledge = models.OneToOneField(
+        SurfaceKnowledge,
+        on_delete=models.CASCADE,
+        related_name="graph_local_search_config",
+        help_text="SurfaceKnowledge entry this GraphRAG local search configuration applies to.",
+    )
+    prompt = models.TextField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text="The local search prompt to use.",
+    )
+    text_unit_prop = models.FloatField(
+        default=0.5,
+        help_text="The text unit proportion.",
+    )
+    community_prop = models.FloatField(
+        default=0.15,
+        help_text="The community proportion.",
+    )
+    conversation_history_max_turns = models.IntegerField(
+        default=5,
+        help_text="The conversation history maximum turns.",
+    )
+    top_k_entities = models.IntegerField(
+        default=10,
+        help_text="The top k mapped entities.",
+    )
+    top_k_relationships = models.IntegerField(
+        default=10,
+        help_text="The top k mapped relations.",
+    )
+    max_context_tokens = models.IntegerField(
+        default=12000,
+        help_text="The maximum tokens.",
+    )

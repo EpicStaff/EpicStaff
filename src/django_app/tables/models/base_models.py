@@ -248,21 +248,6 @@ class NextVal(Func):
     template = "%(function)s(%(expressions)s)"
 
 
-class InlineSurfaceMixin(models.Model):
-    inline_surface = models.OneToOneField(
-        "tables.InlineSurface",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        default=None,
-        related_name="+",  # never traverse from InlineSurface side
-        help_text="Node-local inline surface carrying ad-hoc tools/files/knowledge for this node only. Null until assigned.",
-    )
-
-    class Meta:
-        abstract = True
-
-
 class BaseGlobalNode(models.Model):
     """
     Abstract base class for all nodes.
