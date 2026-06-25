@@ -5,6 +5,8 @@
             <button
                 class="create-folder-dialog__icon-btn create-folder-dialog__icon-btn--cancel"
                 aria-label="Cancel"
+                matTooltip="Cancel"
+                matTooltipPosition="above"
                 (click)="onCancel()"
             >
                 <app-svg-icon
@@ -15,6 +17,8 @@
             <button
                 class="create-folder-dialog__icon-btn create-folder-dialog__icon-btn--confirm"
                 aria-label="Add files"
+                matTooltip="Confirm"
+                matTooltipPosition="above"
                 [disabled]="!isValid() || isUploading()"
                 (click)="onConfirm()"
             >
@@ -224,6 +228,8 @@
                                 <button
                                     class="create-folder-dialog__file-remove"
                                     aria-label="Remove file"
+                                    matTooltip="Remove"
+                                    matTooltipPosition="above"
                                     (click)="removeFile(i)"
                                 >
                                     <app-svg-icon

@@ -9,6 +9,7 @@ import {
     Output,
     signal,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
 
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -59,6 +60,7 @@ import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay
         FlowNodeVariablesOverlayComponent,
         GoToButtonComponent,
         AppSvgIconComponent,
+        MatTooltipModule,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {

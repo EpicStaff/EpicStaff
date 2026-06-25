@@ -64,6 +64,7 @@ export class LeftSidebarComponent implements AfterViewInit {
     public apiBaseUrl: string;
     public accessToken: string;
     public showLogoTooltip = false;
+    public showProfileTooltip = false;
     public readonly epicChatThemeConfig = {
         semantic: {
             surface: 'var(--color-background-body)',

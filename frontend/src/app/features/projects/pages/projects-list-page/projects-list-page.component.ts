@@ -1,6 +1,7 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { Subject, Subscription } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
@@ -28,6 +29,7 @@ import { ProjectsStorageService } from '../../services/projects-storage.service'
         FormsModule,
         AppSvgIconComponent,
         HideInlineSubtitleOnOverflowDirective,
+        MatTooltipModule,
     ],
 })
 export class ProjectsListPageComponent implements OnDestroy {

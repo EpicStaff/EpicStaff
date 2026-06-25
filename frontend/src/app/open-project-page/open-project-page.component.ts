@@ -19,6 +19,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute } from '@angular/router';
 import { EMPTY, filter, forkJoin, from, Observable, of, Subscription } from 'rxjs';
 import { catchError, concatMap, finalize, map, switchMap, tap, toArray } from 'rxjs/operators';
@@ -100,6 +101,7 @@ function asTaskPendingPayloadRecord(payload: unknown): Record<string, unknown> {
     styleUrl: './open-project-page.component.scss',
     imports: [
         CommonModule,
+        MatTooltipModule,
 
         HeaderComponent,
         DetailsContentComponent,

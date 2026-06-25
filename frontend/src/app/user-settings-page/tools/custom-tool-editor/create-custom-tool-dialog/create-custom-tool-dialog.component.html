@@ -19,6 +19,8 @@
                     class="header-icon-btn header-icon-btn--cancel"
                     type="button"
                     [attr.aria-label]="isEditMode ? 'Discard changes' : 'Cancel'"
+                    matTooltip="Cancel"
+                    matTooltipPosition="above"
                     (click)="close()"
                 >
                     <app-svg-icon
@@ -31,6 +33,8 @@
                     type="button"
                     [disabled]="isSaving()"
                     [attr.aria-label]="isEditMode ? 'Save changes' : 'Create tool'"
+                    matTooltip="Save"
+                    matTooltipPosition="above"
                     (click)="submit()"
                 >
                     <app-svg-icon
@@ -97,6 +101,8 @@
                                 <button
                                     type="button"
                                     aria-label="Copy Python code"
+                                    matTooltip="Copy"
+                                    matTooltipPosition="above"
                                     (click)="copyPythonCode()"
                                 >
                                     <app-svg-icon
@@ -109,6 +115,8 @@
                                     [attr.aria-label]="
                                         pythonSectionExpanded() ? 'Collapse Python section' : 'Expand Python section'
                                     "
+                                    matTooltip="View"
+                                    matTooltipPosition="above"
                                     (click)="togglePythonSection()"
                                 >
                                     <app-svg-icon
@@ -119,6 +127,8 @@
                                 <button
                                     type="button"
                                     aria-label="Show Python editor on the right"
+                                    matTooltip="Expand"
+                                    matTooltipPosition="above"
                                     (click)="toggleEditor(ActiveEditor.Python)"
                                 >
                                     <app-svg-icon
@@ -204,6 +214,8 @@
                                     <button
                                         type="button"
                                         aria-label="Copy JSON configuration"
+                                        matTooltip="Copy"
+                                        matTooltipPosition="above"
                                         (click)="copyJsonConfiguration()"
                                     >
                                         <app-svg-icon
@@ -216,6 +228,8 @@
                                         [attr.aria-label]="
                                             jsonSectionExpanded() ? 'Collapse JSON section' : 'Expand JSON section'
                                         "
+                                        matTooltip="Collapse"
+                                        matTooltipPosition="above"
                                         (click)="toggleJsonSection()"
                                     >
                                         <app-svg-icon
@@ -226,6 +240,8 @@
                                     <button
                                         type="button"
                                         aria-label="Show JSON editor on the right"
+                                        matTooltip="Expand"
+                                        matTooltipPosition="above"
                                         (click)="toggleEditor(ActiveEditor.Json)"
                                     >
                                         <app-svg-icon
@@ -298,6 +314,8 @@
                                         ? 'Copy Python code'
                                         : 'Copy JSON configuration'
                                 "
+                                matTooltip="Copy"
+                                matTooltipPosition="above"
                                 (click)="
                                     activeEditor() === ActiveEditor.Python ? copyPythonCode() : copyJsonConfiguration()
                                 "
@@ -310,6 +328,8 @@
                             <button
                                 type="button"
                                 aria-label="Collapse editor panel"
+                                matTooltip="Collapse"
+                                matTooltipPosition="above"
                                 (click)="closeEditorPane()"
                             >
                                 <app-svg-icon

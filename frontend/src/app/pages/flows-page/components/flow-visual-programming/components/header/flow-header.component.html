@@ -20,7 +20,8 @@
                 <button
                     class="edit-name-btn"
                     (click)="openRenameDialog()"
-                    title="Edit flow"
+                    matTooltip="Edit flow name"
+                    matTooltipPosition="below"
                 >
                     <app-svg-icon
                         icon="edit"
@@ -30,7 +31,8 @@
                 @if (hasUnsavedChanges) {
                     <span
                         class="unsaved-indicator"
-                        title="Unsaved changes"
+                        matTooltip="Unsaved changes"
+                        matTooltipPosition="below"
                         [appCollapseOnOverflow]="true"
                         collapseOnOverflowTarget=".unsaved-text"
                         collapseOnOverflowClass="unsaved-indicator--icon-only"
@@ -53,6 +55,8 @@
             collapseOnOverflowTarget=".btn-label"
             collapseOnOverflowClass="btn--icon-only"
             collapseOnOverflowRequireSelector="app-svg-icon"
+            matTooltip="Sessions"
+            matTooltipPosition="below"
             (click)="onViewSessions()"
         >
             <app-svg-icon
@@ -67,6 +71,8 @@
             collapseOnOverflowTarget=".btn-label"
             collapseOnOverflowClass="btn--icon-only"
             collapseOnOverflowRequireSelector="app-svg-icon"
+            matTooltip="Get CURL"
+            matTooltipPosition="below"
             (click)="onGetCurl()"
         >
             <span class="btn-label">Get CURL</span>
@@ -78,6 +84,8 @@
                 collapseOnOverflowTarget=".btn-label"
                 collapseOnOverflowClass="btn--icon-only"
                 collapseOnOverflowRequireSelector="app-svg-icon"
+                matTooltip="Connect chat"
+                matTooltipPosition="below"
                 (click)="onConnectChat()"
             >
                 <app-svg-icon
@@ -87,13 +95,15 @@
                 <span class="btn-label">Connect chat</span>
             </button>
         }
-       
-       <button
+
+        <button
             class="open-chat-button"
             [appCollapseOnOverflow]="true"
             collapseOnOverflowTarget=".btn-label"
             collapseOnOverflowClass="btn--icon-only"
             collapseOnOverflowRequireSelector=".open-chat-button__icon"
+            [matTooltip]="isAssistantOpen ? 'Close chat' : 'Open chat'"
+            matTooltipPosition="below"
             (click)="onToggleAssistant()"
         >
             <img
@@ -105,7 +115,7 @@
             />
             <span class="btn-label">{{ isAssistantOpen ? 'Close chat' : 'Open chat' }}</span>
         </button>
-       
+
         <div
             #saveSplitOrigin="cdkOverlayOrigin"
             cdkOverlayOrigin
@@ -119,6 +129,8 @@
             <button
                 class="save-split-btn__main"
                 [disabled]="isSaving || isRunning"
+                matTooltip="Save"
+                matTooltipPosition="below"
                 (click)="onSave()"
             >
                 @if (isSaving) {
@@ -134,6 +146,8 @@
             <button
                 class="save-split-btn__chevron"
                 [disabled]="isSaving || isRunning"
+                matTooltip="Save options"
+                matTooltipPosition="below"
                 (click)="toggleSaveDropdown($event)"
             >
                 <app-svg-icon
@@ -171,6 +185,8 @@
             collapseOnOverflowClass="btn--icon-only"
             collapseOnOverflowRequireSelector="app-svg-icon"
             [disabled]="isSaving || isRunning"
+            matTooltip="Run"
+            matTooltipPosition="below"
             (click)="onRun()"
         >
             @if (isRunning) {

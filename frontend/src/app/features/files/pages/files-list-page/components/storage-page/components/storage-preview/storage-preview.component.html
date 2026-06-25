@@ -8,7 +8,8 @@
                 class="storage-preview__toggle-btn"
                 [class.storage-preview__toggle-btn--active]="showSidebar()"
                 (click)="toggleSidebar.emit()"
-                title="Toggle Folder Branches"
+                matTooltip="Toggle Folder Branches"
+                matTooltipPosition="right"
             >
                 <app-svg-icon
                     icon="expand-sidebar"
@@ -48,6 +49,8 @@
             <button
                 class="storage-preview__kebab"
                 aria-label="More actions"
+                matTooltip="More options"
+                matTooltipPosition="left"
                 (click)="onKebabClick($event)"
             >
                 <app-svg-icon

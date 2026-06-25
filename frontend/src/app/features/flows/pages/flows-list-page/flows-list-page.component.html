@@ -61,6 +61,8 @@
                             type="button"
                             class="import-group__cog"
                             aria-label="Import options"
+                            matTooltip="Import options"
+                            matTooltipPosition="below"
                             [class.is-open]="importOptionsOpen()"
                             (click)="toggleImportOptions()"
                         >
@@ -132,6 +134,8 @@
                             type="button"
                             class="clear-btn"
                             aria-label="Clear"
+                            matTooltip="Clear search"
+                            matTooltipPosition="above"
                             (click)="clearSearch()"
                         >
                             <app-svg-icon
@@ -165,8 +169,9 @@
                     <button
                         type="button"
                         class="filter-clear"
+                        matTooltip="Clear all filters"
+                        matTooltipPosition="above"
                         (click)="clearAllFilters()"
-                        title="Clear all filters"
                     >
                         <app-svg-icon
                             icon="x"
@@ -207,7 +212,8 @@
                     class="expand-sidebar-btn"
                     (click)="toggleSidebar()"
                     [class.active]="showSidebar()"
-                    title="Label Branches"
+                    [matTooltip]="showSidebar() ? 'Close sidebar' : 'Open sidebar'"
+                    matTooltipPosition="right"
                 >
                     <app-svg-icon
                         icon="expand-sidebar"
@@ -218,7 +224,8 @@
                     <button
                         class="breadcrumb-home"
                         (click)="selectAllLabels()"
-                        title="All Flows"
+                        matTooltip="All Flows"
+                        matTooltipPosition="right"
                     >
                         <app-svg-icon
                             icon="home"

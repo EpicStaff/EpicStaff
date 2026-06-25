@@ -4,6 +4,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { EMPTY } from 'rxjs';
 import { catchError, finalize, tap } from 'rxjs/operators';
@@ -56,6 +57,7 @@ const VARIABLES_SCHEMA_TOOLTIP =
     imports: [
         CommonModule,
         ReactiveFormsModule,
+        MatTooltipModule,
         AppSvgIconComponent,
         ButtonComponent,
         ChipsInputComponent,

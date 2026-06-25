@@ -126,6 +126,10 @@
                             [(isUserMenuOpen)]="isUserMenuOpen"
                         />
                     }
+                    <app-tooltip
+                        text="Profile"
+                        [visible]="showProfileTooltip && !isUserMenuOpen()"
+                    ></app-tooltip>
                 </div>
             </li>
         }

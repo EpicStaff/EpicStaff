@@ -1,13 +1,14 @@
 import { NgClass, NgFor } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-tags-popup',
     standalone: true,
-    imports: [NgFor, FormsModule, NgClass, AppSvgIconComponent],
+    imports: [NgFor, FormsModule, NgClass, AppSvgIconComponent, MatTooltip],
     template: `
         <div
             class="tags-popup"
@@ -32,6 +33,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                         <button
                             type="button"
                             class="remove-btn"
+                            matTooltip="Remove tag"
                             (click)="removeTag(i)"
                             aria-label="Remove tag"
                         >
@@ -48,6 +50,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                         <button
                             type="button"
                             class="add-btn"
+                            matTooltip="Add tag"
                             (click)="addTag()"
                             aria-label="Add tag"
                         >

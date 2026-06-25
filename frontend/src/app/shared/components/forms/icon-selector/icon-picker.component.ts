@@ -1,6 +1,7 @@
 import { animate, style, transition, trigger } from '@angular/animations';
 import { NgFor, NgIf } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppIconComponent } from '../../app-icon/app-icon.component';
 
@@ -41,7 +42,7 @@ export const UI_ICONS: Record<string, string> = {
 @Component({
     selector: 'app-icon-picker',
     standalone: true,
-    imports: [NgFor, NgIf, AppIconComponent],
+    imports: [NgFor, NgIf, AppIconComponent, MatTooltipModule],
     templateUrl: './icon-picker.component.html',
     styleUrls: ['./icon-picker.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

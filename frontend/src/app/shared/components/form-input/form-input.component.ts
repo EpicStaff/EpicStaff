@@ -1,13 +1,14 @@
 import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, forwardRef, Input, Output } from '@angular/core';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 
 @Component({
     selector: 'app-custom-input',
     standalone: true,
-    imports: [CommonModule, FormsModule, HelpTooltipComponent],
+    imports: [CommonModule, FormsModule, HelpTooltipComponent, MatTooltipModule],
     template: `
         <div class="form-group">
             @if (label) {
@@ -48,6 +49,8 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     <button
                         type="button"
                         class="toggle-visibility"
+                        [matTooltip]="passwordVisible ? 'Hide' : 'Show'"
+                        matTooltipPosition="above"
                         (click)="togglePasswordVisibility()"
                         tabindex="-1"
                     >

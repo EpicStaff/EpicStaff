@@ -2,6 +2,7 @@
     class="flow-files-btn"
     [class.flow-files-btn--active]="attachedCount() > 0"
     (click)="openDialog()"
+    matTooltip="Add files to flow"
 >
     <app-svg-icon
         icon="file-upload"

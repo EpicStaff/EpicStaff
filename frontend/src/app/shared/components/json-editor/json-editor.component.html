@@ -25,6 +25,8 @@
                 class="action-icon"
                 [icon]="collapsed ? 'preview' : 'preview-hidden'"
                 size="1rem"
+                [matTooltip]="collapsed ? 'Show editor' : 'Hide editor'"
+                matTooltipPosition="above"
                 (click)="onToggle()"
             />
         }
@@ -33,6 +35,8 @@
                 class="action-icon"
                 icon="copy"
                 size="1rem"
+                matTooltip="Copy to clipboard"
+                matTooltipPosition="above"
                 (click)="onCopy()"
             />
         }

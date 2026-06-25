@@ -20,7 +20,8 @@
     <div
         *ngIf="node.type === NodeType.NOTE"
         class="action-button edit-button"
-        title="Edit Note"
+        matTooltip="Edit note"
+        matTooltipPosition="above"
         (click)="onEditClick($event)"
     >
         <app-svg-icon icon="edit"></app-svg-icon>
@@ -29,7 +30,8 @@
     <div
         *ngIf="node.type === NodeType.PROJECT"
         class="action-button ungroup-button"
-        title="Expand Project"
+        matTooltip="Expand project"
+        matTooltipPosition="above"
         (click)="onExpandProjectClick()"
     >
         <app-svg-icon icon="edit"></app-svg-icon>
@@ -38,7 +40,8 @@
     <div
         *ngIf="node.type !== NodeType.START"
         class="action-button delete-button"
-        title="Delete node"
+        matTooltip="Delete node"
+        matTooltipPosition="above"
         (click)="onDeleteClick($event)"
     >
         <i class="ti ti-trash"></i>

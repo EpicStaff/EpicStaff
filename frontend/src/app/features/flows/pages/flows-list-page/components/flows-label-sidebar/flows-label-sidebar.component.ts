@@ -12,6 +12,7 @@ import {
     signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
@@ -30,7 +31,14 @@ interface FlatLabelNode {
 
 @Component({
     selector: 'app-flows-label-sidebar',
-    imports: [CommonModule, FormsModule, DialogModule, AppSvgIconComponent, LabelColorPickerComponent],
+    imports: [
+        CommonModule,
+        FormsModule,
+        DialogModule,
+        AppSvgIconComponent,
+        LabelColorPickerComponent,
+        MatTooltipModule,
+    ],
     templateUrl: './flows-label-sidebar.component.html',
     styleUrls: ['./flows-label-sidebar.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

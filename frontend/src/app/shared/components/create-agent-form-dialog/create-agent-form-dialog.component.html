@@ -8,6 +8,8 @@
             class="create-agent__close-button"
             (click)="onCancelForm()"
             [disabled]="isSubmitting()"
+            matTooltip="Close"
+            matTooltipPosition="above"
         >
             <app-svg-icon
                 icon="close"

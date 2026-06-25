@@ -5,7 +5,8 @@
     <button
         class="menu-button"
         [class.active]="isMenuOpen()"
-        title="Options"
+        matTooltip="Project options"
+        matTooltipPosition="above"
         (click)="toggleMenu($event)"
         (mouseenter)="onButtonEnter()"
         (mouseleave)="onButtonLeave()"
