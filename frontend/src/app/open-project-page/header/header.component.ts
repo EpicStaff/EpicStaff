@@ -173,11 +173,6 @@ export class HeaderComponent implements OnInit, OnDestroy {
                         data: project!,
                         position: { x: 200, y: 200 },
                     }) as ProjectNodeModel;
-                    const metadata = {
-                        nodes: [node],
-                        connections: [],
-                        groups: [],
-                    };
                     this.flowsApiService
                         .getGraphsLight()
                         .pipe(
@@ -191,14 +186,41 @@ export class HeaderComponent implements OnInit, OnDestroy {
                                 this.flowsApiService.createGraph({
                                     name: uniqueName,
                                     description: '',
-                                    metadata,
+                                    metadata: { connections: [], groups: [] },
                                     tags: [],
                                 })
                             ),
+                            switchMap((response) => {
+                                const savePayload = {
+                                    save_version: response.save_version,
+                                    crew_node_list: [
+                                        {
+                                            graph: response.id,
+                                            crew_id: project!.id,
+                                            node_name: node.node_name,
+                                            input_map: {},
+                                            output_variable_path: null,
+                                            stream_config: {},
+                                            metadata: {
+                                                position: node.position,
+                                                color: node.color,
+                                                icon: node.icon,
+                                                size: node.size,
+                                            },
+                                        },
+                                    ],
+                                    python_node_list: [],
+                                    start_node_list: [],
+                                    edge_list: [],
+                                };
+                                return this.flowsApiService
+                                    .bulkSaveGraph(response.id, savePayload)
+                                    .pipe(map((saved) => saved.id));
+                            }),
                             takeUntil(this.destroy$)
                         )
                         .subscribe({
-                            next: (response) => this.router.navigate(['/flows', response.id]),
+                            next: (flowId) => this.router.navigate(['/flows', flowId]),
                             error: () => this.toastService.error('Failed to create flow'),
                         });
                 }
