@@ -203,6 +203,17 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
         this.wsService.graphSaved$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
             this.graphState.update((state) => (state ? { ...state, save_version: event.new_save_version } : state));
+
+            const tempIdMap = event.temp_id_map;
+            if (tempIdMap && Object.keys(tempIdMap).length > 0) {
+                const updates = this.flowService
+                    .nodes()
+                    .filter((n) => tempIdMap[n.id] != null)
+                    .map((n) => ({ ...n, backendId: tempIdMap[n.id] }));
+                if (updates.length > 0) {
+                    this.flowService.updateNodesInBatch(updates as NodeModel[]);
+                }
+            }
             const currentUserId = this.profileService.currentUserSignal()?.id;
             if (event.saved_by.user_id !== currentUserId) {
                 const savedBy = event.saved_by.display_name ?? `User ${event.saved_by.user_id}`;

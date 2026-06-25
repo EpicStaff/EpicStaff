@@ -98,6 +98,7 @@ export type GraphSavedMessage = {
     new_save_version: number;
     saved_by: EditorInfo;
     saved_at: string;
+    temp_id_map: Record<string, number>;
 };
 
 type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'reconnecting';
