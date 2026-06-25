@@ -7,12 +7,6 @@ import base64
 from tables.serializers.model_serializers.crew_serializers import (
     ToolSerializer,
 )
-from tables.serializers.model_serializers.embedding_serializers import (
-    DefaultEmbeddingConfigSerializer,
-)
-from tables.serializers.model_serializers.llm_serializers import (
-    DefaultLLMConfigSerializer,
-)
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.models.graph_models import (
     TelegramTriggerNode,
@@ -23,8 +17,6 @@ from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.utils.telegram_fields import load_telegram_trigger_fields
 from tables.models import Tool
 from tables.models import Crew
-from tables.models.embedding_models import DefaultEmbeddingConfig
-from tables.models.llm_models import DefaultLLMConfig
 from tables.services.realtime_service import RealtimeService
 from tables.swagger_schemas.python_node_test_mode_schema import (
     LAST_TEST_INPUT_SWAGGER as _LAST_TEST_INPUT_SWAGGER,
@@ -110,10 +102,6 @@ from tables.import_export.tabular.session import SessionTabularProjection
 
 from tables.swagger_schemas.crews_schema import CREW_DELETE
 from tables.swagger_schemas.default_config_schemas import (
-    DEFAULT_EMBEDDING_CONFIG_GET,
-    DEFAULT_EMBEDDING_CONFIG_PUT,
-    DEFAULT_LLM_CONFIG_GET,
-    DEFAULT_LLM_CONFIG_PUT,
     ENVIRONMENT_CONFIG_GET,
     ENVIRONMENT_CONFIG_POST,
     ENVIRONMENT_CONFIG_DELETE,
@@ -718,54 +706,6 @@ class CrewDeleteAPIView(APIView):
             return Response(
                 {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-
-class DefaultLLMConfigAPIView(APIView):
-    @extend_schema(**DEFAULT_LLM_CONFIG_GET)
-    def get(self, request, *args, **kwargs):
-        obj = DefaultLLMConfig.objects.first()
-        serializer = DefaultLLMConfigSerializer(obj, many=False)
-
-        return Response(serializer.data)
-
-    @extend_schema(**DEFAULT_LLM_CONFIG_PUT)
-    def put(self, request, *args, **kwargs):
-        try:
-            obj = DefaultLLMConfig.objects.get(pk=1)
-        except DefaultLLMConfig.DoesNotExist:
-            return Response(
-                {"error": "Object not found"}, status=status.HTTP_404_NOT_FOUND
-            )
-
-        serializer = DefaultLLMConfigSerializer(obj, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class DefaultEmbeddingConfigAPIView(APIView):
-    @extend_schema(**DEFAULT_EMBEDDING_CONFIG_GET)
-    def get(self, request, *args, **kwargs):
-        obj = DefaultEmbeddingConfig.objects.first()
-        serializer = DefaultEmbeddingConfigSerializer(obj, many=False)
-
-        return Response(serializer.data)
-
-    @extend_schema(**DEFAULT_EMBEDDING_CONFIG_PUT)
-    def put(self, request, *args, **kwargs):
-        try:
-            obj = DefaultEmbeddingConfig.objects.get(pk=1)
-        except DefaultEmbeddingConfig.DoesNotExist:
-            return Response(
-                {"error": "Object not found"}, status=status.HTTP_404_NOT_FOUND
-            )
-
-        serializer = DefaultEmbeddingConfigSerializer(obj, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ToolListRetrieveUpdateGenericViewSet(

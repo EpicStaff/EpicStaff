@@ -74,11 +74,6 @@ from tables.views.views import (
     GetUpdates,
     StopSession,
     CrewDeleteAPIView,
-    DefaultLLMConfigAPIView,
-    DefaultEmbeddingConfigAPIView,
-    DefaultAgentConfigAPIView,
-    DefaultCrewConfigAPIView,
-    # CollectionStatusAPIView,
     QuickstartView,
     QuickstartApplyView,
     delete_environment_config,
@@ -86,9 +81,6 @@ from tables.views.views import (
 )
 
 from tables.views.default_config import (
-    DefaultConfigAPIView,
-    DefaultRealtimeAgentConfigAPIView,
-    DefaultToolConfigAPIView,
     DefaultModelsAPIView,
 )
 
@@ -284,42 +276,6 @@ urlpatterns = [
         "init-realtime/",
         InitRealtimeAPIView.as_view(),
         name="init-realtime",
-    ),
-    # path(
-    #     "collection_statuses/",
-    #     CollectionStatusAPIView.as_view(),
-    #     name="collection_statuses/",
-    # ),
-    path("default-config/", DefaultConfigAPIView.as_view(), name="default_config"),
-    path(
-        "default-llm-config/",
-        DefaultLLMConfigAPIView.as_view(),
-        name="default_llm_config",
-    ),
-    path(
-        "default-embedding-config/",
-        DefaultEmbeddingConfigAPIView.as_view(),
-        name="default_embedding_config",
-    ),
-    path(
-        "default-agent-config/",
-        DefaultAgentConfigAPIView.as_view(),
-        name="default_agent_config",
-    ),
-    path(
-        "default-reailtime-config/",
-        DefaultRealtimeAgentConfigAPIView.as_view(),
-        name="default_reailtime_config",
-    ),
-    path(
-        "default-crew-config/",
-        DefaultCrewConfigAPIView.as_view(),
-        name="default_crew_config",
-    ),
-    path(
-        "default-tool-config/",
-        DefaultToolConfigAPIView.as_view(),
-        name="default_tool_config",
     ),
     path("default-models/", DefaultModelsAPIView.as_view(), name="default_models"),
     path("quickstart/apply/", QuickstartApplyView.as_view(), name="quickstart_apply"),
