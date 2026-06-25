@@ -23,6 +23,7 @@ from tables.models.agent_models import (
     SurfacePlace,
 )
 from tables.models.agent_models.surface_models import (
+    StorageAccess,
     SurfaceKnowledge,
     SurfaceMcpTool,
     SurfaceNaiveSearchConfig,
@@ -324,10 +325,10 @@ def test_storage_item_all_flags_false_by_default(shared_surface, storage_file_a)
         storage_file=storage_file_a,
     )
 
-    assert item.can_list is False
-    assert item.can_view is False
-    assert item.can_edit is False
-    assert item.can_delete is False
+    assert item.can_list == StorageAccess.UNSET
+    assert item.can_view == StorageAccess.UNSET
+    assert item.can_edit == StorageAccess.UNSET
+    assert item.can_delete == StorageAccess.UNSET
 
 
 @pytest.mark.django_db
@@ -335,29 +336,29 @@ def test_storage_item_flags_set(shared_surface, storage_file_a):
     item = SurfaceStorageItem.objects.create(
         surface=shared_surface,
         storage_file=storage_file_a,
-        can_list=True,
-        can_view=True,
-        can_edit=False,
-        can_delete=True,
+        can_list="allow",
+        can_view="allow",
+        can_edit="unset",
+        can_delete="deny",
     )
 
-    assert item.can_list is True
-    assert item.can_view is True
-    assert item.can_edit is False
-    assert item.can_delete is True
+    assert item.can_list == StorageAccess.ALLOW
+    assert item.can_view == StorageAccess.ALLOW
+    assert item.can_edit == StorageAccess.UNSET
+    assert item.can_delete == StorageAccess.DENY
 
 
 @pytest.mark.django_db
 def test_storage_item_unique_constraint(shared_surface, storage_file_a):
     SurfaceStorageItem.objects.create(
-        surface=shared_surface, storage_file=storage_file_a, can_view=True
+        surface=shared_surface, storage_file=storage_file_a, can_view="allow"
     )
 
     from django.db import IntegrityError
 
     with pytest.raises(IntegrityError):
         SurfaceStorageItem.objects.create(
-            surface=shared_surface, storage_file=storage_file_a, can_edit=True
+            surface=shared_surface, storage_file=storage_file_a, can_edit="allow"
         )
 
 
@@ -587,10 +588,10 @@ def test_serializer_create_with_storage_items(org, storage_file_a):
             "storage_items": [
                 {
                     "storage_file": storage_file_a.pk,
-                    "can_list": True,
-                    "can_view": True,
-                    "can_edit": False,
-                    "can_delete": False,
+                    "can_list": "allow",
+                    "can_view": "allow",
+                    "can_edit": "unset",
+                    "can_delete": "deny",
                 }
             ],
         },
@@ -601,10 +602,10 @@ def test_serializer_create_with_storage_items(org, storage_file_a):
     surface = serializer.save()
 
     item = SurfaceStorageItem.objects.get(surface=surface, storage_file=storage_file_a)
-    assert item.can_list is True
-    assert item.can_view is True
-    assert item.can_edit is False
-    assert item.can_delete is False
+    assert item.can_list == StorageAccess.ALLOW
+    assert item.can_view == StorageAccess.ALLOW
+    assert item.can_edit == StorageAccess.UNSET
+    assert item.can_delete == StorageAccess.DENY
     assert surface.allow_creation is True
 
 
@@ -743,10 +744,10 @@ def test_round_trip_get_returns_storage_items(org, storage_file_a):
     SurfaceStorageItem.objects.create(
         surface=surface,
         storage_file=storage_file_a,
-        can_list=True,
-        can_view=True,
-        can_edit=False,
-        can_delete=False,
+        can_list="allow",
+        can_view="allow",
+        can_edit="unset",
+        can_delete="deny",
     )
 
     data = SurfaceReadSerializer(surface).data
@@ -754,9 +755,10 @@ def test_round_trip_get_returns_storage_items(org, storage_file_a):
     assert len(data["storage_items"]) == 1
     item = data["storage_items"][0]
     assert item["storage_file"] == storage_file_a.pk
-    assert item["can_list"] is True
-    assert item["can_view"] is True
-    assert item["can_edit"] is False
+    assert item["can_list"] == "allow"
+    assert item["can_view"] == "allow"
+    assert item["can_edit"] == "unset"
+    assert item["can_delete"] == "deny"
 
 
 @pytest.mark.django_db

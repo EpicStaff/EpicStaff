@@ -11,6 +11,7 @@ from tables.models.agent_models.surface_models import (
     SurfaceNaiveSearchConfig,
     SurfacePythonTool,
     SurfaceStorageItem,
+    StorageAccess,
     ToolMode,
 )
 from tables.models.knowledge_models.collection_models import SourceCollection
@@ -100,10 +101,18 @@ class SurfaceStorageItemWriteSerializer(serializers.Serializer):
     storage_file = serializers.PrimaryKeyRelatedField(
         queryset=StorageFile.objects.all()
     )
-    can_list = serializers.BooleanField(default=False)
-    can_view = serializers.BooleanField(default=False)
-    can_edit = serializers.BooleanField(default=False)
-    can_delete = serializers.BooleanField(default=False)
+    can_list = serializers.ChoiceField(
+        choices=StorageAccess.choices, default=StorageAccess.UNSET
+    )
+    can_view = serializers.ChoiceField(
+        choices=StorageAccess.choices, default=StorageAccess.UNSET
+    )
+    can_edit = serializers.ChoiceField(
+        choices=StorageAccess.choices, default=StorageAccess.UNSET
+    )
+    can_delete = serializers.ChoiceField(
+        choices=StorageAccess.choices, default=StorageAccess.UNSET
+    )
 
 
 class SurfaceNaiveSearchConfigWriteSerializer(serializers.Serializer):

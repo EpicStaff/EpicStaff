@@ -6,6 +6,7 @@ from django.db import transaction
 from tables.exceptions import SurfaceValidationError
 from tables.models.agent_models.agent_models import AgentDefaultSurface
 from tables.models.agent_models.surface_models import (
+    StorageAccess,
     Surface,
     SurfaceGraphBasicSearchConfig,
     SurfaceGraphLocalSearchConfig,
@@ -142,10 +143,10 @@ class SurfaceService:
                 SurfaceStorageItem(
                     surface=surface,
                     storage_file=item["storage_file"],
-                    can_list=item.get("can_list", False),
-                    can_view=item.get("can_view", False),
-                    can_edit=item.get("can_edit", False),
-                    can_delete=item.get("can_delete", False),
+                    can_list=item.get("can_list", StorageAccess.UNSET),
+                    can_view=item.get("can_view", StorageAccess.UNSET),
+                    can_edit=item.get("can_edit", StorageAccess.UNSET),
+                    can_delete=item.get("can_delete", StorageAccess.UNSET),
                 )
                 for item in items
             ]

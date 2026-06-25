@@ -10,6 +10,12 @@ class ToolMode(models.TextChoices):
     DENY = "deny"
 
 
+class StorageAccess(models.TextChoices):
+    ALLOW = "allow"  # explicitly allowed (was True)
+    UNSET = "unset"  # default — neither granted nor forbidden (was False)
+    DENY = "deny"  # explicitly forbidden — hard deny, overrides any grant
+
+
 class Surface(TimestampMixin, models.Model):
     organization = models.ForeignKey(
         "Organization",
@@ -126,21 +132,29 @@ class SurfaceStorageItem(models.Model):
         related_name="+",
         help_text="StorageFile whose access is being configured for this surface.",
     )
-    can_list = models.BooleanField(
-        default=False,
-        help_text="Agent may list (enumerate) this file or folder within the surface.",
+    can_list = models.CharField(
+        max_length=5,
+        choices=StorageAccess.choices,
+        default=StorageAccess.UNSET,
+        help_text="Whether the agent may list (enumerate) this file/folder. 'deny' explicitly forbids it.",
     )
-    can_view = models.BooleanField(
-        default=False,
-        help_text="Agent may read/view the content of this file within the surface.",
+    can_view = models.CharField(
+        max_length=5,
+        choices=StorageAccess.choices,
+        default=StorageAccess.UNSET,
+        help_text="Whether the agent may read/view the content of this file. 'deny' explicitly forbids it.",
     )
-    can_edit = models.BooleanField(
-        default=False,
-        help_text="Agent may modify or overwrite this file within the surface.",
+    can_edit = models.CharField(
+        max_length=5,
+        choices=StorageAccess.choices,
+        default=StorageAccess.UNSET,
+        help_text="Whether the agent may modify or overwrite this file. 'deny' explicitly forbids it.",
     )
-    can_delete = models.BooleanField(
-        default=False,
-        help_text="Agent may delete this file within the surface.",
+    can_delete = models.CharField(
+        max_length=5,
+        choices=StorageAccess.choices,
+        default=StorageAccess.UNSET,
+        help_text="Whether the agent may delete this file. 'deny' explicitly forbids it.",
     )
 
     class Meta:
