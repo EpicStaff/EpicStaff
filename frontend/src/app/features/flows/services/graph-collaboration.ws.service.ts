@@ -17,6 +17,12 @@ export interface EditorInfo {
     avatar_url?: string | null;
 }
 
+export interface EntryDeleteRef {
+    list_key: string;
+    id?: number;
+    temp_id?: string;
+}
+
 type ServerMessage =
     | PresenceStateMessage
     | UserJoinedMessage
@@ -46,10 +52,16 @@ type WsErrorMessage = { type: 'error'; code: string; message: string };
 export type GraphStateMessage = { type: 'graph_state'; flow: GraphDto };
 export type NodeCreatedMessage = { type: 'node_created'; node: NodeModel; editor: EditorInfo };
 export type NodeUpdatedMessage = { type: 'node_updated'; node: NodeModel; editor: EditorInfo };
-export type NodesDeletedMessage = { type: 'nodes_deleted'; node_ids: string[]; editor: EditorInfo };
+export type NodesDeletedMessage = { type: 'nodes_deleted'; refs: EntryDeleteRef[]; editor: EditorInfo };
 export type ConnectionCreatedMessage = { type: 'connection_created'; connection: ConnectionModel; editor: EditorInfo };
-export type ConnectionDeletedMessage = { type: 'connection_deleted'; connection_id: string; editor: EditorInfo };
-export type ConnectionsDeletedMessage = { type: 'connections_deleted'; connection_ids: string[]; editor: EditorInfo };
+export type ConnectionDeletedMessage = {
+    type: 'connection_deleted';
+    connection_id: number | null;
+    temp_id: string | null;
+    list_key: string;
+    editor: EditorInfo;
+};
+export type ConnectionsDeletedMessage = { type: 'connections_deleted'; refs: EntryDeleteRef[]; editor: EditorInfo };
 export type ConnectionWaypointsUpdatedMessage = {
     type: 'connection_waypoints_updated';
     connection_id: string;
@@ -364,9 +376,9 @@ export class GraphCollaborationWsService {
         if (editor) this.sendRaw({ type: 'node_updated', node, list_key, editor });
     }
 
-    public sendNodesDeleted(node_ids: string[]): void {
+    public sendNodesDeleted(refs: EntryDeleteRef[]): void {
         const editor = this.buildEditorInfo();
-        if (editor) this.sendRaw({ type: 'nodes_deleted', node_ids, editor });
+        if (editor) this.sendRaw({ type: 'nodes_deleted', refs, editor });
     }
 
     public sendConnectionCreated(connection: ConnectionModel, listKey: string): void {
@@ -374,14 +386,21 @@ export class GraphCollaborationWsService {
         if (editor) this.sendRaw({ type: 'connection_created', connection, list_key: listKey, editor });
     }
 
-    public sendConnectionDeleted(connection_id: string): void {
+    public sendConnectionDeleted(ref: EntryDeleteRef): void {
         const editor = this.buildEditorInfo();
-        if (editor) this.sendRaw({ type: 'connection_deleted', connection_id, editor });
+        if (editor)
+            this.sendRaw({
+                type: 'connection_deleted',
+                connection_id: ref.id ?? null,
+                temp_id: ref.temp_id ?? null,
+                list_key: ref.list_key,
+                editor,
+            });
     }
 
-    public sendConnectionsDeleted(connection_ids: string[]): void {
+    public sendConnectionsDeleted(refs: EntryDeleteRef[]): void {
         const editor = this.buildEditorInfo();
-        if (editor) this.sendRaw({ type: 'connections_deleted', connection_ids, editor });
+        if (editor) this.sendRaw({ type: 'connections_deleted', refs, editor });
     }
 
     public sendConnectionWaypointsUpdated(connection_id: string, waypoints: IPoint[], listKey: string): void {

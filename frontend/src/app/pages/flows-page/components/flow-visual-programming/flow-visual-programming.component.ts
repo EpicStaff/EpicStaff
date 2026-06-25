@@ -222,21 +222,45 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             this.flowService.updateNode(msg.node);
         });
 
-        this.wsService.nodesDeleted$
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((msg) => this.flowService.deleteSelections({ fNodeIds: msg.node_ids, fConnectionIds: [] }));
+        this.wsService.nodesDeleted$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            const fNodeIds = msg.refs
+                .map((ref) => {
+                    if (ref.id != null) {
+                        return this.flowService.nodes().find((n) => n.backendId === ref.id)?.id ?? null;
+                    }
+                    return ref.temp_id ?? null;
+                })
+                .filter((id): id is string => id !== null);
+            if (fNodeIds.length > 0) {
+                this.flowService.deleteSelections({ fNodeIds, fConnectionIds: [] });
+            }
+        });
 
         this.wsService.connectionCreated$
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((msg) => this.flowService.addConnection(msg.connection));
 
-        this.wsService.connectionDeleted$
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((msg) => this.flowService.removeConnection(msg.connection_id));
+        this.wsService.connectionDeleted$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            let fId: string | undefined;
+            if (msg.connection_id != null) {
+                fId = this.flowService.connections().find((c) => c.data?.id === msg.connection_id)?.id;
+            } else if (msg.temp_id != null) {
+                fId = this.flowService.connections().find((c) => c.id === msg.temp_id)?.id;
+            }
+            if (fId) this.flowService.removeConnection(fId);
+        });
 
-        this.wsService.connectionsDeleted$
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((msg) => this.flowService.removeConnectionsInBatch(msg.connection_ids));
+        this.wsService.connectionsDeleted$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            const fIds = msg.refs
+                .map((ref) => {
+                    if (ref.id != null) {
+                        return this.flowService.connections().find((c) => c.data?.id === ref.id)?.id ?? null;
+                    }
+                    return ref.temp_id ?? null;
+                })
+                .filter((id): id is string => id !== null);
+            if (fIds.length > 0) this.flowService.removeConnectionsInBatch(fIds);
+        });
 
         this.wsService.connectionWaypointsUpdated$
             .pipe(takeUntilDestroyed(this.destroyRef))

@@ -46,7 +46,9 @@ import {
 import { Subject, takeUntil } from 'rxjs';
 import {
     EditorInfo,
+    EntryDeleteRef,
     GraphCollaborationWsService,
+    nodeTypeToListKey,
 } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
 import { ToastService } from '../../services/notifications/toast.service';
@@ -414,8 +416,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             newTargetPortId as CustomPortId
         );
 
+        const deleteRef = this.buildConnectionDeleteRef(existingConnection);
         this.flowService.removeConnection(event.connectionId);
-        this.wsService.sendConnectionDeleted(event.connectionId);
+        this.wsService.sendConnectionDeleted(deleteRef);
         this.flowService.addConnection(updatedConnection);
         this.wsService.sendConnectionCreated(updatedConnection, this.getConnectionListKey(updatedConnection));
 
@@ -1319,15 +1322,24 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             return node && node.type !== NodeType.START;
         });
 
+        const nodeRefs = nodeIdsToDelete
+            .map((id) => this.buildNodeDeleteRef(id))
+            .filter((r): r is EntryDeleteRef => r !== null);
+        const connectionRefs = selections.fConnectionIds
+            .map((id) => {
+                const conn = this.flowService.connections().find((c) => c.id === id);
+                return conn ? this.buildConnectionDeleteRef(conn) : null;
+            })
+            .filter((r): r is EntryDeleteRef => r !== null);
         this.flowService.deleteSelections({
             fNodeIds: nodeIdsToDelete,
             fConnectionIds: selections.fConnectionIds,
         });
-        if (nodeIdsToDelete.length > 0) {
-            this.wsService.sendNodesDeleted(nodeIdsToDelete);
+        if (nodeRefs.length > 0) {
+            this.wsService.sendNodesDeleted(nodeRefs);
         }
-        if (selections.fConnectionIds.length > 0) {
-            this.wsService.sendConnectionsDeleted(selections.fConnectionIds);
+        if (connectionRefs.length > 0) {
+            this.wsService.sendConnectionsDeleted(connectionRefs);
         }
     }
 
@@ -1374,6 +1386,21 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         return sourceNode?.type === NodeType.TABLE || sourceNode?.type === NodeType.EDGE
             ? 'conditional_edge_list'
             : 'edge_list';
+    }
+
+    private buildNodeDeleteRef(nodeId: string): EntryDeleteRef | null {
+        const node = this.flowService.nodes().find((n) => n.id === nodeId);
+        if (!node) return null;
+        const list_key = nodeTypeToListKey(node.type);
+        if (!list_key) return null;
+        return node.backendId != null ? { list_key, id: node.backendId } : { list_key, temp_id: node.id };
+    }
+
+    private buildConnectionDeleteRef(connection: ConnectionModel): EntryDeleteRef {
+        const list_key = this.getConnectionListKey(connection);
+        return connection.data?.id != null
+            ? { list_key, id: connection.data.id }
+            : { list_key, temp_id: connection.id };
     }
 
     private normalizeWaypointsForConnection(connection: ConnectionModel, waypoints: IPoint[] | undefined): IPoint[] {
