@@ -565,7 +565,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public exportAsJson(): void {
         const backendId = this.node().backendId;
         if (backendId == null) {
-            this.toastService.error('Save the node before exporting.');
+            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
             return;
         }
         this.importExportService
@@ -578,6 +578,9 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     }
 
     public exportAsCsv(): void {
+        if (this.node().backendId == null) {
+            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+        }
         const exportData = this.cdtExportImportService.buildExportData({
             nodeName: this.form.value.node_name ?? '',
             preCode: this.preCode,

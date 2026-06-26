@@ -40,6 +40,7 @@
             (save)="onGraphSave($event)"
             (openShortcuts)="openShortcutsModal($event)"
             (requestReload)="refreshCurrentFlow()"
+            (importComplete)="handlePartialImportComplete()"
         ></app-flow-graph>
         <app-shortcuts-modal
             [open]="isShortcutsOpen()"

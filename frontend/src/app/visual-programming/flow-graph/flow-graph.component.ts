@@ -144,6 +144,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     @Output() save = new EventEmitter<FlowModel>();
     @Output() requestReload = new EventEmitter<void>();
     readonly openShortcuts = output<DOMRect>();
+    readonly importComplete = output<void>();
 
     @ViewChild(FFlowComponent, { static: false })
     private fFlowComponent!: FFlowComponent;
@@ -1250,7 +1251,14 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onExportSelectedAsJson(): void {
-        this.triggerPartialExport(this.selectedNodeIds());
+        const selectedIds = this.selectedNodeIds();
+        const nodes = this.flowService.nodes();
+        const hasUnsaved = selectedIds.some((id) => nodes.find((n) => n.id === id)?.backendId == null);
+        if (hasUnsaved) {
+            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+            if (selectedIds.every((id) => nodes.find((n) => n.id === id)?.backendId == null)) return;
+        }
+        this.triggerPartialExport(selectedIds);
     }
 
     public onExportSelectedAsCsv(): void {
@@ -1320,7 +1328,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                         .map((n) => [n.backendId, { x: n.position.x, y: n.position.y }])
                 );
                 this.fitAfterNextFlowChange = true;
-                this.requestReload.emit();
+                this.importComplete.emit();
             },
             error: (err: HttpErrorResponse) => {
                 const body = typeof err.error === 'string' ? err.error : JSON.stringify(err.error ?? '');
@@ -1449,7 +1457,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     private _shiftImportedNodes(flowState: FlowModel, preImportIds: Set<number>): FlowModel {
-        const newNodes = flowState.nodes.filter((n) => n.backendId === null || !preImportIds.has(n.backendId));
+        const newNodes = flowState.nodes.filter((n) => n.backendId !== null && !preImportIds.has(n.backendId));
 
         if (!newNodes.length) return flowState;
 
@@ -1536,6 +1544,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             fNodeIds: nodeIdsToDelete,
             fConnectionIds: selections.fConnectionIds,
         });
+
+        if (selections.fNodeIds.length > 0) {
+            this.selectedNodeCount.set(0);
+            this.selectedNodeIds.set([]);
+            this.fFlowComponent.select([], []);
+        }
     }
 
     private resolveTableOverlaps(node: NodeModel): string[] {

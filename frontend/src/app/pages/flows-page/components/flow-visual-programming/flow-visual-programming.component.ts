@@ -216,6 +216,95 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.fetchGraph(graphId, true, true);
     }
 
+    public handlePartialImportComplete(): void {
+        const graphId = Number(this.route.snapshot.paramMap.get('id'));
+        if (!isFinite(graphId)) return;
+
+        // Capture the set of backendIds already on canvas before the fetch.
+        // These identify "pre-existing" server nodes so we can isolate only
+        // the newly-imported ones after the server graph is loaded.
+        const preImportBackendIds = new Set<number>(
+            this.loadedFlowState()
+                .nodes.map((n) => n.backendId)
+                .filter((id): id is number => id !== null)
+        );
+
+        forkJoin({
+            graph: this.flowApiService.getGraphById(graphId, true),
+            flows: this.flowApiService.getGraphsLight().pipe(catchError(() => of([] as GetGraphLightRequest[]))),
+        })
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                tap(({ graph, flows }) => {
+                    // Update graphState and availableFlowLights so loadedFlowState()
+                    // recomputes via mapGraphDtoToFlowModel + addStartNodeIfNeeded +
+                    // validateSubgraphNodes (the existing computed pipeline).
+                    this.graphState.set(graph);
+                    this.availableFlowLights.set(flows);
+
+                    const serverFlow = this.loadedFlowState();
+
+                    // Nodes from the server whose backendId was not present before
+                    // the import — these are the newly-imported nodes.
+                    const newServerNodes = serverFlow.nodes.filter(
+                        (n) => n.backendId !== null && !preImportBackendIds.has(n.backendId)
+                    );
+                    const newServerNodeIds = new Set<string>(newServerNodes.map((n) => n.id));
+
+                    // Connections that are entirely within the newly-imported node set.
+                    // Cross-boundary connections (new ↔ pre-existing) are skipped because
+                    // the server-generated UUIDs don't match the canvas UUIDs of
+                    // pre-existing nodes.
+                    const newServerConnections = serverFlow.connections.filter(
+                        (c) => newServerNodeIds.has(c.sourceNodeId) && newServerNodeIds.has(c.targetNodeId)
+                    );
+
+                    const currentState = this.flowService.getFlowState();
+
+                    const mergedFlow = normalizeFlowPorts({
+                        nodes: [...currentState.nodes, ...newServerNodes],
+                        connections: [...currentState.connections, ...newServerConnections],
+                    });
+
+                    // setFlow retriggers ngOnChanges in flow-graph, which runs
+                    // _shiftImportedNodes (using _preImportBackendIds set by doPartialImport)
+                    // and fitAfterNextFlowChange.
+                    // savedFlowState is intentionally NOT updated — the flow stays dirty.
+                    this.flowService.setFlow(mergedFlow);
+
+                    // Run the same warning toasts as applyLoadedGraphState.
+                    const blockedCount = this.countBlockedSubgraphNodes(serverFlow);
+                    if (blockedCount > 0) {
+                        this.toastService.warning(
+                            `${blockedCount} subgraph node(s) reference missing flows and were blocked.`,
+                            6000,
+                            'bottom-right'
+                        );
+                    }
+
+                    this.llmConfigStorageService
+                        .getAllConfigs()
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe((configs) => {
+                            const cdtMissingCount = this.countCdtNodesWithMissingLlmConfig(serverFlow, configs);
+                            if (cdtMissingCount > 0) {
+                                this.toastService.warning(
+                                    `${cdtMissingCount} classification decision table node(s) reference a missing LLM config.`,
+                                    6000,
+                                    'bottom-right'
+                                );
+                            }
+                        });
+                }),
+                catchError(() => {
+                    this.toastService.error('Failed to load imported nodes');
+                    return EMPTY;
+                }),
+                finalize(() => this.cdr.markForCheck())
+            )
+            .subscribe();
+    }
+
     private fetchGraph(graphId: number, forceRefresh = false, showRefreshToast = false): void {
         forkJoin({
             graph: this.flowApiService.getGraphById(graphId, forceRefresh),
