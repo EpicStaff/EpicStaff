@@ -78,20 +78,14 @@
                     }
                 }
 
-                .auth-token {
-                    display: flex;
-                    gap: 8px;
-                    align-items: stretch;
-
-                    .auth-token-input {
-                        flex: 1;
-                        min-width: 0;
-                    }
-                }
-
                 .phone-select {
                     display: contents;
                 }
+            }
+
+            .test-row {
+                display: flex;
+                justify-content: flex-end;
             }
 
             .divider {

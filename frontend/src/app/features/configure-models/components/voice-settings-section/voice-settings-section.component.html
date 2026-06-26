@@ -45,25 +45,11 @@
                                 tooltipClass="dialog__label-tooltip"
                             />
                         </div>
-                        <div class="auth-token">
-                            <app-custom-input
-                                class="auth-token-input"
-                                type="secret"
-                                formControlName="twilio_auth_token"
-                                placeholder="Enter Auth Token..."
-                            />
-                            <app-button
-                                type="outline-primary"
-                                [disabled]="testing() || !canTestCredentials()"
-                                (click)="onTestCredentials()"
-                            >
-                                <i
-                                    class="ti ti-check"
-                                    aria-hidden="true"
-                                ></i>
-                                {{ testing() ? 'Testing…' : 'Test' }}
-                            </app-button>
-                        </div>
+                        <app-custom-input
+                            type="secret"
+                            formControlName="twilio_auth_token"
+                            placeholder="Enter Auth Token..."
+                        />
                     </div>
 
                     <div class="row">
@@ -98,6 +84,17 @@
                             [items]="ngrokItems()"
                             placeholder="Select one..."
                         />
+                    </div>
+
+                    <div class="test-row">
+                        <app-button
+                            type="outline-primary"
+                            [disabled]="testing() || !canTestCredentials()"
+                            (click)="onTestCredentials()"
+                            leftIcon="check"
+                        >
+                            {{ testing() ? 'Testing…' : 'Test' }}
+                        </app-button>
                     </div>
 
                     <div class="divider"></div>
