@@ -76,11 +76,6 @@ class ImportService:
 
         return sorted_keys
 
-    # Org-scoped entity types: these get org_id forwarded so newly created rows
-    # land in the active organization. Other (global / Phase B) strategies must
-    # not receive org_id.
-    _ORG_SCOPED_TYPES = (EntityType.GRAPH, EntityType.CREW, EntityType.AGENT)
-
     def _import_single_entity(
         self,
         entity_data,
@@ -97,7 +92,7 @@ class ImportService:
 
         existing = None
         if not is_main:
-            existing = strategy.find_existing(entity_data, id_mapper)
+            existing = strategy.find_existing(entity_data, id_mapper, org_id=org_id)
 
         was_created = existing is None
 
@@ -109,8 +104,7 @@ class ImportService:
             ):
                 denied = resource
 
-        if entity_type in self._ORG_SCOPED_TYPES:
-            kwargs["org_id"] = org_id
+        kwargs["org_id"] = org_id
 
         instance = strategy.import_entity(
             entity_data, id_mapper, is_main, settings=settings, **kwargs
