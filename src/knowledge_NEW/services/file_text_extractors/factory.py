@@ -18,16 +18,13 @@ _STRATEGIES: dict[FileExtensionEnum, type[AbstractFileTextExtractor]] = {
 def build_file_text_extractor(
     extension: FileExtensionEnum,
 ) -> AbstractFileTextExtractor:
-    """Build the extractor registered for `extension`.
+    """Create the text extractor registered for `extension`.
 
     Args:
-        extension: File extension to build an extractor for.
-
-    Returns:
-        An extractor instance for `extension`.
+        extension: File extension selecting the extractor implementation.
 
     Raises:
-        UnsupportedError: If no strategy is registered for `extension`.
+        UnsupportedError: If `extension` has no registered extractor.
     """
     if extension not in _STRATEGIES:
         raise UnsupportedError("extension", extension)

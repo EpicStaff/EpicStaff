@@ -1,23 +1,29 @@
 import abc
 
+from errors import FileTextExtractingError
+
 
 class AbstractFileTextExtractor(abc.ABC):
-    """Abstract base for extracting text from raw file bytes.
+    """Abstract base for extracting text from file content."""
 
-    Subclasses must implement `extract`; it is the only contract a concrete
-    extractor has to fulfil.
-    """
-
-    @abc.abstractmethod
     async def extract(self, content: bytes) -> str:
-        """Return the text extracted from `content`.
-
-        Implementations must return an empty string when the file has no text,
-        and raise `FileTextExtractingError` when the content cannot be extracted.
+        """Extract text from `content`, translating failures.
 
         Args:
-            content: Raw file bytes to extract text from.
+            content: The raw file bytes to extract text from.
 
-        Returns:
-            The extracted text, or an empty string when the file has no text.
+        Raises:
+            FileTextExtractingError: If extraction fails for any reason.
+        """
+        try:
+            return await self._extract(content)
+        except Exception as e:
+            raise FileTextExtractingError(extractor=type(self).__name__)
+
+    @abc.abstractmethod
+    async def _extract(self, content: bytes) -> str:
+        """Return the text extracted from `content`.
+
+        `extract` translates any error into `FileTextExtractingError`, so
+        implementations need not wrap exceptions themselves.
         """
