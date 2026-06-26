@@ -4,9 +4,8 @@ from contextlib import AbstractAsyncContextManager
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 
 from database.config import SessionLocal
-from database.repositories import (
-    NaiveRagSQLAlchemyRepository,
-)
+from database.repositories.base import AbstractNaiveRagRepository
+from database.repositories.naive import NaiveRagSQLAlchemyRepository
 
 __all__ = [
     "AbstractUnitOfWork",
@@ -15,29 +14,26 @@ __all__ = [
 
 
 class AbstractUnitOfWork(AbstractAsyncContextManager, abc.ABC):
-    """Abstract async unit of work grouping repository operations into one transaction.
-
-    Subclasses must implement `commit` and `rollback`; exiting the context
-    manager rolls back any uncommitted work.
-    """
+    """Abstract async context manager defining the unit-of-work contract."""
 
     async def __aexit__(self, exc_type, exc_value, traceback):
         await self.rollback()
 
     @abc.abstractmethod
     async def rollback(self):
-        """Discard all changes made in the current transaction."""
-        pass
+        """Roll back the current transaction."""
 
     @abc.abstractmethod
     async def commit(self):
-        """Persist all changes made in the current transaction."""
-        pass
+        """Commit the current transaction."""
+
+    @property
+    @abc.abstractmethod
+    def naive_rag_repo(self) -> AbstractNaiveRagRepository:
+        """Active `AbstractNaiveRagRepository` for this unit of work."""
 
 
 class SQLAlchemyUnitOfWork(AbstractUnitOfWork):
-    """SQLAlchemy-backed unit of work that opens a session per context."""
-
     def __init__(self, session_factory: async_sessionmaker = SessionLocal):
         self._session_factory = session_factory
         self._session = None
@@ -54,23 +50,19 @@ class SQLAlchemyUnitOfWork(AbstractUnitOfWork):
         self._naive_rag_repo = None
 
     async def rollback(self):
-        """Roll back the current session."""
         await self.session.rollback()
 
     async def commit(self):
-        """Commit the current session."""
         await self.session.commit()
 
     @property
     def session(self) -> AsyncSession:
-        """Active session, raising `RuntimeError` when used outside the context manager."""
         if self._session is None:
             raise RuntimeError("UnitOfWork used outside its context manager.")
         return self._session
 
     @property
     def naive_rag_repo(self) -> NaiveRagSQLAlchemyRepository:
-        """Naive RAG repository bound to the active session."""
         if self._naive_rag_repo is None:
             self._naive_rag_repo = NaiveRagSQLAlchemyRepository(self.session)
         return self._naive_rag_repo
