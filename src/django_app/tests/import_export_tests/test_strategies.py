@@ -256,7 +256,7 @@ class TestLLMConfigStrategy:
         assert data["custom_name"] == "MyGPT-4o"
         assert data["temperature"] == 0.5
 
-    def test_create_entity(self, rich_seeded_db, export_service):
+    def test_create_entity(self, rich_seeded_db, export_service, default_org):
         agent = rich_seeded_db["agents"][0]
         export_data = export_service.export_entities(EntityType.AGENT, [agent.id])
 
@@ -267,7 +267,7 @@ class TestLLMConfigStrategy:
         mapper = _build_identity_mapper(export_data)
 
         config_count_before = LLMConfig.objects.count()
-        new_config = strategy.create_entity(config_data, mapper)
+        new_config = strategy.create_entity(config_data, mapper, org_id=default_org.id)
 
         assert LLMConfig.objects.count() == config_count_before + 1
         assert new_config.custom_name == "MyGPT-4o (2)"

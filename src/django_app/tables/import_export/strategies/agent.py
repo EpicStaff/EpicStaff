@@ -1,5 +1,7 @@
 from copy import deepcopy
 
+from django.db.models import Q
+
 from tables.models import (
     Agent,
     RealtimeAgent,
@@ -84,7 +86,9 @@ class AgentStrategy(EntityImportExportStrategy):
 
         return agent
 
-    def find_existing(self, data: dict, id_mapper: IDMapper) -> Agent:
+    def find_existing(
+        self, data: dict, id_mapper: IDMapper, org_id: int = None
+    ) -> Agent:
         """Shallow search of existing agent"""
         data_copy = deepcopy(data)
         data_copy.pop("id", None)
@@ -99,6 +103,7 @@ class AgentStrategy(EntityImportExportStrategy):
 
         potential_candidates = (
             Agent.objects.filter(**filters, **null_filters)
+            .filter(self.get_org_scope_q(org_id))
             .select_related("llm_config", "fcm_llm_config")
             .prefetch_related("python_code_tools", "mcp_tools")
         ).all()
@@ -159,6 +164,11 @@ class AgentStrategy(EntityImportExportStrategy):
             break
 
         return existing
+
+    def get_org_scope_q(self, org_id: int) -> Q:
+        if org_id is None:
+            return Q()
+        return Q(org_id=org_id)
 
     def _get_llm_configs(self, data: dict, id_mapper: IDMapper):
         old_llm_config_id = data.pop("llm_config", None)
