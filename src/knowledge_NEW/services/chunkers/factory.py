@@ -29,5 +29,5 @@ def build_chunker(
         UnsupportedError: If `strategy` has no registered chunker.
     """
     if strategy not in _STRATEGIES:
-        raise UnsupportedError("chunker strategy", strategy)
+        raise UnsupportedError(that="chunker strategy", got=strategy)
     return _STRATEGIES[strategy](config)

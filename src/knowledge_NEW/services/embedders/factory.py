@@ -27,5 +27,5 @@ def build_embedder(
         UnsupportedError: If `provider` has no registered embedder.
     """
     if provider not in _STRATEGIES:
-        raise UnsupportedError("embedding provider", provider)
+        raise UnsupportedError(that="embedding provider", got=provider)
     return _STRATEGIES[provider](config)

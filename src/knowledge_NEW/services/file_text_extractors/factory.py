@@ -27,5 +27,5 @@ def build_file_text_extractor(
         UnsupportedError: If `extension` has no registered extractor.
     """
     if extension not in _STRATEGIES:
-        raise UnsupportedError("extension", extension)
+        raise UnsupportedError(that="extension", got=extension)
     return _STRATEGIES[extension]()
