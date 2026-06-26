@@ -206,6 +206,7 @@
                                             [message]="drillEntry.message"
                                             [subgraphName]="drillEntry.subgraphName"
                                             [showViewNestedMessages]="drillEntry.hasNestedMessages"
+                                            [nestedMessagesCount]="rootView.drilldownEntries.length"
                                             [isNestedMessagesOpen]="drillEntry.isNestedMessagesOpen"
                                             (viewNestedMessages)="onViewNestedMessages(drillEntry.message)"
                                         ></app-subgraph-start-message>
@@ -297,6 +298,7 @@
                                                         [message]="nestedEntry.message"
                                                         [subgraphName]="nestedEntry.subgraphName"
                                                         [showViewNestedMessages]="nestedEntry.hasNestedMessages"
+                                                        [nestedMessagesCount]="nestedEntry.nestedMessagesCount"
                                                         [isNestedMessagesOpen]="nestedEntry.isNestedMessagesOpen"
                                                         (viewNestedMessages)="onViewNestedMessages(nestedEntry.message)"
                                                     ></app-subgraph-start-message>
@@ -318,6 +320,7 @@
                                 [message]="entry.message"
                                 [subgraphName]="entry.subgraphName"
                                 [showViewNestedMessages]="entry.hasNestedMessages"
+                                [nestedMessagesCount]="entry.nestedMessagesCount"
                                 [isNestedMessagesOpen]="entry.isNestedMessagesOpen"
                                 (viewNestedMessages)="onViewNestedMessages(entry.message)"
                             ></app-subgraph-start-message>

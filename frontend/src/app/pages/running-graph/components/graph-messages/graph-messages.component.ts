@@ -101,6 +101,7 @@ interface MessageViewEntry {
     project: GetProjectRequest | null;
     subgraphName: string | null;
     hasNestedMessages: boolean;
+    nestedMessagesCount: number;
     isNestedMessagesOpen: boolean;
     shouldShowTransition: boolean;
     rootKey: string | null;
@@ -887,6 +888,15 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         return this.messageContexts.some((ctx) => this.pathsEqual(ctx.path, nestedPath));
     }
 
+    private getNestedMessagesCountForContext(context: MessageContext): number {
+        if (!context.isSubgraphStart) return 0;
+        const nestedPath = [...context.path, context.key];
+        return this.messageContexts.reduce(
+            (count, ctx) => (this.pathsEqual(ctx.path, nestedPath) ? count + 1 : count),
+            0
+        );
+    }
+
     private isNestedMessagesOpenForContext(context: MessageContext): boolean {
         if (!context.isSubgraphStart) return false;
         const rootKey = this.getRootKeyForContext(context);
@@ -1256,6 +1266,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     private buildMessageEntry(message: GraphMessage, context?: MessageContext | null): MessageViewEntry {
         const resolvedContext = context ?? this.getMessageContext(message);
         const hasNestedMessages = resolvedContext ? this.hasNestedMessagesForContext(resolvedContext) : false;
+        const nestedMessagesCount = resolvedContext ? this.getNestedMessagesCountForContext(resolvedContext) : 0;
         const isNestedMessagesOpen = resolvedContext ? this.isNestedMessagesOpenForContext(resolvedContext) : false;
         const index = resolvedContext ? resolvedContext.index : 0;
         const rootKey = resolvedContext ? this.getRootKeyForContext(resolvedContext) : null;
@@ -1267,6 +1278,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             project: this.getProjectFromMessage(message),
             subgraphName: this.getSubgraphName(message),
             hasNestedMessages,
+            nestedMessagesCount,
             isNestedMessagesOpen,
             shouldShowTransition: this.shouldShowTransition(message, index),
             rootKey,
