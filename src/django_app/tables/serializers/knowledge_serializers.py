@@ -155,6 +155,24 @@ class DocumentBulkDeleteSerializer(serializers.Serializer):
         return unique_ids
 
 
+class CopyDocumentsSerializer(serializers.Serializer):
+    """
+    Serializer for copying documents into a target collection.
+    """
+
+    collection_id = serializers.IntegerField(
+        min_value=1, help_text="ID of the target collection to copy documents into"
+    )
+    document_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        help_text="List of document IDs to copy",
+    )
+
+    def validate_document_ids(self, value):
+        return list(dict.fromkeys(value))
+
+
 class DocumentDetailSerializer(serializers.ModelSerializer):
     """
     Detailed serializer for single document view.
