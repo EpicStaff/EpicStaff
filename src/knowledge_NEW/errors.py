@@ -1,13 +1,3 @@
-from __future__ import annotations
-
-from typing import Any, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from chunkers import AbstractChunker
-    from embedders import AbstractEmbedder
-    from file_text_extractors import AbstractFileTextExtractor
-
-
 __all__ = [
     "KnowledgeError",
     "UnsupportedError",
@@ -23,29 +13,28 @@ __all__ = [
 class KnowledgeError(Exception):
     """Base error for all domain errors."""
 
+    default_message: str = ''
+
+    def __init__(self, message: str = '', /, *args, **format_kwargs):
+        if not message and self.default_message:
+            message = self.default_message.format(**format_kwargs)
+        super().__init__(message, *args)
+
 
 class UnsupportedError(KnowledgeError):
-    def __init__(self, that: str, got: Any):
-        super().__init__(f"Unsupported {that}: '{got!r}'")
+    default_message = "Unsupported {that}: '{got}'"
 
 
 class FileTextExtractingError(KnowledgeError):
-    def __init__(self, extractor: AbstractFileTextExtractor):
-        super().__init__(
-            f"Cannot extract the text from binary by {type(extractor).__name__}."
-        )
+    default_message = "{extractor} failed to extract text from binary content."
 
 
 class ChunkingError(KnowledgeError):
-    def __init__(self, text: str, chunker: AbstractChunker):
-        super().__init__(f"Cannot chunk the text '{text}' by {type(chunker).__name__}.")
+    default_message = "{chunker} failed to chunk text."
 
 
 class EmbeddingError(KnowledgeError):
-    def __init__(self, text: str, embedder: AbstractEmbedder):
-        super().__init__(
-            f"Cannot embed the text: '{text}' by {type(embedder).__name__}."
-        )
+    default_message = "{embedder} failed to embed text."
 
 
 class DocumentNotFound(KnowledgeError):
@@ -53,8 +42,7 @@ class DocumentNotFound(KnowledgeError):
 
 
 class NoDocumentsToIndexError(KnowledgeError):
-    def __init__(self, rag_id: Any):
-        super().__init__(f"RAG(id={rag_id}) has no documents to index.")
+    pass
 
 
 class EmbedderUnavailableError(KnowledgeError):
