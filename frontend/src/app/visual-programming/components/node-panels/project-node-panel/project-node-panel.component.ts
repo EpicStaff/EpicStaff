@@ -6,6 +6,7 @@ import { CustomInputComponent } from '../../../../shared/components/form-input/f
 import { ProjectNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 
 interface InputMapPair {
     key: string;
@@ -15,7 +16,7 @@ interface InputMapPair {
 @Component({
     standalone: true,
     selector: 'app-project-node-panel',
-    imports: [ReactiveFormsModule, CustomInputComponent, InputMapComponent, CommonModule],
+    imports: [ReactiveFormsModule, CustomInputComponent, InputMapComponent, CommonModule, LockableFieldComponent],
     template: `
         <div class="panel-container">
             <div class="panel-content">
@@ -23,70 +24,90 @@ interface InputMapPair {
                     [formGroup]="form"
                     class="form-container"
                 >
-                    <app-custom-input
-                        label="Node Name"
-                        tooltipText="The unique identifier used to reference this project node. This name must be unique within the flow."
-                        formControlName="node_name"
-                        placeholder="Enter node name"
-                        [activeColor]="activeColor"
-                        [errorMessage]="getNodeNameErrorMessage()"
-                    ></app-custom-input>
-
-                    <div class="input-map">
-                        <app-input-map [activeColor]="activeColor"></app-input-map>
-                    </div>
-
-                    <app-custom-input
-                        label="Output Variable Path"
-                        tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
-                        formControlName="output_variable_path"
-                        placeholder="Enter output variable path (leave empty for null)"
-                        [activeColor]="activeColor"
-                    ></app-custom-input>
-
-                    <div
-                        class="stream-config-section"
-                        formGroupName="stream_config"
+                    <app-lockable-field
+                        fieldId="node_name"
+                        [nodeId]="node().id"
                     >
-                        <span class="section-label">Streaming to EpicChat</span>
-                        <div class="checkbox-list">
-                            <label class="checkbox-item">
-                                <input
-                                    type="checkbox"
-                                    formControlName="agent_activity"
-                                />
-                                <span>Agent activity</span>
-                            </label>
-                            <label class="checkbox-item">
-                                <input
-                                    type="checkbox"
-                                    formControlName="task_progress"
-                                />
-                                <span>Task progress</span>
-                            </label>
-                            <label class="checkbox-item">
-                                <input
-                                    type="checkbox"
-                                    formControlName="agent_reasoning"
-                                />
-                                <span>Agent reasoning</span>
-                            </label>
-                            <label class="checkbox-item">
-                                <input
-                                    type="checkbox"
-                                    formControlName="tool_calls"
-                                />
-                                <span>Tool calls</span>
-                            </label>
-                            <label class="checkbox-item">
-                                <input
-                                    type="checkbox"
-                                    formControlName="final_reply"
-                                />
-                                <span>Final reply</span>
-                            </label>
+                        <app-custom-input
+                            label="Node Name"
+                            tooltipText="The unique identifier used to reference this project node. This name must be unique within the flow."
+                            formControlName="node_name"
+                            placeholder="Enter node name"
+                            [activeColor]="activeColor"
+                            [errorMessage]="getNodeNameErrorMessage()"
+                        ></app-custom-input>
+                    </app-lockable-field>
+
+                    <app-lockable-field
+                        fieldId="input_map"
+                        [nodeId]="node().id"
+                    >
+                        <div class="input-map">
+                            <app-input-map [activeColor]="activeColor"></app-input-map>
                         </div>
-                    </div>
+                    </app-lockable-field>
+
+                    <app-lockable-field
+                        fieldId="output_variable_path"
+                        [nodeId]="node().id"
+                    >
+                        <app-custom-input
+                            label="Output Variable Path"
+                            tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
+                            formControlName="output_variable_path"
+                            placeholder="Enter output variable path (leave empty for null)"
+                            [activeColor]="activeColor"
+                        ></app-custom-input>
+                    </app-lockable-field>
+
+                    <app-lockable-field
+                        fieldId="stream_config"
+                        [nodeId]="node().id"
+                    >
+                        <div
+                            class="stream-config-section"
+                            formGroupName="stream_config"
+                        >
+                            <span class="section-label">Streaming to EpicChat</span>
+                            <div class="checkbox-list">
+                                <label class="checkbox-item">
+                                    <input
+                                        type="checkbox"
+                                        formControlName="agent_activity"
+                                    />
+                                    <span>Agent activity</span>
+                                </label>
+                                <label class="checkbox-item">
+                                    <input
+                                        type="checkbox"
+                                        formControlName="task_progress"
+                                    />
+                                    <span>Task progress</span>
+                                </label>
+                                <label class="checkbox-item">
+                                    <input
+                                        type="checkbox"
+                                        formControlName="agent_reasoning"
+                                    />
+                                    <span>Agent reasoning</span>
+                                </label>
+                                <label class="checkbox-item">
+                                    <input
+                                        type="checkbox"
+                                        formControlName="tool_calls"
+                                    />
+                                    <span>Tool calls</span>
+                                </label>
+                                <label class="checkbox-item">
+                                    <input
+                                        type="checkbox"
+                                        formControlName="final_reply"
+                                    />
+                                    <span>Final reply</span>
+                                </label>
+                            </div>
+                        </div>
+                    </app-lockable-field>
                 </form>
             </div>
         </div>

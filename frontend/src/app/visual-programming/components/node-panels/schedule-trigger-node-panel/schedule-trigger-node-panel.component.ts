@@ -37,6 +37,7 @@ import { ScheduleTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 
 const panelFadeSlide = trigger('panelFadeSlide', [
     transition(':enter', [
@@ -61,6 +62,7 @@ const panelFadeSlide = trigger('panelFadeSlide', [
         TimePickerComponent,
         TimezoneSelectorComponent,
         ToggleSwitchComponent,
+        LockableFieldComponent,
     ],
     templateUrl: 'schedule-trigger-node-panel.component.html',
     styleUrls: ['schedule-trigger-node-panel.component.scss'],

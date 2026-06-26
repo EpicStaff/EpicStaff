@@ -12,6 +12,7 @@ import { SelectComponent, SelectItem } from '../../../../shared/components/selec
 import { SubGraphNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 
 interface InputMapPair {
     key: string;
@@ -28,6 +29,7 @@ interface InputMapPair {
         InputMapComponent,
         GoToButtonComponent,
         HelpTooltipComponent,
+        LockableFieldComponent,
         SelectComponent,
     ],
     template: `
@@ -37,51 +39,71 @@ interface InputMapPair {
                     [formGroup]="form"
                     class="form-container"
                 >
-                    <app-custom-input
-                        label="Node Name"
-                        tooltipText="The unique identifier used to reference this subgraph node. This name must be unique within the flow."
-                        formControlName="node_name"
-                        placeholder="Enter node name"
-                        [activeColor]="activeColor"
-                        [errorMessage]="getNodeNameErrorMessage()"
-                    ></app-custom-input>
+                    <app-lockable-field
+                        fieldId="node_name"
+                        [nodeId]="node().id"
+                    >
+                        <app-custom-input
+                            label="Node Name"
+                            tooltipText="The unique identifier used to reference this subgraph node. This name must be unique within the flow."
+                            formControlName="node_name"
+                            placeholder="Enter node name"
+                            [activeColor]="activeColor"
+                            [errorMessage]="getNodeNameErrorMessage()"
+                        ></app-custom-input>
+                    </app-lockable-field>
 
-                    <div class="input-map">
-                        <app-input-map [activeColor]="activeColor"></app-input-map>
-                    </div>
-
-                    <app-custom-input
-                        label="Output Variable Path"
-                        tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
-                        formControlName="output_variable_path"
-                        placeholder="Enter output variable path (leave empty for null)"
-                        [activeColor]="activeColor"
-                    ></app-custom-input>
-
-                    <div class="field">
-                        <label>
-                            Selected Flow
-                            <app-help-tooltip
-                                text="Select the flow that this node will execute"
-                                size="1rem"
-                            />
-                        </label>
-                        <div class="selected-flow-row">
-                            <app-select
-                                class="select-field"
-                                formControlName="selectedFlowId"
-                                placeholder="Select a flow"
-                                [items]="flowItems()"
-                            />
-                            <app-go-to-button
-                                variant="full"
-                                label="Go to flow"
-                                [href]="getSelectedFlowUrl()"
-                                target="_blank"
-                                [disabled]="!selectedFlowExists()"
-                            ></app-go-to-button>
+                    <app-lockable-field
+                        fieldId="input_map"
+                        [nodeId]="node().id"
+                    >
+                        <div class="input-map">
+                            <app-input-map [activeColor]="activeColor"></app-input-map>
                         </div>
-                    </div>
+                    </app-lockable-field>
+
+                    <app-lockable-field
+                        fieldId="output_variable_path"
+                        [nodeId]="node().id"
+                    >
+                        <app-custom-input
+                            label="Output Variable Path"
+                            tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
+                            formControlName="output_variable_path"
+                            placeholder="Enter output variable path (leave empty for null)"
+                            [activeColor]="activeColor"
+                        ></app-custom-input>
+                    </app-lockable-field>
+
+                    <app-lockable-field
+                        fieldId="selectedFlowId"
+                        [nodeId]="node().id"
+                    >
+                        <div class="field">
+                            <label>
+                                Selected Flow
+                                <app-help-tooltip
+                                    text="Select the flow that this node will execute"
+                                    size="1rem"
+                                />
+                            </label>
+                            <div class="selected-flow-row">
+                                <app-select
+                                    class="select-field"
+                                    formControlName="selectedFlowId"
+                                    placeholder="Select a flow"
+                                    [items]="flowItems()"
+                                />
+                                <app-go-to-button
+                                    variant="full"
+                                    label="Go to flow"
+                                    [href]="getSelectedFlowUrl()"
+                                    target="_blank"
+                                    [disabled]="!selectedFlowExists()"
+                                ></app-go-to-button>
+                            </div>
+                        </div>
+                    </app-lockable-field>
                 </form>
             </div>
         </div>

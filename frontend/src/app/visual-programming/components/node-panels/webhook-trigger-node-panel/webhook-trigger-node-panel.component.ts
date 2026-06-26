@@ -12,6 +12,7 @@ import { ToastService } from '../../../../services/notifications';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 
 export const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
 
@@ -26,6 +27,7 @@ export const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
         ClipboardModule,
         SelectComponent,
         MatTooltipModule,
+        LockableFieldComponent,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',
     styleUrls: ['webhook-trigger-node-panel.component.scss'],

@@ -5,11 +5,12 @@ import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { JsonEditorComponent } from '../../../../shared/components/json-editor/json-editor.component';
 import { StartNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 
 @Component({
     standalone: true,
     selector: 'app-start-node-panel',
-    imports: [ReactiveFormsModule, JsonEditorComponent, CommonModule],
+    imports: [ReactiveFormsModule, JsonEditorComponent, CommonModule, LockableFieldComponent],
     template: `
         <div class="panel-container">
             <div class="panel-content">
@@ -24,15 +25,20 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
                     </div>
 
                     <!-- Initial State JSON Editor -->
-                    <div class="json-editor-section">
-                        <app-json-editor
-                            class="json-editor"
-                            [jsonData]="initialStateJson"
-                            (jsonChange)="onInitialStateChange($event)"
-                            (validationChange)="onJsonValidChange($event)"
-                            [fullHeight]="true"
-                        ></app-json-editor>
-                    </div>
+                    <app-lockable-field
+                        fieldId="initial_state"
+                        [nodeId]="node().id"
+                    >
+                        <div class="json-editor-section">
+                            <app-json-editor
+                                class="json-editor"
+                                [jsonData]="initialStateJson"
+                                (jsonChange)="onInitialStateChange($event)"
+                                (validationChange)="onJsonValidChange($event)"
+                                [fullHeight]="true"
+                            ></app-json-editor>
+                        </div>
+                    </app-lockable-field>
                 </form>
             </div>
         </div>

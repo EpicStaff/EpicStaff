@@ -25,6 +25,7 @@ import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip
 import { TELEGRAM_TRIGGER_FIELDS } from '../../../core/constants/telegram-trigger-fields';
 import { TelegramTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 import { TelegramTriggerEditingDialogComponent } from '../../telegram-trigger-editing-dialog/telegram-trigger-editing-dialog.component';
 import { WEBHOOK_NAME_PATTERN } from '../webhook-trigger-node-panel/webhook-trigger-node-panel.component';
 
@@ -41,6 +42,7 @@ import { WEBHOOK_NAME_PATTERN } from '../webhook-trigger-node-panel/webhook-trig
         MATERIAL_FORMS,
         JsonEditorComponent,
         SelectComponent,
+        LockableFieldComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

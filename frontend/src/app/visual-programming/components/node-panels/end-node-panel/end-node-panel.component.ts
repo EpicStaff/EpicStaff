@@ -5,28 +5,34 @@ import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { JsonEditorComponent } from '../../../../shared/components/json-editor/json-editor.component';
 import { EndNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 
 @Component({
     standalone: true,
     selector: 'app-end-node-panel',
-    imports: [ReactiveFormsModule, JsonEditorComponent, CommonModule],
+    imports: [ReactiveFormsModule, JsonEditorComponent, CommonModule, LockableFieldComponent],
     template: `
         <div class="panel-container">
             <div class="panel-content">
                 <div class="form-container">
                     <!-- Output Map Title -->
-                    <div class="output-map-container">
-                        <div class="label-container">
-                            <label>Output Map</label>
+                    <app-lockable-field
+                        fieldId="output_map"
+                        [nodeId]="node().id"
+                    >
+                        <div class="output-map-container">
+                            <div class="label-container">
+                                <label>Output Map</label>
+                            </div>
+                            <app-json-editor
+                                class="json-editor"
+                                [jsonData]="outputMapJson"
+                                (jsonChange)="onOutputMapChange($event)"
+                                (validationChange)="onOutputMapValidChange($event)"
+                                [fullHeight]="false"
+                            ></app-json-editor>
                         </div>
-                        <app-json-editor
-                            class="json-editor"
-                            [jsonData]="outputMapJson"
-                            (jsonChange)="onOutputMapChange($event)"
-                            (validationChange)="onOutputMapValidChange($event)"
-                            [fullHeight]="false"
-                        ></app-json-editor>
-                    </div>
+                    </app-lockable-field>
                 </div>
             </div>
         </div>

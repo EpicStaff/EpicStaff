@@ -497,12 +497,29 @@ export class GraphCollaborationWsService {
 
     public sendNodeLocked(node_id: string, field: string): void {
         const editor = this.buildEditorInfo();
-        if (editor) this.sendRaw({ type: 'node_locked', node_id, field, editor });
+        if (!editor) return;
+        this.lockedNodeFields.update((m) => {
+            const next = new Map(m);
+            const nodeFields = new Map(next.get(node_id) ?? []);
+            nodeFields.set(field, editor);
+            next.set(node_id, nodeFields);
+            return next;
+        });
+        this.sendRaw({ type: 'node_locked', node_id, field, editor });
     }
 
     public sendNodeUnlocked(node_id: string, field: string): void {
         const editor = this.buildEditorInfo();
-        if (editor) this.sendRaw({ type: 'node_unlocked', node_id, field, editor });
+        if (!editor) return;
+        this.lockedNodeFields.update((m) => {
+            const next = new Map(m);
+            const nodeFields = new Map(next.get(node_id) ?? []);
+            nodeFields.delete(field);
+            if (nodeFields.size === 0) next.delete(node_id);
+            else next.set(node_id, nodeFields);
+            return next;
+        });
+        this.sendRaw({ type: 'node_unlocked', node_id, field, editor });
     }
 
     private buildEditorInfo(): EditorInfo | null {
