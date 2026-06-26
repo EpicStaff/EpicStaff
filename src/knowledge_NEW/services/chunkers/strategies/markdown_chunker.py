@@ -1,16 +1,12 @@
 from langchain_text_splitters import MarkdownHeaderTextSplitter
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from error_handler import handle_error
-from errors import ChunkingError
 from models import ChunkingConfig, PreviewChunk
 from services.chunkers.base import AbstractChunker
 from services.processing_run import run_in_process
 
 
 class MarkdownChunker(AbstractChunker):
-    """Header-aware chunker for Markdown text."""
-
     _HEADERS = (
         ("#", "Header 1"),
         ("##", "Header 2"),
@@ -38,20 +34,14 @@ class MarkdownChunker(AbstractChunker):
         )
 
     @run_in_process
-    def chunk(self, text: str) -> list[PreviewChunk]:
-        """Split Markdown `text` by headers, then by character size within each section.
-
-        Raises:
-            ChunkingError: If the text cannot be chunked.
-        """
-        with handle_error(Exception, ChunkingError, text, self):
-            md_splits = self.markdown_splitter.split_text(text)
-            result_text_splits = []
-            for doc in md_splits:
-                text_splits = self.text_splitter.split_text(doc.page_content)
-                for chunk_text in text_splits:
-                    result_text_splits.append(PreviewChunk(text=chunk_text))
-            return result_text_splits
+    def _chunk(self, text: str) -> list[PreviewChunk]:
+        md_splits = self.markdown_splitter.split_text(text)
+        result_text_splits = []
+        for doc in md_splits:
+            text_splits = self.text_splitter.split_text(doc.page_content)
+            for chunk_text in text_splits:
+                result_text_splits.append(PreviewChunk(text=chunk_text))
+        return result_text_splits
 
     def _init_headers(self, headers: list[str]) -> list[tuple[str, str]]:
         if headers is not None:

@@ -16,19 +16,17 @@ _STRATEGIES: dict[ChunkStrategyEnum, type[AbstractChunker]] = {
 
 
 def build_chunker(
-    strategy: ChunkStrategyEnum, config: ChunkingConfig
+    strategy: ChunkStrategyEnum,
+    config: ChunkingConfig,
 ) -> AbstractChunker:
-    """Instantiate a chunker for the given strategy.
+    """Create the chunker registered for `strategy`.
 
     Args:
-        strategy: Chunking strategy to use.
-        config: Chunking parameters passed to the chunker.
-
-    Returns:
-        A chunker configured for `strategy`.
+        strategy: Chunking strategy selecting the chunker implementation.
+        config: Configuration passed to the chunker.
 
     Raises:
-        UnsupportedError: If `strategy` has no registered implementation.
+        UnsupportedError: If `strategy` has no registered chunker.
     """
     if strategy not in _STRATEGIES:
         raise UnsupportedError("chunker strategy", strategy)

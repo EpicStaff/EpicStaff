@@ -1,32 +1,33 @@
 import abc
 
+from errors import ChunkingError
 from models import ChunkingConfig, PreviewChunk
 
 
 class AbstractChunker(abc.ABC):
-    """Base class for text chunkers.
-
-    Each implementation chunks raw text into `PreviewChunk` instances according
-    to a `ChunkingConfig`; the chunking strategy and any extra configuration
-    are owned by the implementation.
-    """
+    """Abstract base for splitting text into preview chunks."""
 
     def __init__(self, config: ChunkingConfig):
         self.config = config
 
-    @abc.abstractmethod
     async def chunk(self, text: str) -> list[PreviewChunk]:
-        """Split `text` into `PreviewChunk` instances.
-
-        Implementations must preserve order: chunks are returned in the order
-        they appear in `text`.
+        """Split `text` into preview chunks.
 
         Args:
             text: The raw text to split.
 
-        Returns:
-            The chunks produced from `text`.
-
         Raises:
-            ChunkingError: If the text cannot be chunked.
+            ChunkingError: If chunking fails for any reason.
+        """
+        try:
+            return await self._chunk(text)
+        except Exception as e:
+            raise ChunkingError(chunker=type(self).__name__) from e
+
+    @abc.abstractmethod
+    async def _chunk(self, text: str) -> list[PreviewChunk]:
+        """Split `text` into preview chunks, preserving order.
+
+        `chunk` translates any error into `ChunkingError`, so implementations
+        need not wrap exceptions themselves.
         """

@@ -2,16 +2,12 @@ import json
 
 from langchain_text_splitters import HTMLSemanticPreservingSplitter
 
-from error_handler import handle_error
-from errors import ChunkingError
 from models import ChunkingConfig, PreviewChunk
 from services.chunkers.base import AbstractChunker
 from services.processing_run import run_in_process
 
 
 class HTMLChunker(AbstractChunker):
-    """Semantic-preserving chunker for HTML text."""
-
     _HEADERS = (
         ("h1", "Header 1"),
         ("h2", "Header 2"),
@@ -61,24 +57,18 @@ class HTMLChunker(AbstractChunker):
         )
 
     @run_in_process
-    def chunk(self, text: str) -> list[PreviewChunk]:
-        """Split HTML `text` into semantically coherent chunks.
+    def _chunk(self, text: str) -> list[PreviewChunk]:
+        documents = self.splitter.split_text(text)
+        chunks = [
+            PreviewChunk(
+                text=f"{doc.metadata}\n{doc.page_content}"
+                if doc.metadata
+                else doc.page_content
+            )
+            for doc in documents
+        ]
 
-        Raises:
-            ChunkingError: If the text cannot be chunked.
-        """
-        with handle_error(Exception, ChunkingError, text, self):
-            documents = self.splitter.split_text(text)
-            chunks = [
-                PreviewChunk(
-                    text=f"{doc.metadata}\n{doc.page_content}"
-                    if doc.metadata
-                    else doc.page_content
-                )
-                for doc in documents
-            ]
-
-            return chunks
+        return chunks
 
     def _init_headers(self, headers: list[str]) -> list[tuple[str, str]]:
         if headers is not None:
