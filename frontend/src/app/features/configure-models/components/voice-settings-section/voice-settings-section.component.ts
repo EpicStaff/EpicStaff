@@ -1,9 +1,17 @@
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { ButtonComponent, CustomInputComponent, SelectComponent, SelectItem } from '@shared/components';
+import {
+    AppSvgIconComponent,
+    ButtonComponent,
+    CustomInputComponent,
+    HelpTooltipComponent,
+    SelectComponent,
+    SelectItem,
+} from '@shared/components';
 import { GetNgrokConfigResponse, VoiceSettings } from '@shared/models';
 import { NgrokConfigApiService } from '@shared/services';
+import { switchMap } from 'rxjs/operators';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
@@ -24,7 +32,14 @@ interface PhoneNumberCache {
     selector: 'app-voice-settings-tab',
     templateUrl: './voice-settings-section.component.html',
     styleUrls: ['./voice-settings-section.component.scss'],
-    imports: [ReactiveFormsModule, ButtonComponent, CustomInputComponent, SelectComponent],
+    imports: [
+        ReactiveFormsModule,
+        ButtonComponent,
+        CustomInputComponent,
+        SelectComponent,
+        HelpTooltipComponent,
+        AppSvgIconComponent,
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class VoiceSettingsSectionComponent implements OnInit {
@@ -38,9 +53,9 @@ export class VoiceSettingsSectionComponent implements OnInit {
     private phoneCache: PhoneNumberCache | null = null;
 
     status = signal<LoadingState>(LoadingState.IDLE);
-    saving = signal(false);
     configuringWebhook = signal(false);
     loadingPhoneNumbers = signal(false);
+    testing = signal(false);
     voiceStreamUrl = signal<string | null>(null);
 
     private agents = signal<GetAgentRequest[]>([]);
@@ -66,6 +81,12 @@ export class VoiceSettingsSectionComponent implements OnInit {
     );
 
     canConfigureWebhook = computed(() => !!this.selectedPhoneSid() && !!this.voiceStreamUrl());
+
+    canTestCredentials = (): boolean => {
+        const sid: string = this.form?.get('twilio_account_sid')?.value ?? '';
+        const token: string = this.form?.get('twilio_auth_token')?.value ?? '';
+        return !!sid && !!token;
+    };
 
     form!: FormGroup;
 
@@ -124,6 +145,10 @@ export class VoiceSettingsSectionComponent implements OnInit {
                     const savedConfig = this.ngrokConfigs().find((c) => c.id === vs.ngrok_config);
                     this.voiceStreamUrl.set(this._streamUrlFromConfig(savedConfig?.webhook_full_url));
                     this.status.set(LoadingState.LOADED);
+
+                    if (vs.twilio_account_sid && vs.twilio_auth_token) {
+                        this.loadPhoneNumbers({ silent: true });
+                    }
                 },
                 error: () => {
                     this.status.set(LoadingState.ERROR);
@@ -132,6 +157,10 @@ export class VoiceSettingsSectionComponent implements OnInit {
     }
 
     onPhoneSelectOpen(): void {
+        this.loadPhoneNumbers();
+    }
+
+    private loadPhoneNumbers(opts?: { silent?: boolean }): void {
         const sid: string = this.form.get('twilio_account_sid')!.value ?? '';
         const token: string = this.form.get('twilio_auth_token')!.value ?? '';
 
@@ -164,7 +193,9 @@ export class VoiceSettingsSectionComponent implements OnInit {
                 },
                 error: () => {
                     this.loadingPhoneNumbers.set(false);
-                    this.toastService.error('Failed to load Twilio phone numbers');
+                    if (!opts?.silent) {
+                        this.toastService.error('Failed to load Twilio phone numbers');
+                    }
                 },
             });
     }
@@ -174,28 +205,39 @@ export class VoiceSettingsSectionComponent implements OnInit {
         return webhookFullUrl.replace(/^https?:\/\//, 'wss://').replace(/\/$/, '') + '/voice/stream';
     }
 
-    onSave(): void {
-        this.saving.set(true);
+    onPhoneNumberChange(sid: unknown): void {
+        this.selectedPhoneSid.set(sid as string | null);
+    }
+
+    onTestCredentials(): void {
+        if (this.testing() || !this.canTestCredentials()) return;
+        this.testing.set(true);
+
         this.voiceSettingsService
             .update(this.form.value)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (vs: VoiceSettings) => {
+            .pipe(
+                switchMap((vs: VoiceSettings) => {
                     const savedConfig = this.ngrokConfigs().find((c) => c.id === vs.ngrok_config);
                     this.voiceStreamUrl.set(this._streamUrlFromConfig(savedConfig?.webhook_full_url));
                     this.phoneCache = null;
-                    this.saving.set(false);
-                    this.toastService.success('Voice settings saved');
+                    return this.voiceSettingsService.getPhoneNumbers();
+                }),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe({
+                next: (numbers) => {
+                    const sid: string = this.form.get('twilio_account_sid')!.value ?? '';
+                    const token: string = this.form.get('twilio_auth_token')!.value ?? '';
+                    this.phoneCache = { sid, token, numbers, loadedAt: Date.now() };
+                    this.phoneNumbers.set(numbers);
+                    this.testing.set(false);
+                    this.toastService.success('Twilio credentials verified');
                 },
                 error: () => {
-                    this.saving.set(false);
-                    this.toastService.error('Failed to save voice settings');
+                    this.testing.set(false);
+                    this.toastService.error('Twilio credentials invalid');
                 },
             });
-    }
-
-    onPhoneNumberChange(sid: unknown): void {
-        this.selectedPhoneSid.set(sid as string | null);
     }
 
     onConfigureWebhook(): void {
