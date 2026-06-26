@@ -42,11 +42,6 @@ from tables.serializers.model_serializers.llm_serializers import (
 from tables.serializers.model_serializers.provider_serializers import (
     ProviderSerializer,
 )
-from tables.serializers.model_serializers.tag_serializers import (
-    AgentTagSerializer,
-    CrewTagSerializer,
-    GraphTagSerializer,
-)
 from tables.exceptions import (
     AgentSerializerError,
     BuiltInToolModificationError,
@@ -176,7 +171,6 @@ from tables.filters import (
     ProviderFilter,
 )
 from tables.utils.helpers import natural_sort_key
-from tables.models.tag_models import AgentTag, CrewTag, GraphTag
 from tables.models.label_models import Label
 from tables.models.vector_models import MemoryDatabase
 from tables.models.webhook_models import (
@@ -195,7 +189,6 @@ from tables.views.mixins import CopyActionMixin
 from tables.serializers.model_serializers import (
     AgentReadSerializer,
     ClassificationDecisionTableNodeSerializer,
-    AgentTagSerializer,
     AgentWriteSerializer,
     AudioTranscriptionNodeSerializer,
     CodeAgentNodeSerializer,
@@ -1088,21 +1081,6 @@ class MemoryViewSet(
     serializer_class = MemorySerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = MemoryFilter
-
-
-class CrewTagViewSet(viewsets.ModelViewSet):
-    queryset = CrewTag.objects.all()
-    serializer_class = CrewTagSerializer
-
-
-class AgentTagViewSet(viewsets.ModelViewSet):
-    queryset = AgentTag.objects.all()
-    serializer_class = AgentTagSerializer
-
-
-class GraphTagViewSet(viewsets.ModelViewSet):
-    queryset = GraphTag.objects.all()
-    serializer_class = GraphTagSerializer
 
 
 class RealtimeModelViewSet(viewsets.ModelViewSet):

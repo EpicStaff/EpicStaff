@@ -42,9 +42,6 @@ from tables.views.model_view_sets import (
     PythonCodeResultReadViewSet,
     GraphSessionMessageReadOnlyViewSet,
     MemoryViewSet,
-    CrewTagViewSet,
-    AgentTagViewSet,
-    GraphTagViewSet,
     RealtimeModelViewSet,
     RealtimeAgentViewSet,
     RealtimeAgentChatViewSet,
@@ -170,9 +167,6 @@ router.register(r"conditionaledges", ConditionalEdgeViewSet)
 router.register(r"graph-session-messages", GraphSessionMessageReadOnlyViewSet)
 router.register(r"memory", MemoryViewSet)
 
-router.register(r"crew-tags", CrewTagViewSet)
-router.register(r"agent-tags", AgentTagViewSet)
-router.register(r"graph-tags", GraphTagViewSet)
 router.register(r"graph-light", GraphLightViewSet, basename="graphs-light")
 router.register(r"graph-versions", GraphVersionViewSet, basename="graph-versions")
 router.register(r"realtime-models", RealtimeModelViewSet)
