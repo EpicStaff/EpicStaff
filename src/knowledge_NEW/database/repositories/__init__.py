@@ -1,8 +1,13 @@
-from .base import AbstractRepository, AbstractSQLAlchemyRepository
-from .naive import NaiveRagSQLAlchemyRepository
+from .base import (
+    BaseSQLAlchemyRepository,
+    AbstractNaiveRagRepository,
+)
+from .naive import (
+    NaiveRagSQLAlchemyRepository
+)
 
 __all__ = [
-    "AbstractRepository",
-    "AbstractSQLAlchemyRepository",
+    "BaseSQLAlchemyRepository",
+    "AbstractNaiveRagRepository",
     "NaiveRagSQLAlchemyRepository",
 ]

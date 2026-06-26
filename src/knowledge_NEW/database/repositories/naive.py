@@ -12,7 +12,10 @@ from database.models import (
     NaiveRag,
     NaiveRagPreviewChunk,
 )
-from database.repositories.base import AbstractSQLAlchemyRepository
+from database.repositories.base import (
+    AbstractNaiveRagRepository,
+    BaseSQLAlchemyRepository,
+)
 from models import (
     EmbeddingConfig,
     Document,
@@ -21,14 +24,10 @@ from models import (
     IndexedChunk,
     ChunkingConfig,
 )
-from utils import utcnow
 
 
-class NaiveRagSQLAlchemyRepository(AbstractSQLAlchemyRepository):
-    """Repository for naive RAG documents, chunks, and embeddings."""
-
+class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRepository):
     async def get_embedding_config(self, rag_id: int) -> EmbeddingConfig | None:
-        """Return the embedding config for RAG `rag_id`, or `None` when it has none."""
         result = await self._session.execute(
             select(Provider.name, ORMEmbeddingConfig.api_key, EmbeddingModel.name)
             .select_from(NaiveRag)
@@ -44,7 +43,6 @@ class NaiveRagSQLAlchemyRepository(AbstractSQLAlchemyRepository):
         return None
 
     async def get_document(self, rag_id: int, document_id: int) -> Document | None:
-        """Return document `document_id` in RAG `rag_id`, or `None` when absent."""
         result = await self._session.execute(
             select(NaiveRagDocumentConfig)
             .where(
@@ -63,7 +61,6 @@ class NaiveRagSQLAlchemyRepository(AbstractSQLAlchemyRepository):
         return None
 
     async def get_all_documents(self, rag_id: int) -> list[Document]:
-        """Return every document in RAG `rag_id`."""
         result = await self._session.execute(
             select(NaiveRagDocumentConfig)
             .where(NaiveRagDocumentConfig.naive_rag_id == rag_id)
@@ -78,31 +75,13 @@ class NaiveRagSQLAlchemyRepository(AbstractSQLAlchemyRepository):
         return [self._to_document(c) for c in configs]
 
     async def update_rag_status(self, rag_id: int, status: str):
-        """Set the status of RAG `rag_id` to `status`."""
         await self._session.execute(
             update(NaiveRag)
             .where(NaiveRag.naive_rag_id == rag_id)
             .values(rag_status=status)
         )
 
-    async def set_error_message(self, rag_id: int, message: str | None):
-        """Set (or clear) the aggregate error message of RAG `rag_id`."""
-        await self._session.execute(
-            update(NaiveRag)
-            .where(NaiveRag.naive_rag_id == rag_id)
-            .values(error_message=message)
-        )
-
-    async def set_indexed_at(self, rag_id: int):
-        """Stamp `indexed_at` on RAG `rag_id` (called on full completion)."""
-        await self._session.execute(
-            update(NaiveRag)
-            .where(NaiveRag.naive_rag_id == rag_id)
-            .values(indexed_at=utcnow())
-        )
-
     async def save_preview_chunks(self, document_id: int, chunks: list[PreviewChunk]):
-        """Replace the preview chunks of document `document_id` with `chunks`."""
         await self._session.execute(
             delete(NaiveRagPreviewChunk).where(
                 NaiveRagPreviewChunk.naive_rag_document_config_id == document_id
@@ -124,11 +103,6 @@ class NaiveRagSQLAlchemyRepository(AbstractSQLAlchemyRepository):
         await self._session.flush()
 
     async def save_indexed_chunks(self, document_id: int, chunks: list[IndexedChunk]):
-        """Replace the indexed chunks and embeddings of document `document_id`.
-
-        Note:
-            Also clears the document's preview chunks.
-        """
         await self._session.execute(
             delete(NaiveRagEmbedding).where(
                 NaiveRagEmbedding.naive_rag_document_config_id == document_id
@@ -161,7 +135,6 @@ class NaiveRagSQLAlchemyRepository(AbstractSQLAlchemyRepository):
         await self._session.flush()
 
     async def update_document(self, rag_id: int, document: Document):
-        """Set updates of `document` in RAG `rag_id`."""
         config = document.last_indexing_config
         await self._session.execute(
             update(NaiveRagDocumentConfig)
@@ -183,19 +156,12 @@ class NaiveRagSQLAlchemyRepository(AbstractSQLAlchemyRepository):
         )
 
     async def search_chunks(
-        self, rag_id: int, vector: list[float], limit: int, similarity_threshold: float
+        self,
+        rag_id: int,
+        vector: list[float],
+        limit: int,
+        similarity_threshold: float,
     ) -> list[FoundChunk]:
-        """Return the chunks in RAG `rag_id` most similar to `vector`.
-
-        Args:
-            rag_id: Identifier of the naive RAG to search.
-            vector: Query embedding to compare chunks against.
-            limit: Maximum number of chunks to return.
-            similarity_threshold: Minimum cosine similarity a chunk must reach.
-
-        Returns:
-            Matching chunks ordered by descending similarity.
-        """
         similarity = (1 - NaiveRagEmbedding.vector.cosine_distance(vector)).label(
             "similarity"
         )
@@ -238,7 +204,6 @@ class NaiveRagSQLAlchemyRepository(AbstractSQLAlchemyRepository):
 
     @staticmethod
     def _to_document(config: NaiveRagDocumentConfig) -> Document:
-        """Map a `NaiveRagDocumentConfig` row to a domain `Document`."""
         metadata = config.document
         return Document(
             id=config.naive_rag_document_id,
