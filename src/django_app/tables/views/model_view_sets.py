@@ -564,6 +564,7 @@ class AgentViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet):
 
         data = self.import_export_service.import_entity(
             file_serializer.validated_data["file"],
+            user=request.user,
             org_id=self.get_active_org_id(),
         )
         return Response(data, status=status.HTTP_200_OK)
@@ -614,6 +615,7 @@ class CrewReadWriteViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet)
 
         data = self.import_export_service.import_entity(
             file_serializer.validated_data["file"],
+            user=request.user,
             org_id=self.get_active_org_id(),
         )
         return Response(data, status=status.HTTP_200_OK)
@@ -969,6 +971,7 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
         vd = file_serializer.validated_data
         data = self.import_export_service.import_entity(
             vd["file"],
+            user=request.user,
             settings=ImportSettings(
                 preserve_uuids=vd["preserve_uuids"],
                 replace_existing=vd["replace_existing"],

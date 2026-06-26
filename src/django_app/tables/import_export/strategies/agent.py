@@ -196,10 +196,10 @@ class AgentStrategy(EntityImportExportStrategy):
 
         return python_tools, mcp_tools
 
-    def _create_agent(self, data: dict) -> Agent:
+    def _create_agent(self, data: dict, org_id) -> Agent:
         serializer = self.serializer_class(data=data)
         serializer.is_valid(raise_exception=True)
-        return serializer.save()
+        return serializer.save(org_id=org_id)
 
     def _assign_tools(self, agent: Agent, python_tools: list, mcp_tools: list):
         AgentPythonCodeTools.objects.bulk_create(

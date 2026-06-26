@@ -85,12 +85,13 @@ def gpt_35_llm(openai_provider: Provider) -> LLMModel:
 
 
 @pytest.fixture
-def llm_config(gpt_4o_llm) -> LLMConfig:
+def llm_config(gpt_4o_llm, default_org) -> LLMConfig:
     llm_config = LLMConfig(
         custom_name="MyGPT-4o",
         model=gpt_4o_llm,
         temperature=0.5,
         is_visible=True,
+        org=default_org,
     )
     llm_config.save()
     return llm_config
@@ -118,9 +119,13 @@ def default_crew_config(llm_config) -> DefaultCrewConfig:
 
 
 @pytest.fixture
-def new_llm_config(gpt_4o_llm):
+def new_llm_config(gpt_4o_llm, default_org):
     llm_config = LLMConfig(
-        model=gpt_4o_llm, temperature=0.9, num_ctx=1024, is_visible=True
+        model=gpt_4o_llm,
+        temperature=0.9,
+        num_ctx=1024,
+        is_visible=True,
+        org=default_org,
     )
     llm_config.save()
     return llm_config
@@ -181,10 +186,11 @@ def embedding_model(openai_provider: Provider) -> EmbeddingModel:
 
 
 @pytest.fixture
-def embedding_config(embedding_model: EmbeddingModel) -> EmbeddingConfig:
+def embedding_config(embedding_model: EmbeddingModel, default_org) -> EmbeddingConfig:
     embedding_config = EmbeddingConfig(
         model=embedding_model,
         task_type="retrieval_document",
+        org=default_org,
     )
     embedding_config.save()
     return embedding_config
@@ -424,10 +430,13 @@ def openai_realtime_model(openai_provider):
 
 
 @pytest.fixture
-def openai_realtime_model_config(openai_realtime_model):
+def openai_realtime_model_config(openai_realtime_model, default_org):
     # Create and return the `RealtimeModelConfig` instance
     config = RealtimeConfig.objects.create(
-        custom_name="test", api_key="test", realtime_model=openai_realtime_model
+        custom_name="test",
+        api_key="test",
+        realtime_model=openai_realtime_model,
+        org=default_org,
     )
     return config
 
@@ -440,11 +449,12 @@ def realtime_transcription_model(openai_provider):
 
 
 @pytest.fixture
-def realtime_transcription_config(realtime_transcription_model):
+def realtime_transcription_config(realtime_transcription_model, default_org):
     return RealtimeTranscriptionConfig.objects.create(
         custom_name="test_realtime_transcription_config",
         realtime_transcription_model=realtime_transcription_model,
         api_key="mock key",
+        org=default_org,
     )
 
 

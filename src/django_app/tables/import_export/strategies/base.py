@@ -50,14 +50,15 @@ class EntityImportExportStrategy(ABC):
             return existing
 
         settings_kwargs = vars(settings) if settings is not None else {}
+        create_kwargs = {**settings_kwargs, **kwargs}
         if is_main:
-            return self.create_entity(data, id_mapper, **settings_kwargs)
+            return self.create_entity(data, id_mapper, **create_kwargs)
 
         existing = self.find_existing(data, id_mapper)
         if existing:
             return existing
 
-        return self.create_entity(data, id_mapper, **settings_kwargs)
+        return self.create_entity(data, id_mapper, **create_kwargs)
 
     def find_existing(self, data: dict, id_mapper: IDMapper) -> Optional[Any]:
         """
