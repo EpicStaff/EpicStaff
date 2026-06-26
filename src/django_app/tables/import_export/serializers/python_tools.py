@@ -4,7 +4,6 @@ from tables.models import (
     PythonCode,
     PythonCodeTool,
     PythonCodeToolConfig,
-    PythonCodeToolConfigField,
 )
 
 
@@ -28,18 +27,6 @@ class PythonCodeToolConfigImportSerializer(serializers.ModelSerializer):
         exclude = ["id", "tool"]
 
 
-class PythonCodeToolConfigFieldImportSerializer(serializers.ModelSerializer):
-    tool_id = serializers.PrimaryKeyRelatedField(
-        queryset=PythonCodeTool.objects.all(),
-        source="tool",
-        write_only=True,
-    )
-
-    class Meta:
-        model = PythonCodeToolConfigField
-        exclude = ["id", "tool"]
-
-
 class PythonCodeToolImportSerializer(serializers.ModelSerializer):
     python_code = PythonCodeImportSerializer(required=False, read_only=True)
     python_code_id = serializers.PrimaryKeyRelatedField(
@@ -49,9 +36,6 @@ class PythonCodeToolImportSerializer(serializers.ModelSerializer):
     )
     python_code_tool_config = PythonCodeToolConfigImportSerializer(
         source="pythoncodetoolconfig_set", many=True, read_only=True
-    )
-    python_code_tool_config_fields = PythonCodeToolConfigFieldImportSerializer(
-        source="tool_fields", many=True, read_only=True
     )
 
     class Meta:

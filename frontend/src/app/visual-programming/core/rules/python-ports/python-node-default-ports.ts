@@ -20,6 +20,8 @@ export const DEFAULT_PYTHON_NODE_PORTS: BasePort[] = [
             'telegram-trigger-out',
             'schedule-trigger-out',
             'code-agent-out',
+            'decision-default',
+            'decision-error',
         ],
         position: 'left',
         color: '#ffcf3f',

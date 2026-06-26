@@ -1,0 +1,8 @@
+tool-data:
+  name: "S3 File Copy Tool"
+  description: "Copy a file within S3 storage from one path to another."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true

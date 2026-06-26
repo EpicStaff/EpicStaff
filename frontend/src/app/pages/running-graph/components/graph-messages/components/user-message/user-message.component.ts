@@ -1,15 +1,17 @@
 import { CommonModule } from '@angular/common';
 import { Component, Input } from '@angular/core';
 
+import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { GraphMessage, MessageType, UserMessageData } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-user-message',
     standalone: true,
-    imports: [CommonModule],
+    imports: [CommonModule, CopyButtonComponent],
     template: `
         <div class="user-message-container">
             <div class="message-bubble">
+                <app-copy-button [text]="getMessageText()" />
                 <span class="message-text">{{ getMessageText() }}</span>
             </div>
         </div>
@@ -23,6 +25,7 @@ import { GraphMessage, MessageType, UserMessageData } from '../../../../models/g
             }
 
             .message-bubble {
+                position: relative;
                 background-color: #ffa726;
                 border-radius: 18px 18px 0 18px;
                 padding: 0.75rem 1rem;
@@ -30,6 +33,15 @@ import { GraphMessage, MessageType, UserMessageData } from '../../../../models/g
                 max-width: 85%;
                 word-break: break-word;
                 box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+
+                --copy-btn-color: rgba(0, 0, 0, 0.4);
+                --copy-btn-hover-bg: rgba(0, 0, 0, 0.08);
+                --copy-btn-hover-color: rgba(0, 0, 0, 0.8);
+                --copy-btn-size: 24px;
+
+                &:hover app-copy-button {
+                    opacity: 1;
+                }
             }
 
             .message-text {

@@ -7,12 +7,13 @@ import {
 import { catchError, finalize, Observable, of, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
+import { StorageService } from '../app-storage.service';
 import { TranscriptionConfigsService } from './transcription-config.service';
 
 @Injectable({
     providedIn: 'root',
 })
-export class TranscriptionConfigStorageService {
+export class TranscriptionConfigStorageService implements StorageService {
     private readonly transcriptionConfigsService = inject(TranscriptionConfigsService);
 
     private configsRequest$?: Observable<GetTranscriptionConfigRequest[]>;
@@ -84,6 +85,12 @@ export class TranscriptionConfigStorageService {
 
     markConfigsOutdated(): void {
         this.configsLoaded.set(false);
+    }
+
+    clear(): void {
+        this.configsSignal.set([]);
+        this.configsLoaded.set(false);
+        this.configsRequest$ = undefined;
     }
 
     private mergeConfigsIntoCache(incoming: GetTranscriptionConfigRequest[]): void {

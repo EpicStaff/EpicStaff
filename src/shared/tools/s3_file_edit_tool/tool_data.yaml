@@ -1,0 +1,8 @@
+tool-data:
+  name: "S3 File Edit Line Tool"
+  description: "Replace a specific line in an S3-stored file. Requires the expected current content of the line for safety."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true

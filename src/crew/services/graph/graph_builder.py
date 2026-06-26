@@ -4,8 +4,8 @@ from langgraph.graph import StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
 
-from src.crew.models.state import State
-from src.crew.services.graph.nodes import (
+from models.state import State
+from services.graph.nodes import (
     AudioTranscriptionNode,
     FileContentExtractorNode,
     PythonNode,
@@ -14,27 +14,31 @@ from src.crew.services.graph.nodes import (
     EndNode,
 )
 
-from src.crew.services.graph.nodes.code_agent_node import CodeAgentNode
-from src.crew.services.graph.nodes.webhook_trigger_node import WebhookTriggerNode
-from src.crew.services.graph.nodes.telegram_trigger_node import TelegramTriggerNode
-from src.crew.services.graph.nodes.schedule_trigger_node import ScheduleTriggerNode
-from src.crew.services.graph.events import StopEvent
-from src.crew.services.graph.subgraphs.decision_table_node import (
+from services.graph.nodes.code_agent_node import CodeAgentNode
+from services.graph.nodes.webhook_trigger_node import WebhookTriggerNode
+from services.graph.nodes.telegram_trigger_node import TelegramTriggerNode
+from services.graph.nodes.schedule_trigger_node import ScheduleTriggerNode
+from services.graph.events import StopEvent
+from services.graph.subgraphs.decision_table_node import (
     DecisionTableNodeSubgraph,
 )
-from src.crew.services.graph.subgraphs.subgraph_node import SubGraphNode
-from src.crew.services.crew.crew_parser_service import CrewParserService
-from src.crew.services.redis_service import RedisService
+from services.graph.subgraphs.subgraph_node import SubGraphNode
+from src.crew.services.graph.subgraphs.classification_decision_table_node import (
+    ClassificationDecisionTableNodeSubgraph,
+)
+from services.crew.crew_parser_service import CrewParserService
+from services.redis_service import RedisService
 from src.shared.models import (
     DecisionTableNodeData,
     PythonCodeData,
     SessionData,
     SubGraphData,
+    ClassificationDecisionTableNodeData,
 )
-from src.crew.services.run_python_code_service import RunPythonCodeService
-from src.crew.services.knowledge_search_service import KnowledgeSearchService
+from services.run_python_code_service import RunPythonCodeService
+from services.knowledge_search_service import KnowledgeSearchService
 
-from src.crew.utils import map_variables_to_input
+from utils import map_variables_to_input
 
 
 class ReturnCodeError(Exception): ...
@@ -174,6 +178,35 @@ class SessionGraphBuilder:
         self._graph_builder.add_conditional_edges(
             decision_table_node_data.node_name, condition
         )
+
+    def add_classification_decision_table_node(
+        self, node_data: ClassificationDecisionTableNodeData
+    ) -> str:
+        subgraph_builder = StateGraph(State)
+        builder = ClassificationDecisionTableNodeSubgraph(
+            session_id=self.session_id,
+            node_data=node_data,
+            graph_builder=subgraph_builder,
+            stop_event=self.stop_event,
+            redis_service=self.redis_service,
+        )
+        subgraph: CompiledStateGraph = builder.build()
+
+        self._graph_builder.add_node(node_data.node_name, subgraph)
+
+        default_next_node = node_data.default_next_node
+
+        async def condition(
+            state: State,
+            writer: StreamWriter,
+            _default_next_node: str | None = default_next_node,
+        ):
+            result_node = state["system_variables"]["nodes"][builder.node_name][
+                "result_node"
+            ]
+            return result_node or _default_next_node
+
+        self._graph_builder.add_conditional_edges(node_data.node_name, condition)
 
     def add_subgraph_node(
         self,
@@ -326,6 +359,8 @@ class SessionGraphBuilder:
             self.add_decision_table_node(
                 decision_table_node_data=decision_table_node_data
             )
+        for ct_node_data in schema.classification_decision_table_node_list:
+            self.add_classification_decision_table_node(node_data=ct_node_data)
 
         for subgraph_node_data in schema.subgraph_node_list:
             self.add_subgraph_node(

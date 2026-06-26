@@ -34,6 +34,10 @@
     }
 }
 
+app-select.row-unselected {
+    opacity: 0.35;
+}
+
 .org-cell {
     display: flex;
     align-items: center;

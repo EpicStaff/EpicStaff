@@ -26,6 +26,13 @@
         background-color: #555;
         font-size: 10px;
     }
+
+    &__img {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        object-fit: cover;
+    }
 }
 
 @keyframes avatar-in {

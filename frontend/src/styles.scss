@@ -5,6 +5,7 @@
 @use './styles/markdown.scss';
 @use './styles/_material.scss';
 @use './styles/_overlays';
+@use './styles/_prompt-tooltip';
 @use './styles/_action-dropdown-overlay';
 
 .waypoint-tooltip {

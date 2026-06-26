@@ -1,0 +1,396 @@
+// ── Design tokens ──────────────────────────────────────────────────────────────
+$accent: var(--accent-color);
+$accent-light: #a89fff;
+$accent-bg: rgba(104, 95, 255, 0.15);
+$bg: #1f1f23;
+$bg-input: #27272b;
+$text: #d4d4d4;
+$text-muted: #737373;
+$divider: rgba(255, 255, 255, 0.08);
+$border: $accent;
+$radius: 8px;
+
+// ── Container ──────────────────────────────────────────────────────────────────
+.eb-container {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: $bg;
+    border: 1px solid $border;
+
+    // Standard radius on three corners; top-left is 0 (anchor corner).
+    border-radius: 0 $radius $radius $radius;
+
+    width: 660px;
+    min-height: 320px;
+    overflow: visible;
+    font-family: inherit;
+    z-index: 10;
+
+    // Extra-thick accent on top-left corner: highlighted top + left edges.
+    // Drawn INSIDE the container so no ancestor overflow:hidden can clip them.
+    &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 40px;
+        height: 2px;
+        background: $accent;
+        pointer-events: none;
+        z-index: 1;
+    }
+
+    &::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 2px;
+        height: 40px;
+        background: $accent;
+        pointer-events: none;
+        z-index: 1;
+    }
+
+    // ── Right-anchor variant (manipulation mode) ─────────────────────────────
+    // Sharp corner is top-RIGHT; accent runs along top and right edges.
+    &--right {
+        border-radius: $radius 0 $radius $radius;
+
+        &::before {
+            left: auto;
+            right: 0;
+        }
+
+        &::after {
+            left: auto;
+            right: 0;
+        }
+    }
+}
+
+// ── Toolbar ────────────────────────────────────────────────────────────────────
+.eb-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px 10px;
+    border-bottom: 1px solid $divider;
+    flex-shrink: 0;
+    min-height: 36px;
+    align-items: center;
+}
+
+// ── Chip base (shared reset) ───────────────────────────────────────────────────
+.eb-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.6;
+    cursor: pointer;
+    border: 1px solid #2b2d30;
+    background: transparent;
+    transition:
+        background 0.15s ease,
+        color 0.15s ease;
+    white-space: nowrap;
+    user-select: none;
+
+    &:focus-visible {
+        outline: 1px solid $accent;
+        outline-offset: 1px;
+    }
+
+    // Primary — purple accent text (@ token)
+    &--primary {
+        color: $accent;
+        font-weight: 600;
+
+        &:hover {
+            background: rgba(104, 95, 255, 0.12);
+        }
+    }
+
+    // Logical & keyword — cyan-blue text
+    &--logical,
+    &--keyword {
+        color: var(--color-ks-status-blue);
+
+        &:hover {
+            background: rgba(72, 203, 255, 0.12);
+        }
+    }
+
+    // Comparison — light gray text
+    &--comparison {
+        color: var(--color-text-primary);
+
+        &:hover {
+            background: rgba(217, 217, 222, 0.08);
+        }
+    }
+
+    // Math — cyan-blue text, fixed square-ish width
+    &--math {
+        color: var(--color-ks-status-blue);
+        width: 28px;
+        padding: 2px 0;
+
+        &:hover {
+            background: rgba(72, 203, 255, 0.12);
+        }
+    }
+}
+
+// ── Body (editor + divider + vars) ────────────────────────────────────────────
+.eb-body {
+    display: flex;
+    flex: 1;
+    min-height: 160px;
+}
+
+// ── Editor area ───────────────────────────────────────────────────────────────
+.eb-editor-wrap {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+// ── Tips block (read-only green hint lines above the textarea) ─────────────────
+.eb-tips {
+    display: flex;
+    flex-direction: column;
+    padding: 6px 12px 0;
+    gap: 2px;
+    flex-shrink: 0;
+    // Cap the accumulated template/tip lines so they scroll instead of growing the
+    // editor popover unbounded (bug #10).
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+.eb-tip-line {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 6px;
+    font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #6a9955;
+    user-select: none;
+}
+
+.eb-tip-text {
+    flex: 1;
+    white-space: pre;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.eb-tip-dismiss {
+    flex-shrink: 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: #6a9955;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0 2px;
+    opacity: 0.6;
+    transition: opacity 0.1s;
+
+    &:hover {
+        opacity: 1;
+    }
+}
+
+.eb-editor {
+    flex: 1;
+    width: 100%;
+    min-height: 160px;
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
+    padding: 12px;
+    color: $text;
+    caret-color: $accent-light;
+    font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    box-sizing: border-box;
+
+    &::placeholder {
+        color: $text-muted;
+    }
+
+    // Remove default browser styles.
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+// ── @ mention dropdown ────────────────────────────────────────────────────────
+.eb-mention-dropdown {
+    position: absolute;
+    z-index: 200;
+    background: #212325;
+    border: 1px solid #2b2d30;
+    border-radius: 4px;
+    min-width: 180px;
+    max-width: 260px;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 2px 0;
+    box-shadow:
+        0px 2px 3px 0px #0000004d,
+        0px 6px 10px 4px #00000026;
+}
+
+.eb-mention-item {
+    padding: 4px 12px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    color: $text;
+    cursor: pointer;
+
+    &:not(:last-child) {
+        border-bottom: 1px solid #2b2d30;
+    }
+
+    &:hover {
+        background: rgba(255, 255, 255, 0.06);
+        color: $text;
+    }
+}
+
+// ── Divider ───────────────────────────────────────────────────────────────────
+.eb-divider {
+    width: 1px;
+    background: $divider;
+    flex-shrink: 0;
+}
+
+// ── Variables panel ───────────────────────────────────────────────────────────
+.eb-vars-panel {
+    width: 180px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.eb-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 8px;
+    padding: 6px 8px;
+    border: 1px solid #2b2d30;
+    border-radius: 4px;
+    background: transparent;
+}
+
+.eb-search-icon {
+    color: rgba(217, 217, 222, 0.6);
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.eb-search {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--color-text-primary);
+    font-size: 13px;
+
+    &::placeholder {
+        color: rgba(217, 217, 222, 0.6);
+    }
+}
+
+.eb-vars-list {
+    flex: 1;
+    max-height: 280px;
+    overflow-y: auto;
+    padding: 0 8px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.eb-var-row {
+    flex-shrink: 0;
+    padding: 6px 8px;
+    font-size: 13px;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid #2b2d30;
+    border-radius: 4px;
+    transition: background 0.1s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    &:hover {
+        background: rgba(217, 217, 222, 0.06);
+    }
+}
+
+// ── Quick templates row ───────────────────────────────────────────────────────
+.eb-templates-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 10px;
+    border-top: 1px solid $divider;
+}
+
+.eb-templates-label {
+    font-size: 11px;
+    color: $text-muted;
+    margin-right: 2px;
+    white-space: nowrap;
+}
+
+// ── Template buttons ──────────────────────────────────────────────────────────
+.eb-template-btn {
+    padding: 4px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #d4d4d4;
+    background: #27272b;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    cursor: pointer;
+    transition:
+        background 0.1s,
+        border-color 0.1s;
+    white-space: nowrap;
+    user-select: none;
+
+    &:focus-visible {
+        outline: 1px solid $accent;
+        outline-offset: 1px;
+    }
+
+    &:hover:not(:disabled) {
+        background: #33333a;
+        border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    &:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+}

@@ -1,4 +1,3 @@
-from django.conf import settings
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -27,8 +26,7 @@ from tables.services.rbac.first_setup_service import FirstSetupService
 from tables.services.rbac.password_recovery_service import PasswordRecoveryService
 from tables.services.rbac.rbac_exceptions import InvalidRefreshTokenError
 from tables.services.rbac.reset_user_service import ResetUserService
-from tables.services.rbac.sse_ticket_service import SseTicketService
-from tables.graph_collab.ws_auth import WsTicketService
+from tables.services.rbac.ticket_service import sse_ticket_service, ws_ticket_service
 from tables.swagger_schemas.auth_schema import (
     API_KEY_VALIDATE_GET,
     FIRST_SETUP_GET,
@@ -89,8 +87,6 @@ class SseTicketView(APIView):
     authentication_classes = [JwtOrApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
-    _service = SseTicketService()
-
     @extend_schema(**SSE_TICKET_POST)
     def post(self, request):
         if not getattr(request.user, "is_authenticated", False) or not hasattr(
@@ -100,7 +96,7 @@ class SseTicketView(APIView):
                 {"detail": "This endpoint requires a user context."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        ticket, ttl = self._service.issue(request.user)
+        ticket, ttl = sse_ticket_service.issue(request.user)
         return Response({"ticket": ticket, "expires_in": ttl})
 
 
@@ -114,8 +110,6 @@ class WsTicketView(APIView):
     authentication_classes = [JwtOrApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
-    _service = WsTicketService()
-
     @extend_schema(**WS_TICKET_POST)
     def post(self, request):
         if not getattr(request.user, "is_authenticated", False) or not hasattr(
@@ -125,10 +119,8 @@ class WsTicketView(APIView):
                 {"detail": "This endpoint requires a user context."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        ticket = self._service.issue(request.user)
-        return Response(
-            {"ticket": ticket, "expires_in": settings.GRAPH_WS_TICKET_TTL_SECONDS}
-        )
+        ticket, ttl = ws_ticket_service.issue(request.user)
+        return Response({"ticket": ticket, "expires_in": ttl})
 
 
 class FirstSetupView(APIView):

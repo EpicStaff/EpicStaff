@@ -278,6 +278,7 @@ async def test_node_created_still_relays_via_channel_layer(
         {
             "type": "node_created",
             "node": {"id": "n99", "type": "agent"},
+            "list_key": "crew_node_list",
             "editor": {
                 "user_id": test_user.pk,
                 "display_name": test_user.display_name,

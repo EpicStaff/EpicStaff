@@ -4,12 +4,13 @@ import { MarkdownModule } from 'ngx-markdown';
 
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-llm-message',
     standalone: true,
-    imports: [CommonModule, MarkdownModule, AppSvgIconComponent],
+    imports: [CommonModule, MarkdownModule, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
         <div class="llm-flow-container">
@@ -59,6 +60,7 @@ import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-m
                                 class="result-content"
                                 [ngClass]="{ collapsed: isCollapsed && shouldShowToggle() }"
                             >
+                                <app-copy-button [text]="llmResponse" />
                                 <markdown [data]="llmResponse"></markdown>
                             </div>
                             <button
@@ -77,6 +79,7 @@ import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-m
     styles: [
         `
             .llm-flow-container {
+                position: relative;
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
                 padding: 1.25rem;
@@ -162,6 +165,7 @@ import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-m
             }
 
             .result-content {
+                position: relative;
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
                 border-radius: 8px;
@@ -172,6 +176,10 @@ import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-m
                 overflow-y: auto;
                 transition: max-height 0.3s ease;
                 margin-left: 23px;
+
+                &:hover app-copy-button {
+                    opacity: 1;
+                }
             }
 
             .result-content.collapsed {

@@ -30,9 +30,13 @@ export enum MessageType {
     SUBGRAPH_START = 'subgraph_start',
     SUBGRAPH_FINISH = 'subgraph_finish',
     GRAPH_END = 'graph_end',
-    CODE_AGENT_STREAM = 'code_agent_stream',
+    CONDITION_GROUP = 'condition_group',
+  CLASSIFICATION_PROMPT = 'classification_prompt',
+  CONDITION_GROUP_MANIPULATION = 'condition_group_manipulation',
+  CODE_AGENT_STREAM = 'code_agent_stream',
 }
 
+// Message data interfaces - these match the camelCase structure used in your code
 export interface FinishMessageData {
     output: Record<string, unknown>;
     state: Record<string, Record<string, unknown>>;
@@ -167,7 +171,32 @@ export interface FinishSubflowMessageData {
 }
 
 export interface GraphEndMessageData {
+  end_node_result: Record<string, any>;
     message_type: MessageType.GRAPH_END;
+}
+
+export interface ConditionGroupMessageData {
+  group_name: string;
+  result: boolean;
+  expression: string | null;
+  message_type: MessageType.CONDITION_GROUP;
+}
+
+export interface ClassificationPromptMessageData {
+  prompt_id: string;
+  prompt_text: string;
+  raw_response: string;
+  parsed_result: any;
+  result_variable: string;
+  usage: Record<string, number>;
+  message_type: MessageType.CLASSIFICATION_PROMPT;
+}
+
+export interface ConditionGroupManipulationMessageData {
+  group_name: string;
+  state: Record<string, any>;
+  changed_variables: Record<string, any>;
+  message_type: MessageType.CONDITION_GROUP_MANIPULATION;
 }
 
 export interface CodeAgentToolCall {
@@ -201,4 +230,7 @@ export type MessageData =
     | StartSubflowMessageData
     | FinishSubflowMessageData
     | GraphEndMessageData
-    | CodeAgentStreamMessageData;
+    | ConditionGroupMessageData
+  | ClassificationPromptMessageData
+  | ConditionGroupManipulationMessageData
+  | CodeAgentStreamMessageData;

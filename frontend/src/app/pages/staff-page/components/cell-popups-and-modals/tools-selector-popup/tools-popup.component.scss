@@ -121,34 +121,47 @@ $transition-default: all 0.2s ease;
 
 .menu-header {
     display: flex;
-    justify-content: flex-start;
+    align-items: flex-end;
+    justify-content: space-between;
     padding: 0;
     margin-bottom: 8px; // Match LLM popup spacing
     border-bottom: 1px solid $border-color;
     gap: 10px;
 
-    button {
-        background: transparent;
-        border: none;
-        color: $text-secondary;
-        font-size: 13px;
-        padding: 8px 16px;
-        cursor: pointer;
-        position: relative;
-        transition: color 0.2s;
-        font-weight: 500;
-        border-bottom: 2px solid transparent;
-        border-radius: 4px 4px 0 0;
-        margin-bottom: -1px;
+    .menu-tabs {
+        display: flex;
+        justify-content: flex-start;
+        gap: 10px;
 
-        &:hover {
-            color: $text-primary;
-        }
+        button {
+            background: transparent;
+            border: none;
+            color: $text-secondary;
+            font-size: 13px;
+            padding: 8px 16px;
+            cursor: pointer;
+            position: relative;
+            transition: color 0.2s;
+            font-weight: 500;
+            border-bottom: 2px solid transparent;
+            border-radius: 4px 4px 0 0;
+            margin-bottom: -1px;
 
-        &.active {
-            color: $accent-blue;
-            border-bottom: 2px solid $accent-blue;
+            &:hover {
+                color: $text-primary;
+            }
+
+            &.active {
+                color: $accent-blue;
+                border-bottom: 2px solid $accent-blue;
+            }
         }
+    }
+
+    .header-create-btn {
+        margin-left: auto;
+        margin-bottom: 6px;
+        flex-shrink: 0;
     }
 }
 
@@ -254,18 +267,6 @@ $transition-default: all 0.2s ease;
 
 .python-tools {
     animation: fadeIn 0.3s ease;
-}
-
-.add-tool-button-container {
-    display: flex;
-    justify-content: center;
-    padding: 12px 0;
-    margin-top: 8px;
-
-    .add-tool-btn {
-        width: 100%;
-        max-width: 200px;
-    }
 }
 
 .footer {

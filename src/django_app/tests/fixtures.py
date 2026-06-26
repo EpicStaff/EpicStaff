@@ -8,7 +8,7 @@ from django.core.cache import cache
 from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
-from tables.models.python_models import PythonCodeToolConfig, PythonCodeToolConfigField
+from tables.models.python_models import PythonCodeToolConfig
 from tables.models.realtime_models import RealtimeAgent
 from tables.models.llm_models import (
     RealtimeConfig,
@@ -463,7 +463,10 @@ def seeded_db(wikipedia_tool):
         name="custom_tool1",
         description="description",
         python_code=code,
-        args_schema={"arg1": "a", "arg2": "b"},
+        variables=[
+            {"name": "arg1", "type": "string", "description": "", "default_value": None, "input_type": "agent_input", "required": True},
+            {"name": "arg2", "type": "string", "description": "", "default_value": None, "input_type": "agent_input", "required": True},
+        ],
     )
 
     agent1 = Agent.objects.create(role="agent1", goal="goal1", backstory="backstory")
@@ -510,11 +513,9 @@ def python_tool_data():
         },
         "name": "python tool1",
         "description": "Get user name from id",
-        "args_schema": {
-            "type": "object",
-            "title": "ArgumentsSchema",
-            "properties": {"user_id": {"type": "integer", "description": "id of user"}},
-        },
+        "variables": [
+            {"name": "user_id", "type": "integer", "description": "id of user", "input_type": "agent_input", "required": True, "default_value": None},
+        ],
     }
 
 
@@ -687,32 +688,11 @@ def python_code_tool(python_code) -> PythonCodeTool:
     return PythonCodeTool.objects.create(
         name="MyTool",
         description="Test PythonCodeTool",
-        args_schema={"type": "object"},
+        variables=[],
         python_code=python_code,
         favorite=False,
         built_in=False,
     )
-
-
-@pytest.fixture
-def python_code_tool_fields(python_code_tool) -> list[PythonCodeToolConfigField]:
-    fields = [
-        PythonCodeToolConfigField.objects.create(
-            tool=python_code_tool,
-            name="arg1",
-            description="Argument 1",
-            data_type=PythonCodeToolConfigField.FieldType.STRING,
-            required=True,
-        ),
-        PythonCodeToolConfigField.objects.create(
-            tool=python_code_tool,
-            name="arg2",
-            description="Argument 2",
-            data_type=PythonCodeToolConfigField.FieldType.INTEGER,
-            required=False,
-        ),
-    ]
-    return fields
 
 
 @pytest.fixture
@@ -730,42 +710,20 @@ def validator():
 
 
 @pytest.fixture
-def mock_tool(mocker):
-    """Creates a mock PythonCodeTool."""
-    tool = MagicMock(spec=PythonCodeTool)
-    return tool
-
-
-def create_mock_field(name, data_type, required=True):
-    """Helper to create a mock configuration field."""
-    field = MagicMock(spec=PythonCodeToolConfigField)
-    field.name = name
-    field.data_type = data_type
-    field.required = required
-    return field
-
-
-@pytest.fixture
 def tool_config_field_int(db, python_code_tool):
-    """Creates an Integer configuration field (required) for the tool."""
-    return PythonCodeToolConfigField.objects.create(
-        tool=python_code_tool,
-        name="batch_size",
-        description="Size of the batch",
-        data_type=PythonCodeToolConfigField.FieldType.INTEGER,
-        required=True,
-    )
-
-
-@pytest.fixture
-def tool_config_field_str(db, python_code_tool):
-    """Creates a String configuration field (optional) for the tool."""
-    return PythonCodeToolConfigField.objects.create(
-        tool=python_code_tool,
-        name="api_key",
-        data_type=PythonCodeToolConfigField.FieldType.STRING,
-        required=False,
-    )
+    """Adds an integer user_input variable to the tool and returns the tool."""
+    python_code_tool.variables = [
+        {
+            "name": "batch_size",
+            "type": "integer",
+            "description": "Size of the batch",
+            "default_value": None,
+            "input_type": "user_input",
+            "required": True,
+        }
+    ]
+    python_code_tool.save()
+    return python_code_tool
 
 
 @pytest.fixture

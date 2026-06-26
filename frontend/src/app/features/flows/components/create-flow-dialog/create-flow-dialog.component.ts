@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, Inject, inject, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { of, Subscription } from 'rxjs';
 import { finalize, map, switchMap } from 'rxjs/operators';
 
@@ -20,7 +21,14 @@ export interface FlowDialogData {
 @Component({
     selector: 'app-create-flow-dialog',
     standalone: true,
-    imports: [CommonModule, ReactiveFormsModule, ButtonComponent, AppSvgIconComponent, LabelDropdownComponent],
+    imports: [
+        CommonModule,
+        ReactiveFormsModule,
+        MatTooltipModule,
+        ButtonComponent,
+        AppSvgIconComponent,
+        LabelDropdownComponent,
+    ],
     templateUrl: './create-flow-dialog.component.html',
     styleUrls: ['./create-flow-dialog.component.scss'],
 })
@@ -114,7 +122,11 @@ export class CreateFlowDialogComponent implements OnInit, OnDestroy {
             this.flowsStorageService
                 .patchUpdateFlow(
                     this.originalFlow.id,
-                    { name: formValue.name, description: formValue.description || '', label_ids: formValue.label_ids || [] },
+                    {
+                        name: formValue.name,
+                        description: formValue.description || '',
+                        label_ids: formValue.label_ids || [],
+                    },
                     this.originalFlow.save_version
                 )
                 .pipe(finalize(() => (this.isSubmitting = false)))
@@ -145,7 +157,9 @@ export class CreateFlowDialogComponent implements OnInit, OnDestroy {
                 switchMap((newFlow) => {
                     const labelIds: number[] = formValue.label_ids || [];
                     if (labelIds.length === 0) return of(newFlow);
-                    return this.flowsStorageService.updateFlowLabels(newFlow.id, labelIds, newFlow.save_version).pipe(map(() => newFlow));
+                    return this.flowsStorageService
+                        .updateFlowLabels(newFlow.id, labelIds, newFlow.save_version)
+                        .pipe(map(() => newFlow));
                 }),
                 finalize(() => (this.isSubmitting = false))
             )

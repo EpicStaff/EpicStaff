@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from abc import ABC, abstractmethod
 
 from tables.import_export.id_mapper import IDMapper
@@ -8,6 +8,12 @@ from tables.import_export.schemas import ImportSettings
 
 class EntityImportExportStrategy(ABC):
     entity_type: EntityType
+
+    # Define these in a subclass to enable CSV export for the entity.
+    # CSV_FIELDS: list of column names written to the CSV header.
+    # csv_row_mapper: transforms a raw exported dict into a flat CSV row.
+    CSV_FIELDS: Optional[list[str]] = None
+    csv_row_mapper: Optional[Callable[[dict], dict]] = None
 
     @abstractmethod
     def get_instance(self, entity_id: int) -> Optional[Any]:

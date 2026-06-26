@@ -34,7 +34,7 @@
       "default": "embedding"
     },
     "dimensions": {
-      "type": "integer",
+      "type": "number",
       "description": "Number of dimensions in the embedding vector.",
       "default": 1536
     },
@@ -44,12 +44,12 @@
       "default": "text-embedding-3-large"
     },
     "limit": {
-      "type": "integer",
+      "type": "number",
       "description": "Number of documents to return from a search.",
       "default": 4
     },
     "oversampling_factor": {
-      "type": "integer",
+      "type": "number",
       "description": "Factor to multiply limit by for candidate generation.",
       "default": 10
     },

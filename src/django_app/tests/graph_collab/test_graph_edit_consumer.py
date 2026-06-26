@@ -22,8 +22,10 @@ async def _wait_for(
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
-async def test_connect_authenticated_receives_no_error(test_graph, test_user):
-    communicator = _make_communicator(test_graph.pk, test_user)
+async def test_connect_authenticated_receives_no_error(
+    test_graph, test_user, make_communicator
+):
+    communicator = make_communicator(test_graph.pk, test_user)
     connected, _ = await communicator.connect()
     assert connected
     await communicator.disconnect()
@@ -31,8 +33,8 @@ async def test_connect_authenticated_receives_no_error(test_graph, test_user):
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
-async def test_connect_anonymous_is_rejected(test_graph):
-    communicator = _make_communicator(test_graph.pk, user=None)
+async def test_connect_anonymous_is_rejected(test_graph, make_communicator):
+    communicator = make_communicator(test_graph.pk, user=None)
     connected, code = await communicator.connect()
     assert not connected
     assert code == 4401
@@ -40,8 +42,8 @@ async def test_connect_anonymous_is_rejected(test_graph):
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
-async def test_connect_nonexistent_graph_is_rejected(test_user):
-    communicator = _make_communicator(999999, test_user)
+async def test_connect_nonexistent_graph_is_rejected(test_user, make_communicator):
+    communicator = make_communicator(999999, test_user)
     connected, code = await communicator.connect()
     assert not connected
     assert code == 4404
@@ -49,11 +51,13 @@ async def test_connect_nonexistent_graph_is_rejected(test_user):
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
-async def test_unknown_message_type_returns_error(test_graph, test_user):
-    communicator = _make_communicator(test_graph.pk, test_user)
+async def test_unknown_message_type_returns_error(
+    test_graph, test_user, make_communicator
+):
+    communicator = make_communicator(test_graph.pk, test_user)
     await communicator.connect()
 
-    # Drain presence_state, user_joined, and request_state/graph_state.
+    # Drain presence_state, user_joined, and graph_state.
     await communicator.receive_json_from()
     await communicator.receive_json_from()
     await communicator.receive_json_from()
@@ -69,16 +73,18 @@ async def test_unknown_message_type_returns_error(test_graph, test_user):
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
-async def test_graph_saved_pushed_via_notifier(test_graph, test_user):
+async def test_graph_saved_pushed_via_notifier(
+    test_graph, test_user, make_communicator
+):
     from asgiref.sync import sync_to_async
     from django.utils import timezone
 
     from tables.graph_collab.notifications import GraphEditNotifier
 
-    communicator = _make_communicator(test_graph.pk, test_user)
+    communicator = make_communicator(test_graph.pk, test_user)
     await communicator.connect()
 
-    # Drain presence_state, user_joined, and request_state/graph_state.
+    # Drain presence_state, user_joined, and graph_state.
     await communicator.receive_json_from()
     await communicator.receive_json_from()
     await communicator.receive_json_from()
@@ -105,9 +111,9 @@ async def test_graph_saved_pushed_via_notifier(test_graph, test_user):
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
 async def test_first_user_connect_receives_presence_state_with_self(
-    test_graph, test_user
+    test_graph, test_user, make_communicator
 ):
-    communicator = _make_communicator(test_graph.pk, test_user)
+    communicator = make_communicator(test_graph.pk, test_user)
     await communicator.connect()
 
     msg = await communicator.receive_json_from()
@@ -122,15 +128,15 @@ async def test_first_user_connect_receives_presence_state_with_self(
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
 async def test_second_user_connect_first_receives_user_joined(
-    test_graph, test_user, second_user
+    test_graph, test_user, second_user, make_communicator
 ):
-    comm1 = _make_communicator(test_graph.pk, test_user)
-    comm2 = _make_communicator(test_graph.pk, second_user)
+    comm1 = make_communicator(test_graph.pk, test_user)
+    comm2 = make_communicator(test_graph.pk, second_user)
 
     await comm1.connect()
     # Drain comm1 initial messages.
     await comm1.receive_json_from()  # presence_state
-    await comm1.receive_json_from()  # request_state (first connector, no snapshot yet)
+    await comm1.receive_json_from()  # graph_state (seeded from DB on first connect)
     await comm1.receive_json_from()  # user_joined (self)
 
     await comm2.connect()
@@ -154,14 +160,14 @@ async def test_second_user_connect_first_receives_user_joined(
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
 async def test_user_disconnect_remaining_receives_user_left(
-    test_graph, test_user, second_user
+    test_graph, test_user, second_user, make_communicator
 ):
-    comm1 = _make_communicator(test_graph.pk, test_user)
-    comm2 = _make_communicator(test_graph.pk, second_user)
+    comm1 = make_communicator(test_graph.pk, test_user)
+    comm2 = make_communicator(test_graph.pk, second_user)
 
     await comm1.connect()
     await comm1.receive_json_from()  # presence_state
-    await comm1.receive_json_from()  # request_state
+    await comm1.receive_json_from()  # graph_state (seeded from DB)
     await comm1.receive_json_from()  # user_joined (self)
 
     await comm2.connect()
@@ -169,7 +175,7 @@ async def test_user_disconnect_remaining_receives_user_left(
     await comm2.receive_json_from()  # presence_state
     await (
         comm2.receive_json_from()
-    )  # request_state (no snapshot yet since comm1 hasn't seeded)
+    )  # graph_state (snapshot already cached by comm1's connect)
     await comm2.receive_json_from()  # user_joined (self)
 
     await comm1.disconnect()
@@ -207,21 +213,22 @@ async def test_server_overrides_spoofed_editor_identity(
         {
             "type": "node_created",
             "node": {"id": "n1", "type": "python"},
+            "list_key": "python_node_list",
             "editor": spoofed_editor,
         }
     )
 
     msg = await comm_b.receive_json_from()
     assert msg["type"] == "node_created"
-    assert (
-        msg["editor"]["user_id"] == test_user.pk
-    ), "server must override editor identity"
+    assert msg["editor"]["user_id"] == test_user.pk, (
+        "server must override editor identity"
+    )
     assert msg["node"] == {"id": "n1", "type": "python"}
     assert "sender_channel" not in msg
 
-    assert await comm_a.receive_nothing(
-        timeout=0.3
-    ), "sender must not receive its own relay"
+    assert await comm_a.receive_nothing(timeout=0.3), (
+        "sender must not receive its own relay"
+    )
 
     await comm_a.disconnect()
     await comm_b.disconnect()
@@ -245,6 +252,7 @@ async def test_node_updated_relayed_to_peer(test_graph, test_user, second_user):
         {
             "type": "node_updated",
             "node": node_payload,
+            "list_key": "crew_node_list",
             "editor": {
                 "user_id": test_user.pk,
                 "display_name": "x",
@@ -277,7 +285,10 @@ async def test_nodes_deleted_relayed_to_peer(test_graph, test_user, second_user)
     await comm_a.send_json_to(
         {
             "type": "nodes_deleted",
-            "node_ids": ["n1", "n2"],
+            "refs": [
+                {"list_key": "crew_node_list", "temp_id": "n1"},
+                {"list_key": "crew_node_list", "temp_id": "n2"},
+            ],
             "editor": {
                 "user_id": test_user.pk,
                 "display_name": "x",
@@ -288,7 +299,12 @@ async def test_nodes_deleted_relayed_to_peer(test_graph, test_user, second_user)
 
     msg = await comm_b.receive_json_from()
     assert msg["type"] == "nodes_deleted"
-    assert msg["node_ids"] == ["n1", "n2"]
+    # The server serialises NodesDeletedMessage via model_dump() which includes
+    # all fields: id defaults to null in the wire representation.
+    assert msg["refs"] == [
+        {"list_key": "crew_node_list", "id": None, "temp_id": "n1"},
+        {"list_key": "crew_node_list", "id": None, "temp_id": "n2"},
+    ]
 
     await comm_a.disconnect()
     await comm_b.disconnect()
@@ -312,6 +328,7 @@ async def test_connection_created_relayed_to_peer(test_graph, test_user, second_
         {
             "type": "connection_created",
             "connection": connection_payload,
+            "list_key": "edge_list",
             "editor": {
                 "user_id": test_user.pk,
                 "display_name": "x",
@@ -346,6 +363,7 @@ async def test_group_isolation_across_graphs(
         {
             "type": "node_created",
             "node": {"id": "n1", "type": "python"},
+            "list_key": "python_node_list",
             "editor": {
                 "user_id": test_user.pk,
                 "display_name": "x",
@@ -354,9 +372,9 @@ async def test_group_isolation_across_graphs(
         }
     )
 
-    assert await comm_b.receive_nothing(
-        timeout=0.3
-    ), "message sent to graph A must not reach a consumer on graph B"
+    assert await comm_b.receive_nothing(timeout=0.3), (
+        "message sent to graph A must not reach a consumer on graph B"
+    )
 
     await comm_a.disconnect()
     await comm_b.disconnect()
@@ -399,23 +417,17 @@ async def test_malformed_payload_returns_invalid_payload_error(test_graph, test_
 # ---------------------------------------------------------------------------
 
 
-_SAMPLE_FLOW = {
-    "nodes": [{"id": "n1", "type": "agent"}],
-    "connections": [{"id": "c1", "source": "n1", "target": "n1"}],
-}
-
-
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
-async def test_first_connector_receives_request_state(test_graph, test_user):
-    """First connector (no snapshot yet) must receive request_state."""
+async def test_first_connector_receives_graph_state(test_graph, test_user):
+    """First connector (no cached snapshot) must receive graph_state seeded from DB."""
     communicator = _make_communicator(test_graph.pk, test_user)
     await communicator.connect()
 
     await communicator.receive_json_from()  # presence_state
 
     msg = await communicator.receive_json_from()
-    assert msg["type"] == "request_state"
+    assert msg["type"] == "graph_state"
 
     await communicator.receive_json_from()  # user_joined
     await communicator.disconnect()
@@ -426,15 +438,15 @@ async def test_first_connector_receives_request_state(test_graph, test_user):
 async def test_second_connector_receives_graph_state_after_seed(
     test_graph, test_user, second_user
 ):
-    """Second connector must receive graph_state carrying the flow seeded by first."""
+    """Second connector must receive graph_state carrying the live snapshot seeded from DB."""
     comm1 = _make_communicator(test_graph.pk, test_user)
     await comm1.connect()
     await comm1.receive_json_from()  # presence_state
-    await comm1.receive_json_from()  # request_state
+    # Capture the graph_state message comm1 receives (seeded from DB).
+    graph_state_msg = await comm1.receive_json_from()
+    assert graph_state_msg["type"] == "graph_state"
+    db_snapshot = graph_state_msg["flow"]
     await comm1.receive_json_from()  # user_joined
-
-    # Comm1 seeds the live state.
-    await comm1.send_json_to({"type": "graph_state", "flow": _SAMPLE_FLOW})
 
     comm2 = _make_communicator(test_graph.pk, second_user)
     await comm2.connect()
@@ -444,7 +456,8 @@ async def test_second_connector_receives_graph_state_after_seed(
 
     msg = await comm2.receive_json_from()
     assert msg["type"] == "graph_state"
-    assert msg["flow"] == _SAMPLE_FLOW
+    # The second connector must receive the same DB-seeded snapshot as the first.
+    assert msg["flow"] == db_snapshot
 
     await comm2.receive_json_from()  # user_joined
     await comm1.disconnect()
@@ -459,14 +472,12 @@ async def test_node_created_op_mutates_snapshot(test_graph, test_user):
     await comm.connect()
     await _drain_connect(comm)
 
-    # Seed the live state first.
-    await comm.send_json_to({"type": "graph_state", "flow": _SAMPLE_FLOW})
-
-    # Send a node_created op.
+    # The snapshot is auto-seeded from DB on connect. Send a node_created op.
     await comm.send_json_to(
         {
             "type": "node_created",
             "node": {"id": "n2", "type": "code"},
+            "list_key": "python_node_list",
             "editor": {
                 "user_id": test_user.pk,
                 "display_name": "x",
@@ -475,12 +486,13 @@ async def test_node_created_op_mutates_snapshot(test_graph, test_user):
         }
     )
 
-    assert await _wait_for(lambda: graph_state_service.get_snapshot(test_graph.pk))
-    snapshot = await graph_state_service.get_snapshot(test_graph.pk)
-    assert snapshot is not None
-    node_ids = {n["id"] for n in snapshot["nodes"]}
-    assert "n1" in node_ids
-    assert "n2" in node_ids
+    async def _snapshot_has_n2():
+        snapshot = await graph_state_service.get_snapshot(test_graph.pk)
+        if snapshot is None:
+            return False
+        return any(n.get("id") == "n2" for n in snapshot.get("python_node_list", []))
+
+    assert await _wait_for(_snapshot_has_n2), "node_created op must update the snapshot"
 
     await comm.disconnect()
 
@@ -490,24 +502,34 @@ async def test_node_created_op_mutates_snapshot(test_graph, test_user):
 async def test_graph_state_seed_does_not_overwrite_existing_snapshot(
     test_graph, test_user
 ):
-    """A second graph_state C→S must NOT overwrite an already-seeded snapshot."""
+    """Deprecated C→S graph_state messages must be silently ignored.
+
+    The server now seeds from DB on connect. Any client-originated graph_state
+    message is a no-op — it must not overwrite the live snapshot.
+    """
     comm = _make_communicator(test_graph.pk, test_user)
     await comm.connect()
     await _drain_connect(comm)
 
-    first_flow = {"nodes": [{"id": "original"}], "connections": []}
-    second_flow = {"nodes": [{"id": "overwrite_attempt"}], "connections": []}
+    # The snapshot was auto-seeded from DB on connect. Capture it.
+    snapshot_before = await graph_state_service.get_snapshot(test_graph.pk)
+    assert snapshot_before is not None
 
-    await comm.send_json_to({"type": "graph_state", "flow": first_flow})
+    # Send two deprecated graph_state messages — both must be ignored.
+    await comm.send_json_to(
+        {"type": "graph_state", "flow": {"crew_node_list": [{"id": "overwrite1"}]}}
+    )
+    await comm.send_json_to(
+        {"type": "graph_state", "flow": {"crew_node_list": [{"id": "overwrite2"}]}}
+    )
 
-    assert await _wait_for(lambda: graph_state_service.get_snapshot(test_graph.pk))
-
-    await comm.send_json_to({"type": "graph_state", "flow": second_flow})
+    # Allow the consumer to process both messages.
     await _wait_for(lambda: graph_state_service.get_snapshot(test_graph.pk))
 
-    snapshot = await graph_state_service.get_snapshot(test_graph.pk)
-    assert snapshot is not None
-    assert snapshot["nodes"][0]["id"] == "original"
+    snapshot_after = await graph_state_service.get_snapshot(test_graph.pk)
+    assert snapshot_after is not None
+    # Snapshot must be unchanged — deprecated seeds are silently dropped.
+    assert snapshot_after == snapshot_before
 
     await comm.disconnect()
 
@@ -520,10 +542,7 @@ async def test_last_disconnect_clears_snapshot(test_graph, test_user):
     await comm.connect()
     await _drain_connect(comm)
 
-    await comm.send_json_to({"type": "graph_state", "flow": _SAMPLE_FLOW})
-
-    assert await _wait_for(lambda: graph_state_service.get_snapshot(test_graph.pk))
-
+    # Snapshot is auto-seeded from DB on connect.
     assert await graph_state_service.get_snapshot(test_graph.pk) is not None
 
     await comm.disconnect()

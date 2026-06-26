@@ -3,11 +3,15 @@ from datetime import datetime, timezone
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
+from tables.graph_collab.utils import build_editor_info
+from tables.graph_collab.presence_service import presence_service
 from tables.graph_collab.protocol import (
     EditorInfo,
     GraphSaveFailedMessage,
     GraphSavedMessage,
+    PresenceStateUpdatedMessage,
 )
+
 from utils.logger import logger
 
 # TODO remove editor from GraphSavedMessage
@@ -39,12 +43,8 @@ def _build_graph_saved_message(
     if user is None:
         editor = _SYSTEM_EDITOR
     else:
-        editor = EditorInfo(
-            user_id=user.pk,
-            display_name=getattr(user, "display_name", None)
-            or getattr(user, "email", None),
-            avatar_url=avatar_url,
-        )
+        editor = build_editor_info(user=user)
+
     message = GraphSavedMessage(
         graph_id=graph_id,
         new_save_version=new_save_version,
@@ -82,7 +82,7 @@ class GraphEditNotifier:
 
         """
 
-        # TODO need to be refactored, because of autosave usage
+        # TODO need to be refactored (whole notifier), because of autosave usage
         message = _build_graph_saved_message(
             graph_id=graph_id,
             new_save_version=new_save_version,
@@ -92,6 +92,16 @@ class GraphEditNotifier:
             temp_id_map=temp_id_map,
         )
         GraphEditNotifier._send(graph_id, message)
+
+    @staticmethod
+    def notify_profile_updated(user) -> None:
+        editor = build_editor_info(user)
+        affected = presence_service.update_editor_for_user(user.pk, editor)
+        if not affected:
+            return
+        message = PresenceStateUpdatedMessage(editor=editor).model_dump()
+        for graph_id in affected:
+            GraphEditNotifier._send(graph_id, message)
 
     @staticmethod
     def _send(graph_id: int, message: dict) -> None:

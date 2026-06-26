@@ -5,11 +5,13 @@ from django.db import transaction
 from django.db.models import Prefetch
 from loguru import logger
 
-from tables.models.rbac_models import OrganizationUser
+from tables.models.rbac_models import Organization, OrganizationUser
 from tables.services.rbac.auth_service import TokenPair
+from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.services.rbac.rbac_exceptions import (
     InvalidCurrentPasswordError,
     InvalidPasswordChangeTicketError,
+    OrgMembershipRequiredError,
 )
 from tables.services.rbac.utils.password_change_ticket_service import (
     PasswordChangeTicketService,
@@ -37,6 +39,7 @@ class UserProfileService:
         password_change_ticket: Optional[PasswordChangeTicketService] = None,
         password_writer: Optional[PasswordWriter] = None,
         session_invalidator: Optional[SessionInvalidationService] = None,
+        permission_resolver: Optional[PermissionResolver] = None,
     ):
         self._avatar_storage = avatar_storage or UserAvatarStorageService()
         self._password_change_ticket = (
@@ -44,15 +47,19 @@ class UserProfileService:
         )
         self._password_writer = password_writer or PasswordWriter()
         self._session_invalidator = session_invalidator or SessionInvalidationService()
+        self._permission_resolver = permission_resolver or PermissionResolver()
 
     # ---- read ----
 
-    def get_profile(self, user):
-        """Refetch the user with memberships prefetched: filtered to
-        active organizations only, sorted by joined_at ASC.
+    def get_profile(self, user, active_org_id: Optional[int] = None):
+        """Refetch the user with memberships prefetched (active orgs only).
+        If `active_org_id` is provided AND the caller has membership (or is
+        superadmin), attach `_active_organization_id` and `_active_permissions`
+        to the returned User instance for the serializer to render. Soft-fail:
+        invalid `active_org_id` results in both attributes being None (NOT 403).
         """
         User = get_user_model()
-        return (
+        user = (
             User.objects.filter(pk=user.pk)
             .prefetch_related(
                 Prefetch(
@@ -64,6 +71,30 @@ class UserProfileService:
             )
             .get()
         )
+
+        user._active_organization_id = None
+        user._active_permissions = None
+        if active_org_id is not None:
+            # Confirm the org exists; missing orgs soft-fail (returns nulls).
+            if not Organization.objects.filter(pk=active_org_id).exists():
+                return user
+            try:
+                effective = self._permission_resolver.resolve(
+                    user=user, org_id=active_org_id
+                )
+            except OrgMembershipRequiredError:
+                return user
+            user._active_organization_id = active_org_id
+            user._active_permissions = {
+                "is_superadmin": effective.is_superadmin,
+                "role": (
+                    None
+                    if effective.role is None
+                    else {"id": effective.role.id, "name": effective.role.name}
+                ),
+                "permissions": effective.to_action_codes(),
+            }
+        return user
 
     # ---- profile field updates ----
 

@@ -1,7 +1,7 @@
-browser-use
-openai>=1.0.0
-python-dotenv
-fastmcp
+browser-use>=0.6.0,<1.0.0
+openai>=1.99.9,<2.0.0
+python-dotenv==1.1.0
+fastmcp==2.12.5
 annotated-types==0.7.0
 anyio>=4.9.0,<5
 browserbase==1.2.0
@@ -21,7 +21,7 @@ jiter==0.8.2
 MarkupSafe==3.0.2
 pillow==11.2.1
 playwright==1.50.0
-pydantic>=2.11.7
+pydantic>=2.11.7,<3.0.0
 pyee==12.1.1
 python-multipart==0.0.20
 requests==2.32.3

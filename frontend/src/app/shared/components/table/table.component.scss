@@ -67,7 +67,6 @@
     display: grid;
     align-items: center;
     min-height: 3rem;
-    cursor: pointer;
     transition: background-color 0.15s ease;
     border-bottom: 1px solid var(--color-divider-subtle);
 
@@ -77,6 +76,10 @@
 
     &.selected {
         background: var(--transparent-white-8, rgba(255, 255, 255, 0.08));
+    }
+
+    &.selectable {
+        cursor: pointer;
     }
 
     &:hover:not(.table-row--selected) {

@@ -10,12 +10,11 @@ from tables.serializers.rbac_serializers import (
     LogoutResponseSerializer,
     ResetUserRequestSerializer,
     ResetUserResponseSerializer,
-    SseTicketResponseSerializer,
+    TicketResponseSerializer,
     SwaggerTokenRequestSerializer,
     SwaggerTokenResponseSerializer,
     TokenIntrospectRequestSerializer,
     TokenIntrospectResponseSerializer,
-    WsTicketResponseSerializer,
 )
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
@@ -314,7 +313,7 @@ SSE_TICKET_POST = dict(
         "on first read, so reconnects require a fresh ticket."
     ),
     responses={
-        200: SseTicketResponseSerializer,
+        200: TicketResponseSerializer,
         401: UNAUTHORIZED_401_RESPONSE,
         403: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -385,7 +384,7 @@ WS_TICKET_POST = dict(
     ),
     responses={
         200: OpenApiResponse(
-            response=WsTicketResponseSerializer,
+            response=TicketResponseSerializer,
             description="Ticket issued successfully.",
             examples=[
                 OpenApiExample(

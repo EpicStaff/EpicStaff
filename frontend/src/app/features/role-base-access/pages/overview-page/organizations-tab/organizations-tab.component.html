@@ -41,39 +41,7 @@
             appTableCell="admin"
             let-row
         >
-            @if (row['admins']?.length === 1) {
-                <div class="user-cell">
-                    <app-user-avatar
-                        [name]="row['admins'][0].display_name || row['admins'][0].email"
-                        [avatarUrl]="row['admins'][0].avatar_url"
-                    />
-                    <div class="user-info">
-                        <span class="user-name">{{ row['admins'][0].display_name || row['admins'][0].email }}</span>
-                        <span class="user-role">Org Admin</span>
-                    </div>
-                </div>
-            } @else if (row['admins']?.length > 1) {
-                <div
-                    class="admins-cell"
-                    appOverflowItems
-                    #adminOverflow="overflowItems"
-                >
-                    @for (admin of row['admins']; track admin.id) {
-                        <app-user-avatar
-                            appOverflowItem
-                            [name]="admin.display_name || admin.email"
-                            [avatarUrl]="admin.avatar_url"
-                        />
-                    }
-                    <span
-                        appOverflowBadge
-                        class="overflow-badge"
-                        >+{{ adminOverflow.overflowCount() }}</span
-                    >
-                </div>
-            } @else {
-                <span class="cell-text">—</span>
-            }
+            <app-admins-cell [admins]="row['admins'] ?? []" />
         </ng-template>
 
         <!-- MEMBERS -->
@@ -113,7 +81,7 @@
                 <button
                     class="action-btn"
                     type="button"
-                    title="Edit"
+                    matTooltip="Edit organization"
                     (click)="onEditOrganization(row)"
                 >
                     <app-svg-icon
@@ -125,7 +93,7 @@
                     <button
                         class="action-btn danger"
                         type="button"
-                        title="Deactivate"
+                        matTooltip="Deactivate organization"
                         (click)="onDeactivateOrganization(row)"
                     >
                         <app-svg-icon
@@ -137,11 +105,11 @@
                     <button
                         class="action-btn action-btn--muted"
                         type="button"
-                        title="Activate"
+                        matTooltip="Activate organization"
                         (click)="onReactivateOrganization(row)"
                     >
                         <app-svg-icon
-                            icon="play-outline"
+                            icon="play"
                             size="16px"
                         />
                     </button>

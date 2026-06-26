@@ -14,6 +14,7 @@ from tables.graph_collab.graph_state_service import graph_state_service
 from tables.graph_collab.notifications import anotify_graph_saved
 from tables.services.redis_service import RedisService
 from tables.graph_collab.lock_service import lock_service
+from tables.graph_collab.utils import build_editor_info
 from tables.graph_collab.presence_service import presence_service
 from tables.graph_collab.constants import (
     CURSOR_FLUSH_INTERVAL_SECONDS,
@@ -96,7 +97,8 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             "User {} connected to graph {} edit channel", user.pk, self.graph_id
         )
 
-        editor = self._build_editor_info(user)
+        editor = build_editor_info(user)
+        already_present = presence_service.has_user(self.graph_id, user.pk)
         presence_service.add(self.graph_id, self.channel_name, editor)
 
         await self.send_json(
@@ -105,10 +107,11 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             ).model_dump()
         )
 
-        await self.channel_layer.group_send(
-            self.group,
-            UserJoinedMessage(editor=editor).model_dump(),
-        )
+        if not already_present:
+            await self.channel_layer.group_send(
+                self.group,
+                UserJoinedMessage(editor=editor).model_dump(),
+            )
 
         # If no snapshot is cached yet (first connector or post-clear), seed from the DB now.
         snapshot = await graph_state_service.get_snapshot(self.graph_id)
@@ -162,7 +165,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
                     graph_id, self.channel_name
                 )
                 if released_pairs and user and not isinstance(user, AnonymousUser):
-                    editor = self._build_editor_info(user)
+                    editor = build_editor_info(user)
                     for node_id, field in released_pairs:
                         event = NodeUnlockedMessage(
                             node_id=node_id, field=field, editor=editor
@@ -171,11 +174,13 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
                         await self.channel_layer.group_send(self.group, event)
 
                 presence_service.remove(graph_id, self.channel_name)
+
                 if user and not isinstance(user, AnonymousUser):
-                    await self.channel_layer.group_send(
-                        group,
-                        UserLeftMessage(user_id=user.pk).model_dump(),
-                    )
+                    if not presence_service.has_user(graph_id, user.pk):
+                        await self.channel_layer.group_send(
+                            group,
+                            UserLeftMessage(user_id=user.pk).model_dump(),
+                        )
 
                 # Flush to DB and then clear the live snapshot once the last editor leaves
                 if presence_service.count_editors(graph_id) == 0:
@@ -209,6 +214,10 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_discard(group, self.channel_name)
 
     async def receive_json(self, content, **kwargs):
+        """
+        Fallback for messages that sended from FE
+        (not available right now, so marked as unknown)
+        """
         message_type = content.get("type")
 
         # Cursor messages travel via Redis pub/sub (lossy), not the channel layer.
@@ -257,7 +266,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             return
 
         # Override editor server-side — never trust the client-sent identity.
-        editor = self._build_editor_info(self.scope["user"])
+        editor = build_editor_info(self.scope["user"])
         message.editor = editor
 
         granted = lock_service.try_lock(
@@ -308,7 +317,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         self._cancel_lock_timer(message.node_id, message.field)
 
         # Override editor server-side before relaying.
-        message.editor = self._build_editor_info(self.scope["user"])
+        message.editor = build_editor_info(self.scope["user"])
         event = message.model_dump()
         event["sender_channel"] = self.channel_name
         await self.channel_layer.group_send(self.group, event)
@@ -371,7 +380,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             return
 
         # Override editor server-side — never trust the client-sent identity.
-        message.editor = self._build_editor_info(self.scope["user"])
+        message.editor = build_editor_info(self.scope["user"])
 
         # Apply state-mutating ops to the live snapshot before relaying.
         if message.type in _STATE_OP_TYPES:
@@ -439,6 +448,9 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
     async def presence_state(self, event):
         await self.send_json(event)
 
+    async def presence_state_updated(self, event):
+        await self.send_json(event)
+
     # --- Cursor pub/sub (Redis, lossy) ---
 
     async def _handle_cursor_moved(self, content: dict) -> None:
@@ -456,7 +468,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             return
 
         user = self.scope["user"]
-        message.editor = self._build_editor_info(user)
+        message.editor = build_editor_info(user)
 
         payload = {
             "sender_user_id": user.pk,
@@ -564,24 +576,6 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             raise
         except Exception as exc:
             logger.error("Cursor flush loop error for graph {}: {}", self.graph_id, exc)
-
-    # --- Helpers ---
-
-    @staticmethod
-    def _build_editor_info(user) -> EditorInfo:
-        avatar_url: str | None = None
-        avatar = getattr(user, "avatar", None)
-        if avatar and avatar.name:
-            try:
-                avatar_url = avatar.url
-            except ValueError:
-                avatar_url = None
-        return EditorInfo(
-            user_id=user.pk,
-            display_name=getattr(user, "display_name", None)
-            or getattr(user, "email", None),
-            avatar_url=avatar_url,
-        )
 
     @staticmethod
     def _graph_exists(graph_id: int) -> bool:

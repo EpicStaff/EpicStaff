@@ -1,5 +1,5 @@
 """
-Unit + integration tests for WsTicketService and TicketAuthMiddleware.
+Unit + integration tests for TicketService (ws variant) and TicketAuthMiddleware.
 
 Redis is replaced with fakeredis.FakeStrictRedis so the real set/getdel logic
 runs without a live Redis server.  DB access is minimal: only user creation
@@ -7,55 +7,47 @@ and deletion.
 """
 
 import pytest
-import fakeredis
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 
-from tables.graph_collab.ws_auth import TicketAuthMiddleware, WsTicketService
+from tables.graph_collab.ws_auth import TicketAuthMiddleware
+from tables.services.rbac.ticket_service import TicketService
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_service(mocker) -> tuple[WsTicketService, fakeredis.FakeStrictRedis]:
-    """Return a service instance wired to a fresh in-memory fakeredis store."""
-    fake = fakeredis.FakeStrictRedis()
-    mocker.patch(
-        "tables.graph_collab.ws_auth.get_redis_connection",
-        return_value=fake,
+def make_ws_service():
+    return TicketService(
+        prefix="rbac:ws_ticket:", ttl_seconds=settings.GRAPH_WS_TICKET_TTL_SECONDS
     )
-    return WsTicketService(), fake
 
 
 # ---------------------------------------------------------------------------
-# WsTicketService tests
+# TicketService (ws) tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_issue_returns_token_and_stores_user(mocker):
-    service, fake = _make_service(mocker)
+def test_issue_returns_token_and_stores_user(fake_redis):
+    service = make_ws_service()
     User = get_user_model()
     user = User.objects.create_user(email="ticket1@example.com", password="Pass123!")
 
-    token = service.issue(user)
+    token, ttl = service.issue(user)
 
     assert isinstance(token, str) and len(token) > 0
-    stored = fake.get(service._key(token))
+    assert isinstance(ttl, int) and ttl > 0
+    stored = fake_redis.get(service._key(token))
     assert stored is not None
     assert int(stored) == user.pk
 
 
 @pytest.mark.django_db
-def test_consume_valid_ticket_returns_user(mocker):
-    service, _ = _make_service(mocker)
+def test_consume_valid_ticket_returns_user(fake_redis):
+    service = make_ws_service()
     User = get_user_model()
     user = User.objects.create_user(email="ticket2@example.com", password="Pass123!")
 
-    token = service.issue(user)
+    token, _ = service.issue(user)
     result = service.consume(token)
 
     assert result is not None
@@ -63,12 +55,12 @@ def test_consume_valid_ticket_returns_user(mocker):
 
 
 @pytest.mark.django_db
-def test_consume_is_single_use(mocker):
-    service, _ = _make_service(mocker)
+def test_consume_is_single_use(fake_redis):
+    service = make_ws_service()
     User = get_user_model()
     user = User.objects.create_user(email="ticket3@example.com", password="Pass123!")
 
-    token = service.issue(user)
+    token, _ = service.issue(user)
 
     first = service.consume(token)
     assert first is not None
@@ -78,18 +70,17 @@ def test_consume_is_single_use(mocker):
 
 
 @pytest.mark.django_db
-def test_consume_empty_or_none_ticket_returns_none(mocker):
-    service, fake = _make_service(mocker)
+def test_consume_empty_ticket_returns_none(fake_redis):
+    service = make_ws_service()
 
     assert service.consume("") is None
-    assert service.consume(None) is None  # type: ignore[arg-type]
     # No redis hit expected — early return before key lookup.
-    assert fake.dbsize() == 0
+    assert fake_redis.dbsize() == 0
 
 
 @pytest.mark.django_db
-def test_consume_unknown_ticket_returns_none(mocker):
-    service, _ = _make_service(mocker)
+def test_consume_unknown_ticket_returns_none(fake_redis):
+    service = make_ws_service()
 
     result = service.consume("completely-unknown-token")
 
@@ -97,22 +88,22 @@ def test_consume_unknown_ticket_returns_none(mocker):
 
 
 @pytest.mark.django_db
-def test_consume_corrupted_value_returns_none(mocker):
-    service, fake = _make_service(mocker)
+def test_consume_corrupted_value_returns_none(fake_redis):
+    service = make_ws_service()
 
-    fake.set(service._key("bad"), b"not-an-int")
+    fake_redis.set(service._key("bad"), b"not-an-int")
     result = service.consume("bad")
 
     assert result is None
 
 
 @pytest.mark.django_db
-def test_consume_deleted_user_returns_none(mocker):
-    service, _ = _make_service(mocker)
+def test_consume_deleted_user_returns_none(fake_redis):
+    service = make_ws_service()
     User = get_user_model()
     user = User.objects.create_user(email="ticket4@example.com", password="Pass123!")
 
-    token = service.issue(user)
+    token, _ = service.issue(user)
     user.delete()
 
     result = service.consume(token)
@@ -120,13 +111,13 @@ def test_consume_deleted_user_returns_none(mocker):
 
 
 @pytest.mark.django_db
-def test_ttl_matches_setting(mocker):
-    service, fake = _make_service(mocker)
+def test_ttl_matches_setting(fake_redis):
+    service = make_ws_service()
     User = get_user_model()
     user = User.objects.create_user(email="ticket5@example.com", password="Pass123!")
 
-    token = service.issue(user)
-    ttl = fake.ttl(service._key(token))
+    token, _ = service.issue(user)
+    ttl = fake_redis.ttl(service._key(token))
 
     assert ttl > 0
     assert ttl <= settings.GRAPH_WS_TICKET_TTL_SECONDS
@@ -137,20 +128,17 @@ def test_ttl_matches_setting(mocker):
 # ---------------------------------------------------------------------------
 
 
-def test_extract_ticket_simple():
-    assert TicketAuthMiddleware._extract_ticket("ticket=abc") == "abc"
-
-
-def test_extract_ticket_among_params():
-    assert TicketAuthMiddleware._extract_ticket("foo=1&ticket=abc&bar=2") == "abc"
-
-
-def test_extract_ticket_not_present():
-    assert TicketAuthMiddleware._extract_ticket("foo=1&bar=2") == ""
-
-
-def test_extract_ticket_empty_string():
-    assert TicketAuthMiddleware._extract_ticket("") == ""
+@pytest.mark.parametrize(
+    "query_string, expected",
+    [
+        ("ticket=abc", "abc"),
+        ("foo=1&ticket=abc&bar=2", "abc"),
+        ("foo=1&bar=2", ""),
+        ("", ""),
+    ],
+)
+def test_extract_ticket(query_string: str, expected: str):
+    assert TicketAuthMiddleware._extract_ticket(query_string) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -160,23 +148,16 @@ def test_extract_ticket_empty_string():
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
-async def test_middleware_sets_user_for_valid_ticket(mocker):
+async def test_middleware_sets_user_for_valid_ticket(fake_redis):
+    service = make_ws_service()
+    User = get_user_model()
     from asgiref.sync import sync_to_async
-
-    fake = fakeredis.FakeStrictRedis()
-    mocker.patch(
-        "tables.graph_collab.ws_auth.get_redis_connection",
-        return_value=fake,
-    )
-    service = WsTicketService()
-    # Patch the module-level singleton so TicketAuthMiddleware uses the same instance.
-    mocker.patch("tables.graph_collab.ws_auth._service", service)
 
     User = get_user_model()
     user = await sync_to_async(User.objects.create_user)(
         email="mw1@example.com", password="Pass123!"
     )
-    token = service.issue(user)
+    token, _ = service.issue(user)
 
     captured: dict = {}
 
@@ -196,13 +177,7 @@ async def test_middleware_sets_user_for_valid_ticket(mocker):
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
-async def test_middleware_sets_anonymous_for_missing_ticket(mocker):
-    fake = fakeredis.FakeStrictRedis()
-    mocker.patch(
-        "tables.graph_collab.ws_auth.get_redis_connection",
-        return_value=fake,
-    )
-
+async def test_middleware_sets_anonymous_for_missing_ticket(fake_redis):
     captured: dict = {}
 
     async def inner(scope, receive, send):

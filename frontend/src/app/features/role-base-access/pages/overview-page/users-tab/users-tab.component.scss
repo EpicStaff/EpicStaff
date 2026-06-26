@@ -2,39 +2,12 @@
 
 @include shared.tab-base;
 
-.user-cell {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-}
-
-.user-info {
-    min-width: 0;
-}
-
-.user-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .user-email {
     font-size: 10px;
     color: var(--text-secondary-60);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.role-badges {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    flex-wrap: nowrap;
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
 }
 
 .role-chip {
@@ -45,45 +18,4 @@
     background: var(--transparent-white-8);
     white-space: nowrap;
     flex-shrink: 0;
-}
-
-.org-badges {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    flex-wrap: nowrap;
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-}
-
-.overflow-badge {
-    display: none; // shown via inline style by OverflowItemsDirective when needed
-    align-items: center;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 12px;
-    color: var(--text-secondary-60);
-    background: var(--transparent-white-8);
-    white-space: nowrap;
-    flex-shrink: 0;
-}
-
-.last-active {
-    display: flex;
-    flex-direction: column;
-    line-height: 100%;
-
-    .date {
-        font-size: 14px;
-    }
-
-    .relative {
-        font-size: 10px;
-        color: var(--text-secondary-60);
-    }
-}
-
-.empty-value {
-    color: var(--text-secondary-60);
 }

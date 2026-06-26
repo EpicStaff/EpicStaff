@@ -1,3 +1,6 @@
+import unittest.mock
+
+import fakeredis
 import pytest
 import fakeredis.aioredis
 
@@ -8,11 +11,13 @@ from django.contrib.auth.models import AnonymousUser
 from django.test import override_settings
 from django.urls import re_path
 
+from tables.models import Graph
+
 from tables.graph_collab import graph_state_service as _gss_module
 from tables.graph_collab import lock_service as _ls_module
 from tables.graph_collab.consumers import GraphEditConsumer
-from tables.graph_collab.presence_service import presence_service
-from tables.models import Graph
+from tables.graph_collab.presence_service import presence_service, GraphPresenceService
+from tables.graph_collab.protocol import EditorInfo
 
 
 application = URLRouter(
@@ -34,13 +39,13 @@ def _make_communicator(graph_id: int, user=None):
 async def _drain_connect(communicator) -> None:
     """Consume the initial messages sent on connect:
     1. presence_state
-    2. request_state OR graph_state (live snapshot seeding/serving)
+    2. graph_state (server seeds from DB on every connect)
     3. user_joined (self)
     """
     messages = {(await communicator.receive_json_from())["type"] for _ in range(3)}
     assert "presence_state" in messages
     assert "user_joined" in messages
-    assert "request_state" in messages or "graph_state" in messages
+    assert "graph_state" in messages
 
 
 async def _drain_connect_with_locks(communicator) -> dict:
@@ -51,7 +56,7 @@ async def _drain_connect_with_locks(communicator) -> dict:
         received[msg["type"]] = msg
     assert "presence_state" in received
     assert "user_joined" in received
-    assert "request_state" in received or "graph_state" in received
+    assert "graph_state" in received
     assert "lock_state" in received
     return received["lock_state"]
 
@@ -61,6 +66,10 @@ CHANNEL_LAYERS_OVERRIDE = {
         "BACKEND": "channels.layers.InMemoryChannelLayer",
     }
 }
+
+
+def _editor(user_id: int, name: str = "Alice") -> EditorInfo:
+    return EditorInfo(user_id=user_id, display_name=name, avatar_url=None)
 
 
 @pytest.fixture(autouse=True)
@@ -98,6 +107,16 @@ def second_user(db):
 @pytest.fixture
 def second_graph(db):
     return Graph.objects.create(name="test-graph-collab-2")
+
+
+@pytest.fixture
+def fake_redis():
+    fake = fakeredis.FakeStrictRedis()
+    with unittest.mock.patch(
+        "tables.services.rbac.ticket_service.get_redis_connection",
+        return_value=fake,
+    ):
+        yield fake
 
 
 @pytest.fixture(autouse=True)
@@ -142,6 +161,32 @@ def patch_graph_state_redis(fake_async_redis, monkeypatch):
 
 
 @pytest.fixture
+def auth_client(api_client, regular_user):
+    """
+    Override the global auth_client for graph_collab tests.
+    GraphViewSet does not declare authentication_classes, so it inherits the
+    empty DEFAULT_AUTHENTICATION_CLASSES from test settings — meaning
+    credentials() headers are never processed and request.user stays
+    AnonymousUser. force_authenticate bypasses the auth middleware entirely
+    and sets request.user directly, which is what these tests need.
+    """
+    api_client.force_authenticate(user=regular_user)
+    return api_client
+
+
+@pytest.fixture
+def make_communicator():
+    from django.contrib.auth.models import AnonymousUser
+
+    def _make(graph_id: int, user=None):
+        communicator = WebsocketCommunicator(application, f"ws/graphs/{graph_id}/edit/")
+        communicator.scope["user"] = user or AnonymousUser()
+        return communicator
+
+    return _make
+
+
+@pytest.fixture
 def service():
-    """GraphLiveStateService with its Redis client replaced by fake_redis."""
-    return _gss_module.GraphLiveStateService()
+    """GraphPresenceService instance for unit tests."""
+    return GraphPresenceService()

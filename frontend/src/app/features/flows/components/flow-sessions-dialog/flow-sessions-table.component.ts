@@ -11,12 +11,18 @@ import {
     signal,
     SimpleChanges,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { CheckboxComponent, IconButtonComponent, LoadingSpinnerComponent } from '@shared/components';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
 import { GraphDto } from '../../models/graph.model';
-import { DurationFilter, GraphSessionLight, GraphSessionStatus, isTerminalSessionStatus } from '../../services/flows-sessions.service';
+import {
+    DurationFilter,
+    GraphSessionLight,
+    GraphSessionStatus,
+    isTerminalSessionStatus,
+} from '../../services/flows-sessions.service';
 import { DurationFilterDropdownComponent } from './duration-filter-dropdown.component';
 import { FlowNameFilterDropdownComponent } from './flow-name-filter-dropdown.component';
 import { FlowSessionStatusBadgeComponent } from './flow-session-status-badge.component';
@@ -34,6 +40,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
         FlowSessionStatusFilterDropdownComponent,
         FlowNameFilterDropdownComponent,
         DurationFilterDropdownComponent,
+        MatTooltipModule,
     ],
     template: `
         <div class="sessions-table-wrapper">
@@ -160,26 +167,39 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                         >
                                             {{ expandedSessionId() === session.id ? 'Hide' : 'Preview' }}
                                         </button>
-                                        <img
-                                            src="assets/icons/ui/session-arrow.svg"
-                                            alt="arrow-icon"
-                                            class="arrow-icon"
+                                        <button
+                                            type="button"
+                                            class="icon-img-btn"
+                                            matTooltip="View session"
+                                            matTooltipPosition="above"
                                             (click)="viewSession.emit(session.id)"
-                                        />
-                                        <img
-                                            src="assets/icons/ui/stop-session.svg"
-                                            alt="arrow-icon"
+                                        >
+                                            <img
+                                                src="assets/icons/ui/session-arrow.svg"
+                                                alt="arrow-icon"
+                                                class="arrow-icon"
+                                            />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="icon-img-btn"
                                             *ngIf="canStop(session.status)"
+                                            matTooltip="Stop session"
+                                            matTooltipPosition="above"
                                             (click)="stopSession.emit(session.id)"
-                                            title="Stop session"
-                                            style="margin-left: 8px;"
-                                            class="arrow-icon"
-                                        />
+                                        >
+                                            <img
+                                                src="assets/icons/ui/stop-session.svg"
+                                                alt="arrow-icon"
+                                                class="arrow-icon"
+                                            />
+                                        </button>
                                         <app-icon-button
                                             *ngIf="!canStop(session.status)"
                                             icon="x"
                                             size="1.5rem"
                                             ariaLabel="Delete session"
+                                            tooltip="Delete session"
                                             (onClick)="deleteSelected.emit([session.id])"
                                         ></app-icon-button>
                                     </div>

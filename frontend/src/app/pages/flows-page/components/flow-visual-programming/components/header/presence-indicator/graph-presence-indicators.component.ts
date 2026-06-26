@@ -3,6 +3,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { getAvatarColor } from 'src/app/visual-programming/core/helpers/avatar-colors';
 import { EditorInfo } from '../../../../../../../features/flows/services/graph-collaboration.ws.service';
 import { ProfileService } from '../../../../../../../services/auth/profile.service';
+import { ConfigService } from '../../../../../../../services/config/config.service';
 
 @Component({
     selector: 'app-graph-presence-indicators',
@@ -15,6 +16,11 @@ import { ProfileService } from '../../../../../../../services/auth/profile.servi
 
 export class GraphPresenceIndicatorsComponent {
     private readonly profileService = inject(ProfileService);
+    private readonly configService = inject(ConfigService);
+
+    private get mediaBase(): string {
+        return this.configService.apiUrl.replace(/\/api\/$/, '');
+    }
 
     readonly editors = input<EditorInfo[]>([]);
 
@@ -23,7 +29,11 @@ export class GraphPresenceIndicatorsComponent {
         return this.editors().filter((e) => e.user_id !== currentId);
     });
 
-    protected readonly visibleEditors = computed(() => this.filtered().slice(0, 3));
+    protected readonly visibleEditors = computed(() =>
+        this.filtered()
+            .slice(0, 3)
+            .map((e) => ({ ...e, resolvedAvatarUrl: this.resolveAvatarUrl(e.avatar_url) }))
+    );
     protected readonly hiddenCount = computed(() => Math.max(0, this.filtered().length - 3));
     protected readonly hiddenTooltip = computed(() =>
         this.filtered()
@@ -45,6 +55,12 @@ export class GraphPresenceIndicatorsComponent {
     }
 
     protected getTooltip(editor: EditorInfo): string {
-        return editor.display_name ?? `User ${editor.user_id}`
+        return editor.display_name ?? `User ${editor.user_id}`;
+    }
+
+    protected resolveAvatarUrl(url: string | null | undefined): string | null {
+        if (!url) return null;
+        if (url.startsWith('http')) return url;
+        return `${this.mediaBase}${url}`;
     }
 }

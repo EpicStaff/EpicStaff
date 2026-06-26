@@ -168,6 +168,7 @@ services:
       - HAYSTACK_TELEMETRY_ENABLED=False
       - ANONYMIZED_TELEMETRY=False
       - EC_TELEMETRY=False
+      - MEM0_TELEMETRY=False
       - MONITORING_MODE=local
       - PROCESS_REDIS_HOST=redis
       - DB_NAME=crew

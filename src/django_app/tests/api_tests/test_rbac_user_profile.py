@@ -636,3 +636,55 @@ class TestRemovedEndpoints:
             format="json",
         )
         assert resp.status_code == status.HTTP_404_NOT_FOUND
+
+
+# ---- Active-org extension ----
+
+
+@pytest.mark.django_db
+def test_profile_no_header_returns_null_active_org(auth_client, regular_user):
+    response = auth_client.get("/api/profile/")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["active_organization_id"] is None
+    assert body["active_permissions"] is None
+
+
+@pytest.mark.django_db
+def test_profile_valid_header_returns_active_permissions(
+    auth_client, regular_user, default_org
+):
+    response = auth_client.get(
+        "/api/profile/", HTTP_X_ORGANIZATION_ID=str(default_org.id)
+    )
+    body = response.json()
+    assert body["active_organization_id"] == default_org.id
+    # regular_user is Org Admin (conftest) — should have export on flows.
+    assert body["active_permissions"]["role"]["name"] == "Org Admin"
+    assert "export" in body["active_permissions"]["permissions"]["flows"]
+
+
+@pytest.mark.django_db
+def test_profile_invalid_header_soft_fails(auth_client, regular_user, db):
+    from tables.models.rbac_models import Organization
+
+    other = Organization.objects.create(name="Other Inc (profile tests)")
+    response = auth_client.get("/api/profile/", HTTP_X_ORGANIZATION_ID=str(other.id))
+    # NOT 403 — profile is the FE boot endpoint.
+    assert response.status_code == 200
+    body = response.json()
+    assert body["active_organization_id"] is None
+    assert body["active_permissions"] is None
+
+
+@pytest.mark.django_db
+def test_profile_superadmin_with_any_org(
+    superadmin_client, superadmin_user, default_org
+):
+    response = superadmin_client.get(
+        "/api/profile/", HTTP_X_ORGANIZATION_ID=str(default_org.id)
+    )
+    body = response.json()
+    assert body["active_organization_id"] == default_org.id
+    assert body["active_permissions"]["is_superadmin"] is True
+    assert body["active_permissions"]["permissions"] == "*"

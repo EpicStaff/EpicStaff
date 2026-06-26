@@ -15,7 +15,7 @@
             </div>
         </div>
         <nav class="overview-tabs">
-            @if (currentUserService.canManageOrgs()) {
+            <ng-container *appHasPermission="['organizations', 'read']">
                 <a
                     routerLink="main"
                     routerLinkActive="active"
@@ -40,20 +40,33 @@
                     Organizations
                 </a>
                 <span class="tab-divider">/</span>
-            }
-            @if (currentUserService.canManageUsers()) {
+            </ng-container>
+            <a
+                *appHasPermission="['users', 'read']"
+                routerLink="users"
+                routerLinkActive="active"
+                class="overview-tab"
+            >
+                <app-svg-icon
+                    size="18px"
+                    icon="profile"
+                />
+                Users
+            </a>
+            <ng-container *appHasPermission="['roles', 'read']">
+                <span class="tab-divider">/</span>
                 <a
-                    routerLink="users"
+                    routerLink="roles"
                     routerLinkActive="active"
                     class="overview-tab"
                 >
                     <app-svg-icon
                         size="18px"
-                        icon="profile"
+                        icon="briefcase"
                     />
-                    Users
+                    Roles
                 </a>
-            }
+            </ng-container>
         </nav>
     </div>
     <div class="overview-content">

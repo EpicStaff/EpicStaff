@@ -1,11 +1,16 @@
 <div class="presence-indicators">
-    @for(editor of visibleEditors(); track editor.user_id) {
-        <div class="avatar"
-            [style.background-color]="getColor(editor.user_id)"
+    @for (editor of visibleEditors(); track editor.user_id) {
+        <div
+            class="avatar"
+            [style.background-color]="editor.resolvedAvatarUrl ? 'transparent' : getColor(editor.user_id)"
             [matTooltip]="getTooltip(editor)"
             matTooltipPosition="below"
-        >   
-            {{ getInitials(editor) }}
+        >
+            @if (editor.resolvedAvatarUrl) {
+                <img class="avatar__img" [src]="editor.resolvedAvatarUrl" [alt]="getInitials(editor)" />
+            } @else {
+                {{ getInitials(editor) }}
+            }
         </div>
     }
     @if (hiddenCount() > 0) {

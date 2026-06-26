@@ -14,6 +14,7 @@ from tables.serializers.user_profile_serializers import (
     ProfilePatchRequestSerializer,
     ProfileResponseSerializer,
 )
+from tables.graph_collab.notifications import GraphEditNotifier
 from tables.services.rbac.authentication import JwtOrApiKeyAuthentication
 from tables.services.rbac.user_profile_service import UserProfileService
 from tables.services.rbac.user_validation_service import UserValidationService
@@ -43,10 +44,21 @@ class ProfileView(APIView):
     )
     def get(self, request):
         _require_user_context(request)
-        user = self._service.get_profile(request.user)
+        active_org_id = self._extract_active_org_id(request)
+        user = self._service.get_profile(request.user, active_org_id=active_org_id)
         return Response(
             ProfileResponseSerializer(user, context={"request": request}).data
         )
+
+    @staticmethod
+    def _extract_active_org_id(request):
+        raw = request.headers.get("X-Organization-Id")
+        if not raw:
+            return None
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return None  # Soft-fail: profile is the boot endpoint.
 
     @extend_schema(
         summary="Update my profile",
@@ -63,6 +75,8 @@ class ProfileView(APIView):
         if "display_name" in cleaned:
             user = self._service.update_display_name(user, cleaned["display_name"])
         user = self._service.get_profile(user)
+        if "display_name" in cleaned:
+            GraphEditNotifier.notify_profile_updated(user)
         return Response(
             ProfileResponseSerializer(user, context={"request": request}).data
         )
@@ -100,6 +114,7 @@ class ProfileAvatarView(APIView):
         uploaded = self._validator.validate_avatar_upload(request.data)
         user = self._service.update_avatar(request.user, uploaded)
         user = self._service.get_profile(user)
+        GraphEditNotifier.notify_profile_updated(user)
         return Response(
             ProfileResponseSerializer(user, context={"request": request}).data
         )
@@ -111,6 +126,8 @@ class ProfileAvatarView(APIView):
     def delete(self, request):
         _require_user_context(request)
         self._service.clear_avatar(request.user)
+        user = self._service.get_profile(request.user)
+        GraphEditNotifier.notify_profile_updated(user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

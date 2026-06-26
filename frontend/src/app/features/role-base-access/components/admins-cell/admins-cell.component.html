@@ -1,0 +1,84 @@
+<!-- 0 admins -->
+@if (admins().length === 0) {
+    <span class="empty">—</span>
+
+    <!-- 1 admin -->
+} @else if (admins().length === 1) {
+    <div class="admin-chips">
+        <app-user-avatar
+            [name]="adminName(admins()[0])"
+            [avatarUrl]="admins()[0].avatar_url"
+        />
+        <span
+            class="chip-name"
+            [matTooltip]="adminName(admins()[0])"
+            >{{ adminName(admins()[0]) }}</span
+        >
+    </div>
+
+    <!-- 2 admins -->
+} @else if (admins().length === 2) {
+    <div class="admin-chips">
+        @for (admin of admins(); track admin.id) {
+            <app-user-avatar
+                [name]="admin.display_name || admin.email"
+                [avatarUrl]="admin.avatar_url"
+            />
+            <span
+                class="chip-name"
+                [matTooltip]="admin.display_name || admin.email"
+                >{{ admin.display_name || admin.email }}</span
+            >
+        }
+    </div>
+
+    <!-- 3+ admins — collapsed trigger -->
+} @else {
+    <div
+        class="admins-trigger"
+        (click)="toggle($event)"
+    >
+        @for (admin of admins().slice(0, 2); track admin.id) {
+            <app-user-avatar
+                [name]="admin.display_name || admin.email"
+                [avatarUrl]="admin.avatar_url"
+            />
+            <span
+                class="trigger-name"
+                [matTooltip]="adminName(admin)"
+                >{{ adminName(admin) }}</span
+            >
+        }
+        <span class="overflow-count">+{{ admins().length - 2 }}</span>
+        <app-svg-icon
+            [icon]="isOpen() ? 'chevron-up' : 'chevron-down'"
+            size="14px"
+            class="chevron"
+        />
+    </div>
+
+    @if (isOpen()) {
+        <div
+            class="admins-panel"
+            [ngStyle]="panelStyle()"
+            (click)="stopProp($event)"
+            appClickOutside
+            (appClickOutside)="isOpen.set(false)"
+        >
+            @for (admin of admins(); track admin.id) {
+                <div class="member-row">
+                    <app-user-avatar
+                        [name]="admin.display_name || admin.email"
+                        [avatarUrl]="admin.avatar_url"
+                    />
+                    <div class="member-info">
+                        @if (admin.display_name) {
+                            <span class="member-name">{{ admin.display_name }}</span>
+                        }
+                        <span class="member-email">{{ admin.email }}</span>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+}

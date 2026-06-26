@@ -9,18 +9,10 @@ import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+
 from tables.graph_collab.notifications import GraphEditNotifier
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _fake_layer(mocker):
-    layer = mocker.MagicMock()
-    layer.group_send = AsyncMock()
-    return layer
 
 
 # ---------------------------------------------------------------------------
@@ -28,12 +20,10 @@ def _fake_layer(mocker):
 # ---------------------------------------------------------------------------
 
 
-def test_notify_graph_saved_sends_correct_message(mocker):
-    layer = _fake_layer(mocker)
-    mocker.patch(
-        "tables.graph_collab.notifications.get_channel_layer",
-        return_value=layer,
-    )
+def test_notify_graph_saved_sends_correct_message():
+    channel_layer = get_channel_layer()
+    channel_name = async_to_sync(channel_layer.new_channel)()
+    async_to_sync(channel_layer.group_add)("graph_edit_7", channel_name)
 
     user = SimpleNamespace(pk=42, display_name="Alice", email="alice@example.com")
 
@@ -44,10 +34,8 @@ def test_notify_graph_saved_sends_correct_message(mocker):
         saved_at="2026-01-01T00:00:00",
     )
 
-    layer.group_send.assert_called_once()
-    group_name, message = layer.group_send.call_args.args
+    message = async_to_sync(channel_layer.receive)(channel_name)
 
-    assert group_name == "graph_edit_7"
     assert message["type"] == "graph_saved"
     assert message["graph_id"] == 7
     assert message["new_save_version"] == 5
@@ -56,14 +44,12 @@ def test_notify_graph_saved_sends_correct_message(mocker):
 
 
 @pytest.mark.django_db
-def test_notify_graph_saved_with_real_user_sends_correct_message(mocker):
+def test_notify_graph_saved_with_real_user_sends_correct_message():
     from django.contrib.auth import get_user_model
 
-    layer = _fake_layer(mocker)
-    mocker.patch(
-        "tables.graph_collab.notifications.get_channel_layer",
-        return_value=layer,
-    )
+    channel_layer = get_channel_layer()
+    channel_name = async_to_sync(channel_layer.new_channel)()
+    async_to_sync(channel_layer.group_add)("graph_edit_99", channel_name)
 
     User = get_user_model()
     user = User.objects.create_user(
@@ -79,8 +65,8 @@ def test_notify_graph_saved_with_real_user_sends_correct_message(mocker):
         saved_at="2026-06-01T12:00:00",
     )
 
-    layer.group_send.assert_called_once()
-    _, message = layer.group_send.call_args.args
+    message = async_to_sync(channel_layer.receive)(channel_name)
+
     assert message["type"] == "graph_saved"
     assert message["graph_id"] == 99
     assert message["saved_by"]["user_id"] == user.pk

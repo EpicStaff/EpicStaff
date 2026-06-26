@@ -54,6 +54,7 @@
                 type="text"
                 class="model-selector__search-input"
                 placeholder="Search provider or model..."
+                autocomplete="off"
                 [value]="searchQuery()"
                 (input)="onSearchChange($event)"
             />
@@ -117,6 +118,7 @@
                                             <app-icon-button
                                                 icon="edit"
                                                 size="2rem"
+                                                tooltip="Edit model"
                                                 (click)="
                                                     openEditModal(model, providerData.provider);
                                                     $event.stopPropagation()

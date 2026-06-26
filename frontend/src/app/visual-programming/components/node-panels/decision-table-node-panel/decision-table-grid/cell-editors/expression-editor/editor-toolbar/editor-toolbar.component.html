@@ -2,7 +2,8 @@
     <button
         class="toolbar-btn"
         (click)="insertToken('@')"
-        title="Insert Variable"
+        matTooltip="Insert Variable"
+        matTooltipPosition="above"
     >
         <span
             class="keyword"
@@ -16,14 +17,16 @@
         <button
             class="toolbar-btn"
             (click)="insertToken('and')"
-            title="Insert AND operator"
+            matTooltip="Insert AND operator"
+            matTooltipPosition="above"
         >
             <span class="keyword">AND</span>
         </button>
         <button
             class="toolbar-btn"
             (click)="insertToken('or')"
-            title="Insert OR operator"
+            matTooltip="Insert OR operator"
+            matTooltipPosition="above"
         >
             <span class="keyword">OR</span>
         </button>
@@ -31,42 +34,48 @@
         <button
             class="toolbar-btn"
             (click)="insertToken('>')"
-            title="Greater than"
+            matTooltip="Greater than"
+            matTooltipPosition="above"
         >
             <span>&gt;</span>
         </button>
         <button
             class="toolbar-btn"
             (click)="insertToken('<')"
-            title="Less than"
+            matTooltip="Less than"
+            matTooltipPosition="above"
         >
             <span>&lt;</span>
         </button>
         <button
             class="toolbar-btn"
             (click)="insertToken('==')"
-            title="Equals"
+            matTooltip="Equals"
+            matTooltipPosition="above"
         >
             <span>==</span>
         </button>
         <button
             class="toolbar-btn"
             (click)="insertToken('!=')"
-            title="Not equals"
+            matTooltip="Not equals"
+            matTooltipPosition="above"
         >
             <span>!=</span>
         </button>
         <button
             class="toolbar-btn"
             (click)="insertToken('>=')"
-            title="Greater or equal"
+            matTooltip="Greater or equal"
+            matTooltipPosition="above"
         >
             <span>&gt;=</span>
         </button>
         <button
             class="toolbar-btn"
             (click)="insertToken('<=')"
-            title="Less or equal"
+            matTooltip="Less or equal"
+            matTooltipPosition="above"
         >
             <span>&lt;=</span>
         </button>
@@ -76,14 +85,16 @@
         <button
             class="toolbar-btn"
             (click)="insertToken('(')"
-            title="Open parenthesis"
+            matTooltip="Open parenthesis"
+            matTooltipPosition="above"
         >
             <span style="color: #ffd43b">(</span>
         </button>
         <button
             class="toolbar-btn"
             (click)="insertToken(')')"
-            title="Close parenthesis"
+            matTooltip="Close parenthesis"
+            matTooltipPosition="above"
         >
             <span style="color: #ffd43b">)</span>
         </button>
@@ -91,35 +102,40 @@
         <button
             class="toolbar-btn"
             (click)="insertToken('=')"
-            title="Assign"
+            matTooltip="Assign"
+            matTooltipPosition="above"
         >
             <span>=</span>
         </button>
         <button
             class="toolbar-btn"
             (click)="insertToken('+')"
-            title="Add"
+            matTooltip="Add"
+            matTooltipPosition="above"
         >
             <span>+</span>
         </button>
         <button
             class="toolbar-btn"
             (click)="insertToken('-')"
-            title="Subtract"
+            matTooltip="Subtract"
+            matTooltipPosition="above"
         >
             <span>-</span>
         </button>
         <button
             class="toolbar-btn"
             (click)="insertToken('*')"
-            title="Multiply"
+            matTooltip="Multiply"
+            matTooltipPosition="above"
         >
             <span>*</span>
         </button>
         <button
             class="toolbar-btn"
             (click)="insertToken('/')"
-            title="Divide"
+            matTooltip="Divide"
+            matTooltipPosition="above"
         >
             <span>/</span>
         </button>

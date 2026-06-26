@@ -31,6 +31,10 @@ from tables.views.auth_views import (
     TokenIntrospectView,
     WsTicketView,
 )
+from tables.views.permission_views import (
+    MyPermissionsView,
+    PermissionCatalogView,
+)
 from tables.views.user_profile_views import (
     PasswordChangeConfirmView,
     PasswordChangeRequestView,
@@ -89,6 +93,16 @@ urlpatterns = [
         "api/profile/password-change/confirm/",
         PasswordChangeConfirmView.as_view(),
         name="profile_password_change_confirm",
+    ),
+    path(
+        "api/permissions/catalog/",
+        PermissionCatalogView.as_view(),
+        name="permissions_catalog",
+    ),
+    path(
+        "api/permissions/me/",
+        MyPermissionsView.as_view(),
+        name="permissions_me",
     ),
     path("api/", include("tables.urls")),
     path("ht/", include("health_check.urls")),

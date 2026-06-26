@@ -1,0 +1,277 @@
+<div class="dt">
+    <!-- Header -->
+    @if (showHeader()) {
+        <div class="dt__header">
+            <div class="dt__header-left">
+                @if (icon()) {
+                    <app-svg-icon
+                        [icon]="icon()!"
+                        size="18px"
+                        class="dt__header-icon"
+                    />
+                }
+                <span class="dt__header-title">{{ title() }}</span>
+            </div>
+            <app-svg-icon
+                [class.disabled]="!canAddRow()"
+                class="dt__add-btn"
+                size="1rem"
+                icon="plus"
+                (click)="addRow()"
+            />
+        </div>
+    }
+
+    <!-- Table wrapper: horizontal scroll -->
+    <div
+        class="dt__table-wrapper"
+        [style.max-height]="maxHeight()"
+    >
+        @if (rows().length === 0 && canReceiveExternalRows()) {
+            <div
+                class="dt__empty-drop-zone"
+                [class.dt__empty-drop-zone--active]="emptyDropPreview()"
+            >
+                @if (emptyDropPreview()) {
+                    <table
+                        class="dt__table dt__table--hover-preview"
+                        [style.min-width.px]="tableMinWidth()"
+                    >
+                        @if (columns().length > 0) {
+                            <thead>
+                                <tr>
+                                    @if (allowRowDrag()) {
+                                        <th class="dt__th dt__th--drag-spacer"></th>
+                                    }
+                                    @for (col of columns(); track trackByColKey($index, col)) {
+                                        <th
+                                            class="dt__th"
+                                            [style.width.px]="getColWidth(col.key)"
+                                        >
+                                            <div class="dt__th-header">
+                                                {{ col.header }}
+                                                @if (col.required) {
+                                                    <span class="dt__th-required">*</span>
+                                                }
+                                            </div>
+                                        </th>
+                                    }
+                                    <th
+                                        class="dt__th dt__th--action-spacer"
+                                        [style.width.px]="actionColWidth()"
+                                        [style.min-width.px]="actionColWidth()"
+                                    ></th>
+                                </tr>
+                            </thead>
+                        }
+                        <tbody></tbody>
+                    </table>
+                }
+            </div>
+        } @else if (rows().length > 0) {
+            <table
+                class="dt__table"
+                [style.min-width.px]="tableMinWidth()"
+            >
+                @if (columns().length > 0) {
+                    <thead>
+                        <tr
+                            cdkDropList
+                            cdkDropListOrientation="horizontal"
+                            [id]="columnDropListId() ?? ''"
+                            (cdkDropListDropped)="onColumnDrop($event)"
+                        >
+                            @if (allowRowDrag()) {
+                                <th class="dt__th dt__th--drag-spacer"></th>
+                            }
+
+                            @for (col of columns(); track trackByColKey($index, col)) {
+                                <th
+                                    class="dt__th"
+                                    [class.dt__th--draggable]="allowColumnDrag()"
+                                    [style.width.px]="getColWidth(col.key)"
+                                    cdkDrag
+                                    [cdkDragDisabled]="!allowColumnDrag()"
+                                >
+                                    <div class="dt__th-content">
+                                        @if (allowColumnDrag()) {
+                                            <span
+                                                class="dt__col-drag-handle"
+                                                cdkDragHandle
+                                            >
+                                                <i class="ti ti-grip-vertical"></i>
+                                            </span>
+                                        }
+                                        <div class="dt__th-header">
+                                            {{ col.header }}
+                                            @if (col.required) {
+                                                <span class="dt__th-required">*</span>
+                                            }
+                                        </div>
+                                    </div>
+                                    <div
+                                        class="dt__col-resize-handle"
+                                        (mousedown)="onResizeStart($event, col.key)"
+                                    ></div>
+                                    <div
+                                        *cdkDragPlaceholder
+                                        class="dt__col-drag-placeholder"
+                                    ></div>
+                                </th>
+                            }
+
+                            <th
+                                class="dt__th dt__th--action-spacer"
+                                [style.width.px]="actionColWidth()"
+                                [style.min-width.px]="actionColWidth()"
+                            ></th>
+                        </tr>
+                    </thead>
+                }
+
+                <tbody
+                    class="dt__tbody-drop"
+                    cdkDropList
+                    [id]="rowDropListId() ?? ''"
+                    [cdkDropListData]="rows()"
+                    [cdkDropListConnectedTo]="rowDropListConnectedTo()"
+                    (cdkDropListDropped)="onRowDrop($event)"
+                    [cdkDropListDisabled]="!allowRowDrag()"
+                >
+                    @for (row of rows(); track trackByRowId($index, row); let rowIndex = $index) {
+                        <tr
+                            class="dt__row"
+                            cdkDrag
+                            [cdkDragDisabled]="!allowRowDrag()"
+                        >
+                            @if (allowRowDrag()) {
+                                <td class="dt__td dt__td--drag">
+                                    <span
+                                        class="dt__row-drag-handle"
+                                        cdkDragHandle
+                                    >
+                                        <i class="ti ti-grip-vertical"></i>
+                                    </span>
+                                </td>
+                            }
+
+                            @for (col of columns(); track trackByColKey($index, col)) {
+                                <td
+                                    class="dt__td"
+                                    [class.dt__td--invalid]="isCellInvalid(row._id, col.key)"
+                                    [style.width.px]="getColWidth(col.key)"
+                                    [style.min-width.px]="getColWidth(col.key)"
+                                    [style.--default-col-w.px]="getDefaultColWidth(col)"
+                                >
+                                    <div class="dt__td-inner">
+                                        @switch (col.type) {
+                                            @case ('input') {
+                                                @if (navigateCellKey() === col.key && rowNavigable()?.(row)) {
+                                                    <button
+                                                        type="button"
+                                                        class="dt__navigate-btn dt__navigate-btn--cell"
+                                                        (click)="navigateRow.emit({ row, rowIndex })"
+                                                        title="Open nested properties"
+                                                    >
+                                                        <app-svg-icon
+                                                            icon="go-to-arrow"
+                                                            size="14px"
+                                                        />
+                                                    </button>
+                                                } @else {
+                                                    <input
+                                                        class="dt__cell-input"
+                                                        type="text"
+                                                        [placeholder]="col.placeholder ?? ''"
+                                                        [ngModel]="getCellValue(row._id, col.key)"
+                                                        (ngModelChange)="onCellChange(row._id, col.key, $event)"
+                                                        [disabled]="!!isCellDisabled()?.(row, col.key)"
+                                                    />
+                                                }
+                                            }
+                                            @case ('select') {
+                                                <select
+                                                    class="dt__cell-select"
+                                                    [ngModel]="getCellValue(row._id, col.key)"
+                                                    (ngModelChange)="onCellChange(row._id, col.key, $event)"
+                                                    [disabled]="!!isCellDisabled()?.(row, col.key)"
+                                                >
+                                                    @if (col.placeholder) {
+                                                        <option
+                                                            value=""
+                                                            disabled
+                                                        >
+                                                            {{ col.placeholder }}
+                                                        </option>
+                                                    }
+                                                    @for (opt of col.options; track opt.value) {
+                                                        <option [ngValue]="opt.value">{{ opt.label }}</option>
+                                                    }
+                                                </select>
+                                            }
+                                            @case ('checkbox') {
+                                                <app-checkbox
+                                                    class="dt__cell-checkbox"
+                                                    [checked]="!!getCellValue(row._id, col.key)"
+                                                    [disabled]="!!isCellDisabled()?.(row, col.key)"
+                                                    (checkedChange)="onCellChange(row._id, col.key, $event)"
+                                                />
+                                            }
+                                        }
+                                    </div>
+                                    <div
+                                        class="dt__col-resize-handle"
+                                        (mousedown)="onResizeStart($event, col.key)"
+                                    ></div>
+                                </td>
+                            }
+
+                            <td
+                                class="dt__td dt__td--action"
+                                [style.width.px]="actionColWidth()"
+                                [style.min-width.px]="actionColWidth()"
+                            >
+                                <div class="dt__action-cell">
+                                    @if (rowNavigable()?.(row) && !navigateCellKey()) {
+                                        <button
+                                            type="button"
+                                            class="dt__navigate-btn"
+                                            (click)="navigateRow.emit({ row, rowIndex })"
+                                            title="Open nested properties"
+                                        >
+                                            <app-svg-icon
+                                                icon="go-to-arrow"
+                                                size="14px"
+                                            />
+                                        </button>
+                                    }
+                                    @if (allowRowRemove()) {
+                                        <button
+                                            type="button"
+                                            class="dt__remove-btn"
+                                            (click)="removeRow(row._id)"
+                                            title="Remove row"
+                                        >
+                                            <i class="ti ti-x"></i>
+                                        </button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+<!-- Validation error bar -->
+@if (showValidationBar()) {
+    <div class="validation">
+        <ul class="validation__list">
+            @for (msg of validationErrors(); track msg) {
+                <li class="validation__msg">{{ msg }}</li>
+            }
+        </ul>
+    </div>
+}

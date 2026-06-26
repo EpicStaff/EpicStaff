@@ -1,6 +1,7 @@
 from tables.exceptions import GraphEntryPointException
 from tables.models import (
     AudioTranscriptionNode,
+    CodeAgentNode,
     CrewNode,
     Edge,
     FileExtractorNode,
@@ -8,8 +9,18 @@ from tables.models import (
     GraphOrganizationUser,
     PythonNode,
     Session,
+    CrewNode,
+    Session,
+    Edge,
+    Graph,
+    PythonNode,
+    FileExtractorNode,
+    AudioTranscriptionNode,
+    GraphOrganizationUser,
 )
 from tables.models.graph_models import (
+    ClassificationConditionGroup,
+    ClassificationDecisionTableNode,
     ConditionalEdge,
     ConditionGroup,
     DecisionTableNode,
@@ -35,18 +46,6 @@ from src.shared.models import (
     SubGraphData,
     SubGraphNodeData,
     TelegramTriggerNodeData,
-)
-from tables.models import (
-    CodeAgentNode,
-    CrewNode,
-    Session,
-    Edge,
-    Graph,
-    GraphStorageFile,
-    PythonNode,
-    FileExtractorNode,
-    AudioTranscriptionNode,
-    GraphOrganizationUser,
 )
 from tables.constants.variables_constants import DOMAIN_VARIABLES_KEY
 from tables.services.converter_service import ConverterService
@@ -81,6 +80,36 @@ class SessionManagerService(metaclass=SingletonMeta):
         session: Session = self.get_session(session_id=session_id)
         return session.status
 
+    def _resolve_template_variables(self, obj, context: dict):
+        """Recursively resolve {variable} or {variable:default} templates in nested structures"""
+        if isinstance(obj, str):
+            import re
+
+            pattern = r"\{([^}:]+)(?::([^}]*))?\}"
+
+            def replace_template(match):
+                var_name = match.group(1)
+                default_value = match.group(2)
+                if var_name in context:
+                    return str(context[var_name])
+                elif default_value is not None:
+                    return default_value
+                else:
+                    return match.group(0)
+
+            return re.sub(pattern, replace_template, obj)
+        elif isinstance(obj, dict):
+            return {
+                self._resolve_template_variables(
+                    k, context
+                ): self._resolve_template_variables(v, context)
+                for k, v in obj.items()
+            }
+        elif isinstance(obj, list):
+            return [self._resolve_template_variables(item, context) for item in obj]
+        else:
+            return obj
+
     def create_session(
         self,
         graph_id: int,
@@ -94,13 +123,21 @@ class SessionManagerService(metaclass=SingletonMeta):
         start_node = StartNode.objects.filter(graph_id=graph_id).first()
 
         if start_node is not None:
-            if variables and start_node.variables:
-                start_node_variables = self._get_actual_variables(start_node.variables)
-                variables = self._deep_merge_dicts(start_node_variables, variables)
-            elif start_node.variables:
-                variables = start_node.variables
+            if start_node.variables:
+                # Resolve template variables in start_node config using user-provided variables
+                resolved_start_vars = self._resolve_template_variables(
+                    start_node.variables, variables
+                )
+                start_node_variables = self._get_actual_variables(resolved_start_vars)
+                if variables:
+                    variables = self._deep_merge_dicts(start_node_variables, variables)
+                else:
+                    variables = start_node_variables
 
         variables = self._get_actual_variables(variables)
+
+        # Remove 'shared' initialization dict - it's for Redis proxy, not storage
+        variables_for_db = {k: v for k, v in variables.items() if k != "shared"}
 
         time_to_live = Graph.objects.get(pk=graph_id).time_to_live
         # TODO: replace with
@@ -111,7 +148,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         session = Session.objects.create(
             graph_id=graph_id,
             status=Session.SessionStatus.PENDING,
-            variables=variables,
+            variables=variables_for_db,
             time_to_live=time_to_live,
             graph_user=graph_user,
             entrypoint=entrypoint,
@@ -249,9 +286,12 @@ class SessionManagerService(metaclass=SingletonMeta):
                 )
                 prev_session_vars = message.message_data["state"]["variables"]
                 logger.info(f"prev_session_var: {prev_session_vars}")
+                # Merge: previous session vars as base, incoming trigger vars override
+                if variables:
+                    prev_session_vars.update(variables)
                 variables = prev_session_vars
                 logger.info(
-                    f"Variables from previous session are set to current run: {variables}"
+                    f"Variables from previous session merged with trigger vars: {list(variables.keys())}"
                 )
             except Exception as e:
                 logger.error(
@@ -320,6 +360,11 @@ class SessionManagerService(metaclass=SingletonMeta):
         telegram_trigger_node_list = TelegramTriggerNode.objects.filter(graph=graph.pk)
         schedule_trigger_node_list = ScheduleTriggerNode.objects.filter(graph=graph.pk)
         code_agent_node_list = CodeAgentNode.objects.filter(graph=graph.pk)
+        classification_decision_table_node_list = (
+            ClassificationDecisionTableNode.objects.filter(
+                graph=graph.pk
+            ).prefetch_related("condition_groups")
+        )
 
         if file_extractor_node_list:
             self.file_node_validator.validate_file_nodes(file_extractor_node_list)
@@ -332,6 +377,12 @@ class SessionManagerService(metaclass=SingletonMeta):
             ).values_list("next_node_id", flat=True)
         )
 
+        classification_condition_group_next_ids = list(
+            ClassificationConditionGroup.objects.filter(
+                classification_decision_table_node__in=classification_decision_table_node_list
+            ).values_list("next_node_id", flat=True)
+        )
+
         # Build name cache directly from already-fetched node instances
         # to avoid re-querying the same tables via NodeNameResolver
         name_cache: dict[int, str] = {}
@@ -341,6 +392,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             file_extractor_node_list,
             audio_transcription_node_list,
             decision_table_node_list,
+            classification_decision_table_node_list,
             subgraph_node_list,
             webhook_trigger_node_list,
             telegram_trigger_node_list,
@@ -355,10 +407,13 @@ class SessionManagerService(metaclass=SingletonMeta):
         edge_referenced_ids = set(
             [n.default_next_node_id for n in decision_table_node_list]
             + [n.next_error_node_id for n in decision_table_node_list]
+            + [n.default_next_node_id for n in classification_decision_table_node_list]
+            + [n.next_error_node_id for n in classification_decision_table_node_list]
             + [e.start_node_id for e in edge_list]
             + [e.end_node_id for e in edge_list]
             + [e.source_node_id for e in conditional_edge_list]
             + condition_group_next_ids
+            + classification_condition_group_next_ids
         )
         missing_ids = [
             i for i in edge_referenced_ids if i is not None and i not in name_cache
@@ -373,7 +428,12 @@ class SessionManagerService(metaclass=SingletonMeta):
         cv = self.converter_service
 
         crew_node_data_list = [
-            cv.convert_crew_node_to_pydantic(crew_node=item, resolver=resolver)
+            cv.convert_crew_node_to_pydantic(
+                crew_node=item,
+                resolver=resolver,
+                graph_id=graph.pk,
+                session_id=session.pk if session else None,
+            )
             for item in crew_node_list
         ]
         python_node_data_list = [
@@ -485,7 +545,9 @@ class SessionManagerService(metaclass=SingletonMeta):
                 and item.subgraph_id not in unique_subgraphs
             ):
                 subgraph_data = self._build_graph_data(subgraph, unique_subgraphs, None)
-                variables = subgraph.start_node_list.first().variables or {}
+                variables = self._get_actual_variables(
+                    subgraph.start_node_list.first().variables or {}
+                )
                 unique_subgraphs[item.subgraph_id] = SubGraphData(
                     id=subgraph.id,
                     data=subgraph_data,
@@ -495,6 +557,14 @@ class SessionManagerService(metaclass=SingletonMeta):
             subgraph_node_data_list.append(
                 cv.convert_subgraph_node_to_pydantic(
                     subgraph_node=item, subgraph=subgraph, resolver=resolver
+                )
+            )
+
+        classification_dt_node_data_list = []
+        for item in classification_decision_table_node_list:
+            classification_dt_node_data_list.append(
+                cv.convert_classification_decision_table_node_to_pydantic(
+                    node=item, resolver=resolver
                 )
             )
 
@@ -524,4 +594,5 @@ class SessionManagerService(metaclass=SingletonMeta):
             end_node=end_node_data,
             telegram_trigger_node_data_list=telegram_trigger_node_data_list,
             schedule_trigger_node_data_list=schedule_trigger_node_data_list,
+            classification_decision_table_node_list=classification_dt_node_data_list,
         )

@@ -1,0 +1,50 @@
+<nav class="breadcrumb">
+    @if (hasOverflow()) {
+        <button
+            type="button"
+            class="breadcrumb-scroll-left"
+            aria-label="Scroll breadcrumbs to start"
+            (click)="scrollToStart()"
+        >
+            <app-svg-icon
+                icon="chevron-left"
+                size="0.9rem"
+            ></app-svg-icon>
+        </button>
+    }
+
+    <div
+        #track
+        class="breadcrumb-track"
+    >
+        @for (crumb of crumbs(); track crumb.label; let last = $last; let i = $index) {
+            <span
+                class="breadcrumb-item"
+                [class.breadcrumb-item--clickable]="!last"
+                (click)="!last && crumbClick.emit(i)"
+            >
+                @if (crumb.icon) {
+                    <span class="breadcrumb-icon-wrap">
+                        <app-svg-icon
+                            [icon]="crumb.icon"
+                            size="0.9rem"
+                            class="breadcrumb-icon"
+                        ></app-svg-icon>
+                    </span>
+                }
+                @if (crumb.label) {
+                    <span class="breadcrumb-label">{{ crumb.label }}</span>
+                }
+            </span>
+            @if (!last) {
+                <span class="breadcrumb-separator">></span>
+            }
+        }
+        <span class="breadcrumb-end-arrow">
+            <app-svg-icon
+                icon="breadcrumb-arrow-down"
+                size="0.72rem"
+            ></app-svg-icon>
+        </span>
+    </div>
+</nav>

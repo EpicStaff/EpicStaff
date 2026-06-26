@@ -10,8 +10,6 @@ class EditorInfo(BaseModel):
 
 
 # --- Server-push messages (outbound only) ---
-
-
 class GraphSavedMessage(BaseModel):
     type: str = "graph_saved"
     graph_id: int
@@ -45,6 +43,11 @@ class UserJoinedMessage(BaseModel):
 class UserLeftMessage(BaseModel):
     type: str = "user_left"
     user_id: int
+
+
+class PresenceStateUpdatedMessage(BaseModel):
+    type: str = "presence_state_updated"
+    editor: EditorInfo
 
 
 class ErrorMessage(BaseModel):

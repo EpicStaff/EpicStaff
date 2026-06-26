@@ -4,9 +4,13 @@ First off, thank you for considering contributing to EpicStaff! We're thrilled y
 
 This document provides a set of guidelines for contributing to EpicStaff. These are mostly guidelines, not strict rules. Use your best judgment, and feel free to propose changes to this document in a pull request.
 
+## Contributor License Agreement (CLA)
+
+By submitting a pull request, you agree to our [Contributor License Agreement](CLA.md). For first-time contributors, the signing process is automated via a CLA bot.
+
 ## Code of Conduct
 
-This project and everyone participating in it is governed by the [EpicStaff Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to **contact@epicstaff.ai**.
+This project and everyone participating in it is governed by the [EpicStaff Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to **contact@epicstaff.com**.
 
 ## How Can I Contribute?
 
@@ -45,25 +49,52 @@ To help us review your contribution efficiently, our pull request template will 
 
 ### Local Development Setup
 
+These steps start the dev stack with Docker Compose directly. If you prefer `make` shortcuts, they are documented separately in **[docs/makefile_commands.md](docs/makefile_commands.md)**.
+
+**Prerequisites:** Docker Desktop (running) and Git. Python 3 is optional — only needed for the env-file generator in step 4.
+
 1.  **Fork the repository:** Click the "Fork" button at the top right of this page.
 2.  **Clone your fork:**
     ```bash
-    git clone [https://github.com/YOUR_USERNAME/EpicStaff.git](https://github.com/YOUR_USERNAME/EpicStaff.git)
+    git clone https://github.com/YOUR_USERNAME/EpicStaff.git
     cd EpicStaff
     ```
 3.  **Create a new branch:**
     ```bash
     git checkout -b your-feature-branch-name
     ```
-4.  **Set up the environment:**
+4.  **Create the dev environment file `src/.dev.env`.** It is gitignored, so it does not exist on a fresh clone — pick one option:
+
+    - **With Python** (recommended) — generate it from `src/env.yaml`, the single source of truth:
+      ```bash
+      python scripts/generate_env.py --env dev
+      ```
+      Re-run this whenever `src/env.yaml` changes. Do not hand-edit the generated file.
+
+    - **Without Python** — copy the example template:
+      ```bash
+      cp src/.env.example src/.dev.env
+      ```
+      `.env.example` is the **production** template, so edit `src/.dev.env` afterwards: fill in every value marked `CHANGE ME`, and set the local-dev flags `DEBUG=True` and `LOAD_DEBUG_ENV=True`.
+
+5.  **Create the external Docker volumes and network** (one time per machine — Compose will not create these automatically):
     ```bash
-    python3 -m venv venv
-    source venv/bin/activate
-    pip install -r requirements-dev.txt
+    docker volume create sandbox_venvs
+    docker volume create crew_pgdata
+    docker volume create media_data
+    docker volume create graph_data
+    docker network create mcp-network
     ```
-5.  **Make your changes and run tests.**
-6.  **Commit and push your changes.**
-7.  **Submit a Pull Request.**
+6.  **Start the dev stack** (live-reload, mapped ports). Run from the `src/` directory:
+    ```bash
+    cd src
+    docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file=.dev.env up -d
+    ```
+7.  Open **http://localhost** in your browser. The Angular live-reload dev server is also directly accessible at **http://localhost:4200**.
+8.  **Make your changes and run tests.**
+9.  **Commit and push your changes**, then **submit a Pull Request.**
+
+To tail logs, run (from `src/`) `docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file=.dev.env logs -f`. To stop the stack, replace `logs -f` with `down`.
 
 ### Pull Request Process
 

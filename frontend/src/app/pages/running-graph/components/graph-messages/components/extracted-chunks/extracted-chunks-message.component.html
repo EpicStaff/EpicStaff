@@ -59,6 +59,7 @@
                 class="chunk-card"
                 *ngFor="let chunk of data.chunks; trackBy: trackByOrder"
             >
+                <app-copy-button [text]="chunk.chunk_text" />
                 <div class="chunk-header">
                     <div class="chunk-order">#{{ chunk.chunk_order }}</div>
                     <div

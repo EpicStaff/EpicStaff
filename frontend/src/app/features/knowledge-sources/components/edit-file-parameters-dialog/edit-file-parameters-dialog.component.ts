@@ -2,6 +2,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ButtonComponent } from '@shared/components';
 
 import { ToastService } from '../../../../services/notifications';
@@ -15,7 +16,13 @@ import { DocumentConfigComponent } from './document-config/document-config.compo
     selector: 'app-edit-file-parameters-dialog',
     templateUrl: './edit-file-parameters-dialog.component.html',
     styleUrls: ['./edit-file-parameters-dialog.component.scss'],
-    imports: [AppSvgIconComponent, DocumentConfigComponent, DocumentChunksSectionComponent, ButtonComponent],
+    imports: [
+        AppSvgIconComponent,
+        DocumentConfigComponent,
+        DocumentChunksSectionComponent,
+        ButtonComponent,
+        MatTooltipModule,
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class EditFileParametersDialogComponent {

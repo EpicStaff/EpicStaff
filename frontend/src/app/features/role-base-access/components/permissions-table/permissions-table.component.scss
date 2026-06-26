@@ -1,0 +1,208 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+.perm-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 4px;
+    flex-shrink: 0;
+}
+
+.perm-count {
+    font-size: 13px;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+
+    .count {
+        color: var(--purple-primary);
+        font-weight: 600;
+    }
+}
+
+.perm-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.perm-table {
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 10px;
+    position: relative;
+}
+
+.perm-headers {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: var(--perm-row-grid);
+    min-width: max-content;
+    align-items: center;
+    padding: 0 8px;
+    font-size: 14px;
+    color: var(--color-text-primary);
+    height: 60px;
+    flex-shrink: 0;
+    border-bottom: 4px solid var(--color-divider-subtle);
+    background: var(--color-ks-background);
+
+    .action-col {
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        border-left: 1px solid var(--color-divider-subtle);
+    }
+}
+
+.group {
+    min-width: max-content;
+    border-bottom: 1px solid var(--color-divider-subtle);
+
+    &:last-child {
+        border-bottom: none;
+    }
+
+    .group-header {
+        height: 40px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 8px;
+        min-width: max-content;
+        background: var(--color-ks-background);
+        border-bottom: 2px solid var(--color-divider-subtle);
+        cursor: pointer;
+        user-select: none;
+        transition: background-color 0.15s ease;
+        font-size: 12px;
+
+        &:hover {
+            background: var(--transparent-white-8);
+        }
+
+        .collapse-icon {
+            color: var(--text-secondary-60);
+            flex-shrink: 0;
+        }
+
+        .group-icon {
+            color: var(--purple-primary);
+            flex-shrink: 0;
+        }
+
+        .group-name {
+            color: var(--color-text-primary);
+        }
+
+        .group-count {
+            color: var(--text-secondary-60);
+            background: var(--transparent-white-8);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .group-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+        }
+    }
+}
+
+.group-content {
+    max-height: 2000px;
+    opacity: 1;
+    transition:
+        max-height 0.28s ease-out,
+        opacity 0.2s ease;
+
+    &.is-collapsed {
+        max-height: 0;
+        overflow: hidden;
+        opacity: 0;
+    }
+}
+
+.resource-row {
+    display: grid;
+    grid-template-columns: var(--perm-row-grid);
+    min-width: max-content;
+    align-items: center;
+    padding: 0 8px;
+    height: 40px;
+    border-bottom: 1px solid var(--color-divider-subtle);
+    transition: background-color 0.12s ease;
+    background: var(--color-ks-transparent-black-28);
+
+    &:last-child {
+        border-bottom: none;
+    }
+
+    .resource-info {
+        line-height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+
+        .resource-name {
+            font-size: 14px;
+            color: var(--color-text-primary);
+        }
+
+        .resource-desc {
+            font-size: 10px;
+            color: var(--text-secondary-60);
+        }
+    }
+}
+
+.action-cell {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-left: 1px solid var(--color-divider-subtle);
+}
+
+.empty-cell {
+    font-size: 14px;
+    color: var(--text-secondary-60);
+    opacity: 0.5;
+}
+
+.action-item {
+    height: 40px;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px 8px 12px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--color-text-primary);
+    background-color: var(--color-input-background);
+    border: 1px solid var(--color-input-border);
+    border-radius: 8px;
+    transition: color 0.15s ease;
+
+    &.small {
+        height: 28px;
+        font-size: 10px;
+        border-radius: 4px;
+    }
+
+    &:hover {
+        color: var(--accent-color);
+    }
+}

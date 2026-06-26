@@ -3,6 +3,7 @@ export interface StatCardData {
     value: number;
     icon?: string;
     delta?: CardDeltaInfo;
+    loading?: boolean;
 }
 
 export interface CardDeltaInfo {

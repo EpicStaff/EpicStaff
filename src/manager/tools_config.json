@@ -8,7 +8,7 @@
         }
     },
     "dependencies": [
-      "langchain_community==0.3", "langchain_core==0.3.63"
+      "langchain_community==0.3", "langchain_core==0.3.63", "google-auth-oauthlib"
     ]
   },
   {
@@ -110,7 +110,7 @@
         }
     },
     "dependencies": [
-      "crewai[tools]==0.86.0"
+      "crewai[tools]==0.86.0", "scrapegraph-py==1.47.0"
     ]
   },
   {
@@ -122,7 +122,7 @@
       }
     },
     "dependencies": [
-      "crewai[tools]==0.86.0", "gitpython==3.1.38", "PyGithub==1.59.1"
+      "crewai[tools]==0.86.0", "scrapegraph-py==1.47.0", "gitpython==3.1.38", "PyGithub==1.59.1"
     ]
   },
   {
@@ -134,7 +134,7 @@
       }
     },
     "dependencies": [
-      "crewai[tools]==0.86.0", "youtube-transcript-api"
+      "crewai[tools]==0.86.0", "scrapegraph-py==1.47.0", "youtube-transcript-api"
     ]
   },
   {
@@ -154,7 +154,7 @@
         }
     },
     "dependencies": [
-      "crewai[tools]==0.86.0", "firecrawl-py"
+      "crewai[tools]==0.86.0", "scrapegraph-py==1.47.0", "firecrawl-py==1.8.0"
     ]
   },
   {
@@ -166,7 +166,7 @@
         }
     },
     "dependencies": [
-      "crewai[tools]==0.86.0", "firecrawl-py"
+      "crewai[tools]==0.86.0", "scrapegraph-py==1.47.0", "firecrawl-py==1.8.0"
     ]
   },
   {
@@ -178,7 +178,7 @@
         }
     },
     "dependencies": [
-      "crewai[tools]==0.86.0", "composio-core"
+      "crewai[tools]==0.86.0", "scrapegraph-py==1.47.0", "composio-core"
     ]
   },
   {
@@ -189,9 +189,8 @@
         "package": "crewai_tools"
       }
     },
-    
     "dependencies": [
-      "crewai[tools]==0.86.0", "browserbase"
+      "crewai[tools]==0.86.0", "scrapegraph-py==1.47.0", "browserbase"
     ]
   },
 
@@ -212,7 +211,7 @@
       }
     },
     "dependencies": [
-      "wolframalpha", "langchain", "langchain_community==0.3"
+      "wolframalpha", "langchain_community==0.3"
     ]
   },
   {
@@ -268,7 +267,7 @@
         }
     },
     "dependencies": [
-      "crewai==0.86.0", "langchain"
+      "crewai==0.86.0"
     ]
   }
 ]

@@ -89,20 +89,8 @@ class LogoutResponseSerializer(serializers.Serializer):
     detail = serializers.CharField()
 
 
-# ---- SSE ticket ----
-
-
-class SseTicketResponseSerializer(serializers.Serializer):
-    ticket = serializers.CharField()
-    expires_in = serializers.IntegerField()
-
-
-# ---- WebSocket ticket ----
-
-
-class WsTicketResponseSerializer(serializers.Serializer):
-    # TODO ws and sse serializers are basically the same
-    # should I resolve this?
+# ---- Ticket ----
+class TicketResponseSerializer(serializers.Serializer):
     ticket = serializers.CharField()
     expires_in = serializers.IntegerField()
 

@@ -25,6 +25,24 @@ class GraphPresenceService:
         if not graph_editors:
             del self._store[graph_id]
 
+    def update_editor_for_user(self, user_id: int, editor: EditorInfo) -> list[int]:
+        affected: list[int] = []
+        for graph_id, channels in list(self._store.items()):
+            replaced = False
+            for channel_name, current in list(channels.items()):
+                if current.user_id == user_id:
+                    channels[channel_name] = editor
+                    replaced = True
+            if replaced:
+                affected.append(graph_id)
+        return affected
+
+    def has_user(self, graph_id: int, user_id: int) -> bool:
+        return any(
+            editor.user_id == user_id
+            for editor in self._store.get(graph_id, {}).values()
+        )
+
     def get_editors(self, graph_id: int) -> list[EditorInfo]:
         graph_editors = self._store.get(graph_id, {})
         seen_user_ids: set[int] = set()

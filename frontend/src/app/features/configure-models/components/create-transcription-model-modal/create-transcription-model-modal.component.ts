@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -27,6 +28,7 @@ export interface CreateTranscriptionModelDialogData {
     imports: [
         CommonModule,
         ReactiveFormsModule,
+        MatTooltipModule,
         AppSvgIconComponent,
         CustomInputComponent,
         ButtonComponent,

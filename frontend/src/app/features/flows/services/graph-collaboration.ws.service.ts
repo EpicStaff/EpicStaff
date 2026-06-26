@@ -43,11 +43,13 @@ type ServerMessage =
     | NodeLockedMessage
     | NodeUnlockedMessage
     | LockStateMessage
-    | SaveFailedMessage;
+    | SaveFailedMessage
+    | PresenceStateUpdated;
 
 type PresenceStateMessage = { type: 'presence_state'; editors: EditorInfo[] };
 type UserJoinedMessage = { type: 'user_joined'; editor: EditorInfo };
 type UserLeftMessage = { type: 'user_left'; user_id: number };
+type PresenceStateUpdated = { type: 'presence_state_updated'; editor: EditorInfo };
 type WsErrorMessage = { type: 'error'; code: string; message: string };
 
 export type SaveFailedMessage = {
@@ -332,6 +334,7 @@ export class GraphCollaborationWsService {
                 this.graphState$.next(message);
                 break;
             case 'graph_saved':
+                this.updateEditorInfo(message.saved_by);
                 this.graphSaved$.next(message);
                 break;
             case 'save_failed':
@@ -397,10 +400,23 @@ export class GraphCollaborationWsService {
                 });
                 this.nodeUnlocked$.next(message);
                 break;
+            case 'presence_state_updated':
+                this.updateEditorInfo(message.editor);
+                break;
             case 'error':
                 console.error(`[WS] Server error [${message.code}]: ${message.message}`);
                 break;
         }
+    }
+
+    private updateEditorInfo(editor: EditorInfo): void {
+        this.editors.update((list) => {
+            const index = list.findIndex((e) => e.user_id === editor.user_id);
+            if (index === -1) return list;
+            const updated = [...list];
+            updated[index] = editor;
+            return updated;
+        });
     }
 
     public sendNodeCreated(node: NodeModel): void {
