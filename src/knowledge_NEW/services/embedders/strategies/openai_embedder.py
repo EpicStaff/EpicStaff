@@ -1,13 +1,10 @@
 from openai import AsyncOpenAI
 
-from error_handler import handle_error
-from errors import EmbeddingError
 from models import EmbeddingConfig
 from services.embedders.base import AbstractEmbedder
 
 
 class OpenAIEmbedder(AbstractEmbedder):
-    """OpenAI-backed text embedder."""
 
     def __init__(self, config: EmbeddingConfig):
         super().__init__(config)
@@ -15,22 +12,13 @@ class OpenAIEmbedder(AbstractEmbedder):
         self.model = self.config.model
         self.client = AsyncOpenAI(api_key=self.api_key)
 
-    async def embed(self, text: str) -> list[float]:
-        """Embed `text` via a single OpenAI embeddings request.
-
-        Returns:
-            The embedding vector, or an empty list when the response is empty.
-
-        Raises:
-            EmbeddingError: If the request fails.
-        """
-        with handle_error(Exception, EmbeddingError, text, self):
-            text = text.replace("\n", " ")
-            response = await self.client.embeddings.create(
-                input=[text],
-                model=self.model,
-            )
-            result = response.data
-            if result:
-                return result[0].embedding
-            return []
+    async def _embed(self, text: str) -> list[float]:
+        text = text.replace("\n", " ")
+        response = await self.client.embeddings.create(
+            input=[text],
+            model=self.model,
+        )
+        result = response.data
+        if result:
+            return result[0].embedding
+        return []

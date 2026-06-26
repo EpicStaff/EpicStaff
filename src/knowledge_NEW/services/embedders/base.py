@@ -1,28 +1,33 @@
 import abc
 
+from errors import EmbeddingError
 from models import EmbeddingConfig
 
 
 class AbstractEmbedder(abc.ABC):
-    """Abstract base for turning text into an embedding vector.
-
-    Subclasses must implement `embed`; it is the only contract a concrete
-    embedder has to fulfil.
-    """
+    """Abstract base for turning text into an embedding vector."""
 
     def __init__(self, config: EmbeddingConfig):
         self.config = config
 
-    @abc.abstractmethod
     async def embed(self, text: str) -> list[float]:
-        """Return an embedding vector for `text`.
-
-        Implementations must return an empty list when the provider yields no
-        embedding, and raise `EmbeddingError` when the text cannot be embedded.
+        """Embed `text` into a vector.
 
         Args:
             text: The text to embed.
 
-        Returns:
-            The embedding vector, or an empty list when none is produced.
+        Raises:
+            EmbeddingError: If embedding fails for any reason.
+        """
+        try:
+            return await self._embed(text)
+        except Exception as e:
+            raise EmbeddingError(embedder=type(self).__name__) from e
+
+    @abc.abstractmethod
+    async def _embed(self, text: str) -> list[float]:
+        """Return the embedding vector for `text`.
+
+        `embed` translates any error into `EmbeddingError`, so implementations
+        need not wrap exceptions themselves.
         """
