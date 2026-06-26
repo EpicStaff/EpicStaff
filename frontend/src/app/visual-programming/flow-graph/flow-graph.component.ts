@@ -1295,32 +1295,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         if (!this.currentFlowId) return;
         const input = document.createElement('input');
         input.type = 'file';
-        input.accept = '.json,.csv';
+        input.accept = '.json';
         input.value = '';
         input.onchange = (e: Event) => {
             const file = (e.target as HTMLInputElement).files?.[0];
             if (!file || !this.currentFlowId) return;
-
-            if (file.name.toLowerCase().endsWith('.csv')) {
-                const reader = new FileReader();
-                reader.onload = (readEvent) => {
-                    const text = readEvent.target?.result;
-                    if (typeof text !== 'string') return;
-                    const parseResult = this.cdtExportImportService.parseCsv(text);
-                    if ('errors' in parseResult) {
-                        this.toastService.error(parseResult.errors[0], 3000, 'bottom-right');
-                        return;
-                    }
-                    const jsonStr = this.cdtExportImportService.cdtExportDataToPartialImportJson(parseResult.data);
-                    const jsonFile = new File([jsonStr], file.name.replace(/\.csv$/i, '.json'), {
-                        type: 'application/json',
-                    });
-                    this.doPartialImport(jsonFile);
-                };
-                reader.readAsText(file);
-            } else {
-                this.doPartialImport(file);
-            }
+            this.doPartialImport(file);
         };
         input.click();
     }
