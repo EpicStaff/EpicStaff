@@ -40,7 +40,10 @@ from drf_spectacular.utils import (
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef
 from django.conf import settings
-
+from django.conf import settings
+from src.shared.communication import Message
+from django_app.communication import producer
+from django_app.communication_schemas import IndexRequest
 
 from rest_framework.mixins import RetrieveModelMixin, UpdateModelMixin, ListModelMixin
 from rest_framework.viewsets import GenericViewSet
@@ -923,30 +926,23 @@ class ProcessRagIndexingView(APIView):
         rag_id = serializer.validated_data["rag_id"]
         rag_type = serializer.validated_data["rag_type"]
 
-        try:
-            indexing_data = IndexingService.validate_and_prepare_indexing(
-                rag_id=rag_id, rag_type=rag_type
-            )
+        IndexingService.validate_and_prepare_indexing(rag_id=rag_id, rag_type=rag_type)
 
-            redis_service.publish_rag_indexing(
-                rag_id=indexing_data["rag_id"],
-                rag_type=indexing_data["rag_type"],
-                collection_id=indexing_data["collection_id"],
-            )
+        producer.send(
+            settings.KNOWLEDGE_INDEXING_CHANNEL,
+            Message(
+                payload=IndexRequest(rag_id=rag_id, rag_strategy=rag_type).model_dump()
+            ),
+        )
 
-            return Response(
-                data={
-                    "detail": "Indexing process accepted",
-                    "rag_id": indexing_data["rag_id"],
-                    "rag_type": indexing_data["rag_type"],
-                    "collection_id": indexing_data["collection_id"],
-                },
-                status=status.HTTP_202_ACCEPTED,
-            )
-
-        except Exception:
-            # DRF handle
-            raise
+        return Response(
+            {
+                "detail": "Indexing process accepted",
+                "rag_id": rag_id,
+                "rag_type": rag_type,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
 
 
 # class ProcessCollectionEmbeddingView(APIView):

@@ -95,6 +95,15 @@ class NaiveRagDocumentConfig(models.Model):
     - Has many NaiveRAGEmbedding (embeddings from this document)
     """
 
+    class DocumentErrorCode(models.TextChoices):
+        CHUNKING_FAILED = "chunking_failed"
+        NO_CHUNKS_PRODUCED = "no_chunks_produced"
+        EMBEDDING_FAILED = "embedding_failed"
+        EMBEDDER_AUTH = "embedder_auth"
+        EMBEDDER_RATE_LIMIT = "embedder_rate_limit"
+        UNKNOWN = "unknown"
+        NONE = "none"
+
     class ChunkStrategy(models.TextChoices):
         TOKEN = "token"
         CHARACTER = "character"
@@ -153,6 +162,21 @@ class NaiveRagDocumentConfig(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     processed_at = models.DateTimeField(null=True, blank=True)
+
+    error_code = models.CharField(
+        max_length=32, choices=DocumentErrorCode.choices, default=DocumentErrorCode.NONE
+    )
+
+    error_message = models.TextField(null=True, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
+
+    indexed_chunk_strategy = models.CharField(
+        max_length=20, choices=ChunkStrategy.choices, null=True, blank=True
+    )
+
+    indexed_chunk_size = models.PositiveIntegerField(null=True, blank=True)
+    indexed_chunk_overlap = models.PositiveIntegerField(null=True, blank=True)
+    indexed_additional_params = models.JSONField(null=True, blank=True)
 
     @property
     def total_chunks(self):
