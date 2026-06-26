@@ -180,6 +180,10 @@ class GraphStrategy(EntityImportExportStrategy):
     def _create_nodes(
         self, nodes_data: list, graph: Graph, node_mapper: IDMapper, id_mapper: IDMapper
     ) -> None:
+        # Mirror the frontend's node numbering: a single graph-wide counter that
+        # starts above the highest "#N" already present in the graph, so imported
+        # nodes count up from the top instead of filling gaps (which could reuse
+        # an existing number).
         counter = self._max_node_name_number(graph)
 
         for node_data in nodes_data:
@@ -191,8 +195,8 @@ class GraphStrategy(EntityImportExportStrategy):
 
             if node_data.get("node_name"):
                 counter += 1
-                node_data["node_name"] = re.sub(
-                    r"\d+$", str(counter), node_data["node_name"]
+                node_data["node_name"] = self._with_node_number(
+                    node_data["node_name"], counter
                 )
 
             # Node strategies resolve their parent graph via
@@ -215,8 +219,13 @@ class GraphStrategy(EntityImportExportStrategy):
             if old_id and node:
                 node_mapper.map(NODE_MAPPING_KEY, old_id, node.id)
 
+    def _with_node_number(self, name: str, number: int) -> str:
+        """Strip any trailing "#N" / "# N" suffix and append " #{number}"."""
+        base = re.sub(r"\s*#\s*\d+$", "", name).strip()
+        return f"{base} #{number}"
+
     def _max_node_name_number(self, graph: Graph) -> int:
-        """Return the highest trailing integer across all node_names in the graph."""
+        """Return the highest trailing "#N" number across all node_names in the graph."""
         max_num = 0
         for relation in NODE_RELATIONS.values():
             if not hasattr(graph, relation):
@@ -233,7 +242,7 @@ class GraphStrategy(EntityImportExportStrategy):
                 continue
             for name in qs.values_list("node_name", flat=True):
                 if name:
-                    m = re.search(r"(\d+)$", name)
+                    m = re.search(r"#\s*(\d+)$", name)
                     if m:
                         max_num = max(max_num, int(m.group(1)))
         return max_num
