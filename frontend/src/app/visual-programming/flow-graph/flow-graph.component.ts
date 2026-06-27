@@ -1251,14 +1251,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onExportSelectedAsJson(): void {
-        const selectedIds = this.selectedNodeIds();
-        const nodes = this.flowService.nodes();
-        const hasUnsaved = selectedIds.some((id) => nodes.find((n) => n.id === id)?.backendId == null);
-        if (hasUnsaved) {
-            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
-            if (selectedIds.every((id) => nodes.find((n) => n.id === id)?.backendId == null)) return;
-        }
-        this.triggerPartialExport(selectedIds);
+        this.triggerPartialExport(this.selectedNodeIds());
     }
 
     public onExportSelectedAsCsv(): void {

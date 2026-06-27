@@ -261,8 +261,24 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
                     const currentState = this.flowService.getFlowState();
 
+                    // The backend numbers imported nodes against saved DB state only, so it has
+                    // no knowledge of unsaved canvas nodes. Re-issue numbers from the frontend
+                    // sequence (which sees all live nodes) to prevent collisions with unsaved nodes.
+                    // Only auto-numbered names ("... #N") are touched; custom names are left as-is.
+                    const renumberedNewNodes = newServerNodes.map((n) => {
+                        if (!/#\s*\d+\s*$/.test(n.node_name ?? '')) {
+                            return n;
+                        }
+                        const newNumber = this.flowService.getNextNodeNumber();
+                        return {
+                            ...n,
+                            nodeNumber: newNumber,
+                            node_name: (n.node_name ?? '').replace(/#\s*\d+\s*$/, `#${newNumber}`),
+                        };
+                    });
+
                     const mergedFlow = normalizeFlowPorts({
-                        nodes: [...currentState.nodes, ...newServerNodes],
+                        nodes: [...currentState.nodes, ...renumberedNewNodes],
                         connections: [...currentState.connections, ...newServerConnections],
                     });
 
