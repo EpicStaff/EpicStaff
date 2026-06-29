@@ -4,9 +4,6 @@ __all__ = [
     "FileTextExtractingError",
     "ChunkingError",
     "EmbeddingError",
-    "DocumentNotFound",
-    "NoDocumentsToIndexError",
-    "EmbedderUnavailableError",
     "RepositoryError",
     "NoPreviewChunksProducedError",
     "EmbeddingConfigNotFoundError",
@@ -40,18 +37,6 @@ class ChunkingError(KnowledgeError):
 
 class EmbeddingError(KnowledgeError):
     default_message = "{embedder} failed to embed text."
-
-
-class DocumentNotFound(KnowledgeError):
-    pass
-
-
-class NoDocumentsToIndexError(KnowledgeError):
-    pass
-
-
-class EmbedderUnavailableError(KnowledgeError):
-    pass
 
 
 class RepositoryError(KnowledgeError):
