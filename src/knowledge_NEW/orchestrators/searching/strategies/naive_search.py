@@ -8,7 +8,7 @@ from orchestrators.searching.base import AbstractSearch
 from services.embedders import build_embedder
 
 
-class NaiveSearch(AbstractSearch[SearchRequest, SearchResponse]):
+class NaiveSearch(AbstractSearch):
     async def on_execute(self, request: SearchRequest) -> SearchResponse:
         # TODO: raise error if embedding config is different
         assert isinstance(request.search_config, NaiveSearchConfig)

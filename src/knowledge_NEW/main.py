@@ -3,6 +3,7 @@ import asyncio
 from concurrent.futures.process import ProcessPoolExecutor
 
 from handlers import IndexHandler, PrechunkHandler, SearchHandler
+from handlers.cancel_handler import CancelHandler
 from settings import settings
 from services.processing_run import set_process_pool
 from src.shared.communication import (
@@ -26,6 +27,7 @@ async def main():
         PrechunkHandler,
         IndexHandler,
         SearchHandler,
+        CancelHandler,
     ]
 
     handler_tasks = [
