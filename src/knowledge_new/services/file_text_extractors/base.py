@@ -17,8 +17,8 @@ class AbstractFileTextExtractor(abc.ABC):
         """
         try:
             return await self._extract(content)
-        except Exception:
-            raise FileTextExtractingError(extractor=type(self).__name__)
+        except Exception as e:
+            raise FileTextExtractingError(extractor=type(self).__name__) from e
 
     @abc.abstractmethod
     async def _extract(self, content: bytes) -> str:
