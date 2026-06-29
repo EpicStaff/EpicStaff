@@ -67,6 +67,7 @@ class IndexStatusEnum(StrEnum):
     COMPLETED = "completed"
     WARNING = "warning"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class FileExtensionEnum(StrEnum):
