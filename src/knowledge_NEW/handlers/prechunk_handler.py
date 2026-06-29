@@ -1,13 +1,13 @@
 from loguru import logger
 
 from database.unit_of_work import SQLAlchemyUnitOfWork
-from handlers import AbstractHandler
+from handlers.base import AbstractCancellableHandler
 from models import PrechunkRequest, PrechunkResponse
 from orchestrators.prechunking import build_prechunker
 from settings import settings
 
 
-class PrechunkHandler(AbstractHandler[PrechunkRequest, PrechunkResponse]):
+class PrechunkHandler(AbstractCancellableHandler[PrechunkRequest, PrechunkResponse]):
     consumer_channel = settings.PRECHUNK_REQUEST_CHANNEL
     producer_channel = settings.PRECHUNK_RESPONSE_CHANNEL
     request_class = PrechunkRequest

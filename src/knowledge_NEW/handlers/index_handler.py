@@ -3,13 +3,13 @@ from typing import Never
 from loguru import logger
 
 from database.unit_of_work import SQLAlchemyUnitOfWork
-from handlers import AbstractHandler
+from handlers.base import AbstractCancellableHandler
 from models import IndexRequest
 from orchestrators.indexing import build_indexer
 from settings import settings
 
 
-class IndexHandler(AbstractHandler[IndexRequest, Never]):
+class IndexHandler(AbstractCancellableHandler[IndexRequest, Never]):
     consumer_channel = settings.INDEX_REQUEST_CHANNEL
     request_class = IndexRequest
 
