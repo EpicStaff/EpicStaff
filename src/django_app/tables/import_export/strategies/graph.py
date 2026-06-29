@@ -73,7 +73,9 @@ class GraphStrategy(EntityImportExportStrategy):
         )
 
         if "name" in import_data:
-            existing_names = Graph.objects.values_list("name", flat=True)
+            existing_names = Graph.objects.filter(org_id=org_id).values_list(
+                "name", flat=True
+            )
             import_data["name"] = ensure_unique_identifier(
                 base_name=data["name"],
                 existing_names=existing_names,
@@ -92,9 +94,10 @@ class GraphStrategy(EntityImportExportStrategy):
         conditional_edges_data = import_data.pop("conditional_edge_list", [])
         labels_data = import_data.pop("labels", [])
 
+        import_data["org"] = org_id
         serializer = self.serializer_class(data=import_data)
         serializer.is_valid(raise_exception=True)
-        graph = serializer.save(org_id=org_id)
+        graph = serializer.save()
 
         GraphOrganization.objects.get_or_create(graph=graph, organization_id=org_id)
 

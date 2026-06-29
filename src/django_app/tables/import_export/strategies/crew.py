@@ -66,7 +66,9 @@ class CrewStrategy(EntityImportExportStrategy):
     def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> Crew:
         org_id = kwargs.get("org_id")
         if "name" in data:
-            existing_names = Crew.objects.values_list("name", flat=True)
+            existing_names = Crew.objects.filter(org_id=org_id).values_list(
+                "name", flat=True
+            )
             data["name"] = ensure_unique_identifier(
                 base_name=data["name"],
                 existing_names=existing_names,
