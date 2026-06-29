@@ -8,6 +8,10 @@ __all__ = [
     "NoDocumentsToIndexError",
     "EmbedderUnavailableError",
     "RepositoryError",
+    "NoPreviewChunksProducedError",
+    "EmbeddingConfigNotFoundError",
+    "DocumentNotFoundError",
+    "ChunksNotIndexedError",
 ]
 
 
@@ -52,3 +56,19 @@ class EmbedderUnavailableError(KnowledgeError):
 
 class RepositoryError(KnowledgeError):
     default_message = 'Repository call {function} failed.'
+
+
+class NoPreviewChunksProducedError(KnowledgeError):
+    default_message = 'No preview chunks produced for Document(id={document_id}) of RAG(id={rag_id}).'
+
+
+class EmbeddingConfigNotFoundError(KnowledgeError):
+    default_message = 'Embedding config not found for RAG(id={rag_id}).'
+
+
+class DocumentNotFoundError(KnowledgeError):
+    default_message = 'Document(id={document_id}) not found for RAG(id={rag_id}).'
+
+
+class ChunksNotIndexedError(KnowledgeError):
+    default_message = 'Document(id={document_id}) chunks not indexed for RAG(id={rag_id}).'

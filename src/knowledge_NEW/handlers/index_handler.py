@@ -16,6 +16,6 @@ class IndexHandler(AbstractHandler[IndexRequest, Never]):
     async def handle(self, request: IndexRequest) -> None:
         logger.info("Handling index by request: {}", request)
         uow = SQLAlchemyUnitOfWork()
-        orchestrator = build_indexer(request.rag_strategy)
-        await orchestrator.index(request, uow)
+        orchestrator = build_indexer(request.rag_strategy, uow)
+        await orchestrator.execute(request)
         return None
