@@ -6,8 +6,9 @@ from enums import (
     DocumentStatusEnum,
     EmbedderProviderEnum,
     IndexStatusEnum,
-    RAGStrategy,
+    RAGStrategy, DocumentErrorCode,
 )
+from errors import EmbeddingError, EmbeddingConfigNotFoundError, DocumentNotFoundError
 from models import ChunkingConfig, Document, EmbeddingConfig, IndexedChunk, IndexRequest, PreviewChunk
 from orchestrators.indexing.strategies import naive_indexer
 from orchestrators.indexing.strategies.naive_indexer import NaiveIndexer
@@ -341,10 +342,6 @@ async def test_cancellation_marks_rag_cancelled(
     assert result is None  # execute swallows CancelledError, returns None
     assert repo.rag_status_log == expected_rag_log
     assert repo.doc_status_log == expected_doc_log
-
-
-from enums import DocumentErrorCode
-from errors import EmbeddingError, EmbeddingConfigNotFoundError, DocumentNotFoundError
 
 
 @pytest.mark.parametrize(
