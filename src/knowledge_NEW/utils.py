@@ -1,7 +1,10 @@
+import hashlib
+import json
 from datetime import datetime, timezone
 
 __all__ = [
     "utcnow",
+    "hash_dict",
     "ERROR_MESSAGE_MAX_LENGTH",
     "format_error_message",
 ]
@@ -11,6 +14,10 @@ ERROR_MESSAGE_MAX_LENGTH = 2000
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def hash_dict(dictionary: dict) -> str:
+    return hashlib.sha256(json.dumps(dictionary, sort_keys=True).encode()).hexdigest()
 
 
 def extract_provider_message(exc: BaseException) -> str | None:

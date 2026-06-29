@@ -43,6 +43,7 @@ __all__ = [
     "IndexRequest",
     "SearchRequest",
     "SearchResponse",
+    "CancelRequest",
 ]
 
 
@@ -214,3 +215,7 @@ class SearchResponse(ValueObject):
 
     request: SearchRequest
     chunks: list[FoundChunk]
+
+
+class CancelRequest(ValueObject):
+    target_request: dict[str, Any]
