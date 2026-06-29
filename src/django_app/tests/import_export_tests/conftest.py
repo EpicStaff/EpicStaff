@@ -37,12 +37,19 @@ def import_service(default_org):
     service = ImportService(entity_registry)
     _original = service.import_data
 
-    def _import_data(export_data, main_entity, preserve_uuids=False, org_id=None):
+    def _import_data(
+        export_data,
+        main_entity,
+        settings=None,
+        org_id=None,
+        effective_permissions=None,
+    ):
         return _original(
             export_data,
             main_entity,
-            preserve_uuids=preserve_uuids,
+            settings=settings,
             org_id=org_id if org_id is not None else default_org.id,
+            effective_permissions=effective_permissions,
         )
 
     service.import_data = _import_data
@@ -75,6 +82,7 @@ def rich_seeded_db(
         description="description",
         python_code=code,
         args_schema={"arg1": "a", "arg2": "b"},
+        org=default_org,
     )
 
     # --- Agents ---

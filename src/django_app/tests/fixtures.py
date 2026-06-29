@@ -188,6 +188,7 @@ def embedding_model(openai_provider: Provider) -> EmbeddingModel:
 @pytest.fixture
 def embedding_config(embedding_model: EmbeddingModel, default_org) -> EmbeddingConfig:
     embedding_config = EmbeddingConfig(
+        custom_name="MyEmbedder",
         model=embedding_model,
         task_type="retrieval_document",
         org=default_org,
