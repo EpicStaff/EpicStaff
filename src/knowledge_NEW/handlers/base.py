@@ -6,6 +6,8 @@ from loguru import logger
 from pydantic import BaseModel
 from src.shared.communication import Producer, Consumer, Message
 
+from services.task_register import task_register
+from utils import hash_dict
 
 type Payload = dict[str, Any]
 
@@ -59,3 +61,13 @@ class AbstractHandler[TRequest: BaseModel, TResponse: BaseModel](abc.ABC):
 
     async def _invoke(self, request: TRequest) -> TResponse | None:
         return await self.handle(request)
+
+
+class AbstractCancellableHandler[TRequest: BaseModel, TResponse: BaseModel](AbstractHandler[TRequest, TResponse], abc.ABC):
+    async def _invoke(self, request: TRequest) -> TResponse | None:
+        key = hash_dict(request.model_dump())
+        task_register.register(key, asyncio.current_task())
+        try:
+            return await self.handle(request)
+        finally:
+            task_register.discard(key)
