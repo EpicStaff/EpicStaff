@@ -41,42 +41,47 @@
                     >
                         All sessions
                     </app-button>
-                    <div
-                        class="import-group"
-                        #importOriginEl="cdkOverlayOrigin"
-                        cdkOverlayOrigin
-                    >
-                        <button
-                            type="button"
-                            class="import-group__main"
-                            (click)="onImportClick()"
+                    <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Create]">
+                        <div
+                            class="import-group"
+                            #importOriginEl="cdkOverlayOrigin"
+                            cdkOverlayOrigin
                         >
-                            <app-svg-icon
-                                icon="download"
-                                size="1.1rem"
-                            />
-                            <span>Import</span>
-                        </button>
-                        <button
-                            type="button"
-                            class="import-group__cog"
-                            aria-label="Import options"
-                            [class.is-open]="importOptionsOpen()"
-                            (click)="toggleImportOptions()"
-                        >
-                            <app-svg-icon
-                                icon="settings-filled"
-                                size="1rem"
-                            />
-                        </button>
-                    </div>
-                    <app-import-flow-options-popover
-                        [origin]="importOriginEl"
-                        [open]="importOptionsOpen()"
-                        (closed)="closeImportOptions()"
-                    />
+                            <button
+                                type="button"
+                                class="import-group__main"
+                                (click)="onImportClick()"
+                            >
+                                <app-svg-icon
+                                    icon="download"
+                                    size="1.1rem"
+                                />
+                                <span>Import</span>
+                            </button>
+                            <button
+                                type="button"
+                                class="import-group__cog"
+                                aria-label="Import options"
+                                [class.is-open]="importOptionsOpen()"
+                                (click)="toggleImportOptions()"
+                            >
+                                <app-svg-icon
+                                    icon="settings-filled"
+                                    size="1rem"
+                                />
+                            </button>
+                        </div>
+                        <app-import-flow-options-popover
+                            [origin]="importOriginEl"
+                            [open]="importOptionsOpen()"
+                            (closed)="closeImportOptions()"
+                        />
+                    </ng-container>
 
-                    <div class="export-group">
+                    <div
+                        *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
+                        class="export-group"
+                    >
                         <button
                             type="button"
                             class="export-group__main"
@@ -90,6 +95,7 @@
                         </button>
                     </div>
                     <app-button
+                        *appHasPermission="[ResourceCode.Flows, ActionCode.Create]"
                         type="primary"
                         class="btn-primary create-btn"
                         [leftIcon]="'plus'"

@@ -12,6 +12,8 @@ import {
     signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
@@ -30,7 +32,14 @@ interface FlatLabelNode {
 
 @Component({
     selector: 'app-flows-label-sidebar',
-    imports: [CommonModule, FormsModule, DialogModule, AppSvgIconComponent, LabelColorPickerComponent],
+    imports: [
+        CommonModule,
+        FormsModule,
+        DialogModule,
+        AppSvgIconComponent,
+        LabelColorPickerComponent,
+        HasPermissionDirective,
+    ],
     templateUrl: './flows-label-sidebar.component.html',
     styleUrls: ['./flows-label-sidebar.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -307,4 +316,7 @@ export class FlowsLabelSidebarComponent implements OnInit {
         }
         return 'Failed to save label. Please try again.';
     }
+
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }

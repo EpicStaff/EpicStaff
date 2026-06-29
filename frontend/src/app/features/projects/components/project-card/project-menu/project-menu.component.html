@@ -1,4 +1,5 @@
 <div
+    *appHasPermission="[ResourceCode.Projects, [ActionCode.Create, ActionCode.Delete]]"
     class="menu-container"
     [ngClass]="{ 'menu-active': isMenuOpen() }"
 >
@@ -32,6 +33,7 @@
       (itemClick)="onActionClick($event, 'export')"
     ></app-project-menu-item> -->
         <app-project-menu-item
+            *appHasPermission="[ResourceCode.Projects, ActionCode.Delete]"
             icon="ti-trash"
             label="Delete"
             [isDelete]="true"
@@ -39,6 +41,7 @@
         ></app-project-menu-item>
 
         <app-project-menu-item
+            *appHasPermission="[ResourceCode.Projects, ActionCode.Create]"
             icon="ti-copy"
             label="Copy project"
             (itemClick)="onActionClick($event, 'copy')"

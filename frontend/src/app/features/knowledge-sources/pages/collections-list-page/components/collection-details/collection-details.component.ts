@@ -18,6 +18,8 @@ import {
     SpinnerComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { EMPTY, filter, throwError } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, finalize, switchMap } from 'rxjs/operators';
 
@@ -47,6 +49,7 @@ import { CollectionRagsComponent } from './collection-rags/collection-rags.compo
         SpinnerComponent,
         ValidationErrorsComponent,
         AppSvgIconComponent,
+        HasPermissionDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -207,4 +210,6 @@ export class CollectionDetailsComponent implements OnInit, OnChanges {
     }
 
     protected readonly FILE_TYPES = FILE_TYPES;
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

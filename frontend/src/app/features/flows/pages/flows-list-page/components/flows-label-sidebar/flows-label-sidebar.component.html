@@ -35,6 +35,7 @@
             <span class="section-label">Labels</span>
         </div>
         <button
+            *appHasPermission="[ResourceCode.Flows, ActionCode.Create]"
             class="add-btn"
             (click)="startAddRootLabel()"
             title="Add label"
@@ -161,6 +162,7 @@
                 <!-- Action buttons (shown on hover) -->
                 <div class="item-actions">
                     <button
+                        *appHasPermission="[ResourceCode.Flows, ActionCode.Create]"
                         class="action-btn"
                         (click)="$event.stopPropagation(); startAddChildLabel(item.node.id)"
                         title="Add sublabel"
@@ -171,6 +173,7 @@
                         />
                     </button>
                     <button
+                        *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
                         class="action-btn edit-label-btn"
                         (click)="$event.stopPropagation(); startRename(item.node)"
                         title="Rename"
@@ -181,6 +184,7 @@
                         />
                     </button>
                     <button
+                        *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
                         class="action-btn danger"
                         (click)="$event.stopPropagation(); openDeleteDialog(item.node)"
                         title="Delete"

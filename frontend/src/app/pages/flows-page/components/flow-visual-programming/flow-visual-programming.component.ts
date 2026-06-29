@@ -18,6 +18,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
+import { ActionCode, ResourceCode } from '@shared/models';
 import {
     catchError,
     defaultIfEmpty,
@@ -54,6 +55,7 @@ import { FlowsStorageService } from '../../../../features/flows/services/flows-s
 import { RunGraphService } from '../../../../features/flows/services/run-graph-session.service';
 import { FlowMessagesPanelComponent } from '../../../../pages/running-graph/components/flow-messages-panel/flow-messages-panel.component';
 import { RunSessionSSEService } from '../../../../pages/running-graph/services/graph-session-sse.service';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ConfigService } from '../../../../services/config/config.service';
 import { ToastService } from '../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -61,8 +63,7 @@ import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.
 import { UnsavedChangesDialogService } from '../../../../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
 import { NodeType } from '../../../../visual-programming/core/enums/node-type';
 import { FlowModel } from '../../../../visual-programming/core/models/flow.model';
-import { ScheduleTriggerNodeModel } from '../../../../visual-programming/core/models/node.model';
-import { NodeModel } from '../../../../visual-programming/core/models/node.model';
+import { NodeModel, ScheduleTriggerNodeModel } from '../../../../visual-programming/core/models/node.model';
 import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/flow-graph.component';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
@@ -167,6 +168,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         private readonly undoRedoService: UndoRedoService,
         private readonly createGraphWarningService: CreateGraphWarningsService,
         private readonly runSessionSSEService: RunSessionSSEService,
+        private readonly permissionsService: PermissionsService,
         private readonly sidePanelService: SidePanelService
     ) {
         this.isEpicChatEnabled = this.configService.isEpicChatEnabled;
@@ -361,7 +363,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             map(() => void 0),
             catchError((err: HttpErrorResponse) => {
                 if (err.status === 409) {
-                    this.toastService.warning('This graph was modified by another user. Please refresh to see the latest changes.');
+                    this.toastService.warning(
+                        'This graph was modified by another user. Please refresh to see the latest changes.'
+                    );
                 } else {
                     this.toastService.error(`Failed to save node: ${err?.error?.error || 'Unknown error'}`);
                 }
@@ -494,6 +498,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public canDeactivate(): boolean | Observable<boolean> {
         if (this.isDeactivating) return true;
+        if (!this.permissionsService.can(ResourceCode.Flows, ActionCode.Update)) return true;
         if (!this.hasUnsavedChanges()) return true;
 
         this.isDeactivating = true;
