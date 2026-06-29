@@ -16,5 +16,5 @@ class PrechunkHandler(AbstractHandler[PrechunkRequest, PrechunkResponse]):
     async def handle(self, request: PrechunkRequest) -> PrechunkResponse:
         logger.info("Handling prechunk by request: {}", request)
         uow = SQLAlchemyUnitOfWork()
-        orchestrator = build_prechunker(request.rag_strategy)
-        return await orchestrator.chunk(request, uow)
+        orchestrator = build_prechunker(request.rag_strategy, uow)
+        return await orchestrator.execute(request)
