@@ -7,6 +7,7 @@ __all__ = [
     "DocumentNotFound",
     "NoDocumentsToIndexError",
     "EmbedderUnavailableError",
+    "RepositoryError",
 ]
 
 
@@ -47,3 +48,7 @@ class NoDocumentsToIndexError(KnowledgeError):
 
 class EmbedderUnavailableError(KnowledgeError):
     pass
+
+
+class RepositoryError(KnowledgeError):
+    default_message = 'Repository call {function} failed.'

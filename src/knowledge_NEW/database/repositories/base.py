@@ -1,8 +1,37 @@
 import abc
+import functools
+import inspect
+from typing import Callable, Any, Awaitable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from errors import RepositoryError
 from models import EmbeddingConfig, Document, PreviewChunk, IndexedChunk, FoundChunk
+
+
+class RepositoryErrorWrapper:
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        for name, obj in vars(cls).items():
+            if inspect.iscoroutinefunction(obj) and not name.startswith("_"):
+                setattr(
+                    cls,
+                    name,
+                    cls.__wrap_error_to_repository_error(obj),
+                )
+
+    @staticmethod
+    def __wrap_error_to_repository_error(func: Callable[..., Awaitable]):
+        @functools.wraps(func)
+        async def wrap(*args, **kwargs):
+            try:
+                return await func(*args, **kwargs)
+            except RepositoryError:
+                raise
+            except Exception as e:
+                raise RepositoryError(function=func) from e
+
+        return wrap
 
 
 class BaseSQLAlchemyRepository:
@@ -12,9 +41,8 @@ class BaseSQLAlchemyRepository:
         self._session = session
 
 
-class AbstractNaiveRagRepository(abc.ABC):
-    """Abstract repository for naive RAG persistence operations.
-    """
+class AbstractNaiveRagRepository(RepositoryErrorWrapper, abc.ABC):
+    """Abstract repository for naive RAG persistence operations."""
 
     @abc.abstractmethod
     async def get_embedding_config(self, rag_id: int) -> EmbeddingConfig | None:
