@@ -16,5 +16,5 @@ class SearchHandler(AbstractHandler[SearchRequest, SearchResponse]):
     async def handle(self, request: SearchRequest) -> SearchResponse:
         logger.info("Handling search by request: {}", request)
         uow = SQLAlchemyUnitOfWork()
-        orchestrator = build_search(request.search_config.rag_strategy)
-        return await orchestrator.search(request, uow)
+        orchestrator = build_search(request.search_config.rag_strategy, uow)
+        return await orchestrator.execute(request)
