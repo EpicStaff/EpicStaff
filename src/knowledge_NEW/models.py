@@ -131,18 +131,6 @@ class Document(Entity):
         self.failed_at = utcnow()
         self.completed_at = None
 
-    def mark_chunked_if_new_config(self) -> None:
-        indexed_with_current_config = (
-            self.last_indexing_config is not None
-            and self.config == self.last_indexing_config
-        )
-        if indexed_with_current_config:
-            self.status = DocumentStatusEnum.COMPLETED
-        else:
-            self.status = DocumentStatusEnum.CHUNKED
-            self.completed_at = None
-        self.clear_error()
-
     def clear_error(self) -> None:
         self.error_code = DocumentErrorCode.NONE
         self.error_message = None
