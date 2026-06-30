@@ -1,6 +1,6 @@
 tool-data:
   name: "TXT Search Tool TESTED"
-  description: "A standalone tool that searches a TXT file (local or URL) for a query and returns matching lines. Optional similarity threshold and limit."
+  description: "A standalone tool that searching a TXT file (local or URL) for a query and returns matching lines. Optional similarity threshold and limit."
   args-schema: "args_schema.json"
   code-file: "main.py"
   entrypoint: "main"

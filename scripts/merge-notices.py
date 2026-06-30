@@ -59,6 +59,7 @@ def read(path: Path) -> str:
 # Section utilities
 # ---------------------------------------------------------------------------
 
+
 def find_section(text: str, header: str) -> tuple[int, int] | None:
     """Return (start, end) byte offsets of a `## header` section, where end is
     the offset of the next `## ` header or EOF. Returns None if not found."""
@@ -68,7 +69,7 @@ def find_section(text: str, header: str) -> tuple[int, int] | None:
         return None
     start = m.start()
     # find next top-level header (## but not ###)
-    next_match = re.search(r"^## (?!#)", text[m.end():], re.MULTILINE)
+    next_match = re.search(r"^## (?!#)", text[m.end() :], re.MULTILINE)
     if next_match:
         end = m.end() + next_match.start()
     else:
@@ -138,7 +139,9 @@ def render_summary_section(combined: dict[str, int]) -> str:
     out: list[str] = []
     out.append(SUMMARY_HEADER)
     out.append("")
-    out.append("Combined totals for frontend (npm) production dependencies and backend (Python) main dependencies.")
+    out.append(
+        "Combined totals for frontend (npm) production dependencies and backend (Python) main dependencies."
+    )
     out.append("")
     out.append("| License | Packages |")
     out.append("|---|---|")
@@ -152,6 +155,7 @@ def render_summary_section(combined: dict[str, int]) -> str:
 # ---------------------------------------------------------------------------
 # Merge steps
 # ---------------------------------------------------------------------------
+
 
 def replace_section(text: str, header: str, new_block: str) -> str:
     """Replace existing `## header` section (up to next ## or EOF) with
@@ -177,7 +181,9 @@ def insert_backend_section(notices: str, backend_block: str) -> str:
         start, _ = refresh
         return notices[:start] + backend_block.rstrip() + "\n\n" + notices[start:]
 
-    sep = "" if notices.endswith("\n\n") else ("\n" if notices.endswith("\n") else "\n\n")
+    sep = (
+        "" if notices.endswith("\n\n") else ("\n" if notices.endswith("\n") else "\n\n")
+    )
     return notices + sep + backend_block.rstrip() + "\n"
 
 
@@ -222,21 +228,32 @@ def patch_refresh_instructions(notices: str) -> str:
     if sub_match:
         # Replace existing backend subsection up to next ### or end of block.
         sub_start = sub_match.start()
-        rest = block[sub_match.end():]
+        rest = block[sub_match.end() :]
         next_sub = re.search(r"^### ", rest, re.MULTILINE)
         if next_sub:
             sub_end = sub_match.end() + next_sub.start()
         else:
             sub_end = len(block)
-        new_block = block[:sub_start] + backend_instructions.rstrip() + "\n\n" + block[sub_end:]
+        new_block = (
+            block[:sub_start] + backend_instructions.rstrip() + "\n\n" + block[sub_end:]
+        )
     else:
         # Append before the trailing `### Manual overrides applied` subsection
         # if present, otherwise at the end of the refresh section.
         manual = re.search(r"^### Manual overrides applied\s*$", block, re.MULTILINE)
         if manual:
-            new_block = block[:manual.start()] + backend_instructions.rstrip() + "\n\n" + block[manual.start():]
+            new_block = (
+                block[: manual.start()]
+                + backend_instructions.rstrip()
+                + "\n\n"
+                + block[manual.start() :]
+            )
         else:
-            sep = "" if block.endswith("\n\n") else ("\n" if block.endswith("\n") else "\n\n")
+            sep = (
+                ""
+                if block.endswith("\n\n")
+                else ("\n" if block.endswith("\n") else "\n\n")
+            )
             new_block = block + sep + backend_instructions
 
     return notices[:start] + new_block.rstrip() + "\n\n" + notices[end:]
@@ -245,6 +262,7 @@ def patch_refresh_instructions(notices: str) -> str:
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 def main() -> int:
     notices = read(NOTICES_FILE)

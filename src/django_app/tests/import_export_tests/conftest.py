@@ -59,8 +59,22 @@ def rich_seeded_db(
         description="description",
         python_code=code,
         variables=[
-            {"name": "arg1", "type": "string", "description": "", "default_value": None, "input_type": "agent_input", "required": True},
-            {"name": "arg2", "type": "string", "description": "", "default_value": None, "input_type": "agent_input", "required": True},
+            {
+                "name": "arg1",
+                "type": "string",
+                "description": "",
+                "default_value": None,
+                "input_type": "agent_input",
+                "required": True,
+            },
+            {
+                "name": "arg2",
+                "type": "string",
+                "description": "",
+                "default_value": None,
+                "input_type": "agent_input",
+                "required": True,
+            },
         ],
     )
 

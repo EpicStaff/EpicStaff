@@ -928,11 +928,26 @@ class ProcessRagIndexingView(APIView):
                 rag_id=rag_id, rag_type=rag_type
             )
 
-            redis_service.publish_rag_indexing(
-                rag_id=indexing_data["rag_id"],
-                rag_type=indexing_data["rag_type"],
-                collection_id=indexing_data["collection_id"],
+            from src.shared.communication import Message, Producer, brokers, storages
+
+            message = Message(
+                payload={
+                    'rag_id': indexing_data['rag_id'],
+                    'rag_strategy': indexing_data['rag_type'],
+                }
             )
+            broker = brokers.RedisPubSubBroker(url='redis://:redis_password@redis:6379/2')
+            storages = storages.RedisStorage(url='redis://:redis_password@redis:6379/3')
+            producer = Producer(
+                broker=broker,
+                storage=storages,
+            )
+            producer.send('knowledge:indexing', message)
+            # redis_service.publish_rag_indexing(
+            #     rag_id=indexing_data["rag_id"],
+            #     rag_type=indexing_data["rag_type"],
+            #     collection_id=indexing_data["collection_id"],
+            # )
 
             return Response(
                 data={
