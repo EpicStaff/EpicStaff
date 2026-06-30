@@ -2,20 +2,18 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import {
-    ButtonComponent,
-    CustomInputComponent,
-    IconButtonComponent,
-    InputNumberComponent,
-    JsonEditorFormFieldComponent,
-    KeyValueListComponent,
-    SliderWithStepperComponent,
-    ValidationErrorsComponent,
-} from '@shared/components';
 import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
 import { LlmConfigStorageService } from '@shared/services';
 
 import { ToastService } from '../../../../services/notifications';
+import { InputNumberComponent } from '../../../../shared/components/app-input-number/input-number.component';
+import { ValidationErrorsComponent } from '../../../../shared/components/app-validation-errors/validation-errors.component';
+import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
+import { IconButtonComponent } from '../../../../shared/components/buttons/icon-button/icon-button.component';
+import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
+import { JsonEditorFormFieldComponent } from '../../../../shared/components/json-editor/json-editor-form-field.component';
+import { KeyValueListComponent } from '../../../../shared/components/key-value-list/key-value-list.component';
+import { SliderWithStepperComponent } from '../../../../shared/components/slider-with-stepper/slider-with-stepper.component';
 import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selector.component';
 
 interface DialogData {

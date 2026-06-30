@@ -13,7 +13,7 @@ import { CustomInputComponent } from '../../../../shared/components/form-input/f
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { LlmModelSelectorComponent } from '../../../../shared/components/llm-model-selector/llm-model-selector.component';
 import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
-import { FullLLMConfig, FullLLMConfigService } from '../../../../shared/services/llms/full-llm-config.service';
+import { FullLLMConfigService } from '../../../../shared/services/llms/full-llm-config.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { NodeType } from '../../../core/enums/node-type';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
@@ -75,7 +75,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public conditionGroups = signal<ConditionGroup[]>([]);
     public prompts = signal<Record<string, PromptConfig>>({});
-    public llmConfigs: FullLLMConfig[] = [];
+    public readonly llmConfigs = this.fullLlmConfigService.fullLLMConfigs;
     public editingPromptId = signal<string | null>(null);
     public pendingPromptName = signal<string>('');
     public newPromptId = '';
@@ -132,31 +132,19 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         return [];
     });
 
-    public get llmConfigOptions(): { id: number; label: string }[] {
-        return this.llmConfigs.map((c) => ({
+    public readonly llmConfigOptions = computed<{ id: number; label: string }[]>(() =>
+        this.llmConfigs().map((c) => ({
             id: c.id,
             label: c.custom_name || `LLM #${c.id}`,
-        }));
-    }
+        }))
+    );
 
     constructor() {
         super();
         this.codeChange$
             .pipe(debounceTime(300), takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.sidePanelService.triggerAutosave());
-        this.fullLlmConfigService
-            .getFullLLMConfigs()
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (configs) => {
-                    this.llmConfigs = configs;
-                    this.cdr.markForCheck();
-                },
-                error: () => {
-                    this.llmConfigs = [];
-                    this.cdr.markForCheck();
-                },
-            });
+        this.fullLlmConfigService.getFullLLMConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
     public availableNodeItems = computed<SelectItem[]>(() => {
