@@ -1,0 +1,33 @@
+target-version = "py312"
+
+src = ["src"]
+
+line-length = 100
+
+# default excludes: https://docs.astral.sh/ruff/settings/#exclude
+extend-exclude = [
+    "**/libraries/",   # Local fors — must not be linted or modified
+    "**/migrations/",  # Auto-generated Django migrations — no value in linting
+]
+
+[lint]
+# default select: https://docs.astral.sh/ruff/settings/#lint_select
+extend-select = [
+    "W",   # pycodestyle warnings — softer PEP 8 issues (e.g. trailing whitespace)
+    "I",   # isort — import sorting and grouping
+    "B",   # flake8-bugbear — likely bugs (mutable defaults, bare except, etc.)
+    "UP",  # pyupgrade — rewrite to modern syntax for the target version
+    "N",   # pep8-naming — naming conventions for classes, functions, constants
+    "SIM", # flake8-simplify — simplifiable constructs (redundant if, etc.)
+    "C4",  # flake8-comprehensions — cleaner list/dict/set comprehensions
+    "RUF", # Ruff-specific rules
+]
+
+ignore = [
+    "B027",   # Empty method in an ABC without @abstractmethod — intentional optional hook
+    "E501",   # Line-too-long — line length is delegated to the formatter
+    "UP038",  # non-pep604-isinstance — keep isinstance(x, (A, B)) tuple form
+]
+
+[format]
+quote-style = "double"
