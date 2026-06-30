@@ -280,10 +280,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     });
 
     protected readonly nodeLockedMap = computed<Map<string, EditorInfo>>(() => {
+        const myId = this.wsService.currentUserId();
         const result = new Map<string, EditorInfo>();
         for (const [nodeId, fields] of this.wsService.lockedNodeFields()) {
-            const first = fields.values().next().value;
-            if (first) result.set(nodeId, first);
+            for (const editor of fields.values()) {
+                if (editor.user_id !== myId) {
+                    result.set(nodeId, editor);
+                    break;
+                }
+            }
         }
         return result;
     });

@@ -1,4 +1,4 @@
-import { inject, Injectable, signal } from '@angular/core';
+import { computed, inject, Injectable, signal } from '@angular/core';
 import { IPoint } from '@foblex/2d';
 import { Subject } from 'rxjs';
 import { debounceTime, filter, throttleTime } from 'rxjs';
@@ -186,6 +186,7 @@ export class GraphCollaborationWsService {
     public editors = signal<EditorInfo[]>([]);
     public connectionStatus = signal<ConnectionStatus>('disconnected');
     public readonly lockedNodeFields = signal<Map<string, Map<string, EditorInfo>>>(new Map());
+    public readonly currentUserId = computed(() => this.profileService.currentUserSignal()?.id ?? null);
 
     public graphSaved$ = new Subject<GraphSavedMessage>();
     public saveFailed$ = new Subject<SaveFailedMessage>();
@@ -325,7 +326,7 @@ export class GraphCollaborationWsService {
                     new Map(
                         Object.entries(message.locks).map(([nodeId, fields]) => [
                             nodeId,
-                            new Map(Object.entries(fields)),
+                            new Map(Object.entries(fields) as [string, EditorInfo][]),
                         ])
                     )
                 );
