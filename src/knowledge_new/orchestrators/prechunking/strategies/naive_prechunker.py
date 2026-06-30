@@ -1,6 +1,6 @@
 from enums import DocumentStatusEnum
 from errors import DocumentNotFoundError, NoPreviewChunksProducedError
-from models import PrechunkRequest, PrechunkResponse, Document
+from models import Document, PrechunkRequest, PrechunkResponse
 from orchestrators.prechunking.base import AbstractPrechunker
 from services.chunkers import build_chunker
 from services.file_text_extractors import build_file_text_extractor
@@ -13,14 +13,8 @@ class NaivePrechunker(AbstractPrechunker):
         self.state["document"] = document
         self.state["last_status"] = document.status
 
-        if (
-            document.status == DocumentStatusEnum.CHUNKED
-            and not document.is_required_reindex()
-        ):
-            return PrechunkResponse(
-                request=request,
-                chunks=document.preview_chunks,
-            )
+        if document.status == DocumentStatusEnum.CHUNKED and not document.is_required_reindex():
+            return PrechunkResponse(request=request, chunks=document.preview_chunks)
 
         document.status = DocumentStatusEnum.CHUNKING
         await self._update_document(request.rag_id, document)
@@ -32,19 +26,13 @@ class NaivePrechunker(AbstractPrechunker):
         preview_chunks = await chunker.chunk(text)
 
         if not preview_chunks:
-            raise NoPreviewChunksProducedError(
-                document_id=document.id,
-                rag_id=request.rag_id,
-            )
+            raise NoPreviewChunksProducedError(document_id=document.id, rag_id=request.rag_id)
 
         document.preview_chunks = preview_chunks
         document.status = DocumentStatusEnum.CHUNKED
         await self._update_document(request.rag_id, document)
 
-        return PrechunkResponse(
-            request=request,
-            chunks=document.preview_chunks,
-        )
+        return PrechunkResponse(request=request, chunks=document.preview_chunks)
 
     async def on_cancel(self, request: PrechunkRequest):
         if (document := self.state.get("document")) is not None:
@@ -68,18 +56,12 @@ class NaivePrechunker(AbstractPrechunker):
                 document_id=document_id,
             )
         if document is None:
-            raise DocumentNotFoundError(
-                document_id=document_id,
-                rag_id=rag_id,
-            )
+            raise DocumentNotFoundError(document_id=document_id, rag_id=rag_id)
         return document
 
     async def _update_document(self, rag_id: int, document: Document):
         async with self.uow:
-            await self.uow.naive_rag_repo.update_document(
-                rag_id=rag_id,
-                document=document,
-            )
+            await self.uow.naive_rag_repo.update_document(rag_id=rag_id, document=document)
             await self.uow.naive_rag_repo.save_preview_chunks(
                 document_id=document.id,
                 chunks=document.preview_chunks,

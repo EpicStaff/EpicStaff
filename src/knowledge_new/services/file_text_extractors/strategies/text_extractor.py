@@ -1,5 +1,4 @@
 from loguru import logger
-
 from services.file_text_extractors.base import AbstractFileTextExtractor
 from services.processing_run import run_in_process
 

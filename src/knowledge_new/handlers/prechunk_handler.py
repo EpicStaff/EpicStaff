@@ -1,7 +1,6 @@
-from loguru import logger
-
 from database.unit_of_work import SQLAlchemyUnitOfWork
 from handlers.base import AbstractCancellableHandler
+from loguru import logger
 from models import PrechunkRequest, PrechunkResponse
 from orchestrators.prechunking import build_prechunker
 from settings import settings

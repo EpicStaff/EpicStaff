@@ -1,23 +1,23 @@
 __all__ = [
-    "KnowledgeError",
-    "UnsupportedError",
-    "FileTextExtractingError",
     "ChunkingError",
-    "EmbeddingError",
-    "RepositoryError",
-    "NoPreviewChunksProducedError",
-    "EmbeddingConfigNotFoundError",
-    "DocumentNotFoundError",
     "ChunksNotIndexedError",
+    "DocumentNotFoundError",
+    "EmbeddingConfigNotFoundError",
+    "EmbeddingError",
+    "FileTextExtractingError",
+    "KnowledgeError",
+    "NoPreviewChunksProducedError",
+    "RepositoryError",
+    "UnsupportedError",
 ]
 
 
 class KnowledgeError(Exception):
     """Base error for all domain errors."""
 
-    default_message: str = ''
+    default_message: str = ""
 
-    def __init__(self, message: str = '', /, *args, **format_kwargs):
+    def __init__(self, message: str = "", /, *args, **format_kwargs):
         if not message and self.default_message:
             message = self.default_message.format(**format_kwargs)
         super().__init__(message, *args)
@@ -40,20 +40,22 @@ class EmbeddingError(KnowledgeError):
 
 
 class RepositoryError(KnowledgeError):
-    default_message = 'Repository call {function} failed.'
+    default_message = "Repository call {function} failed."
 
 
 class NoPreviewChunksProducedError(KnowledgeError):
-    default_message = 'No preview chunks produced for Document(id={document_id}) of RAG(id={rag_id}).'
+    default_message = (
+        "No preview chunks produced for Document(id={document_id}) of RAG(id={rag_id})."
+    )
 
 
 class EmbeddingConfigNotFoundError(KnowledgeError):
-    default_message = 'Embedding config not found for RAG(id={rag_id}).'
+    default_message = "Embedding config not found for RAG(id={rag_id})."
 
 
 class DocumentNotFoundError(KnowledgeError):
-    default_message = 'Document(id={document_id}) not found for RAG(id={rag_id}).'
+    default_message = "Document(id={document_id}) not found for RAG(id={rag_id})."
 
 
 class ChunksNotIndexedError(KnowledgeError):
-    default_message = 'Document(id={document_id}) chunks not indexed for RAG(id={rag_id}).'
+    default_message = "Document(id={document_id}) chunks not indexed for RAG(id={rag_id})."

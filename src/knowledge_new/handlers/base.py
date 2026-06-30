@@ -1,12 +1,11 @@
 import abc
 import asyncio
-from typing import Optional, Any
+from typing import Any
 
 from loguru import logger
 from pydantic import BaseModel
-from src.shared.communication import Producer, Consumer, Message
-
 from services.task_register import task_register
+from src.shared.communication import Consumer, Message, Producer
 from utils import hash_dict
 
 type Payload = dict[str, Any]
@@ -23,9 +22,9 @@ class AbstractHandler[TRequest: BaseModel, TResponse: BaseModel](abc.ABC):
     """
 
     consumer_channel: str
-    producer_channel: Optional[str] = None
+    producer_channel: str | None = None
     request_class: type[TRequest]
-    response_class: Optional[type[TResponse]] = None
+    response_class: type[TResponse] | None = None
 
     def __init__(self, producer: Producer, consumer: Consumer):
         self.producer = producer
@@ -47,7 +46,7 @@ class AbstractHandler[TRequest: BaseModel, TResponse: BaseModel](abc.ABC):
             individual tasks are logged and do not stop the consumer loop.
         """
         async for msg in self.consumer.astream(self.consumer_channel):
-            asyncio.create_task(self._run(msg.payload))
+            asyncio.create_task(self._run(msg.payload))  # noqa: RUF006
 
     async def _run(self, payload: Payload):
         try:
@@ -63,7 +62,10 @@ class AbstractHandler[TRequest: BaseModel, TResponse: BaseModel](abc.ABC):
         return await self.handle(request)
 
 
-class AbstractCancellableHandler[TRequest: BaseModel, TResponse: BaseModel](AbstractHandler[TRequest, TResponse], abc.ABC):
+class AbstractCancellableHandler[TRequest: BaseModel, TResponse: BaseModel](
+    AbstractHandler[TRequest, TResponse],
+    abc.ABC,
+):
     async def _invoke(self, request: TRequest) -> TResponse | None:
         key = hash_dict(request.model_dump())
         task_register.register(key, asyncio.current_task())

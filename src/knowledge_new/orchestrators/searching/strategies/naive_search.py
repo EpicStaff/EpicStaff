@@ -1,9 +1,5 @@
 from errors import EmbeddingConfigNotFoundError
-from models import (
-    SearchRequest,
-    SearchResponse,
-    NaiveSearchConfig,
-)
+from models import NaiveSearchConfig, SearchRequest, SearchResponse
 from orchestrators.searching.base import AbstractSearch
 from services.embedders import build_embedder
 

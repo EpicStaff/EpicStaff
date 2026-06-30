@@ -1,9 +1,8 @@
 from enums import EmbedderProviderEnum
 from errors import UnsupportedError
 from models import EmbeddingConfig
-from services.embedders.base import AbstractEmbedder
 from services.embedders import strategies
-
+from services.embedders.base import AbstractEmbedder
 
 _STRATEGIES: dict[EmbedderProviderEnum, type[AbstractEmbedder]] = {
     EmbedderProviderEnum.COHERE: strategies.CohereEmbedder,
@@ -14,9 +13,7 @@ _STRATEGIES: dict[EmbedderProviderEnum, type[AbstractEmbedder]] = {
 }
 
 
-def build_embedder(
-    provider: EmbedderProviderEnum, config: EmbeddingConfig
-) -> AbstractEmbedder:
+def build_embedder(provider: EmbedderProviderEnum, config: EmbeddingConfig) -> AbstractEmbedder:
     """Create the embedder registered for `provider`.
 
     Args:

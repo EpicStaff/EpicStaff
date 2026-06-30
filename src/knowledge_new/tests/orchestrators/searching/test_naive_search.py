@@ -1,11 +1,5 @@
 from enums import EmbedderProviderEnum
-from models import (
-    EmbeddingConfig,
-    FoundChunk,
-    NaiveSearchConfig,
-    SearchRequest,
-    SearchResponse,
-)
+from models import EmbeddingConfig, FoundChunk, NaiveSearchConfig, SearchRequest, SearchResponse
 from orchestrators.searching.strategies import naive_search
 from orchestrators.searching.strategies.naive_search import NaiveSearch
 

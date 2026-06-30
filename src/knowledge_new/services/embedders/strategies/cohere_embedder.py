@@ -1,5 +1,4 @@
 from cohere import AsyncClient, EmbeddingsFloatsEmbedResponse
-
 from models import EmbeddingConfig
 from services.embedders.base import AbstractEmbedder
 

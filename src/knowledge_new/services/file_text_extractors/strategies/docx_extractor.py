@@ -1,7 +1,6 @@
 from io import BytesIO
 
 from docx import Document
-
 from services.file_text_extractors.base import AbstractFileTextExtractor
 from services.processing_run import run_in_process
 
@@ -12,7 +11,11 @@ class DOCXTextExtractor(AbstractFileTextExtractor):
         docx_file = BytesIO(content)
         document = Document(docx_file)
 
-        paragraphs = [p.text for p in document.paragraphs if p.text.strip()]
+        paragraphs = [
+            p.text
+            for p in document.paragraphs
+            if p.text.strip()
+        ]  # fmt: skip
         if paragraphs:
             return "\n".join(paragraphs)
         return ""

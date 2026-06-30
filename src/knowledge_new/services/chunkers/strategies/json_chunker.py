@@ -1,7 +1,6 @@
 import json
 
 from langchain_text_splitters import RecursiveJsonSplitter
-
 from models import ChunkingConfig, PreviewChunk
 from services.chunkers.base import AbstractChunker
 from services.processing_run import run_in_process

@@ -1,23 +1,22 @@
 import uuid
 
+from database.config import BaseModel
+from enums import DocumentErrorCode
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    JSON,
     Column,
+    DateTime,
+    ForeignKey,
+    Index,
     Integer,
     String,
-    DateTime,
     Text,
-    ForeignKey,
     UniqueConstraint,
-    Index,
-    JSON,
 )
-from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
-from pgvector.sqlalchemy import Vector
-
-from database.config import BaseModel
+from sqlalchemy.orm import relationship
 from utils import utcnow
-from enums import DocumentErrorCode
 
 
 class NaiveRag(BaseModel):
@@ -30,16 +29,8 @@ class NaiveRag(BaseModel):
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     indexed_at = Column(DateTime, nullable=True)
 
-    base_rag_type_id = Column(
-        Integer,
-        ForeignKey("tables_baseragtype.rag_type_id"),
-        nullable=False,
-    )
-    embedder_id = Column(
-        Integer,
-        ForeignKey("tables_embeddingconfig.id"),
-        nullable=True,
-    )
+    base_rag_type_id = Column(Integer, ForeignKey("tables_baseragtype.rag_type_id"), nullable=False)
+    embedder_id = Column(Integer, ForeignKey("tables_embeddingconfig.id"), nullable=True)
 
     base_rag_type = relationship("BaseRagType")
     embedder = relationship("EmbeddingConfig")
@@ -69,16 +60,8 @@ class NaiveRagDocumentConfig(BaseModel):
         "processed_at", DateTime, nullable=True
     )  # need to change this name in django models
 
-    naive_rag_id = Column(
-        Integer,
-        ForeignKey("tables_naiverag.naive_rag_id"),
-        nullable=False,
-    )
-    document_id = Column(
-        Integer,
-        ForeignKey("tables_documentmetadata.document_id"),
-        nullable=False,
-    )
+    naive_rag_id = Column(Integer, ForeignKey("tables_naiverag.naive_rag_id"), nullable=False)
+    document_id = Column(Integer, ForeignKey("tables_documentmetadata.document_id"), nullable=False)
     error_message = Column(Text, nullable=True)
     error_code = Column(String(32), nullable=False, default=DocumentErrorCode.NONE)
     failed_at = Column(DateTime, nullable=True)
@@ -87,14 +70,8 @@ class NaiveRagDocumentConfig(BaseModel):
     indexed_chunk_overlap = Column(Integer, nullable=True)
     indexed_additional_params = Column(JSON, nullable=True)
 
-    naive_rag = relationship(
-        "NaiveRag",
-        back_populates="naive_rag_configs",
-    )
-    document = relationship(
-        "DocumentMetadata",
-        back_populates="naive_rag_document_configs",
-    )
+    naive_rag = relationship("NaiveRag", back_populates="naive_rag_configs")
+    document = relationship("DocumentMetadata", back_populates="naive_rag_document_configs")
     chunks = relationship(
         "NaiveRagChunk",
         back_populates="naive_rag_document_config",
@@ -113,20 +90,9 @@ class NaiveRagDocumentConfig(BaseModel):
 
     __tablename__ = "tables_naiveragdocumentconfig"
     __table_args__ = (
-        Index(
-            "ix_naiveragdocconfig_naive_rag_status",
-            "naive_rag_id",
-            "status",
-        ),
-        Index(
-            "ix_naiveragdocconfig_document",
-            "document_id",
-        ),
-        UniqueConstraint(
-            "naive_rag_id",
-            "document_id",
-            name="unique_document_per_naive_rag",
-        ),
+        Index("ix_naiveragdocconfig_naive_rag_status", "naive_rag_id", "status"),
+        Index("ix_naiveragdocconfig_document", "document_id"),
+        UniqueConstraint("naive_rag_id", "document_id", name="unique_document_per_naive_rag"),
     )
 
     def __str__(self):
@@ -152,10 +118,7 @@ class NaiveRagChunk(BaseModel):
         nullable=False,
     )
 
-    naive_rag_document_config = relationship(
-        "NaiveRagDocumentConfig",
-        back_populates="chunks",
-    )
+    naive_rag_document_config = relationship("NaiveRagDocumentConfig", back_populates="chunks")
     embedding = relationship(
         "NaiveRagEmbedding",
         back_populates="chunk",
@@ -165,11 +128,7 @@ class NaiveRagChunk(BaseModel):
 
     __tablename__ = "tables_naiveragchunk"
     __table_args__ = (
-        Index(
-            "ix_naiveragchunk_config_index",
-            "naive_rag_document_config_id",
-            "chunk_index",
-        ),
+        Index("ix_naiveragchunk_config_index", "naive_rag_document_config_id", "chunk_index"),
         UniqueConstraint(
             "naive_rag_document_config_id",
             "chunk_index",
@@ -200,22 +159,11 @@ class NaiveRagEmbedding(BaseModel):
         unique=True,  # OneToOne
     )
 
-    naive_rag_document_config = relationship(
-        "NaiveRagDocumentConfig",
-        back_populates="embeddings",
-    )
-    chunk = relationship(
-        "NaiveRagChunk",
-        back_populates="embedding",
-    )
+    naive_rag_document_config = relationship("NaiveRagDocumentConfig", back_populates="embeddings")
+    chunk = relationship("NaiveRagChunk", back_populates="embedding")
 
     __tablename__ = "tables_naiveragembedding"
-    __table_args__ = (
-        Index(
-            "ix_naiveragembedding_config",
-            "naive_rag_document_config_id",
-        ),
-    )
+    __table_args__ = (Index("ix_naiveragembedding_config", "naive_rag_document_config_id"),)
 
     def __str__(self):
         return f"NaiveRagEmbedding {self.embedding_id}"
@@ -254,6 +202,4 @@ class NaiveRagPreviewChunk(BaseModel):
     )
 
     def __str__(self):
-        return (
-            f"NaiveRagPreviewChunk {self.preview_chunk_id} (index: {self.chunk_index})"
-        )
+        return f"NaiveRagPreviewChunk {self.preview_chunk_id} (index: {self.chunk_index})"

@@ -6,8 +6,8 @@ from .markdown_chunker import MarkdownChunker
 from .token_chunker import TokenChunker
 
 __all__ = [
-    "CharacterChunker",
     "CSVChunker",
+    "CharacterChunker",
     "HTMLChunker",
     "JSONChunker",
     "MarkdownChunker",

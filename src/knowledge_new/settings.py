@@ -47,13 +47,10 @@ class MainSettings(BaseSettings):
 
     INDEX_REQUEST_CHANNEL: str = "knowledge:indexing"
 
-    model_config = SettingsConfigDict(
-        env_file=BASE_DIR / "../.env",
-        env_prefix="KNOWLEDGE_",
-    )
+    model_config = SettingsConfigDict(env_file=BASE_DIR / "../.env", env_prefix="KNOWLEDGE_")
 
     @computed_field
-    def POSTGRES_DNS(self) -> str:
+    def POSTGRES_DNS(self) -> str:  # noqa: N802
         return _build_dns(
             "postgresql+psycopg",
             self.POSTGRES_HOST,
@@ -64,7 +61,7 @@ class MainSettings(BaseSettings):
         )
 
     @computed_field
-    def BROKER_DNS(self) -> str:
+    def BROKER_DNS(self) -> str:  # noqa: N802
         return _build_dns(
             self.BROKER_BACKEND,
             self.BROKER_HOST,
@@ -75,7 +72,7 @@ class MainSettings(BaseSettings):
         )
 
     @computed_field
-    def STORAGE_DNS(self) -> str:
+    def STORAGE_DNS(self) -> str:  # noqa: N802
         return _build_dns(
             self.STORAGE_BACKEND,
             self.STORAGE_HOST,

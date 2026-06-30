@@ -1,7 +1,6 @@
-from loguru import logger
-
 from database.unit_of_work import SQLAlchemyUnitOfWork
 from handlers.base import AbstractCancellableHandler
+from loguru import logger
 from models import SearchRequest, SearchResponse
 from orchestrators.searching import build_search
 from settings import settings

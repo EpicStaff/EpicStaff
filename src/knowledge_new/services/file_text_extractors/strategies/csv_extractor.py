@@ -12,6 +12,8 @@ class CSVTextExtractor(AbstractFileTextExtractor):
         csv_file = StringIO(text_content)
         reader = csv.reader(csv_file)
         extracted_rows = [
-            ",".join(r) for r in reader if r and len(r[0].replace(",", "")) != 0
-        ]
+            ",".join(r)
+            for r in reader
+            if r and len(r[0].replace(",", "")) != 0
+        ]  # fmt: skip
         return "\n".join(extracted_rows)

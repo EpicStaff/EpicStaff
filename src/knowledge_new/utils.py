@@ -1,19 +1,19 @@
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 __all__ = [
-    "utcnow",
-    "hash_dict",
     "ERROR_MESSAGE_MAX_LENGTH",
     "format_error_message",
+    "hash_dict",
+    "utcnow",
 ]
 
 ERROR_MESSAGE_MAX_LENGTH = 2000
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def hash_dict(dictionary: dict) -> str:

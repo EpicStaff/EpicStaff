@@ -1,11 +1,9 @@
-from openai import AsyncOpenAI
-
 from models import EmbeddingConfig
+from openai import AsyncOpenAI
 from services.embedders.base import AbstractEmbedder
 
 
 class OpenAIEmbedder(AbstractEmbedder):
-
     def __init__(self, config: EmbeddingConfig):
         super().__init__(config)
         self.api_key = self.config.api_key
@@ -14,10 +12,7 @@ class OpenAIEmbedder(AbstractEmbedder):
 
     async def _embed(self, text: str) -> list[float]:
         text = text.replace("\n", " ")
-        response = await self.client.embeddings.create(
-            input=[text],
-            model=self.model,
-        )
+        response = await self.client.embeddings.create(input=[text], model=self.model)
         result = response.data
         if result:
             return result[0].embedding

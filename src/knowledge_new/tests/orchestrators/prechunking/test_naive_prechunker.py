@@ -1,16 +1,9 @@
 import asyncio
 
 import pytest
-
-from enums import ChunkStrategyEnum, DocumentStatusEnum, RAGStrategy, DocumentErrorCode
-from errors import FileTextExtractingError, ChunkingError, NoPreviewChunksProducedError
-from models import (
-    ChunkingConfig,
-    Document,
-    PrechunkRequest,
-    PrechunkResponse,
-    PreviewChunk,
-)
+from enums import ChunkStrategyEnum, DocumentErrorCode, DocumentStatusEnum, RAGStrategy
+from errors import ChunkingError, FileTextExtractingError, NoPreviewChunksProducedError
+from models import ChunkingConfig, Document, PrechunkRequest, PrechunkResponse, PreviewChunk
 from orchestrators.prechunking.strategies.naive_prechunker import NaivePrechunker
 
 
@@ -52,7 +45,7 @@ class FakeUoW:
         document: Document,
         *,
         get_document_raises: BaseException | None = None,
-        commit_errors: list[BaseException | None] | None = None,
+        commit_errors: list[BaseException] | None = None,
     ):
         self.naive_rag_repo = FakeNaiveRagRepo(document, get_document_raises=get_document_raises)
         self._commit_errors: list[BaseException | None] = list(commit_errors or [])
@@ -178,14 +171,12 @@ async def test_already_chunked_different_config_rechunks_and_replaces_preview():
             [],
             DocumentStatusEnum.NEW,
         ),
-
         # cancelling in chunking: restore to start status
         (
             {"commit_errors": [asyncio.CancelledError(), None]},
             [DocumentStatusEnum.CHUNKING, DocumentStatusEnum.NEW],
             DocumentStatusEnum.NEW,
         ),
-
         # cancelling in completion: do not restore
         (
             {"commit_errors": [None, asyncio.CancelledError()]},
@@ -286,7 +277,4 @@ async def test_error_marks_document_failed_per_stage(
     assert document.status == DocumentStatusEnum.FAILED
     assert document.error_code == expected_error_code
     assert document.error_message  # populated via classify → format_error_message
-    assert uow.naive_rag_repo.status_log == [
-        DocumentStatusEnum.CHUNKING,
-        DocumentStatusEnum.FAILED,
-    ]
+    assert uow.naive_rag_repo.status_log == [DocumentStatusEnum.CHUNKING, DocumentStatusEnum.FAILED]

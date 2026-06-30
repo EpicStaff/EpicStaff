@@ -1,8 +1,7 @@
 from enums import FileExtensionEnum
 from errors import UnsupportedError
-from services.file_text_extractors.base import AbstractFileTextExtractor
 from services.file_text_extractors import strategies
-
+from services.file_text_extractors.base import AbstractFileTextExtractor
 
 _STRATEGIES: dict[FileExtensionEnum, type[AbstractFileTextExtractor]] = {
     FileExtensionEnum.CSV: strategies.CSVTextExtractor,
@@ -15,9 +14,7 @@ _STRATEGIES: dict[FileExtensionEnum, type[AbstractFileTextExtractor]] = {
 }
 
 
-def build_file_text_extractor(
-    extension: FileExtensionEnum,
-) -> AbstractFileTextExtractor:
+def build_file_text_extractor(extension: FileExtensionEnum) -> AbstractFileTextExtractor:
     """Create the text extractor registered for `extension`.
 
     Args:

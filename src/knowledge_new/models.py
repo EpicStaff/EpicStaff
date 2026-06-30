@@ -1,49 +1,37 @@
 from datetime import datetime
 from pathlib import Path
-from typing import (
-    Any,
-    Optional,
-    Literal,
-    Annotated,
-    Union,
-)
-
-from pydantic import (
-    BaseModel,
-    Field,
-    computed_field,
-    ConfigDict,
-)
+from typing import Annotated, Any, Literal
 
 from enums import (
     ChunkStrategyEnum,
-    DocumentStatusEnum,
     DocumentErrorCode,
+    DocumentStatusEnum,
     EmbedderProviderEnum,
-    RAGStrategy,
     GraphSearchMethodEnum,
+    RAGStrategy,
 )
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 from utils import utcnow
 
 __all__ = [
-    "ValueObject",
-    "Entity",
+    "BaseSearchConfig",
+    "CancelRequest",
     "ChunkingConfig",
-    "PreviewChunk",
-    "IndexedChunk",
-    "FoundChunk",
     "Document",
     "EmbeddingConfig",
-    "BaseSearchConfig",
-    "NaiveSearchConfig",
+    "Entity",
+    "FoundChunk",
     "GraphSearchConfig",
-    "SearchConfig",
+    "IndexRequest",
+    "IndexedChunk",
+    "NaiveSearchConfig",
     "PrechunkRequest",
     "PrechunkResponse",
-    "IndexRequest",
+    "PreviewChunk",
+    "SearchConfig",
     "SearchRequest",
     "SearchResponse",
-    "CancelRequest",
+    "ValueObject",
 ]
 
 
@@ -74,9 +62,9 @@ class PreviewChunk(ValueObject):
     """A chunk of text produced before embedding."""
 
     text: str
-    token_count: Optional[int] = None
-    overlap_start: Optional[int] = None
-    overlap_end: Optional[int] = None
+    token_count: int | None = None
+    overlap_start: int | None = None
+    overlap_end: int | None = None
 
 
 class IndexedChunk(PreviewChunk):
@@ -105,19 +93,16 @@ class Document(Entity):
     preview_chunks: list[PreviewChunk] = Field(default_factory=list)
     indexed_chunks: list[IndexedChunk] = Field(default_factory=list)
     error_code: DocumentErrorCode = DocumentErrorCode.NONE
-    error_message: Optional[str] = None
-    failed_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    error_message: str | None = None
+    failed_at: datetime | None = None
+    completed_at: datetime | None = None
 
     @computed_field
     def extension(self) -> str:
         return Path(self.name).suffix
 
     def is_required_reindex(self) -> bool:
-        return (
-            self.last_indexing_config is not None
-            and self.config != self.last_indexing_config
-        )
+        return self.last_indexing_config is not None and self.config != self.last_indexing_config
 
     def mark_completed(self) -> None:
         self.status = DocumentStatusEnum.COMPLETED
@@ -174,10 +159,7 @@ class GraphSearchConfig(BaseSearchConfig):
     max_context_tokens: int = 12_000
 
 
-SearchConfig = Annotated[
-    Union[GraphSearchConfig, NaiveSearchConfig],
-    Field(discriminator="rag_strategy"),
-]
+SearchConfig = Annotated[GraphSearchConfig | NaiveSearchConfig, Field(discriminator="rag_strategy")]
 
 
 class PrechunkRequest(ValueObject):

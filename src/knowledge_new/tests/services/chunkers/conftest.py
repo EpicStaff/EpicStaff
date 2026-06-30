@@ -1,5 +1,3 @@
-import pytest
-
 from enums import ChunkStrategyEnum
 from models import ChunkingConfig
 

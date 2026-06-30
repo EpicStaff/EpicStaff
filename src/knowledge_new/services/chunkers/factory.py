@@ -1,9 +1,8 @@
 from enums import ChunkStrategyEnum
 from errors import UnsupportedError
 from models import ChunkingConfig
-from services.chunkers.base import AbstractChunker
 from services.chunkers import strategies
-
+from services.chunkers.base import AbstractChunker
 
 _STRATEGIES: dict[ChunkStrategyEnum, type[AbstractChunker]] = {
     ChunkStrategyEnum.CHARACTER: strategies.CharacterChunker,
@@ -15,10 +14,7 @@ _STRATEGIES: dict[ChunkStrategyEnum, type[AbstractChunker]] = {
 }
 
 
-def build_chunker(
-    strategy: ChunkStrategyEnum,
-    config: ChunkingConfig,
-) -> AbstractChunker:
+def build_chunker(strategy: ChunkStrategyEnum, config: ChunkingConfig) -> AbstractChunker:
     """Create the chunker registered for `strategy`.
 
     Args:

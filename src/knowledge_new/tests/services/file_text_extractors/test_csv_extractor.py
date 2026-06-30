@@ -1,10 +1,8 @@
 import os
 
 import pytest
-
 from errors import FileTextExtractingError
 from services.file_text_extractors.strategies.csv_extractor import CSVTextExtractor
-
 from tests.conftest import offload_to_process
 
 

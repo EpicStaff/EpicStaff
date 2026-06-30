@@ -1,18 +1,12 @@
 import asyncio
-
 from concurrent.futures.process import ProcessPoolExecutor
 
 from handlers import IndexHandler, PrechunkHandler, SearchHandler
 from handlers.cancel_handler import CancelHandler
-from settings import settings
 from services.processing_run import set_process_pool
-from src.shared.communication import (
-    Consumer,
-    Producer,
-    Message,
-    brokers,
-    storages,
-)
+from settings import settings
+from src.shared.communication import Consumer, Producer, brokers, storages
+
 
 async def main():
     process_pool = ProcessPoolExecutor(settings.MAX_PROCESS_WORKERS)
@@ -23,17 +17,9 @@ async def main():
     producer = Producer(broker, storage)
     consumer = Consumer(broker, storage)
 
-    handlers = [
-        PrechunkHandler,
-        IndexHandler,
-        SearchHandler,
-        CancelHandler,
-    ]
+    handlers = [PrechunkHandler, IndexHandler, SearchHandler, CancelHandler]
 
-    handler_tasks = [
-        asyncio.create_task(h(producer, consumer).run())
-        for h in handlers
-    ]
+    handler_tasks = [asyncio.create_task(h(producer, consumer).run()) for h in handlers]
 
     await asyncio.gather(*handler_tasks)
 

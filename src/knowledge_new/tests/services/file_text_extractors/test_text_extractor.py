@@ -1,19 +1,26 @@
 import os
 
 import pytest
-
 from errors import FileTextExtractingError
 from services.file_text_extractors.strategies.text_extractor import FileTextExtractor
-
 from tests.conftest import offload_to_process
 
 
 @pytest.mark.parametrize(
     "content,expected",
     [
-        ("héllo".encode("utf-8"), "héllo"),
-        (b"caf\xe9", "café"),
-        (b"", ""),
+        (
+            "héllo".encode(),
+            "héllo",
+        ),
+        (
+            b"caf\xe9",
+            "café",
+        ),
+        (
+            b"",
+            "",
+        ),
     ],
 )
 async def test_decodes_content(content, expected):
@@ -27,7 +34,7 @@ async def test_non_bytes_raises():
 
 async def test_extract_runs_in_process():
     extractor = FileTextExtractor()
-    content = "héllo".encode("utf-8")
+    content = "héllo".encode()
     inline = await extractor.extract(content)
     result, worker_pid = await offload_to_process(lambda: extractor.extract(content))
     assert result == inline

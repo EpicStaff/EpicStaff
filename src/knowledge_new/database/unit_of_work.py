@@ -1,16 +1,12 @@
 import abc
 from contextlib import AbstractAsyncContextManager
 
-from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
-
 from database.config import SessionLocal
 from database.repositories.base import AbstractNaiveRagRepository
 from database.repositories.naive import NaiveRagSQLAlchemyRepository
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-__all__ = [
-    "AbstractUnitOfWork",
-    "SQLAlchemyUnitOfWork",
-]
+__all__ = ["AbstractUnitOfWork", "SQLAlchemyUnitOfWork"]
 
 
 class AbstractUnitOfWork(AbstractAsyncContextManager, abc.ABC):

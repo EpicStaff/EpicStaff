@@ -2,10 +2,9 @@ import abc
 import asyncio
 from typing import Any
 
-from loguru import logger
-
 from database.unit_of_work import AbstractUnitOfWork
 from errors import RepositoryError
+from loguru import logger
 
 
 class AbstractOrchestrator[TRequest, TResponse](abc.ABC):
@@ -17,13 +16,13 @@ class AbstractOrchestrator[TRequest, TResponse](abc.ABC):
         try:
             return await self.on_execute(request)
         except asyncio.CancelledError:
-            logger.info('{} is cancelled for request {}.', type(self).__name__, request)
+            logger.info("{} is cancelled for request {}.", type(self).__name__, request)
             await asyncio.shield(self.on_cancel(request))
         except RepositoryError as e:
-            logger.error('{} failed during using db: {}', type(self).__name__, e)
+            logger.error("{} failed during using db: {}", type(self).__name__, e)
             raise
         except Exception as e:
-            logger.error('{} failed during executing: {}', type(self).__name__, e)
+            logger.error("{} failed during executing: {}", type(self).__name__, e)
             await asyncio.shield(self.on_error(request, e))
             raise
 

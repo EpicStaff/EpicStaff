@@ -2,9 +2,9 @@
 
 from enums import DocumentErrorCode
 from errors import (
-    FileTextExtractingError,
     ChunkingError,
     EmbeddingError,
+    FileTextExtractingError,
     NoPreviewChunksProducedError,
 )
 from utils import format_error_message

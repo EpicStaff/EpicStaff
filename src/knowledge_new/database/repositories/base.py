@@ -1,12 +1,11 @@
 import abc
 import functools
 import inspect
-from typing import Callable, Any, Awaitable
-
-from sqlalchemy.ext.asyncio import AsyncSession
+from collections.abc import Awaitable, Callable
 
 from errors import RepositoryError
-from models import EmbeddingConfig, Document, PreviewChunk, IndexedChunk, FoundChunk
+from models import Document, EmbeddingConfig, FoundChunk, IndexedChunk, PreviewChunk
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class RepositoryErrorWrapper:
@@ -14,11 +13,7 @@ class RepositoryErrorWrapper:
         super().__init_subclass__(**kwargs)
         for name, obj in vars(cls).items():
             if inspect.iscoroutinefunction(obj) and not name.startswith("_"):
-                setattr(
-                    cls,
-                    name,
-                    cls.__wrap_error_to_repository_error(obj),
-                )
+                setattr(cls, name, cls.__wrap_error_to_repository_error(obj))
 
     @staticmethod
     def __wrap_error_to_repository_error(func: Callable[..., Awaitable]):

@@ -1,11 +1,9 @@
 from mistralai.client import Mistral
-
 from models import EmbeddingConfig
 from services.embedders.base import AbstractEmbedder
 
 
 class MistralEmbedder(AbstractEmbedder):
-
     def __init__(self, config: EmbeddingConfig):
         super().__init__(config)
         self.api_key = self.config.api_key
@@ -14,10 +12,7 @@ class MistralEmbedder(AbstractEmbedder):
 
     async def _embed(self, text: str) -> list[float]:
         text = text.replace("\n", " ")
-        response = await self.client.embeddings.create_async(
-            inputs=[text],
-            model=self.model,
-        )
+        response = await self.client.embeddings.create_async(inputs=[text], model=self.model)
         result = response.data
         if result and result[0].embedding:
             return result[0].embedding

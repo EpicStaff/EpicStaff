@@ -1,7 +1,6 @@
-from together import AsyncTogether
-
 from models import EmbeddingConfig
 from services.embedders.base import AbstractEmbedder
+from together import AsyncTogether
 
 
 class TogetherAIEmbedder(AbstractEmbedder):
@@ -13,10 +12,7 @@ class TogetherAIEmbedder(AbstractEmbedder):
 
     async def _embed(self, text: str) -> list[float]:
         text = text.replace("\n", " ")
-        response = await self.client.embeddings.create(
-            input=[text],
-            model=self.model,
-        )
+        response = await self.client.embeddings.create(input=[text], model=self.model)
         result = response.data
         if result:
             return result[0].embedding

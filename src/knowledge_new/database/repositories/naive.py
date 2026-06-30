@@ -1,29 +1,18 @@
-from sqlalchemy import select, delete, update
-from sqlalchemy.orm import joinedload, selectinload
-
 from database.models import (
-    NaiveRagEmbedding,
-    NaiveRagChunk,
-    NaiveRagDocumentConfig,
     DocumentMetadata,
-    Provider,
-    EmbeddingConfig as ORMEmbeddingConfig,
     EmbeddingModel,
     NaiveRag,
+    NaiveRagChunk,
+    NaiveRagDocumentConfig,
+    NaiveRagEmbedding,
     NaiveRagPreviewChunk,
+    Provider,
 )
-from database.repositories.base import (
-    AbstractNaiveRagRepository,
-    BaseSQLAlchemyRepository,
-)
-from models import (
-    EmbeddingConfig,
-    Document,
-    FoundChunk,
-    PreviewChunk,
-    IndexedChunk,
-    ChunkingConfig,
-)
+from database.models import EmbeddingConfig as ORMEmbeddingConfig
+from database.repositories.base import AbstractNaiveRagRepository, BaseSQLAlchemyRepository
+from models import ChunkingConfig, Document, EmbeddingConfig, FoundChunk, IndexedChunk, PreviewChunk
+from sqlalchemy import delete, select, update
+from sqlalchemy.orm import joinedload, selectinload
 
 
 class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRepository):
@@ -37,9 +26,7 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
             .where(NaiveRag.naive_rag_id == rag_id)
         )
         if row := result.one_or_none():
-            return EmbeddingConfig(
-                provider=row[0].lower(), api_key=row[1], model=row[2], extra={}
-            )
+            return EmbeddingConfig(provider=row[0].lower(), api_key=row[1], model=row[2], extra={})
         return None
 
     async def get_document(self, rag_id: int, document_id: int) -> Document | None:
@@ -76,9 +63,7 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
 
     async def update_rag_status(self, rag_id: int, status: str):
         await self._session.execute(
-            update(NaiveRag)
-            .where(NaiveRag.naive_rag_id == rag_id)
-            .values(rag_status=status)
+            update(NaiveRag).where(NaiveRag.naive_rag_id == rag_id).values(rag_status=status)
         )
 
     async def save_preview_chunks(self, document_id: int, chunks: list[PreviewChunk]):
@@ -109,9 +94,7 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
             )
         )
         await self._session.execute(
-            delete(NaiveRagChunk).where(
-                NaiveRagChunk.naive_rag_document_config_id == document_id
-            )
+            delete(NaiveRagChunk).where(NaiveRagChunk.naive_rag_document_config_id == document_id)
         )
         await self._session.execute(
             delete(NaiveRagPreviewChunk).where(
@@ -128,8 +111,7 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
                 overlap_end_index=chunk.overlap_end,
             )
             orm_chunk.embedding = NaiveRagEmbedding(
-                naive_rag_document_config_id=document_id,
-                vector=chunk.vector,
+                naive_rag_document_config_id=document_id, vector=chunk.vector
             )
             self._session.add(orm_chunk)
         await self._session.flush()
@@ -156,15 +138,9 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
         )
 
     async def search_chunks(
-        self,
-        rag_id: int,
-        vector: list[float],
-        limit: int,
-        similarity_threshold: float,
+        self, rag_id: int, vector: list[float], limit: int, similarity_threshold: float
     ) -> list[FoundChunk]:
-        similarity = (1 - NaiveRagEmbedding.vector.cosine_distance(vector)).label(
-            "similarity"
-        )
+        similarity = (1 - NaiveRagEmbedding.vector.cosine_distance(vector)).label("similarity")
         result = await self._session.execute(
             select(
                 NaiveRagChunk.chunk_index,
@@ -173,18 +149,14 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
                 DocumentMetadata.file_name,
             )
             .select_from(NaiveRagEmbedding)
-            .join(
-                NaiveRagChunk,
-                NaiveRagEmbedding.chunk_id == NaiveRagChunk.chunk_id,
-            )
+            .join(NaiveRagChunk, NaiveRagEmbedding.chunk_id == NaiveRagChunk.chunk_id)
             .join(
                 NaiveRagDocumentConfig,
                 NaiveRagChunk.naive_rag_document_config_id
                 == NaiveRagDocumentConfig.naive_rag_document_id,
             )
             .join(
-                DocumentMetadata,
-                NaiveRagDocumentConfig.document_id == DocumentMetadata.document_id,
+                DocumentMetadata, NaiveRagDocumentConfig.document_id == DocumentMetadata.document_id
             )
             .where(NaiveRagDocumentConfig.naive_rag_id == rag_id)
             .order_by(similarity.desc())

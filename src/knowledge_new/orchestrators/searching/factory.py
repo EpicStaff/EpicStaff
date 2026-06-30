@@ -1,8 +1,8 @@
+from database.unit_of_work import AbstractUnitOfWork
 from enums import RAGStrategy
 from errors import UnsupportedError
-from orchestrators.searching.base import AbstractSearch
 from orchestrators.searching import strategies
-from database.unit_of_work import AbstractUnitOfWork
+from orchestrators.searching.base import AbstractSearch
 
 _STRATEGIES: dict[RAGStrategy, type[AbstractSearch]] = {
     RAGStrategy.NAIVE: strategies.NaiveSearch,

@@ -1,8 +1,8 @@
+from database.unit_of_work import AbstractUnitOfWork
 from enums import RAGStrategy
 from errors import UnsupportedError
 from orchestrators.prechunking import strategies
 from orchestrators.prechunking.base import AbstractPrechunker
-from database.unit_of_work import AbstractUnitOfWork
 
 _STRATEGIES: dict[RAGStrategy, type[AbstractPrechunker]] = {
     RAGStrategy.NAIVE: strategies.NaivePrechunker,

@@ -22,7 +22,7 @@ class CSVChunker(AbstractChunker):
         end = self.rows_in_chunk
         while start < len(raw_rows):
             rows = raw_rows[start:end]
-            text = f'File name: {self.file_name}\n\n{headers}\n{'\n'.join(rows)}'
+            text = f"File name: {self.file_name}\n\n{headers}\n{'\n'.join(rows)}"
             results.append(PreviewChunk(text=text))
             start = end
             end += self.rows_in_chunk

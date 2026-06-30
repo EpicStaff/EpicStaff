@@ -1,9 +1,8 @@
 from typing import Never
 
-from loguru import logger
-
 from database.unit_of_work import SQLAlchemyUnitOfWork
 from handlers.base import AbstractCancellableHandler
+from loguru import logger
 from models import IndexRequest
 from orchestrators.indexing import build_indexer
 from settings import settings

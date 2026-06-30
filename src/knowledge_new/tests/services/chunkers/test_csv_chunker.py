@@ -1,13 +1,11 @@
 import os
 
 import pytest
-
 from enums import ChunkStrategyEnum
 from errors import ChunkingError
 from models import PreviewChunk
 from services.chunkers.strategies.csv_chunker import CSVChunker
 from tests.conftest import offload_to_process
-
 from tests.services.chunkers.conftest import make_config
 
 
@@ -20,10 +18,7 @@ def build_chunker(
         ChunkStrategyEnum.CSV,
         extra={
             "file_name": file_name,
-            "csv": {
-                "headers_level": headers_level,
-                "rows_in_chunk": rows_in_chunk,
-            },
+            "csv": {"headers_level": headers_level, "rows_in_chunk": rows_in_chunk},
         },
     )
     return CSVChunker(config)
@@ -43,9 +38,7 @@ async def test_defaults_single_chunk_with_none_file_name():
     text = "h1,h2\na,b\nc,d\ne,f"
     chunker = build_chunker()
     chunks = await chunker.chunk(text)
-    assert chunks == [
-        PreviewChunk(text="File name: undefined\n\nh1,h2\na,b\nc,d\ne,f"),
-    ]
+    assert chunks == [PreviewChunk(text="File name: undefined\n\nh1,h2\na,b\nc,d\ne,f")]
 
 
 async def test_headers_level_repeats_multiple_header_lines():
@@ -61,12 +54,36 @@ async def test_headers_level_repeats_multiple_header_lines():
 @pytest.mark.parametrize(
     "data_rows,rows_in_chunk,expected_chunks",
     [
-        (0, 2, 0),
-        (1, 2, 1),
-        (2, 2, 1),
-        (3, 2, 2),
-        (4, 2, 2),
-        (5, 2, 3),
+        (
+            0,
+            2,
+            0,
+        ),
+        (
+            1,
+            2,
+            1,
+        ),
+        (
+            2,
+            2,
+            1,
+        ),
+        (
+            3,
+            2,
+            2,
+        ),
+        (
+            4,
+            2,
+            2,
+        ),
+        (
+            5,
+            2,
+            3,
+        ),
     ],
 )
 async def test_number_of_chunks_follows_ceil(data_rows, rows_in_chunk, expected_chunks):
