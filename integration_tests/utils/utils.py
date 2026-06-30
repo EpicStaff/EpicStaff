@@ -285,14 +285,6 @@ def run_session(graph_id: int, variables: dict | None = None) -> int:
     return run_crew_response.json()["session_id"]
 
 
-def create_tool_config(*args, **kwargs) -> int:
-    tool_config_response = requests.post(
-        f"{DJANGO_URL}/tool-configs/", json=kwargs, headers=get_headers()
-    )
-    validate_response(tool_config_response)
-    return tool_config_response.json()["id"]
-
-
 def create_task(*args, **kwargs) -> tuple:
     tasks_response = requests.post(
         f"{DJANGO_URL}/tasks/", json=kwargs, headers=get_headers()

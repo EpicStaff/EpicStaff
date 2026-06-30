@@ -213,7 +213,6 @@ from tables.serializers.model_serializers import (
     NgrokWebhookConfigModelSerializer,
     ProviderSerializer,
     PythonCodeResultSerializer,
-    PythonCodeSerializer,
     PythonCodeToolConfigSerializer,
     PythonCodeToolSerializer,
     PythonNodeSerializer,
@@ -224,8 +223,6 @@ from tables.serializers.model_serializers import (
     SubGraphNodeSerializer,
     TaskReadSerializer,
     TaskWriteSerializer,
-    TemplateAgentSerializer,
-    ToolConfigSerializer,
     VoiceSettingsSerializer,
     WebhookTriggerNodeSerializer,
     WebhookTriggerSerializer,
@@ -302,13 +299,6 @@ class BasePredefinedRestrictedViewSet(ModelViewSet):
             logger.error(e)
             raise PermissionDenied(e)
         instance.delete()
-
-
-class TemplateAgentReadWriteViewSet(ModelViewSet):
-    queryset = TemplateAgent.objects.all()
-    serializer_class = TemplateAgentSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = serializer_class.Meta.fields
 
 
 class LLMConfigReadWriteViewSet(ModelViewSet):
@@ -641,19 +631,6 @@ class TaskReadWriteViewSet(ModelViewSet):
         return Response(read_serializer.data, status=status.HTTP_200_OK)
 
 
-class ToolConfigViewSet(ModelViewSet):
-    queryset = ToolConfig.objects.select_related("tool").prefetch_related(
-        Prefetch(
-            "tool__tool_fields",
-            queryset=ToolConfigField.objects.all(),
-            to_attr="prefetched_config_fields",
-        )
-    )
-    serializer_class = ToolConfigSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["tool", "name"]
-
-
 class ContentHashPreconditionMixin:
     # """Passes content_hash from request data to the model instance before saving.
 
@@ -667,15 +644,6 @@ class ContentHashPreconditionMixin:
         if incoming_hash is not None:
             serializer.instance._expected_hash = incoming_hash
         super().perform_update(serializer)
-
-
-class PythonCodeViewSet(ContentHashPreconditionMixin, viewsets.ModelViewSet):
-    """
-    A viewset for viewing and editing PythonCode instances.
-    """
-
-    queryset = PythonCode.objects.all()
-    serializer_class = PythonCodeSerializer
 
 
 class PythonCodeToolViewSet(CopyActionMixin, viewsets.ModelViewSet):

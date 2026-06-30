@@ -27,7 +27,6 @@ from tables.views.model_view_sets import (
     RealtimeTranscriptionModelViewSet,
     TelegramTriggerNodeFieldViewSet,
     TelegramTriggerNodeViewSet,
-    TemplateAgentReadWriteViewSet,
     LLMConfigReadWriteViewSet,
     ProviderReadWriteViewSet,
     LLMModelReadWriteViewSet,
@@ -36,9 +35,7 @@ from tables.views.model_view_sets import (
     AgentViewSet,
     CrewReadWriteViewSet,
     TaskReadWriteViewSet,
-    ToolConfigViewSet,
     PythonCodeToolViewSet,
-    PythonCodeViewSet,
     PythonCodeResultReadViewSet,
     GraphSessionMessageReadOnlyViewSet,
     MemoryViewSet,
@@ -58,14 +55,12 @@ from tables.views.model_view_sets import (
 
 from tables.views.views import (
     AnswerToLLM,
-    EnvironmentConfig,
     InitRealtimeAPIView,
     RegisterTelegramTriggerApiView,
     ProcessRagIndexingView,
     RegisterWebhooksApiView,
     RunPythonCodeAPIView,
     TelegramTriggerNodeAvailableFieldsView,
-    ToolListRetrieveUpdateGenericViewSet,
     SessionViewSet,
     RunSession,
     GetUpdates,
@@ -73,7 +68,6 @@ from tables.views.views import (
     CrewDeleteAPIView,
     QuickstartView,
     QuickstartApplyView,
-    delete_environment_config,
     PythonNodeLastTestInputView,
 )
 
@@ -130,7 +124,6 @@ from tables.views.user_management_views import (
 )
 
 router = DefaultRouter()
-router.register(r"template-agents", TemplateAgentReadWriteViewSet)
 router.register(r"providers", ProviderReadWriteViewSet)
 router.register(r"llm-models", LLMModelReadWriteViewSet)
 router.register(r"llm-configs", LLMConfigReadWriteViewSet)
@@ -139,9 +132,6 @@ router.register(r"embedding-configs", EmbeddingConfigReadWriteViewSet)
 router.register(r"agents", AgentViewSet)
 router.register(r"crews", CrewReadWriteViewSet)
 router.register(r"tasks", TaskReadWriteViewSet)
-router.register(r"tools", ToolListRetrieveUpdateGenericViewSet)
-router.register(r"tool-configs", ToolConfigViewSet)
-router.register(r"python-code", PythonCodeViewSet)
 router.register(r"python-code-tool", PythonCodeToolViewSet)
 router.register(r"python-code-result", PythonCodeResultReadViewSet)
 router.register(
@@ -246,16 +236,6 @@ urlpatterns = [
     ),
     path("sessions/<int:session_id>/stop/", StopSession.as_view(), name="stop-session"),
     path("crews/<int:id>/delete/", CrewDeleteAPIView.as_view(), name="delete-crew"),
-    path(
-        "environment/config/",
-        EnvironmentConfig.as_view(),
-        name="environment_config",
-    ),
-    path(
-        "environment/config/<str:key>/",
-        delete_environment_config,
-        name="delete_environment_config",
-    ),
     path(
         "run-python-code/",
         RunPythonCodeAPIView.as_view(),

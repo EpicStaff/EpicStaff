@@ -4,9 +4,6 @@ from collections import defaultdict
 from drf_yasg.utils import swagger_auto_schema
 import uuid
 import base64
-from tables.serializers.model_serializers.crew_serializers import (
-    ToolSerializer,
-)
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.models.graph_models import (
     TelegramTriggerNode,
@@ -45,7 +42,6 @@ from rest_framework import status
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework import filters
 
-from tables.services.config_service import YamlConfigService
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.converter_service import ConverterService
 from tables.services.redis_service import RedisService
@@ -76,7 +72,6 @@ from tables.serializers.storage_serializers import SessionOutputFileSerializer
 from tables.serializers.serializers import (
     AnswerToLLMSerializer,
     BulkExportSerializer,
-    EnvironmentConfigSerializer,
     InitRealtimeSerializer,
     ProcessRagIndexingSerializer,
     RunSessionSerializer,
@@ -102,9 +97,6 @@ from tables.import_export.tabular.session import SessionTabularProjection
 
 from tables.swagger_schemas.crews_schema import CREW_DELETE
 from tables.swagger_schemas.default_config_schemas import (
-    ENVIRONMENT_CONFIG_GET,
-    ENVIRONMENT_CONFIG_POST,
-    ENVIRONMENT_CONFIG_DELETE,
     QUICKSTART_GET,
     QUICKSTART_POST,
     QUICKSTART_APPLY_POST,
@@ -141,7 +133,6 @@ redis_service = RedisService()
 # TODO: fix. Do we need init converter_service here? Instance is not used.
 converter_service = ConverterService()
 session_manager_service = SessionManagerService()
-config_service = YamlConfigService()
 run_python_code_service = RunPythonCodeService()
 realtime_service = RealtimeService()
 quickstart_service = QuickstartService()
@@ -574,48 +565,6 @@ class StopSession(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class EnvironmentConfig(APIView):
-    @extend_schema(**ENVIRONMENT_CONFIG_GET)
-    def get(self, request, format=None):
-        config_dict: dict = config_service.get_all()
-        logger.info("Configuration retrieved successfully.")
-
-        return Response(status=status.HTTP_200_OK, data={"data": config_dict})
-
-    @extend_schema(**ENVIRONMENT_CONFIG_POST)
-    def post(self, request, *args, **kwargs):
-        serializer = EnvironmentConfigSerializer(data=request.data)
-        if not serializer.is_valid():
-            logger.error("Invalid configuration data provided.")
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        config_service.set_all(config_dict=serializer.validated_data["data"])
-        logger.info("Configuration updated successfully.")
-
-        updated_config = config_service.get_all()
-
-        return Response(data={"data": updated_config}, status=status.HTTP_201_CREATED)
-
-
-@extend_schema(**ENVIRONMENT_CONFIG_DELETE)
-@api_view(["DELETE"])
-def delete_environment_config(request, *args, **kwargs):
-    key: str | None = kwargs.get("key", None)
-
-    if key is None:
-        logger.error("No key provided in DELETE request.")
-        return Response("No key provided", status=status.HTTP_400_BAD_REQUEST)
-
-    deleted_key = config_service.delete(key=key)
-
-    if not deleted_key:
-        logger.warning(f"Key '{key}' not found.")
-        return Response("Key not found", status=status.HTTP_404_NOT_FOUND)
-
-    logger.info(f"Config key '{key}' deleted successfully.")
-    return Response("Config deleted successfully", status=status.HTTP_204_NO_CONTENT)
-
-
 class AnswerToLLM(APIView):
     @extend_schema(**ANSWER_TO_LLM)
     def post(self, request, *args, **kwargs):
@@ -706,13 +655,6 @@ class CrewDeleteAPIView(APIView):
             return Response(
                 {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-
-class ToolListRetrieveUpdateGenericViewSet(
-    ListModelMixin, RetrieveModelMixin, UpdateModelMixin, GenericViewSet
-):
-    queryset = Tool.objects.prefetch_related("tool_fields")
-    serializer_class = ToolSerializer
 
 
 class RunPythonCodeAPIView(APIView):

@@ -20,7 +20,6 @@ class TablesConfig(AppConfig):
         import tables.import_export.version_conversions.convertions
         import tables.signals.schedule_signals
         from tables.services.schedule_trigger_service import ScheduleTriggerService
-        from tables.services.config_service import YamlConfigService
         from tables.services.converter_service import ConverterService
         from tables.services.redis_service import RedisService
         from tables.services.session_manager_service import SessionManagerService
@@ -52,7 +51,6 @@ class TablesConfig(AppConfig):
             redis_service=redis_service,
             converter_service=converter_service,
         )
-        YamlConfigService()
         RunPythonCodeService(redis_service=redis_service)
         RealtimeService(
             redis_service=redis_service, converter_service=converter_service
