@@ -89,15 +89,7 @@ export class FlowService {
     }
 
     private highestNodeNumber(): number {
-        let max = 0;
-        for (const n of this.flowSignal().nodes) {
-            const match = /#\s*(\d+)\s*$/.exec(n.node_name ?? '');
-            if (match) {
-                const num = Number(match[1]);
-                if (num > max) max = num;
-            }
-        }
-        return max;
+        return this.flowSignal().nodes.reduce((max, n) => Math.max(max, n.nodeNumber ?? 0), 0);
     }
 
     public addNode(node: NodeModel) {

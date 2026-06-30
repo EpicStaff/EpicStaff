@@ -45,6 +45,7 @@
         @if (selectedCount() > 0) {
             <button
                 class="action-dropdown-panel__item"
+                matTooltip="Start and End nodes excluded"
                 (click)="onExportSelectedJson()"
             >
                 Export Selected as JSON
@@ -52,6 +53,7 @@
             @if (allSelectedAreCdt()) {
                 <button
                     class="action-dropdown-panel__item"
+                    matTooltip="Start and End nodes excluded"
                     (click)="onExportSelectedCsv()"
                 >
                     Export Selected as CSV
@@ -61,6 +63,7 @@
         }
         <button
             class="action-dropdown-panel__item"
+            matTooltip="Start and End nodes excluded"
             (click)="onExportJson()"
         >
             Export All as JSON

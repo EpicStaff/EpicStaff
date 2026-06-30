@@ -185,8 +185,14 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private _isReselecting = false;
 
     public multiSelectActive = signal<boolean>(false);
-    public selectedNodeCount = signal<number>(0);
     private selectedNodeIds = signal<string[]>([]);
+    public selectedNodeCount = computed(() => {
+        const nodes = this.flowService.nodes();
+        return this.selectedNodeIds().filter((id) => {
+            const t = nodes.find((n) => n.id === id)?.type;
+            return t !== NodeType.START && t !== NodeType.END;
+        }).length;
+    });
     public allSelectedAreCdt = computed(() => {
         const ids = this.selectedNodeIds();
         if (ids.length === 0) return false;
@@ -622,7 +628,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             const newNodeIds = alreadySelected
                 ? current.fNodeIds.filter((id) => id !== node.id)
                 : [...current.fNodeIds, node.id];
-            this.selectedNodeCount.set(newNodeIds.length);
             this.selectedNodeIds.set(newNodeIds);
             this.fFlowComponent.select(newNodeIds, current.fConnectionIds);
             return;
@@ -1171,7 +1176,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.showContextMenu.set(false);
         if (this.multiSelectActive() && !this.isDragging && !(event.target as Element).closest('app-flow-base-node')) {
             this.multiSelectActive.set(false);
-            this.selectedNodeCount.set(0);
             this.selectedNodeIds.set([]);
             this.fFlowComponent.select([], []);
         }
@@ -1180,7 +1184,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public onEscapeKey(): void {
         if (this.multiSelectActive()) {
             this.multiSelectActive.set(false);
-            this.selectedNodeCount.set(0);
             this.selectedNodeIds.set([]);
             this.fFlowComponent.select([], []);
         }
@@ -1190,7 +1193,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const wasActive = this.multiSelectActive();
         this.multiSelectActive.update((v) => !v);
         if (wasActive) {
-            this.selectedNodeCount.set(0);
             this.selectedNodeIds.set([]);
             this.fFlowComponent.select([], []);
         }
@@ -1240,14 +1242,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             if (containedIds.length !== nodeIds.length) {
                 this._isReselecting = true;
                 this.selectedNodeIds.set(containedIds);
-                this.selectedNodeCount.set(containedIds.length);
                 this.fFlowComponent.select(containedIds, []);
                 return;
             }
         }
 
         this.selectedNodeIds.set(nodeIds);
-        this.selectedNodeCount.set(nodeIds.length);
     }
 
     public onExportSelectedAsJson(): void {
@@ -1294,6 +1294,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public onImportNodes(): void {
         if (!this.currentFlowId) return;
+        const hasUnsavedNodes = this.flowService.nodes().some((n) => n.backendId === null);
+        if (hasUnsavedNodes) {
+            this.toastService.warning('Save the flow before importing', 3000, 'bottom-right');
+            return;
+        }
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = '.json';
@@ -1337,7 +1342,20 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const body = this.buildPartialExportBody(nodeIds);
         const filename = nodeIds.length > 0 ? 'selected-nodes.json' : 'all-nodes.json';
         this.importExportService.partialExport(this.currentFlowId, body).subscribe({
-            next: (blob) => this.downloadBlob(blob, filename),
+            next: (blob) => {
+                this.downloadBlob(blob, filename);
+                const count = Object.entries(body)
+                    .filter(([key]) => key !== 'edge_list')
+                    .reduce((sum, [, list]) => sum + (list as number[]).length, 0);
+                const isExportAll = nodeIds.length === 0;
+                const hasStartOrEnd =
+                    !isExportAll &&
+                    this.flowService
+                        .nodes()
+                        .some((n) => nodeIds.includes(n.id) && (n.type === NodeType.START || n.type === NodeType.END));
+                const suffix = isExportAll || hasStartOrEnd ? ' (Start and End nodes excluded)' : '';
+                this.toastService.success(`${count} nodes exported as JSON${suffix}`, 3000, 'bottom-right');
+            },
             error: () => this.toastService.error('Export failed', 3000, 'bottom-right'),
         });
     }
@@ -1539,7 +1557,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         });
 
         if (selections.fNodeIds.length > 0) {
-            this.selectedNodeCount.set(0);
             this.selectedNodeIds.set([]);
             this.fFlowComponent.select([], []);
         }
