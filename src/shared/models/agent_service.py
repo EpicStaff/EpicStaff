@@ -94,7 +94,6 @@ class AgentSpec(BaseModel):
 
     id: int
     name: str
-    role: str
     instructions: str
     llm: LLMData
     fcm_llm: LLMData | None = None

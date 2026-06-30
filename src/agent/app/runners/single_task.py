@@ -50,9 +50,8 @@ class SingleTaskRunner(Runner):
                 agent.id,
             )
             logger.debug(
-                "agent name={} role={} provider={} model={} max_iter={} tools={} rags={} s3={}",
+                "agent name={} provider={} model={} max_iter={} tools={} rags={} s3={}",
                 agent.name,
-                agent.role,
                 agent.llm.provider,
                 agent.llm.config.model,
                 agent.max_iter,

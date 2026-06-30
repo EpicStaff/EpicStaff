@@ -14,12 +14,11 @@ from shared.models.ai_providers import LLMConfigData, LLMData
 
 
 def _agent_spec(
-    role: str = "Senior Researcher", instructions: str = "Research thoroughly."
+    instructions: str = "Research thoroughly.",
 ) -> AgentSpec:
     return AgentSpec(
         id=12,
         name="researcher",
-        role=role,
         instructions=instructions,
         llm=LLMData(provider="openai", config=LLMConfigData(model="gpt-4o")),
     )
@@ -33,7 +32,7 @@ def test_build_no_attachments_no_schema():
     assert len(messages) == 2
     assert messages[0]["role"] == "system"
     assert messages[0]["content"] == (
-        f"Your name is {agent.name}. Your role is {agent.role}.\nThese are instructions you should follow: {agent.instructions}"
+        f"Your name is {agent.name}.\nThese are instructions you should follow: {agent.instructions}"
     )
     assert messages[1]["role"] == "user"
     assert messages[1]["content"] == "Do X"
@@ -71,9 +70,9 @@ def test_build_with_attachments():
 
 def test_system_message_content():
     builder = SingleTaskPromptBuilder()
-    agent = _agent_spec(role="Expert Analyst", instructions="Analyze data carefully.")
+    agent = _agent_spec(instructions="Analyze data carefully.")
     messages = builder.build(agent, instructions="Run analysis.")
 
     assert messages[0]["content"] == (
-        f"Your name is {agent.name}. Your role is {agent.role}.\nThese are instructions you should follow: {agent.instructions}"
+        f"Your name is {agent.name}.\nThese are instructions you should follow: {agent.instructions}"
     )

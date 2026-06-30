@@ -64,6 +64,8 @@ class AgentDefinition(AbstractDefaultFillableModel):
         help_text="Human-readable description of this agent — its purpose, persona, or capabilities. E.g. 'Senior Researcher focused on market analysis'.",
     )
     instructions = models.TextField(
+        blank=True,
+        default="",
         help_text="Free-form prompt for the agent. Put behavior, goals, tone, and constraints here.",
     )
 

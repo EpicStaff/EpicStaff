@@ -140,7 +140,6 @@ def _make_agent_spec(
     return AgentSpec(
         id=1,
         name="test-agent",
-        role="Test assistant",
         instructions="You are a test assistant.",
         llm=_make_llm_data(),
         max_execution_time=max_execution_time,
@@ -199,7 +198,6 @@ def test_build_model_config_no_double_prefix():
     agent = AgentSpec(
         id=1,
         name="a",
-        role="r",
         instructions="i",
         llm=LLMData(provider="openai", config=LLMConfigData(model="openai/gpt-4o")),
     )
@@ -530,7 +528,6 @@ def test_context_starts_with_empty_messages():
     agent = AgentSpec(
         id=1,
         name="researcher",
-        role="Senior Researcher",
         instructions="You research topics thoroughly.",
         llm=_make_llm_data(),
     )

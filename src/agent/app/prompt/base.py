@@ -10,7 +10,7 @@ class PromptBuilder(ABC):
     def _system_prompt(self, agent: AgentSpec) -> str:
         # STABLE / cacheable prefix — persona + base instructions (+ slot for future static additions).
         return (
-            f"Your name is {agent.name}. Your role is {agent.role}.\n"
+            f"Your name is {agent.name}.\n"
             f"These are instructions you should follow: {agent.instructions}"
         )
 

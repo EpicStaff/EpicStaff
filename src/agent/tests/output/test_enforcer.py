@@ -91,7 +91,6 @@ def _make_agent_spec() -> AgentSpec:
     return AgentSpec(
         id=1,
         name="test-agent",
-        role="Test assistant",
         instructions="You are a test assistant.",
         llm=LLMData(provider="openai", config=LLMConfigData(model="gpt-4o")),
     )

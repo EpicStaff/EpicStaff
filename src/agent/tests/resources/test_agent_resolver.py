@@ -74,7 +74,6 @@ def _agent_spec(
     return AgentSpec(
         id=agent_id,
         name="researcher",
-        role="Senior Researcher",
         instructions="You research topics thoroughly.",
         llm=_llm(),
         tool_refs=tool_refs or [],

@@ -204,7 +204,6 @@ def _agent_spec() -> AgentSpec:
     return AgentSpec(
         id=12,
         name="researcher",
-        role="Senior Researcher",
         instructions="You research topics thoroughly.",
         llm=LLMData(provider="openai", config=LLMConfigData(model="gpt-4o")),
         max_iter=5,
@@ -247,7 +246,7 @@ async def test_happy_path_single_agent():
     messages = fake_loop.received_messages[0]
     assert len(messages) == 2
     assert messages[0]["role"] == "system"
-    assert "Senior Researcher" in messages[0]["content"]
+    assert "researcher" in messages[0]["content"]
     assert messages[1]["role"] == "user"
     assert messages[1]["content"] == "Do X"
 
