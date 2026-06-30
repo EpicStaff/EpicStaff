@@ -1,32 +1,35 @@
-# Instalation
+# Installation
 # pip install pre-commit
-#pre-commit install	pre-commit
-#pre-commit install --hook-type commit-msg	commit-msg
-#pre-commit install --hook-type pre-push
+# pre-commit install -t pre-commit
 
-exclude: >
-  (?x)^(
-      src/crew/libraries
-  )$
+exclude: |
+  (?x)(
+    (^|/)migrations/
+    | (^|/)libraries/
+  )
+
 fail_fast: true
+
 repos:
--   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v2.3.0
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
     hooks:
-    -   id: check-yaml
-        exclude: src/crew/libraries
+      - id: check-yaml
 
--   repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.2
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.20
     hooks:
-    -   id: ruff
-        args: ["--fix"]
-        exclude: ^(src/crew/libraries/|src/knowledge/libraries/|src/tool/|.*/tests/|src/shared/tools|integration_tests/|src/crew/utils/)
-    -   id: ruff-format
-        exclude: ^(src/crew/libraries/|src/knowledge/libraries/|src/tool/|src/django_app/tables/migrations)
+      - id: ruff
+        args: [ "--fix", "--config", ".ruff.toml" ]
+        stages: [ pre-commit ]
 
+      - id: ruff-format
+        args: [ "--config", ".ruff.toml" ]
+        stages: [ pre-commit ]
 
-
-
-
-
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v2.1.0
+    hooks:
+      - id: mypy
+        args: [ "--config-file=.mypy.ini" ]
+        stages: [ pre-commit ]
