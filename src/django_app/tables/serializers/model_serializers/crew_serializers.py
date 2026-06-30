@@ -725,3 +725,4 @@ class CrewSerializer(serializers.ModelSerializer):
     class Meta:
         model = Crew
         fields = "__all__"
+        read_only_fields = ["org", "created_by"]

@@ -21,6 +21,7 @@ class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
     class Meta:
         model = EmbeddingModel
         fields = "__all__"
+        read_only_fields = ["org", "created_by"]
 
 
 class EmbeddingConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
@@ -30,6 +31,7 @@ class EmbeddingConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
     class Meta:
         model = EmbeddingConfig
         fields = "__all__"
+        read_only_fields = ["org", "created_by"]
 
 
 class DefaultEmbeddingConfigSerializer(serializers.ModelSerializer):
