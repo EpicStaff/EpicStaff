@@ -90,7 +90,7 @@ def _get_config_path(root_dir: Path, config_filepath: Path | None) -> Path:
         The root directory of the project. Will search for the config file in this directory.
     config_filepath : str | None
         The path to the config file.
-        If None, searches for config file in root.
+        If None, searching for config file in root.
 
     Returns
     -------
@@ -156,7 +156,7 @@ def load_config(
         The root directory of the project. Will search for the config file in this directory.
     config_filepath : str | None
         The path to the config file.
-        If None, searches for config file in root.
+        If None, searching for config file in root.
     cli_overrides : dict[str, Any] | None
         A flat dictionary of cli overrides.
         Example: {'output.base_dir': 'override_value'}

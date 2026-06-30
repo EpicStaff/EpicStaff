@@ -64,7 +64,9 @@ class PythonCodeToolConfigValidator:
     def _cast_var(self, value, var: dict):
         var_type = var.get("type", "string")
         if var_type in ("object", "obj"):
-            return self._cast_object(value, var.get("properties", {}), var.get("required_properties", []))
+            return self._cast_object(
+                value, var.get("properties", {}), var.get("required_properties", [])
+            )
         if var_type in ("array", "list"):
             return self._cast_array(value, var.get("items", {}))
         return self._cast_primitive(value, var_type)
@@ -82,7 +84,9 @@ class PythonCodeToolConfigValidator:
                     f"Field '{prop_name}' is required"
                 )
             if prop_value is not None:
-                prop_value = self._cast_var(prop_value, {"name": prop_name, **prop_schema})
+                prop_value = self._cast_var(
+                    prop_value, {"name": prop_name, **prop_schema}
+                )
             result[prop_name] = prop_value
         return result
 
@@ -91,7 +95,9 @@ class PythonCodeToolConfigValidator:
             raise PythonCodeToolConfigSerializerError(
                 f"Expected an array, got '{type(value).__name__}'"
             )
-        return [self._cast_var(item, {"name": "item", **items_schema}) for item in value]
+        return [
+            self._cast_var(item, {"name": "item", **items_schema}) for item in value
+        ]
 
     def _cast_primitive(self, value, var_type: str):
         cast_fn = _PRIMITIVE_TYPE_CAST.get(var_type, lambda v: v)

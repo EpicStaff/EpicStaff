@@ -132,66 +132,92 @@ class KnowledgeSearchService:
 
         execution_uuid = f"{sender}-{str(uuid4())}"
 
-        # Setup response receiver
-        knowledge_callback_receiver = KnowledgeSearchReceiver(
-            execution_uuid=execution_uuid
+        from src.shared.communication import Message, Producer, Consumer, brokers, storages
+
+        message = Message(
+            payload={
+                'rag_id': rag_id,
+                'query': query,
+                'search_config': {
+                    'rag_strategy': rag_type,
+                    **vars(search_config),
+                },
+            }
         )
-        subscriber = SyncPubsubSubscriber(knowledge_callback_receiver.callback)
-        self.redis_service.subscribe(
-            channels=knowledge_search_response_channel,
-            subscriber=subscriber,
+        broker = brokers.RedisPubSubBroker(url='redis://:redis_password@redis:6379/2')
+        storage = storages.RedisStorage(url='redis://:redis_password@redis:6379/3')
+        producer = Producer(
+            broker=broker,
+            storage=storage,
         )
-
-        # Create and send message
-        execution_message = BaseKnowledgeSearchMessage(
-            collection_id=knowledge_collection_id,
-            rag_id=rag_id,
-            rag_type=rag_type,
-            uuid=execution_uuid,
-            query=query,
-            rag_search_config=search_config,
+        producer.send('knowledge:search:get', message)
+        consumer = Consumer(
+            broker=broker,
+            storage=storage,
         )
+        message = next(m for m in consumer.receive('knowledge:search:response'))
+        return [ch['text'] for ch in message.payload['chunks']]
 
-        self.redis_service.publish(
-            channel=knowledge_search_get_channel,
-            message=execution_message.model_dump(),
-        )
-
-        # Wait for response
-        start_time = time.monotonic()
-        while time.monotonic() - start_time < timeout:
-            if knowledge_callback_receiver.results is not None:
-                elapsed = round((time.monotonic() - start_time), 2)
-                logger.info(
-                    f"Knowledge search completed for {rag_type_id} in {elapsed}s. "
-                    f"Sender: {sender}"
-                )
-                self.redis_service.unsubscribe(
-                    channel=knowledge_search_response_channel,
-                    subscriber=subscriber,
-                )
-
-                if self.writer is not None:
-                    self._add_knowledges_to_graph_message(
-                        knowledge_results=knowledge_callback_receiver.results,
-                        token_usage=knowledge_callback_receiver.token_usage,
-                    )
-                return knowledge_callback_receiver.results.results
-
-            if stop_event is not None:
-                stop_event.check_stop()
-
-            time.sleep(0.1)
-
-        # Cleanup
-        self.redis_service.unsubscribe(
-            channel=knowledge_search_response_channel,
-            subscriber=subscriber,
-        )
-        logger.error(f"Search failed: No response received within {timeout}s")
-        raise TimeoutError(
-            f"Knowledge search timeout for {rag_type_id} after {timeout}s"
-        )
+        # # Setup response receiver
+        # knowledge_callback_receiver = KnowledgeSearchReceiver(
+        #     execution_uuid=execution_uuid
+        # )
+        # subscriber = SyncPubsubSubscriber(knowledge_callback_receiver.callback)
+        # self.redis_service.subscribe(
+        #     channels=knowledge_search_response_channel,
+        #     subscriber=subscriber,
+        # )
+        #
+        # # Create and send message
+        # execution_message = BaseKnowledgeSearchMessage(
+        #     collection_id=knowledge_collection_id,
+        #     rag_id=rag_id,
+        #     rag_type=rag_type,
+        #     uuid=execution_uuid,
+        #     query=query,
+        #     rag_search_config=search_config,
+        # )
+        #
+        # self.redis_service.publish(
+        #     channel=knowledge_search_get_channel,
+        #     message=execution_message.model_dump(),
+        # )
+        #
+        # # Wait for response
+        # start_time = time.monotonic()
+        # while time.monotonic() - start_time < timeout:
+        #     if knowledge_callback_receiver.results is not None:
+        #         elapsed = round((time.monotonic() - start_time), 2)
+        #         logger.info(
+        #             f"Knowledge search completed for {rag_type_id} in {elapsed}s. "
+        #             f"Sender: {sender}"
+        #         )
+        #         self.redis_service.unsubscribe(
+        #             channel=knowledge_search_response_channel,
+        #             subscriber=subscriber,
+        #         )
+        #
+        #         if self.writer is not None:
+        #             self._add_knowledges_to_graph_message(
+        #                 knowledge_results=knowledge_callback_receiver.results,
+        #                 token_usage=knowledge_callback_receiver.token_usage,
+        #             )
+        #         return knowledge_callback_receiver.results.results
+        #
+        #     if stop_event is not None:
+        #         stop_event.check_stop()
+        #
+        #     time.sleep(0.1)
+        #
+        # # Cleanup
+        # self.redis_service.unsubscribe(
+        #     channel=knowledge_search_response_channel,
+        #     subscriber=subscriber,
+        # )
+        # logger.error(f"Search failed: No response received within {timeout}s")
+        # raise TimeoutError(
+        #     f"Knowledge search timeout for {rag_type_id} after {timeout}s"
+        # )
 
     @staticmethod
     def _parse_rag_type_id(rag_type_id: str) -> tuple[str, int]:

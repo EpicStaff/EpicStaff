@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 import uuid
 
 from rest_framework import viewsets, status, mixins
@@ -564,12 +565,27 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
 
         try:
             # Publish and wait for response
-            response = async_to_sync(redis_service.publish_and_wait_for_chunking)(
-                rag_type="naive",
-                document_config_id=document_config_id,
-                chunking_job_id=chunking_job_id,
-                timeout=CHUNKING_TIMEOUT,
+            from src.shared.communication import Message, Producer, Consumer, brokers, storages
+
+            message = Message(
+                payload={
+                    'rag_id': naive_rag_id,
+                    'document_id': config.document.document_id,
+                    'rag_strategy': 'naive',
+                }
             )
+            broker = brokers.RedisPubSubBroker(url='redis://:redis_password@redis:6379/2')
+            storage = storages.RedisStorage(url='redis://:redis_password@redis:6379/3')
+            producer = Producer(
+                broker=broker,
+                storage=storage,
+            )
+            producer.send('knowledge:chunk', message)
+            consumer = Consumer(
+                broker=broker,
+                storage=storage,
+            )
+            message = next(m for m in consumer.receive('knowledge:chunk:response'))
 
             config.refresh_from_db()
 
@@ -578,13 +594,35 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
                     "chunking_job_id": chunking_job_id,
                     "naive_rag_id": naive_rag_id,
                     "document_config_id": document_config_id,
-                    "status": response.status,
-                    "chunk_count": response.chunk_count,
-                    "message": response.message,
-                    "elapsed_time": response.elapsed_time,
+                    "status": config.status,
+                    "chunk_count": len(message.payload['chunks']),
+                    "message": message.payload,
+                    "elapsed_time": 1,
                 },
                 status=status.HTTP_200_OK,
             )
+
+            # response = async_to_sync(redis_service.publish_and_wait_for_chunking)(
+            #     rag_type="naive",
+            #     document_config_id=document_config_id,
+            #     chunking_job_id=chunking_job_id,
+            #     timeout=CHUNKING_TIMEOUT,
+            # )
+            #
+            # config.refresh_from_db()
+            #
+            # return Response(
+            #     {
+            #         "chunking_job_id": chunking_job_id,
+            #         "naive_rag_id": naive_rag_id,
+            #         "document_config_id": document_config_id,
+            #         "status": response.status,
+            #         "chunk_count": response.chunk_count,
+            #         "message": response.message,
+            #         "elapsed_time": response.elapsed_time,
+            #     },
+            #     status=status.HTTP_200_OK,
+            # )
 
         except asyncio.TimeoutError:
             logger.warning(
@@ -610,7 +648,7 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
             # Reset status to previous state on error
             config.status = NaiveRagDocumentConfig.NaiveRagDocumentStatus.FAILED
             config.save(update_fields=["status"])
-
+            # raise e
             return Response(
                 {
                     "chunking_job_id": chunking_job_id,

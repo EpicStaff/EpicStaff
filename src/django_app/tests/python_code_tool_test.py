@@ -90,8 +90,18 @@ def test_python_code_tool_config_serializer_validation():
         description="desc",
         python_code=code,
         variables=[
-            {"name": "arg1", "type": "string", "input_type": "user_input", "required": True},
-            {"name": "arg2", "type": "integer", "input_type": "user_input", "required": False},
+            {
+                "name": "arg1",
+                "type": "string",
+                "input_type": "user_input",
+                "required": True,
+            },
+            {
+                "name": "arg2",
+                "type": "integer",
+                "input_type": "user_input",
+                "required": False,
+            },
         ],
     )
 
