@@ -193,6 +193,9 @@ from tables.services.copy_services import (
     PythonCodeToolCopyService,
 )
 from tables.views.mixins import CopyActionMixin
+from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
+    validate_classification_condition_group_names,
+)
 from tables.serializers.model_serializers import (
     AgentReadSerializer,
     ClassificationDecisionTableNodeSerializer,
@@ -1381,6 +1384,13 @@ class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
         data = data.copy()
         condition_groups_data = data.pop("condition_groups", None)
         prompt_configs_data = data.pop("prompt_configs", None)
+
+        if condition_groups_data:
+            name_errors = validate_classification_condition_group_names(
+                condition_groups_data
+            )
+            if name_errors:
+                raise serializers.ValidationError({"condition_groups": name_errors})
 
         node_serializer = self.get_serializer(instance, data=data, partial=partial)
         node_serializer.is_valid(raise_exception=True)
