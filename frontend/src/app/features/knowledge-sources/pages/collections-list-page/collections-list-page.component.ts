@@ -1,5 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize, switchMap } from 'rxjs/operators';
 
@@ -19,7 +19,7 @@ import { CollectionsListItemSidebarComponent } from './components/collections-li
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CollectionDetailsComponent, CollectionsListItemSidebarComponent, SpinnerComponent],
 })
-export class CollectionsListPageComponent implements OnInit {
+export class CollectionsListPageComponent implements OnInit, OnDestroy {
     private destroyRef = inject(DestroyRef);
     private dialog = inject(Dialog);
     private collectionsStorageService = inject(CollectionsStorageService);
@@ -33,13 +33,18 @@ export class CollectionsListPageComponent implements OnInit {
     ngOnInit(): void {
         this.deepLinkService.initFromUrl();
         this.getCollections();
+        this.collectionsStorageService.startPolling(this.selectedCollectionId);
+    }
+
+    ngOnDestroy(): void {
+        this.collectionsStorageService.stopPolling();
     }
 
     getCollections(): void {
         this.isLoading.set(true);
 
         this.collectionsStorageService
-            .getCollections()
+            .getCollections(true)
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
                 finalize(() => {

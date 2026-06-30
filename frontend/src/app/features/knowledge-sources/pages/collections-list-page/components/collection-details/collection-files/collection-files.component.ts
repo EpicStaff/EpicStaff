@@ -1,6 +1,7 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, model } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, model, output } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { AppSvgIconComponent } from '@shared/components';
+import { AppSvgIconComponent, ConfirmationDialogService } from '@shared/components';
+import { filter, switchMap } from 'rxjs';
 
 import { ListComponent } from '../../../../../../../shared/components/list/list.component';
 import { ListActionsComponent } from '../../../../../../../shared/components/list/list-actions/list-actions.component';
@@ -18,27 +19,36 @@ import { DocumentsStorageService } from '../../../../../services/documents-stora
 })
 export class CollectionFilesComponent {
     documents = model<DisplayedListDocument[]>([]);
+    downloadRequested = output<number>();
+    previewRequested = output<number>();
 
-    private documentsStorageService = inject(DocumentsStorageService);
+    readonly documentsStorageService = inject(DocumentsStorageService);
+    private confirmationDialogService = inject(ConfirmationDialogService);
     private destroyRef = inject(DestroyRef);
 
-    onDelete({ document_id, file_name }: DisplayedListDocument): void {
-        if (!document_id) {
-            this.documents.update((document) => {
-                return document.filter((d) => d.file_name !== file_name);
-            });
-            return;
-        }
+    onDownload(id: number): void {
+        this.downloadRequested.emit(id);
+    }
 
-        this.documentsStorageService
-            .deleteDocumentById(document_id)
-            .pipe(takeUntilDestroyed(this.destroyRef))
+    onDelete({ document_id, file_name }: DisplayedListDocument): void {
+        if (this.documentsStorageService.isDeleting(document_id)) return;
+
+        this.confirmationDialogService
+            .confirmDelete(file_name)
+            .pipe(
+                filter((result) => result === true),
+                switchMap(() => {
+                    if (!document_id) {
+                        this.documents.update((docs) => docs.filter((d) => d.file_name !== file_name));
+                        return [];
+                    }
+                    return this.documentsStorageService.deleteDocument(document_id);
+                }),
+                takeUntilDestroyed(this.destroyRef)
+            )
             .subscribe((res) => {
                 if (!res) return;
-
-                this.documents.update((document) => {
-                    return document.filter((d) => d.document_id !== document_id);
-                });
+                this.documents.update((docs) => docs.filter((d) => d.document_id !== document_id));
             });
     }
 }

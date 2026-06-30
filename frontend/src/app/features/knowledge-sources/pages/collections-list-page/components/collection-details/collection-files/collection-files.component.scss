@@ -3,7 +3,6 @@
 }
 
 .files {
-    height: 100%;
     &__file {
         display: flex;
         align-items: center;
@@ -44,30 +43,13 @@
         color: var(--color-ks-transparent-text-80);
     }
 
-    &__error {
-        border-radius: 5px;
-        background-color: var(--color-ks-transparent-red);
-        color: var(--color-ks-status-failed);
-        padding: 0.25rem 0.5rem;
-
-        &--medium {
-            font-size: 0.875rem;
-        }
-
-        &--small {
-            font-size: 0.625rem;
-        }
-    }
-
-    &__actions {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        column-gap: 0.5rem;
-    }
-
-    &__file-action {
-        color: var(--color-ks-transparent-text-80);
+    &__upload-spinner {
+        width: 14px;
+        height: 14px;
+        border: 2px solid var(--color-ks-status-processing);
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
     }
 
     &__close-action {
@@ -77,5 +59,14 @@
             transition: 0.3s;
             background-color: var(--color-ks-hover-row);
         }
+    }
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
     }
 }

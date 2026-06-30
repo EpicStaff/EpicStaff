@@ -2,36 +2,44 @@
     <div class="configure__files-section">
         <div class="configure__files-searchbar">
             <app-search
-                class="configure__input"
+                mod="small"
                 placeholder="Search files..."
                 [(searchTerm)]="searchTerm"
             />
+            <app-select
+                mod="small"
+                [items]="statusFilterItems"
+                [(selectedValue)]="statusFilter"
+            />
 
             <app-button
+                mod="small"
                 type="outline-primary"
                 (click)="initDocuments()"
             >
                 Re-include Files
             </app-button>
-            @if (filteredAndCheckedDocIds().length) {
-                <app-button
-                    [type]="bulkBtnActive() ? 'primary' : 'outline-primary'"
-                    (click)="bulkBtnActive.set(!bulkBtnActive())"
-                >
-                    Bulk configuration
-                </app-button>
-                <app-svg-icon
-                    icon="trash"
-                    class="configure__bulk-delete"
-                    size="1.5rem"
-                    (click)="applyBulkDelete()"
-                />
-            }
+            <app-button
+                mod="small"
+                [type]="bulkBtnActive() ? 'primary' : 'outline-primary'"
+                [disabled]="!filteredAndCheckedDocIds().length"
+                (click)="bulkBtnActive.set(!bulkBtnActive())"
+            >
+                Bulk configuration
+            </app-button>
+            <app-svg-icon
+                icon="trash"
+                class="configure__bulk-delete"
+                [class.configure__bulk-delete--disabled]="!filteredAndCheckedDocIds().length"
+                size="12px"
+                (click)="filteredAndCheckedDocIds().length && applyBulkDelete()"
+            />
         </div>
 
         <app-configuration-table
             [searchTerm]="searchTerm()"
             [showBulkRow]="showBulkRow()"
+            [statusFilter]="statusFilter()"
             [ragId]="naiveRagId()"
             [(selectedRagDocId)]="selectedRagDocId"
             (docsCheckChange)="filteredAndCheckedDocIds.set($event)"

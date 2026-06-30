@@ -1,5 +1,6 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { Component, DestroyRef, inject } from '@angular/core';
+import { ConfirmationDialogService } from '@shared/components';
 
 import { ToastService } from '../../../../services/notifications';
 
@@ -11,6 +12,7 @@ export abstract class RagConfigurationDialogComponent {
     protected destroyRef = inject(DestroyRef);
     protected dialogRef = inject(DialogRef);
     protected toast = inject(ToastService);
+    protected confirmation = inject(ConfirmationDialogService);
 
     protected abstract onClose(): void;
     protected abstract runIndexing(): void;

@@ -12,6 +12,7 @@
 
             <app-button
                 type="primary"
+                [disabled]="indexingDisabled()"
                 (click)="runIndexing()"
             >
                 Run indexing
