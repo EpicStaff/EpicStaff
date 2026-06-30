@@ -355,6 +355,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             });
         });
 
+        this.wsService.nodeUnlocked$.pipe(takeUntil(this.destroy$)).subscribe((msg) => {
+            if (msg.editor.user_id !== this.wsService.currentUserId()) return;
+            const selectedNode = this.sidePanelService.selectedNode();
+            if (!selectedNode || selectedNode.id !== msg.node_id) return;
+            this.sidePanelService.triggerAutosave();
+        });
+
         effect(
             () => {
                 const editorIds = new Set(this.wsService.editors().map((e) => e.user_id));
