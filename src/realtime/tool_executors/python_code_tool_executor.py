@@ -33,7 +33,10 @@ class PythonCodeToolExecutor(BaseToolExecutor):
         for var in python_code_tool_data.variables:
             input_type = var.get("input_type")
             if input_type in ("agent_input", "mixed"):
-                prop = {"type": var.get("type", "string"), "description": var.get("description", "")}
+                prop = {
+                    "type": var.get("type", "string"),
+                    "description": var.get("description", ""),
+                }
                 if var.get("properties"):
                     prop["properties"] = var["properties"]
                 if var.get("items"):
