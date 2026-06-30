@@ -137,6 +137,7 @@ class StorageManager:
             if row.item_type == "folder":
                 items.append(
                     FileListItem(
+                        id=row.id,
                         name=row.name,
                         type="folder",
                         size=row.size or 0,
@@ -149,6 +150,7 @@ class StorageManager:
             else:
                 items.append(
                     FileListItem(
+                        id=row.id,
                         name=row.name,
                         type="file",
                         size=row.size or 0,
@@ -224,6 +226,7 @@ class StorageManager:
             row = StorageFile.objects.get(org_id=org_id, path=clean_path)
             content_type, _ = mimetypes.guess_type(row.name)
             return FileInfo(
+                id=row.id,
                 name=row.name,
                 path=row.path,
                 size=row.size or 0,
@@ -237,6 +240,7 @@ class StorageManager:
         try:
             row = StorageFile.objects.get(org_id=org_id, path=folder_path)
             return FolderInfo(
+                id=row.id,
                 name=row.name,
                 path=row.path,
                 modified=(row.s3_modified or row.created_at).isoformat(),
@@ -344,6 +348,7 @@ class StorageManager:
         root_name = prefix.rstrip("/").split("/")[-1] if prefix else ""
 
         root_dict: dict = {
+            "id": None,
             "name": root_name,
             "path": norm,
             "type": "folder",
@@ -386,6 +391,7 @@ class StorageManager:
                         broken = True
                         break
                     node = {
+                        "id": None,
                         "name": segment,
                         "path": cur_path,
                         "type": "folder",
@@ -415,6 +421,7 @@ class StorageManager:
 
             if is_folder:
                 node = {
+                    "id": row.id,
                     "name": leaf_name,
                     "path": leaf_path,
                     "type": "folder",
@@ -426,6 +433,7 @@ class StorageManager:
                 }
             else:
                 node = {
+                    "id": row.id,
                     "name": leaf_name,
                     "path": leaf_path,
                     "type": "file",
@@ -447,6 +455,7 @@ class StorageManager:
                 else [build(child) for child in node_dict["children_map"].values()]
             )
             return TreeNode(
+                id=node_dict["id"],
                 name=node_dict["name"],
                 path=node_dict["path"],
                 type=node_dict["type"],
@@ -476,7 +485,9 @@ class StorageManager:
             qs = qs.filter(path__startswith=path.rstrip("/") + "/")
 
         total = qs.count()
-        rows = list(qs.order_by("path").values("path", "name")[offset : offset + limit])
+        rows = list(
+            qs.order_by("path").values("id", "path", "name")[offset : offset + limit]
+        )
         return rows, total
 
     # --- Cross-org operations ---

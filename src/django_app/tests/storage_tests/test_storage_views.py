@@ -29,6 +29,7 @@ class TestListFiles:
     def test_list_returns_items_from_manager(self, auth_client, mock_manager):
         mock_manager.list_.return_value = [
             FileListItem(
+                id=1,
                 name="a.txt",
                 type="file",
                 size=10,
@@ -47,6 +48,7 @@ class TestListFiles:
 class TestInfo:
     def test_info_returns_metadata_with_linked_graphs(self, auth_client, mock_manager):
         mock_manager.info.return_value = FileInfo(
+            id=1,
             name="f.txt",
             path="f.txt",
             size=5,
@@ -227,7 +229,7 @@ class TestAddToGraph:
     ):
         graph = Graph.objects.create(name="test-graph")
         mock_manager.info.return_value = FolderInfo(
-            name="docs", path="docs/", modified="2024-01-01T00:00:00Z"
+            id=1, name="docs", path="docs/", modified="2024-01-01T00:00:00Z"
         )
 
         resp = auth_client.post(
@@ -291,6 +293,7 @@ class TestGraphFiles:
 class TestTree:
     def test_tree_returns_nested_structure(self, auth_client, mock_manager):
         root = TreeNode(
+            id=None,
             name="reports",
             path="reports/",
             type="folder",
@@ -298,6 +301,7 @@ class TestTree:
             modified=None,
             children=[
                 TreeNode(
+                    id=42,
                     name="q1.pdf",
                     path="reports/q1.pdf",
                     type="file",
@@ -308,6 +312,7 @@ class TestTree:
             ],
         )
         mock_manager.info.return_value = FolderInfo(
+            id=1,
             name="reports",
             path="reports/",
             modified="2024-01-01T00:00:00Z",
@@ -324,11 +329,17 @@ class TestTree:
 
     def test_tree_forwards_max_depth_to_manager(self, auth_client, mock_manager):
         mock_manager.info.return_value = FolderInfo(
-            name="", path="", modified="2024-01-01T00:00:00Z"
+            id=1, name="", path="", modified="2024-01-01T00:00:00Z"
         )
         mock_manager.list_tree.return_value = (
             TreeNode(
-                name="", path="", type="folder", size=0, modified=None, children=[]
+                id=None,
+                name="",
+                path="",
+                type="folder",
+                size=0,
+                modified=None,
+                children=[],
             ),
             False,
         )
@@ -337,11 +348,17 @@ class TestTree:
 
     def test_tree_surfaces_truncated_flag(self, auth_client, mock_manager):
         mock_manager.info.return_value = FolderInfo(
-            name="", path="", modified="2024-01-01T00:00:00Z"
+            id=1, name="", path="", modified="2024-01-01T00:00:00Z"
         )
         mock_manager.list_tree.return_value = (
             TreeNode(
-                name="", path="", type="folder", size=0, modified=None, children=[]
+                id=None,
+                name="",
+                path="",
+                type="folder",
+                size=0,
+                modified=None,
+                children=[],
             ),
             True,
         )
@@ -355,6 +372,7 @@ class TestTree:
 
     def test_tree_rejects_file_path_with_400(self, auth_client, mock_manager):
         mock_manager.info.return_value = FileInfo(
+            id=1,
             name="f.txt",
             path="f.txt",
             size=1,
@@ -369,8 +387,8 @@ class TestSearch:
     def test_search_returns_paged_results(self, auth_client, mock_manager):
         mock_manager.search.return_value = (
             [
-                {"path": "reports/q1_report.pdf", "name": "q1_report.pdf"},
-                {"path": "archive/old_report.txt", "name": "old_report.txt"},
+                {"id": 1, "path": "reports/q1_report.pdf", "name": "q1_report.pdf"},
+                {"id": 2, "path": "archive/old_report.txt", "name": "old_report.txt"},
             ],
             137,
         )

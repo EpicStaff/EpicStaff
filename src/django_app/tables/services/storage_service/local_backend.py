@@ -78,6 +78,7 @@ class LocalStorageBackend(AbstractStorageBackend):
                 is_empty = not any(entry.iterdir())
                 results.append(
                     FileListItem(
+                        id=None,
                         name=entry.name,
                         type="folder",
                         size=0,
@@ -88,6 +89,7 @@ class LocalStorageBackend(AbstractStorageBackend):
             else:
                 results.append(
                     FileListItem(
+                        id=None,
                         name=entry.name,
                         type="file",
                         size=stat.st_size,
@@ -182,6 +184,7 @@ class LocalStorageBackend(AbstractStorageBackend):
 
         if target.is_dir():
             return FolderInfo(
+                id=None,
                 name=name,
                 path=clean_path + "/",
                 modified=modified,
@@ -189,6 +192,7 @@ class LocalStorageBackend(AbstractStorageBackend):
 
         content_type, _ = mimetypes.guess_type(target.name)
         return FileInfo(
+            id=None,
             name=name,
             path=path,
             size=stat.st_size,
@@ -296,6 +300,7 @@ class LocalStorageBackend(AbstractStorageBackend):
                 else [build(child) for child in node_dict["children_map"].values()]
             )
             return TreeNode(
+                id=None,
                 name=node_dict["name"],
                 path=node_dict["path"],
                 type=node_dict["type"],

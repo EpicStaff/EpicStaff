@@ -521,3 +521,83 @@ class TestSearchManager:
         assert len(page2) == 1
         assert total == 3
         assert page1[0]["path"] != page2[0]["path"]
+
+    def test_search_results_include_id(self, storage_manager, org, org_user, seeded):
+        results, _ = storage_manager.search("testuser", org.id, q="q1_report")
+        assert len(results) == 1
+        row = StorageFile.objects.get(org=org, path="reports/q1_report.pdf")
+        assert results[0]["id"] == row.id
+
+
+@pytest.mark.django_db
+class TestStorageIdExposure:
+    """Verify that list_(), info(), list_tree() carry the DB row id through."""
+
+    @pytest.fixture
+    def db_manager(self, local_backend, org, org_user):
+        from django.utils import timezone
+
+        modified = timezone.now()
+        StorageFile.objects.bulk_create(
+            [
+                StorageFile(
+                    org=org,
+                    path="docs/",
+                    name="docs",
+                    item_type="folder",
+                    parent_path="",
+                    size=None,
+                    s3_modified=modified,
+                ),
+                StorageFile(
+                    org=org,
+                    path="docs/note.txt",
+                    name="note.txt",
+                    item_type="file",
+                    parent_path="docs/",
+                    size=50,
+                    s3_modified=modified,
+                ),
+            ]
+        )
+        from tables.services.storage_service.manager import StorageManager
+
+        return StorageManager(local_backend)
+
+    def test_list_file_item_carries_row_id(self, db_manager, org, org_user):
+        items = db_manager.list_("testuser", org.id, "docs")
+        file_item = next(i for i in items if i.name == "note.txt")
+        expected_id = StorageFile.objects.get(org=org, path="docs/note.txt").id
+        assert file_item.id == expected_id
+
+    def test_list_folder_item_carries_row_id(self, db_manager, org, org_user):
+        items = db_manager.list_("testuser", org.id, "")
+        folder_item = next(i for i in items if i.name == "docs")
+        expected_id = StorageFile.objects.get(org=org, path="docs/").id
+        assert folder_item.id == expected_id
+
+    def test_info_file_carries_row_id(self, db_manager, org, org_user):
+        result = db_manager.info("testuser", org.id, "docs/note.txt")
+        expected_id = StorageFile.objects.get(org=org, path="docs/note.txt").id
+        assert result.id == expected_id
+
+    def test_info_folder_carries_row_id(self, db_manager, org, org_user):
+        result = db_manager.info("testuser", org.id, "docs")
+        expected_id = StorageFile.objects.get(org=org, path="docs/").id
+        assert result.id == expected_id
+
+    def test_list_tree_leaf_file_carries_row_id(self, db_manager, org, org_user):
+        root, _ = db_manager.list_tree("testuser", org.id, "docs")
+        leaf = next(child for child in root.children if child.name == "note.txt")
+        expected_id = StorageFile.objects.get(org=org, path="docs/note.txt").id
+        assert leaf.id == expected_id
+
+    def test_list_tree_leaf_folder_carries_row_id(self, db_manager, org, org_user):
+        root, _ = db_manager.list_tree("testuser", org.id, "")
+        folder_node = next(child for child in root.children if child.name == "docs")
+        expected_id = StorageFile.objects.get(org=org, path="docs/").id
+        assert folder_node.id == expected_id
+
+    def test_list_tree_root_node_id_is_none(self, db_manager, org, org_user):
+        root, _ = db_manager.list_tree("testuser", org.id, "docs")
+        assert root.id is None

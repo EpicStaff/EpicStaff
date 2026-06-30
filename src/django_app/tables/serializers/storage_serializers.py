@@ -173,6 +173,7 @@ class StorageAddToGraphSerializer(serializers.Serializer):
 
 
 class FileItemSerializer(serializers.Serializer):
+    id = serializers.IntegerField(allow_null=True, help_text="StorageFile id")
     name = serializers.CharField(help_text="File or folder name")
     type = serializers.ChoiceField(
         choices=["file", "folder"],
@@ -197,6 +198,7 @@ class StorageListResponseSerializer(serializers.Serializer):
 
 
 class StorageInfoResponseSerializer(serializers.Serializer):
+    id = serializers.IntegerField(allow_null=True, help_text="StorageFile id")
     path = serializers.CharField(help_text="File path")
     name = serializers.CharField(help_text="File name")
     type = serializers.CharField(help_text="Item type")
@@ -297,6 +299,7 @@ class StorageTreeQuerySerializer(serializers.Serializer):
 
 
 class TreeNodeSerializer(serializers.Serializer):
+    id = serializers.IntegerField(allow_null=True)
     name = serializers.CharField()
     path = serializers.CharField()
     type = serializers.ChoiceField(choices=["file", "folder"])
@@ -329,6 +332,7 @@ class StorageSearchQuerySerializer(serializers.Serializer):
 
 
 class StorageSearchResultSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
     path = serializers.CharField()
     name = serializers.CharField()
 

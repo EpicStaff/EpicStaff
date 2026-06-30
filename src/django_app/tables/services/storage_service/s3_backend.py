@@ -110,6 +110,7 @@ class S3StorageBackend(AbstractStorageBackend):
                 )
                 results.append(
                     FileListItem(
+                        id=None,
                         name=folder_name,
                         type="folder",
                         size=0,
@@ -124,6 +125,7 @@ class S3StorageBackend(AbstractStorageBackend):
                 file_name = obj["Key"].split("/")[-1]
                 results.append(
                     FileListItem(
+                        id=None,
                         name=file_name,
                         type="file",
                         size=obj["Size"],
@@ -316,6 +318,7 @@ class S3StorageBackend(AbstractStorageBackend):
         try:
             head = self.client.head_object(Bucket=self.bucket_name, Key=full_path)
             return FileInfo(
+                id=None,
                 name=name,
                 path=clean_path,
                 size=head["ContentLength"],
@@ -335,6 +338,7 @@ class S3StorageBackend(AbstractStorageBackend):
         try:
             head = self.client.head_object(Bucket=self.bucket_name, Key=full_path + "/")
             return FolderInfo(
+                id=None,
                 name=name,
                 path=clean_path + "/",
                 modified=head["LastModified"].isoformat(),
@@ -356,6 +360,7 @@ class S3StorageBackend(AbstractStorageBackend):
         if response.get("Contents"):
             obj = response["Contents"][0]
             return FolderInfo(
+                id=None,
                 name=name,
                 path=clean_path + "/",
                 modified=obj["LastModified"].isoformat(),
@@ -505,6 +510,7 @@ class S3StorageBackend(AbstractStorageBackend):
                 else [build(child) for child in node_dict["children_map"].values()]
             )
             return TreeNode(
+                id=None,
                 name=node_dict["name"],
                 path=node_dict["path"],
                 type=node_dict["type"],
