@@ -68,6 +68,8 @@ class AbstractCancellableHandler[TRequest: BaseModel, TResponse: BaseModel](
 ):
     async def _invoke(self, request: TRequest) -> TResponse | None:
         key = hash_dict(request.model_dump())
+        if key in task_register:
+            task_register.cancel(key, "Superseded by a newer request.")
         task_register.register(key, asyncio.current_task())
         try:
             return await self.handle(request)
