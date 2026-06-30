@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, input, model, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HelpTooltipComponent, SelectComponent, SelectItem } from '@shared/components';
-import { MATERIAL_FORMS } from '@shared/material-forms';
 import { EmbeddingConfig } from '@shared/models';
 import { EmbeddingConfigsService, LLMConfigService } from '@shared/services';
 import { map } from 'rxjs/operators';
@@ -9,17 +8,18 @@ import { map } from 'rxjs/operators';
 import { ToastService } from '../../../../../../../services/notifications';
 import { RAG_TYPES } from '../../../../../constants/constants';
 import { Rag, RagType } from '../../../../../models/base-rag.model';
+import { CreateCollectionDtoResponse } from '../../../../../models/collection.model';
 import { RagTypeComponent } from './rag-type/rag-type.component';
 
 @Component({
     selector: 'app-step-select-rag',
     templateUrl: './step-select-rag.component.html',
     styleUrls: ['./step-select-rag.component.scss'],
-    imports: [RagTypeComponent, SelectComponent, MATERIAL_FORMS, HelpTooltipComponent],
+    imports: [RagTypeComponent, SelectComponent, HelpTooltipComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class StepSelectRagComponent implements OnInit {
-    forceType = input<RagType>();
+    collection = input.required<CreateCollectionDtoResponse>();
 
     embeddingConfigs = signal<SelectItem[]>([]);
     llmModels = signal<SelectItem[]>([]);
@@ -36,12 +36,6 @@ export class StepSelectRagComponent implements OnInit {
     ngOnInit() {
         this.getEmbeddingConfigs();
         this.getLLMConfigs();
-
-        const forceType = this.forceType();
-
-        if (forceType) {
-            this.selectedRag.set(forceType);
-        }
     }
 
     private getEmbeddingConfigs() {
@@ -91,7 +85,7 @@ export class StepSelectRagComponent implements OnInit {
     }
 
     public onSelectRag(rag: Rag): void {
-        if (rag.disabled || (this.forceType() && this.forceType() !== rag.value)) return;
+        if (rag.disabled) return;
 
         this.selectedRag.set(rag.value);
     }

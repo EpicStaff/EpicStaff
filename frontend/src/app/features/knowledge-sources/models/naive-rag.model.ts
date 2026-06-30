@@ -1,6 +1,6 @@
 import { BaseRagType, RagStatus, RagType } from './base-rag.model';
 
-export interface CollectionNaiveRag {
+export interface CollectionDetailsNaiveRag {
     chunks_count: number;
     document_configs_count: number;
     embedder_id: number;
@@ -10,7 +10,7 @@ export interface CollectionNaiveRag {
     message: string | null;
     rag_id: number;
     rag_type: RagType;
-    status: string;
+    status: RagStatus;
     created_at: string;
     updated_at: string;
 }
@@ -28,4 +28,11 @@ export interface CreateNaiveRag {
 export interface CreateNaiveRagForCollectionResponse {
     message: string;
     naive_rag: CreateNaiveRag;
+}
+
+export interface DeleteNaiveRagResponse {
+    message: string;
+    naive_rag_id: number;
+    collection_id: number;
+    deleted_config_count: number;
 }

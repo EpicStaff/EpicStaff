@@ -32,6 +32,7 @@ export type RagType = RagValueMap[keyof RagValueMap];
 export interface StartIndexingDtoRequest {
     rag_id: number;
     rag_type: RagType;
+    document_config_ids?: number[];
 }
 
 export interface StartIndexingDtoResponse {
@@ -39,4 +40,6 @@ export interface StartIndexingDtoResponse {
     rag_id: number;
     rag_type: string;
     collection_id: number;
+    accepted_config_ids: number[] | null;
+    skipped_completed_config_ids: number[];
 }

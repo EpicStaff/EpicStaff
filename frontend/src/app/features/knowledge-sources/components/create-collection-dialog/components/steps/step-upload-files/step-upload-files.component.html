@@ -34,9 +34,14 @@
                 <app-files-list
                     [(documents)]="documents"
                     (filesUploaded)="onFilesUpload($event)"
+                    (documentSelected)="selectedDocument.set($event)"
                     class="dialog__files-list"
                 />
-                <app-file-preview class="dialog__file-preview" />
+                <app-blob-preview
+                    [blob]="previewState().blob"
+                    [fileName]="previewState().fileName"
+                    class="dialog__file-preview"
+                />
             </div>
         }
     </div>

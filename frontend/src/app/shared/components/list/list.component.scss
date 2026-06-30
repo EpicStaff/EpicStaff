@@ -27,4 +27,23 @@
             background-color: var(--color-drag-drop-active);
         }
     }
+
+    &__empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1rem;
+        height: 100%;
+    }
+
+    &__empty-title {
+        font-size: 14px;
+        color: var(--color-text-primary);
+    }
+
+    &__empty-description {
+        font-size: 12px;
+        color: var(--color-text-secondary);
+    }
 }

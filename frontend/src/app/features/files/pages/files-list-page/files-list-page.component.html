@@ -11,15 +11,16 @@
                 </h1>
             </div>
             <div class="header-actions">
-                <app-button
-                    type="primary"
-                    class="btn-primary create-btn"
-                    [leftIcon]="'plus'"
-                    [style.visibility]="isStorageTabActive ? 'visible' : 'hidden'"
-                    (click)="onCreateFolderClick()"
-                >
-                    Add files
-                </app-button>
+                @if (activeTabBtn(); as btn) {
+                    <app-button
+                        type="primary"
+                        class="btn-primary create-btn"
+                        [leftIcon]="'plus'"
+                        (click)="btn.action()"
+                    >
+                        {{ btn.label }}
+                    </app-button>
+                }
             </div>
         </header>
         <nav class="tabs">

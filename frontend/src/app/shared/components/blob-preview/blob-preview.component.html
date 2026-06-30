@@ -1,0 +1,137 @@
+<div class="blob-preview">
+    @if (!blob() && !fileName()) {
+        <div class="blob-preview__empty">
+            <app-svg-icon
+                icon="file-empty-state"
+                size="66px"
+                class="blob-preview__empty-icon"
+            />
+            <p class="blob-preview__empty-text">Select a file to preview</p>
+        </div>
+    } @else {
+        @if (previewBadge && previewType() !== 'pdf') {
+            <div class="blob-preview__badge">
+                <span class="blob-preview__badge-type">{{ previewBadge }}</span>
+                <span class="blob-preview__badge-suffix">only view</span>
+            </div>
+        }
+        <div
+            class="blob-preview__scroll"
+            [class.blob-preview__scroll--pdf]="previewType() === 'pdf'"
+        >
+            @if (isLoading()) {
+                <div class="blob-preview__loading">Loading preview...</div>
+            } @else if (previewError()) {
+                <div class="blob-preview__error">
+                    <app-svg-icon
+                        icon="alert-triangle"
+                        size="1.5rem"
+                    />
+                    <p>{{ previewError() }}</p>
+                </div>
+            } @else {
+                @switch (previewType()) {
+                    @case ('text') {
+                        <pre class="blob-preview__text">{{ textContent() }}</pre>
+                    }
+                    @case ('json') {
+                        <pre class="blob-preview__json">{{ jsonContent() | json }}</pre>
+                    }
+                    @case ('pdf') {
+                        @if (pdfUrl()) {
+                            <embed
+                                class="blob-preview__pdf"
+                                [attr.src]="pdfUrl()"
+                                type="application/pdf"
+                            />
+                        }
+                    }
+                    @case ('image') {
+                        @if (imageUrl()) {
+                            <img
+                                class="blob-preview__image"
+                                [src]="imageUrl()"
+                                [alt]="fileName()"
+                                draggable="false"
+                            />
+                        }
+                    }
+                    @case ('sheet') {
+                        @if (sheetData(); as data) {
+                            <div class="blob-preview__sheet">
+                                @if (isCsv) {
+                                    <div class="blob-preview__csv-toolbar">
+                                        <span class="blob-preview__csv-label">Delimiter</span>
+                                        <div class="blob-preview__csv-delimiters">
+                                            @for (d of csvDelimiters; track d.value) {
+                                                <button
+                                                    class="blob-preview__csv-btn"
+                                                    [class.blob-preview__csv-btn--active]="csvDelimiter() === d.value"
+                                                    (click)="onDelimiterChange(d.value)"
+                                                >
+                                                    {{ d.label }}
+                                                </button>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                                @if (data.sheetNames.length > 1) {
+                                    <div class="blob-preview__sheet-tabs">
+                                        @for (name of data.sheetNames; track name) {
+                                            <button
+                                                class="blob-preview__sheet-tab"
+                                                [class.blob-preview__sheet-tab--active]="name === data.activeSheet"
+                                                (click)="onSheetChange(name)"
+                                            >
+                                                {{ name }}
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                                <div class="blob-preview__sheet-scroll">
+                                    <table class="blob-preview__table">
+                                        @if (data.headers.length) {
+                                            <thead>
+                                                <tr>
+                                                    @for (h of data.headers; track $index) {
+                                                        <th class="blob-preview__th">{{ h }}</th>
+                                                    }
+                                                </tr>
+                                            </thead>
+                                        }
+                                        <tbody>
+                                            @for (row of data.rows; track $index) {
+                                                <tr class="blob-preview__tr">
+                                                    @for (cell of row; track $index) {
+                                                        <td class="blob-preview__td">{{ cell }}</td>
+                                                    }
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        }
+                    }
+                    @case ('docx') {
+                        @if (docxHtml()) {
+                            <div
+                                class="blob-preview__docx"
+                                [innerHTML]="docxHtml()"
+                            ></div>
+                        }
+                    }
+                    @case ('unsupported') {
+                        <div class="blob-preview__unsupported">
+                            <app-svg-icon
+                                icon="file-empty-state"
+                                size="66px"
+                            />
+                            <p class="blob-preview__unsupported-name">{{ fileName() }}</p>
+                        </div>
+                    }
+                }
+            }
+        </div>
+    }
+</div>

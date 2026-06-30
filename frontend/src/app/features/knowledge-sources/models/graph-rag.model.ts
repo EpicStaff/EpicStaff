@@ -1,7 +1,19 @@
-import { BaseRagType, RagStatus } from './base-rag.model';
+import { BaseRagType, RagStatus, RagType } from './base-rag.model';
 
 export type GraphRagFileType = 'csv' | 'text' | 'json';
 export type GraphRagChunkStrategy = 'tokens' | 'sentence';
+
+export interface CollectionDetailsGraphRag {
+    embedder_id: string;
+    embedder_name: string;
+    is_ready_for_indexing: boolean;
+    message: string | null;
+    rag_id: number;
+    rag_type: RagType;
+    status: RagStatus;
+    created_at: string;
+    updated_at: string;
+}
 
 export interface CollectionGraphRag {
     graph_rag_id: number;

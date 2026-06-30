@@ -1,50 +1,40 @@
-<ul class="rags">
-    <li class="rags__item">
-        <app-svg-icon
-            icon="mouse"
-            size="0.75rem"
-        />
-        <span class="rags__name">Naive RAG</span>
-        <span class="rags__model">gpt-4o-mini</span>
-        <app-svg-icon
-            icon="arrow-right"
-            size="1rem"
-            class="rags__nav rags__nav--action"
-            (click)="onConfigureNaiveRag('naive')"
-        />
-    </li>
-
-    <li
-        class="rags__item"
-        style="cursor: not-allowed"
-    >
-        <app-svg-icon
-            icon="web"
-            size="0.75rem"
-        />
-        <span class="rags__name">Graph RAG</span>
-        <span class="rags__model">gpt-4o-mini</span>
-        <app-svg-icon
-            icon="arrow-right"
-            size="1rem"
-            class="rags__nav"
-            (click)="onConfigureNaiveRag('graph')"
-        />
-    </li>
-    <li
-        class="rags__item"
-        style="cursor: not-allowed"
-    >
-        <app-svg-icon
-            icon="tab-group"
-            size="0.75rem"
-        />
-        <span class="rags__name">Hybrid RAG</span>
-        <span class="rags__model">gpt-4o-mini</span>
-        <app-svg-icon
-            icon="arrow-right"
-            size="1rem"
-            class="rags__nav"
-        />
-    </li>
-</ul>
+@if (!collection().rag_configurations.length) {
+    <div class="empty">
+        <p class="title">No RAG initialized yet</p>
+        <p class="description">Press "+" to index your files</p>
+    </div>
+} @else {
+    <ul class="rags">
+        @for (config of collection().rag_configurations; track config.rag_id) {
+            <li
+                class="item"
+                (click)="onConfigureRag(config.rag_type)"
+            >
+                <app-svg-icon
+                    [icon]="ragTypeConfig[config.rag_type].icon"
+                    size="0.75rem"
+                />
+                <span class="name">{{ ragTypeConfig[config.rag_type].name }}</span>
+                <span class="model">{{ config.embedder_name }}</span>
+                <div
+                    class="status"
+                    [style.color]="ragStatusConfig[config.status].color"
+                >
+                    <app-svg-icon
+                        [icon]="ragStatusConfig[config.status].icon"
+                        size="1rem"
+                    />
+                    {{ ragStatusConfig[config.status].text }}
+                </div>
+                <app-svg-icon
+                    [matTooltip]="config.rag_type === 'graph' ? 'Unsupported for now' : null"
+                    [style.cursor]="config.rag_type === 'naive' ? 'pointer' : 'not-allowed'"
+                    (click)="$event.stopPropagation(); onDeleteRag(config.rag_type, config.rag_id)"
+                    icon="x"
+                    size="1rem"
+                    class="nav action"
+                />
+            </li>
+        }
+    </ul>
+}

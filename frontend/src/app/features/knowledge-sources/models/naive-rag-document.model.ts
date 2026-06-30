@@ -6,6 +6,13 @@ export type NaiveRagAdditionalParams = {
     [key in NaiveRagChunkStrategy]: Record<string, unknown>;
 };
 
+export type NaiveRagDocumentErrorCode =
+    | 'chunking_failed'
+    | 'embedder_auth'
+    | 'embedder_rate_limit'
+    | 'embedding_failed'
+    | 'unknown';
+
 export interface NaiveRagDocumentConfig {
     naive_rag_document_id: number;
     document_id: number;
@@ -15,6 +22,9 @@ export interface NaiveRagDocumentConfig {
     chunk_overlap: number;
     additional_params: NaiveRagAdditionalParams;
     status: NaiveRagDocumentStatus;
+    error_message: string | null;
+    error_code: NaiveRagDocumentErrorCode | null;
+    failed_at: string | null;
     total_chunks: number;
     total_embeddings: number;
     created_at: string;

@@ -70,7 +70,7 @@
 .btn-outline-secondary {
     background: transparent;
     color: var(--color-ks-text);
-    border: 1px solid var(--color-ks-transparent-text-80);
+    border: 1px solid var(--color-input-border);
 
     &:hover {
         border-color: var(--accent-color-hover);
@@ -87,10 +87,15 @@
     }
 
     &--mod-small {
+        border-radius: 4px;
         height: 28px;
         font-weight: 200;
         font-size: 12px;
-        padding: 0.625rem 0.5rem;
+        padding: 0.25rem 0.5rem;
+
+        .btn-content {
+            gap: 0.25rem;
+        }
     }
 
     &--icon-left {

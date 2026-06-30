@@ -15,10 +15,12 @@
 
     &--mod-default {
         height: 40px;
+        font-size: 0.9rem;
     }
 
     &--mod-small {
         height: 28px;
+        font-size: 12px;
     }
 
     &__icon {
@@ -35,11 +37,11 @@
         min-width: 0;
         box-sizing: border-box;
         padding: 0 0.875rem 0 2.25rem;
-        border-radius: 0.5rem;
+        border-radius: 4px;
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
-        font-size: 0.9rem;
+        font-size: inherit;
         transition: border-color 0.2s ease;
 
         &:focus {

@@ -1,15 +1,26 @@
 <div class="list__wrapper">
-    <ol
-        class="list__content"
-        [style.width]="width()"
-    >
-        @for (item of items(); track item; let i = $index; let odd = $odd) {
-            <li
-                class="list__item"
-                [class.list__item--dark]="odd"
-            >
-                <ng-container *ngTemplateOutlet="rowTemplate; context: { $implicit: item, index: i }" />
-            </li>
-        }
-    </ol>
+    @if (items().length) {
+        <ol
+            class="list__content"
+            [style.width]="width()"
+        >
+            @for (item of items(); track item; let i = $index; let odd = $odd) {
+                <li
+                    class="list__item"
+                    [class.list__item--dark]="odd"
+                >
+                    <ng-container *ngTemplateOutlet="rowTemplate; context: { $implicit: item, index: i }" />
+                </li>
+            }
+        </ol>
+    } @else if (emptyTitle() || emptyDescription()) {
+        <div class="list__empty">
+            @if (emptyTitle(); as title) {
+                <p class="list__empty-title">{{ title }}</p>
+            }
+            @if (emptyDescription(); as description) {
+                <p class="list__empty-description">{{ description }}</p>
+            }
+        </div>
+    }
 </div>

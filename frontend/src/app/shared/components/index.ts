@@ -4,6 +4,7 @@ export * from './app-input-number/input-number.component';
 export * from './app-svg-icon/app-svg-icon.component';
 export * from './app-validation-errors/validation-errors.component';
 export * from './avatar-upload/avatar-upload.component';
+export * from './blob-preview/blob-preview.component';
 export * from './buttons';
 export * from './checkbox/checkbox.component';
 export * from './chips-input/chips-input.component';

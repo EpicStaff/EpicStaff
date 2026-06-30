@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 
 import { ConfigService } from '../../../services/config';
 import { StartIndexingDtoRequest, StartIndexingDtoResponse } from '../models/base-rag.model';
-import { CreateNaiveRagForCollectionResponse } from '../models/naive-rag.model';
+import { CreateNaiveRagForCollectionResponse, DeleteNaiveRagResponse } from '../models/naive-rag.model';
 import {
     ChunkSearchResponse,
     GetChunksByIdsResponse,
@@ -18,6 +18,7 @@ import {
     BulkUpdateNaiveRagDocumentDtoResponse,
     GetNaiveRagDocumentConfigsResponse,
     InitNaiveRagDocumentsResponse,
+    NaiveRagDocumentConfig,
     UpdateNaiveRagDocumentDtoRequest,
     UpdateNaiveRagDocumentResponse,
 } from '../models/naive-rag-document.model';
@@ -46,8 +47,16 @@ export class NaiveRagService {
         );
     }
 
+    deleteNaiveRag(ragId: number): Observable<DeleteNaiveRagResponse> {
+        return this.http.delete<DeleteNaiveRagResponse>(`${this.apiUrl}${ragId}/`);
+    }
+
     getDocumentConfigs(naiveRagId: number): Observable<GetNaiveRagDocumentConfigsResponse> {
         return this.http.get<GetNaiveRagDocumentConfigsResponse>(`${this.apiUrl}${naiveRagId}/document-configs/`);
+    }
+
+    getDocumentConfigById(ragId: number, documentId: number): Observable<NaiveRagDocumentConfig> {
+        return this.http.get<NaiveRagDocumentConfig>(`${this.apiUrl}${ragId}/document-configs/${documentId}/`);
     }
 
     updateDocumentConfigById(
