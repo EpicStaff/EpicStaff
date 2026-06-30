@@ -19,7 +19,11 @@ from django.conf import settings
 
 from src.shared.communication import Message
 from django_app.communication import producer, consumer
-from django_app.communication_schemas import PrechunkRequest, PrechunkResponse
+from django_app.communication_schemas import (
+    PrechunkRequest,
+    PrechunkResponse,
+    CancelRequest,
+)
 from tables.models.knowledge_models import (
     NaiveRag,
     NaiveRagDocumentConfig,
@@ -58,6 +62,7 @@ from tables.swagger_schemas.knowledge_schemas.naive_rag_schemas import (
     NAIVE_RAG_DOCUMENT_CONFIGS_GET,
     NAIVE_RAG_DOCUMENT_CONFIGS_CHUNK_GET,
     NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST,
+    NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_POST,
     NAIVE_RAG_DOCUMENT_CONFIG_GET,
     NAIVE_RAG_DOCUMENT_CONFIG_PUT,
     NAIVE_RAG_DOCUMENT_CONFIG_DELETE,
@@ -589,6 +594,48 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
                 "chunks": [chunk.model_dump() for chunk in response.chunks],
             },
             status=status.HTTP_200_OK,
+        )
+
+
+class CancelNaiveRagDocumentChunkingView(APIView):
+    @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_POST)
+    def post(self, request, naive_rag_id: int, document_config_id: int):
+        try:
+            config = NaiveRagDocumentConfig.objects.get(
+                naive_rag_document_id=document_config_id,
+                naive_rag_id=naive_rag_id,
+            )
+        except NaiveRagDocumentConfig.DoesNotExist:
+            return Response(
+                {
+                    "error": f"DocumentConfig {document_config_id} not found "
+                    f"for NaiveRag {naive_rag_id}"
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        target_request = PrechunkRequest(
+            rag_id=naive_rag_id,
+            rag_strategy="naive",
+            document_id=config.document_id,
+        ).model_dump()
+        producer.send(
+            settings.KNOWLEDGE_CANCEL_CHANNEL,
+            Message(payload=CancelRequest(target_request=target_request).model_dump()),
+        )
+        logger.info(
+            "Sent prechunk cancellation rag_id=%s document_id=%s",
+            naive_rag_id,
+            config.document_id,
+        )
+
+        return Response(
+            {
+                "detail": "Chunking cancellation requested",
+                "naive_rag_id": naive_rag_id,
+                "document_config_id": document_config_id,
+            },
+            status=status.HTTP_202_ACCEPTED,
         )
 
 
