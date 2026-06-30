@@ -45,7 +45,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                     (click)="onViewNestedMessages($event)"
                     [class.show-nested-btn--open]="isNestedMessagesOpen"
                 >
-                    {{ nestedMessagesCount }} nodes
+                    {{ nestedMessagesCount }} messages
                     <div
                         class="play-nested-arrow"
                         [class.play-nested-arrow--open]="isNestedMessagesOpen"
