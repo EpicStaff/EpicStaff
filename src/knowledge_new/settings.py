@@ -47,7 +47,11 @@ class MainSettings(BaseSettings):
 
     INDEX_REQUEST_CHANNEL: str = "knowledge:indexing"
 
-    model_config = SettingsConfigDict(env_file=BASE_DIR / "../.env", env_prefix="KNOWLEDGE_")
+    CANCEL_REQUEST_CHANNEL: str = "knowledge:cancel"
+
+    model_config = SettingsConfigDict(
+        env_file=BASE_DIR / "../.env", env_prefix="KNOWLEDGE_"
+    )
 
     @computed_field
     def POSTGRES_DNS(self) -> str:  # noqa: N802

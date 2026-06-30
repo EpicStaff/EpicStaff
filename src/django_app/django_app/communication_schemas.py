@@ -8,6 +8,10 @@ class IndexRequest(BaseModel):
     rag_strategy: Literal["naive", "graph"]
 
 
+class CancelRequest(BaseModel):
+    target_request: dict
+
+
 class PrechunkRequest(BaseModel):
     rag_id: int
     rag_strategy: Literal["naive", "graph"]

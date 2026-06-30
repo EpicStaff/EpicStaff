@@ -1021,3 +1021,47 @@ PROCESS_RAG_INDEXING_POST = dict(
         ),
     },
 )
+
+
+CANCEL_RAG_INDEXING_POST = dict(
+    summary="Cancel a running RAG indexing",
+    description=(
+        "Request cancellation of an in-flight RAG indexing.\n"
+        "Publishes a cancel signal to the knowledge service, which stops the "
+        "running task and marks the RAG as CANCELLED.\n\n"
+        "Fire-and-forget: a 202 is returned regardless of whether indexing was "
+        "actually in progress. If nothing was running, the signal is a no-op.\n\n"
+        "URL: POST /process-rag-indexing/cancel/"
+    ),
+    responses={
+        202: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Cancellation requested.",
+            examples=[
+                OpenApiExample(
+                    name="Accepted",
+                    value={
+                        "detail": "Indexing cancellation requested",
+                        "rag_id": 1,
+                        "rag_type": "naive",
+                    },
+                    response_only=True,
+                    status_codes=["202"],
+                )
+            ],
+        ),
+        400: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Invalid request.",
+            examples=[
+                OpenApiExample(
+                    name="Invalid serializer",
+                    value={"rag_type": ['"invalid" is not a valid choice.']},
+                    response_only=True,
+                    status_codes=["400"],
+                )
+            ],
+        ),
+        401: UNAUTHORIZED_401_RESPONSE,
+    },
+)

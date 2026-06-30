@@ -43,7 +43,7 @@ from django.conf import settings
 from django.conf import settings
 from src.shared.communication import Message
 from django_app.communication import producer
-from django_app.communication_schemas import IndexRequest
+from django_app.communication_schemas import IndexRequest, CancelRequest
 
 from rest_framework.mixins import RetrieveModelMixin, UpdateModelMixin, ListModelMixin
 from rest_framework.viewsets import GenericViewSet
@@ -126,6 +126,7 @@ from tables.swagger_schemas.default_config_schemas import (
 )
 from tables.swagger_schemas.knowledge_schemas.naive_rag_schemas import (
     PROCESS_RAG_INDEXING_POST,
+    CANCEL_RAG_INDEXING_POST,
 )
 from tables.swagger_schemas.realtime_schemas import INIT_REALTIME_POST
 from tables.swagger_schemas.sessions_schema import (
@@ -938,6 +939,32 @@ class ProcessRagIndexingView(APIView):
         return Response(
             {
                 "detail": "Indexing process accepted",
+                "rag_id": rag_id,
+                "rag_type": rag_type,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class CancelRagIndexingView(APIView):
+    @extend_schema(**CANCEL_RAG_INDEXING_POST)
+    def post(self, request):
+        serializer = ProcessRagIndexingSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        rag_id = serializer.validated_data["rag_id"]
+        rag_type = serializer.validated_data["rag_type"]
+
+        target_request = IndexRequest(rag_id=rag_id, rag_strategy=rag_type).model_dump()
+        producer.send(
+            settings.KNOWLEDGE_CANCEL_CHANNEL,
+            Message(payload=CancelRequest(target_request=target_request).model_dump()),
+        )
+
+        return Response(
+            {
+                "detail": "Indexing cancellation requested",
                 "rag_id": rag_id,
                 "rag_type": rag_type,
             },
