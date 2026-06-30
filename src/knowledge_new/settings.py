@@ -47,6 +47,8 @@ class MainSettings(BaseSettings):
 
     INDEX_REQUEST_CHANNEL: str = "knowledge:indexing"
 
+    CANCEL_REQUEST_CHANNEL: str = "knowledge:cancel:request"
+
     model_config = SettingsConfigDict(env_file=BASE_DIR / "../.env", env_prefix="KNOWLEDGE_")
 
     @computed_field
