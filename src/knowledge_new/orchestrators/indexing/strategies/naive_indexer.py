@@ -7,14 +7,14 @@ from errors import (
 )
 from enums import IndexStatusEnum, DocumentStatusEnum
 from models import IndexRequest, IndexedChunk, Document
-from orchestrators.base import AbstractOrchestrator
+from orchestrators.indexing import AbstractIndexer
 from services.chunkers import build_chunker
 from services.embedders import build_embedder, AbstractEmbedder
 from services.file_text_extractors import build_file_text_extractor
 from services.indexing_error_classifier import IndexingErrorClassifier
 
 
-class NaiveIndexer(AbstractOrchestrator):
+class NaiveIndexer(AbstractIndexer):
     async def on_execute(self, request: IndexRequest) -> None:
         async with self.uow:
             embedder = await self._get_embedder_under_uow(request.rag_id)
