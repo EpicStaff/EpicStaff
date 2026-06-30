@@ -1,18 +1,21 @@
 from __future__ import annotations
 
 from django.db import transaction
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from tables.models.agent_models.surface_models import Surface
 from tables.models.rbac_models import Organization
 from tables.serializers.model_serializers.surface_serializers import (
+    SurfaceCombineRequestSerializer,
     SurfacePatchWriteSerializer,
     SurfaceReadSerializer,
     SurfaceWriteSerializer,
 )
+from tables.services.surface_combine_service import SurfaceCombineService
 
 
 class SurfaceViewSet(viewsets.ModelViewSet):
@@ -97,3 +100,32 @@ class SurfaceViewSet(viewsets.ModelViewSet):
             SurfaceReadSerializer(instance, context=ctx).data,
             status=status.HTTP_200_OK,
         )
+
+    @extend_schema(
+        request=SurfaceCombineRequestSerializer,
+        responses={
+            200: OpenApiResponse(
+                response=SurfaceReadSerializer,
+                description="Combined surface data merged from the requested surfaces.",
+            ),
+            400: OpenApiResponse(
+                description="Invalid surface ids or conflicting RAG configs."
+            ),
+        },
+    )
+    @action(detail=False, methods=["post"], url_path="combine")
+    def combine(self, request):
+        ctx = self.get_serializer_context()
+        request_serializer = SurfaceCombineRequestSerializer(
+            data=request.data, context=ctx
+        )
+        request_serializer.is_valid(raise_exception=True)
+
+        validated_ids = {s.pk for s in request_serializer.validated_data["surface_ids"]}
+        surfaces_qs = self.get_queryset().filter(id__in=validated_ids)
+        surface_dicts = [
+            SurfaceReadSerializer(surface, context=ctx).data for surface in surfaces_qs
+        ]
+
+        combined = SurfaceCombineService.combine(surface_dicts)
+        return Response(combined, status=status.HTTP_200_OK)

@@ -243,3 +243,26 @@ class SurfacePatchWriteSerializer(SurfaceWriteSerializer):
     mcp_tools = SurfaceMcpToolWriteSerializer(many=True, required=False)
     storage_items = SurfaceStorageItemWriteSerializer(many=True, required=False)
     knowledge = SurfaceKnowledgeWriteSerializer(many=True, required=False)
+
+
+class SurfaceCombineRequestSerializer(serializers.Serializer):
+    surface_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        allow_empty=False,
+        queryset=Surface.objects.none(),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        organization = self.context.get("organization")
+
+        if organization is not None:
+            self.fields["surface_ids"].child_relation.queryset = Surface.objects.filter(
+                organization=organization
+            )
+
+    def validate_surface_ids(self, value):
+        if len(value) != len({s.pk for s in value}):
+            raise serializers.ValidationError("Duplicate surface ids are not allowed.")
+
+        return value
