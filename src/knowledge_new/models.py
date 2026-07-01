@@ -1,17 +1,17 @@
 from datetime import datetime
 from pathlib import Path
 
-from enums import (
+from pydantic import BaseModel, ConfigDict, Field, computed_field
+from src.knowledge_new.enums import (
     ChunkStrategyEnum,
     DocumentErrorCode,
     DocumentStatusEnum,
     EmbedderProviderEnum,
 )
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from src.shared.models.base import Entity, ValueObject
 from src.shared.models.knowledge_new import (
     BaseSearchConfig,
     CancelRequest,
-    Entity,
     FoundChunk,
     GraphSearchConfig,
     IndexRequest,
@@ -22,8 +22,8 @@ from src.shared.models.knowledge_new import (
     SearchConfig,
     SearchRequest,
     SearchResponse,
-    ValueObject,
 )
+
 from utils import utcnow
 
 __all__ = [

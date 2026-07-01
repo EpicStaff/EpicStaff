@@ -53,8 +53,7 @@ from .knowledge import (
     ChunkDocumentMessage,
     ChunkDocumentMessageResponse,
 )
-from .knowledge_rag import (
-    ValueObject,
+from .knowledge_new import (
     BaseSearchConfig,
     NaiveSearchConfig,
     GraphSearchConfig,
@@ -68,6 +67,7 @@ from .knowledge_rag import (
     SearchResponse,
     CancelRequest,
 )
+from src.shared.models.base import ValueObject
 from .sessions import (
     SessionData,
     GraphSessionMessageData,
