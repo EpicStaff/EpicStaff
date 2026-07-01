@@ -4,7 +4,13 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { expandCollapseAnimation } from '@shared/animations';
-import { CustomInputComponent, JsonEditorComponent, SelectComponent, SelectItem } from '@shared/components';
+import {
+    CustomInputComponent,
+    JsonEditorComponent,
+    LlmModelSelectorComponent,
+    SelectComponent,
+    SelectItem,
+} from '@shared/components';
 import { FullLLMConfig, FullLLMConfigService } from '@shared/services';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
@@ -36,6 +42,7 @@ import { DEFAULT_OUTPUT_SCHEMA } from './default-output-schema';
         JsonEditorComponent,
         MatTooltipModule,
         SelectComponent,
+        LlmModelSelectorComponent,
     ],
     animations: [expandCollapseAnimation],
     templateUrl: './code-agent-node-panel.component.html',

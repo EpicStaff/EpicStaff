@@ -39,11 +39,9 @@
                                 placeholder="Select mode"
                             />
 
-                            <app-select
-                                label="LLM Config"
+                            <app-llm-model-selector
+                                [placeholder]="'LLM Config'"
                                 formControlName="llm_config"
-                                [items]="llmConfigItems()"
-                                placeholder="— None —"
                             />
 
                             <app-custom-input

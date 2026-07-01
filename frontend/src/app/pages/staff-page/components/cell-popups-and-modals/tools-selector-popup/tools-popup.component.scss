@@ -121,7 +121,6 @@ $transition-default: all 0.2s ease;
 
 .menu-header {
     display: flex;
-    align-items: flex-end;
     justify-content: space-between;
     padding: 0;
     margin-bottom: 8px; // Match LLM popup spacing
@@ -156,12 +155,6 @@ $transition-default: all 0.2s ease;
                 border-bottom: 2px solid $accent-blue;
             }
         }
-    }
-
-    .header-create-btn {
-        margin-left: auto;
-        margin-bottom: 6px;
-        flex-shrink: 0;
     }
 }
 
@@ -275,39 +268,4 @@ $transition-default: all 0.2s ease;
     padding: 12px;
     border-top: 1px solid $border-color;
     gap: 8px;
-    .save-btn {
-        background-color: $accent-blue;
-        color: white;
-        padding: 7px 16px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 13px;
-        font-weight: 500;
-        transition: $transition-default;
-        border: none;
-
-        &:hover {
-            background-color: $accent-hover;
-        }
-
-        &:active {
-            transform: translateY(0px);
-            box-shadow: none;
-        }
-    }
-    .cancel-button {
-        padding: 7px 14px;
-        background-color: transparent;
-        border: none;
-        color: $text-secondary;
-        font-size: 13px;
-        border-radius: 4px;
-        cursor: pointer;
-        transition: $transition-default;
-
-        &:hover {
-            color: $text-primary;
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-    }
 }
