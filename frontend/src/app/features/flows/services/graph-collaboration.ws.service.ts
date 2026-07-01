@@ -9,6 +9,23 @@ import { WsTicketService } from '../../../services/auth/ws-ticket.service';
 import { ConfigService } from '../../../services/config/config.service';
 import { ConnectionModel } from '../../../visual-programming/core/models/connection.model';
 import { NodeModel } from '../../../visual-programming/core/models/node.model';
+import {
+    AudioToTextNodeModel,
+    ClassificationDecisionTableNodeModel,
+    CodeAgentNodeModel,
+    DecisionTableNodeModel,
+    EdgeNodeModel,
+    EndNodeModel,
+    FileExtractorNodeModel,
+    GraphNoteModel,
+    PythonNodeModel,
+    ScheduleTriggerNodeModel,
+    StartNodeModel,
+    SubGraphNodeModel,
+    TelegramTriggerNodeModel,
+    WebhookTriggerNodeModel,
+} from '../../../visual-programming/core/models/node.model';
+import { toNodeMetadata } from '../../../visual-programming/utils/save/metadata';
 import { GraphDto } from '../models/graph.model';
 
 export interface EditorInfo {
@@ -155,23 +172,299 @@ export function nodeTypeToListKey(type: NodeType): string | null {
     }
 }
 
-export function nodeToWsPayload(node: NodeModel): Record<string, unknown> {
-    const { id, backendId, ...rest } = node as unknown as Record<string, unknown>;
-    return backendId != null ? { ...rest, id: backendId } : { ...rest, temp_id: id };
+// export function nodeToWsPayload(node: NodeModel): Record<string, unknown> {
+//     const { id, backendId, ...rest } = node as unknown as Record<string, unknown>;
+//     return backendId != null ? { ...rest, id: backendId } : { ...rest, temp_id: id };
+// }
+
+export function buildNodeBackendPayload(
+    node: NodeModel,
+    graphId: number,
+    allNodes: NodeModel[] = []
+): Record<string, unknown> | null {
+    const idField = node.backendId != null ? { id: node.backendId } : { temp_id: node.id };
+    const meta = toNodeMetadata(node);
+
+    switch (node.type) {
+        case NodeType.START:
+            return {
+                ...idField,
+                graph: graphId,
+                variables: (node as StartNodeModel).data.initialState ?? {},
+                metadata: meta,
+            };
+
+        case NodeType.END:
+            return {
+                ...idField,
+                graph: graphId,
+                output_map: (node as EndNodeModel).data.output_map ?? { context: 'variables.context' },
+                metadata: meta,
+            };
+
+        case NodeType.PYTHON: {
+            const pn = node as PythonNodeModel;
+            const { use_storage, ...pythonCode } = pn.data;
+            return {
+                ...idField,
+                node_name: pn.node_name,
+                graph: graphId,
+                python_code: pythonCode,
+                input_map: pn.input_map || {},
+                output_variable_path: pn.output_variable_path || null,
+                stream_config: pn.stream_config ?? {},
+                use_storage: use_storage ?? false,
+                test_input: pn.test_input ?? {},
+                metadata: meta,
+            };
+        }
+
+        case NodeType.AGENT:
+        case NodeType.TASK:
+        case NodeType.PROJECT: {
+            const cn = node as {
+                node_name: string;
+                data: { id: number };
+                input_map: Record<string, unknown>;
+                output_variable_path: string | null;
+                stream_config?: Record<string, unknown>;
+            } & NodeModel;
+            return {
+                ...idField,
+                node_name: cn.node_name,
+                graph: graphId,
+                crew_id: cn.data.id,
+                input_map: cn.input_map || {},
+                output_variable_path: cn.output_variable_path || null,
+                stream_config: cn.stream_config ?? {},
+                metadata: meta,
+            };
+        }
+
+        case NodeType.FILE_EXTRACTOR:
+            return {
+                ...idField,
+                node_name: (node as FileExtractorNodeModel).node_name,
+                graph: graphId,
+                input_map: node.input_map || {},
+                output_variable_path: node.output_variable_path || null,
+                metadata: meta,
+            };
+
+        case NodeType.AUDIO_TO_TEXT:
+            return {
+                ...idField,
+                node_name: (node as AudioToTextNodeModel).node_name,
+                graph: graphId,
+                input_map: node.input_map || {},
+                output_variable_path: node.output_variable_path || null,
+                metadata: meta,
+            };
+
+        case NodeType.SUBGRAPH: {
+            const sn = node as SubGraphNodeModel;
+            return {
+                ...idField,
+                node_name: sn.node_name,
+                graph: graphId,
+                subgraph: sn.data.id,
+                input_map: sn.input_map || {},
+                output_variable_path: sn.output_variable_path || null,
+                metadata: meta,
+            };
+        }
+
+        case NodeType.WEBHOOK_TRIGGER: {
+            const wn = node as WebhookTriggerNodeModel;
+            return {
+                ...idField,
+                node_name: wn.node_name,
+                graph: graphId,
+                python_code: wn.data.python_code,
+                input_map: wn.input_map || {},
+                output_variable_path: wn.output_variable_path || null,
+                webhook_trigger_path: '',
+                webhook_trigger: wn.data.webhook_trigger,
+                metadata: meta,
+            };
+        }
+
+        case NodeType.TELEGRAM_TRIGGER: {
+            const tn = node as TelegramTriggerNodeModel;
+            return {
+                ...idField,
+                node_name: tn.node_name,
+                graph: graphId,
+                telegram_bot_api_key: tn.data.telegram_bot_api_key,
+                webhook_trigger: tn.data.webhook_trigger,
+                fields: tn.data.fields,
+                metadata: meta,
+            };
+        }
+
+        case NodeType.SCHEDULE_TRIGGER: {
+            const sched = node as ScheduleTriggerNodeModel;
+            return {
+                ...idField,
+                node_name: sched.node_name,
+                graph: graphId,
+                is_active: sched.data.startDateTime ? sched.data.isActive : false,
+                metadata: meta,
+                schedule: sched.data.startDateTime ? buildSchedulePayload(sched) : null,
+            };
+        }
+
+        case NodeType.NOTE: {
+            const nn = node as GraphNoteModel;
+            return {
+                ...idField,
+                node_name: nn.node_name,
+                graph: graphId,
+                content: nn.data.content,
+                metadata: { ...meta, backgroundColor: nn.data.backgroundColor ?? null },
+            };
+        }
+
+        case NodeType.CODE_AGENT: {
+            const ca = node as CodeAgentNodeModel;
+            return {
+                ...idField,
+                node_name: ca.node_name,
+                graph: graphId,
+                llm_config: ca.data?.llm_config_id ?? null,
+                agent_mode: ca.data?.agent_mode ?? 'code_interpreter',
+                session_id: ca.data?.session_id ?? '',
+                system_prompt: ca.data?.system_prompt ?? '',
+                stream_handler_code: ca.data?.stream_handler_code ?? '',
+                libraries: ca.data?.libraries ?? [],
+                polling_interval_ms: ca.data?.polling_interval_ms ?? 100,
+                silence_indicator_s: ca.data?.silence_indicator_s ?? 3,
+                indicator_repeat_s: ca.data?.indicator_repeat_s ?? 5,
+                chunk_timeout_s: ca.data?.chunk_timeout_s ?? 30,
+                inactivity_timeout_s: ca.data?.inactivity_timeout_s ?? 120,
+                max_wait_s: ca.data?.max_wait_s ?? 300,
+                input_map: ca.input_map,
+                output_variable_path: ca.output_variable_path,
+                stream_config: ca.stream_config ?? {},
+                output_schema: ca.data?.output_schema ?? {},
+                use_storage: ca.data?.use_storage ?? false,
+                metadata: meta,
+            };
+        }
+
+        case NodeType.TABLE: {
+            const dn = node as DecisionTableNodeModel;
+            return buildDecisionTableBackendPayload(dn, graphId, allNodes);
+        }
+
+        case NodeType.CLASSIFICATION_TABLE: {
+            const cdn = node as ClassificationDecisionTableNodeModel;
+            return {
+                ...idField,
+                node_name: cdn.node_name,
+                graph: graphId,
+                metadata: meta,
+            };
+        }
+
+        case NodeType.EDGE: {
+            const en = node as EdgeNodeModel;
+            return {
+                ...idField,
+                node_name: en.node_name,
+                graph: graphId,
+                metadata: meta,
+            };
+        }
+
+        default:
+            return null;
+    }
+}
+
+function buildSchedulePayload(node: ScheduleTriggerNodeModel): Record<string, unknown> {
+    const d = node.data;
+    if (d.runMode === 'once') {
+        return {
+            run_mode: 'once',
+            start_data_time: d.startDateTime,
+            interval: null,
+            end: { type: 'never', date_time: null, max_runs: null },
+            timezone: d.timezone,
+        };
+    }
+    const unitAllowsWeekdays = d.intervalUnit === 'days' || d.intervalUnit === 'weeks';
+    const interval = { every: d.intervalEvery, unit: d.intervalUnit, weekdays: unitAllowsWeekdays ? d.weekdays : [] };
+    let end: Record<string, unknown>;
+    if (d.endType === 'on_date') {
+        end = { type: 'on_date', date_time: d.endDateTime, max_runs: null };
+    } else if (d.endType === 'after_n_runs') {
+        end = { type: 'after_n_runs', date_time: null, max_runs: d.maxRuns };
+    } else {
+        end = { type: 'never', date_time: null, max_runs: null };
+    }
+    return { run_mode: 'repeat', start_date_time: d.startDateTime, interval, end, timezone: d.timezone };
+}
+
+function buildDecisionTableBackendPayload(
+    node: DecisionTableNodeModel,
+    graphId: number,
+    allNodes: NodeModel[]
+): Record<string, unknown> {
+    const idField = node.backendId != null ? { id: node.backendId } : { temp_id: node.id };
+    const tableData = node.data.table;
+    const conditionGroups = tableData.condition_groups
+        .filter((g) => g.valid !== false)
+        .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER))
+        .map((group, index) => {
+            const nextNode = allNodes.find((n) => n.id === group.next_node);
+            const nextBackendId = nextNode?.backendId ?? null;
+            const nextTempId = !nextBackendId && group.next_node ? group.next_node : undefined;
+            return {
+                group_name: group.group_name,
+                group_type: group.group_type,
+                expression: group.expression,
+                conditions: group.conditions.map((c) => ({ condition_name: c.condition_name, condition: c.condition })),
+                manipulation: group.manipulation,
+                next_node_id: nextBackendId,
+                ...(nextTempId ? { next_node_temp_id: nextTempId } : {}),
+                order: typeof group.order === 'number' ? group.order : index + 1,
+            };
+        });
+    const defaultNext = allNodes.find((n) => n.id === tableData.default_next_node);
+    const defaultNextBackendId = defaultNext?.backendId ?? null;
+    const errorNext = allNodes.find((n) => n.id === tableData.next_error_node);
+    const errorNextBackendId = errorNext?.backendId ?? null;
+    return {
+        ...idField,
+        graph: graphId,
+        node_name: node.node_name,
+        condition_groups: conditionGroups,
+        default_next_node_id: defaultNextBackendId,
+        ...(!defaultNextBackendId && tableData.default_next_node
+            ? { default_next_node_temp_id: tableData.default_next_node }
+            : {}),
+        next_error_node_id: errorNextBackendId,
+        ...(!errorNextBackendId && tableData.next_error_node
+            ? { next_error_node_temp_id: tableData.next_error_node }
+            : {}),
+        metadata: toNodeMetadata(node),
+    };
 }
 
 export function connectionToWsPayload(
     conn: ConnectionModel,
     sourceNode: NodeModel,
-    targetNode: NodeModel
+    targetNode: NodeModel,
+    graphId: number
 ): Record<string, unknown> {
-    const connId = conn.data?.id != null ? { id: conn.data.id } : { temp_id: conn.id };
+    const connId = conn.data?.id != null ? { id: conn.data.id } : { temp_id: crypto.randomUUID() };
     const startRef =
         sourceNode.backendId != null ? { start_node_id: sourceNode.backendId } : { start_temp_id: sourceNode.id };
     const endRef =
         targetNode.backendId != null ? { end_node_id: targetNode.backendId } : { end_temp_id: targetNode.id };
     const waypoints = conn.waypoints ?? [];
-    return { ...connId, ...startRef, ...endRef, waypoints, metadata: { waypoints } };
+    return { ...connId, graph: graphId, ...startRef, ...endRef, waypoints, metadata: { waypoints } };
 }
 
 @Injectable({ providedIn: 'root' })
@@ -425,28 +718,34 @@ export class GraphCollaborationWsService {
         });
     }
 
-    public sendNodeCreated(node: NodeModel): void {
+    public sendNodeCreated(node: NodeModel, graphId: number, allNodes: NodeModel[] = []): void {
         const list_key = nodeTypeToListKey(node.type);
         if (!list_key) return;
+        const payload = buildNodeBackendPayload(node, graphId, allNodes);
+        if (!payload) return;
         const editor = this.buildEditorInfo();
-        if (editor) this.sendRaw({ type: 'node_created', node: nodeToWsPayload(node), list_key, editor });
+        if (editor) this.sendRaw({ type: 'node_created', node: payload, list_key, editor });
     }
 
-    public sendNodeUpdated(node: NodeModel): void {
+    public sendNodeUpdated(node: NodeModel, graphId: number, allNodes: NodeModel[] = []): void {
         const list_key = nodeTypeToListKey(node.type);
         if (!list_key) return;
+        const payload = buildNodeBackendPayload(node, graphId, allNodes);
+        if (!payload) return;
         const editor = this.buildEditorInfo();
-        if (editor) this.sendRaw({ type: 'node_updated', node: nodeToWsPayload(node), list_key, editor });
+        if (editor) this.sendRaw({ type: 'node_updated', node: payload, list_key, editor });
     }
 
-    public sendNodePositionDuringDrag(node: NodeModel): void {
+    public sendNodePositionDuringDrag(node: NodeModel, graphId: number, allNodes: NodeModel[] = []): void {
         const now = Date.now();
         if (now - this.lastNodeDragSendAt < 150) return;
         this.lastNodeDragSendAt = now;
         const list_key = nodeTypeToListKey(node.type);
         if (!list_key) return;
+        const payload = buildNodeBackendPayload(node, graphId, allNodes);
+        if (!payload) return;
         const editor = this.buildEditorInfo();
-        if (editor) this.sendRaw({ type: 'node_updated', node: nodeToWsPayload(node), list_key, editor });
+        if (editor) this.sendRaw({ type: 'node_updated', node: payload, list_key, editor });
     }
 
     public sendNodesDeleted(refs: EntryDeleteRef[]): void {
@@ -458,13 +757,14 @@ export class GraphCollaborationWsService {
         conn: ConnectionModel,
         listKey: string,
         sourceNode: NodeModel,
-        targetNode: NodeModel
+        targetNode: NodeModel,
+        graphId: number
     ): void {
         const editor = this.buildEditorInfo();
         if (editor)
             this.sendRaw({
                 type: 'connection_created',
-                connection: connectionToWsPayload(conn, sourceNode, targetNode),
+                connection: connectionToWsPayload(conn, sourceNode, targetNode, graphId),
                 list_key: listKey,
                 editor,
             });
@@ -535,6 +835,7 @@ export class GraphCollaborationWsService {
     }
 
     private sendRaw(payload: object): void {
+        console.log('[WS OUT]', payload);
         if (this.socket?.readyState === WebSocket.OPEN) {
             this.socket.send(JSON.stringify(payload));
         }

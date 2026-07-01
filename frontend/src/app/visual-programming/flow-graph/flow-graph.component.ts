@@ -458,7 +458,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 updatedConnection,
                 this.getConnectionListKey(updatedConnection),
                 reassignSourceNode,
-                reassignTargetNode
+                reassignTargetNode,
+                this.currentFlowId!
             );
         }
 
@@ -516,7 +517,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 newConnection,
                 this.getConnectionListKey(newConnection),
                 connSourceNode,
-                connTargetNode
+                connTargetNode,
+                this.currentFlowId!
             );
         }
 
@@ -570,7 +572,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
             const updatedNode = { ...node, position: safePosition };
             this.flowService.updateNode(updatedNode);
-            this.wsService.sendNodeCreated(updatedNode);
+            this.wsService.sendNodeCreated(updatedNode, this.currentFlowId!, this.flowState.nodes);
             placedNodes.push(updatedNode);
         }
 
@@ -690,7 +692,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             ),
         };
         this.flowService.updateNode(updatedNode);
-        this.wsService.sendNodeCreated(updatedNode);
+        this.wsService.sendNodeCreated(updatedNode, this.currentFlowId!, this.flowState.nodes);
     }
 
     public onContextMenu(event: MouseEvent): void {
@@ -722,7 +724,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         );
         const newNode = this.nodeFactory.createNode(event.type, { ...event.overrides, position });
         this.flowService.addNode(newNode);
-        this.wsService.sendNodeCreated(newNode);
+        this.wsService.sendNodeCreated(newNode, this.currentFlowId!, this.flowState.nodes);
     }
 
     public onOpenNodePanel(node: NodeModel): void {
@@ -790,7 +792,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public onNodePanelSaved(updatedNode: NodeModel): void {
         const normalizedNode = normalizeTableNodeSize(updatedNode);
         this.flowService.updateNode(normalizedNode);
-        this.wsService.sendNodeUpdated(normalizedNode);
+        this.wsService.sendNodeUpdated(normalizedNode, this.currentFlowId!, this.flowState.nodes);
         const movedNodeIds = this.resolveTableOverlaps(normalizedNode);
         this.sidePanelService.clearSelection();
 
@@ -812,7 +814,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public onNodePanelAutosaved(updatedNode: NodeModel): void {
         const normalizedNode = normalizeTableNodeSize(updatedNode);
         this.flowService.updateNode(normalizedNode);
-        this.wsService.sendNodeUpdated(normalizedNode);
+        this.wsService.sendNodeUpdated(normalizedNode, this.currentFlowId!, this.flowState.nodes);
         const movedNodeIds = this.resolveTableOverlaps(normalizedNode);
 
         setTimeout(() => {
@@ -865,7 +867,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         };
 
         this.flowService.updateNode(updatedNode);
-        this.wsService.sendNodeUpdated(updatedNode);
+        this.wsService.sendNodeUpdated(updatedNode, this.currentFlowId!, this.flowState.nodes);
     }
 
     public onDragStarted(event: FDragStartedEvent): void {
@@ -1025,10 +1027,14 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
             if (freePos.x !== current.position.x || freePos.y !== current.position.y) {
                 this.flowService.updateNode({ ...current, position: freePos });
-                this.wsService.sendNodeUpdated({ ...current, position: freePos });
+                this.wsService.sendNodeUpdated(
+                    { ...current, position: freePos },
+                    this.currentFlowId!,
+                    this.flowState.nodes
+                );
                 autoAlignedNodeIds.add(id);
             } else {
-                this.wsService.sendNodeUpdated(current);
+                this.wsService.sendNodeUpdated(current, this.currentFlowId!, this.flowState.nodes);
             }
         }
 
@@ -1065,7 +1071,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         };
 
         this.flowService.updateNode(updatedNode);
-        this.wsService.sendNodePositionDuringDrag(updatedNode);
+        this.wsService.sendNodePositionDuringDrag(updatedNode, this.currentFlowId!, this.flowState.nodes);
     }
 
     public onZoomInNode(node: NodeModel): void {
@@ -1106,10 +1112,14 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     const startPos = this.dragStartPositions.get(id);
                     const node = nodes.find((n) => n.id === id);
                     if (startPos && node) {
-                        this.wsService.sendNodePositionDuringDrag({
-                            ...node,
-                            position: { x: startPos.x + delta.x, y: startPos.y + delta.y },
-                        });
+                        this.wsService.sendNodePositionDuringDrag(
+                            {
+                                ...node,
+                                position: { x: startPos.x + delta.x, y: startPos.y + delta.y },
+                            },
+                            this.currentFlowId!,
+                            this.flowState.nodes
+                        );
                     }
                 }
             }
@@ -1253,7 +1263,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     //Broadcast nodes order after Auto arrange
                     const nodesAfterArrange = this.flowService.nodes();
                     for (const node of nodesAfterArrange) {
-                        this.wsService.sendNodeUpdated(node);
+                        this.wsService.sendNodeUpdated(node, this.currentFlowId!, this.flowState.nodes);
                     }
                     const connectionsAfterArrange = this.flowService.connections();
                     for (const connection of connectionsAfterArrange) {
