@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -82,22 +82,23 @@ export class VoiceSettingsSectionComponent implements OnInit {
 
     canConfigureWebhook = computed(() => !!this.selectedPhoneSid() && !!this.voiceStreamUrl());
 
-    canTestCredentials = (): boolean => {
-        const sid: string = this.form?.get('twilio_account_sid')?.value ?? '';
-        const token: string = this.form?.get('twilio_auth_token')?.value ?? '';
-        return !!sid && !!token;
-    };
+    form = this.fb.group({
+        twilio_account_sid: this.fb.nonNullable.control(''),
+        twilio_auth_token: this.fb.nonNullable.control(''),
+        voice_agent: this.fb.control<number | null>(null),
+        ngrok_config: this.fb.control<number | null>(null),
+    });
 
-    form!: FormGroup;
+    private formValue = toSignal(this.form.valueChanges, {
+        initialValue: this.form.getRawValue(),
+    });
+
+    canTestCredentials = computed<boolean>(() => {
+        const v = this.formValue();
+        return !!v.twilio_account_sid && !!v.twilio_auth_token;
+    });
 
     ngOnInit(): void {
-        this.form = this.fb.group({
-            twilio_account_sid: [''],
-            twilio_auth_token: [''],
-            voice_agent: [null],
-            ngrok_config: [null],
-        });
-
         this.form
             .get('ngrok_config')!
             .valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
