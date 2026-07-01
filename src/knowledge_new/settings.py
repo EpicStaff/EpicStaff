@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from loguru import logger
-from pydantic import computed_field
+from pydantic import computed_field, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 __all__ = ["settings"]
@@ -19,49 +19,49 @@ class MainSettings(BaseSettings):
 
     MAX_PROCESS_WORKERS: int = 10
 
-    POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str = "postgres"
-    POSTGRES_HOST: str
-    POSTGRES_PORT: int
-    POSTGRES_DB: str
+    DATABASE_BACKEND: str = "postgresql+psycopg"
+    DATABASE_USER: str = ""
+    DATABASE_PASSWORD: str = ""
+    DATABASE_HOST: str
+    DATABASE_PORT: int
+    DATABASE_NAME: str
 
     BROKER_BACKEND: str = "redis"
-    BROKER_USER: str = ""
-    BROKER_PASSWORD: str = ""
-    BROKER_HOST: str
-    BROKER_PORT: int
-    BROKER_DB: str
+    BROKER_USER: str = Field(default="", validation_alias="COMMUNICATION_BROKER_USER")
+    BROKER_PASSWORD: str = Field(default="", validation_alias="COMMUNICATION_BROKER_PASSWORD")
+    BROKER_HOST: str = Field(validation_alias="COMMUNICATION_BROKER_HOST")
+    BROKER_PORT: int = Field(validation_alias="COMMUNICATION_BROKER_PORT")
+    BROKER_NAME: str = Field(validation_alias="COMMUNICATION_BROKER_NAME")
 
     STORAGE_BACKEND: str = "redis"
-    STORAGE_USER: str = ""
-    STORAGE_PASSWORD: str = ""
-    STORAGE_HOST: str
-    STORAGE_PORT: int
-    STORAGE_DB: str
+    STORAGE_USER: str = Field(default="", validation_alias="COMMUNICATION_STORAGE_USER")
+    STORAGE_PASSWORD: str = Field(default="", validation_alias="COMMUNICATION_STORAGE_PASSWORD")
+    STORAGE_HOST: str = Field(validation_alias="COMMUNICATION_STORAGE_HOST")
+    STORAGE_PORT: int = Field(validation_alias="COMMUNICATION_STORAGE_PORT")
+    STORAGE_NAME: str = Field(validation_alias="COMMUNICATION_STORAGE_NAME")
 
-    SEARCH_REQUEST_CHANNEL: str = "knowledge:search:get"
-    SEARCH_RESPONSE_CHANNEL: str = "knowledge:search:response"
-
-    PRECHUNK_REQUEST_CHANNEL: str = "knowledge:chunk"
-    PRECHUNK_RESPONSE_CHANNEL: str = "knowledge:chunk:response"
-
-    INDEX_REQUEST_CHANNEL: str = "knowledge:indexing"
-
-    CANCEL_REQUEST_CHANNEL: str = "knowledge:cancel"
+    SEARCH_REQUEST_CHANNEL: str
+    SEARCH_RESPONSE_CHANNEL: str
+    PRECHUNK_REQUEST_CHANNEL: str
+    PRECHUNK_RESPONSE_CHANNEL: str
+    INDEX_REQUEST_CHANNEL: str
+    CANCEL_REQUEST_CHANNEL: str
 
     model_config = SettingsConfigDict(
-        env_file=BASE_DIR / "../.env", env_prefix="KNOWLEDGE_"
+        env_file=BASE_DIR / "../.env",
+        env_prefix="KNOWLEDGE_",
+        extra="ignore",
     )
 
     @computed_field
-    def POSTGRES_DNS(self) -> str:  # noqa: N802
+    def DATABASE_DNS(self) -> str:  # noqa: N802
         return _build_dns(
-            "postgresql+psycopg",
-            self.POSTGRES_HOST,
-            self.POSTGRES_PORT,
-            self.POSTGRES_DB,
-            self.POSTGRES_USER,
-            self.POSTGRES_PASSWORD,
+            self.DATABASE_BACKEND,
+            self.DATABASE_HOST,
+            self.DATABASE_PORT,
+            self.DATABASE_NAME,
+            self.DATABASE_USER,
+            self.DATABASE_PASSWORD,
         )
 
     @computed_field
@@ -70,7 +70,7 @@ class MainSettings(BaseSettings):
             self.BROKER_BACKEND,
             self.BROKER_HOST,
             self.BROKER_PORT,
-            self.BROKER_DB,
+            self.BROKER_NAME,
             self.BROKER_USER,
             self.BROKER_PASSWORD,
         )
@@ -81,7 +81,7 @@ class MainSettings(BaseSettings):
             self.STORAGE_BACKEND,
             self.STORAGE_HOST,
             self.STORAGE_PORT,
-            self.STORAGE_DB,
+            self.STORAGE_NAME,
             self.STORAGE_USER,
             self.STORAGE_PASSWORD,
         )
