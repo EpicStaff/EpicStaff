@@ -64,6 +64,7 @@ from tables.views.views import (
     InitRealtimeAPIView,
     RegisterTelegramTriggerApiView,
     ProcessRagIndexingView,
+    CancelRagIndexingView,
     RegisterWebhooksApiView,
     RunPythonCodeAPIView,
     TelegramTriggerNodeAvailableFieldsView,
@@ -351,6 +352,11 @@ urlpatterns = [
         "process-rag-indexing/",
         ProcessRagIndexingView.as_view(),
         name="process-rag-indexing",
+    ),
+    path(
+        "process-rag-indexing/cancel/",
+        CancelRagIndexingView.as_view(),
+        name="cancel-rag-indexing",
     ),
     path(
         "documents/source-collection/<str:collection_id>/upload/",

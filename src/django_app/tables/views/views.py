@@ -40,7 +40,10 @@ from drf_spectacular.utils import (
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef
 from django.conf import settings
-
+from django.conf import settings
+from src.shared.communication import Message
+from django_app.communication import producer
+from django_app.communication_schemas import IndexRequest, CancelRequest
 
 from rest_framework.mixins import RetrieveModelMixin, UpdateModelMixin, ListModelMixin
 from rest_framework.viewsets import GenericViewSet
@@ -123,6 +126,7 @@ from tables.swagger_schemas.default_config_schemas import (
 )
 from tables.swagger_schemas.knowledge_schemas.naive_rag_schemas import (
     PROCESS_RAG_INDEXING_POST,
+    CANCEL_RAG_INDEXING_POST,
 )
 from tables.swagger_schemas.realtime_schemas import INIT_REALTIME_POST
 from tables.swagger_schemas.sessions_schema import (
@@ -923,45 +927,49 @@ class ProcessRagIndexingView(APIView):
         rag_id = serializer.validated_data["rag_id"]
         rag_type = serializer.validated_data["rag_type"]
 
-        try:
-            indexing_data = IndexingService.validate_and_prepare_indexing(
-                rag_id=rag_id, rag_type=rag_type
-            )
+        IndexingService.validate_and_prepare_indexing(rag_id=rag_id, rag_type=rag_type)
 
-            from src.shared.communication import Message, Producer, brokers, storages
+        producer.send(
+            settings.KNOWLEDGE_INDEXING_CHANNEL,
+            Message(
+                payload=IndexRequest(rag_id=rag_id, rag_strategy=rag_type).model_dump()
+            ),
+        )
 
-            message = Message(
-                payload={
-                    'rag_id': indexing_data['rag_id'],
-                    'rag_strategy': indexing_data['rag_type'],
-                }
-            )
-            broker = brokers.RedisPubSubBroker(url='redis://:redis_password@redis:6379/2')
-            storages = storages.RedisStorage(url='redis://:redis_password@redis:6379/3')
-            producer = Producer(
-                broker=broker,
-                storage=storages,
-            )
-            producer.send('knowledge:indexing', message)
-            # redis_service.publish_rag_indexing(
-            #     rag_id=indexing_data["rag_id"],
-            #     rag_type=indexing_data["rag_type"],
-            #     collection_id=indexing_data["collection_id"],
-            # )
+        return Response(
+            {
+                "detail": "Indexing process accepted",
+                "rag_id": rag_id,
+                "rag_type": rag_type,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
 
-            return Response(
-                data={
-                    "detail": "Indexing process accepted",
-                    "rag_id": indexing_data["rag_id"],
-                    "rag_type": indexing_data["rag_type"],
-                    "collection_id": indexing_data["collection_id"],
-                },
-                status=status.HTTP_202_ACCEPTED,
-            )
 
-        except Exception:
-            # DRF handle
-            raise
+class CancelRagIndexingView(APIView):
+    @extend_schema(**CANCEL_RAG_INDEXING_POST)
+    def post(self, request):
+        serializer = ProcessRagIndexingSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        rag_id = serializer.validated_data["rag_id"]
+        rag_type = serializer.validated_data["rag_type"]
+
+        target_request = IndexRequest(rag_id=rag_id, rag_strategy=rag_type).model_dump()
+        producer.send(
+            settings.KNOWLEDGE_CANCEL_CHANNEL,
+            Message(payload=CancelRequest(target_request=target_request).model_dump()),
+        )
+
+        return Response(
+            {
+                "detail": "Indexing cancellation requested",
+                "rag_id": rag_id,
+                "rag_type": rag_type,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
 
 
 # class ProcessCollectionEmbeddingView(APIView):

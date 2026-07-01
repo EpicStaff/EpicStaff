@@ -316,6 +316,7 @@ KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE = os.getenv(
 KNOWLEDGE_INDEXING_CHANNEL = os.getenv(
     "KNOWLEDGE_INDEXING_CHANNEL", "knowledge:indexing"
 )
+KNOWLEDGE_CANCEL_CHANNEL = os.getenv("KNOWLEDGE_CANCEL_CHANNEL", "knowledge:cancel")
 STOP_SESSION_CHANNEL = os.getenv("STOP_SESSION_CHANNEL", "sessions:stop")
 
 WEBHOOK_USE_TUNNEL = os.getenv("WEBHOOK_USE_TUNNEL", "False") in ["True", "true", 1]

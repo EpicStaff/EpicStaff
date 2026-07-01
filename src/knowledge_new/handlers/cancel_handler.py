@@ -2,8 +2,8 @@ from typing import Never
 
 from handlers import AbstractHandler
 from models import CancelRequest
-from settings import settings
 from services.task_register import task_register
+from settings import settings
 from utils import hash_dict
 
 
