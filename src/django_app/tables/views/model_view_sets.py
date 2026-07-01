@@ -149,7 +149,6 @@ from tables.models.graph_models import (
     GraphOrganizationUser,
     GraphNote,
     TelegramTriggerNode,
-    TelegramTriggerNodeField,
     WebhookTriggerNode,
     ScheduleTriggerNode,
 )
@@ -244,7 +243,6 @@ from tables.serializers.model_serializers import (
     WebhookTriggerSerializer,
     ScheduleTriggerNodeSerializer,
     TelegramTriggerNodeSerializer,
-    TelegramTriggerNodeFieldSerializer,
 )
 from tables.serializers.serializers import (
     BulkExportSerializer,
@@ -1688,11 +1686,6 @@ class TelegramTriggerNodeViewSet(
     org_filter_path = "graph__org_id"
     queryset = TelegramTriggerNode.objects.prefetch_related("fields")
     serializer_class = TelegramTriggerNodeSerializer
-
-
-class TelegramTriggerNodeFieldViewSet(ModelViewSet):
-    queryset = TelegramTriggerNodeField.objects.select_related("telegram_trigger_node")
-    serializer_class = TelegramTriggerNodeFieldSerializer
 
 
 class ScheduleTriggerNodeViewSet(
