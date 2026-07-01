@@ -216,9 +216,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             .subscribe((node) => this.handleNodeSaveRequest(node));
 
         this.wsService.graphSaved$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
-
             this.graphState.update((state) => (state ? { ...state, save_version: event.new_save_version } : state));
-            
+
             const tempIdMap = event.temp_id_map;
             if (tempIdMap && Object.keys(tempIdMap).length > 0) {
                 const updates = this.flowService
@@ -242,10 +241,21 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         });
 
         this.wsService.graphState$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            const currentUserId = this.profileService.currentUserSignal()?.id;
+            if (msg.restored_by && msg.restored_by.user_id === currentUserId) return;
+
             let flowModel = mapGraphDtoToFlowModel(msg.flow);
             flowModel = this.addStartNodeIfNeeded(flowModel);
             const normalizedFlow = normalizeFlowPorts(flowModel);
             this.flowService.setFlow(normalizedFlow);
+
+            if (msg.restored_by) {
+                this.undoRedoService.setUndoStack([]);
+                this.undoRedoService.setRedoStack([]);
+                const restoredBy = msg.restored_by.display_name ?? `User ${msg.restored_by.user_id}`;
+                const versionName = msg.version_name ?? 'a previous version';
+                this.toastService.info(`Flow restored to ${versionName} by ${restoredBy}`);
+            }
         });
 
         this.wsService.nodeCreated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {

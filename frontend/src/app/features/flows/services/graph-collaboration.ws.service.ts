@@ -58,7 +58,12 @@ export type SaveFailedMessage = {
     reason: string;
     saved_at: string;
 };
-export type GraphStateMessage = { type: 'graph_state'; flow: GraphDto };
+export type GraphStateMessage = {
+    type: 'graph_state';
+    flow: GraphDto;
+    restored_by?: EditorInfo;
+    version_name?: string;
+};
 export type NodeCreatedMessage = {
     type: 'node_created';
     node: Record<string, unknown>;

@@ -26,6 +26,7 @@ import { UnsavedChangesDialogService } from '../../../../shared/components/unsav
 import { GraphRestoreResponse, GraphVersionDto } from '../../models/graph.model';
 import { CreateGraphWarningsService } from '../../services/create-graph-warnings.service';
 import { FlowsApiService } from '../../services/flows-api.service';
+import { EditorInfo, GraphCollaborationWsService } from '../../services/graph-collaboration.ws.service';
 
 @Component({
     selector: 'app-version-history-panel',
@@ -73,6 +74,7 @@ export class VersionHistoryPanelComponent implements OnInit {
         private toastService: ToastService,
         private confirmationDialogService: ConfirmationDialogService,
         private unsavedChangesDialogService: UnsavedChangesDialogService,
+        private wsService: GraphCollaborationWsService,
         private cdr: ChangeDetectorRef,
         @Inject(DIALOG_DATA)
         public data: {
@@ -216,6 +218,44 @@ export class VersionHistoryPanelComponent implements OnInit {
     }
 
     private restore(version: GraphVersionDto): void {
+        const otherEditors = this.wsService.editors().filter((e) => e.user_id !== this.wsService.currentUserId());
+
+        if (otherEditors.length > 0) {
+            this.restoreWithCollaboratorsWarning(version, otherEditors);
+        } else {
+            this.restoreWithUnsavedCheck(version);
+        }
+    }
+
+    private restoreWithCollaboratorsWarning(version: GraphVersionDto, otherEditors: EditorInfo[]): void {
+        const count = otherEditors.length;
+        const names = otherEditors.map((e) => e.display_name || 'Unknown').join(', ');
+
+        this.confirmationDialogService
+            .confirm({
+                title: 'Restore version',
+                message:
+                    `<strong>${count}</strong> other ${count === 1 ? 'user is' : 'users are'} ` +
+                    `currently editing this flow (${names}). Their unsaved changes will be lost.<br><br>` +
+                    `The current state will be saved as a backup before restoring <strong>${version.name}</strong>.`,
+                confirmText: 'Restore anyway',
+                cancelText: 'Cancel',
+                type: 'warning',
+            })
+            .pipe(
+                filter((result) => result === true),
+                switchMap(() =>
+                    this.flowApiService.restoreGraphVersion(version.id, true, this.data.graphSaveVersion?.())
+                ),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe({
+                next: (response) => this.handleRestoreResponse(response),
+                error: () => this.toastService.error('Failed to restore version'),
+            });
+    }
+
+    private restoreWithUnsavedCheck(version: GraphVersionDto): void {
         const hasUnsaved = this.data.hasUnsavedChanges?.() ?? false;
         const message = hasUnsaved
             ? `You have unsaved changes. Restoring <strong>${version.name}</strong> will replace the current flow state. Save a backup of the current state first?`
@@ -226,7 +266,7 @@ export class VersionHistoryPanelComponent implements OnInit {
                 title: 'Restore version',
                 message,
                 saveText: 'Save & Restore',
-                dontSaveText: 'Just Restore',
+                dontSaveText: 'Just restore',
                 cancelText: 'Cancel',
                 type: 'warning',
                 showDontSave: true,
@@ -235,7 +275,7 @@ export class VersionHistoryPanelComponent implements OnInit {
                 switchMap((result) => {
                     if (result === 'save') {
                         const save$ = this.data.saveCurrentState?.() ?? of(void 0);
-                        return save$.pipe(
+                        return save$?.pipe(
                             switchMap(() =>
                                 this.flowApiService.restoreGraphVersion(
                                     version.id,
@@ -257,18 +297,20 @@ export class VersionHistoryPanelComponent implements OnInit {
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                next: (response) => {
-                    if (response.warnings.length > 0) {
-                        this.toastService.warning(
-                            `Version restored with ${response.warnings.length} warning(s): some nodes or edges were removed`
-                        );
-                    } else {
-                        this.toastService.success('Version restored successfully');
-                    }
-                    this.dialogRef.close(response);
-                },
+                next: (response) => this.handleRestoreResponse(response),
                 error: () => this.toastService.error('Failed to restore version'),
             });
+    }
+
+    private handleRestoreResponse(response: GraphRestoreResponse): void {
+        if (response.warnings.length > 0) {
+            this.toastService.warning(
+                `Version restored with ${response.warnings.length} warning(s): some nodes or edges were removed`
+            );
+        } else {
+            this.toastService.success('Version restored successfully');
+        }
+        this.dialogRef.close(response);
     }
 
     private loadVersions(): void {
