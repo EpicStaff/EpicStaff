@@ -1,25 +1,24 @@
 import os
-import json
-import time
-from uuid import uuid4
 from typing import Dict, Any, Optional
 from loguru import logger
 from langgraph.types import StreamWriter
 
 from models.graph_models import GraphMessage
 from services.graph.events import StopEvent
-from services.redis_service import RedisService, SyncPubsubSubscriber
+from services.redis_service import RedisService
 from constants.constants import (
     NAIVE_RAG_SEARCH_TIMEOUT,
     GRAPH_RAG_SEARCH_TIMEOUT,
     DEFAULT_RAG_SEARCH_TIMEOUT,
 )
-from src.shared.models import (
+from src.shared.communication import Message
+from services.communication import producer, consumer
+from services.communication_schemas import (
+    NaiveSearchConfig,
+    GraphSearchConfig,
     RagSearchConfig,
-    NaiveRagSearchConfig,
-    GraphRagSearchConfig,
-    BaseKnowledgeSearchMessage,
-    BaseKnowledgeSearchMessageResponse,
+    SearchRequest,
+    SearchResponse,
 )
 
 
@@ -36,9 +35,9 @@ class RagSearchConfigFactory:
     Factory class to build RAG search configs from dict based on rag_type.
     """
 
-    _config_builders = {
-        "naive": lambda config: NaiveRagSearchConfig(**config),
-        "graph": lambda config: GraphRagSearchConfig(**config),
+    _configs = {
+        "naive": NaiveSearchConfig,
+        "graph": GraphSearchConfig,
     }
 
     _timeouts = {
@@ -58,14 +57,14 @@ class RagSearchConfigFactory:
         Returns:
             Appropriate RagSearchConfig subclass instance
         """
-        builder = cls._config_builders.get(rag_type)
-        if not builder:
+        config_class = cls._configs.get(rag_type)
+        if not config_class:
             raise ValueError(
                 f"Unsupported RAG type: {rag_type}. "
-                f"Supported types: {list(cls._config_builders.keys())}"
+                f"Supported types: {list(cls._configs.keys())}"
             )
 
-        return builder(config_dict)
+        return config_class(**config_dict)
 
     @classmethod
     def get_timeout(cls, rag_type: str) -> int:
@@ -130,94 +129,27 @@ class KnowledgeSearchService:
 
         search_config = RagSearchConfigFactory.build(rag_type, rag_search_config)
 
-        execution_uuid = f"{sender}-{str(uuid4())}"
+        request = SearchRequest(rag_id=rag_id, query=query, search_config=search_config)
 
-        from src.shared.communication import Message, Producer, Consumer, brokers, storages
+        producer.send(
+            knowledge_search_get_channel,
+            Message(payload=request.model_dump()),
+        )
+        logger.info(
+            "Sent knowledge search rag_id=%s sender=%s query=%r", rag_id, sender, query
+        )
 
-        message = Message(
-            payload={
-                'rag_id': rag_id,
-                'query': query,
-                'search_config': {
-                    'rag_strategy': rag_type,
-                    **vars(search_config),
-                },
-            }
-        )
-        broker = brokers.RedisPubSubBroker(url='redis://:redis_password@redis:6379/2')
-        storage = storages.RedisStorage(url='redis://:redis_password@redis:6379/3')
-        producer = Producer(
-            broker=broker,
-            storage=storage,
-        )
-        producer.send('knowledge:search:get', message)
-        consumer = Consumer(
-            broker=broker,
-            storage=storage,
-        )
-        message = next(m for m in consumer.receive('knowledge:search:response'))
-        return [ch['text'] for ch in message.payload['chunks']]
+        msg = consumer.receive(knowledge_search_response_channel, timeout=timeout)
+        if msg is None:
+            raise TimeoutError(
+                f"Knowledge search timeout for {rag_type_id} after {timeout}s"
+            )
 
-        # # Setup response receiver
-        # knowledge_callback_receiver = KnowledgeSearchReceiver(
-        #     execution_uuid=execution_uuid
-        # )
-        # subscriber = SyncPubsubSubscriber(knowledge_callback_receiver.callback)
-        # self.redis_service.subscribe(
-        #     channels=knowledge_search_response_channel,
-        #     subscriber=subscriber,
-        # )
-        #
-        # # Create and send message
-        # execution_message = BaseKnowledgeSearchMessage(
-        #     collection_id=knowledge_collection_id,
-        #     rag_id=rag_id,
-        #     rag_type=rag_type,
-        #     uuid=execution_uuid,
-        #     query=query,
-        #     rag_search_config=search_config,
-        # )
-        #
-        # self.redis_service.publish(
-        #     channel=knowledge_search_get_channel,
-        #     message=execution_message.model_dump(),
-        # )
-        #
-        # # Wait for response
-        # start_time = time.monotonic()
-        # while time.monotonic() - start_time < timeout:
-        #     if knowledge_callback_receiver.results is not None:
-        #         elapsed = round((time.monotonic() - start_time), 2)
-        #         logger.info(
-        #             f"Knowledge search completed for {rag_type_id} in {elapsed}s. "
-        #             f"Sender: {sender}"
-        #         )
-        #         self.redis_service.unsubscribe(
-        #             channel=knowledge_search_response_channel,
-        #             subscriber=subscriber,
-        #         )
-        #
-        #         if self.writer is not None:
-        #             self._add_knowledges_to_graph_message(
-        #                 knowledge_results=knowledge_callback_receiver.results,
-        #                 token_usage=knowledge_callback_receiver.token_usage,
-        #             )
-        #         return knowledge_callback_receiver.results.results
-        #
-        #     if stop_event is not None:
-        #         stop_event.check_stop()
-        #
-        #     time.sleep(0.1)
-        #
-        # # Cleanup
-        # self.redis_service.unsubscribe(
-        #     channel=knowledge_search_response_channel,
-        #     subscriber=subscriber,
-        # )
-        # logger.error(f"Search failed: No response received within {timeout}s")
-        # raise TimeoutError(
-        #     f"Knowledge search timeout for {rag_type_id} after {timeout}s"
-        # )
+        response = SearchResponse(**msg.payload)
+        if self.writer is not None:
+            self._add_knowledges_to_graph_message(response, knowledge_collection_id)
+
+        return [chunk.text for chunk in response.chunks]
 
     @staticmethod
     def _parse_rag_type_id(rag_type_id: str) -> tuple[str, int]:
@@ -241,19 +173,18 @@ class KnowledgeSearchService:
             ) from e
 
     def _add_knowledges_to_graph_message(
-        self, knowledge_results: BaseKnowledgeSearchMessageResponse, token_usage: dict
+        self, response: SearchResponse, collection_id: int
     ):
-        chunks_data_list = [chunk.model_dump() for chunk in knowledge_results.chunks]
         knowledge_results_data = {
             "message_type": "extracted_chunks",
             "crew_id": self.crew_id,
             "agent_id": self.agent_id,
-            "collection_id": knowledge_results.collection_id,
-            "retrieved_chunks": knowledge_results.retrieved_chunks,
-            "knowledge_query": knowledge_results.query,
-            "rag_search_config": knowledge_results.rag_search_config.model_dump(),
-            "chunks": chunks_data_list,
-            "token_usage": token_usage,
+            "collection_id": collection_id,
+            "retrieved_chunks": len(response.chunks),
+            "knowledge_query": response.request.query,
+            "rag_search_config": response.request.search_config.model_dump(),
+            "chunks": [chunk.model_dump() for chunk in response.chunks],
+            "token_usage": {},  # not yet in new contract thats why empty
         }
         graph_message = GraphMessage(
             session_id=self.session_id,
@@ -262,41 +193,3 @@ class KnowledgeSearchService:
             message_data=knowledge_results_data,
         )
         self.writer(graph_message)
-
-
-class KnowledgeSearchReceiver:
-    """
-    Callback receiver for knowledge search results from Redis.
-    """
-
-    def __init__(self, execution_uuid: str):
-        self.execution_uuid = execution_uuid
-        self._token_usage = {}
-        self._results = None
-
-    @property
-    def results(self):
-        return self._results
-
-    @property
-    def token_usage(self):
-        return self._token_usage
-
-    def callback(self, message: dict):
-        """
-        Callback to handle search results from Redis pub/sub.
-
-        Args:
-            message: Redis message dict containing search results
-        """
-        try:
-            data: dict = json.loads(message["data"])
-            validated_results = BaseKnowledgeSearchMessageResponse.model_validate(data)
-            if validated_results.uuid == self.execution_uuid:
-                logger.info(f"Search results received for UUID: {self.execution_uuid}")
-                self._results = validated_results
-                logger.debug(f"Results: {self._results.results}")
-                self._token_usage = data.get("token_usage", {})
-                logger.info(f"Tokens used for knowledge retrieval: {self._token_usage}")
-        except (json.JSONDecodeError, KeyError) as e:
-            logger.error(f"Error parsing search results: {e}")

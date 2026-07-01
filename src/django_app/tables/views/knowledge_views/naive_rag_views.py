@@ -1,7 +1,3 @@
-import asyncio
-import traceback
-import uuid
-
 from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -9,19 +5,21 @@ from drf_spectacular.utils import (
     extend_schema,
     OpenApiResponse,
     OpenApiParameter,
-    inline_serializer,
 )
 from drf_spectacular.types import OpenApiTypes
 from rest_framework import serializers as drf_serializers
 from django.http import Http404
 from rest_framework.exceptions import ValidationError
-from asgiref.sync import async_to_sync
 from loguru import logger
 
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.viewsets import ReadOnlyModelViewSet
 from rest_framework.views import APIView
+from django.conf import settings
 
+from src.shared.communication import Message
+from django_app.communication import producer, consumer
+from django_app.communication_schemas import PrechunkRequest, PrechunkResponse
 from tables.models.knowledge_models import (
     NaiveRag,
     NaiveRagDocumentConfig,
@@ -39,15 +37,12 @@ from tables.serializers.naive_rag_serializers import (
     DocumentConfigBulkDeleteSerializer,
     NaiveRagChunkSerializer,
     NaiveRagPreviewChunkSerializer,
-    ChunkingResponseSerializer,
-    ChunkPreviewResponseSerializer,
     ChunkSearchResponseSerializer,
     ChunkSearchRequestSerializer,
     PreviewChunksByIdsRequestSerializer,
     PreviewChunksByIdsResponseSerializer,
 )
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
-from tables.services.redis_service import RedisService
 
 from tables.exceptions import (
     RagException,
@@ -74,9 +69,6 @@ from tables.swagger_schemas.knowledge_schemas.naive_rag_schemas import (
     NAIVE_RAG_COLLECTIONS_GET,
     NAIVE_RAG_COLLECTIONS_POST,
 )
-
-
-redis_service = RedisService()
 
 
 class NaiveRagViewSet(viewsets.GenericViewSet):
@@ -535,6 +527,8 @@ class NaiveRagChunkViewSet(ReadOnlyModelViewSet):
 
 
 class ProcessNaiveRagDocumentChunkingView(APIView):
+    # TODO need to add and adopt serializers
+
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST)
     def post(self, request, naive_rag_id: int, document_config_id: int):
         # Validate document config exists and belongs to naive_rag
@@ -554,113 +548,48 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        chunking_job_id = str(uuid.uuid4())
-
-        config.status = NaiveRagDocumentConfig.NaiveRagDocumentStatus.CHUNKING
-        config.save(update_fields=["status"])
-
-        logger.info(
-            f"Starting chunking job {chunking_job_id} for config {document_config_id}"
+        prechunk_request = PrechunkRequest(
+            rag_id=naive_rag_id,
+            rag_strategy="naive",
+            document_id=config.document_id,
         )
 
-        try:
-            # Publish and wait for response
-            from src.shared.communication import Message, Producer, Consumer, brokers, storages
+        producer.send(
+            settings.KNOWLEDGE_DOCUMENT_CHUNK_CHANNEL,
+            Message(payload=prechunk_request.model_dump()),
+        )
+        logger.info(
+            "Sent prechunk request rag_id=%s document_id=%s",
+            naive_rag_id,
+            config.document_id,
+        )
 
-            message = Message(
-                payload={
-                    'rag_id': naive_rag_id,
-                    'document_id': config.document.document_id,
-                    'rag_strategy': 'naive',
-                }
-            )
-            broker = brokers.RedisPubSubBroker(url='redis://:redis_password@redis:6379/2')
-            storage = storages.RedisStorage(url='redis://:redis_password@redis:6379/3')
-            producer = Producer(
-                broker=broker,
-                storage=storage,
-            )
-            producer.send('knowledge:chunk', message)
-            consumer = Consumer(
-                broker=broker,
-                storage=storage,
-            )
-            message = next(m for m in consumer.receive('knowledge:chunk:response'))
-
-            config.refresh_from_db()
-
+        msg = consumer.receive(
+            settings.KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE,
+            timeout=CHUNKING_TIMEOUT,
+        )
+        if msg is None:
             return Response(
                 {
-                    "chunking_job_id": chunking_job_id,
-                    "naive_rag_id": naive_rag_id,
-                    "document_config_id": document_config_id,
-                    "status": config.status,
-                    "chunk_count": len(message.payload['chunks']),
-                    "message": message.payload,
-                    "elapsed_time": 1,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-            # response = async_to_sync(redis_service.publish_and_wait_for_chunking)(
-            #     rag_type="naive",
-            #     document_config_id=document_config_id,
-            #     chunking_job_id=chunking_job_id,
-            #     timeout=CHUNKING_TIMEOUT,
-            # )
-            #
-            # config.refresh_from_db()
-            #
-            # return Response(
-            #     {
-            #         "chunking_job_id": chunking_job_id,
-            #         "naive_rag_id": naive_rag_id,
-            #         "document_config_id": document_config_id,
-            #         "status": response.status,
-            #         "chunk_count": response.chunk_count,
-            #         "message": response.message,
-            #         "elapsed_time": response.elapsed_time,
-            #     },
-            #     status=status.HTTP_200_OK,
-            # )
-
-        except asyncio.TimeoutError:
-            logger.warning(
-                f"Chunking timeout for job {chunking_job_id}, config {document_config_id}"
-            )
-            # Return partial success - chunking may still complete in background
-            return Response(
-                {
-                    "chunking_job_id": chunking_job_id,
                     "naive_rag_id": naive_rag_id,
                     "document_config_id": document_config_id,
                     "status": "timeout",
-                    "chunk_count": None,
                     "message": "Chunking is taking longer than expected. "
                     "Check status later or retry.",
-                    "elapsed_time": None,
                 },
                 status=status.HTTP_202_ACCEPTED,
             )
 
-        except Exception as e:
-            logger.error(f"Chunking error for job {chunking_job_id}: {e}")
-            # Reset status to previous state on error
-            config.status = NaiveRagDocumentConfig.NaiveRagDocumentStatus.FAILED
-            config.save(update_fields=["status"])
-            # raise e
-            return Response(
-                {
-                    "chunking_job_id": chunking_job_id,
-                    "naive_rag_id": naive_rag_id,
-                    "document_config_id": document_config_id,
-                    "status": "failed",
-                    "chunk_count": None,
-                    "message": str(e),
-                    "elapsed_time": None,
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        response = PrechunkResponse(**msg.payload)
+        return Response(
+            {
+                "naive_rag_id": naive_rag_id,
+                "document_config_id": document_config_id,
+                "chunk_count": len(response.chunks),
+                "chunks": [chunk.model_dump() for chunk in response.chunks],
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class NaiveRagChunkPreviewView(APIView):
