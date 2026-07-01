@@ -497,6 +497,13 @@ services:
     build:
       context: .
       dockerfile: ./knowledge_new/Dockerfile
+    networks:
+      - backend-network
+    depends_on:
+      communication_redis_broker:
+        condition: service_healthy
+      communication_redis_storage:
+        condition: service_healthy
     environment:
       <<: *communication_env
       KNOWLEDGE_DATABASE_USER: ${KNOWLEDGE_DATABASE_USER}
