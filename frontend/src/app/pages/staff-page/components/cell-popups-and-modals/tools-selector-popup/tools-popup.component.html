@@ -34,7 +34,6 @@
                     type="primary"
                     mod="small"
                     iconSize="0.9rem"
-                    class="btn-primary header-create-btn"
                     [leftIcon]="'plus'"
                     (click)="openCustomToolDialog()"
                 >
@@ -45,7 +44,6 @@
                     type="primary"
                     mod="small"
                     iconSize="0.9rem"
-                    class="btn-primary header-create-btn"
                     [leftIcon]="'plus'"
                     (click)="openMcpToolDialog()"
                 >
@@ -156,17 +154,12 @@
 
     <!-- Footer -->
     <div class="footer">
-        <button
-            class="cancel-button"
+        <app-button
+            type="ghost"
             (click)="onCancel()"
         >
             Cancel
-        </button>
-        <button
-            class="save-btn"
-            (click)="save()"
-        >
-            Save Selection
-        </button>
+        </app-button>
+        <app-button (click)="save()"> Save </app-button>
     </div>
 </div>

@@ -2,20 +2,18 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import {
-    ButtonComponent,
-    CustomInputComponent,
-    IconButtonComponent,
-    InputNumberComponent,
-    JsonEditorFormFieldComponent,
-    KeyValueListComponent,
-    SliderWithStepperComponent,
-    ValidationErrorsComponent,
-} from '@shared/components';
 import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
 import { LlmConfigStorageService } from '@shared/services';
 
 import { ToastService } from '../../../../services/notifications';
+import { InputNumberComponent } from '../../app-input-number/input-number.component';
+import { ValidationErrorsComponent } from '../../app-validation-errors/validation-errors.component';
+import { ButtonComponent } from '../../buttons';
+import { IconButtonComponent } from '../../buttons';
+import { CustomInputComponent } from '../../form-input/form-input.component';
+import { JsonEditorFormFieldComponent } from '../../json-editor/json-editor-form-field.component';
+import { KeyValueListComponent } from '../../key-value-list/key-value-list.component';
+import { SliderWithStepperComponent } from '../../slider-with-stepper/slider-with-stepper.component';
 import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selector.component';
 
 interface DialogData {

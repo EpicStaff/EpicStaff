@@ -1,30 +1,28 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import {
-    AppSvgIconComponent,
-    ButtonComponent,
-    CustomInputComponent,
-    TooltipComponent,
-    ValidationErrorsComponent,
-} from '@shared/components';
-import { GetRealtimeTranscriptionModelRequest, LLMProvider } from '@shared/models';
-import { TranscriptionModelsStorageService } from '@shared/services';
+import { LLMProvider, RealtimeModel } from '@shared/models';
+import { RealtimeModelsStorageService } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
 import { finalize } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
+import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
+import { ValidationErrorsComponent } from '../../app-validation-errors/validation-errors.component';
+import { ButtonComponent } from '../../buttons';
+import { CustomInputComponent } from '../../form-input/form-input.component';
+import { TooltipComponent } from '../../tooltip/tooltip.component';
 
-export interface CreateTranscriptionModelDialogData {
+export interface CreateRealtimeModelDialogData {
     provider: LLMProvider;
-    model?: GetRealtimeTranscriptionModelRequest;
+    model?: RealtimeModel;
 }
 
 @Component({
-    selector: 'app-create-transcription-model-modal',
+    selector: 'app-create-realtime-model-modal',
     imports: [
         CommonModule,
         ReactiveFormsModule,
@@ -35,16 +33,16 @@ export interface CreateTranscriptionModelDialogData {
         TooltipComponent,
         ValidationErrorsComponent,
     ],
-    templateUrl: './create-transcription-model-modal.component.html',
-    styleUrls: ['./create-transcription-model-modal.component.scss'],
+    templateUrl: './create-realtime-model-modal.component.html',
+    styleUrls: ['./create-realtime-model-modal.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class CreateTranscriptionModelModalComponent {
+export class CreateRealtimeModelModalComponent implements OnInit {
     private dialogRef = inject(DialogRef);
-    private dialogData = inject<CreateTranscriptionModelDialogData>(DIALOG_DATA);
+    private dialogData = inject<CreateRealtimeModelDialogData>(DIALOG_DATA);
     private destroyRef = inject(DestroyRef);
     private fb = inject(FormBuilder);
-    private transcriptionModelsService = inject(TranscriptionModelsStorageService);
+    private realtimeModelsService = inject(RealtimeModelsStorageService);
     private toastService = inject(ToastService);
 
     isEditMode = !!this.dialogData.model;
@@ -82,8 +80,8 @@ export class CreateTranscriptionModelModalComponent {
 
         const name = (value.name || '').trim();
         const request$ = this.isEditMode
-            ? this.transcriptionModelsService.patchModel(this.dialogData.model!.id, { name })
-            : this.transcriptionModelsService.createModel({ name, provider: this.provider.id, is_custom: true });
+            ? this.realtimeModelsService.patchModel(this.dialogData.model!.id, { name })
+            : this.realtimeModelsService.createModel({ name, provider: this.provider.id, is_custom: true });
 
         request$.pipe(finalize(() => this.isSubmitting.set(false))).subscribe({
             next: (result) => {
