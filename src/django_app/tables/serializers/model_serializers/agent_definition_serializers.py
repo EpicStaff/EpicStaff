@@ -25,7 +25,10 @@ class AgentDefaultSurfaceWriteSerializer(serializers.Serializer):
 
 
 class AgentDefinitionReadSerializer(serializers.ModelSerializer):
-    default_surfaces = AgentDefaultSurfaceReadSerializer(many=True, read_only=True)
+    default_surfaces = serializers.SerializerMethodField()
+
+    def get_default_surfaces(self, obj):
+        return AgentDefinitionSurfaceService.get_default_surfaces(obj)
 
     class Meta:
         model = AgentDefinition

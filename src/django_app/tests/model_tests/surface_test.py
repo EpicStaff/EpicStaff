@@ -1091,3 +1091,89 @@ def test_agent_read_serializer_returns_stored_metadata(org):
     data = AgentDefinitionReadSerializer(agent).data
 
     assert data["metadata"] == {"key": "value", "count": 42}
+
+
+# ---------------------------------------------------------------------------
+# AgentDefinitionSurfaceService.get_default_surfaces — owned surface merging
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_owned_surface_without_explicit_row_appears_as_all(org, agent):
+    from tables.serializers.model_serializers.agent_definition_serializers import (
+        AgentDefinitionReadSerializer,
+    )
+
+    owned = Surface.objects.create(
+        organization=org,
+        name="owned-no-explicit",
+        owner_agent=agent,
+    )
+
+    data = AgentDefinitionReadSerializer(agent).data
+
+    assert {"surface": owned.id, "place": "all"} in data["default_surfaces"]
+
+
+@pytest.mark.django_db
+def test_owned_surface_with_explicit_row_keeps_explicit_place_not_duplicated(
+    org, agent
+):
+    from tables.serializers.model_serializers.agent_definition_serializers import (
+        AgentDefinitionReadSerializer,
+    )
+
+    owned = Surface.objects.create(
+        organization=org,
+        name="owned-with-explicit",
+        owner_agent=agent,
+    )
+    AgentDefaultSurface.objects.create(
+        agent_definition=agent,
+        surface=owned,
+        place=SurfacePlace.FLOW,
+    )
+
+    data = AgentDefinitionReadSerializer(agent).data
+    surface_entries = [e for e in data["default_surfaces"] if e["surface"] == owned.id]
+
+    assert len(surface_entries) == 1
+    assert surface_entries[0]["place"] == "flow"
+
+
+@pytest.mark.django_db
+def test_shared_surface_not_explicitly_assigned_does_not_appear(
+    org, agent, shared_surface
+):
+    from tables.serializers.model_serializers.agent_definition_serializers import (
+        AgentDefinitionReadSerializer,
+    )
+
+    data = AgentDefinitionReadSerializer(agent).data
+
+    surface_ids = [e["surface"] for e in data["default_surfaces"]]
+    assert shared_surface.id not in surface_ids
+
+
+@pytest.mark.django_db
+def test_mix_shared_explicit_and_owned_implicit(org, agent, shared_surface):
+    from tables.serializers.model_serializers.agent_definition_serializers import (
+        AgentDefinitionReadSerializer,
+    )
+
+    AgentDefaultSurface.objects.create(
+        agent_definition=agent,
+        surface=shared_surface,
+        place=SurfacePlace.CHAT,
+    )
+    owned = Surface.objects.create(
+        organization=org,
+        name="owned-mix",
+        owner_agent=agent,
+    )
+
+    data = AgentDefinitionReadSerializer(agent).data
+    entries_by_surface = {e["surface"]: e["place"] for e in data["default_surfaces"]}
+
+    assert entries_by_surface[shared_surface.id] == "chat"
+    assert entries_by_surface[owned.id] == "all"

@@ -4,7 +4,7 @@ from django.core import exceptions as dj_exceptions
 from django.db import transaction
 
 from tables.exceptions import SurfaceValidationError
-from tables.models.agent_models.agent_models import AgentDefaultSurface
+from tables.models.agent_models.agent_models import AgentDefaultSurface, SurfacePlace
 from tables.models.agent_models.surface_models import (
     StorageAccess,
     Surface,
@@ -186,6 +186,18 @@ class SurfaceService:
 
 
 class AgentDefinitionSurfaceService:
+    @staticmethod
+    def get_default_surfaces(agent_definition):
+        explicit = list(agent_definition.default_surfaces.all())
+        explicit_surface_ids = {ads.surface_id for ads in explicit}
+        result = [{"surface": ads.surface_id, "place": ads.place} for ads in explicit]
+
+        for surface in agent_definition.owned_surfaces.all():
+            if surface.id not in explicit_surface_ids:
+                result.append({"surface": surface.id, "place": SurfacePlace.ALL})
+
+        return result
+
     @staticmethod
     @transaction.atomic
     def set_default_surfaces(*, agent_definition, items):
