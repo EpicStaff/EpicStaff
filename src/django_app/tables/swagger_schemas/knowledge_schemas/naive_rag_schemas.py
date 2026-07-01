@@ -820,6 +820,50 @@ NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST = dict(
     },
 )
 
+NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_POST = dict(
+    summary="Cancel a running document chunking (prechunk)",
+    description=(
+        "Request cancellation of an in-flight document chunking.\n"
+        "Publishes a cancel signal to the knowledge service, which stops the "
+        "running prechunk task.\n\n"
+        "Fire-and-forget: a 202 is returned regardless of whether chunking was "
+        "actually in progress. If nothing was running, the signal is a no-op.\n\n"
+        "URL: POST /naive-rag/{naive_rag_id}/document-configs/{document_config_id}/process-chunking/cancel/"
+    ),
+    responses={
+        202: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Cancellation requested.",
+            examples=[
+                OpenApiExample(
+                    name="Accepted",
+                    value={
+                        "detail": "Chunking cancellation requested",
+                        "naive_rag_id": 1,
+                        "document_config_id": 5,
+                    },
+                    response_only=True,
+                    status_codes=["202"],
+                )
+            ],
+        ),
+        401: UNAUTHORIZED_401_RESPONSE,
+        404: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="NaiveRag or DocumentConfig not found.",
+            examples=[
+                OpenApiExample(
+                    name="DocumentConfig not found",
+                    value={"error": "DocumentConfig 5 not found for NaiveRag 1"},
+                    response_only=True,
+                    status_codes=["404"],
+                )
+            ],
+        ),
+    },
+)
+
+
 NAIVE_RAG_COLLECTIONS_POST = dict(
     summary="Create new NaiveRag or update existing one for a collection",
     description=(

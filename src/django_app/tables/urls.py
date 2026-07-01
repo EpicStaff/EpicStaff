@@ -104,6 +104,7 @@ from tables.views.knowledge_views.naive_rag_views import (
     NaiveRagViewSet,
     NaiveRagDocumentConfigViewSet,
     ProcessNaiveRagDocumentChunkingView,
+    CancelNaiveRagDocumentChunkingView,
     NaiveRagChunkViewSet,
     NaiveRagChunkPreviewView,
     NaiveRagChunkSearchView,
@@ -332,6 +333,11 @@ urlpatterns = [
         "naive-rag/<int:naive_rag_id>/document-configs/<int:document_config_id>/process-chunking/",
         ProcessNaiveRagDocumentChunkingView.as_view(),
         name="process-document-chunking",
+    ),
+    path(
+        "naive-rag/<int:naive_rag_id>/document-configs/<int:document_config_id>/process-chunking/cancel/",
+        CancelNaiveRagDocumentChunkingView.as_view(),
+        name="cancel-document-chunking",
     ),
     path(
         "naive-rag/<int:naive_rag_id>/document-configs/<int:document_config_id>/chunks/search/",

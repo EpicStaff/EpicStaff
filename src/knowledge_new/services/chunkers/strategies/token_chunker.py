@@ -21,12 +21,13 @@ class TokenChunker(AbstractChunker):
 
         token_chunks = []
         for i, chunk in enumerate(chunks):
-            token_chunks.append(
-                PreviewChunk(
-                    text=chunk.text,
-                    token_count=chunk.token_count,
-                    overlap_start=overlaps[i - 1] if i > 0 else None,
-                    overlap_end=overlaps[i] if i < len(overlaps) else None,
+            if chunk.text.strip():
+                token_chunks.append(
+                    PreviewChunk(
+                        text=chunk.text,
+                        token_count=chunk.token_count,
+                        overlap_start=overlaps[i - 1] if i > 0 else None,
+                        overlap_end=overlaps[i] if i < len(overlaps) else None,
+                    )
                 )
-            )
         return token_chunks

@@ -371,6 +371,7 @@ class CrewCallbackFactory:
                         rag_type_id=rag_type_id,
                         query=str(user_input),
                         rag_search_config=rag_search_config,
+                        stop_event=stop_event,
                     )
                     user_input_with_knowledges += self._extract_knowledges(
                         agent_knowledges
