@@ -25,10 +25,7 @@ RUN pip install --upgrade pip setuptools wheel poetry
 ENV PEP517_BUILD_BACKEND=setuptools.build_meta
 
 # Copy lockfiles first (better layer caching)
-COPY ./knowledge_new/pyproject.toml ./knowledge/poetry.lock ./
-
-# Copy local libraries before install (required if pyproject.toml references them)
-COPY ./knowledge_new/libraries/ ./libraries
+COPY ./knowledge_new/pyproject.toml ./knowledge_new/poetry.lock ./
 
 # Install dependencies inside project .venv
 RUN poetry install --no-ansi --no-root
