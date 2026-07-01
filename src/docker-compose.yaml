@@ -15,6 +15,19 @@ x-common-env: &common_env
   DB_PORT: ${DB_PORT:-5432}
   DB_NAME: ${POSTGRES_DB:-crew}
 
+x-communication-env: &communication_env
+  COMMUNICATION_BROKER_USER: ${COMMUNICATION_BROKER_USER}
+  COMMUNICATION_BROKER_PASSWORD: ${COMMUNICATION_BROKER_PASSWORD}
+  COMMUNICATION_BROKER_HOST: ${COMMUNICATION_BROKER_HOST}
+  COMMUNICATION_BROKER_PORT: ${COMMUNICATION_BROKER_PORT}
+  COMMUNICATION_BROKER_NAME: ${COMMUNICATION_BROKER_NAME}
+
+  COMMUNICATION_STORAGE_USER: ${COMMUNICATION_STORAGE_USER}
+  COMMUNICATION_STORAGE_PASSWORD: ${COMMUNICATION_STORAGE_PASSWORD}
+  COMMUNICATION_STORAGE_HOST: ${COMMUNICATION_STORAGE_HOST}
+  COMMUNICATION_STORAGE_PORT: ${COMMUNICATION_STORAGE_PORT}
+  COMMUNICATION_STORAGE_NAME: ${COMMUNICATION_STORAGE_NAME}
+
 services:
   django_app:
     image: ghcr.io/epicstaff/django_app:${IMAGE_TAG:-latest}
@@ -168,8 +181,8 @@ services:
       PGDATA: ${PGDATA:-/var/lib/postgresql/data/pgdata}
       DB_MANAGER_USER: ${DB_MANAGER_USER}
       DB_MANAGER_PASSWORD: ${DB_MANAGER_PASSWORD}
-      DB_KNOWLEDGE_USER: ${DB_KNOWLEDGE_USER}
-      DB_KNOWLEDGE_PASSWORD: ${DB_KNOWLEDGE_PASSWORD}
+      DB_KNOWLEDGE_USER: ${KNOWLEDGE_DATABASE_USER}
+      DB_KNOWLEDGE_PASSWORD: ${KNOWLEDGE_DATABASE_PASSWORD}
       DB_REALTIME_USER: ${DB_REALTIME_USER}
       DB_REALTIME_PASSWORD: ${DB_REALTIME_PASSWORD}
       DB_CREW_USER: ${DB_CREW_USER}
@@ -470,6 +483,79 @@ services:
     networks:
       - backend-network
 
+  knowledge_new:
+    container_name: knowledge_new
+#    image: ghcr.io/epicstaff/knowledge:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: ./knowledge_new/Dockerfile
+    environment:
+      <<: *communication_env
+      KNOWLEDGE_DATABASE_USER: ${KNOWLEDGE_DATABASE_USER}
+      KNOWLEDGE_DATABASE_PASSWORD: ${KNOWLEDGE_DATABASE_PASSWORD}
+      KNOWLEDGE_DATABASE_HOST: ${DB_HOST_NAME}
+      KNOWLEDGE_DATABASE_PORT: ${DB_PORT}
+      KNOWLEDGE_DATABASE_NAME: ${DB_NAME}
+
+      KNOWLEDGE_SEARCH_REQUEST_CHANNEL: ${KNOWLEDGE_SEARCH_REQUEST_CHANNEL}
+      KNOWLEDGE_SEARCH_RESPONSE_CHANNEL: ${KNOWLEDGE_SEARCH_RESPONSE_CHANNEL}
+      KNOWLEDGE_PRECHUNK_REQUEST_CHANNEL: ${KNOWLEDGE_PRECHUNK_REQUEST_CHANNEL}
+      KNOWLEDGE_PRECHUNK_RESPONSE_CHANNEL: ${KNOWLEDGE_PRECHUNK_RESPONSE_CHANNEL}
+      KNOWLEDGE_INDEX_REQUEST_CHANNEL: ${KNOWLEDGE_INDEX_REQUEST_CHANNEL}
+      KNOWLEDGE_CANCEL_REQUEST_CHANNEL: ${KNOWLEDGE_CANCEL_REQUEST_CHANNEL}
+
+
+  communication_redis_broker:
+    container_name: communication_redis_broker
+    image: redis
+    networks:
+      - backend-network
+    volumes:
+      - ./broker_redis.conf:/usr/local/etc/redis/redis.conf
+      - broker_redis_data:/data
+    restart: unless-stopped
+    command: >
+      sh -c "redis-server --port $${REDIS_PORT}
+      $${REDIS_PASSWORD:+--requirepass \"$${REDIS_PASSWORD}\"}"
+    healthcheck:
+      test: >
+        sh -c "redis-cli -p $${REDIS_PORT}
+        $${REDIS_PASSWORD:+-a \"$${REDIS_PASSWORD}\"} ping || exit 1"
+      interval: 5s
+      timeout: 2s
+      retries: 50
+      start_period: 5s
+    environment:
+      REDIS_USER: ${COMMUNICATION_BROKER_USER}
+      REDIS_PASSWORD: ${COMMUNICATION_BROKER_PASSWORD}
+      REDIS_PORT: ${COMMUNICATION_BROKER_PORT}
+
+  communication_redis_storage:
+    container_name: communication_redis_storage
+    image: redis
+    networks:
+      - backend-network
+    volumes:
+      - ./storage_redis.conf:/usr/local/etc/redis/redis.conf
+      - storage_redis_data:/data
+    restart: unless-stopped
+    command: >
+      sh -c "redis-server --port $${REDIS_PORT}
+      $${REDIS_PASSWORD:+--requirepass \"$${REDIS_PASSWORD}\"}"
+    healthcheck:
+      test: >
+        sh -c "redis-cli -p $${REDIS_PORT}
+        $${REDIS_PASSWORD:+-a \"$${REDIS_PASSWORD}\"} ping || exit 1"
+      interval: 5s
+      timeout: 2s
+      retries: 50
+      start_period: 5s
+    environment:
+      REDIS_USER: ${COMMUNICATION_STORAGE_USER}
+      REDIS_PASSWORD: ${COMMUNICATION_STORAGE_PASSWORD}
+      REDIS_PORT: ${COMMUNICATION_STORAGE_PORT}
+
+
 volumes:
   sandbox_venvs:
     external: true
@@ -478,6 +564,8 @@ volumes:
   media_data:
     external: true
   redis_data: {}
+  broker_redis_data:
+  storage_redis_data:
   code_instances: {}
   minio_data: {}
 
