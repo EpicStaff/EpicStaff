@@ -990,7 +990,9 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
 
         graph = self.get_object()
         try:
-            GraphBulkSaveService().save(graph, input_serializer.validated_data)
+            GraphBulkSaveService().save(
+                graph, input_serializer.validated_data, request=request
+            )
         except BulkSaveValidationError as exc:
             return Response({"errors": exc.errors}, status=status.HTTP_400_BAD_REQUEST)
         # GraphSaveVersionConflictError propagates → DRF returns 409 automatically.

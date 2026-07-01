@@ -1,3 +1,4 @@
+from loguru import logger
 from rest_framework import serializers
 
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
@@ -38,10 +39,18 @@ class CrewNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
     def validate_crew_id(self, value):
         # Org isolation: the referenced crew must be in the caller's active org.
         # Out-of-org and non-existent ids are rejected identically (no leak).
-        crews = Crew.objects.only("id")
         request = self.context.get("request")
-        if request is not None:
-            crews = crews.filter(org_id=resolve_active_org_id(request))
+        if request is None:
+            # No request in context => org scope cannot be applied. Deny (fail-safe)
+            # instead of allowing any crew, and log so the missing context surfaces.
+            logger.warning(
+                "CrewNodeSerializer.validate_crew_id was resolved without a request "
+                "in the serializer context; rejecting crew_id because org scope "
+                "cannot be applied. Construct the serializer with the request in "
+                "its context."
+            )
+            raise serializers.ValidationError("Invalid crew_id: crew does not exist.")
+        crews = Crew.objects.only("id").filter(org_id=resolve_active_org_id(request))
         if not crews.filter(id=value).exists():
             raise serializers.ValidationError("Invalid crew_id: crew does not exist.")
         return value

@@ -1,4 +1,5 @@
 from django.db.models import Q
+from loguru import logger
 from rest_framework import serializers
 
 from tables.services.rbac.org_context_service import OrgContextService
@@ -50,7 +51,11 @@ class OrgScopedPrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
 
     Requires the serializer context to carry ``request`` (the active org is read
     from the ``X-Organization-Id`` header via ``OrgContextService``). With no
-    request in context (e.g. schema generation) the base queryset is used.
+    request in context the field cannot apply org scoping, so it **denies all
+    pks** (returns an empty queryset) and logs a warning — a missing request on
+    a write path is a programming error (the serializer was built without
+    ``context={"request": request}``), and denying is fail-safe rather than
+    leaking cross-org rows.
     """
 
     org_lookup = "org_id"
@@ -64,5 +69,16 @@ class OrgScopedPrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
         queryset = super().get_queryset()
         request = self.context.get("request")
         if request is None:
-            return queryset
+            parent_name = (
+                type(self.parent).__name__
+                if self.parent is not None
+                else "<unbound serializer>"
+            )
+            logger.warning(
+                f"OrgScopedPrimaryKeyRelatedField '{self.field_name}' on "
+                f"{parent_name} was resolved without a request in the serializer "
+                f"context; denying all pks because org scope cannot be applied. "
+                f"Construct the serializer with the request in its context."
+            )
+            return queryset.none()
         return queryset.filter(**{self.org_lookup: resolve_active_org_id(request)})

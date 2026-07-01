@@ -9,6 +9,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from tables.models import Agent, Crew, SourceCollection
+from tables.models.graph_models import CrewNode, Graph, SubGraphNode
 from tables.models.llm_models import LLMConfig
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
@@ -197,3 +198,80 @@ def test_crew_rejects_cross_org_manager_llm_config(client_admin_a, org_a, org_b)
         format="json",
     )
     assert _rejected(resp), resp.data
+
+
+# ---- Bulk-save (save_flow): cross-org node references ----
+#
+# Regression for the bulk-save request-context gap: GraphBulkSaveService now
+# threads the request into every node serializer's context, so org-scoped FK
+# fields (CrewNode.crew_id, SubGraphNode.subgraph) resolve the active org and
+# reject cross-org ids. The same-org (positive) cases prove the request is in
+# fact threaded — without it the deny-on-no-request fallback would 400 those too.
+
+
+def _save_url(graph_id: int) -> str:
+    return f"/api/graphs/{graph_id}/save/"
+
+
+@pytest.mark.django_db
+def test_bulk_save_rejects_cross_org_crew(client_admin_a, org_a, org_b):
+    graph = Graph.objects.create(name="a-graph", org=org_a)
+    b_crew = Crew.objects.create(name="b-crew", org=org_b)
+    resp = client_admin_a.post(
+        _save_url(graph.id),
+        {
+            "save_version": graph.save_version,
+            "crew_node_list": [{"graph": graph.id, "crew_id": b_crew.id}],
+        },
+        format="json",
+    )
+    assert _rejected(resp), resp.data
+    assert not CrewNode.objects.filter(graph=graph).exists()
+
+
+@pytest.mark.django_db
+def test_bulk_save_allows_same_org_crew(client_admin_a, org_a):
+    graph = Graph.objects.create(name="a-graph", org=org_a)
+    a_crew = Crew.objects.create(name="a-crew", org=org_a)
+    resp = client_admin_a.post(
+        _save_url(graph.id),
+        {
+            "save_version": graph.save_version,
+            "crew_node_list": [{"graph": graph.id, "crew_id": a_crew.id}],
+        },
+        format="json",
+    )
+    assert resp.status_code == 200, resp.data
+    assert CrewNode.objects.filter(graph=graph, crew=a_crew).count() == 1
+
+
+@pytest.mark.django_db
+def test_bulk_save_rejects_cross_org_subgraph(client_admin_a, org_a, org_b):
+    graph = Graph.objects.create(name="a-graph", org=org_a)
+    b_subgraph = Graph.objects.create(name="b-subgraph", org=org_b)
+    resp = client_admin_a.post(
+        _save_url(graph.id),
+        {
+            "save_version": graph.save_version,
+            "subgraph_node_list": [{"graph": graph.id, "subgraph": b_subgraph.id}],
+        },
+        format="json",
+    )
+    assert _rejected(resp), resp.data
+    assert not SubGraphNode.objects.filter(graph=graph).exists()
+
+
+@pytest.mark.django_db
+def test_bulk_save_allows_same_org_subgraph(client_admin_a, org_a):
+    graph = Graph.objects.create(name="a-graph", org=org_a)
+    a_subgraph = Graph.objects.create(name="a-subgraph", org=org_a)
+    resp = client_admin_a.post(
+        _save_url(graph.id),
+        {
+            "save_version": graph.save_version,
+            "subgraph_node_list": [{"graph": graph.id, "subgraph": a_subgraph.id}],
+        },
+        format="json",
+    )
+    assert resp.status_code == 200, resp.data
+    assert SubGraphNode.objects.filter(graph=graph, subgraph=a_subgraph).count() == 1
