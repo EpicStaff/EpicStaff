@@ -29,6 +29,10 @@ class SearchRequest(BaseModel):
     search_config: RagSearchConfig
 
 
+class CancelRequest(BaseModel):
+    target_request: dict
+
+
 class FoundChunk(BaseModel):
     order: int
     similarity: float

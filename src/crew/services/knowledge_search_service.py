@@ -1,4 +1,5 @@
 import os
+import threading
 from typing import Dict, Any, Optional
 from loguru import logger
 from langgraph.types import StreamWriter
@@ -19,6 +20,7 @@ from services.communication_schemas import (
     RagSearchConfig,
     SearchRequest,
     SearchResponse,
+    CancelRequest,
 )
 
 
@@ -28,6 +30,7 @@ knowledge_search_get_channel = os.getenv(
 knowledge_search_response_channel = os.getenv(
     "KNOWLEDGE_SEARCH_RESPONSE_CHANNEL", "knowledge:search:response"
 )
+knowledge_cancel_channel = os.getenv("KNOWLEDGE_CANCEL_CHANNEL", "knowledge:cancel")
 
 
 class RagSearchConfigFactory:
@@ -139,7 +142,13 @@ class KnowledgeSearchService:
             "Sent knowledge search rag_id=%s sender=%s query=%r", rag_id, sender, query
         )
 
-        msg = consumer.receive(knowledge_search_response_channel, timeout=timeout)
+        search_done = threading.Event()
+        if stop_event is not None:
+            self._cancel_search_on_stop(request, stop_event, search_done)
+        try:
+            msg = consumer.receive(knowledge_search_response_channel, timeout=timeout)
+        finally:
+            search_done.set()
         if msg is None:
             raise TimeoutError(
                 f"Knowledge search timeout for {rag_type_id} after {timeout}s"
@@ -150,6 +159,30 @@ class KnowledgeSearchService:
             self._add_knowledges_to_graph_message(response, knowledge_collection_id)
 
         return [chunk.text for chunk in response.chunks]
+
+    @staticmethod
+    def _cancel_search_on_stop(
+        request: SearchRequest,
+        stop_event: StopEvent,
+        search_done: threading.Event,
+    ) -> None:
+        def _watch() -> None:
+            while not search_done.wait(0.1):
+                if stop_event.is_set():
+                    producer.send(
+                        knowledge_cancel_channel,
+                        Message(
+                            payload=CancelRequest(
+                                target_request=request.model_dump()
+                            ).model_dump()
+                        ),
+                    )
+                    logger.info(
+                        "Sent knowledge search cancellation rag_id=%s", request.rag_id
+                    )
+                    return
+
+        threading.Thread(target=_watch, daemon=True).start()
 
     @staticmethod
     def _parse_rag_type_id(rag_type_id: str) -> tuple[str, int]:
