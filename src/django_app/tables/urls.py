@@ -25,7 +25,6 @@ from tables.views.model_view_sets import (
     RealtimeSessionItemViewSet,
     RealtimeTranscriptionConfigModelViewSet,
     RealtimeTranscriptionModelViewSet,
-    TelegramTriggerNodeFieldViewSet,
     TelegramTriggerNodeViewSet,
     TemplateAgentReadWriteViewSet,
     LLMConfigReadWriteViewSet,
@@ -192,7 +191,6 @@ router.register(r"naive-rag-document-chunks", NaiveRagChunkViewSet)
 router.register(r"webhook-trigger-nodes", WebhookTriggerNodeViewSet)
 router.register(r"webhook-triggers", WebhookTriggerViewSet)
 router.register(r"telegram-trigger-nodes", TelegramTriggerNodeViewSet)
-router.register(r"telegram-trigger-node-fields", TelegramTriggerNodeFieldViewSet)
 router.register(r"python-code-tool-configs", PythonCodeToolConfigViewSet)
 router.register(r"python-code-tool-config-fields", PythonCodeToolConfigFieldViewSet)
 router.register(r"graph-notes", GraphNoteViewSet)
