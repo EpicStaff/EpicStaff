@@ -3,7 +3,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 from src.shared.models.base import ValueObject
 
-from shared.enums.enumsms import GraphSearchMethodEnum, RAGStrategy
+from shared.enums.knowledge_new import GraphSearchMethodEnum, RAGStrategy
 
 __all__ = [
     "BaseSearchConfig",
