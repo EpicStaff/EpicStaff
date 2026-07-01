@@ -43,7 +43,7 @@ from django.conf import settings
 from django.conf import settings
 from src.shared.communication import Message
 from django_app.communication import producer
-from django_app.communication_schemas import IndexRequest, CancelRequest
+from src.shared.models import IndexRequest, CancelRequest
 
 from rest_framework.mixins import RetrieveModelMixin, UpdateModelMixin, ListModelMixin
 from rest_framework.viewsets import GenericViewSet

@@ -53,6 +53,21 @@ from .knowledge import (
     ChunkDocumentMessage,
     ChunkDocumentMessageResponse,
 )
+from .knowledge_rag import (
+    ValueObject,
+    BaseSearchConfig,
+    NaiveSearchConfig,
+    GraphSearchConfig,
+    SearchConfig,
+    PreviewChunk,
+    FoundChunk,
+    PrechunkRequest,
+    PrechunkResponse,
+    IndexRequest,
+    SearchRequest,
+    SearchResponse,
+    CancelRequest,
+)
 from .sessions import (
     SessionData,
     GraphSessionMessageData,
@@ -144,6 +159,20 @@ __all__ = [
     "ProcessRagIndexingMessage",
     "ChunkDocumentMessage",
     "ChunkDocumentMessageResponse",
+    # knowledge_rag (cross-service pub/sub contract)
+    "ValueObject",
+    "BaseSearchConfig",
+    "NaiveSearchConfig",
+    "GraphSearchConfig",
+    "SearchConfig",
+    "PreviewChunk",
+    "FoundChunk",
+    "PrechunkRequest",
+    "PrechunkResponse",
+    "IndexRequest",
+    "SearchRequest",
+    "SearchResponse",
+    "CancelRequest",
     # sessions
     "SessionData",
     "GraphSessionMessageData",

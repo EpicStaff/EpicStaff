@@ -1,17 +1,30 @@
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Any
 
 from enums import (
     ChunkStrategyEnum,
     DocumentErrorCode,
     DocumentStatusEnum,
     EmbedderProviderEnum,
-    GraphSearchMethodEnum,
-    RAGStrategy,
 )
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 from utils import utcnow
+from src.shared.models.knowledge_rag import (
+    BaseSearchConfig,
+    CancelRequest,
+    FoundChunk,
+    GraphSearchConfig,
+    IndexRequest,
+    NaiveSearchConfig,
+    PrechunkRequest,
+    PrechunkResponse,
+    PreviewChunk,
+    SearchConfig,
+    SearchRequest,
+    SearchResponse,
+    ValueObject,
+)
 
 __all__ = [
     "BaseSearchConfig",
@@ -35,12 +48,6 @@ __all__ = [
 ]
 
 
-class ValueObject(BaseModel):
-    """Base for immutable value objects — frozen after creation and compared by value."""
-
-    model_config = ConfigDict(frozen=True)
-
-
 class Entity(BaseModel):
     """Base for domain entities identified by a stable `id`."""
 
@@ -58,28 +65,10 @@ class ChunkingConfig(ValueObject):
     extra: dict = Field(default_factory=dict)
 
 
-class PreviewChunk(ValueObject):
-    """A chunk of text produced before embedding."""
-
-    text: str
-    token_count: int | None = None
-    overlap_start: int | None = None
-    overlap_end: int | None = None
-
-
 class IndexedChunk(PreviewChunk):
     """A `PreviewChunk` paired with its embedding vector."""
 
     vector: list[float]
-
-
-class FoundChunk(ValueObject):
-    """A chunk returned from a search, with its ranking metadata."""
-
-    order: int
-    similarity: float
-    text: str
-    source: str = ""
 
 
 class Document(Entity):
@@ -102,7 +91,10 @@ class Document(Entity):
         return Path(self.name).suffix
 
     def is_required_reindex(self) -> bool:
-        return self.last_indexing_config is not None and self.config != self.last_indexing_config
+        return (
+            self.last_indexing_config is not None
+            and self.config != self.last_indexing_config
+        )
 
     def mark_completed(self) -> None:
         self.status = DocumentStatusEnum.COMPLETED
@@ -132,72 +124,3 @@ class EmbeddingConfig(BaseModel):
     extra: dict = Field(default_factory=dict)
 
     model_config = ConfigDict(frozen=True)
-
-
-class BaseSearchConfig(BaseModel):
-    """Base for search configurations, selected by the `rag_strategy` discriminator."""
-
-    rag_strategy: RAGStrategy
-    model_config = ConfigDict(frozen=True)
-
-
-class NaiveSearchConfig(BaseSearchConfig):
-    """Configuration for naive vector-similarity search."""
-
-    rag_strategy: Literal[RAGStrategy.NAIVE] = RAGStrategy.NAIVE
-    search_limit: int = 3
-    similarity_threshold: float = 0.2
-
-
-class GraphSearchConfig(BaseSearchConfig):
-    """Configuration for graph-based search."""
-
-    rag_strategy: Literal[RAGStrategy.GRAPH] = RAGStrategy.GRAPH
-    method: GraphSearchMethodEnum = GraphSearchMethodEnum.BASIC
-    prompt: str = ""
-    k: int = 10
-    max_context_tokens: int = 12_000
-
-
-SearchConfig = Annotated[GraphSearchConfig | NaiveSearchConfig, Field(discriminator="rag_strategy")]
-
-
-class PrechunkRequest(ValueObject):
-    """Request to pre-chunk a document for a RAG collection."""
-
-    rag_id: int
-    rag_strategy: RAGStrategy
-    document_id: int
-
-
-class PrechunkResponse(ValueObject):
-    """Preview chunks produced for a `PrechunkRequest`."""
-
-    request: PrechunkRequest
-    chunks: list[PreviewChunk]
-
-
-class IndexRequest(ValueObject):
-    """Request to index a RAG collection's documents."""
-
-    rag_id: int
-    rag_strategy: RAGStrategy
-
-
-class SearchRequest(ValueObject):
-    """Request to search a RAG collection."""
-
-    rag_id: int
-    query: str
-    search_config: SearchConfig
-
-
-class SearchResponse(ValueObject):
-    """Chunks matched for a `SearchRequest`."""
-
-    request: SearchRequest
-    chunks: list[FoundChunk]
-
-
-class CancelRequest(ValueObject):
-    target_request: dict[str, Any]
