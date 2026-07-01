@@ -43,6 +43,7 @@ class AgentDefinitionReadSerializer(serializers.ModelSerializer):
             "cache",
             "max_retry_limit",
             "default_temperature",
+            "metadata",
             "default_surfaces",
         ]
         read_only_fields = fields
@@ -75,6 +76,7 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
             "cache",
             "max_retry_limit",
             "default_temperature",
+            "metadata",
             "default_surfaces",
         ]
 

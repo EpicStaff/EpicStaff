@@ -1047,3 +1047,47 @@ def test_valid_payload_allow_deny_different_tools_passes(org, py_tool_a, py_tool
         context={"organization": org},
     )
     assert serializer.is_valid() is True
+
+
+# ---------------------------------------------------------------------------
+# AgentDefinition.metadata
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_agent_metadata_defaults_to_empty_dict(org):
+    agent = AgentDefinition.objects.create(organization=org, name="meta-default")
+    assert agent.metadata == {}
+
+
+@pytest.mark.django_db
+def test_agent_write_serializer_accepts_arbitrary_metadata(org):
+    from tables.serializers.model_serializers.agent_definition_serializers import (
+        AgentDefinitionWriteSerializer,
+    )
+
+    payload = {"name": "meta-write", "metadata": {"ui_color": "red", "priority": 3}}
+    serializer = AgentDefinitionWriteSerializer(data=payload)
+    assert serializer.is_valid(), serializer.errors
+
+    instance = serializer.save(organization=org)
+
+    instance.refresh_from_db()
+    assert instance.metadata == {"ui_color": "red", "priority": 3}
+
+
+@pytest.mark.django_db
+def test_agent_read_serializer_returns_stored_metadata(org):
+    from tables.serializers.model_serializers.agent_definition_serializers import (
+        AgentDefinitionReadSerializer,
+    )
+
+    agent = AgentDefinition.objects.create(
+        organization=org,
+        name="meta-read",
+        metadata={"key": "value", "count": 42},
+    )
+
+    data = AgentDefinitionReadSerializer(agent).data
+
+    assert data["metadata"] == {"key": "value", "count": 42}

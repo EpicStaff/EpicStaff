@@ -68,6 +68,11 @@ class AgentDefinition(AbstractDefaultFillableModel):
         default="",
         help_text="Free-form prompt for the agent. Put behavior, goals, tone, and constraints here.",
     )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Free-form key-value store for arbitrary client/UI data. Not used by execution.",
+    )
 
     # LLM linkage
     llm_config = models.ForeignKey(
