@@ -4,20 +4,18 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import {
-    AppSvgIconComponent,
-    ButtonComponent,
-    CustomInputComponent,
-    ToggleSwitchComponent,
-    TooltipComponent,
-    ValidationErrorsComponent,
-} from '@shared/components';
 import { EmbeddingModel, LLMProvider } from '@shared/models';
 import { EmbeddingModelsStorageService } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
 import { finalize } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
+import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
+import { ValidationErrorsComponent } from '../../app-validation-errors/validation-errors.component';
+import { ButtonComponent } from '../../buttons';
+import { ToggleSwitchComponent } from '../../form-controls';
+import { CustomInputComponent } from '../../form-input/form-input.component';
+import { TooltipComponent } from '../../tooltip/tooltip.component';
 
 export interface CreateEmbeddingModelDialogData {
     provider: LLMProvider;

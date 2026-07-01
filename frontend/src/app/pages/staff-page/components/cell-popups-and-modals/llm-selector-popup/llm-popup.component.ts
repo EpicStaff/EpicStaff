@@ -12,16 +12,19 @@ import {
     OnInit,
     output,
     signal,
-    ViewChild,
+    viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
+import {
+    AppSvgIconComponent,
+    ButtonComponent,
+    LlmModelConfigDialogComponent,
+    VoiceModelConfigDialogComponent,
+} from '@shared/components';
 import { FullLLMConfig, FullLLMConfigService, FullRealtimeConfig, FullRealtimeConfigService } from '@shared/services';
 import { forkJoin, Subject } from 'rxjs';
 import { finalize, takeUntil } from 'rxjs/operators';
 
-import { LlmModelConfigDialogComponent } from '../../../../../features/configure-models/components/llm-model-config-dialog/llm-model-config-dialog.component';
-import { VoiceModelConfigDialogComponent } from '../../../../../features/configure-models/components/voice-config-model/voice-model-config-dialog.component';
 import { MergedConfig } from '../../../../../features/staff/services/full-agent.service';
 import { LlmItemComponent } from './llm-item/llm-item.component';
 
@@ -38,7 +41,7 @@ export class LLMPopupComponent implements OnInit, OnDestroy, AfterViewInit {
     public readonly configsSelected = output<MergedConfig[]>();
     public readonly cancel = output<void>();
 
-    @ViewChild('searchInput') private searchInput!: ElementRef;
+    private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
     private readonly fullLLMConfigService = inject(FullLLMConfigService);
     private readonly fullRealtimeConfigService = inject(FullRealtimeConfigService);
@@ -124,7 +127,7 @@ export class LLMPopupComponent implements OnInit, OnDestroy, AfterViewInit {
     }
 
     public ngAfterViewInit(): void {
-        this.searchInput?.nativeElement.focus();
+        this.searchInput()?.nativeElement.focus();
     }
 
     public ngOnDestroy(): void {

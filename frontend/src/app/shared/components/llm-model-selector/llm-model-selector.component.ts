@@ -19,8 +19,8 @@ import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/f
 import { DropdownManagerService, FullLLMConfig, FullLLMConfigService } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
 
-import { LlmModelConfigDialogComponent } from '../../../features/configure-models/components/llm-model-config-dialog/llm-model-config-dialog.component';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
+import { LlmModelConfigDialogComponent } from '../llm-dialogs';
 import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component';
 
 @Component({

@@ -20,15 +20,19 @@ import {
 } from '@angular/core';
 import { rxResource, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
-import { AppSvgIconComponent, ButtonComponent, IconButtonComponent, TooltipComponent } from '@shared/components';
+import {
+    AppSvgIconComponent,
+    ButtonComponent,
+    CreateEmbeddingModelModalComponent,
+    CreateLlmModelModalComponent,
+    CreateRealtimeModelModalComponent,
+    CreateTranscriptionModelModalComponent,
+    IconButtonComponent,
+    TooltipComponent,
+} from '@shared/components';
 import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
+import { LLMLibraryService, ProviderWithModels } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
-
-import { LLMLibraryService, ProviderWithModels } from '../../services/llms/llm-library.service';
-import { CreateEmbeddingModelModalComponent } from '../create-embedding-model-modal/create-embedding-model-modal.component';
-import { CreateLlmModelModalComponent } from '../create-llm-model-modal/create-llm-model-modal.component';
-import { CreateRealtimeModelModalComponent } from '../create-realtime-model-modal/create-realtime-model-modal.component';
-import { CreateTranscriptionModelModalComponent } from '../create-transcription-model-modal/create-transcription-model-modal.component';
 
 const TOP_PROVIDERS = [
     'openai',

@@ -23,7 +23,7 @@ import {
 import { forkJoin, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
-import { LlmLibraryProviderGroup } from '../../interfaces/llm-library-provider-group.interface';
+import { LlmLibraryProviderGroup } from '../../../features/configure-models/interfaces/llm-library-provider-group.interface';
 
 type AnyModel = LLMModel | EmbeddingModel | RealtimeModel | GetRealtimeTranscriptionModelRequest;
 
