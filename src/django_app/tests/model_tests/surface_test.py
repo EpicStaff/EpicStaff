@@ -853,17 +853,17 @@ def test_reject_duplicate_storage_file_id_in_payload(org, storage_file_a):
             "storage_items": [
                 {
                     "storage_file": storage_file_a.pk,
-                    "can_list": True,
-                    "can_view": False,
-                    "can_edit": False,
-                    "can_delete": False,
+                    "can_list": "allow",
+                    "can_view": "unset",
+                    "can_edit": "unset",
+                    "can_delete": "unset",
                 },
                 {
                     "storage_file": storage_file_a.pk,
-                    "can_list": False,
-                    "can_view": True,
-                    "can_edit": False,
-                    "can_delete": False,
+                    "can_list": "unset",
+                    "can_view": "allow",
+                    "can_edit": "unset",
+                    "can_delete": "unset",
                 },
             ],
         },
@@ -885,10 +885,10 @@ def test_reject_storage_item_from_other_org(org, storage_file_other_org):
             "storage_items": [
                 {
                     "storage_file": storage_file_other_org.pk,
-                    "can_list": True,
-                    "can_view": False,
-                    "can_edit": False,
-                    "can_delete": False,
+                    "can_list": "allow",
+                    "can_view": "unset",
+                    "can_edit": "unset",
+                    "can_delete": "unset",
                 }
             ],
         },
