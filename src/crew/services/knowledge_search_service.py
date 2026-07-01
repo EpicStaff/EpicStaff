@@ -1,9 +1,9 @@
-import os
-import threading
 from typing import Dict, Any, Optional
+import threading
 from loguru import logger
 from langgraph.types import StreamWriter
 
+import settings
 from models.graph_models import GraphMessage
 from services.graph.events import StopEvent
 from services.redis_service import RedisService
@@ -22,15 +22,6 @@ from src.shared.models import (
     CancelRequest,
 )
 from services.communication import producer, consumer
-
-
-knowledge_search_get_channel = os.getenv(
-    "KNOWLEDGE_SEARCH_GET_CHANNEL", "knowledge:search:get"
-)
-knowledge_search_response_channel = os.getenv(
-    "KNOWLEDGE_SEARCH_RESPONSE_CHANNEL", "knowledge:search:response"
-)
-knowledge_cancel_channel = os.getenv("KNOWLEDGE_CANCEL_CHANNEL", "knowledge:cancel")
 
 
 class RagSearchConfigFactory:
@@ -135,7 +126,7 @@ class KnowledgeSearchService:
         request = SearchRequest(rag_id=rag_id, query=query, search_config=search_config)
 
         producer.send(
-            knowledge_search_get_channel,
+            settings.KNOWLEDGE_SEARCH_REQUEST_CHANNEL,
             Message(payload=request.model_dump()),
         )
         logger.info(
@@ -146,7 +137,10 @@ class KnowledgeSearchService:
         if stop_event is not None:
             self._cancel_search_on_stop(request, stop_event, search_done)
         try:
-            msg = consumer.receive(knowledge_search_response_channel, timeout=timeout)
+            msg = consumer.receive(
+                settings.KNOWLEDGE_SEARCH_RESPONSE_CHANNEL,
+                timeout=timeout,
+            )
         finally:
             search_done.set()
         if msg is None:
@@ -170,7 +164,7 @@ class KnowledgeSearchService:
             while not search_done.wait(0.1):
                 if stop_event.is_set():
                     producer.send(
-                        knowledge_cancel_channel,
+                        settings.KNOWLEDGE_CANCEL_REQUEST_CHANNEL,
                         Message(
                             payload=CancelRequest(
                                 target_request=request.model_dump()

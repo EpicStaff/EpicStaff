@@ -930,7 +930,7 @@ class ProcessRagIndexingView(APIView):
         IndexingService.validate_and_prepare_indexing(rag_id=rag_id, rag_type=rag_type)
 
         producer.send(
-            settings.KNOWLEDGE_INDEXING_CHANNEL,
+            settings.KNOWLEDGE_INDEX_REQUEST_CHANNEL,
             Message(
                 payload=IndexRequest(rag_id=rag_id, rag_strategy=rag_type).model_dump()
             ),

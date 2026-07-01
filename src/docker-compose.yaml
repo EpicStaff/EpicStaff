@@ -11,26 +11,6 @@ x-common-env: &common_env
   REDIS_HOST: ${REDIS_HOST:-redis}
   REDIS_PORT: ${REDIS_PORT:-6379}
   REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-  CREW_BROKER_HOST: ${CREW_BROKER_HOST:-redis}
-  CREW_BROKER_PORT: ${CREW_BROKER_PORT:-6379}
-  CREW_BROKER_DB: ${CREW_BROKER_DB:-0}
-  CREW_BROKER_USER: ${CREW_BROKER_USER:-}
-  CREW_BROKER_PASSWORD: ${CREW_BROKER_PASSWORD:-}
-  CREW_STORAGE_HOST: ${CREW_STORAGE_HOST:-redis}
-  CREW_STORAGE_PORT: ${CREW_STORAGE_PORT:-6379}
-  CREW_STORAGE_DB: ${CREW_STORAGE_DB:-1}
-  CREW_STORAGE_USER: ${CREW_STORAGE_USER:-}
-  CREW_STORAGE_PASSWORD: ${CREW_STORAGE_PASSWORD:-}
-  DJANGO_BROKER_HOST: ${DJANGO_BROKER_HOST:-redis}
-  DJANGO_BROKER_PORT: ${DJANGO_BROKER_PORT:-6379}
-  DJANGO_BROKER_DB: ${DJANGO_BROKER_DB:-0}
-  DJANGO_BROKER_USER: ${DJANGO_BROKER_USER:-}
-  DJANGO_BROKER_PASSWORD: ${DJANGO_BROKER_PASSWORD:-}
-  DJANGO_STORAGE_HOST: ${DJANGO_STORAGE_HOST:-redis}
-  DJANGO_STORAGE_PORT: ${DJANGO_STORAGE_PORT:-6379}
-  DJANGO_STORAGE_DB: ${DJANGO_STORAGE_DB:-1}
-  DJANGO_STORAGE_USER: ${DJANGO_STORAGE_USER:-}
-  DJANGO_STORAGE_PASSWORD: ${DJANGO_STORAGE_PASSWORD:-}
   DB_HOST_NAME: ${DB_HOST_NAME:-crewdb}
   DB_PORT: ${DB_PORT:-5432}
   DB_NAME: ${POSTGRES_DB:-crew}
@@ -57,7 +37,7 @@ services:
     container_name: django_app
     command: ./entrypoint.sh
     environment:
-      <<: *common_env
+      <<: [*common_env, *communication_env]
       DEBUG: ${DEBUG:-False}
       SECRET_KEY: ${SECRET_KEY:-unsafe-dev-key}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
@@ -106,6 +86,11 @@ services:
       AVATAR_ALLOWED_FORMATS: ${AVATAR_ALLOWED_FORMATS:-JPEG,PNG}
       MALLOC_ARENA_MAX: ${MALLOC_ARENA_MAX:-2}
       MALLOC_TRIM_INTERVAL_SECONDS: ${MALLOC_TRIM_INTERVAL_SECONDS:-60}
+
+      KNOWLEDGE_PRECHUNK_REQUEST_CHANNEL: ${KNOWLEDGE_PRECHUNK_REQUEST_CHANNEL}
+      KNOWLEDGE_PRECHUNK_RESPONSE_CHANNEL: ${KNOWLEDGE_PRECHUNK_RESPONSE_CHANNEL}
+      KNOWLEDGE_INDEX_REQUEST_CHANNEL: ${KNOWLEDGE_INDEX_REQUEST_CHANNEL}
+      KNOWLEDGE_CANCEL_REQUEST_CHANNEL: ${KNOWLEDGE_CANCEL_REQUEST_CHANNEL}
     volumes:
       - media_data:/app/src/django_app/media
     networks:
@@ -255,7 +240,7 @@ services:
       dockerfile: ./crew/Dockerfile.crew
     container_name: crew
     environment:
-      <<: *common_env
+      <<: [*common_env, *communication_env]
       MANAGER_HOST: ${MANAGER_HOST}
       MANAGER_PORT: ${MANAGER_PORT:-8001}
       CODE_CONTAINER_URL: http://code:${CODE_MANAGER_PORT:-4080}
@@ -270,6 +255,9 @@ services:
       DEFAULT_RAG_SEARCH_TIMEOUT: ${DEFAULT_RAG_SEARCH_TIMEOUT}
       NAIVE_RAG_SEARCH_TIMEOUT: ${NAIVE_RAG_SEARCH_TIMEOUT}
       GRAPH_RAG_SEARCH_TIMEOUT: ${GRAPH_RAG_SEARCH_TIMEOUT}
+
+      KNOWLEDGE_SEARCH_REQUEST_CHANNEL: ${KNOWLEDGE_SEARCH_REQUEST_CHANNEL}
+      KNOWLEDGE_SEARCH_RESPONSE_CHANNEL: ${KNOWLEDGE_SEARCH_RESPONSE_CHANNEL}
     volumes:
       - ${DOCKER_SOCK_PATH}:${DOCKER_SOCK_PATH}
       - ${DOCKER_BIN_PATH}:${DOCKER_BIN_PATH}
@@ -509,6 +497,13 @@ services:
     build:
       context: .
       dockerfile: ./knowledge_new/Dockerfile
+    networks:
+      - backend-network
+    depends_on:
+      communication_redis_broker:
+        condition: service_healthy
+      communication_redis_storage:
+        condition: service_healthy
     environment:
       <<: *communication_env
       KNOWLEDGE_DATABASE_USER: ${KNOWLEDGE_DATABASE_USER}
