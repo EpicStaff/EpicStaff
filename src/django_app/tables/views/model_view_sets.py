@@ -889,6 +889,17 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
         )
         return Response(data, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        request={
+            "multipart/form-data": {
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string", "format": "binary"},
+                },
+                "required": ["file"],
+            }
+        }
+    )
     @action(detail=True, methods=["post"], url_path="partial-import")
     def partial_import(self, request, pk=None):
         file_serializer = ImportRequestSerializer(data=request.data)

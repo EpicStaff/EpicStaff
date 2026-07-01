@@ -181,10 +181,11 @@ class GraphStrategy(EntityImportExportStrategy):
         self, nodes_data: list, graph: Graph, node_mapper: IDMapper, id_mapper: IDMapper
     ) -> None:
         # Mirror the frontend's node numbering: a single graph-wide counter that
-        # starts above the highest "#N" already present in the graph, so imported
-        # nodes count up from the top instead of filling gaps (which could reuse
-        # an existing number).
-        counter = self._max_node_name_number(graph)
+        # starts above the highest metadata["nodeNumber"] already present in the
+        # graph, so imported nodes count up from the top instead of filling gaps
+        # (which could reuse an existing number). Each numbered node also gets its
+        # assigned number written back into metadata["nodeNumber"].
+        counter = self._max_node_number(graph)
 
         for node_data in nodes_data:
             node_type = node_data.pop("node_type")
@@ -198,6 +199,9 @@ class GraphStrategy(EntityImportExportStrategy):
                 node_data["node_name"] = self._with_node_number(
                     node_data["node_name"], counter
                 )
+                metadata = node_data.get("metadata") or {}
+                metadata["nodeNumber"] = counter
+                node_data["metadata"] = metadata
 
             # Node strategies resolve their parent graph via
             # id_mapper.get_or_none(GRAPH, node_data["graph"]). The exported node
@@ -224,8 +228,9 @@ class GraphStrategy(EntityImportExportStrategy):
         base = re.sub(r"\s*#\s*\d+$", "", name).strip()
         return f"{base} #{number}"
 
-    def _max_node_name_number(self, graph: Graph) -> int:
-        """Return the highest trailing "#N" number across all node_names in the graph."""
+    def _max_node_number(self, graph: Graph) -> int:
+        """Return the highest ``metadata["nodeNumber"]`` across all of the
+        graph's nodes (0 if none)."""
         max_num = 0
         for relation in NODE_RELATIONS.values():
             if not hasattr(graph, relation):
@@ -235,16 +240,16 @@ class GraphStrategy(EntityImportExportStrategy):
                 continue
             model = qs.model
             if not any(
-                f.name == "node_name"
+                f.name == "metadata"
                 for f in model._meta.get_fields()
                 if hasattr(f, "column")
             ):
                 continue
-            for name in qs.values_list("node_name", flat=True):
-                if name:
-                    m = re.search(r"#\s*(\d+)$", name)
-                    if m:
-                        max_num = max(max_num, int(m.group(1)))
+            for metadata in qs.values_list("metadata", flat=True):
+                if isinstance(metadata, dict):
+                    number = metadata.get("nodeNumber")
+                    if isinstance(number, int) and not isinstance(number, bool):
+                        max_num = max(max_num, number)
         return max_num
 
     def _create_edges(self, edges_data: list, graph: Graph, id_mapper: IDMapper):
