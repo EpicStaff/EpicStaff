@@ -3,6 +3,7 @@ import { PROVIDER_ICON_PATHS } from '@shared/constants';
 import {
     EmbeddingModel,
     GetRealtimeTranscriptionModelRequest,
+    LlmLibraryProviderGroup,
     LLMModel,
     LLMProvider,
     ModelTypes,
@@ -22,8 +23,6 @@ import {
 } from '@shared/services';
 import { forkJoin, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-
-import { LlmLibraryProviderGroup } from '../../../features/configure-models/interfaces/llm-library-provider-group.interface';
 
 type AnyModel = LLMModel | EmbeddingModel | RealtimeModel | GetRealtimeTranscriptionModelRequest;
 

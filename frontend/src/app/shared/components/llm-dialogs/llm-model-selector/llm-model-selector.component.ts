@@ -88,7 +88,6 @@ export class LlmModelSelectorComponent implements ControlValueAccessor {
     searchQuery = signal('');
     selectedValue = model<number | null>(null);
     modelChanged = output<{ model: LLMModel; provider: LLMProvider }>();
-    configAdded = output<void>();
 
     readonly COLLAPSED_COUNT = 3;
 

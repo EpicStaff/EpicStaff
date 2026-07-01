@@ -1,4 +1,5 @@
-import { ModelTypes, Tag } from '@shared/models';
+import { Tag } from '../tag.model';
+import { ModelTypes } from './llm-provider.model';
 
 export interface LlmLibraryModel {
     id: number;

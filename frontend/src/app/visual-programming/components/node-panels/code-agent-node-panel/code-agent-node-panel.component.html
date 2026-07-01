@@ -39,10 +39,13 @@
                                 placeholder="Select mode"
                             />
 
-                            <app-llm-model-selector
-                                [placeholder]="'LLM Config'"
-                                formControlName="llm_config"
-                            />
+                            <div class="llm-selector-container">
+                                <label>LLM Config</label>
+                                <app-llm-model-selector
+                                    [placeholder]="'LLM Config'"
+                                    formControlName="llm_config"
+                                />
+                            </div>
 
                             <app-custom-input
                                 label="Session ID"
@@ -241,12 +244,13 @@
                         placeholder="Select mode"
                     />
 
-                    <app-select
-                        label="LLM Config"
-                        formControlName="llm_config"
-                        [items]="llmConfigItems()"
-                        placeholder="— None —"
-                    />
+                    <div class="llm-selector-container">
+                        <label>LLM Config</label>
+                        <app-llm-model-selector
+                            [placeholder]="'LLM Config'"
+                            formControlName="llm_config"
+                        />
+                    </div>
 
                     <app-custom-input
                         label="Session ID"

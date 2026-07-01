@@ -17,6 +17,7 @@ import {
     VoiceModelConfigDialogComponent,
 } from '@shared/components';
 import { ModelTypes } from '@shared/models';
+import { LlmLibraryModel, LlmLibraryProviderGroup } from '@shared/models';
 import {
     EmbeddingConfigStorageService,
     LlmConfigStorageService,
@@ -27,8 +28,6 @@ import {
 import { Observable } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
-import { LlmLibraryModel } from '../../interfaces/llm-library-model.interface';
-import { LlmLibraryProviderGroup } from '../../interfaces/llm-library-provider-group.interface';
 import { DefaultModelsStorageService } from '../../services/default-models-storage.service';
 import { LlmLibraryCardComponent } from '../llm-library-card/llm-library-card.component';
 
