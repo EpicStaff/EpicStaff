@@ -3,11 +3,11 @@ from django.conf import settings
 from src.shared.communication import Consumer, Producer
 from src.shared.communication.brokers import RedisPubSubBroker
 from src.shared.communication.storages import RedisStorage
-from shared.communication.dns import build_dns as _build_dns
+from shared.communication.dns import build_dns
 
 
 _broker = RedisPubSubBroker(
-    _build_dns(
+    build_dns(
         provider=settings.COMMUNICATION_BROKER_BACKEND,
         user=settings.COMMUNICATION_BROKER_USER,
         password=settings.COMMUNICATION_BROKER_PASSWORD,
@@ -17,7 +17,7 @@ _broker = RedisPubSubBroker(
     )
 )
 _storage = RedisStorage(
-    _build_dns(
+    build_dns(
         provider=settings.COMMUNICATION_STORAGE_BACKEND,
         user=settings.COMMUNICATION_STORAGE_USER,
         password=settings.COMMUNICATION_STORAGE_PASSWORD,

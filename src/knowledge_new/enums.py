@@ -1,4 +1,5 @@
 from enum import StrEnum
+
 from src.shared.enums import GraphSearchMethodEnum, RAGStrategy
 
 __all__ = [

@@ -1,30 +1,24 @@
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from src.shared.models.base import ValueObject
 
-from src.shared.enums import GraphSearchMethodEnum, RAGStrategy
+from shared.enums.enumsms import GraphSearchMethodEnum, RAGStrategy
 
 __all__ = [
-    "ValueObject",
     "BaseSearchConfig",
-    "NaiveSearchConfig",
-    "GraphSearchConfig",
-    "SearchConfig",
-    "PreviewChunk",
+    "CancelRequest",
     "FoundChunk",
+    "GraphSearchConfig",
+    "IndexRequest",
+    "NaiveSearchConfig",
     "PrechunkRequest",
     "PrechunkResponse",
-    "IndexRequest",
+    "PreviewChunk",
+    "SearchConfig",
     "SearchRequest",
     "SearchResponse",
-    "CancelRequest",
 ]
-
-
-class ValueObject(BaseModel):
-    """Base for immutable value objects — frozen after creation and compared by value."""
-
-    model_config = ConfigDict(frozen=True)
 
 
 class PreviewChunk(ValueObject):
@@ -70,9 +64,7 @@ class GraphSearchConfig(BaseSearchConfig):
     max_context_tokens: int = 12_000
 
 
-SearchConfig = Annotated[
-    GraphSearchConfig | NaiveSearchConfig, Field(discriminator="rag_strategy")
-]
+SearchConfig = Annotated[GraphSearchConfig | NaiveSearchConfig, Field(discriminator="rag_strategy")]
 
 
 class PrechunkRequest(ValueObject):

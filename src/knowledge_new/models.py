@@ -1,6 +1,5 @@
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from enums import (
     ChunkStrategyEnum,
@@ -9,10 +8,10 @@ from enums import (
     EmbedderProviderEnum,
 )
 from pydantic import BaseModel, ConfigDict, Field, computed_field
-from utils import utcnow
-from src.shared.models.knowledge_rag import (
+from src.shared.models.knowledge_new import (
     BaseSearchConfig,
     CancelRequest,
+    Entity,
     FoundChunk,
     GraphSearchConfig,
     IndexRequest,
@@ -25,6 +24,7 @@ from src.shared.models.knowledge_rag import (
     SearchResponse,
     ValueObject,
 )
+from utils import utcnow
 
 __all__ = [
     "BaseSearchConfig",
@@ -32,7 +32,6 @@ __all__ = [
     "ChunkingConfig",
     "Document",
     "EmbeddingConfig",
-    "Entity",
     "FoundChunk",
     "GraphSearchConfig",
     "IndexRequest",
@@ -44,16 +43,7 @@ __all__ = [
     "SearchConfig",
     "SearchRequest",
     "SearchResponse",
-    "ValueObject",
 ]
-
-
-class Entity(BaseModel):
-    """Base for domain entities identified by a stable `id`."""
-
-    id: Any = Field(frozen=True)
-
-    model_config = ConfigDict(validate_assignment=True)
 
 
 class ChunkingConfig(ValueObject):
@@ -91,10 +81,7 @@ class Document(Entity):
         return Path(self.name).suffix
 
     def is_required_reindex(self) -> bool:
-        return (
-            self.last_indexing_config is not None
-            and self.config != self.last_indexing_config
-        )
+        return self.last_indexing_config is not None and self.config != self.last_indexing_config
 
     def mark_completed(self) -> None:
         self.status = DocumentStatusEnum.COMPLETED
