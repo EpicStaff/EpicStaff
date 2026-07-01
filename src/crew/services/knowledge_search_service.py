@@ -1,8 +1,8 @@
-import os
 from typing import Dict, Any, Optional
 from loguru import logger
 from langgraph.types import StreamWriter
 
+import settings
 from models.graph_models import GraphMessage
 from services.graph.events import StopEvent
 from services.redis_service import RedisService
@@ -19,14 +19,6 @@ from services.communication_schemas import (
     RagSearchConfig,
     SearchRequest,
     SearchResponse,
-)
-
-
-knowledge_search_get_channel = os.getenv(
-    "KNOWLEDGE_SEARCH_GET_CHANNEL", "knowledge:search:get"
-)
-knowledge_search_response_channel = os.getenv(
-    "KNOWLEDGE_SEARCH_RESPONSE_CHANNEL", "knowledge:search:response"
 )
 
 
@@ -132,14 +124,17 @@ class KnowledgeSearchService:
         request = SearchRequest(rag_id=rag_id, query=query, search_config=search_config)
 
         producer.send(
-            knowledge_search_get_channel,
+            settings.KNOWLEDGE_SEARCH_REQUEST_CHANNEL,
             Message(payload=request.model_dump()),
         )
         logger.info(
             "Sent knowledge search rag_id=%s sender=%s query=%r", rag_id, sender, query
         )
 
-        msg = consumer.receive(knowledge_search_response_channel, timeout=timeout)
+        msg = consumer.receive(
+            settings.KNOWLEDGE_SEARCH_RESPONSE_CHANNEL,
+            timeout=timeout,
+        )
         if msg is None:
             raise TimeoutError(
                 f"Knowledge search timeout for {rag_type_id} after {timeout}s"

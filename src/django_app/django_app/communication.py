@@ -1,4 +1,4 @@
-import os
+from django.conf import settings
 
 from src.shared.communication import Consumer, Producer
 from src.shared.communication.brokers import RedisPubSubBroker
@@ -10,19 +10,25 @@ def _build_dns(provider: str, host: str, port: int, db: str, user="", password="
     return f"{provider}://{user_part}{host}:{port}/{db}"
 
 
-def _redis_url(prefix: str) -> str:
-    return _build_dns(
-        "redis",
-        host=os.environ[f"{prefix}_HOST"],
-        port=os.environ[f"{prefix}_PORT"],
-        db=os.environ[f"{prefix}_DB"],
-        user=os.environ.get(f"{prefix}_USER", ""),
-        password=os.environ.get(f"{prefix}_PASSWORD", ""),
+_broker = RedisPubSubBroker(
+    _build_dns(
+        provider=settings.COMMUNICATION_BROKER_BACKEND,
+        user=settings.COMMUNICATION_BROKER_USER,
+        password=settings.COMMUNICATION_BROKER_PASSWORD,
+        host=settings.COMMUNICATION_BROKER_HOST,
+        port=settings.COMMUNICATION_BROKER_PORT,
+        db=settings.COMMUNICATION_BROKER_NAME,
     )
-
-
-_broker = RedisPubSubBroker(_redis_url("DJANGO_BROKER"))
-_storage = RedisStorage(_redis_url("DJANGO_STORAGE"))
-
+)
+_storage = RedisStorage(
+    _build_dns(
+        provider=settings.COMMUNICATION_STORAGE_BACKEND,
+        user=settings.COMMUNICATION_STORAGE_USER,
+        password=settings.COMMUNICATION_STORAGE_PASSWORD,
+        host=settings.COMMUNICATION_STORAGE_HOST,
+        port=settings.COMMUNICATION_STORAGE_PORT,
+        db=settings.COMMUNICATION_STORAGE_NAME,
+    )
+)
 producer = Producer(_broker, _storage)
 consumer = Consumer(_broker, _storage)

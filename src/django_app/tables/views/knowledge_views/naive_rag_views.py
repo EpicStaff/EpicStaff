@@ -555,7 +555,7 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
         )
 
         producer.send(
-            settings.KNOWLEDGE_DOCUMENT_CHUNK_CHANNEL,
+            settings.KNOWLEDGE_PRECHUNK_REQUEST_CHANNEL,
             Message(payload=prechunk_request.model_dump()),
         )
         logger.info(
@@ -565,7 +565,7 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
         )
 
         msg = consumer.receive(
-            settings.KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE,
+            settings.KNOWLEDGE_PRECHUNK_RESPONSE_CHANNEL,
             timeout=CHUNKING_TIMEOUT,
         )
         if msg is None:
