@@ -1,86 +1,178 @@
-<div class="tab">
-    <div class="tab__header">
-        <div class="tab__header-left">
-            <h3 class="tab__title">Voice / Twilio Settings</h3>
-            <p class="tab__subtitle">Configure Twilio credentials and the default voice agent for inbound calls.</p>
-        </div>
-        <app-button
-            type="primary"
-            [disabled]="saving()"
-            (click)="onSave()"
-        >
-            {{ saving() ? 'Saving…' : 'Save' }}
-        </app-button>
-    </div>
+<section class="voice-settings">
+    <header class="header">
+        <h3 class="title">Voice / Twilio Settings</h3>
+        <p class="subtitle">Configure Twilio credentials and the default voice agent for inbound calls.</p>
+    </header>
 
     @if (status() === 'loading') {
-        <div class="tab__loading-state">
+        <div class="loading-state">
             <p>Loading voice settings…</p>
         </div>
     } @else if (status() === 'error') {
-        <div class="tab__loading-state tab__loading-state--error">
+        <div class="loading-state error">
             <p>Failed to load voice settings.</p>
         </div>
     } @else {
-        <form
-            [formGroup]="form"
-            class="tab__form"
-        >
-            <app-custom-input
-                label="Twilio Account SID"
-                formControlName="twilio_account_sid"
-                placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                tooltipText="Your Twilio Account SID from the Twilio Console"
-            />
+        <div class="layout">
+            <div class="left">
+                <form
+                    class="form"
+                    [formGroup]="form"
+                >
+                    <div class="row">
+                        <div class="label">
+                            <span>Account SID</span>
+                            <app-help-tooltip
+                                class="tooltip-icon"
+                                text="Your Twilio Account SID from the Twilio Console."
+                                position="right"
+                                tooltipClass="dialog__label-tooltip"
+                            />
+                        </div>
+                        <app-custom-input
+                            formControlName="twilio_account_sid"
+                            placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                        />
+                    </div>
 
-            <app-custom-input
-                type="secret"
-                label="Twilio Auth Token"
-                formControlName="twilio_auth_token"
-                placeholder="••••••••••••••••••••••••••••••••"
-                tooltipText="Your Twilio Auth Token. Used to validate incoming webhook requests."
-            />
+                    <div class="row">
+                        <div class="label">
+                            <span>Auth Token</span>
+                            <app-help-tooltip
+                                class="tooltip-icon"
+                                text="Your Twilio Auth Token. Used to validate incoming webhook requests."
+                                position="right"
+                                tooltipClass="dialog__label-tooltip"
+                            />
+                        </div>
+                        <app-custom-input
+                            type="secret"
+                            formControlName="twilio_auth_token"
+                            placeholder="Enter Auth Token..."
+                        />
+                    </div>
 
-            <app-select
-                label="Default Voice Agent"
-                formControlName="voice_agent"
-                [items]="agentItems()"
-                placeholder="Select an agent"
-                tooltipText="Agent used for inbound calls. Only agents with a realtime configuration are shown."
-            />
+                    <div class="row">
+                        <div class="label">
+                            <span>Voice Agent</span>
+                            <app-help-tooltip
+                                class="tooltip-icon"
+                                text="Agent used for inbound calls. Only agents with a realtime configuration are shown."
+                                position="right"
+                                tooltipClass="dialog__label-tooltip"
+                            />
+                        </div>
+                        <app-select
+                            formControlName="voice_agent"
+                            [items]="agentItems()"
+                            placeholder="Select voice agent..."
+                        />
+                    </div>
 
-            <app-select
-                label="Webhook Tunnel"
-                formControlName="ngrok_config"
-                [items]="ngrokItems()"
-                placeholder="Select a tunnel"
-                tooltipText="Ngrok tunnel that exposes the voice endpoint to Twilio"
-            />
+                    <div class="row">
+                        <div class="label">
+                            <span>Webhook Tunnel</span>
+                            <app-help-tooltip
+                                class="tooltip-icon"
+                                text="Ngrok tunnel that exposes the voice endpoint to Twilio."
+                                position="right"
+                                tooltipClass="dialog__label-tooltip"
+                            />
+                        </div>
+                        <app-select
+                            formControlName="ngrok_config"
+                            [items]="ngrokItems()"
+                            placeholder="Select one..."
+                        />
+                    </div>
 
-            <div class="tab__section-title">Configure Phone Number Webhook</div>
+                    <div class="test-row">
+                        <app-button
+                            type="outline-primary"
+                            [disabled]="testing() || !canTestCredentials()"
+                            (click)="onTestCredentials()"
+                            leftIcon="check"
+                        >
+                            {{ testing() ? 'Testing…' : 'Test' }}
+                        </app-button>
+                    </div>
 
-            <div (click)="onPhoneSelectOpen()">
-                <app-select
-                    label="Twilio Phone Number"
-                    [items]="phoneNumberItems()"
-                    [loading]="loadingPhoneNumbers()"
-                    (changed)="onPhoneNumberChange($event)"
-                    placeholder="Select a phone number"
-                    tooltipText="Select the Twilio number to point at this voice endpoint"
-                />
+                    <div class="divider"></div>
+
+                    <div class="section-title">Configure Phone Number Webhook</div>
+
+                    <div class="row">
+                        <div class="label">
+                            <span>Phone Number</span>
+                            <app-help-tooltip
+                                class="tooltip-icon"
+                                text="Select the Twilio number to point at this voice endpoint."
+                                position="right"
+                                tooltipClass="dialog__label-tooltip"
+                            />
+                        </div>
+                        <div
+                            class="phone-select"
+                            (click)="onPhoneSelectOpen()"
+                        >
+                            <app-select
+                                [items]="phoneNumberItems()"
+                                [loading]="loadingPhoneNumbers()"
+                                (changed)="onPhoneNumberChange($event)"
+                                placeholder="Select or enter number"
+                            />
+                        </div>
+                    </div>
+
+                    @if (!voiceStreamUrl()) {
+                        <p class="hint">
+                            Select a Webhook Tunnel and click "Test" above to enable webhook configuration.
+                        </p>
+                    }
+
+                    <div class="actions">
+                        <app-button
+                            type="primary"
+                            [disabled]="configuringWebhook() || !canConfigureWebhook()"
+                            (click)="onConfigureWebhook()"
+                        >
+                            {{ configuringWebhook() ? 'Configuring…' : 'Configure Webhook' }}
+                        </app-button>
+                    </div>
+                </form>
             </div>
 
-            @if (!voiceStreamUrl()) {
-                <p class="tab__hint">Select and save a Webhook Tunnel above to enable webhook configuration.</p>
-            }
-
-            <app-button
-                type="primary"
-                [disabled]="configuringWebhook()"
-                (click)="onConfigureWebhook()"
-            >
-                {{ configuringWebhook() ? 'Configuring…' : 'Configure Webhook' }}
-            </app-button>
-        </form>
+            <div class="right">
+                <div class="card">
+                    <div class="card-title">Twilio — provider setup</div>
+                    <p class="card-text">
+                        Twilio is the telephony provider. It connects your VoIP application to the public phone network
+                        (PSTN), provides numbers, and routes inbound/outbound calls via webhooks.
+                    </p>
+                    <ol class="steps">
+                        <li>
+                            Open Console
+                            <app-svg-icon
+                                size="14px"
+                                icon="arrow-right"
+                                class="arrow-icon"
+                            />
+                            Account
+                            <app-svg-icon
+                                size="14px"
+                                icon="arrow-right"
+                                class="arrow-icon"
+                            />
+                            API Keys.
+                        </li>
+                        <li>Copy Account SID and Auth Token.</li>
+                        <li>Paste here and click "Test" to verify.</li>
+                    </ol>
+                    <p class="card-text">
+                        When adding a number, we can check if it already has webhooks configured in your Twilio account.
+                    </p>
+                </div>
+            </div>
+        </div>
     }
-</div>
+</section>
