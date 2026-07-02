@@ -6,6 +6,17 @@
     z-index: 10000 !important;
 }
 
+.cdk-overlay-pane.surface-summary-dialog-panel {
+    max-width: 100vw;
+
+    .cdk-dialog-container {
+        display: block;
+        width: 100%;
+        height: 100%;
+        outline: none;
+    }
+}
+
 .cdk-overlay-backdrop.settings-dialog-backdrop {
     z-index: 9950 !important;
 }

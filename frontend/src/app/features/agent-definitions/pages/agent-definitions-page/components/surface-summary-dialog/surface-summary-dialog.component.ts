@@ -1,8 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
 
 import { CombinedSurface, Surface } from '../../../../models/surface.model';
 import { SurfaceCardComponent } from '../agent-detail/agent-surfaces-panel/surface-card/surface-card.component';
+
+export interface SurfaceSummaryDialogData {
+    combined: CombinedSurface;
+    placeLabel: string;
+}
 
 @Component({
     selector: 'app-surface-summary-dialog',
@@ -12,17 +18,17 @@ import { SurfaceCardComponent } from '../agent-detail/agent-surfaces-panel/surfa
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SurfaceSummaryDialogComponent {
-    combined = input.required<CombinedSurface>();
-    placeLabel = input<string>('');
+    private readonly dialogRef = inject<DialogRef<void>>(DialogRef);
+    private readonly data = inject<SurfaceSummaryDialogData>(DIALOG_DATA);
 
-    close = output<void>();
+    readonly placeLabel = this.data.placeLabel;
 
     readonly summarySurface = computed<Surface>(() => {
-        const c = this.combined();
+        const c = this.data.combined;
         return {
             id: -1,
             organization: 0,
-            name: `${this.placeLabel()} summary`,
+            name: `${this.data.placeLabel} summary`,
             description: '',
             instructions: c.instructions,
             owner_agent: null,
@@ -35,4 +41,8 @@ export class SurfaceSummaryDialogComponent {
             updated_at: '',
         };
     });
+
+    close(): void {
+        this.dialogRef.close();
+    }
 }

@@ -221,12 +221,4 @@
             (openAgent)="onUsageOpenAgent($event)"
         />
     }
-
-    @if (summaryCombined(); as combined) {
-        <app-surface-summary-dialog
-            [combined]="combined"
-            [placeLabel]="summaryPlaceLabel()"
-            (close)="onCloseSummary()"
-        />
-    }
 </div>

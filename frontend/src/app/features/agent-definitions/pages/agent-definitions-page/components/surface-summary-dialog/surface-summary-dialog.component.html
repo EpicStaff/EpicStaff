@@ -1,20 +1,15 @@
 <div
-    class="summary-backdrop"
-    (click)="close.emit()"
-></div>
-
-<div
     class="summary-dialog"
     role="dialog"
     aria-label="Surface Summary"
 >
     <header class="summary-dialog__header">
-        <h2 class="summary-dialog__title">{{ placeLabel() }} — Combined Surface</h2>
+        <h2 class="summary-dialog__title">{{ placeLabel }} — Permission Summary</h2>
         <button
             type="button"
             class="summary-dialog__close"
             aria-label="Close"
-            (click)="close.emit()"
+            (click)="close()"
         >
             <app-svg-icon
                 icon="x"

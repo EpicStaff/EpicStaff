@@ -1,28 +1,17 @@
 :host {
-    display: contents;
-}
-
-.summary-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 1000;
-    background-color: rgba(0, 0, 0, 0.55);
+    display: block;
+    height: 100%;
+    width: 100%;
 }
 
 .summary-dialog {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 1001;
     display: flex;
     flex-direction: column;
-    width: min(820px, 92vw);
-    max-height: 86vh;
+    height: 100%;
+    width: 100%;
     background-color: var(--color-background-body);
     border: 1px solid var(--color-divider-subtle);
     border-radius: 12px;
-    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
     overflow: hidden;
 }
 
@@ -64,5 +53,6 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    scrollbar-gutter: stable;
     padding: 1rem 1.5rem 1.5rem;
 }

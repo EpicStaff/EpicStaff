@@ -1,3 +1,4 @@
+import { Dialog } from '@angular/cdk/dialog';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -5,6 +6,7 @@ import {
     effect,
     HostListener,
     inject,
+    Injector,
     OnInit,
     signal,
     viewChild,
@@ -25,7 +27,7 @@ import { StoragePreviewComponent } from '../../../files/pages/files-list-page/co
 import { StorageContextActionEvent, StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
 import { AgentDefinition } from '../../models/agent-definition.model';
 import { ExplorerSectionId } from '../../models/explorer.model';
-import { CombinedSurface, CreateSurfaceRequest } from '../../models/surface.model';
+import { CreateSurfaceRequest } from '../../models/surface.model';
 import { SURFACE_CATEGORIES, SurfaceCategoryConfig, SurfaceCategoryId } from '../../models/surface-category.model';
 import { BranchTreeNode } from '../../models/tree-node.model';
 import { AgentsPageStore } from '../../services/agents-page-store.service';
@@ -42,7 +44,10 @@ import { EmptyDetailComponent } from './components/empty-detail/empty-detail.com
 import { ExplorerComponent } from './components/explorer/explorer.component';
 import { ExplorerTreeMenuEvent } from './components/explorer/tree-node/tree-node.component';
 import { SurfaceDetailComponent } from './components/surface-detail/surface-detail.component';
-import { SurfaceSummaryDialogComponent } from './components/surface-summary-dialog/surface-summary-dialog.component';
+import {
+    SurfaceSummaryDialogComponent,
+    SurfaceSummaryDialogData,
+} from './components/surface-summary-dialog/surface-summary-dialog.component';
 import {
     SurfaceUsage,
     SurfaceUsageDialogComponent,
@@ -61,7 +66,6 @@ import {
         AgentDocPreviewComponent,
         DetailHeaderComponent,
         SurfaceUsageDialogComponent,
-        SurfaceSummaryDialogComponent,
         AppSvgIconComponent,
     ],
     templateUrl: './agent-definitions-page.component.html',
@@ -74,15 +78,14 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     protected readonly storageFacade: StorageTreeFacade = inject(StorageTreeFacade);
     private readonly unsavedChangesDialog: UnsavedChangesDialogService = inject(UnsavedChangesDialogService);
     private readonly confirmationDialog: ConfirmationDialogService = inject(ConfirmationDialogService);
+    private readonly dialog: Dialog = inject(Dialog);
+    private readonly injector: Injector = inject(Injector);
 
     private readonly explorer = viewChild(ExplorerComponent);
 
     protected readonly hasUnsavedChanges = signal<boolean>(false);
 
     protected readonly usageDialogOpen = signal<boolean>(false);
-
-    protected readonly summaryCombined = signal<CombinedSurface | null>(null);
-    protected readonly summaryPlaceLabel = signal<string>('');
 
     protected readonly selectedSurfaceUsage = computed<SurfaceUsage | null>(() => {
         const sv = this.store.selectedSurfaceView();
@@ -250,13 +253,15 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         this.store.combineSurfaces(event.surfaceIds).subscribe((combined) => {
             if (!combined) return;
             const label = SURFACE_CATEGORIES.find((c) => c.id === event.place)?.label ?? event.place;
-            this.summaryPlaceLabel.set(label);
-            this.summaryCombined.set(combined);
+            this.dialog.open<void, SurfaceSummaryDialogData>(SurfaceSummaryDialogComponent, {
+                width: 'calc(100vw - 2rem)',
+                height: 'calc(100vh - 2rem)',
+                maxWidth: '100vw',
+                panelClass: 'surface-summary-dialog-panel',
+                injector: this.injector,
+                data: { combined, placeLabel: label },
+            });
         });
-    }
-
-    onCloseSummary(): void {
-        this.summaryCombined.set(null);
     }
 
     onDeleteAgent(agent: AgentDefinition): void {
