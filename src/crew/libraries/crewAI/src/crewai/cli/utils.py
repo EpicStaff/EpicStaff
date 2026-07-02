@@ -151,7 +151,7 @@ def tree_copy(source, destination):
 
 
 def tree_find_and_replace(directory, find, replace):
-    """Recursively searching through a directory, replacing a target string in
+    """Recursively searches through a directory, replacing a target string in
     both file contents and filenames with a specified replacement string.
     """
     for path, dirs, files in os.walk(os.path.abspath(directory), topdown=False):

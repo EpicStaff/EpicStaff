@@ -7,7 +7,7 @@ from embedchain.config.add_config import ChunkerConfig
 
 
 class TableChunker(BaseChunker):
-    """Chunker for tables, for instance csv, google sheets or database."""
+    """Chunker for tables, for instance csv, google sheets or databases."""
 
     def __init__(self, config: Optional[ChunkerConfig] = None):
         if config is None:

@@ -397,7 +397,7 @@ def upload_legacy_tools():
                 {
                     "name": "directory",
                     "description": "A string argument that specifies the search directory. \
-                        This is optional during initialization but required for searching if not set initially.",
+                        This is optional during initialization but required for searches if not set initially.",
                     "data_type": ToolConfigField.FieldType.STRING,
                     "required": False,
                 },
@@ -600,7 +600,7 @@ def upload_legacy_tools():
         {
             "name": "MySQL Search Tool",
             "name_alias": "my_sql_search",
-            "description": "Tool for searching MySQL database",
+            "description": "Tool for searching MySQL databases",
             "enabled": False,
             "fields": [
                 {
@@ -688,7 +688,7 @@ def upload_legacy_tools():
         {
             "name": "PostgreSQL Search Tool",
             "name_alias": "pg_search",
-            "description": "Tool for searching PostgreSQL database",
+            "description": "Tool for searching PostgreSQL databases",
             "enabled": False,
             "fields": [
                 {
@@ -822,8 +822,8 @@ def upload_legacy_tools():
                 },
                 {
                     "name": "website",
-                    "description": "An optional argument intended to specify the website URL for focused searching. \
-                        This argument is designed to enhance the tool’s flexibility by allowing targeted searching when necessary.",
+                    "description": "An optional argument intended to specify the website URL for focused searches. \
+                        This argument is designed to enhance the tool’s flexibility by allowing targeted searches when necessary.",
                     "data_type": ToolConfigField.FieldType.STRING,
                     "required": False,
                 },

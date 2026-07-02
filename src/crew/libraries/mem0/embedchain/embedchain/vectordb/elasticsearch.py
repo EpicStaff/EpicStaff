@@ -110,7 +110,7 @@ class ElasticsearchDB(BaseVectorDB):
         ids = [doc["_id"] for doc in docs]
         doc_ids = [doc["_source"]["metadata"]["doc_id"] for doc in docs]
 
-        # Result is modified for compatibility with other vector database
+        # Result is modified for compatibility with other vector databases
         # TODO: Add method in vector database to return result in a standard format
         result = {"ids": ids, "metadatas": []}
 

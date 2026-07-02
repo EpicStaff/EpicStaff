@@ -464,22 +464,8 @@ def seeded_db(wikipedia_tool):
         description="description",
         python_code=code,
         variables=[
-            {
-                "name": "arg1",
-                "type": "string",
-                "description": "",
-                "default_value": None,
-                "input_type": "agent_input",
-                "required": True,
-            },
-            {
-                "name": "arg2",
-                "type": "string",
-                "description": "",
-                "default_value": None,
-                "input_type": "agent_input",
-                "required": True,
-            },
+            {"name": "arg1", "type": "string", "description": "", "default_value": None, "input_type": "agent_input", "required": True},
+            {"name": "arg2", "type": "string", "description": "", "default_value": None, "input_type": "agent_input", "required": True},
         ],
     )
 
@@ -528,14 +514,7 @@ def python_tool_data():
         "name": "python tool1",
         "description": "Get user name from id",
         "variables": [
-            {
-                "name": "user_id",
-                "type": "integer",
-                "description": "id of user",
-                "input_type": "agent_input",
-                "required": True,
-                "default_value": None,
-            },
+            {"name": "user_id", "type": "integer", "description": "id of user", "input_type": "agent_input", "required": True, "default_value": None},
         ],
     }
 

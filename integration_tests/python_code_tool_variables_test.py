@@ -29,7 +29,6 @@ MAX_WAIT_SSE_SECONDS = 180
 # Auth
 # ---------------------------------------------------------------------------
 
-
 def _make_session() -> requests.Session:
     """Return a requests.Session with a valid Bearer token."""
     username = os.environ.get("DJANGO_TEST_USERNAME", "admin")
@@ -38,9 +37,7 @@ def _make_session() -> requests.Session:
     s = requests.Session()
     s.headers.update({"Host": rhost})
 
-    r = s.post(
-        f"{DJANGO_URL}/auth/token/", json={"username": username, "password": password}
-    )
+    r = s.post(f"{DJANGO_URL}/auth/token/", json={"username": username, "password": password})
     if r.ok:
         s.headers["Authorization"] = f"Bearer {r.json()['access']}"
         return s
@@ -61,7 +58,6 @@ def _make_session() -> requests.Session:
 # ---------------------------------------------------------------------------
 # Thin REST helpers
 # ---------------------------------------------------------------------------
-
 
 def _j(response: requests.Response) -> dict:
     response.raise_for_status()
@@ -106,15 +102,12 @@ def _wait_for_session(session_id: int, s: requests.Session) -> dict:
         except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError):
             pass
 
-    raise TimeoutError(
-        f"Session {session_id} did not complete in {MAX_WAIT_SSE_SECONDS}s"
-    )
+    raise TimeoutError(f"Session {session_id} did not complete in {MAX_WAIT_SSE_SECONDS}s")
 
 
 # ---------------------------------------------------------------------------
 # Shared session runner
 # ---------------------------------------------------------------------------
-
 
 def _get_llm_config_id(s: requests.Session) -> int:
     llm_id = _j(s.get(f"{DJANGO_URL}/llm-models?name=gpt-4o-mini"))["results"][0]["id"]
@@ -167,10 +160,7 @@ def _run_tool_session(
         crew_id = _j(
             s.post(
                 f"{DJANGO_URL}/crews/",
-                json={
-                    "name": f"test-crew-{uuid.uuid4().hex[:6]}",
-                    "agents": [agent_id],
-                },
+                json={"name": f"test-crew-{uuid.uuid4().hex[:6]}", "agents": [agent_id]},
             )
         )["id"]
 
@@ -199,9 +189,7 @@ def _run_tool_session(
         )["id"]
 
         start_node_id = _j(
-            s.post(
-                f"{DJANGO_URL}/startnodes/", json={"graph": graph_id, "variables": {}}
-            )
+            s.post(f"{DJANGO_URL}/startnodes/", json={"graph": graph_id, "variables": {}})
         )["id"]
 
         crew_node_id = _j(
@@ -226,42 +214,28 @@ def _run_tool_session(
 
         s.post(
             f"{DJANGO_URL}/edges/",
-            json={
-                "start_node_id": start_node_id,
-                "end_node_id": crew_node_id,
-                "graph": graph_id,
-            },
+            json={"start_node_id": start_node_id, "end_node_id": crew_node_id, "graph": graph_id},
         ).raise_for_status()
         s.post(
             f"{DJANGO_URL}/edges/",
-            json={
-                "start_node_id": crew_node_id,
-                "end_node_id": end_node_id,
-                "graph": graph_id,
-            },
+            json={"start_node_id": crew_node_id, "end_node_id": end_node_id, "graph": graph_id},
         ).raise_for_status()
 
         session_id = _j(
-            s.post(
-                f"{DJANGO_URL}/run-session/",
-                json={"graph_id": graph_id, "variables": {}},
-            )
+            s.post(f"{DJANGO_URL}/run-session/", json={"graph_id": graph_id, "variables": {}})
         )["session_id"]
         logger.success(f"Session {session_id} started")
 
         return _wait_for_session(session_id, s)
 
     finally:
-        for url in filter(
-            None,
-            [
-                f"{DJANGO_URL}/sessions/{session_id}/" if session_id else None,
-                f"{DJANGO_URL}/tasks/{task_id}/" if task_id else None,
-                f"{DJANGO_URL}/agents/{agent_id}/" if agent_id else None,
-                f"{DJANGO_URL}/crews/{crew_id}/" if crew_id else None,
-                f"{DJANGO_URL}/graphs/{graph_id}/" if graph_id else None,
-            ],
-        ):
+        for url in filter(None, [
+            f"{DJANGO_URL}/sessions/{session_id}/" if session_id else None,
+            f"{DJANGO_URL}/tasks/{task_id}/" if task_id else None,
+            f"{DJANGO_URL}/agents/{agent_id}/" if agent_id else None,
+            f"{DJANGO_URL}/crews/{crew_id}/" if crew_id else None,
+            f"{DJANGO_URL}/graphs/{graph_id}/" if graph_id else None,
+        ]):
             try:
                 s.delete(url)
             except Exception as exc:
@@ -271,7 +245,6 @@ def _run_tool_session(
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
-
 
 def test_user_input_default():
     """
@@ -300,12 +273,7 @@ def main(**kwargs):
                         "Echo the provided item with an appended suffix. "
                         "Call this tool when asked to process or echo an item."
                     ),
-                    "python_code": {
-                        "code": code,
-                        "entrypoint": "main",
-                        "libraries": [],
-                        "global_kwargs": {},
-                    },
+                    "python_code": {"code": code, "entrypoint": "main", "libraries": [], "global_kwargs": {}},
                     "variables": [
                         {
                             "name": "item",
@@ -338,13 +306,10 @@ def main(**kwargs):
         logger.success(f"Result: {result}")
 
     finally:
-        for url in filter(
-            None,
-            [
-                f"{DJANGO_URL}/python-code-tool/{tool_id}/" if tool_id else None,
-                f"{DJANGO_URL}/llm-configs/{config_id}/" if config_id else None,
-            ],
-        ):
+        for url in filter(None, [
+            f"{DJANGO_URL}/python-code-tool/{tool_id}/" if tool_id else None,
+            f"{DJANGO_URL}/llm-configs/{config_id}/" if config_id else None,
+        ]):
             try:
                 s.delete(url)
             except Exception as exc:
@@ -378,12 +343,7 @@ def main(**kwargs):
                         "Echo the provided item with an appended suffix. "
                         "Call this tool when asked to process or echo an item."
                     ),
-                    "python_code": {
-                        "code": code,
-                        "entrypoint": "main",
-                        "libraries": [],
-                        "global_kwargs": {},
-                    },
+                    "python_code": {"code": code, "entrypoint": "main", "libraries": [], "global_kwargs": {}},
                     "variables": [
                         {
                             "name": "item",
@@ -429,16 +389,11 @@ def main(**kwargs):
         logger.success(f"Result: {result}")
 
     finally:
-        for url in filter(
-            None,
-            [
-                f"{DJANGO_URL}/python-code-tool-configs/{tool_config_id}/"
-                if tool_config_id
-                else None,
-                f"{DJANGO_URL}/python-code-tool/{tool_id}/" if tool_id else None,
-                f"{DJANGO_URL}/llm-configs/{config_id}/" if config_id else None,
-            ],
-        ):
+        for url in filter(None, [
+            f"{DJANGO_URL}/python-code-tool-configs/{tool_config_id}/" if tool_config_id else None,
+            f"{DJANGO_URL}/python-code-tool/{tool_id}/" if tool_id else None,
+            f"{DJANGO_URL}/llm-configs/{config_id}/" if config_id else None,
+        ]):
             try:
                 s.delete(url)
             except Exception as exc:
@@ -471,12 +426,7 @@ def main(**kwargs):
                         "Combine a first name and last name into a full name. "
                         "Call this tool when asked to combine or format a person's name."
                     ),
-                    "python_code": {
-                        "code": code,
-                        "entrypoint": "main",
-                        "libraries": [],
-                        "global_kwargs": {},
-                    },
+                    "python_code": {"code": code, "entrypoint": "main", "libraries": [], "global_kwargs": {}},
                     "variables": [
                         {
                             "name": "first_name",
@@ -512,13 +462,10 @@ def main(**kwargs):
         logger.success(f"Result: {result}")
 
     finally:
-        for url in filter(
-            None,
-            [
-                f"{DJANGO_URL}/python-code-tool/{tool_id}/" if tool_id else None,
-                f"{DJANGO_URL}/llm-configs/{config_id}/" if config_id else None,
-            ],
-        ):
+        for url in filter(None, [
+            f"{DJANGO_URL}/python-code-tool/{tool_id}/" if tool_id else None,
+            f"{DJANGO_URL}/llm-configs/{config_id}/" if config_id else None,
+        ]):
             try:
                 s.delete(url)
             except Exception as exc:
@@ -553,12 +500,7 @@ def main(**kwargs):
                         "Call this tool when asked to repeat or multiply an item. "
                         "The count parameter is optional."
                     ),
-                    "python_code": {
-                        "code": code,
-                        "entrypoint": "main",
-                        "libraries": [],
-                        "global_kwargs": {},
-                    },
+                    "python_code": {"code": code, "entrypoint": "main", "libraries": [], "global_kwargs": {}},
                     "variables": [
                         {
                             "name": "item",
@@ -591,13 +533,10 @@ def main(**kwargs):
         logger.success(f"Result: {result}")
 
     finally:
-        for url in filter(
-            None,
-            [
-                f"{DJANGO_URL}/python-code-tool/{tool_id}/" if tool_id else None,
-                f"{DJANGO_URL}/llm-configs/{config_id}/" if config_id else None,
-            ],
-        ):
+        for url in filter(None, [
+            f"{DJANGO_URL}/python-code-tool/{tool_id}/" if tool_id else None,
+            f"{DJANGO_URL}/llm-configs/{config_id}/" if config_id else None,
+        ]):
             try:
                 s.delete(url)
             except Exception as exc:
@@ -632,12 +571,7 @@ def main(**kwargs):
                         "Call this tool when asked to repeat or multiply an item. "
                         "You must provide both item and count."
                     ),
-                    "python_code": {
-                        "code": code,
-                        "entrypoint": "main",
-                        "libraries": [],
-                        "global_kwargs": {},
-                    },
+                    "python_code": {"code": code, "entrypoint": "main", "libraries": [], "global_kwargs": {}},
                     "variables": [
                         {
                             "name": "item",
@@ -672,13 +606,10 @@ def main(**kwargs):
         logger.success(f"Result: {result}")
 
     finally:
-        for url in filter(
-            None,
-            [
-                f"{DJANGO_URL}/python-code-tool/{tool_id}/" if tool_id else None,
-                f"{DJANGO_URL}/llm-configs/{config_id}/" if config_id else None,
-            ],
-        ):
+        for url in filter(None, [
+            f"{DJANGO_URL}/python-code-tool/{tool_id}/" if tool_id else None,
+            f"{DJANGO_URL}/llm-configs/{config_id}/" if config_id else None,
+        ]):
             try:
                 s.delete(url)
             except Exception as exc:
@@ -716,12 +647,7 @@ def main(**kwargs):
                         "Format a full name from a person object containing first_name and last_name. "
                         "Call this tool when asked to format or display a person's full name."
                     ),
-                    "python_code": {
-                        "code": code,
-                        "entrypoint": "main",
-                        "libraries": [],
-                        "global_kwargs": {},
-                    },
+                    "python_code": {"code": code, "entrypoint": "main", "libraries": [], "global_kwargs": {}},
                     "variables": [
                         {
                             "name": "person",
@@ -731,14 +657,8 @@ def main(**kwargs):
                             "required": True,
                             "default_value": None,
                             "properties": {
-                                "first_name": {
-                                    "type": "string",
-                                    "description": "First name",
-                                },
-                                "last_name": {
-                                    "type": "string",
-                                    "description": "Last name",
-                                },
+                                "first_name": {"type": "string", "description": "First name"},
+                                "last_name": {"type": "string", "description": "Last name"},
                             },
                             "required_properties": ["first_name", "last_name"],
                         },
@@ -760,13 +680,10 @@ def main(**kwargs):
         logger.success(f"Result: {result}")
 
     finally:
-        for url in filter(
-            None,
-            [
-                f"{DJANGO_URL}/python-code-tool/{tool_id}/" if tool_id else None,
-                f"{DJANGO_URL}/llm-configs/{config_id}/" if config_id else None,
-            ],
-        ):
+        for url in filter(None, [
+            f"{DJANGO_URL}/python-code-tool/{tool_id}/" if tool_id else None,
+            f"{DJANGO_URL}/llm-configs/{config_id}/" if config_id else None,
+        ]):
             try:
                 s.delete(url)
             except Exception as exc:
@@ -802,12 +719,7 @@ def main(**kwargs):
                         "Join a list of tags into a comma-separated string. "
                         "Call this tool when asked to format or combine a list of tags."
                     ),
-                    "python_code": {
-                        "code": code,
-                        "entrypoint": "main",
-                        "libraries": [],
-                        "global_kwargs": {},
-                    },
+                    "python_code": {"code": code, "entrypoint": "main", "libraries": [], "global_kwargs": {}},
                     "variables": [
                         {
                             "name": "tags",
@@ -836,13 +748,10 @@ def main(**kwargs):
         logger.success(f"Result: {result}")
 
     finally:
-        for url in filter(
-            None,
-            [
-                f"{DJANGO_URL}/python-code-tool/{tool_id}/" if tool_id else None,
-                f"{DJANGO_URL}/llm-configs/{config_id}/" if config_id else None,
-            ],
-        ):
+        for url in filter(None, [
+            f"{DJANGO_URL}/python-code-tool/{tool_id}/" if tool_id else None,
+            f"{DJANGO_URL}/llm-configs/{config_id}/" if config_id else None,
+        ]):
             try:
                 s.delete(url)
             except Exception as exc:
