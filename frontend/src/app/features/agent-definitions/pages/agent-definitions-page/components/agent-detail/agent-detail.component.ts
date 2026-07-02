@@ -1,3 +1,4 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
@@ -15,13 +16,21 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent, LlmModelSelectorComponent } from '@shared/components';
+import { AppSvgIconComponent, ConfirmationDialogService, LlmModelSelectorComponent } from '@shared/components';
 import { EnterBlurDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { FullLLMConfig, FullLLMConfigService } from '@shared/services';
 
+import { ToastService } from '../../../../../../services/notifications/toast.service';
+import { StorageItem } from '../../../../../files/models/storage.models';
+import { StorageApiService } from '../../../../../files/services/storage-api.service';
+import {
+    ExtractTextFromStorageDialogComponent,
+    ExtractTextFromStorageDialogResult,
+} from '../../../../components/extract-text-from-storage-dialog/extract-text-from-storage-dialog.component';
 import { AgentDefinition } from '../../../../models/agent-definition.model';
 import { CreateSurfaceRequest, PartialUpdateSurfaceRequest, Surface } from '../../../../models/surface.model';
 import { SurfaceCategoryId } from '../../../../models/surface-category.model';
+import { INSTRUCTIONS_ACCEPT_ATTR, readFileAsText } from '../../../../utils/instructions-file.utils';
 import { AgentSurfacesPanelComponent } from './agent-surfaces-panel/agent-surfaces-panel.component';
 
 export interface AgentSavePayload {
@@ -68,6 +77,12 @@ export class AgentDetailComponent implements OnInit {
     private readonly fb: FormBuilder = inject(FormBuilder);
     private readonly fullLlmConfigService: FullLLMConfigService = inject(FullLLMConfigService);
     private readonly destroyRef: DestroyRef = inject(DestroyRef);
+    private readonly dialog: Dialog = inject(Dialog);
+    private readonly confirm: ConfirmationDialogService = inject(ConfirmationDialogService);
+    private readonly storageApiService: StorageApiService = inject(StorageApiService);
+    private readonly toast: ToastService = inject(ToastService);
+
+    readonly acceptAttr = INSTRUCTIONS_ACCEPT_ATTR;
 
     agent = input<AgentDefinition | null>(null);
     isCreating = input<boolean>(false);
@@ -83,6 +98,7 @@ export class AgentDetailComponent implements OnInit {
     readonly duplicate = output<AgentDefinition>();
     readonly dirtyChange = output<boolean>();
     readonly bootDocChange = output<boolean>();
+    readonly extractText = output<string>();
     readonly createSurface = output<{ body: CreateSurfaceRequest; place: SurfaceCategoryId }>();
     readonly addFromShared = output<number>();
     readonly moveSurfacePlace = output<{ id: number; place: SurfaceCategoryId }>();
@@ -252,6 +268,70 @@ export class AgentDetailComponent implements OnInit {
     removeBootDoc(): void {
         this.bootAsDoc.set(false);
         this.bootDocChange.emit(false);
+    }
+
+    /** "Extract Text from PC": open the native file picker (no upload). */
+    onExtractFromPc(input: HTMLInputElement): void {
+        input.click();
+    }
+
+    onPcFileSelected(event: Event): void {
+        const input = event.target as HTMLInputElement;
+        const file = input.files?.[0];
+        input.value = ''; // allow re-picking the same file
+        if (!file) return;
+        readFileAsText(file)
+            .then((text) => this.applyExtractedText(text))
+            .catch(() => this.toast.error(`Failed to read "${file.name}"`));
+    }
+
+    /** "Extract Text from Storage": pick a text file from storage and read it. */
+    onExtractFromStorage(): void {
+        const ref = this.dialog.open<ExtractTextFromStorageDialogResult | undefined>(
+            ExtractTextFromStorageDialogComponent
+        );
+        ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
+            if (!result) return;
+            this.readStorageFile(result.item);
+        });
+    }
+
+    private readStorageFile(item: StorageItem): void {
+        this.storageApiService
+            .downloadBlob(item.path)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (blob) =>
+                    readFileAsText(blob)
+                        .then((text) => this.applyExtractedText(text))
+                        .catch(() => this.toast.error(`Failed to read "${item.name}"`)),
+                error: () => this.toast.error(`Failed to load "${item.name}" from storage`),
+            });
+    }
+
+    /** Emit the extracted text, warning first if instructions already exist. */
+    private applyExtractedText(text: string): void {
+        if (this.agent()?.id == null) {
+            this.toast.info('Save the agent before importing instructions');
+            return;
+        }
+        const hasExisting = (this.form.controls.instructions.value ?? '').trim().length > 0;
+        if (!hasExisting) {
+            this.extractText.emit(text);
+            return;
+        }
+        this.confirm
+            .confirm({
+                title: 'Replace boot instructions?',
+                message: 'This will overwrite the current boot instructions with the file contents.',
+                confirmText: 'Replace',
+                cancelText: 'Cancel',
+                type: 'warning',
+            })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((result) => {
+                if (result === true) this.extractText.emit(text);
+            });
     }
 
     adjustTextareaHeight(textarea: HTMLTextAreaElement, maxPx: number): void {

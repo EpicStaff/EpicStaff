@@ -111,7 +111,13 @@
                                 </p>
                             }
 
-                            <!-- TODO(EST-2946): Extract from Storage / Upload from PC have no backend yet. -->
+                            <input
+                                #pcInput
+                                type="file"
+                                [accept]="acceptAttr"
+                                hidden
+                                (change)="onPcFileSelected($event)"
+                            />
                             <div class="doc-actions">
                                 <button
                                     type="button"
@@ -127,27 +133,37 @@
                                         icon="create-doc"
                                         size="12px"
                                     />
-                                    Create Markdown
+                                    Create markdown
                                 </button>
                                 <button
                                     type="button"
                                     class="doc-actions__btn"
+                                    matTooltip="Read a text file from storage as instructions"
+                                    matTooltipPosition="above"
+                                    matTooltipClass="custom-tooltip"
+                                    [disabled]="isCreating()"
+                                    (click)="onExtractFromStorage()"
                                 >
                                     <app-svg-icon
                                         icon="extract-from-storage"
                                         size="12px"
                                     />
-                                    Extract from Storage
+                                    Extract Text from Storage
                                 </button>
                                 <button
                                     type="button"
                                     class="doc-actions__btn"
+                                    matTooltip="Read a text file from your computer as instructions"
+                                    matTooltipPosition="above"
+                                    matTooltipClass="custom-tooltip"
+                                    [disabled]="isCreating()"
+                                    (click)="onExtractFromPc(pcInput)"
                                 >
                                     <app-svg-icon
                                         icon="upload"
                                         size="12px"
                                     />
-                                    Upload from PC
+                                    Extract Text from PC
                                 </button>
                             </div>
                         }
