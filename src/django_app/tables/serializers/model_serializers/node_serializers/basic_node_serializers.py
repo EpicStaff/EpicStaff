@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import serializers
 
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
@@ -21,7 +22,12 @@ from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
 )
+from tables.serializers.model_serializers.inline_surface_serializers import (
+    InlineSurfaceReadSerializer,
+    InlineSurfaceWriteSerializer,
+)
 from tables.serializers.utils.mixins import NestedPythonCodeMixin
+from tables.services.inline_surface_service import InlineSurfaceService
 from tables.validators.surface_validator import SurfaceValidator
 
 
@@ -84,6 +90,10 @@ class EdgeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
 
 
 class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+    inline_surface = InlineSurfaceWriteSerializer(
+        required=False, allow_null=True, write_only=True
+    )
+
     class Meta:
         model = TaskNode
         fields = "__all__"
@@ -105,6 +115,40 @@ class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
                     organization=organization,
                 )
         return attrs
+
+    def create(self, validated_data):
+        has_inline = "inline_surface" in validated_data
+        inline_data = validated_data.pop("inline_surface", None)
+
+        with transaction.atomic():
+            node = super().create(validated_data)
+            if has_inline:
+                node.inline_surface = InlineSurfaceService.apply(
+                    task_node=node, data=inline_data
+                )
+
+        return node
+
+    def update(self, instance, validated_data):
+        has_inline = "inline_surface" in validated_data
+        inline_data = validated_data.pop("inline_surface", None)
+
+        with transaction.atomic():
+            node = super().update(instance, validated_data)
+            if has_inline:
+                node.inline_surface = InlineSurfaceService.apply(
+                    task_node=node, data=inline_data
+                )
+
+        return node
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        inline = getattr(instance, "inline_surface", None)
+        data["inline_surface"] = (
+            InlineSurfaceReadSerializer(inline).data if inline else None
+        )
+        return data
 
 
 class AgentNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):

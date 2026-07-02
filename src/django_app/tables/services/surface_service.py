@@ -5,16 +5,10 @@ from django.db import transaction
 
 from tables.exceptions import SurfaceValidationError
 from tables.models.agent_models.agent_models import AgentDefaultSurface, SurfacePlace
-from tables.models.agent_models.surface_models import (
-    StorageAccess,
-    Surface,
-    SurfaceGraphBasicSearchConfig,
-    SurfaceGraphLocalSearchConfig,
-    SurfaceKnowledge,
-    SurfaceMcpTool,
-    SurfaceNaiveSearchConfig,
-    SurfacePythonTool,
-    SurfaceStorageItem,
+from tables.models.agent_models.surface_models import Surface
+from tables.services.surface_content_service import (
+    CATALOG_SURFACE_CONTENT,
+    SurfaceContentService,
 )
 
 
@@ -107,83 +101,23 @@ class SurfaceService:
 
     @staticmethod
     def _replace_python_tools(surface, items):
-        SurfacePythonTool.objects.filter(surface=surface).delete()
-
-        SurfacePythonTool.objects.bulk_create(
-            [
-                SurfacePythonTool(
-                    surface=surface,
-                    python_tool=item["python_tool"],
-                    mode=item["mode"],
-                )
-                for item in items
-            ]
+        SurfaceContentService.replace_python_tools(
+            surface, items, CATALOG_SURFACE_CONTENT
         )
 
     @staticmethod
     def _replace_mcp_tools(surface, items):
-        SurfaceMcpTool.objects.filter(surface=surface).delete()
-
-        SurfaceMcpTool.objects.bulk_create(
-            [
-                SurfaceMcpTool(
-                    surface=surface,
-                    mcp_tool=item["mcp_tool"],
-                    mode=item["mode"],
-                )
-                for item in items
-            ]
-        )
+        SurfaceContentService.replace_mcp_tools(surface, items, CATALOG_SURFACE_CONTENT)
 
     @staticmethod
     def _replace_storage_items(surface, items):
-        SurfaceStorageItem.objects.filter(surface=surface).delete()
-
-        SurfaceStorageItem.objects.bulk_create(
-            [
-                SurfaceStorageItem(
-                    surface=surface,
-                    storage_file=item["storage_file"],
-                    can_list=item.get("can_list", StorageAccess.UNSET),
-                    can_view=item.get("can_view", StorageAccess.UNSET),
-                    can_edit=item.get("can_edit", StorageAccess.UNSET),
-                    can_delete=item.get("can_delete", StorageAccess.UNSET),
-                )
-                for item in items
-            ]
+        SurfaceContentService.replace_storage_items(
+            surface, items, CATALOG_SURFACE_CONTENT
         )
 
     @staticmethod
     def _replace_knowledge(surface, items):
-        SurfaceKnowledge.objects.filter(surface=surface).delete()
-
-        for item in items:
-            sk = SurfaceKnowledge.objects.create(
-                surface=surface,
-                collection=item["collection"],
-            )
-
-            naive_config_data = item.get("naive_search_config")
-            graph_basic_data = item.get("graph_basic_search_config")
-            graph_local_data = item.get("graph_local_search_config")
-
-            if naive_config_data is not None:
-                SurfaceNaiveSearchConfig.objects.create(
-                    surface_knowledge=sk,
-                    **naive_config_data,
-                )
-
-            if graph_basic_data is not None:
-                SurfaceGraphBasicSearchConfig.objects.create(
-                    surface_knowledge=sk,
-                    **graph_basic_data,
-                )
-
-            if graph_local_data is not None:
-                SurfaceGraphLocalSearchConfig.objects.create(
-                    surface_knowledge=sk,
-                    **graph_local_data,
-                )
+        SurfaceContentService.replace_knowledge(surface, items, CATALOG_SURFACE_CONTENT)
 
 
 class AgentDefinitionSurfaceService:

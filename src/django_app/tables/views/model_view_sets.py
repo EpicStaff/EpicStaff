@@ -1037,7 +1037,15 @@ class CodeAgentNodeViewSet(IdempotentNodeCreateMixin, viewsets.ModelViewSet):
 class TaskNodeViewSet(
     IdempotentNodeCreateMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
 ):
-    queryset = TaskNode.objects.prefetch_related("surface_list")
+    queryset = TaskNode.objects.select_related("inline_surface").prefetch_related(
+        "surface_list",
+        "inline_surface__python_tools",
+        "inline_surface__mcp_tools",
+        "inline_surface__storage_items",
+        "inline_surface__knowledge__naive_search_config",
+        "inline_surface__knowledge__graph_basic_search_config",
+        "inline_surface__knowledge__graph_local_search_config",
+    )
     serializer_class = TaskNodeSerializer
 
     def get_serializer_context(self):
