@@ -30,6 +30,7 @@ class SurfaceService:
                 instructions=instance.instructions,
                 allow_creation=instance.allow_creation,
             )
+            candidate._state.adding = False
         else:
             candidate = Surface()
 

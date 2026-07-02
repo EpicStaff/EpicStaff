@@ -236,6 +236,40 @@ def test_serializer_duplicate_org_name_returns_surface_validation_error(org):
     assert exc_info.value.detail is not None
 
 
+@pytest.mark.django_db
+def test_update_surface_with_unchanged_name_does_not_raise(org):
+    """Regression: PATCH with the surface's own (unchanged) name must not raise
+    SurfaceValidationError for id/organization+name uniqueness against itself."""
+    surface = Surface.objects.create(organization=org, name="keep-my-name")
+
+    serializer = SurfaceWriteSerializer(
+        instance=surface,
+        data={"name": "keep-my-name"},
+        context={"organization": org},
+        partial=True,
+    )
+
+    assert serializer.is_valid(raise_exception=True) is True
+
+
+@pytest.mark.django_db
+def test_update_surface_name_colliding_with_other_surface_raises(org):
+    """Renaming a surface to another existing surface's name in the same org
+    must still be rejected."""
+    Surface.objects.create(organization=org, name="surf-a")
+    surface_b = Surface.objects.create(organization=org, name="surf-b")
+
+    serializer = SurfaceWriteSerializer(
+        instance=surface_b,
+        data={"name": "surf-a"},
+        context={"organization": org},
+        partial=True,
+    )
+
+    with pytest.raises(SurfaceValidationError):
+        serializer.is_valid(raise_exception=True)
+
+
 # ---------------------------------------------------------------------------
 # SurfacePythonTool — allow / deny modes
 # ---------------------------------------------------------------------------
