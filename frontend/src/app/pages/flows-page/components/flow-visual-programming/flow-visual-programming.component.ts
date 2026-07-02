@@ -228,6 +228,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 if (updates.length > 0) {
                     this.flowService.updateNodesInBatch(updates as NodeModel[]);
                 }
+
+                this.flowService.applyConnectionIdMap(tempIdMap, event.graph_id);
             }
             const currentUserId = this.profileService.currentUserSignal()?.id;
             if (event.saved_by.user_id !== currentUserId) {

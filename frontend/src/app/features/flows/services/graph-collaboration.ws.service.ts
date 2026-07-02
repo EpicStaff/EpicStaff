@@ -465,7 +465,7 @@ export function connectionToWsPayload(
     targetNode: NodeModel,
     graphId: number
 ): Record<string, unknown> {
-    const connId = conn.data?.id != null ? { id: conn.data.id } : { temp_id: crypto.randomUUID() };
+    const connId = conn.data?.id != null ? { id: conn.data.id } : { temp_id: conn.id };
     const startRef =
         sourceNode.backendId != null ? { start_node_id: sourceNode.backendId } : { start_temp_id: sourceNode.id };
     const endRef =

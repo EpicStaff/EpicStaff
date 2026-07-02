@@ -697,6 +697,32 @@ export class FlowService {
             return false;
         });
     }
+
+    public applyConnectionIdMap(tempIdMap: Record<string, number>, graphId: number): void {
+        this.flowSignal.update((flow: FlowModel) => {
+            let changed = false;
+            const nodeBackendId = (nodeId: string): number =>
+                flow.nodes.find((n) => n.id === nodeId)?.backendId ?? tempIdMap[nodeId] ?? 0;
+            const connections = flow.connections.map((conn) => {
+                if (conn.data?.id != null) return conn;
+                const backendId = tempIdMap[conn.id];
+                if (backendId == null) return conn;
+                changed = true;
+                return {
+                    ...conn,
+                    data: {
+                        id: backendId,
+                        start_node_id: nodeBackendId(conn.sourceNodeId),
+                        end_node_id: nodeBackendId(conn.targetNodeId),
+                        graph: graphId,
+                        metadata: { waypoints: conn.waypoints ?? [] },
+                    },
+                };
+            });
+            return changed ? { ...flow, connections } : flow;
+        });
+    }
+
     public deleteSelections(selections: { fNodeIds: string[]; fConnectionIds: string[] }): {
         removedNodes: NodeModel[];
         removedConnections: ConnectionModel[];
