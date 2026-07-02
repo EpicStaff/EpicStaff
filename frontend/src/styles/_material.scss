@@ -33,3 +33,16 @@ $compact-theme: mat.define-theme(
     max-height: 225px;
     overflow-y: auto;
 }
+.surface-tool-tooltip {
+    --mdc-plain-tooltip-container-max-width: 60vw;
+}
+
+.surface-tool-tooltip .mdc-tooltip__surface {
+    max-width: 60vw;
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 0.625rem 0.75rem;
+    text-align: left;
+    white-space: pre-line;
+    line-height: 1.45;
+}
