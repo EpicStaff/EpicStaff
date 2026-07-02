@@ -782,6 +782,20 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
                     "code_agent_node_list",
                     queryset=CodeAgentNode.objects.select_related("llm_config"),
                 ),
+                Prefetch(
+                    "task_node_list",
+                    queryset=TaskNode.objects.select_related(
+                        "inline_surface"
+                    ).prefetch_related(
+                        "surface_list",
+                        "inline_surface__python_tools",
+                        "inline_surface__mcp_tools",
+                        "inline_surface__storage_items",
+                        "inline_surface__knowledge__naive_search_config",
+                        "inline_surface__knowledge__graph_basic_search_config",
+                        "inline_surface__knowledge__graph_local_search_config",
+                    ),
+                ),
                 Prefetch("end_node", queryset=EndNode.objects.all()),
                 Prefetch(
                     "telegram_trigger_node_list",

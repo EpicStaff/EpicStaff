@@ -15,6 +15,7 @@ from tables.serializers.model_serializers import (
     ScheduleTriggerNodeSerializer,
     StartNodeSerializer,
     SubGraphNodeSerializer,
+    TaskNodeSerializer,
     WebhookTriggerNodeSerializer,
     TelegramTriggerNodeSerializer,
 )
@@ -68,6 +69,10 @@ class EndNodeBulkSerializer(BulkSaveEntityMixin, EndNodeSerializer):
 
 
 class SubGraphNodeBulkSerializer(BulkSaveEntityMixin, SubGraphNodeSerializer):
+    pass
+
+
+class TaskNodeBulkSerializer(BulkSaveEntityMixin, TaskNodeSerializer):
     pass
 
 
