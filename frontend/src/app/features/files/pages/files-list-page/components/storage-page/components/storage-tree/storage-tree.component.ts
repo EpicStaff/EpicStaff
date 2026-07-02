@@ -1,5 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ElementRef, input, output, signal, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, input, output, signal, viewChild } from '@angular/core';
 
 import { AppSvgIconComponent } from '../../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { StorageItem } from '../../../../../../models/storage.models';
@@ -14,6 +14,7 @@ import { getFileExtension } from '../../../../../../utils/storage-file.utils';
 })
 export class StorageTreeComponent {
     items = input<StorageItem[]>([]);
+    showHeader = input<boolean>(true);
     fileSelected = output<StorageItem>();
     folderSelected = output<StorageItem>();
     folderToggled = output<StorageItem>();
@@ -28,8 +29,8 @@ export class StorageTreeComponent {
     openCreateFolder = output<string>();
     selectionChange = output<StorageItem[]>();
 
-    @ViewChild('renameInput') renameInputRef?: ElementRef<HTMLInputElement>;
-    @ViewChild('listEl') listElRef?: ElementRef<HTMLElement>;
+    private readonly renameInputRef = viewChild<ElementRef<HTMLInputElement>>('renameInput');
+    private readonly listElRef = viewChild<ElementRef<HTMLElement>>('listEl');
 
     private hoveredItemEl: HTMLElement | null = null;
 
@@ -49,7 +50,6 @@ export class StorageTreeComponent {
     moreMenuOpen = signal<boolean>(false);
     moreMenuPosition = signal<{ x: number; y: number }>({ x: 0, y: 0 });
 
-    // Drag-and-drop state
     draggedItem = signal<StorageItem | null>(null);
     dropTarget = signal<StorageItem | null>(null);
     dropTargetRoot = signal<boolean>(false);
@@ -129,7 +129,7 @@ export class StorageTreeComponent {
     }
 
     private scrollItemIntoView(item: StorageItem): void {
-        const listEl = this.listElRef?.nativeElement;
+        const listEl = this.listElRef()?.nativeElement;
         if (!listEl) return;
         const el = listEl.querySelector(`[data-path="${CSS.escape(item.path)}"]`) as HTMLElement | null;
         el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -142,8 +142,8 @@ export class StorageTreeComponent {
         const path = item.path || item.name;
         const itemEl =
             this.hoveredItemEl ??
-            (this.listElRef?.nativeElement.querySelector(`[data-path="${CSS.escape(path)}"]`) as HTMLElement | null);
-        const listEl = this.listElRef?.nativeElement;
+            (this.listElRef()?.nativeElement.querySelector(`[data-path="${CSS.escape(path)}"]`) as HTMLElement | null);
+        const listEl = this.listElRef()?.nativeElement;
         if (itemEl && listEl) {
             const itemRect = itemEl.getBoundingClientRect();
             const listRect = listEl.getBoundingClientRect();
@@ -158,8 +158,8 @@ export class StorageTreeComponent {
 
         this.renamingItem.set(item);
         setTimeout(() => {
-            this.renameInputRef?.nativeElement.focus();
-            this.renameInputRef?.nativeElement.select();
+            this.renameInputRef()?.nativeElement.focus();
+            this.renameInputRef()?.nativeElement.select();
         });
     }
 
@@ -300,7 +300,6 @@ export class StorageTreeComponent {
         });
     }
 
-    // Drag-and-drop handlers
     onDragStart(event: DragEvent, item: StorageItem): void {
         if (this.renamingItem()) {
             event.preventDefault();

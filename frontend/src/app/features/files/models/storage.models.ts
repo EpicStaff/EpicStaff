@@ -1,4 +1,5 @@
 export interface StorageItem {
+    id?: number | null;
     name: string;
     path: string;
     type: 'file' | 'folder';

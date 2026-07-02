@@ -40,7 +40,6 @@
 
         &:hover {
             color: var(--color-text-primary);
-            background-color: var(--color-ghost-btn-hover);
         }
     }
 
@@ -75,7 +74,6 @@
 
         &:hover {
             color: var(--color-text-primary);
-            background-color: var(--color-ghost-btn-hover);
         }
     }
 
@@ -170,7 +168,7 @@
         width: 24px;
         height: 24px;
         padding: 0;
-        background: inherit;
+        background: transparent;
         border: none;
         cursor: pointer;
         color: rgba(217, 217, 222, 0.16);
@@ -184,10 +182,6 @@
 
         &--expanded app-svg-icon {
             transform: rotate(90deg);
-        }
-
-        &:hover {
-            background-color: rgba(217, 217, 222, 0.08);
         }
     }
 

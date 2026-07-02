@@ -44,6 +44,8 @@ export class StoragePreviewComponent {
     item = input<StorageItem | null>(null);
     selectedItems = input<StorageItem[]>([]);
     showSidebar = input(true);
+    content = input<string | null>(null);
+    readOnly = input<boolean>(false);
     toggleSidebar = output<void>();
     contextAction = output<{ action: string; item: StorageItem; selectedItems?: StorageItem[] }>();
     breadcrumbClick = output<string>();
@@ -81,6 +83,7 @@ export class StoragePreviewComponent {
 
     constructor() {
         effect(() => {
+            this.content();
             this.loadPreview(this.item());
         });
         effect(() => {
@@ -189,6 +192,24 @@ export class StoragePreviewComponent {
         }
 
         const ext = getFileExtension(currentItem.name);
+
+        const synthetic = this.content();
+        if (synthetic !== null) {
+            const type = ext === 'json' ? 'json' : 'text';
+            this.previewType.set(type);
+            if (type === 'json') {
+                try {
+                    this.jsonContent.set(JSON.parse(synthetic));
+                } catch {
+                    this.previewType.set('text');
+                    this.textContent.set(synthetic);
+                }
+            } else {
+                this.textContent.set(synthetic);
+            }
+            return;
+        }
+
         const type = this.resolvePreviewType(ext);
         this.previewType.set(type);
 
