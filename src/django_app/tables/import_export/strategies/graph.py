@@ -248,7 +248,9 @@ class GraphStrategy(EntityImportExportStrategy):
             for metadata in qs.values_list("metadata", flat=True):
                 if isinstance(metadata, dict):
                     number = metadata.get("nodeNumber")
-                    if isinstance(number, int) and not isinstance(number, bool):
+                    # Exact type match: excludes bool (a subclass of int) without
+                    # a separate isinstance(number, bool) guard.
+                    if type(number) is int:
                         max_num = max(max_num, number)
         return max_num
 

@@ -127,6 +127,9 @@ from drf_spectacular.types import OpenApiTypes
 from tables.swagger_schemas.knowledge_schemas.graph_bulk_save_schemas import (
     SAVE_FLOW_SWAGGER as _SAVE_FLOW_SWAGGER,
 )
+from tables.swagger_schemas.partial_import_schemas import (
+    PARTIAL_IMPORT_SWAGGER as PARTIAL_IMPORT_SWAGGER,
+)
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 from rest_framework.exceptions import PermissionDenied
 from django_filters.rest_framework import (
@@ -889,17 +892,7 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
         )
         return Response(data, status=status.HTTP_200_OK)
 
-    @extend_schema(
-        request={
-            "multipart/form-data": {
-                "type": "object",
-                "properties": {
-                    "file": {"type": "string", "format": "binary"},
-                },
-                "required": ["file"],
-            }
-        }
-    )
+    @extend_schema(**PARTIAL_IMPORT_SWAGGER)
     @action(detail=True, methods=["post"], url_path="partial-import")
     def partial_import(self, request, pk=None):
         file_serializer = ImportRequestSerializer(data=request.data)
