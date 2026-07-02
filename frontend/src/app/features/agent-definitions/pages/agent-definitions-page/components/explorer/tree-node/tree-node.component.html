@@ -1,0 +1,161 @@
+@let n = node();
+@switch (n.kind) {
+    @case ('group') {
+        <div
+            class="row row--group"
+            [style.padding-left.px]="12 + depth() * 20"
+            (click)="onRowClick()"
+            (mouseenter)="onMouseEnter()"
+            (mouseleave)="onMouseLeave()"
+        >
+            @if (hasChildren()) {
+                <button
+                    type="button"
+                    class="row__chevron-btn"
+                    aria-label="Toggle"
+                    (click)="onChevron($event)"
+                >
+                    <app-svg-icon
+                        class="row__chevron"
+                        [class.row__chevron--rotated]="!expanded"
+                        icon="chevron-down-filled"
+                        size="8px"
+                    />
+                </button>
+            } @else {
+                <span class="row__chevron-spacer"></span>
+            }
+            @if (n.icon) {
+                <app-svg-icon
+                    class="row__icon row__icon--group"
+                    [icon]="n.icon"
+                    size="12px"
+                />
+            }
+            <span class="row__label">{{ n.label }}</span>
+            @if (!hasChildren()) {
+                <span class="row__empty">Empty</span>
+            }
+        </div>
+    }
+    @case ('surface') {
+        <div
+            class="row row--surface"
+            [class.row--selected]="isSelected()"
+            [style.padding-left.px]="12 + depth() * 20"
+            (click)="onRowClick()"
+            (mouseenter)="onMouseEnter()"
+            (mouseleave)="onMouseLeave()"
+        >
+            <span class="row__chevron-spacer"></span>
+            <app-svg-icon
+                class="row__icon row__icon--surface"
+                icon="surface-shared"
+                size="10px"
+            />
+            <span class="row__label row__label--surface">{{ n.label }}</span>
+            @if (showHoverMenu()) {
+                <div
+                    class="row__hover-actions"
+                    [class.row__hover-actions--visible]="hovered()"
+                >
+                    <button
+                        type="button"
+                        class="row__hover-btn"
+                        aria-label="More"
+                        (click)="onMenuClick($event)"
+                    >
+                        <app-svg-icon
+                            icon="dots-vertical"
+                            size="1rem"
+                        />
+                    </button>
+                </div>
+            }
+        </div>
+    }
+    @case ('agent') {
+        <div
+            class="row row--agent"
+            [class.row--selected]="isSelected()"
+            [style.padding-left.px]="12 + depth() * 20"
+            (click)="onRowClick()"
+            (mouseenter)="onMouseEnter()"
+            (mouseleave)="onMouseLeave()"
+        >
+            @if (hasChildren()) {
+                <button
+                    type="button"
+                    class="row__chevron-btn"
+                    aria-label="Toggle"
+                    (click)="onChevron($event)"
+                >
+                    <app-svg-icon
+                        class="row__chevron"
+                        [class.row__chevron--rotated]="!expanded"
+                        icon="chevron-down-filled"
+                        size="8px"
+                    />
+                </button>
+            } @else {
+                <span class="row__chevron-spacer"></span>
+            }
+            <app-svg-icon
+                class="row__icon"
+                icon="folder"
+                size="0.95rem"
+            />
+            <span class="row__label">{{ n.label }}</span>
+            @if (showHoverMenu()) {
+                <div
+                    class="row__hover-actions"
+                    [class.row__hover-actions--visible]="hovered()"
+                >
+                    <button
+                        type="button"
+                        class="row__hover-btn"
+                        aria-label="More"
+                        (click)="onMenuClick($event)"
+                    >
+                        <app-svg-icon
+                            icon="dots-vertical"
+                            size="1rem"
+                        />
+                    </button>
+                </div>
+            }
+        </div>
+    }
+    @case ('agent-doc') {
+        <div
+            class="row row--doc"
+            [style.padding-left.px]="12 + depth() * 20"
+            (click)="onRowClick()"
+            (mouseenter)="onMouseEnter()"
+            (mouseleave)="onMouseLeave()"
+        >
+            <span class="row__chevron-spacer"></span>
+            <app-svg-icon
+                class="row__icon"
+                icon="file"
+                size="0.95rem"
+            />
+            <span class="row__label row__label--placeholder">{{ n.label }}</span>
+        </div>
+    }
+}
+
+@if (expanded && hasChildren() && (n.kind === 'group' || n.kind === 'agent')) {
+    <div class="children">
+        @for (child of n.children; track trackByKey($index, child)) {
+            <app-tree-node
+                [node]="child"
+                [depth]="childIndent()"
+                [selected]="selected()"
+                (selectNode)="onChildSelect($event)"
+                (menuAction)="onChildMenuAction($event)"
+                (menuOpen)="onChildMenuOpen($event)"
+            />
+        }
+    </div>
+}

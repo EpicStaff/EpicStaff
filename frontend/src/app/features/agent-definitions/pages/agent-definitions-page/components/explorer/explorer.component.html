@@ -1,0 +1,147 @@
+<div class="explorer">
+    <header class="explorer__header">
+        <button
+            type="button"
+            class="explorer__title-btn"
+            (click)="toggleFilter()"
+        >
+            <span class="explorer__title">Branches</span>
+            <span class="explorer__count">({{ store.visibleSectionsCount() }})</span>
+            <app-svg-icon
+                class="explorer__title-chevron"
+                [class.explorer__title-chevron--collapsed]="!filterOpen()"
+                icon="chevron-up-filled"
+                size="10px"
+            />
+        </button>
+        <button
+            type="button"
+            class="explorer__close"
+            aria-label="Close branches"
+            (click)="onClose()"
+        >
+            <app-svg-icon
+                icon="x-thin"
+                size="12px"
+            />
+        </button>
+    </header>
+
+    @if (filterOpen()) {
+        <div
+            class="explorer__filter-overlay"
+            (click)="onFilterCancel()"
+        ></div>
+        <div class="explorer__filter">
+            <app-branches-filter
+                [selected]="store.visibleSections()"
+                (save)="onFilterSave($event)"
+                (cancel)="onFilterCancel()"
+            />
+        </div>
+    }
+
+    <div class="explorer__search">
+        <app-tree-search
+            [value]="store.search()"
+            (valueChange)="onSearchChange($event)"
+        />
+    </div>
+
+    <div class="explorer__sections">
+        @if (store.loading()) {
+            <div class="explorer__state">Loading…</div>
+        } @else {
+            @if (store.isSectionVisible('agents')) {
+                <section
+                    class="explorer__section"
+                    [class.explorer__section--fill]="shouldFillBody('agents')"
+                >
+                    <app-section-header
+                        label="Agents"
+                        icon="folder"
+                        [expanded]="store.isSectionExpanded('agents')"
+                        [showAdd]="true"
+                        (toggleSection)="store.toggleSection('agents')"
+                        (add)="onAdd('agents')"
+                    />
+                    <div
+                        class="explorer__section-body"
+                        [class.explorer__section-body--fill]="shouldFillBody('agents')"
+                        [hidden]="!store.isSectionExpanded('agents')"
+                    >
+                        <app-agents-section
+                            (selectNode)="onSelect($event)"
+                            (menuAction)="onTreeMenuAction($event)"
+                            (menuOpen)="onTreeMenuOpen($event)"
+                        />
+                    </div>
+                </section>
+            }
+            @if (store.isSectionVisible('surfaces')) {
+                <section
+                    class="explorer__section"
+                    [class.explorer__section--fill]="shouldFillBody('surfaces')"
+                    [class.explorer__section--bottom]="isBottomSection('surfaces')"
+                    [class.explorer__section--bottom-anchor]="isBottomAnchor('surfaces')"
+                >
+                    <app-section-header
+                        label="Shared Surfaces"
+                        icon="surfaces-tab"
+                        [expanded]="store.isSectionExpanded('surfaces')"
+                        [showAdd]="true"
+                        (toggleSection)="store.toggleSection('surfaces')"
+                        (add)="onAdd('surfaces')"
+                    />
+                    <div
+                        class="explorer__section-body"
+                        [class.explorer__section-body--fill]="shouldFillBody('surfaces')"
+                        [hidden]="!store.isSectionExpanded('surfaces')"
+                    >
+                        <app-surfaces-section
+                            (selectNode)="onSelect($event)"
+                            (menuAction)="onTreeMenuAction($event)"
+                            (menuOpen)="onTreeMenuOpen($event)"
+                        />
+                    </div>
+                </section>
+            }
+            @if (store.isSectionVisible('storage')) {
+                <section
+                    class="explorer__section"
+                    [class.explorer__section--fill]="shouldFillBody('storage')"
+                    [class.explorer__section--bottom]="isBottomSection('storage')"
+                    [class.explorer__section--bottom-anchor]="isBottomAnchor('storage')"
+                >
+                    <app-section-header
+                        label="Storage"
+                        icon="folder"
+                        [expanded]="store.isSectionExpanded('storage')"
+                        [showAdd]="true"
+                        [showMenu]="true"
+                        (toggleSection)="store.toggleSection('storage')"
+                        (add)="onAdd('storage')"
+                        (menu)="onStorageMenu($event)"
+                    />
+                    @if (store.storageActivated()) {
+                        <div
+                            class="explorer__section-body"
+                            [class.explorer__section-body--fill]="shouldFillBody('storage')"
+                            [hidden]="!store.isSectionExpanded('storage')"
+                        >
+                            <app-storage-section (selectItem)="onStorageSelect($event)" />
+                        </div>
+                    }
+                </section>
+            }
+        }
+    </div>
+
+    <app-explorer-context-menu
+        [open]="menuOpen()"
+        [position]="menuPosition()"
+        [items]="menuItems()"
+        (action)="onMenuItemAction($event)"
+        (close)="closeMenu()"
+    />
+</div>

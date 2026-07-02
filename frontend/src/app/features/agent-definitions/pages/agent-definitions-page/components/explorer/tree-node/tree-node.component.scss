@@ -1,0 +1,131 @@
+:host {
+    display: block;
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+    padding-right: 0.5rem;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    border-radius: 4px;
+    user-select: none;
+
+    &:hover {
+        background-color: var(--color-ghost-btn-hover);
+    }
+
+    &--selected {
+        background-color: color-mix(in srgb, var(--accent-color) 18%, transparent);
+    }
+
+    &__chevron-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: 16px;
+        height: 16px;
+        margin: -4px;
+        padding: 4px;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        color: inherit;
+    }
+
+    &__chevron {
+        flex-shrink: 0;
+        color: var(--color-text-secondary);
+        transition: transform 0.15s ease;
+
+        &--rotated {
+            transform: rotate(-90deg);
+        }
+    }
+
+    &__chevron-spacer {
+        display: inline-block;
+        width: 8px;
+        flex-shrink: 0;
+    }
+
+    &__icon {
+        flex-shrink: 0;
+        color: var(--color-text-secondary);
+
+        &--surface {
+            color: var(--accent-color);
+        }
+
+        &--group {
+            color: var(--accent-color);
+        }
+    }
+
+    &__label {
+        font-size: 0.875rem;
+        font-weight: 400;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+        flex: 1 1 auto;
+        color: var(--color-text-primary);
+
+        &--placeholder {
+            color: var(--color-text-secondary);
+            opacity: 0.6;
+        }
+
+        &--surface {
+            color: var(--color-text-primary);
+        }
+    }
+
+    &__empty {
+        flex-shrink: 0;
+        font-size: 0.875rem;
+        font-weight: 400;
+        color: color-mix(in srgb, var(--color-text-primary) 16%, transparent);
+    }
+
+    &__hover-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        margin-left: auto;
+        flex-shrink: 0;
+        z-index: 2;
+        visibility: hidden;
+
+        &--visible {
+            visibility: visible;
+        }
+    }
+
+    &__hover-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        color: color-mix(in srgb, var(--color-text-primary) 60%, transparent);
+        border-radius: 4px;
+
+        &:hover {
+            color: var(--color-text-primary);
+        }
+    }
+}
+
+.children {
+    display: flex;
+    flex-direction: column;
+}

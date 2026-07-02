@@ -1,0 +1,14 @@
+@if (store.surfacesTree().length === 0) {
+    <div class="section-state">No shared surfaces yet</div>
+} @else {
+    @for (node of store.surfacesTree(); track trackByKey($index, node)) {
+        <app-tree-node
+            [node]="node"
+            [depth]="1"
+            [selected]="store.selectedNode()"
+            (selectNode)="onSelect($event)"
+            (menuAction)="onMenuAction($event)"
+            (menuOpen)="onMenuOpen($event)"
+        />
+    }
+}

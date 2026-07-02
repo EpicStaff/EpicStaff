@@ -1,0 +1,14 @@
+@if (store.agentsTree().length === 0) {
+    <div class="section-state">No agents yet</div>
+} @else {
+    @for (node of store.agentsTree(); track trackByKey($index, node)) {
+        <app-tree-node
+            [node]="node"
+            [depth]="1"
+            [selected]="store.selectedNode()"
+            (selectNode)="onSelect($event)"
+            (menuAction)="onMenuAction($event)"
+            (menuOpen)="onMenuOpen($event)"
+        />
+    }
+}
