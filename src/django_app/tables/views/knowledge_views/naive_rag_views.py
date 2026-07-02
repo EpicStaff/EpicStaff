@@ -19,7 +19,7 @@ from django.conf import settings
 
 from src.shared.communication import Message
 from django_app.communication import producer, consumer
-from django_app.communication_schemas import (
+from src.shared.models import (
     PrechunkRequest,
     PrechunkResponse,
     CancelRequest,

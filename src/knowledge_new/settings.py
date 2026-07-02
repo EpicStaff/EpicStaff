@@ -1,15 +1,12 @@
 from pathlib import Path
 
 from loguru import logger
-from pydantic import computed_field, Field
+from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.communication.dns import build_dns
+
 __all__ = ["settings"]
-
-
-def _build_dns(provider: str, host: str, port: int, db: str, user="", password=""):
-    user_part = f"{user}:{password}@" if user or password else ""
-    return f"{provider}://{user_part}{host}:{port}/{db}"
 
 
 class MainSettings(BaseSettings):
@@ -55,7 +52,7 @@ class MainSettings(BaseSettings):
 
     @computed_field
     def DATABASE_DNS(self) -> str:  # noqa: N802
-        return _build_dns(
+        return build_dns(
             self.DATABASE_BACKEND,
             self.DATABASE_HOST,
             self.DATABASE_PORT,
@@ -66,7 +63,7 @@ class MainSettings(BaseSettings):
 
     @computed_field
     def BROKER_DNS(self) -> str:  # noqa: N802
-        return _build_dns(
+        return build_dns(
             self.BROKER_BACKEND,
             self.BROKER_HOST,
             self.BROKER_PORT,
@@ -77,7 +74,7 @@ class MainSettings(BaseSettings):
 
     @computed_field
     def STORAGE_DNS(self) -> str:  # noqa: N802
-        return _build_dns(
+        return build_dns(
             self.STORAGE_BACKEND,
             self.STORAGE_HOST,
             self.STORAGE_PORT,

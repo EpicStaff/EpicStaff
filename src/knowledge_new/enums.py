@@ -1,5 +1,7 @@
 from enum import StrEnum
 
+from src.shared.enums.knowledge_new import GraphSearchMethodEnum, RAGStrategy
+
 __all__ = [
     "ChunkStrategyEnum",
     "DocumentErrorCode",
@@ -10,11 +12,6 @@ __all__ = [
     "IndexStatusEnum",
     "RAGStrategy",
 ]
-
-
-class RAGStrategy(StrEnum):
-    NAIVE = "naive"
-    GRAPH = "graph"
 
 
 class ChunkStrategyEnum(StrEnum):
@@ -52,13 +49,6 @@ class EmbedderProviderEnum(StrEnum):
     MISTRAL = "mistral"
     OPENAI = "openai"
     TOGETHER_AI = "together_ai"
-
-
-class GraphSearchMethodEnum(StrEnum):
-    BASIC = "basic"
-    LOCAL = "local"
-    GLOBAL = "global"
-    DRIFT = "drift"
 
 
 class IndexStatusEnum(StrEnum):

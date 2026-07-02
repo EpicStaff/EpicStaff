@@ -13,15 +13,15 @@ from constants.constants import (
     DEFAULT_RAG_SEARCH_TIMEOUT,
 )
 from src.shared.communication import Message
-from services.communication import producer, consumer
-from services.communication_schemas import (
+from src.shared.models import (
     NaiveSearchConfig,
     GraphSearchConfig,
-    RagSearchConfig,
+    SearchConfig,
     SearchRequest,
     SearchResponse,
     CancelRequest,
 )
+from services.communication import producer, consumer
 
 
 class RagSearchConfigFactory:
@@ -40,16 +40,16 @@ class RagSearchConfigFactory:
     }
 
     @classmethod
-    def build(cls, rag_type: str, config_dict: Dict[str, Any]) -> RagSearchConfig:
+    def build(cls, rag_type: str, config_dict: Dict[str, Any]) -> SearchConfig:
         """
-        Build appropriate RagSearchConfig based on rag_type.
+        Build appropriate SearchConfig based on rag_type.
 
         Args:
             rag_type: Type of RAG ("naive", "graph", etc.)
             config_dict: Dict with RAG-specific parameters
 
         Returns:
-            Appropriate RagSearchConfig subclass instance
+            Appropriate SearchConfig subclass instance
         """
         config_class = cls._configs.get(rag_type)
         if not config_class:

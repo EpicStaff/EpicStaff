@@ -1,17 +1,12 @@
 from src.shared.communication import Consumer, Producer
 from src.shared.communication.brokers import RedisPubSubBroker
 from src.shared.communication.storages import RedisStorage
+from shared.communication.dns import build_dns
 
 import settings
 
-
-def _build_dns(provider: str, host: str, port: int, db: str, user="", password=""):
-    user_part = f"{user}:{password}@" if user or password else ""
-    return f"{provider}://{user_part}{host}:{port}/{db}"
-
-
 _broker = RedisPubSubBroker(
-    _build_dns(
+    build_dns(
         provider=settings.COMMUNICATION_BROKER_BACKEND,
         user=settings.COMMUNICATION_BROKER_USER,
         password=settings.COMMUNICATION_BROKER_PASSWORD,
@@ -21,7 +16,7 @@ _broker = RedisPubSubBroker(
     )
 )
 _storage = RedisStorage(
-    _build_dns(
+    build_dns(
         provider=settings.COMMUNICATION_STORAGE_BACKEND,
         user=settings.COMMUNICATION_STORAGE_USER,
         password=settings.COMMUNICATION_STORAGE_PASSWORD,
