@@ -57,8 +57,25 @@ class AbstractNaiveRagRepository(RepositoryErrorWrapper, abc.ABC):
         """
 
     @abc.abstractmethod
-    async def get_all_documents(self, rag_id: int) -> list[Document]:
+    async def get_documents(self, rag_id: int, ids: frozenset[int]) -> list[Document]:
         """Return all `Document` objects belonging to `rag_id`.
+
+        Args:
+            rag_id: Primary key of the RAG collection.
+            ids: Primary keys of the document configs.
+        """
+
+    @abc.abstractmethod
+    async def has_completed_document(self, rag_id: int) -> bool:
+        """Return True if `rag_id` has at least one document with COMPLETED status.
+
+        Args:
+            rag_id: Primary key of the RAG collection.
+        """
+
+    @abc.abstractmethod
+    async def has_failed_document(self, rag_id: int) -> bool:
+        """Return True if `rag_id` has at least one document with FAILED status.
 
         Args:
             rag_id: Primary key of the RAG collection.
