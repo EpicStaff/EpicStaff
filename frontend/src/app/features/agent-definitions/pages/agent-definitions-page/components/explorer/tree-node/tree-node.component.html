@@ -17,7 +17,7 @@
                 >
                     <app-svg-icon
                         class="row__chevron"
-                        [class.row__chevron--rotated]="!expanded"
+                        [class.row__chevron--rotated]="!isExpanded()"
                         icon="chevron-down-filled"
                         size="8px"
                     />
@@ -92,7 +92,7 @@
                 >
                     <app-svg-icon
                         class="row__chevron"
-                        [class.row__chevron--rotated]="!expanded"
+                        [class.row__chevron--rotated]="!isExpanded()"
                         icon="chevron-down-filled"
                         size="8px"
                     />
@@ -129,6 +129,7 @@
     @case ('agent-doc') {
         <div
             class="row row--doc"
+            [class.row--selected]="isSelected()"
             [style.padding-left.px]="12 + depth() * 20"
             (click)="onRowClick()"
             (mouseenter)="onMouseEnter()"
@@ -140,12 +141,12 @@
                 icon="file"
                 size="0.95rem"
             />
-            <span class="row__label row__label--placeholder">{{ n.label }}</span>
+            <span class="row__label">{{ n.label }}</span>
         </div>
     }
 }
 
-@if (expanded && hasChildren() && (n.kind === 'group' || n.kind === 'agent')) {
+@if (isExpanded() && hasChildren() && (n.kind === 'group' || n.kind === 'agent')) {
     <div class="children">
         @for (child of n.children; track trackByKey($index, child)) {
             <app-tree-node

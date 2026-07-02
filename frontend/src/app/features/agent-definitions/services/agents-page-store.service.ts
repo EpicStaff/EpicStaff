@@ -179,6 +179,31 @@ export class AgentsPageStore {
         this.updateAgent(agentId, { metadata });
     }
 
+    /**
+     * Overwrite an agent's boot instructions with extracted file text, switch
+     * the field to markdown-doc mode, and open the doc view — all in a single
+     * patch so the user lands on the Boot_Instructions.md doc showing the text.
+     */
+    applyBootDocFromText(agentId: number, text: string): void {
+        const agent = this.agents().find((a) => a.id === agentId);
+        if (!agent) return;
+        const metadata: AgentMetadata = { ...agent.metadata, instructions_format: 'markdown' };
+        this.saving.set(true);
+        this.agentsApi.partialUpdate(agentId, { instructions: text, metadata }).subscribe({
+            next: (updated) => {
+                this.agents.update((list) => list.map((a) => (a.id === agentId ? updated : a)));
+                this.saving.set(false);
+                this.selectAgentDoc(agentId, 'boot');
+                this.toast.success('Boot instructions updated');
+            },
+            error: (err) => {
+                this.saving.set(false);
+                this.agentSaveErrorTick.update((n) => n + 1);
+                this.toast.error(this.extractError(err, 'Failed to update boot instructions'));
+            },
+        });
+    }
+
     selectAgent(id: number): void {
         this.selectedNode.set({ kind: 'agent', id });
     }

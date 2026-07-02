@@ -316,9 +316,12 @@
                 <app-select-dropdown
                     mode="tree"
                     selectionMode="multiple"
+                    [maxPanelHeight]="500"
                     [nodes]="fileDropdownNodes()"
                     [loadChildren]="loadStorageChildren"
                     [selected]="selectedFileIds()"
+                    [headerAction]="readOnly() ? null : filesHeaderAction"
+                    (headerActionClick)="openAddFiles()"
                     (selectionChange)="onFilesChange($event)"
                     (openedChange)="filesExpanded.set($event)"
                     searchPlaceholder="Search files..."
@@ -414,13 +417,13 @@
                                     >
                                         @if (row.perms[col.key] === 'allow') {
                                             <app-svg-icon
-                                                icon="check"
-                                                size="12px"
+                                                icon="checkbox-tick"
+                                                size="16px"
                                             />
                                         } @else if (row.perms[col.key] === 'deny') {
                                             <app-svg-icon
                                                 icon="x"
-                                                size="12px"
+                                                size="10px"
                                             />
                                         }
                                     </button>
@@ -452,8 +455,11 @@
                     mode="list"
                     selectionMode="multiple"
                     [selectedOnTop]="true"
+                    [maxPanelHeight]="500"
                     [items]="collectionItems()"
                     [selected]="selectedCollectionValues()"
+                    [headerAction]="readOnly() ? null : collectionHeaderAction"
+                    (headerActionClick)="openAddCollection()"
                     (selectionChange)="onCollectionsChange($event)"
                     (openedChange)="collectionsExpanded.set($event)"
                     searchPlaceholder="Search collections..."

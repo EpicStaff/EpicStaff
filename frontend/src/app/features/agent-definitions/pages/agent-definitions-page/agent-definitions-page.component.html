@@ -159,6 +159,7 @@
                             (delete)="onDeleteAgent($event)"
                             (dirtyChange)="onDirtyChange($event)"
                             (bootDocChange)="store.setBootDoc(store.selectedAgent()!.id, $event)"
+                            (extractText)="store.applyBootDocFromText(store.selectedAgent()!.id, $event)"
                             (createSurface)="
                                 store.createSurfaceForAgent(store.selectedAgent()!.id, $event.body, $event.place)
                             "

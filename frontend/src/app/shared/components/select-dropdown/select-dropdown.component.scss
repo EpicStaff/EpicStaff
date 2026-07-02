@@ -63,6 +63,10 @@
     margin-bottom: 16px;
     min-width: 0;
     flex-shrink: 0;
+
+    &--action-only {
+        justify-content: flex-end;
+    }
 }
 
 .select-dropdown__tabs-list {
@@ -127,6 +131,7 @@
     gap: 8px;
     overflow-y: auto;
     min-height: 0;
+    flex: 1 1 auto;
 }
 
 .select-dropdown__row {

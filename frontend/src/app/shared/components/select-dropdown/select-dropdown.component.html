@@ -17,6 +17,7 @@
     <div
         class="select-dropdown__panel"
         [style.max-height]="panelMaxHeight()"
+        [style.min-height.px]="panelMinHeight()"
     >
         @if (searchable()) {
             <label class="select-dropdown__search">
@@ -33,20 +34,25 @@
             </label>
         }
 
-        @if (tabs().length) {
-            <div class="select-dropdown__tabs">
-                <div class="select-dropdown__tabs-list">
-                    @for (tab of tabs(); track tab.id) {
-                        <button
-                            type="button"
-                            class="select-dropdown__tab"
-                            [class.select-dropdown__tab--active]="tab.id === resolvedActiveTabId()"
-                            (click)="selectTab(tab.id)"
-                        >
-                            {{ tab.label }}
-                        </button>
-                    }
-                </div>
+        @if (tabs().length || headerAction()) {
+            <div
+                class="select-dropdown__tabs"
+                [class.select-dropdown__tabs--action-only]="!tabs().length"
+            >
+                @if (tabs().length) {
+                    <div class="select-dropdown__tabs-list">
+                        @for (tab of tabs(); track tab.id) {
+                            <button
+                                type="button"
+                                class="select-dropdown__tab"
+                                [class.select-dropdown__tab--active]="tab.id === resolvedActiveTabId()"
+                                (click)="selectTab(tab.id)"
+                            >
+                                {{ tab.label }}
+                            </button>
+                        }
+                    </div>
+                }
                 @if (headerAction(); as action) {
                     <button
                         type="button"

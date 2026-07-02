@@ -33,13 +33,13 @@ export class TreeNodeComponent implements OnInit {
     menuAction = output<ExplorerTreeMenuEvent>();
     menuOpen = output<ExplorerTreeMenuOpenEvent>();
 
-    expanded = false;
+    readonly expanded = signal(false);
     readonly hovered = signal(false);
 
     ngOnInit(): void {
         const n = this.node();
-        if (n.kind === 'group') this.expanded = !!n.defaultExpanded;
-        else if (n.kind === 'agent') this.expanded = false;
+        if (n.kind === 'group') this.expanded.set(!!n.defaultExpanded);
+        else if (n.kind === 'agent') this.expanded.set(false);
     }
 
     readonly trackByKey = (_: number, n: BranchTreeNode) => nodeKey(n);
@@ -68,6 +68,43 @@ export class TreeNodeComponent implements OnInit {
         return (n.kind === 'group' && n.children.length > 0) || (n.kind === 'agent' && n.children.length > 0);
     });
 
+    /**
+     * True when the current selection is a DESCENDANT of this node (not the node
+     * itself). Used to force this node open so the selected descendant — e.g. a
+     * Boot_Instructions.md doc just created from an extracted file — is revealed.
+     */
+    readonly containsSelection = computed(() => {
+        const n = this.node();
+        const sel = this.selected();
+        if (n.kind !== 'agent' && n.kind !== 'group') return false;
+        return n.children.some((c) => this.nodeMatchesSelection(c, sel));
+    });
+
+    /** Force-open while a descendant is selected so it stays revealed in the tree. */
+    readonly isExpanded = computed(() => this.expanded() || this.containsSelection());
+
+    private nodeMatchesSelection(node: BranchTreeNode, sel: ExplorerSelection): boolean {
+        switch (node.kind) {
+            case 'agent':
+                return (sel.kind === 'agent' && sel.id === node.agentId) || this.hasSelectedDescendant(node, sel);
+            case 'group':
+                return this.hasSelectedDescendant(node, sel);
+            case 'agent-doc':
+                return sel.kind === 'agent-doc' && sel.id === node.agentId && sel.docType === node.docType;
+            case 'surface':
+                return (
+                    sel.kind === 'surface' &&
+                    sel.id === node.surfaceId &&
+                    (sel.ownerAgentId ?? null) === (node.ownerAgentId ?? null)
+                );
+        }
+    }
+
+    private hasSelectedDescendant(node: BranchTreeNode, sel: ExplorerSelection): boolean {
+        if (node.kind !== 'agent' && node.kind !== 'group') return false;
+        return node.children.some((c) => this.nodeMatchesSelection(c, sel));
+    }
+
     readonly childIndent = computed(() => this.depth() + 1);
 
     private readonly hoverMenuItems = computed(() => treeNodeMenuItems(this.node()));
@@ -75,7 +112,7 @@ export class TreeNodeComponent implements OnInit {
     readonly showHoverMenu = computed(() => this.hoverMenuItems().length > 0);
 
     toggle(): void {
-        this.expanded = !this.expanded;
+        this.expanded.set(!this.expanded());
     }
 
     onRowClick(): void {

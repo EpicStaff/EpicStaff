@@ -50,8 +50,18 @@
 }
 
 .doc-editor {
+    display: block;
     flex: 1;
     min-height: 0;
+    height: 100%;
+
+    // ngx-monaco-editor renders an inner .monaco-editor that doesn't stretch to
+    // its host by default, leaving the editor filling only part of the pane.
+    ::ng-deep .editor-container,
+    ::ng-deep .monaco-editor {
+        width: 100% !important;
+        height: 100% !important;
+    }
 }
 
 .doc-rendered {
