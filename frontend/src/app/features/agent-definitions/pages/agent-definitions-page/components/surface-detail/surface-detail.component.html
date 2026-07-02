@@ -5,6 +5,7 @@
     [readOnly]="readOnly()"
     [isShared]="isShared()"
     [showMeta]="showMeta()"
+    [currentPlace]="currentPlace()"
     [agents]="agents()"
     [expanded]="true"
     (renameSurface)="rename.emit($event)"
@@ -12,7 +13,9 @@
     (surfaceChange)="surfaceChange.emit($event)"
     (openSource)="openSource.emit()"
     (detach)="detach.emit()"
+    (makeShared)="makeShared.emit()"
     (makeAgentSpecificCopy)="makeAgentSpecificCopy.emit()"
+    (moveSurfacePlace)="moveSurfacePlace.emit($event)"
     (duplicate)="duplicate.emit()"
     (deleteSurface)="deleteSurface.emit()"
 />

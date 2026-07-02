@@ -28,6 +28,27 @@ export interface SurfaceFileRow {
     perms: SurfaceFilePerms;
 }
 
+export interface SurfaceFileFolderRow {
+    kind: 'folder';
+    path: string;
+    name: string;
+    depth: number;
+    expanded: boolean;
+}
+
+export interface SurfaceFileItemRow {
+    kind: 'file';
+    row: SurfaceFileRow;
+    depth: number;
+}
+
+export type SurfaceFileDisplayRow = SurfaceFileFolderRow | SurfaceFileItemRow;
+
+export interface SurfaceFileStats {
+    folders: number;
+    files: number;
+}
+
 export const SURFACE_FILE_PERM_COLUMNS: { key: keyof SurfaceFilePerms; label: string; icon: string }[] = [
     { key: 'list', label: 'List', icon: 'list' },
     { key: 'view', label: 'View', icon: 'eye' },

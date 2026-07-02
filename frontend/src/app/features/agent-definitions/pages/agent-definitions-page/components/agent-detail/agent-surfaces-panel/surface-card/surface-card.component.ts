@@ -17,13 +17,13 @@ import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
+    ConfirmationDialogService,
     SelectDropdownComponent,
     SelectDropdownHeaderAction,
     SelectDropdownListItem,
     SelectDropdownTab,
     SelectDropdownTreeNode,
     SelectDropdownTriggerDirective,
-    ToggleSwitchComponent,
 } from '@shared/components';
 import { EnterBlurDirective } from '@shared/directives';
 import { Observable } from 'rxjs';
@@ -45,6 +45,7 @@ import { AgentDefinition } from '../../../../../../models/agent-definition.model
 import {
     CreateSurfaceRequest,
     PartialUpdateSurfaceRequest,
+    PermTriState,
     Surface,
     SurfaceKnowledge,
     SurfaceMcpTool,
@@ -55,12 +56,24 @@ import {
     nextPermState,
     SURFACE_FILE_PERM_COLUMNS,
     SurfaceCollectionOption,
+    SurfaceFileDisplayRow,
     SurfaceFilePerms,
     SurfaceFileRow,
     SurfaceTabId,
     SurfaceToolOption,
 } from '../../../../../../models/surface-card.model';
+import { SURFACE_CATEGORIES, SurfaceCategoryId } from '../../../../../../models/surface-category.model';
 import { SurfaceCatalogsStore } from '../../../../../../services/surface-catalogs-store.service';
+import { DELETE_CONFIRM_DIALOG_WIDTH } from '../../../../../../utils/delete-confirmation.util';
+import {
+    buildClearSurfaceBundleDialog,
+    SurfaceBundleClearKind,
+} from '../../../../../../utils/surface-bundle-confirmation.util';
+import {
+    buildSurfaceFileDisplayRows,
+    buildSurfaceFileStats,
+    filesInFolder,
+} from '../../../../../../utils/surface-file-tree.util';
 
 @Component({
     selector: 'app-surface-card',
@@ -68,7 +81,6 @@ import { SurfaceCatalogsStore } from '../../../../../../services/surface-catalog
         CommonModule,
         FormsModule,
         AppSvgIconComponent,
-        ToggleSwitchComponent,
         MatTooltipModule,
         SelectDropdownComponent,
         SelectDropdownTriggerDirective,
@@ -84,6 +96,7 @@ export class SurfaceCardComponent {
     private readonly collectionsStorage: CollectionsStorageService = inject(CollectionsStorageService);
     private readonly destroyRef: DestroyRef = inject(DestroyRef);
     private readonly dialog: Dialog = inject(Dialog);
+    private readonly confirm: ConfirmationDialogService = inject(ConfirmationDialogService);
 
     surface = input<Surface | null>(null);
     readOnly = input<boolean>(false);
@@ -92,6 +105,7 @@ export class SurfaceCardComponent {
 
     expanded = model<boolean>(false);
     isShared = input<boolean>(false);
+    currentPlace = input<SurfaceCategoryId | null>(null);
     draggable = input<boolean>(false);
     hideHeader = input<boolean>(false);
     isCreating = input<boolean>(false);
@@ -105,6 +119,7 @@ export class SurfaceCardComponent {
     readonly detach = output<void>();
     readonly makeShared = output<void>();
     readonly makeAgentSpecificCopy = output<void>();
+    readonly moveSurfacePlace = output<SurfaceCategoryId>();
     readonly duplicate = output<void>();
     readonly deleteSurface = output<void>();
 
@@ -113,6 +128,23 @@ export class SurfaceCardComponent {
 
     readonly menuOpen = signal<boolean>(false);
     private editedName = '';
+
+    readonly moveTargets = computed(() => {
+        if (!this.isShared() || !this.readOnly()) return [];
+        const current = this.currentPlace();
+        return SURFACE_CATEGORIES.filter((c) => c.id !== current).map((c) => ({
+            place: c.id,
+            label: c.moveLabel,
+        }));
+    });
+
+    readonly showAgentSpecificMenu = computed(() => !this.isShared() && !this.readOnly());
+    readonly showSharedInAgentMenu = computed(() => this.isShared() && this.readOnly());
+    readonly showSharedSurfacesMenu = computed(() => this.isShared() && !this.readOnly() && this.showMeta());
+    readonly hasMenuItems = computed(
+        () => this.showAgentSpecificMenu() || this.showSharedInAgentMenu() || this.showSharedSurfacesMenu()
+    );
+    readonly showDelete = computed(() => !this.showSharedInAgentMenu());
 
     toggleExpand(): void {
         this.menuOpen.set(false);
@@ -140,7 +172,6 @@ export class SurfaceCardComponent {
             name: name.trim(),
             description: '',
             instructions: this.instructions(),
-            allow_creation: this.allowCreation(),
             python_tools,
             mcp_tools,
             storage_items: this.buildStoragePayload(),
@@ -185,6 +216,12 @@ export class SurfaceCardComponent {
         }
     }
 
+    onMoveToPlace(place: SurfaceCategoryId, event: MouseEvent): void {
+        event.stopPropagation();
+        this.menuOpen.set(false);
+        this.moveSurfacePlace.emit(place);
+    }
+
     readonly assignedAgentChips = computed<{ id: number; name: string }[]>(() => {
         const id = this.surface()?.id;
         if (id == null) return [];
@@ -225,39 +262,62 @@ export class SurfaceCardComponent {
         label: this.toolSubtab() === 'custom' ? 'Create custom tool' : 'Add MCP tool',
     }));
 
+    private readonly pendingToolKeys = signal<Set<string> | null>(null);
+    private readonly effectiveToolKeys = computed(() => this.pendingToolKeys() ?? this.selectedToolKeys());
+
     private toolItemsOfKind(kind: 'python' | 'mcp'): SelectDropdownListItem<number>[] {
         return this.toolOptions()
             .filter((t) => t.kind === kind)
             .map((t) => ({ name: t.name, value: t.id }));
     }
 
-    private selectedIdsOfKind(kind: 'python' | 'mcp'): number[] {
+    private idsOfKind(keys: Set<string>, kind: 'python' | 'mcp'): number[] {
         const prefix = `${kind}:`;
-        return [...this.selectedToolKeys()].filter((k) => k.startsWith(prefix)).map((k) => Number(k.split(':')[1]));
+        return [...keys].filter((k) => k.startsWith(prefix)).map((k) => Number(k.split(':')[1]));
     }
 
     readonly activeToolItems = computed<SelectDropdownListItem<number>[]>(() =>
         this.toolItemsOfKind(this.toolSubtab() === 'custom' ? 'python' : 'mcp')
     );
     readonly activeToolIds = computed<number[]>(() =>
-        this.selectedIdsOfKind(this.toolSubtab() === 'custom' ? 'python' : 'mcp')
+        this.idsOfKind(this.effectiveToolKeys(), this.toolSubtab() === 'custom' ? 'python' : 'mcp')
     );
 
     onToolTabChange(id: string): void {
         this.toolSubtab.set(id === 'mcp' ? 'mcp' : 'custom');
     }
 
-    onActiveToolsChange(values: unknown[]): void {
-        if (this.readOnly()) return;
+    onToolsOpenedChange(opened: boolean): void {
+        this.toolsExpanded.set(opened);
+        if (opened) {
+            this.pendingToolKeys.set(new Set(this.selectedToolKeys()));
+        } else {
+            this.pendingToolKeys.set(null);
+        }
+    }
+
+    private withKindMerged(base: Set<string>, values: unknown[]): Set<string> {
         const kind: 'python' | 'mcp' = this.toolSubtab() === 'custom' ? 'python' : 'mcp';
         const ids = values as number[];
-        const others = [...this.selectedToolKeys()].filter((k) => !k.startsWith(`${kind}:`));
-        this.selectedToolKeys.set(new Set([...others, ...ids.map((id) => `${kind}:${id}`)]));
+        const others = [...base].filter((k) => !k.startsWith(`${kind}:`));
+        return new Set([...others, ...ids.map((id) => `${kind}:${id}`)]);
+    }
+
+    onActiveToolsDraftChange(values: unknown[]): void {
+        if (this.readOnly()) return;
+        this.pendingToolKeys.set(this.withKindMerged(this.effectiveToolKeys(), values));
+    }
+
+    onActiveToolsChange(values: unknown[]): void {
+        if (this.readOnly()) return;
+        const merged = this.withKindMerged(this.effectiveToolKeys(), values);
+        this.pendingToolKeys.set(null);
+        this.selectedToolKeys.set(merged);
         this.emitToolsChange();
     }
 
     readonly fileRows = signal<SurfaceFileRow[]>([]);
-    readonly allowCreation = signal<boolean>(false);
+    readonly collapsedFolderPaths = signal<Set<string>>(new Set());
     readonly permColumns = SURFACE_FILE_PERM_COLUMNS;
 
     readonly fileDropdownNodes = signal<SelectDropdownTreeNode[]>([]);
@@ -278,7 +338,11 @@ export class SurfaceCardComponent {
 
     readonly selectedFileIds = computed<number[]>(() => this.fileRows().map((r) => r.id));
 
-    readonly fileStats = computed(() => ({ files: this.fileRows().length }));
+    readonly fileStats = computed(() => buildSurfaceFileStats(this.fileRows()));
+
+    readonly displayFileRows = computed(() =>
+        buildSurfaceFileDisplayRows(this.fileRows(), this.collapsedFolderPaths())
+    );
 
     readonly loadStorageChildren = (node: SelectDropdownTreeNode): Observable<SelectDropdownTreeNode[]> => {
         const prefix = this.nodePathById.get(node.id) ?? '';
@@ -303,7 +367,6 @@ export class SurfaceCardComponent {
 
     readonly collectionOptions = this.catalogs.collections;
     readonly selectedCollectionIds = signal<Set<number>>(new Set());
-    readonly allowCollectionCreation = signal<boolean>(false);
     readonly collectionAdvancedOpen = signal<boolean>(false);
 
     readonly collectionHeaderAction: SelectDropdownHeaderAction = { icon: 'plus', label: 'Add new collection' };
@@ -320,7 +383,6 @@ export class SurfaceCardComponent {
         effect(() => {
             const s = this.surface();
             this.instructions.set(s?.instructions ?? '');
-            this.allowCreation.set(s?.allow_creation ?? false);
             const toolKeys = new Set<string>([
                 ...(s?.python_tools ?? []).map((t) => `python:${t.python_tool}`),
                 ...(s?.mcp_tools ?? []).map((t) => `mcp:${t.mcp_tool}`),
@@ -392,13 +454,6 @@ export class SurfaceCardComponent {
         this.surfaceChange.emit({ instructions: value });
     }
 
-    onAllowCreationChange(value: boolean): void {
-        if (this.readOnly()) return;
-        this.allowCreation.set(value);
-        if (this.isCreating()) return;
-        this.surfaceChange.emit({ allow_creation: value });
-    }
-
     onToolsChange(values: unknown[]): void {
         if (this.readOnly()) return;
         this.selectedToolKeys.set(new Set(values as string[]));
@@ -414,6 +469,24 @@ export class SurfaceCardComponent {
             return next;
         });
         this.emitToolsChange();
+    }
+
+    private confirmClearBundle(kind: SurfaceBundleClearKind, size: number, apply: () => void): void {
+        if (this.readOnly() || size === 0) return;
+        this.confirm
+            .confirm(buildClearSurfaceBundleDialog(kind, this.surface()?.name), { width: DELETE_CONFIRM_DIALOG_WIDTH })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((result) => {
+                if (result === true) apply();
+            });
+    }
+
+    clearTools(event: MouseEvent): void {
+        event.stopPropagation();
+        this.confirmClearBundle('tools', this.selectedToolKeys().size, () => {
+            this.selectedToolKeys.set(new Set());
+            this.emitToolsChange();
+        });
     }
 
     private buildToolsPayload(): { python_tools: SurfacePythonTool[]; mcp_tools: SurfaceMcpTool[] } {
@@ -500,8 +573,18 @@ export class SurfaceCardComponent {
 
     clearFiles(): void {
         if (this.readOnly()) return;
-        this.fileRows.set([]);
+        this.fileRows.update((rows) =>
+            rows.map((r) => ({ ...r, perms: { list: 'unset', view: 'unset', edit: 'unset', delete: 'unset' } }))
+        );
         this.emitStorageChange();
+    }
+
+    clearAllFiles(event: MouseEvent): void {
+        event.stopPropagation();
+        this.confirmClearBundle('files', this.fileRows().length, () => {
+            this.fileRows.set([]);
+            this.emitStorageChange();
+        });
     }
 
     openAddFiles(): void {
@@ -552,6 +635,14 @@ export class SurfaceCardComponent {
             return next;
         });
         this.emitKnowledgeChange();
+    }
+
+    clearCollections(event: MouseEvent): void {
+        event.stopPropagation();
+        this.confirmClearBundle('collections', this.selectedCollectionIds().size, () => {
+            this.selectedCollectionIds.set(new Set());
+            this.emitKnowledgeChange();
+        });
     }
 
     openAddCollection(): void {
@@ -609,8 +700,42 @@ export class SurfaceCardComponent {
         this.cancel.emit();
     }
 
+    toggleFolder(path: string, event: MouseEvent): void {
+        event.stopPropagation();
+        this.collapsedFolderPaths.update((set) => {
+            const next = new Set(set);
+            if (next.has(path)) next.delete(path);
+            else next.add(path);
+            return next;
+        });
+    }
+
+    folderPermState(folderPath: string, key: keyof SurfaceFilePerms): PermTriState {
+        const descendants = filesInFolder(this.fileRows(), folderPath);
+        if (!descendants.length) return 'unset';
+        const states = descendants.map((file) => file.perms[key]);
+        const first = states[0];
+        return states.every((state) => state === first) ? first : 'unset';
+    }
+
+    toggleFolderPerm(folderPath: string, key: keyof SurfaceFilePerms): void {
+        if (this.readOnly()) return;
+        const descendants = filesInFolder(this.fileRows(), folderPath);
+        if (!descendants.length) return;
+        const next = nextPermState(this.folderPermState(folderPath, key));
+        const ids = new Set(descendants.map((file) => file.id));
+        this.fileRows.update((rows) =>
+            rows.map((row) => (ids.has(row.id) ? { ...row, perms: { ...row.perms, [key]: next } } : row))
+        );
+        this.emitStorageChange();
+    }
+
     fileTrackBy(_i: number, row: SurfaceFileRow): number {
         return row.id;
+    }
+
+    displayRowTrackBy(_i: number, row: SurfaceFileDisplayRow): string {
+        return row.kind === 'folder' ? `folder:${row.path}` : `file:${row.row.id}`;
     }
 }
 

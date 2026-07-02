@@ -61,7 +61,9 @@
                         <button
                             type="button"
                             class="surface-card__action surface-card__action--accent"
-                            title="Open in Shared Surfaces"
+                            matTooltip="Open in Shared Surfaces"
+                            matTooltipPosition="above"
+                            matTooltipClass="custom-tooltip"
                             (click)="onHeaderAction('openSource', $event)"
                         >
                             <app-svg-icon
@@ -72,51 +74,54 @@
                         <button
                             type="button"
                             class="surface-card__action surface-card__action--accent"
-                            title="Detach from agent"
+                            matTooltip="Detach from agent"
+                            matTooltipPosition="above"
+                            matTooltipClass="custom-tooltip"
                             (click)="onHeaderAction('detach', $event)"
                         >
                             <app-svg-icon
                                 icon="x"
+                                size="24px"
+                            />
+                        </button>
+                    }
+
+                    @if (showDelete()) {
+                        <button
+                            type="button"
+                            class="surface-card__action surface-card__action--accent"
+                            matTooltip="Delete surface"
+                            matTooltipPosition="above"
+                            matTooltipClass="custom-tooltip"
+                            (click)="onHeaderAction('delete', $event)"
+                        >
+                            <app-svg-icon
+                                icon="trash"
                                 size="14px"
                             />
                         </button>
                     }
 
-                    <div class="surface-card__menu-wrap">
-                        <button
-                            type="button"
-                            class="surface-card__action surface-card__action--accent"
-                            aria-label="More actions"
-                            (click)="toggleMenu($event)"
-                        >
-                            <app-svg-icon
-                                icon="dots-vertical"
-                                size="14px"
-                            />
-                        </button>
-                        @if (menuOpen()) {
-                            <div
-                                class="surface-card__menu-backdrop"
-                                (click)="closeMenu()"
-                            ></div>
-                            <div class="surface-card__menu">
-                                @if (isShared()) {
-                                    @if (readOnly()) {
-                                        <button
-                                            type="button"
-                                            class="surface-card__menu-item"
-                                            (click)="onHeaderAction('makeCopy', $event)"
-                                        >
-                                            Make Agent-Specific Copy
-                                        </button>
-                                        <button
-                                            type="button"
-                                            class="surface-card__menu-item"
-                                            (click)="onHeaderAction('detach', $event)"
-                                        >
-                                            Detach from agent
-                                        </button>
-                                    } @else {
+                    @if (hasMenuItems()) {
+                        <div class="surface-card__menu-wrap">
+                            <button
+                                type="button"
+                                class="surface-card__action surface-card__action--accent"
+                                aria-label="More actions"
+                                (click)="toggleMenu($event)"
+                            >
+                                <app-svg-icon
+                                    icon="dots-vertical"
+                                    size="14px"
+                                />
+                            </button>
+                            @if (menuOpen()) {
+                                <div
+                                    class="surface-card__menu-backdrop"
+                                    (click)="closeMenu()"
+                                ></div>
+                                <div class="surface-card__menu">
+                                    @if (showAgentSpecificMenu()) {
                                         <button
                                             type="button"
                                             class="surface-card__menu-item"
@@ -126,38 +131,42 @@
                                         </button>
                                         <button
                                             type="button"
-                                            class="surface-card__menu-item surface-card__menu-item--danger"
-                                            (click)="onHeaderAction('delete', $event)"
+                                            class="surface-card__menu-item"
+                                            (click)="onHeaderAction('makeShared', $event)"
                                         >
-                                            Delete
+                                            Make Shared
+                                        </button>
+                                    } @else if (showSharedInAgentMenu()) {
+                                        <button
+                                            type="button"
+                                            class="surface-card__menu-item"
+                                            (click)="onHeaderAction('makeCopy', $event)"
+                                        >
+                                            Make Agent-Specific Copy
+                                        </button>
+                                        @for (target of moveTargets(); track target.place; let first = $first) {
+                                            <button
+                                                type="button"
+                                                class="surface-card__menu-item"
+                                                [class.surface-card__menu-item--no-divider]="!first"
+                                                (click)="onMoveToPlace(target.place, $event)"
+                                            >
+                                                {{ target.label }}
+                                            </button>
+                                        }
+                                    } @else if (showSharedSurfacesMenu()) {
+                                        <button
+                                            type="button"
+                                            class="surface-card__menu-item"
+                                            (click)="onHeaderAction('duplicate', $event)"
+                                        >
+                                            Duplicate
                                         </button>
                                     }
-                                } @else {
-                                    <button
-                                        type="button"
-                                        class="surface-card__menu-item"
-                                        (click)="onHeaderAction('makeShared', $event)"
-                                    >
-                                        Make Shared
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="surface-card__menu-item"
-                                        (click)="onHeaderAction('duplicate', $event)"
-                                    >
-                                        Duplicate
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="surface-card__menu-item surface-card__menu-item--danger"
-                                        (click)="onHeaderAction('delete', $event)"
-                                    >
-                                        Delete
-                                    </button>
-                                }
-                            </div>
-                        }
-                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
                 </div>
             }
         </div>
@@ -251,7 +260,8 @@
                     [items]="activeToolItems()"
                     [selected]="activeToolIds()"
                     (selectionChange)="onActiveToolsChange($event)"
-                    (openedChange)="toolsExpanded.set($event)"
+                    (draftChange)="onActiveToolsDraftChange($event)"
+                    (openedChange)="onToolsOpenedChange($event)"
                     [searchPlaceholder]="toolSubtab() === 'custom' ? 'Search custom tools...' : 'Search MCP tools...'"
                 >
                     <button
@@ -280,10 +290,19 @@
                         <div class="res-table__head">
                             <span class="res-table__col-resource">Resource</span>
                             <span class="res-table__col-action">
-                                <app-svg-icon
-                                    icon="trash"
-                                    size="14px"
-                                />
+                                @if (!readOnly()) {
+                                    <button
+                                        type="button"
+                                        class="res-table__clear"
+                                        aria-label="Remove all tools"
+                                        (click)="clearTools($event)"
+                                    >
+                                        <app-svg-icon
+                                            icon="trash"
+                                            size="14px"
+                                        />
+                                    </button>
+                                }
                             </span>
                         </div>
                         @for (tool of selectedTools(); track toolKey(tool)) {
@@ -331,7 +350,15 @@
                         type="button"
                         class="picker__toggle"
                     >
-                        <span class="picker__toggle-label"> {{ fileStats().files }} file(s) selected </span>
+                        <span class="picker__toggle-label">
+                            @if (fileStats().files === 0) {
+                                Select files
+                            } @else if (fileStats().folders > 0) {
+                                {{ fileStats().folders }} folder(s) selected ({{ fileStats().files }} files total)
+                            } @else {
+                                {{ fileStats().files }} file(s) selected
+                            }
+                        </span>
                         <app-svg-icon
                             class="picker__toggle-chevron"
                             [class.picker__toggle-chevron--open]="filesExpanded()"
@@ -342,14 +369,6 @@
                 </app-select-dropdown>
 
                 <div class="files-toolbar files-toolbar--end">
-                    <span class="files-toolbar__toggle">
-                        Allow File Creation
-                        <app-toggle-switch
-                            [checked]="allowCreation()"
-                            (checkedChange)="onAllowCreationChange($event)"
-                        />
-                    </span>
-
                     <button
                         type="button"
                         class="files-toolbar__btn"
@@ -391,59 +410,133 @@
                                 />
                             </span>
                         }
-                        <span class="file-table__col-remove"></span>
-                    </div>
-
-                    @for (row of fileRows(); track fileTrackBy($index, row)) {
-                        <div class="file-row">
-                            <span class="file-row__resource">
-                                <span class="file-row__chevron-spacer"></span>
-                                <span
-                                    class="file-row__name"
-                                    [title]="row.path || row.name"
-                                    >{{ row.name }}</span
-                                >
-                            </span>
-
-                            @for (col of visiblePermColumns(); track col.key) {
-                                <span class="file-row__perm">
-                                    <button
-                                        type="button"
-                                        class="perm-cell"
-                                        [class.perm-cell--allow]="row.perms[col.key] === 'allow'"
-                                        [class.perm-cell--deny]="row.perms[col.key] === 'deny'"
-                                        [title]="row.perms[col.key]"
-                                        (click)="togglePerm(row, col.key)"
-                                    >
-                                        @if (row.perms[col.key] === 'allow') {
-                                            <app-svg-icon
-                                                icon="checkbox-tick"
-                                                size="16px"
-                                            />
-                                        } @else if (row.perms[col.key] === 'deny') {
-                                            <app-svg-icon
-                                                icon="x"
-                                                size="10px"
-                                            />
-                                        }
-                                    </button>
-                                </span>
-                            }
-
-                            <span class="file-row__remove">
+                        <span class="file-table__col-remove">
+                            @if (!readOnly()) {
                                 <button
                                     type="button"
-                                    class="file-row__remove-btn"
-                                    aria-label="Remove"
-                                    (click)="removeFileRow(row, $event)"
+                                    class="file-table__clear"
+                                    aria-label="Remove all files"
+                                    (click)="clearAllFiles($event)"
                                 >
                                     <app-svg-icon
-                                        icon="x"
-                                        size="12px"
+                                        icon="trash"
+                                        size="14px"
                                     />
                                 </button>
-                            </span>
-                        </div>
+                            }
+                        </span>
+                    </div>
+
+                    @for (row of displayFileRows(); track displayRowTrackBy($index, row)) {
+                        @if (row.kind === 'folder') {
+                            <div
+                                class="file-row file-row--folder"
+                                [style.--row-depth]="row.depth"
+                            >
+                                <span
+                                    class="file-row__resource file-row__resource--folder"
+                                    (click)="toggleFolder(row.path, $event)"
+                                >
+                                    <button
+                                        type="button"
+                                        class="file-row__chevron"
+                                        [class.file-row__chevron--open]="row.expanded"
+                                        aria-label="Toggle folder"
+                                        (click)="toggleFolder(row.path, $event)"
+                                    >
+                                        <app-svg-icon
+                                            icon="chevron-down-filled"
+                                            size="8px"
+                                        />
+                                    </button>
+                                    <span
+                                        class="file-row__name"
+                                        [title]="row.path"
+                                        >{{ row.name }}</span
+                                    >
+                                </span>
+
+                                @for (col of visiblePermColumns(); track col.key) {
+                                    <span class="file-row__perm">
+                                        <button
+                                            type="button"
+                                            class="perm-cell"
+                                            [class.perm-cell--allow]="folderPermState(row.path, col.key) === 'allow'"
+                                            [class.perm-cell--deny]="folderPermState(row.path, col.key) === 'deny'"
+                                            [title]="folderPermState(row.path, col.key)"
+                                            (click)="toggleFolderPerm(row.path, col.key)"
+                                        >
+                                            @if (folderPermState(row.path, col.key) === 'allow') {
+                                                <app-svg-icon
+                                                    icon="checkbox-tick"
+                                                    size="16px"
+                                                />
+                                            } @else if (folderPermState(row.path, col.key) === 'deny') {
+                                                <app-svg-icon
+                                                    icon="x"
+                                                    size="10px"
+                                                />
+                                            }
+                                        </button>
+                                    </span>
+                                }
+
+                                <span class="file-row__remove"></span>
+                            </div>
+                        } @else {
+                            <div
+                                class="file-row file-row--file"
+                                [style.--row-depth]="row.depth"
+                            >
+                                <span class="file-row__resource">
+                                    <span class="file-row__chevron-spacer"></span>
+                                    <span
+                                        class="file-row__name"
+                                        [title]="row.row.path || row.row.name"
+                                        >{{ row.row.name }}</span
+                                    >
+                                </span>
+
+                                @for (col of visiblePermColumns(); track col.key) {
+                                    <span class="file-row__perm">
+                                        <button
+                                            type="button"
+                                            class="perm-cell"
+                                            [class.perm-cell--allow]="row.row.perms[col.key] === 'allow'"
+                                            [class.perm-cell--deny]="row.row.perms[col.key] === 'deny'"
+                                            [title]="row.row.perms[col.key]"
+                                            (click)="togglePerm(row.row, col.key)"
+                                        >
+                                            @if (row.row.perms[col.key] === 'allow') {
+                                                <app-svg-icon
+                                                    icon="checkbox-tick"
+                                                    size="16px"
+                                                />
+                                            } @else if (row.row.perms[col.key] === 'deny') {
+                                                <app-svg-icon
+                                                    icon="x"
+                                                    size="10px"
+                                                />
+                                            }
+                                        </button>
+                                    </span>
+                                }
+
+                                <span class="file-row__remove">
+                                    <button
+                                        type="button"
+                                        class="file-row__remove-btn"
+                                        aria-label="Remove"
+                                        (click)="removeFileRow(row.row, $event)"
+                                    >
+                                        <app-svg-icon
+                                            icon="x"
+                                            size="12px"
+                                        />
+                                    </button>
+                                </span>
+                            </div>
+                        }
                     } @empty {
                         <p class="file-table__empty">No files selected.</p>
                     }
@@ -485,25 +578,24 @@
                     </button>
                 </app-select-dropdown>
 
-                <div class="files-toolbar files-toolbar--end">
-                    <span class="files-toolbar__toggle">
-                        Allow Collection Creation
-                        <app-toggle-switch
-                            [checked]="allowCollectionCreation()"
-                            (checkedChange)="allowCollectionCreation.set($event)"
-                        />
-                    </span>
-                </div>
-
                 @if (selectedCollections().length > 0) {
                     <div class="res-table">
                         <div class="res-table__head">
                             <span class="res-table__col-resource">Resource</span>
                             <span class="res-table__col-action">
-                                <app-svg-icon
-                                    icon="trash"
-                                    size="14px"
-                                />
+                                @if (!readOnly()) {
+                                    <button
+                                        type="button"
+                                        class="res-table__clear"
+                                        aria-label="Remove all collections"
+                                        (click)="clearCollections($event)"
+                                    >
+                                        <app-svg-icon
+                                            icon="trash"
+                                            size="14px"
+                                        />
+                                    </button>
+                                }
                             </span>
                         </div>
                         @for (col of selectedCollections(); track col.id) {

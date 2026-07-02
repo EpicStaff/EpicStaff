@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
 
 import { AgentDefinition } from '../../../../models/agent-definition.model';
 import { CreateSurfaceRequest, PartialUpdateSurfaceRequest, Surface } from '../../../../models/surface.model';
+import { SurfaceCategoryId } from '../../../../models/surface-category.model';
 import { SurfaceCardComponent } from '../agent-detail/agent-surfaces-panel/surface-card/surface-card.component';
 
 @Component({
@@ -17,6 +18,7 @@ export class SurfaceDetailComponent {
     readOnly = input<boolean>(false);
     isShared = input<boolean>(false);
     showMeta = input<boolean>(false);
+    currentPlace = input<SurfaceCategoryId | null>(null);
     agents = input<AgentDefinition[]>([]);
 
     readonly create = output<CreateSurfaceRequest>();
@@ -24,7 +26,9 @@ export class SurfaceDetailComponent {
     readonly surfaceChange = output<PartialUpdateSurfaceRequest>();
     readonly openSource = output<void>();
     readonly detach = output<void>();
+    readonly makeShared = output<void>();
     readonly makeAgentSpecificCopy = output<void>();
+    readonly moveSurfacePlace = output<SurfaceCategoryId>();
     readonly duplicate = output<void>();
     readonly deleteSurface = output<void>();
 }

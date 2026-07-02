@@ -80,5 +80,3 @@ export interface SurfaceListItem {
 export function toSurfaceListItem(s: Surface): SurfaceListItem {
     return { id: s.id, name: s.name };
 }
-
-// TODO(EST-2946): "Allow Collection Creation" has no backend field
