@@ -140,6 +140,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     @Input() flowName: string = '';
     @Input() initialNodeId: string | null = null;
     @Input() isSaving: boolean = false;
+    @Input() hasUnsavedChanges: boolean = false;
 
     @Output() save = new EventEmitter<FlowModel>();
     @Output() requestReload = new EventEmitter<void>();
@@ -1251,7 +1252,14 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onExportSelectedAsJson(): void {
-        this.triggerPartialExport(this.selectedNodeIds());
+        const selectedIds = this.selectedNodeIds();
+        const nodes = this.flowService.nodes();
+        const hasUnsaved = selectedIds.some((id) => nodes.find((n) => n.id === id)?.backendId === null);
+        if (hasUnsaved) {
+            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+            return;
+        }
+        this.triggerPartialExport(selectedIds);
     }
 
     public onExportSelectedAsCsv(): void {
@@ -1289,13 +1297,16 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onExportAllAsJson(): void {
+        if (this.flowService.nodes().some((n) => n.backendId === null)) {
+            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+            return;
+        }
         this.triggerPartialExport([]);
     }
 
     public onImportNodes(): void {
         if (!this.currentFlowId) return;
-        const hasUnsavedNodes = this.flowService.nodes().some((n) => n.backendId === null);
-        if (hasUnsavedNodes) {
+        if (this.hasUnsavedChanges) {
             this.toastService.warning('Save the flow before importing', 3000, 'bottom-right');
             return;
         }

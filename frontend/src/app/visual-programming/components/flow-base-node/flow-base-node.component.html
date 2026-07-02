@@ -1,7 +1,13 @@
 <!-- Node badge number -->
 <div
     class="node-name-wrapper"
-    *ngIf="!noteNode && node.nodeNumber != null && node.type !== NodeType.CLASSIFICATION_TABLE"
+    *ngIf="
+        !noteNode &&
+        node.nodeNumber != null &&
+        node.type !== NodeType.CLASSIFICATION_TABLE &&
+        node.type !== NodeType.START &&
+        node.type !== NodeType.END
+    "
 >
     <div class="node-name-label">#{{ node.nodeNumber }}</div>
 </div>

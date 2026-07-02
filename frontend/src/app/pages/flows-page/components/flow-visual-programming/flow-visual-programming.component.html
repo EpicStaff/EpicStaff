@@ -37,6 +37,7 @@
             [flowName]="graph.name"
             [initialNodeId]="initialNodeId"
             [isSaving]="isSaving()"
+            [hasUnsavedChanges]="hasUnsavedChanges()"
             (save)="onGraphSave($event)"
             (openShortcuts)="openShortcutsModal($event)"
             (requestReload)="refreshCurrentFlow()"
