@@ -2,6 +2,7 @@
 import { Overlay, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
@@ -9,6 +10,7 @@ import {
     effect,
     ElementRef,
     inject,
+    Injector,
     input,
     model,
     output,
@@ -104,7 +106,16 @@ export class SelectDropdownComponent {
     private readonly overlayPositionBuilder = inject(OverlayPositionBuilder);
     private readonly vcr = inject(ViewContainerRef);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly injector = inject(Injector);
     private overlayRef: OverlayRef | null = null;
+
+    // Largest visible-row count seen since the panel opened. Repositioning the overlay
+    // (to claim more space) only fires when the count grows past this — so expanding a
+    // folder can enlarge the panel, but collapsing never shrinks it (no jumpiness).
+    private maxRowsSinceOpen = 0;
+    // Panel min-height floor (px) that ratchets up as rows expand; keeps the panel from
+    // wrapping smaller when the tree collapses. Reset to 0 on each open.
+    private readonly stickyMinHeight = signal(0);
 
     readonly isOpen = signal(false);
     readonly search = signal('');
@@ -137,6 +148,9 @@ export class SelectDropdownComponent {
         return typeof h === 'number' ? `min(${h}px, 90vh)` : h;
     });
 
+    /** Ratcheting min-height (px) so the panel never shrinks back within an open session. */
+    readonly panelMinHeight = computed<number | null>(() => this.stickyMinHeight() || null);
+
     constructor() {
         // Clone nodes() into a mutable runtime tree only when the input ref changes,
         // so user expand state survives unrelated change-detection cycles.
@@ -166,6 +180,36 @@ export class SelectDropdownComponent {
                 if (this.selectedOnTop()) this.buildFrozenOrder();
             });
         });
+
+        // Grow-only sizing: when expanding rows makes the panel need more room, re-run
+        // CDK's flexible positioning so it can claim the extra space (flip above, push),
+        // then pin the panel's achieved height as a min-height floor. Collapsing rows
+        // never triggers this, and the floor keeps the panel from wrapping smaller — so
+        // the panel only ever grows within a single open session (no jumpiness).
+        effect(() => {
+            const rows = this.visibleRowCount();
+            const open = this.isOpen();
+            untracked(() => {
+                if (!open) return;
+                if (rows <= this.maxRowsSinceOpen) return;
+                this.maxRowsSinceOpen = rows;
+                afterNextRender(
+                    () => {
+                        this.overlayRef?.updatePosition();
+                        this.pinPanelFloor();
+                    },
+                    { injector: this.injector }
+                );
+            });
+        });
+    }
+
+    /** Ratchet the panel's min-height up to its current rendered height (never down). */
+    private pinPanelFloor(): void {
+        const panel = this.overlayRef?.overlayElement.querySelector<HTMLElement>('.select-dropdown__panel');
+        if (!panel) return;
+        const h = panel.offsetHeight;
+        if (h > this.stickyMinHeight()) this.stickyMinHeight.set(h);
     }
 
     // ============ OPEN / CLOSE / OVERLAY ============
@@ -182,6 +226,11 @@ export class SelectDropdownComponent {
             const positionStrategy = this.overlayPositionBuilder
                 .flexibleConnectedTo(triggerEl)
                 .withFlexibleDimensions(true)
+                // Without this, CDK clamps the panel to its first-open height on every
+                // updatePosition() (Math.min vs _lastBoundingBoxSize) — so expanding a
+                // folder just adds an inner scrollbar instead of using the free space
+                // down to the viewport edge. growAfterOpen lets it re-expand.
+                .withGrowAfterOpen(true)
                 .withViewportMargin(8)
                 .withPush(true)
                 .withPositions([
@@ -218,6 +267,10 @@ export class SelectDropdownComponent {
         if (this.mode() === 'list' && this.selectedOnTop()) {
             this.buildFrozenOrder();
         }
+
+        // Baseline for grow-only sizing; the panel opens sized to current content.
+        this.maxRowsSinceOpen = untracked(() => this.visibleRowCount());
+        this.stickyMinHeight.set(0);
 
         this.overlayRef.attach(new TemplatePortal(this.panelTemplate, this.vcr));
         this.isOpen.set(true);
@@ -318,6 +371,11 @@ export class SelectDropdownComponent {
         }
         return this.buildVisible(this.treeRoots(), 0);
     });
+
+    /** Rows currently rendered in the panel (list or tree) — drives grow-only reposition. */
+    readonly visibleRowCount = computed<number>(() =>
+        this.mode() === 'tree' ? this.visibleTree().length : this.filteredItems().length
+    );
 
     isNodeChecked(node: RuntimeTreeNode): boolean {
         if (node.type === 'file') return this.activeSet().has(node.id);
