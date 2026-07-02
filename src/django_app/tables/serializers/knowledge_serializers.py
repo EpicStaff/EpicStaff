@@ -58,6 +58,21 @@ class RagConfigurationSummarySerializer(serializers.Serializer):
     )
 
 
+class RagConfigurationBriefSerializer(serializers.Serializer):
+    """
+    Compact RAG configuration summary nested inside a SourceCollection.
+    """
+
+    rag_id = serializers.IntegerField(
+        allow_null=True,
+        help_text="ID of the specific RAG implementation (e.g., NaiveRag.naive_rag_id)",
+    )
+    rag_type = serializers.ChoiceField(
+        choices=["naive", "graph"], help_text="Type of RAG implementation"
+    )
+    status = serializers.CharField(help_text="Current processing status of the RAG")
+
+
 class BaseRagTypeSerializer(serializers.ModelSerializer):
     """Serializer for BaseRagType."""
 
@@ -198,10 +213,15 @@ class DocumentDetailSerializer(serializers.ModelSerializer):
 class SourceCollectionListSerializer(serializers.ModelSerializer):
     """
     Serializer for listing collections.
-    Shows basic collection info without related documents.
+    Shows basic collection info plus a compact view of available RAG
+    configurations (``rag_id``/``rag_type``/``status``). The full RAG summary is
+    served by the retrieve endpoint.
     """
 
     document_count = serializers.IntegerField(source="documents.count", read_only=True)
+    rag_configurations = serializers.SerializerMethodField(
+        help_text="Compact list of RAG configurations (rag_id, rag_type, status)"
+    )
 
     class Meta:
         model = SourceCollection
@@ -211,10 +231,44 @@ class SourceCollectionListSerializer(serializers.ModelSerializer):
             "user_id",
             "status",
             "document_count",
+            "rag_configurations",
             "created_at",
             "updated_at",
         ]
         read_only_fields = fields
+
+    def get_rag_configurations(self, obj):
+        """Compact RAG configs (rag_id/rag_type/status) for the collection list.
+
+        Uses the cheap ``brief`` builder; the queryset must be prefetched via
+        ``CollectionManagementService.rag_configurations_brief_prefetch()``.
+        Returns ``[]`` on error so one bad collection never breaks the list.
+        """
+        try:
+            rag_configs = []
+            for base_rag_type in obj.rag_types.all():
+                for naive_rag in base_rag_type.naive_rags.all():
+                    rag_configs.append(
+                        {
+                            "rag_id": naive_rag.naive_rag_id,
+                            "rag_type": "naive",
+                            "status": naive_rag.rag_status,
+                        }
+                    )
+                for graph_rag in base_rag_type.graph_rags.all():
+                    rag_configs.append(
+                        {
+                            "rag_id": graph_rag.graph_rag_id,
+                            "rag_type": "graph",
+                            "status": graph_rag.rag_status,
+                        }
+                    )
+            return RagConfigurationBriefSerializer(rag_configs, many=True).data
+        except Exception as e:
+            logger.error(
+                f"Error fetching RAG configurations for collection {obj.collection_id}: {e}"
+            )
+            return []
 
 
 class SourceCollectionDetailSerializer(serializers.ModelSerializer):
@@ -249,11 +303,17 @@ class SourceCollectionDetailSerializer(serializers.ModelSerializer):
         """
 
         try:
-            rag_configs = CollectionManagementService.get_rag_configurations(
-                obj.collection_id
-            )
-            serializer = RagConfigurationSummarySerializer(rag_configs, many=True)
-            return serializer.data
+            rag_configs = []
+            for base_rag_type in obj.rag_types.all():
+                for naive_rag in base_rag_type.naive_rags.all():
+                    rag_configs.append(
+                        CollectionManagementService._get_naive_rag_summary(naive_rag)
+                    )
+                for graph_rag in base_rag_type.graph_rags.all():
+                    rag_configs.append(
+                        CollectionManagementService._get_graph_rag_summary(graph_rag)
+                    )
+            return RagConfigurationSummarySerializer(rag_configs, many=True).data
         except Exception as e:
             logger.error(
                 f"Error fetching RAG configurations for collection {obj.collection_id}: {e}"

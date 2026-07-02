@@ -63,8 +63,16 @@ class SourceCollectionViewSet(viewsets.ModelViewSet):
         """Optimize queries based on action."""
         queryset = SourceCollection.objects.all()
 
-        if self.action == "list" or self.action == "retrieve":
-            queryset = queryset.prefetch_related("documents")
+        if self.action == "list":
+            queryset = queryset.prefetch_related(
+                "documents",
+                *CollectionManagementService.rag_configurations_brief_prefetch(),
+            )
+        elif self.action == "retrieve":
+            queryset = queryset.prefetch_related(
+                "documents",
+                *CollectionManagementService.rag_configurations_prefetch(),
+            )
 
         return queryset
 

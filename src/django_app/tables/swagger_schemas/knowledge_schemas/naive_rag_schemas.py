@@ -1,9 +1,10 @@
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiExample, OpenApiResponse
+from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse
 from tables.serializers.naive_rag_serializers import (
     ChunkPreviewResponseSerializer,
     ChunkingResponseSerializer,
 )
+from tables.serializers.serializers import ProcessRagIndexingSerializer
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
 NAIVE_RAG_DOCUMENT_CONFIGS_GET = dict(
@@ -754,7 +755,9 @@ NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST = dict(
     summary="Trigger document chunking and wait for completion",
     description=(
         "Trigger document chunking and wait for completion.\n\n"
-        "URL: GET /naive-rag/{naive_rag_id}/document-configs/{document_config_id}/process-chinking/\n\n"
+        "Target is identified entirely by the URL path parameters below — no "
+        "request body is required.\n\n"
+        "URL: POST /naive-rag/{naive_rag_id}/document-configs/{document_config_id}/process-chunking/\n\n"
         "Flow:\n"
         "1. Validate document config exists and belongs to naive_rag\n"
         "2. Generate chunking_job_id (UUID)\n"
@@ -762,6 +765,25 @@ NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST = dict(
         "4. Publish message to Redis and wait for response (50s timeout)\n"
         "5. Return result (completed, failed, cancelled, or timeout)"
     ),
+    parameters=[
+        OpenApiParameter(
+            name="naive_rag_id",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            required=True,
+            description="ID of the NaiveRag whose document should be chunked.",
+        ),
+        OpenApiParameter(
+            name="document_config_id",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            required=True,
+            description=(
+                "ID of the document config (NaiveRagDocumentConfig.naive_rag_document_id) "
+                "to chunk."
+            ),
+        ),
+    ],
     responses={
         200: ChunkingResponseSerializer,
         202: OpenApiResponse(
@@ -825,11 +847,32 @@ NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_POST = dict(
     description=(
         "Request cancellation of an in-flight document chunking.\n"
         "Publishes a cancel signal to the knowledge service, which stops the "
-        "running prechunk task.\n\n"
+        "running prechunk task for the given document config.\n\n"
+        "Target is identified entirely by the URL path parameters below — no "
+        "request body is required.\n\n"
         "Fire-and-forget: a 202 is returned regardless of whether chunking was "
         "actually in progress. If nothing was running, the signal is a no-op.\n\n"
         "URL: POST /naive-rag/{naive_rag_id}/document-configs/{document_config_id}/process-chunking/cancel/"
     ),
+    parameters=[
+        OpenApiParameter(
+            name="naive_rag_id",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            required=True,
+            description="ID of the NaiveRag whose document chunking is being cancelled.",
+        ),
+        OpenApiParameter(
+            name="document_config_id",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            required=True,
+            description=(
+                "ID of the document config (NaiveRagDocumentConfig.naive_rag_document_id) "
+                "whose running prechunk task should be stopped."
+            ),
+        ),
+    ],
     responses={
         202: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -1004,8 +1047,25 @@ PROCESS_RAG_INDEXING_POST = dict(
     description=(
         "Trigger RAG indexing (chunking + embedding).\n"
         "All business logic is handled by IndexingService.\n\n"
+        "Request body identifies the RAG to index:\n"
+        "- `rag_id` (int, required): ID of the specific RAG implementation "
+        "(NaiveRag.naive_rag_id or GraphRag.graph_rag_id).\n"
+        "- `rag_type` (str, required): RAG strategy — one of `naive`, `graph`.\n\n"
         "URL: POST /process-rag-indexing/"
     ),
+    request=ProcessRagIndexingSerializer,
+    examples=[
+        OpenApiExample(
+            name="Index naive RAG",
+            value={"rag_id": 1, "rag_type": "naive"},
+            request_only=True,
+        ),
+        OpenApiExample(
+            name="Index graph RAG",
+            value={"rag_id": 3, "rag_type": "graph"},
+            request_only=True,
+        ),
+    ],
     responses={
         202: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -1073,10 +1133,27 @@ CANCEL_RAG_INDEXING_POST = dict(
         "Request cancellation of an in-flight RAG indexing.\n"
         "Publishes a cancel signal to the knowledge service, which stops the "
         "running task and marks the RAG as CANCELLED.\n\n"
+        "Request body identifies the RAG to cancel:\n"
+        "- `rag_id` (int, required): ID of the specific RAG implementation "
+        "(NaiveRag.naive_rag_id or GraphRag.graph_rag_id).\n"
+        "- `rag_type` (str, required): RAG strategy — one of `naive`, `graph`.\n\n"
         "Fire-and-forget: a 202 is returned regardless of whether indexing was "
         "actually in progress. If nothing was running, the signal is a no-op.\n\n"
         "URL: POST /process-rag-indexing/cancel/"
     ),
+    request=ProcessRagIndexingSerializer,
+    examples=[
+        OpenApiExample(
+            name="Cancel naive RAG indexing",
+            value={"rag_id": 1, "rag_type": "naive"},
+            request_only=True,
+        ),
+        OpenApiExample(
+            name="Cancel graph RAG indexing",
+            value={"rag_id": 3, "rag_type": "graph"},
+            request_only=True,
+        ),
+    ],
     responses={
         202: OpenApiResponse(
             response=OpenApiTypes.STR,
