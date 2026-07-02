@@ -106,7 +106,7 @@ from tables.import_export.export_format_strategies import (
     JsonExportFormatStrategy,
     CsvExportFormatStrategy,
 )
-from tables.import_export.tabular.session import SessionTabularProjection
+from tables.import_export.export_tabular_projections.session import SessionTabularProjection
 
 from tables.swagger_schemas.crews_schema import CREW_DELETE
 from tables.swagger_schemas.default_config_schemas import (

@@ -1,11 +1,17 @@
 .action-dropdown-panel {
     &__inner {
+        width: 100%;
         background: var(--color-sidenav-background);
         border: 1px solid var(--color-divider-regular);
         border-radius: 8px;
-        min-width: 160px;
         overflow: hidden;
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+
+    &__separator {
+        height: 1px;
+        background: var(--color-divider-regular, #333);
+        margin: 4px 0;
     }
 
     &__item {

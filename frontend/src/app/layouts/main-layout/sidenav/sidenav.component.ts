@@ -11,6 +11,7 @@ import {
     signal,
     ViewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { ClickOutsideDirective } from '@shared/directives';
 
