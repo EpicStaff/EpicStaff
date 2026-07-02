@@ -16,25 +16,51 @@ def resolve_active_org_id(request) -> int:
     return org_id
 
 
-def org_visible_queryset(model, org_id):
-    """Rows of `model` visible to `org_id`, applying the same scoping rules as
-    the org viewset mixins — so non-FK reference resolution (e.g. the
-    string-encoded `tool_ids`) honours org isolation identically:
+def org_visible_q(model, org_id):
+    """The visibility filter (`Q`) for `model` under `org_id`, or ``None`` when the
+    model is global (has no `org` field). Single source of truth for the scoping
+    rules, shared by :func:`org_visible_queryset` and
+    :class:`OrgVisiblePrimaryKeyRelatedField`:
 
     - **hybrid** (`built_in` flag, e.g. PythonCodeTool): built-ins + own-org rows;
     - **hybrid** (`is_custom` flag, e.g. *Model): built-ins (is_custom=False) + own-org;
     - **strict** (has `org`, no flag, e.g. McpTool / PythonCodeToolConfig / configs):
       own-org rows only;
-    - **global** (no `org` field, e.g. the deprecated ToolConfig): all rows.
+    - **global** (no `org` field, e.g. the deprecated ToolConfig): ``None`` (no filter).
     """
     field_names = {f.name for f in model._meta.get_fields()}
     if "org" not in field_names:
-        return model.objects.all()
+        return None
     if "built_in" in field_names:
-        return model.objects.filter(Q(built_in=True) | Q(org_id=org_id))
+        return Q(built_in=True) | Q(org_id=org_id)
     if "is_custom" in field_names:
-        return model.objects.filter(Q(is_custom=False) | Q(org_id=org_id))
-    return model.objects.filter(org_id=org_id)
+        return Q(is_custom=False) | Q(org_id=org_id)
+    return Q(org_id=org_id)
+
+
+def org_visible_queryset(model, org_id):
+    """Rows of `model` visible to `org_id`, applying the same scoping rules as the
+    org viewset mixins — so non-FK reference resolution (e.g. the string-encoded
+    `tool_ids`) honours org isolation identically. See :func:`org_visible_q`."""
+    q = org_visible_q(model, org_id)
+    return model.objects.filter(q) if q is not None else model.objects.all()
+
+
+def _warn_missing_request(field) -> None:
+    """Log a warning when an org-scoped related field is resolved without a request
+    in context — a programming error (the serializer was built without
+    ``context={"request": request}``) that makes the field deny all pks."""
+    parent_name = (
+        type(field.parent).__name__
+        if field.parent is not None
+        else "<unbound serializer>"
+    )
+    logger.warning(
+        f"{type(field).__name__} '{field.field_name}' on {parent_name} was resolved "
+        f"without a request in the serializer context; denying all pks because org "
+        f"scope cannot be applied. Construct the serializer with the request in its "
+        f"context."
+    )
 
 
 class OrgScopedPrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
@@ -69,16 +95,31 @@ class OrgScopedPrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
         queryset = super().get_queryset()
         request = self.context.get("request")
         if request is None:
-            parent_name = (
-                type(self.parent).__name__
-                if self.parent is not None
-                else "<unbound serializer>"
-            )
-            logger.warning(
-                f"OrgScopedPrimaryKeyRelatedField '{self.field_name}' on "
-                f"{parent_name} was resolved without a request in the serializer "
-                f"context; denying all pks because org scope cannot be applied. "
-                f"Construct the serializer with the request in its context."
-            )
+            _warn_missing_request(self)
             return queryset.none()
         return queryset.filter(**{self.org_lookup: resolve_active_org_id(request)})
+
+
+class OrgVisiblePrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
+    """A ``PrimaryKeyRelatedField`` for **hybrid** org-scoped targets — models that
+    are either shared built-ins (visible to every org) or an org's own custom rows
+    (e.g. LLMModel / EmbeddingModel / Realtime*Model via ``is_custom``,
+    PythonCodeTool via ``built_in``).
+
+    Applies the :func:`org_visible_q` rule (built-ins OR active-org rows) so a pk
+    belonging to another org's custom rows is rejected exactly like a non-existent
+    pk, while shared built-ins stay referenceable. Use this — not
+    ``OrgScopedPrimaryKeyRelatedField`` — for FKs whose target is a hybrid model,
+    otherwise shared built-ins would wrongly become unreferenceable.
+
+    Same no-request deny+warn fallback as ``OrgScopedPrimaryKeyRelatedField``.
+    """
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        request = self.context.get("request")
+        if request is None:
+            _warn_missing_request(self)
+            return queryset.none()
+        q = org_visible_q(queryset.model, resolve_active_org_id(request))
+        return queryset.filter(q) if q is not None else queryset

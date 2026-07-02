@@ -3,6 +3,7 @@ from rest_framework import serializers
 
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.models.crew_models import Crew
+from tables.models.llm_models import LLMConfig
 from tables.serializers.model_serializers.crew_serializers import (
     CrewSerializer,
 )
@@ -88,6 +89,11 @@ class AudioTranscriptionNodeSerializer(
 
 
 class CodeAgentNodeSerializer(serializers.ModelSerializer):
+    # Org isolation: only an LLMConfig from the caller's active org may be referenced.
+    llm_config = OrgScopedPrimaryKeyRelatedField(
+        queryset=LLMConfig.objects.all(), required=False, allow_null=True
+    )
+
     class Meta:
         model = CodeAgentNode
         fields = "__all__"
