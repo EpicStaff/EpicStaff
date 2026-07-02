@@ -2,13 +2,17 @@ from django.http import HttpResponse
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status
 from rest_framework.decorators import action, parser_classes
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.parsers import MultiPartParser
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
-from tables.models import GraphStorageFile, Organization, StorageFile
+from tables.models import GraphStorageFile, StorageFile
 from tables.models.graph_models import Graph
+from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from tables.views.mixins import OrgScopedResolverMixin
+from tables.services.rbac.permissions import HasOrgPermission
 from tables.serializers.storage_serializers import (
     GraphStorageFileSerializer,
     StorageAddToGraphSerializer,
@@ -25,13 +29,8 @@ from tables.serializers.storage_serializers import (
     StorageTreeQuerySerializer,
     StorageUploadSerializer,
 )
-from tables.constants.organization_constants import (
-    DEFAULT_ORGANIZATION_NAME,
-    MOCK_USERNAME,
-)
 from tables.services.storage_service import get_storage_manager
 from tables.services.storage_service.dataclasses import FolderInfo
-from tables.storage_permissions import StoragePermission
 from tables.swagger_schemas.storage_schema import (
     STORAGE_ADD_TO_GRAPH_SWAGGER,
     STORAGE_COPY_SWAGGER,
@@ -51,20 +50,55 @@ from tables.swagger_schemas.storage_schema import (
 )
 
 
-class StorageAPIView(ViewSet):
-    permission_classes = [StoragePermission]
+class StorageAPIView(OrgScopedResolverMixin, ViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FILES
+    rbac_action_map = {
+        "list_files": Permission.READ,
+        "info": Permission.READ,
+        "download": Permission.READ,
+        "tree": Permission.READ,
+        "graph_files": Permission.READ,
+        "search": Permission.READ,
+        "download_zip": Permission.EXPORT,
+        "upload": Permission.CREATE,
+        "mkdir": Permission.CREATE,
+        "add_to_graph": Permission.CREATE,
+        "rename": Permission.UPDATE,
+        "move": Permission.UPDATE,
+        "copy": Permission.UPDATE,
+        "delete_file": Permission.DELETE,
+        "remove_from_graph": Permission.DELETE,
+    }
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.manager = get_storage_manager()
 
     def _resolve_context(self, request) -> tuple[str, int]:
-        """Return hardcoded default user and org, auto-created on first use."""
-        # TODO: Refactor! get org_id from request
-        org = Organization.objects.get(name=DEFAULT_ORGANIZATION_NAME)
-        # TODO: link to User model
-        # OrganizationUser.objects.get_or_create(name="default", organization=org)
-        return MOCK_USERNAME, org.id
+        """Resolve (user, active org) from the request.
+
+        The active org comes from the X-Organization-Id header (membership
+        validated by OrgContextService, same as HasOrgPermission). The manager
+        keys storage by org_id only — `user_name` is used for the membership
+        check + audit logging, not the storage path — so passing the real user
+        id does not orphan any files.
+        """
+        return request.user.id, self.get_active_org_id()
+
+    def _assert_cross_org_superadmin(self, request, src_org_id, dst_org_id) -> bool:
+        """True when this is a cross-org transfer; such transfers require
+        superadmin (operating across organizations is a platform action)."""
+        cross_org = bool(
+            src_org_id and dst_org_id and int(src_org_id) != int(dst_org_id)
+        )
+        # TODO: refactor by checking permision of READ in src_org_id then check permission of
+        # CREATE in dst_org_id, Part of cross-org RBAC feature
+        if cross_org and not getattr(request.user, "is_superadmin", False):
+            raise PermissionDenied(
+                "Cross-organization file transfer requires superadmin."
+            )
+        return cross_org
 
     @action(detail=False, methods=["get"], url_path="list")
     @swagger_auto_schema(**STORAGE_LIST_SWAGGER)
@@ -243,7 +277,7 @@ class StorageAPIView(ViewSet):
         dst_org_id = serializer.validated_data.get("destination_org_id")
 
         try:
-            if src_org_id and dst_org_id and int(src_org_id) != int(dst_org_id):
+            if self._assert_cross_org_superadmin(request, src_org_id, dst_org_id):
                 self.manager.move_cross_org(
                     user_name, int(src_org_id), from_path, int(dst_org_id), to_path
                 )
@@ -268,7 +302,7 @@ class StorageAPIView(ViewSet):
         dst_org_id = serializer.validated_data.get("destination_org_id")
 
         try:
-            if src_org_id and dst_org_id and int(src_org_id) != int(dst_org_id):
+            if self._assert_cross_org_superadmin(request, src_org_id, dst_org_id):
                 self.manager.copy_cross_org(
                     user_name, int(src_org_id), from_path, int(dst_org_id), to_path
                 )
@@ -288,7 +322,12 @@ class StorageAPIView(ViewSet):
         serializer = StorageAddToGraphSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         paths = serializer.validated_data["paths"]
-        graph_ids = serializer.validated_data["graph_ids"]
+        # Only link files to graphs in the active org (others are ignored).
+        graph_ids = list(
+            Graph.objects.filter(
+                id__in=serializer.validated_data["graph_ids"], org_id=org_id
+            ).values_list("id", flat=True)
+        )
 
         results = []
 
@@ -362,15 +401,19 @@ class StorageAPIView(ViewSet):
     @action(detail=False, methods=["get"], url_path="graph-files")
     @swagger_auto_schema(**STORAGE_GRAPH_FILES_SWAGGER)
     def graph_files(self, request):
+        org_id = self.get_active_org_id()
         params = StorageGraphFilesQuerySerializer(data=request.query_params)
         params.is_valid(raise_exception=True)
         graph_id = params.validated_data["graph_id"]
 
-        if not Graph.objects.filter(id=graph_id).exists():
+        # Graph must live in the active org (404 otherwise — no existence leak).
+        if not Graph.objects.filter(id=graph_id, org_id=org_id).exists():
             raise NotFound({"graph_id": f"Graph not found: {graph_id}"})
 
         qs = (
-            GraphStorageFile.objects.filter(graph_id=graph_id)
+            GraphStorageFile.objects.filter(
+                graph_id=graph_id, storage_file__org_id=org_id
+            )
             .select_related("storage_file")
             .order_by("added_at")
         )
