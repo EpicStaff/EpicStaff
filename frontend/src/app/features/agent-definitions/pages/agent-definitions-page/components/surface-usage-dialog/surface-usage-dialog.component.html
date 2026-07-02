@@ -1,0 +1,160 @@
+<div
+    class="usage-backdrop"
+    (click)="close.emit()"
+></div>
+
+<div
+    class="usage-dialog"
+    role="dialog"
+    aria-label="Surface Usage"
+>
+    <header class="usage-dialog__header">
+        <h2 class="usage-dialog__title">Surface Usage</h2>
+        <button
+            type="button"
+            class="usage-dialog__close"
+            aria-label="Close"
+            (click)="close.emit()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="16px"
+            />
+        </button>
+    </header>
+
+    <div class="usage-dialog__body">
+        <section class="usage-summary">
+            <div class="usage-section__heading">
+                Summary <span class="usage-section__count">{{ total() }}</span>
+            </div>
+            <div class="usage-summary__cards">
+                <div class="usage-summary__card">
+                    <app-svg-icon
+                        class="usage-summary__card-icon"
+                        icon="agents-tab"
+                        size="16px"
+                    />
+                    <span class="usage-summary__card-label">
+                        <strong>{{ agentCount() }}</strong> agents
+                    </span>
+                </div>
+                <div class="usage-summary__card">
+                    <app-svg-icon
+                        class="usage-summary__card-icon"
+                        icon="flow"
+                        size="16px"
+                    />
+                    <span class="usage-summary__card-label">
+                        <strong>{{ flowCount() }}</strong> flows
+                    </span>
+                </div>
+                <div class="usage-summary__card">
+                    <app-svg-icon
+                        class="usage-summary__card-icon"
+                        icon="chats"
+                        size="16px"
+                    />
+                    <span class="usage-summary__card-label">
+                        <strong>{{ chatCount() }}</strong> chats
+                    </span>
+                </div>
+            </div>
+        </section>
+        <section class="usage-section">
+            <div class="usage-section__heading">
+                <app-svg-icon
+                    class="usage-section__heading-icon"
+                    icon="agents-tab"
+                    size="16px"
+                />
+                Agent <span class="usage-section__count">{{ agentCount() }}</span>
+            </div>
+            <ul class="usage-list">
+                @for (a of usage().agents; track a.agentId) {
+                    <li class="usage-row">
+                        <span class="usage-row__name">{{ a.agentName }}</span>
+                        <span class="usage-row__place">{{ a.placeLabel }}</span>
+                        <button
+                            type="button"
+                            class="usage-row__open"
+                            aria-label="Open agent"
+                            (click)="openAgent.emit(a.agentId)"
+                        >
+                            <app-svg-icon
+                                icon="arrow-up-right"
+                                size="14px"
+                            />
+                        </button>
+                    </li>
+                } @empty {
+                    <li class="usage-list__empty">Not used by any agent.</li>
+                }
+            </ul>
+        </section>
+        <section class="usage-section">
+            <div class="usage-section__heading">
+                <app-svg-icon
+                    class="usage-section__heading-icon"
+                    icon="flow"
+                    size="16px"
+                />
+                Flow <span class="usage-section__count">{{ flowCount() }}</span>
+            </div>
+            <ul class="usage-list">
+                @for (f of usage().flows; track f.id) {
+                    <li class="usage-row">
+                        <span class="usage-row__name">{{ f.name }}</span>
+                        @if (f.active) {
+                            <span class="usage-row__status">
+                                <span class="usage-row__status-dot"></span>
+                                Active
+                            </span>
+                        }
+                        <button
+                            type="button"
+                            class="usage-row__open"
+                            aria-label="Open flow"
+                        >
+                            <app-svg-icon
+                                icon="arrow-up-right"
+                                size="14px"
+                            />
+                        </button>
+                    </li>
+                } @empty {
+                    <li class="usage-list__empty">No direct flow usage yet.</li>
+                }
+            </ul>
+        </section>
+        <section class="usage-section">
+            <div class="usage-section__heading">
+                <app-svg-icon
+                    class="usage-section__heading-icon"
+                    icon="chats"
+                    size="16px"
+                />
+                Chat <span class="usage-section__count">{{ chatCount() }}</span>
+            </div>
+            <ul class="usage-list">
+                @for (c of usage().chats; track c.id) {
+                    <li class="usage-row">
+                        <span class="usage-row__name">{{ c.name }}</span>
+                        <button
+                            type="button"
+                            class="usage-row__open"
+                            aria-label="Open chat"
+                        >
+                            <app-svg-icon
+                                icon="arrow-up-right"
+                                size="14px"
+                            />
+                        </button>
+                    </li>
+                } @empty {
+                    <li class="usage-list__empty">No direct chat usage yet.</li>
+                }
+            </ul>
+        </section>
+    </div>
+</div>

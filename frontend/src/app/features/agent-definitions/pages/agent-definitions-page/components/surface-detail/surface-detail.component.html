@@ -1,0 +1,18 @@
+<app-surface-card
+    class="detail__surface-card"
+    [surface]="surface()"
+    [isCreating]="isCreating()"
+    [readOnly]="readOnly()"
+    [isShared]="isShared()"
+    [showMeta]="showMeta()"
+    [agents]="agents()"
+    [expanded]="true"
+    (renameSurface)="rename.emit($event)"
+    (createDraft)="create.emit($event)"
+    (surfaceChange)="surfaceChange.emit($event)"
+    (openSource)="openSource.emit()"
+    (detach)="detach.emit()"
+    (makeAgentSpecificCopy)="makeAgentSpecificCopy.emit()"
+    (duplicate)="duplicate.emit()"
+    (deleteSurface)="deleteSurface.emit()"
+/>

@@ -1,0 +1,55 @@
+﻿<div class="doc-preview">
+    <app-detail-header
+        [showSidebar]="showSidebar()"
+        [crumbs]="crumbs()"
+        (toggleSidebar)="toggleSidebar.emit()"
+        (navAgent)="openAgent.emit($event)"
+    >
+        <div
+            class="doc-toggle"
+            role="tablist"
+        >
+            <button
+                type="button"
+                class="doc-toggle__btn"
+                [class.doc-toggle__btn--active]="mode() === 'preview'"
+                (click)="setMode('preview')"
+            >
+                <app-svg-icon
+                    icon="eye"
+                    size="14px"
+                />
+                Preview
+            </button>
+            <button
+                type="button"
+                class="doc-toggle__btn"
+                [class.doc-toggle__btn--active]="mode() === 'markdown'"
+                (click)="setMode('markdown')"
+            >
+                <app-svg-icon
+                    icon="edit"
+                    size="14px"
+                />
+                Edit
+            </button>
+        </div>
+    </app-detail-header>
+
+    <div class="doc-body">
+        @if (mode() === 'markdown') {
+            <ngx-monaco-editor
+                class="doc-editor"
+                [options]="monacoOptions"
+                [ngModel]="draft()"
+                (ngModelChange)="draft.set($event)"
+                (onInit)="onEditorInit($event)"
+            ></ngx-monaco-editor>
+        } @else {
+            <markdown
+                class="doc-rendered"
+                [data]="draft()"
+            ></markdown>
+        }
+    </div>
+</div>
