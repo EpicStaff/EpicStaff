@@ -1,0 +1,542 @@
+﻿<div
+    class="surface-card"
+    [class.surface-card--readonly]="readOnly()"
+    [class.surface-card--expanded]="expanded() || hideHeader()"
+>
+    @if (!hideHeader()) {
+        <div class="surface-card__header">
+            @if (draggable()) {
+                <span
+                    class="surface-card__drag"
+                    cdkDragHandle
+                >
+                    <app-svg-icon
+                        icon="drag-handle"
+                        size="5px"
+                    />
+                </span>
+            }
+
+            @if (!isCreating()) {
+                <button
+                    type="button"
+                    class="surface-card__chevron-btn"
+                    aria-label="Toggle"
+                    (click)="toggleExpand()"
+                >
+                    <app-svg-icon
+                        class="surface-card__chevron"
+                        [class.surface-card__chevron--open]="expanded()"
+                        icon="chevron-down-filled"
+                        size="8px"
+                    />
+                </button>
+            }
+
+            @if (expanded() && !readOnly()) {
+                <input
+                    type="text"
+                    class="surface-card__name-input"
+                    [ngModel]="surface()?.name ?? ''"
+                    (ngModelChange)="onNameInput($event)"
+                    appEnterBlur
+                    (blur)="commitRename()"
+                />
+            } @else {
+                <button
+                    type="button"
+                    class="surface-card__name-btn"
+                    (click)="toggleExpand()"
+                >
+                    <span class="surface-card__name">{{ surface()?.name }}</span>
+                    @if (isShared()) {
+                        <span class="surface-card__badge">Shared</span>
+                    }
+                </button>
+            }
+
+            @if (!isCreating()) {
+                <div class="surface-card__actions">
+                    @if (readOnly()) {
+                        <button
+                            type="button"
+                            class="surface-card__action surface-card__action--accent"
+                            title="Open in Shared Surfaces"
+                            (click)="onHeaderAction('openSource', $event)"
+                        >
+                            <app-svg-icon
+                                icon="external-link"
+                                size="14px"
+                            />
+                        </button>
+                        <button
+                            type="button"
+                            class="surface-card__action surface-card__action--accent"
+                            title="Detach from agent"
+                            (click)="onHeaderAction('detach', $event)"
+                        >
+                            <app-svg-icon
+                                icon="x"
+                                size="14px"
+                            />
+                        </button>
+                    }
+
+                    <div class="surface-card__menu-wrap">
+                        <button
+                            type="button"
+                            class="surface-card__action surface-card__action--accent"
+                            aria-label="More actions"
+                            (click)="toggleMenu($event)"
+                        >
+                            <app-svg-icon
+                                icon="dots-vertical"
+                                size="14px"
+                            />
+                        </button>
+                        @if (menuOpen()) {
+                            <div
+                                class="surface-card__menu-backdrop"
+                                (click)="closeMenu()"
+                            ></div>
+                            <div class="surface-card__menu">
+                                @if (isShared()) {
+                                    @if (readOnly()) {
+                                        <button
+                                            type="button"
+                                            class="surface-card__menu-item"
+                                            (click)="onHeaderAction('makeCopy', $event)"
+                                        >
+                                            Make Agent-Specific Copy
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="surface-card__menu-item"
+                                            (click)="onHeaderAction('detach', $event)"
+                                        >
+                                            Detach from agent
+                                        </button>
+                                    } @else {
+                                        <button
+                                            type="button"
+                                            class="surface-card__menu-item"
+                                            (click)="onHeaderAction('duplicate', $event)"
+                                        >
+                                            Duplicate
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="surface-card__menu-item surface-card__menu-item--danger"
+                                            (click)="onHeaderAction('delete', $event)"
+                                        >
+                                            Delete
+                                        </button>
+                                    }
+                                } @else {
+                                    <button
+                                        type="button"
+                                        class="surface-card__menu-item"
+                                        (click)="onHeaderAction('makeShared', $event)"
+                                    >
+                                        Make Shared
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="surface-card__menu-item"
+                                        (click)="onHeaderAction('duplicate', $event)"
+                                    >
+                                        Duplicate
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="surface-card__menu-item surface-card__menu-item--danger"
+                                        (click)="onHeaderAction('delete', $event)"
+                                    >
+                                        Delete
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @if (expanded() || hideHeader()) {
+        <div class="surface-card__body">
+            @if (showMeta()) {
+                <div class="field">
+                    <label class="field__label">Assigned to agents</label>
+                    @if (assignedAgentChips().length > 0) {
+                        <div class="agent-chips">
+                            @for (chip of assignedAgentChips(); track chip.id) {
+                                <span class="agent-chip agent-chip--readonly">{{ chip.name }}</span>
+                            }
+                        </div>
+                    } @else {
+                        <p class="field__hint">
+                            Not assigned to any agent yet. Add it from an agent's Surfaces (Add From Shared).
+                        </p>
+                    }
+                </div>
+            }
+
+            <div class="field">
+                <label class="field__label">Instructions</label>
+                <textarea
+                    class="field__textarea"
+                    placeholder="Add instructions on how the agent should use this Surface..."
+                    rows="3"
+                    [ngModel]="instructions()"
+                    (ngModelChange)="instructions.set($event)"
+                    appEnterBlur
+                    (blur)="onInstructionsBlur()"
+                    [disabled]="readOnly()"
+                ></textarea>
+            </div>
+
+            <nav class="tabs">
+                <button
+                    type="button"
+                    class="tabs__tab"
+                    [class.tabs__tab--active]="activeTab() === 'tools'"
+                    (click)="selectTab('tools')"
+                >
+                    <app-svg-icon
+                        icon="tools"
+                        size="14px"
+                    />
+                    Tools
+                </button>
+                <span class="tabs__sep">/</span>
+                <button
+                    type="button"
+                    class="tabs__tab"
+                    [class.tabs__tab--active]="activeTab() === 'files'"
+                    (click)="selectTab('files')"
+                >
+                    <app-svg-icon
+                        icon="folder"
+                        size="14px"
+                    />
+                    Files
+                </button>
+                <span class="tabs__sep">/</span>
+                <button
+                    type="button"
+                    class="tabs__tab"
+                    [class.tabs__tab--active]="activeTab() === 'collections'"
+                    (click)="selectTab('collections')"
+                >
+                    <app-svg-icon
+                        icon="file"
+                        size="14px"
+                    />
+                    Knowledge Collections
+                </button>
+            </nav>
+
+            @if (activeTab() === 'tools') {
+                <app-select-dropdown
+                    mode="list"
+                    selectionMode="multiple"
+                    [selectedOnTop]="true"
+                    [maxPanelHeight]="500"
+                    [tabs]="toolTabs"
+                    [activeTabId]="toolSubtab()"
+                    (tabChange)="onToolTabChange($event)"
+                    [headerAction]="readOnly() ? null : toolHeaderAction()"
+                    (headerActionClick)="openCreateTool()"
+                    [items]="activeToolItems()"
+                    [selected]="activeToolIds()"
+                    (selectionChange)="onActiveToolsChange($event)"
+                    (openedChange)="toolsExpanded.set($event)"
+                    [searchPlaceholder]="toolSubtab() === 'custom' ? 'Search custom tools...' : 'Search MCP tools...'"
+                >
+                    <button
+                        appSelectDropdownTrigger
+                        type="button"
+                        class="picker__toggle"
+                    >
+                        <span class="picker__toggle-label">
+                            @if (selectedTools().length === 0) {
+                                Select tools
+                            } @else {
+                                {{ selectedTools().length }} tool(s) selected
+                            }
+                        </span>
+                        <app-svg-icon
+                            class="picker__toggle-chevron"
+                            [class.picker__toggle-chevron--open]="toolsExpanded()"
+                            icon="chevron-down-filled"
+                            size="8px"
+                        />
+                    </button>
+                </app-select-dropdown>
+
+                @if (selectedTools().length > 0) {
+                    <div class="res-table">
+                        <div class="res-table__head">
+                            <span class="res-table__col-resource">Resource</span>
+                            <span class="res-table__col-action">
+                                <app-svg-icon
+                                    icon="trash"
+                                    size="14px"
+                                />
+                            </span>
+                        </div>
+                        @for (tool of selectedTools(); track toolKey(tool)) {
+                            <div
+                                class="res-row"
+                                [matTooltip]="tool.description"
+                                matTooltipPosition="above"
+                                matTooltipClass="surface-tool-tooltip"
+                            >
+                                <span class="res-row__name">{{ tool.name }}</span>
+                                <span class="res-row__desc">{{ tool.description }}</span>
+                                <button
+                                    type="button"
+                                    class="res-row__remove"
+                                    aria-label="Remove tool"
+                                    (click)="removeTool(toolKey(tool), $event)"
+                                >
+                                    <app-svg-icon
+                                        icon="x"
+                                        size="12px"
+                                    />
+                                </button>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+
+            @if (activeTab() === 'files') {
+                <app-select-dropdown
+                    mode="tree"
+                    selectionMode="multiple"
+                    [nodes]="fileDropdownNodes()"
+                    [loadChildren]="loadStorageChildren"
+                    [selected]="selectedFileIds()"
+                    (selectionChange)="onFilesChange($event)"
+                    (openedChange)="filesExpanded.set($event)"
+                    searchPlaceholder="Search files..."
+                >
+                    <button
+                        appSelectDropdownTrigger
+                        type="button"
+                        class="picker__toggle"
+                    >
+                        <span class="picker__toggle-label"> {{ fileStats().files }} file(s) selected </span>
+                        <app-svg-icon
+                            class="picker__toggle-chevron"
+                            [class.picker__toggle-chevron--open]="filesExpanded()"
+                            icon="chevron-down-filled"
+                            size="8px"
+                        />
+                    </button>
+                </app-select-dropdown>
+
+                <div class="files-toolbar files-toolbar--end">
+                    <span class="files-toolbar__toggle">
+                        Allow File Creation
+                        <app-toggle-switch
+                            [checked]="allowCreation()"
+                            (checkedChange)="onAllowCreationChange($event)"
+                        />
+                    </span>
+
+                    <button
+                        type="button"
+                        class="files-toolbar__btn"
+                        (click)="clearFiles()"
+                    >
+                        <app-svg-icon
+                            icon="x"
+                            size="12px"
+                        />
+                        Clear
+                    </button>
+                    <button
+                        type="button"
+                        class="files-toolbar__btn"
+                        (click)="selectAllFilePerms()"
+                    >
+                        <app-svg-icon
+                            icon="check"
+                            size="12px"
+                        />
+                        Select All
+                    </button>
+                </div>
+
+                <div
+                    class="file-table"
+                    [style.--perm-count]="visiblePermColumns().length"
+                >
+                    <div class="file-table__head">
+                        <span class="file-table__col-resource">Resource</span>
+                        @for (col of visiblePermColumns(); track col.key) {
+                            <span
+                                class="file-table__col-perm"
+                                [title]="col.label"
+                            >
+                                <app-svg-icon
+                                    [icon]="col.icon"
+                                    size="14px"
+                                />
+                            </span>
+                        }
+                        <span class="file-table__col-remove"></span>
+                    </div>
+
+                    @for (row of fileRows(); track fileTrackBy($index, row)) {
+                        <div class="file-row">
+                            <span class="file-row__resource">
+                                <span class="file-row__chevron-spacer"></span>
+                                <span
+                                    class="file-row__name"
+                                    [title]="row.path || row.name"
+                                    >{{ row.name }}</span
+                                >
+                            </span>
+
+                            @for (col of visiblePermColumns(); track col.key) {
+                                <span class="file-row__perm">
+                                    <button
+                                        type="button"
+                                        class="perm-cell"
+                                        [class.perm-cell--allow]="row.perms[col.key] === 'allow'"
+                                        [class.perm-cell--deny]="row.perms[col.key] === 'deny'"
+                                        [title]="row.perms[col.key]"
+                                        (click)="togglePerm(row, col.key)"
+                                    >
+                                        @if (row.perms[col.key] === 'allow') {
+                                            <app-svg-icon
+                                                icon="check"
+                                                size="12px"
+                                            />
+                                        } @else if (row.perms[col.key] === 'deny') {
+                                            <app-svg-icon
+                                                icon="x"
+                                                size="12px"
+                                            />
+                                        }
+                                    </button>
+                                </span>
+                            }
+
+                            <span class="file-row__remove">
+                                <button
+                                    type="button"
+                                    class="file-row__remove-btn"
+                                    aria-label="Remove"
+                                    (click)="removeFileRow(row, $event)"
+                                >
+                                    <app-svg-icon
+                                        icon="x"
+                                        size="12px"
+                                    />
+                                </button>
+                            </span>
+                        </div>
+                    } @empty {
+                        <p class="file-table__empty">No files selected.</p>
+                    }
+                </div>
+            }
+
+            @if (activeTab() === 'collections') {
+                <app-select-dropdown
+                    mode="list"
+                    selectionMode="multiple"
+                    [selectedOnTop]="true"
+                    [items]="collectionItems()"
+                    [selected]="selectedCollectionValues()"
+                    (selectionChange)="onCollectionsChange($event)"
+                    (openedChange)="collectionsExpanded.set($event)"
+                    searchPlaceholder="Search collections..."
+                >
+                    <button
+                        appSelectDropdownTrigger
+                        type="button"
+                        class="picker__toggle"
+                    >
+                        <span class="picker__toggle-label">
+                            @if (selectedCollections().length === 0) {
+                                Select collections
+                            } @else {
+                                {{ selectedCollections().length }} collection(s) selected
+                            }
+                        </span>
+                        <app-svg-icon
+                            class="picker__toggle-chevron"
+                            [class.picker__toggle-chevron--open]="collectionsExpanded()"
+                            icon="chevron-down-filled"
+                            size="8px"
+                        />
+                    </button>
+                </app-select-dropdown>
+
+                <div class="files-toolbar files-toolbar--end">
+                    <span class="files-toolbar__toggle">
+                        Allow Collection Creation
+                        <app-toggle-switch
+                            [checked]="allowCollectionCreation()"
+                            (checkedChange)="allowCollectionCreation.set($event)"
+                        />
+                    </span>
+                </div>
+
+                @if (selectedCollections().length > 0) {
+                    <div class="res-table">
+                        <div class="res-table__head">
+                            <span class="res-table__col-resource">Resource</span>
+                            <span class="res-table__col-action">
+                                <app-svg-icon
+                                    icon="trash"
+                                    size="14px"
+                                />
+                            </span>
+                        </div>
+                        @for (col of selectedCollections(); track col.id) {
+                            <div class="res-row res-row--simple">
+                                <span class="res-row__name">{{ col.name }}</span>
+                                <button
+                                    type="button"
+                                    class="res-row__remove"
+                                    aria-label="Remove collection"
+                                    (click)="removeCollection(col.id, $event)"
+                                >
+                                    <app-svg-icon
+                                        icon="x"
+                                        size="12px"
+                                    />
+                                </button>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <button
+                    type="button"
+                    class="advanced-toggle"
+                    (click)="toggleCollectionAdvanced()"
+                >
+                    <app-svg-icon
+                        class="advanced-toggle__chevron"
+                        [class.advanced-toggle__chevron--open]="collectionAdvancedOpen()"
+                        icon="chevron-down-filled"
+                        size="8px"
+                    />
+                    Advanced Settings For Knowledge Collections
+                </button>
+
+                @if (collectionAdvancedOpen()) {
+                    <p class="advanced-body">Advanced settings - coming soon.</p>
+                }
+            }
+        </div>
+    }
+</div>
