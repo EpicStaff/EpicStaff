@@ -1,5 +1,5 @@
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
-import { ChangeDetectionStrategy, Component, computed, input, output, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, input, output, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
     AppSvgIconComponent,
@@ -58,6 +58,19 @@ export class AgentSurfacesPanelComponent {
     readonly expandedSurfaceId = signal<number | null>(null);
     readonly draftCategoryId = signal<SurfaceCategoryId | null>(null);
     readonly draftName = signal<string>('');
+
+    private readonly knownSurfaceIdsBeforeCreate = signal<Set<number> | null>(null);
+
+    constructor() {
+        effect(() => {
+            const known = this.knownSurfaceIdsBeforeCreate();
+            if (!known) return;
+            const created = this.surfaces().find((s) => !known.has(s.id));
+            if (!created) return;
+            this.expandedSurfaceId.set(created.id);
+            this.knownSurfaceIdsBeforeCreate.set(null);
+        });
+    }
 
     private readonly surfaceById = computed<Map<number, Surface>>(() => new Map(this.surfaces().map((s) => [s.id, s])));
 
@@ -118,6 +131,7 @@ export class AgentSurfacesPanelComponent {
     }
 
     onCardExpanded(surface: Surface, expanded: boolean): void {
+        this.knownSurfaceIdsBeforeCreate.set(null);
         this.draftCategoryId.set(null);
         this.expandedSurfaceId.set(expanded ? surface.id : null);
     }
@@ -129,6 +143,7 @@ export class AgentSurfacesPanelComponent {
     }
 
     startCreateSurface(categoryId: SurfaceCategoryId): void {
+        this.knownSurfaceIdsBeforeCreate.set(null);
         this.expandedSurfaceId.set(null);
         this.draftName.set('');
         this.draftCategoryId.set(categoryId);
@@ -144,6 +159,7 @@ export class AgentSurfacesPanelComponent {
         const place = this.draftCategoryId();
         const card = this.draftSurfaceCard();
         if (!name || !place || !card) return;
+        this.knownSurfaceIdsBeforeCreate.set(new Set(this.surfaces().map((s) => s.id)));
         this.createSurface.emit({ body: card.buildCreateRequest(name), place });
         this.cancelDraft();
     }
