@@ -9,8 +9,16 @@ import pytest
 from rest_framework.test import APIClient
 
 from tables.models import Agent, Crew, SourceCollection
+from tables.models.embedding_models import EmbeddingModel
 from tables.models.graph_models import CrewNode, Graph, SubGraphNode
-from tables.models.llm_models import LLMConfig
+from tables.models.llm_models import (
+    LLMConfig,
+    LLMModel,
+    RealtimeConfig,
+    RealtimeModel,
+    RealtimeTranscriptionConfig,
+    RealtimeTranscriptionModel,
+)
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.knowledge_models import BaseRagType, NaiveRag
@@ -64,6 +72,26 @@ def _mcp(org, name="mcp"):
 
 def _llm_config(org, name="cfg"):
     return LLMConfig.objects.create(custom_name=name, org=org)
+
+
+# Hybrid models: built-ins have org=None/is_custom=False (visible to every org);
+# custom rows are org-owned/is_custom=True (visible only to that org).
+def _llm_model(org, *, is_custom, name="llm"):
+    return LLMModel.objects.create(name=name, is_custom=is_custom, org=org)
+
+
+def _embedding_model(org, *, is_custom, name="emb"):
+    return EmbeddingModel.objects.create(name=name, is_custom=is_custom, org=org)
+
+
+def _realtime_model(org, *, is_custom, name="rt"):
+    return RealtimeModel.objects.create(name=name, is_custom=is_custom, org=org)
+
+
+def _realtime_transcription_model(org, *, is_custom, name="rtt"):
+    return RealtimeTranscriptionModel.objects.create(
+        name=name, is_custom=is_custom, org=org
+    )
 
 
 def _naive_rag(org):
@@ -275,3 +303,200 @@ def test_bulk_save_allows_same_org_subgraph(client_admin_a, org_a):
     )
     assert resp.status_code == 200, resp.data
     assert SubGraphNode.objects.filter(graph=graph, subgraph=a_subgraph).count() == 1
+
+
+# ---- #3 CodeAgentNode.llm_config (strict, via bulk-save) ----
+
+
+@pytest.mark.django_db
+def test_bulk_save_rejects_cross_org_code_agent_llm_config(
+    client_admin_a, org_a, org_b
+):
+    graph = Graph.objects.create(name="a-graph", org=org_a)
+    b_cfg = _llm_config(org_b, name="b-cfg")
+    resp = client_admin_a.post(
+        _save_url(graph.id),
+        {
+            "save_version": graph.save_version,
+            "code_agent_node_list": [{"graph": graph.id, "llm_config": b_cfg.id}],
+        },
+        format="json",
+    )
+    assert _rejected(resp), resp.data
+
+
+@pytest.mark.django_db
+def test_bulk_save_allows_same_org_code_agent_llm_config(client_admin_a, org_a):
+    graph = Graph.objects.create(name="a-graph", org=org_a)
+    a_cfg = _llm_config(org_a, name="a-cfg")
+    resp = client_admin_a.post(
+        _save_url(graph.id),
+        {
+            "save_version": graph.save_version,
+            "code_agent_node_list": [{"graph": graph.id, "llm_config": a_cfg.id}],
+        },
+        format="json",
+    )
+    assert resp.status_code == 200, resp.data
+
+
+# ---- #5 RealtimeAgent configs (strict, nested in AgentWrite) ----
+
+
+@pytest.mark.django_db
+def test_agent_rejects_cross_org_realtime_config(client_admin_a, org_b):
+    b_rt = RealtimeConfig.objects.create(
+        custom_name="b-rt",
+        realtime_model=_realtime_model(org_b, is_custom=True),
+        org=org_b,
+    )
+    resp = client_admin_a.post(
+        "/api/agents/",
+        _agent_payload(realtime_agent={"realtime_config": b_rt.id}),
+        format="json",
+    )
+    assert _rejected(resp), resp.data
+
+
+@pytest.mark.django_db
+def test_agent_rejects_cross_org_realtime_transcription_config(client_admin_a, org_b):
+    b_tc = RealtimeTranscriptionConfig.objects.create(
+        custom_name="b-tc",
+        realtime_transcription_model=_realtime_transcription_model(
+            org_b, is_custom=True
+        ),
+        org=org_b,
+    )
+    resp = client_admin_a.post(
+        "/api/agents/",
+        _agent_payload(realtime_agent={"realtime_transcription_config": b_tc.id}),
+        format="json",
+    )
+    assert _rejected(resp), resp.data
+
+
+@pytest.mark.django_db
+def test_agent_allows_same_org_realtime_config(client_admin_a, org_a):
+    a_rt = RealtimeConfig.objects.create(
+        custom_name="a-rt",
+        realtime_model=_realtime_model(org_a, is_custom=True),
+        org=org_a,
+    )
+    resp = client_admin_a.post(
+        "/api/agents/",
+        _agent_payload(realtime_agent={"realtime_config": a_rt.id}),
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data
+
+
+# ---- #4 config -> model (hybrid): reject cross-org custom, allow shared built-ins ----
+
+
+@pytest.mark.django_db
+def test_llmconfig_rejects_cross_org_custom_model(client_admin_a, org_b):
+    b_model = _llm_model(org_b, is_custom=True, name="b-llm")
+    resp = client_admin_a.post(
+        "/api/llm-configs/", {"custom_name": "c", "model": b_model.id}, format="json"
+    )
+    assert _rejected(resp), resp.data
+
+
+@pytest.mark.django_db
+def test_llmconfig_allows_builtin_model(client_admin_a):
+    builtin = _llm_model(None, is_custom=False, name="builtin-llm")
+    resp = client_admin_a.post(
+        "/api/llm-configs/", {"custom_name": "c", "model": builtin.id}, format="json"
+    )
+    assert resp.status_code == 201, resp.data
+
+
+@pytest.mark.django_db
+def test_llmconfig_allows_same_org_custom_model(client_admin_a, org_a):
+    a_model = _llm_model(org_a, is_custom=True, name="a-llm")
+    resp = client_admin_a.post(
+        "/api/llm-configs/", {"custom_name": "c", "model": a_model.id}, format="json"
+    )
+    assert resp.status_code == 201, resp.data
+
+
+@pytest.mark.django_db
+def test_embeddingconfig_rejects_cross_org_custom_model(client_admin_a, org_b):
+    b_model = _embedding_model(org_b, is_custom=True, name="b-emb")
+    resp = client_admin_a.post(
+        "/api/embedding-configs/",
+        {"custom_name": "c", "model": b_model.id},
+        format="json",
+    )
+    assert _rejected(resp), resp.data
+
+
+@pytest.mark.django_db
+def test_embeddingconfig_allows_builtin_model(client_admin_a):
+    builtin = _embedding_model(None, is_custom=False, name="builtin-emb")
+    resp = client_admin_a.post(
+        "/api/embedding-configs/",
+        {"custom_name": "c", "model": builtin.id},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data
+
+
+@pytest.mark.django_db
+def test_realtimeconfig_rejects_cross_org_custom_model(client_admin_a, org_b):
+    b_model = _realtime_model(org_b, is_custom=True, name="b-rm")
+    resp = client_admin_a.post(
+        "/api/realtime-model-configs/",
+        {"custom_name": "c", "realtime_model": b_model.id},
+        format="json",
+    )
+    assert _rejected(resp), resp.data
+
+
+@pytest.mark.django_db
+def test_realtimeconfig_allows_builtin_model(client_admin_a):
+    builtin = _realtime_model(None, is_custom=False, name="builtin-rm")
+    resp = client_admin_a.post(
+        "/api/realtime-model-configs/",
+        {"custom_name": "c", "realtime_model": builtin.id},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data
+
+
+@pytest.mark.django_db
+def test_realtimetranscriptionconfig_rejects_cross_org_custom_model(
+    client_admin_a, org_b
+):
+    b_model = _realtime_transcription_model(org_b, is_custom=True, name="b-rtm")
+    resp = client_admin_a.post(
+        "/api/realtime-transcription-model-configs/",
+        {"custom_name": "c", "realtime_transcription_model": b_model.id},
+        format="json",
+    )
+    assert _rejected(resp), resp.data
+
+
+# ---- #7 PythonCodeToolConfig.tool (hybrid) ----
+
+
+@pytest.mark.django_db
+def test_pythoncodetoolconfig_rejects_cross_org_tool(client_admin_a, org_b):
+    b_tool = _python_tool(org_b, name="b-tool")
+    resp = client_admin_a.post(
+        "/api/python-code-tool-configs/",
+        {"name": "c", "tool": b_tool.id, "configuration": {}},
+        format="json",
+    )
+    assert _rejected(resp), resp.data
+
+
+@pytest.mark.django_db
+def test_pythoncodetoolconfig_allows_builtin_tool(client_admin_a):
+    builtin = _python_tool(None, built_in=True, name="builtin-tool-cfg")
+    resp = client_admin_a.post(
+        "/api/python-code-tool-configs/",
+        {"name": "c", "tool": builtin.id, "configuration": {}},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data

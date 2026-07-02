@@ -12,6 +12,7 @@ from tables.models.python_models import (
     PythonCodeToolConfigField,
 )
 from tables.serializers.base_serializer import ContentHashWritableMixin
+from tables.serializers.org_scoped_fields import OrgVisiblePrimaryKeyRelatedField
 from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
@@ -114,6 +115,9 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
 
 
 class PythonCodeToolConfigSerializer(serializers.ModelSerializer):
+    # Org isolation (hybrid): built-in tools OR the caller's active-org custom ones.
+    tool = OrgVisiblePrimaryKeyRelatedField(queryset=PythonCodeTool.objects.all())
+
     def __init__(self, *args, tool_config_validator=None, **kwargs):
         super().__init__(*args, **kwargs)
 

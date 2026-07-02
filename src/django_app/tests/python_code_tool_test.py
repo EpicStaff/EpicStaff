@@ -1,4 +1,6 @@
 import pytest
+from rest_framework.test import APIRequestFactory
+
 from tables.exceptions import PythonCodeToolConfigSerializerError
 from tables.serializers.model_serializers import (
     PythonCodeSerializer,
@@ -10,6 +12,15 @@ from tables.models import (
     PythonCodeTool,
     PythonCodeToolConfigField,
 )
+from tables.models.rbac_models import Organization
+
+
+def _org_request(org_id: int):
+    """A minimal request whose active org is pre-resolved — lets a serializer
+    unit test satisfy the org-scoped `tool` field without the full auth stack."""
+    request = APIRequestFactory().post("/")
+    request._rbac_active_org_id = org_id
+    return request
 
 
 @pytest.mark.django_db
@@ -85,9 +96,14 @@ def test_python_code_tool_serializer_prevents_built_in_update():
 
 @pytest.mark.django_db
 def test_python_code_tool_config_serializer_validation():
+    # The config's `tool` FK is org-scoped (hybrid): the serializer needs a request
+    # in context and the tool must be visible to the active org.
+    org = Organization.objects.create(name="Tool Cfg Org")
+    context = {"request": _org_request(org.id)}
+
     code = PythonCode.objects.create(code="def main(): pass")
     tool = PythonCodeTool.objects.create(
-        name="Tool1", description="desc", args_schema={}, python_code=code
+        name="Tool1", description="desc", args_schema={}, python_code=code, org=org
     )
 
     field1 = PythonCodeToolConfigField.objects.create(
@@ -108,9 +124,9 @@ def test_python_code_tool_config_serializer_validation():
         "tool": tool.pk,
         "configuration": {"arg1": "value1", "arg2": 10},
     }
-    serializer = PythonCodeToolConfigSerializer(data=config_data)
+    serializer = PythonCodeToolConfigSerializer(data=config_data, context=context)
     serializer.is_valid(raise_exception=True)
-    obj = serializer.save()
+    obj = serializer.save(org=org)
     assert obj.name == "config1"
     assert obj.tool == tool
 
@@ -119,6 +135,6 @@ def test_python_code_tool_config_serializer_validation():
         "tool": tool.pk,
         "configuration": {"arg23": 10},
     }
-    serializer = PythonCodeToolConfigSerializer(data=invalid_data)
+    serializer = PythonCodeToolConfigSerializer(data=invalid_data, context=context)
     with pytest.raises(PythonCodeToolConfigSerializerError):
         serializer.is_valid(raise_exception=True)

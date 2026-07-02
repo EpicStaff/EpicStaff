@@ -14,6 +14,7 @@ from tables.models.llm_models import (
     RealtimeTranscriptionConfig,
 )
 from tables.models.tag_models import LLMConfigTag, LLMModelTag
+from tables.serializers.org_scoped_fields import OrgVisiblePrimaryKeyRelatedField
 
 
 from ..utils.mixins import TagHandlingMixin
@@ -36,6 +37,10 @@ class RealtimeConfigSerializer(serializers.ModelSerializer):
     provider_name = serializers.CharField(
         source="realtime_model.provider.name", read_only=True
     )
+    # Org isolation (hybrid): built-in models OR the caller's active-org custom ones.
+    realtime_model = OrgVisiblePrimaryKeyRelatedField(
+        queryset=RealtimeModel.objects.all()
+    )
 
     class Meta:
         model = RealtimeConfig
@@ -51,6 +56,11 @@ class RealtimeTranscriptionModelSerializer(serializers.ModelSerializer):
 
 
 class RealtimeTranscriptionConfigSerializer(serializers.ModelSerializer):
+    # Org isolation (hybrid): built-in models OR the caller's active-org custom ones.
+    realtime_transcription_model = OrgVisiblePrimaryKeyRelatedField(
+        queryset=RealtimeTranscriptionModel.objects.all()
+    )
+
     class Meta:
         model = RealtimeTranscriptionConfig
         fields = "__all__"
@@ -60,6 +70,10 @@ class RealtimeTranscriptionConfigSerializer(serializers.ModelSerializer):
 class LLMConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
     tags = LLMConfigTagSerializer(many=True, required=False)
     tag_model = LLMConfigTag
+    # Org isolation (hybrid): built-in models OR the caller's active-org custom ones.
+    model = OrgVisiblePrimaryKeyRelatedField(
+        queryset=LLMModel.objects.all(), required=False, allow_null=True
+    )
 
     class Meta:
         model = LLMConfig

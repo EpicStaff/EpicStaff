@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from tables.models.tag_models import EmbeddingConfigTag, EmbeddingModelTag
+from tables.serializers.org_scoped_fields import OrgVisiblePrimaryKeyRelatedField
 from tables.serializers.utils.mixins import TagHandlingMixin
 from tables.models.embedding_models import (
     DefaultEmbeddingConfig,
@@ -27,6 +28,10 @@ class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
 class EmbeddingConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
     tags = EmbeddingConfigTagSerializer(many=True, required=False)
     tag_model = EmbeddingConfigTag
+    # Org isolation (hybrid): built-in models OR the caller's active-org custom ones.
+    model = OrgVisiblePrimaryKeyRelatedField(
+        queryset=EmbeddingModel.objects.all(), required=False, allow_null=True
+    )
 
     class Meta:
         model = EmbeddingConfig
