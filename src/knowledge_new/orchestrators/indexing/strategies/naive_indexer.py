@@ -18,18 +18,12 @@ class NaiveIndexer(AbstractIndexer):
     async def on_execute(self, request: IndexRequest) -> None:
         async with self.uow:
             embedder = await self._get_embedder_under_uow(request.rag_id)
-            documents = await self._get_documents_under_uow(request.rag_id)
+            documents = await self._get_documents_under_uow(request.rag_id, request.document_ids)
 
         await self._update_rag_status(request.rag_id, IndexStatusEnum.PROCESSING)
 
-        has_completed_document = False
-        has_failed_document = False
         for document in documents:
-            if (
-                document.status == DocumentStatusEnum.COMPLETED
-                and not document.is_required_reindex()
-            ):
-                has_completed_document = True
+            if document.status == DocumentStatusEnum.COMPLETED and not document.is_required_reindex():
                 continue
 
             try:
@@ -72,21 +66,13 @@ class NaiveIndexer(AbstractIndexer):
             except Exception as e:
                 error_code, error_message = IndexingErrorClassifier.classify(e)
                 document.mark_failed(error_code, error_message)
-                has_failed_document = True
 
             else:
                 document.mark_completed()
-                has_completed_document = True
 
             await self._update_document(request.rag_id, document)
 
-        if not has_completed_document:
-            indexing_status = IndexStatusEnum.FAILED
-        elif has_failed_document:
-            indexing_status = IndexStatusEnum.WARNING
-        else:
-            indexing_status = IndexStatusEnum.COMPLETED
-        await self._update_rag_status(request.rag_id, indexing_status)
+        await self._finalize_rag_status(request.rag_id)
 
     async def on_cancel(self, request: IndexRequest):
         await self._update_rag_status(request.rag_id, IndexStatusEnum.CANCELLED)
@@ -101,8 +87,8 @@ class NaiveIndexer(AbstractIndexer):
             raise EmbeddingConfigNotFoundError(rag_id=rag_id)
         return build_embedder(embedding_config.provider, embedding_config)
 
-    async def _get_documents_under_uow(self, rag_id: int) -> list[Document]:
-        documents = await self.uow.naive_rag_repo.get_all_documents(rag_id=rag_id)
+    async def _get_documents_under_uow(self, rag_id: int, ids: frozenset[int]) -> list[Document]:
+        documents = await self.uow.naive_rag_repo.get_documents(rag_id=rag_id, ids=ids)
 
         if not documents:
             raise DocumentNotFoundError(f"No Document found for RAG(id={rag_id}).")
@@ -110,6 +96,21 @@ class NaiveIndexer(AbstractIndexer):
 
     async def _update_rag_status(self, rag_id: int, status: IndexStatusEnum):
         async with self.uow:
+            await self.uow.naive_rag_repo.update_rag_status(rag_id=rag_id, status=status)
+            await self.uow.commit()
+
+    async def _finalize_rag_status(self, rag_id: int):
+        async with self.uow:
+            has_completed_document = await self.uow.naive_rag_repo.has_completed_document(rag_id=rag_id)
+            has_failed_document = await self.uow.naive_rag_repo.has_failed_document(rag_id=rag_id)
+
+            if not has_completed_document:
+                status = IndexStatusEnum.FAILED
+            elif has_failed_document:
+                status = IndexStatusEnum.WARNING
+            else:
+                status = IndexStatusEnum.COMPLETED
+
             await self.uow.naive_rag_repo.update_rag_status(rag_id=rag_id, status=status)
             await self.uow.commit()
 
