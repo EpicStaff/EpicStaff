@@ -84,6 +84,7 @@ export class SelectDropdownComponent {
     /** Active tab id (two-way). Defaults to the first tab when tabs are provided. */
     activeTabId = model<string | null>(null);
     tabChange = output<string>();
+    draftChange = output<unknown[]>();
 
     /** Optional action button shown in the tab strip (hidden when null). */
     headerAction = input<SelectDropdownHeaderAction | null>(null);
@@ -312,6 +313,7 @@ export class SelectDropdownComponent {
 
     selectTab(id: string): void {
         if (id === this.resolvedActiveTabId()) return;
+        if (this.selectionMode() === 'multiple') this.draftChange.emit([...this.draft()]);
         this.activeTabId.set(id);
         // Switching catalogs invalidates the frozen selected-on-top order and search.
         this.search.set('');

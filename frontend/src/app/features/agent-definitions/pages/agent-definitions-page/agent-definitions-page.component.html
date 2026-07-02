@@ -89,13 +89,18 @@
                                 [readOnly]="view.readOnly"
                                 [isShared]="store.isSurfaceShared(view.surface.id)"
                                 [showMeta]="!view.ownerAgent && store.isSurfaceShared(view.surface.id)"
+                                [currentPlace]="view.place"
                                 [agents]="store.agents()"
                                 (rename)="store.updateSurface(view.surface.id, { name: $event })"
                                 (surfaceChange)="store.updateSurface(view.surface.id, $event)"
                                 (openSource)="store.openSharedSurfaceSource(view.surface.id)"
                                 (detach)="store.detachSurfaceFromAgent(view.surface.id, view.ownerAgent!.id)"
+                                (makeShared)="store.makeSurfaceShared(view.surface.id)"
                                 (makeAgentSpecificCopy)="
                                     store.makeAgentSpecificCopy(view.surface.id, view.ownerAgent!.id)
+                                "
+                                (moveSurfacePlace)="
+                                    store.moveSurfacePlace(view.surface.id, view.ownerAgent!.id, $event)
                                 "
                                 (duplicate)="store.duplicateSurface(view.surface.id)"
                                 (deleteSurface)="onDeleteSurface(view.surface.id)"

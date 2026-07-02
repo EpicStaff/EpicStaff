@@ -156,6 +156,7 @@
                                 [draggable]="true"
                                 [isShared]="isShared(surface)"
                                 [readOnly]="isShared(surface)"
+                                [currentPlace]="category.id"
                                 [expanded]="isExpanded(surface)"
                                 (expandedChange)="onCardExpanded(surface, $event)"
                                 (renameSurface)="renameSurface.emit({ id: surface.id, name: $event })"
@@ -164,6 +165,7 @@
                                 (detach)="detachSurface.emit(surface.id)"
                                 (makeShared)="makeSharedSurface.emit(surface.id)"
                                 (makeAgentSpecificCopy)="makeAgentSpecificCopy.emit(surface.id)"
+                                (moveSurfacePlace)="moveSurfacePlace.emit({ id: surface.id, place: $event })"
                                 (duplicate)="duplicateSurface.emit(surface.id)"
                                 (deleteSurface)="deleteSurface.emit(surface.id)"
                             />
