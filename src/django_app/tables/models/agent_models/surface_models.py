@@ -63,13 +63,7 @@ class Surface(TimestampMixin, models.Model):
         return f"Surface(id={self.pk}, name={self.name!r})"
 
 
-class SurfacePythonTool(models.Model):
-    surface = models.ForeignKey(
-        Surface,
-        on_delete=models.CASCADE,
-        related_name="python_tools",
-        help_text="Surface this entry belongs to.",
-    )
+class BaseSurfacePythonTool(models.Model):
     python_tool = models.ForeignKey(
         "PythonCodeTool",
         on_delete=models.CASCADE,
@@ -83,6 +77,18 @@ class SurfacePythonTool(models.Model):
     )
 
     class Meta:
+        abstract = True
+
+
+class SurfacePythonTool(BaseSurfacePythonTool):
+    surface = models.ForeignKey(
+        Surface,
+        on_delete=models.CASCADE,
+        related_name="python_tools",
+        help_text="Surface this entry belongs to.",
+    )
+
+    class Meta:
         constraints = [
             models.UniqueConstraint(
                 fields=["surface", "python_tool"],
@@ -91,13 +97,7 @@ class SurfacePythonTool(models.Model):
         ]
 
 
-class SurfaceMcpTool(models.Model):
-    surface = models.ForeignKey(
-        Surface,
-        on_delete=models.CASCADE,
-        related_name="mcp_tools",
-        help_text="Surface this entry belongs to.",
-    )
+class BaseSurfaceMcpTool(models.Model):
     mcp_tool = models.ForeignKey(
         "McpTool",
         on_delete=models.CASCADE,
@@ -111,6 +111,18 @@ class SurfaceMcpTool(models.Model):
     )
 
     class Meta:
+        abstract = True
+
+
+class SurfaceMcpTool(BaseSurfaceMcpTool):
+    surface = models.ForeignKey(
+        Surface,
+        on_delete=models.CASCADE,
+        related_name="mcp_tools",
+        help_text="Surface this entry belongs to.",
+    )
+
+    class Meta:
         constraints = [
             models.UniqueConstraint(
                 fields=["surface", "mcp_tool"],
@@ -119,19 +131,7 @@ class SurfaceMcpTool(models.Model):
         ]
 
 
-class SurfaceStorageItem(models.Model):
-    surface = models.ForeignKey(
-        Surface,
-        on_delete=models.CASCADE,
-        related_name="storage_items",
-        help_text="Surface this storage permission entry belongs to.",
-    )
-    storage_file = models.ForeignKey(
-        "StorageFile",
-        on_delete=models.CASCADE,
-        related_name="+",
-        help_text="StorageFile whose access is being configured for this surface.",
-    )
+class BaseSurfaceStorageItem(models.Model):
     can_list = models.CharField(
         max_length=5,
         choices=StorageAccess.choices,
@@ -158,6 +158,24 @@ class SurfaceStorageItem(models.Model):
     )
 
     class Meta:
+        abstract = True
+
+
+class SurfaceStorageItem(BaseSurfaceStorageItem):
+    surface = models.ForeignKey(
+        Surface,
+        on_delete=models.CASCADE,
+        related_name="storage_items",
+        help_text="Surface this storage permission entry belongs to.",
+    )
+    storage_file = models.ForeignKey(
+        "StorageFile",
+        on_delete=models.CASCADE,
+        related_name="+",
+        help_text="StorageFile whose access is being configured for this surface.",
+    )
+
+    class Meta:
         constraints = [
             models.UniqueConstraint(
                 fields=["surface", "storage_file"],
@@ -166,18 +184,24 @@ class SurfaceStorageItem(models.Model):
         ]
 
 
-class SurfaceKnowledge(models.Model):
-    surface = models.ForeignKey(
-        Surface,
-        on_delete=models.CASCADE,
-        related_name="knowledge",
-        help_text="Surface this knowledge collection is attached to.",
-    )
+class BaseSurfaceKnowledge(models.Model):
     collection = models.ForeignKey(
         "SourceCollection",
         on_delete=models.CASCADE,
         related_name="+",
         help_text="SourceCollection available within this surface.",
+    )
+
+    class Meta:
+        abstract = True
+
+
+class SurfaceKnowledge(BaseSurfaceKnowledge):
+    surface = models.ForeignKey(
+        Surface,
+        on_delete=models.CASCADE,
+        related_name="knowledge",
+        help_text="Surface this knowledge collection is attached to.",
     )
 
     class Meta:
@@ -189,13 +213,7 @@ class SurfaceKnowledge(models.Model):
         ]
 
 
-class SurfaceNaiveSearchConfig(models.Model):
-    surface_knowledge = models.OneToOneField(
-        SurfaceKnowledge,
-        on_delete=models.CASCADE,
-        related_name="naive_search_config",
-        help_text="SurfaceKnowledge entry this naive search configuration applies to.",
-    )
+class BaseSurfaceNaiveSearchConfig(models.Model):
     search_limit = models.PositiveIntegerField(
         default=3,
         blank=True,
@@ -209,14 +227,20 @@ class SurfaceNaiveSearchConfig(models.Model):
         help_text="Float between 0.00 and 1.00 for knowledge",
     )
 
+    class Meta:
+        abstract = True
 
-class SurfaceGraphBasicSearchConfig(models.Model):
+
+class SurfaceNaiveSearchConfig(BaseSurfaceNaiveSearchConfig):
     surface_knowledge = models.OneToOneField(
         SurfaceKnowledge,
         on_delete=models.CASCADE,
-        related_name="graph_basic_search_config",
-        help_text="SurfaceKnowledge entry this GraphRAG basic search configuration applies to.",
+        related_name="naive_search_config",
+        help_text="SurfaceKnowledge entry this naive search configuration applies to.",
     )
+
+
+class BaseSurfaceGraphBasicSearchConfig(models.Model):
     prompt = models.TextField(
         null=True,
         blank=True,
@@ -232,14 +256,20 @@ class SurfaceGraphBasicSearchConfig(models.Model):
         help_text="The maximum tokens.",
     )
 
+    class Meta:
+        abstract = True
 
-class SurfaceGraphLocalSearchConfig(models.Model):
+
+class SurfaceGraphBasicSearchConfig(BaseSurfaceGraphBasicSearchConfig):
     surface_knowledge = models.OneToOneField(
         SurfaceKnowledge,
         on_delete=models.CASCADE,
-        related_name="graph_local_search_config",
-        help_text="SurfaceKnowledge entry this GraphRAG local search configuration applies to.",
+        related_name="graph_basic_search_config",
+        help_text="SurfaceKnowledge entry this GraphRAG basic search configuration applies to.",
     )
+
+
+class BaseSurfaceGraphLocalSearchConfig(models.Model):
     prompt = models.TextField(
         null=True,
         blank=True,
@@ -269,4 +299,138 @@ class SurfaceGraphLocalSearchConfig(models.Model):
     max_context_tokens = models.IntegerField(
         default=12000,
         help_text="The maximum tokens.",
+    )
+
+    class Meta:
+        abstract = True
+
+
+class SurfaceGraphLocalSearchConfig(BaseSurfaceGraphLocalSearchConfig):
+    surface_knowledge = models.OneToOneField(
+        SurfaceKnowledge,
+        on_delete=models.CASCADE,
+        related_name="graph_local_search_config",
+        help_text="SurfaceKnowledge entry this GraphRAG local search configuration applies to.",
+    )
+
+
+class InlineSurface(TimestampMixin, models.Model):
+    task_node = models.OneToOneField(
+        "TaskNode",
+        on_delete=models.CASCADE,
+        related_name="inline_surface",
+        help_text="TaskNode that owns this ad-hoc surface. Deleted with the node.",
+    )
+    instructions = models.TextField(
+        blank=True,
+        default="",
+        help_text="Free-form text appended to the agent prompt when this surface is active. Empty string means no extra instructions.",
+    )
+    allow_creation = models.BooleanField(
+        default=False,
+        help_text="Surface-wide permission: when True, the agent may create new storage files within this surface.",
+    )
+
+    class Meta(TimestampMixin.Meta):
+        pass
+
+
+class InlineSurfacePythonTool(BaseSurfacePythonTool):
+    inline_surface = models.ForeignKey(
+        InlineSurface,
+        on_delete=models.CASCADE,
+        related_name="python_tools",
+        help_text="InlineSurface this entry belongs to.",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["inline_surface", "python_tool"],
+                name="uniq_inline_surface_python_tool",
+            ),
+        ]
+
+
+class InlineSurfaceMcpTool(BaseSurfaceMcpTool):
+    inline_surface = models.ForeignKey(
+        InlineSurface,
+        on_delete=models.CASCADE,
+        related_name="mcp_tools",
+        help_text="InlineSurface this entry belongs to.",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["inline_surface", "mcp_tool"],
+                name="uniq_inline_surface_mcp_tool",
+            ),
+        ]
+
+
+class InlineSurfaceStorageItem(BaseSurfaceStorageItem):
+    inline_surface = models.ForeignKey(
+        InlineSurface,
+        on_delete=models.CASCADE,
+        related_name="storage_items",
+        help_text="InlineSurface this storage permission entry belongs to.",
+    )
+    storage_file = models.ForeignKey(
+        "StorageFile",
+        on_delete=models.CASCADE,
+        related_name="+",
+        help_text="StorageFile whose access is being configured for this surface.",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["inline_surface", "storage_file"],
+                name="uniq_inline_surface_storage_item",
+            ),
+        ]
+
+
+class InlineSurfaceKnowledge(BaseSurfaceKnowledge):
+    inline_surface = models.ForeignKey(
+        InlineSurface,
+        on_delete=models.CASCADE,
+        related_name="knowledge",
+        help_text="InlineSurface this knowledge collection is attached to.",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["inline_surface", "collection"],
+                name="uniq_inline_surface_knowledge",
+            ),
+        ]
+
+
+class InlineSurfaceNaiveSearchConfig(BaseSurfaceNaiveSearchConfig):
+    surface_knowledge = models.OneToOneField(
+        InlineSurfaceKnowledge,
+        on_delete=models.CASCADE,
+        related_name="naive_search_config",
+        help_text="InlineSurfaceKnowledge entry this naive search configuration applies to.",
+    )
+
+
+class InlineSurfaceGraphBasicSearchConfig(BaseSurfaceGraphBasicSearchConfig):
+    surface_knowledge = models.OneToOneField(
+        InlineSurfaceKnowledge,
+        on_delete=models.CASCADE,
+        related_name="graph_basic_search_config",
+        help_text="InlineSurfaceKnowledge entry this GraphRAG basic search configuration applies to.",
+    )
+
+
+class InlineSurfaceGraphLocalSearchConfig(BaseSurfaceGraphLocalSearchConfig):
+    surface_knowledge = models.OneToOneField(
+        InlineSurfaceKnowledge,
+        on_delete=models.CASCADE,
+        related_name="graph_local_search_config",
+        help_text="InlineSurfaceKnowledge entry this GraphRAG local search configuration applies to.",
     )

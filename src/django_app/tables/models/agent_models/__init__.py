@@ -14,6 +14,14 @@ from .surface_models import (
     SurfaceNaiveSearchConfig,
     SurfaceGraphBasicSearchConfig,
     SurfaceGraphLocalSearchConfig,
+    InlineSurface,
+    InlineSurfacePythonTool,
+    InlineSurfaceMcpTool,
+    InlineSurfaceStorageItem,
+    InlineSurfaceKnowledge,
+    InlineSurfaceNaiveSearchConfig,
+    InlineSurfaceGraphBasicSearchConfig,
+    InlineSurfaceGraphLocalSearchConfig,
 )
 
 __all__ = [
@@ -30,4 +38,12 @@ __all__ = [
     "SurfaceNaiveSearchConfig",
     "SurfaceGraphBasicSearchConfig",
     "SurfaceGraphLocalSearchConfig",
+    "InlineSurface",
+    "InlineSurfacePythonTool",
+    "InlineSurfaceMcpTool",
+    "InlineSurfaceStorageItem",
+    "InlineSurfaceKnowledge",
+    "InlineSurfaceNaiveSearchConfig",
+    "InlineSurfaceGraphBasicSearchConfig",
+    "InlineSurfaceGraphLocalSearchConfig",
 ]
