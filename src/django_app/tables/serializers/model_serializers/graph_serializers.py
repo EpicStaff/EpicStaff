@@ -46,6 +46,55 @@ class GraphSessionMessageSerializer(serializers.ModelSerializer):
         model = GraphSessionMessage
         fields = "__all__"
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        message_data = data.get("message_data") or {}
+        if message_data.get("message_type") != "subgraph_start":
+            return data
+
+        exec_id = message_data.get("subgraph_execution_id")
+        if not exec_id:
+            return data
+
+        subtree_messages = list(
+            GraphSessionMessage.objects.filter(
+                session_id=instance.session_id,
+                message_data__subgraph_execution_ids__contains=[exec_id],
+            ).values("parent_subgraph_execution_id", "message_data")
+        )
+
+        exec_to_subgraph_id = {exec_id: message_data.get("subgraph_id")}
+        counts_by_exec_id = {}
+        for msg in subtree_messages:
+            parent_exec = msg["parent_subgraph_execution_id"]
+            if parent_exec:
+                parent_exec = str(parent_exec)
+                counts_by_exec_id[parent_exec] = counts_by_exec_id.get(parent_exec, 0) + 1
+
+            msg_data = msg["message_data"] or {}
+            if msg_data.get("message_type") == "subgraph_start":
+                child_exec = msg_data.get("subgraph_execution_id")
+                child_sgid = msg_data.get("subgraph_id")
+                if child_exec and child_sgid is not None:
+                    exec_to_subgraph_id[child_exec] = child_sgid
+
+        if exec_id in counts_by_exec_id:
+            counts_by_exec_id[exec_id] = max(0, counts_by_exec_id[exec_id] - 1)
+
+        messages_count_by_subgraph = {}
+        for e_id, count in counts_by_exec_id.items():
+            sgid = exec_to_subgraph_id.get(e_id)
+            if sgid is not None:
+                messages_count_by_subgraph[sgid] = (
+                        messages_count_by_subgraph.get(sgid, 0) + count
+                )
+
+        data["message_data"] = {
+            **message_data,
+            "messages_count_by_subgraph": messages_count_by_subgraph,
+        }
+        return data
+
 
 class GraphOrganizationSerializer(serializers.ModelSerializer):
     class Meta:

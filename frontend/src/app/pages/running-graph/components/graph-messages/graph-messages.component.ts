@@ -36,7 +36,12 @@ import { AgentsService } from '../../../../features/staff/services/staff.service
 import { GetTaskRequest } from '../../../../features/tasks/models/task.model';
 import { TasksService } from '../../../../features/tasks/services/tasks.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { CodeAgentStreamMessageData, GraphMessage, MessageType } from '../../models/graph-session-message.model';
+import {
+    CodeAgentStreamMessageData,
+    GraphMessage,
+    MessageType,
+    StartSubflowMessageData,
+} from '../../models/graph-session-message.model';
 import { SessionStatusMessageData } from '../../models/update-session-status.model';
 import { AnswerToLLMService } from '../../services/answer-to-llm.service';
 import { RunSessionSSEService } from '../../services/graph-session-sse.service';
@@ -883,18 +888,57 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     }
 
     private hasNestedMessagesForContext(context: MessageContext): boolean {
-        if (!context.isSubgraphStart) return false;
-        const nestedPath = [...context.path, context.key];
-        return this.messageContexts.some((ctx) => this.pathsEqual(ctx.path, nestedPath));
+        return this.getNestedMessagesCountForContext(context) > 0;
     }
 
     private getNestedMessagesCountForContext(context: MessageContext): number {
         if (!context.isSubgraphStart) return 0;
+        const backendCount = this.getBackendNestedMessagesCount(context);
+        const liveCount = this.getLiveNestedMessagesCount(context);
+        return Math.max(backendCount, liveCount);
+    }
+
+    private getBackendNestedMessagesCount(context: MessageContext): number {
+        const message = this.messages[context.index];
+        const data = message?.message_data as StartSubflowMessageData | undefined;
+        if (!data?.messages_count_by_subgraph || data.subgraph_id == null) return 0;
+        return data.messages_count_by_subgraph[data.subgraph_id] ?? 0;
+    }
+
+    private getLiveNestedMessagesCount(context: MessageContext): number {
         const nestedPath = [...context.path, context.key];
         return this.messageContexts.reduce(
-            (count, ctx) => (this.pathsEqual(ctx.path, nestedPath) ? count + 1 : count),
+            (count, ctx) =>
+                this.pathsEqual(ctx.path, nestedPath) && this.isRenderableNestedMessage(ctx) ? count + 1 : count,
             0
         );
+    }
+
+    // Mirrors the @switch cases in the nested drilldown template: only messages
+    // whose type matches a case render as a card, so only those should be counted.
+    private isRenderableNestedMessage(ctx: MessageContext): boolean {
+        const type = this.messages[ctx.index]?.message_data?.message_type;
+        switch (type) {
+            case 'start':
+            case 'user':
+            case 'agent':
+            case 'agent_finish':
+            case 'python':
+            case 'llm':
+            case 'extracted_chunks':
+            case 'error':
+            case 'task':
+            case 'condition_group':
+            case 'classification_prompt':
+            case 'condition_group_manipulation':
+            case 'finish':
+            case 'code_agent_stream':
+            case 'subgraph_start':
+            case 'subgraph_finish':
+                return true;
+            default:
+                return false;
+        }
     }
 
     private isNestedMessagesOpenForContext(context: MessageContext): boolean {
@@ -1331,7 +1375,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
         this.drillPaths.forEach((path, rootKey) => {
             const nestedEntries = this.messageContexts
-                .filter((context) => this.pathsEqual(context.path, path))
+                .filter((context) => this.pathsEqual(context.path, path) && this.isRenderableNestedMessage(context))
                 .map((context) => this.buildMessageEntry(this.messages[context.index], context));
             this.drilldownEntriesByRoot.set(rootKey, nestedEntries);
 
