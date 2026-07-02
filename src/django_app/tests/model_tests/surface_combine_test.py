@@ -37,7 +37,6 @@ from tables.services.surface_combine_service import SurfaceCombineService
 
 def make_surface_dict(
     instructions="",
-    allow_creation=False,
     python_tools=None,
     mcp_tools=None,
     storage_items=None,
@@ -45,7 +44,6 @@ def make_surface_dict(
 ):
     return {
         "instructions": instructions,
-        "allow_creation": allow_creation,
         "python_tools": python_tools or [],
         "mcp_tools": mcp_tools or [],
         "storage_items": storage_items or [],
@@ -227,25 +225,6 @@ class TestCombineStorage:
         assert item["can_delete"] == "deny"  # deny beats allow
 
 
-class TestCombineAllowCreation:
-    def test_all_true_returns_true(self):
-        s1 = make_surface_dict(allow_creation=True)
-        s2 = make_surface_dict(allow_creation=True)
-        result = SurfaceCombineService.combine([s1, s2])
-        assert result["allow_creation"] is True
-
-    def test_any_false_returns_false(self):
-        s1 = make_surface_dict(allow_creation=True)
-        s2 = make_surface_dict(allow_creation=False)
-        result = SurfaceCombineService.combine([s1, s2])
-        assert result["allow_creation"] is False
-
-    def test_single_false_returns_false(self):
-        s1 = make_surface_dict(allow_creation=False)
-        result = SurfaceCombineService.combine([s1])
-        assert result["allow_creation"] is False
-
-
 class TestCombineKnowledge:
     def test_knowledge_union_different_collections(self):
         s1 = make_surface_dict(knowledge=[make_knowledge_item(1)])
@@ -314,7 +293,6 @@ class TestCombineOutputShape:
         result = SurfaceCombineService.combine([s1])
         assert set(result.keys()) == {
             "instructions",
-            "allow_creation",
             "python_tools",
             "mcp_tools",
             "storage_items",
@@ -382,7 +360,6 @@ def surface_a(db, org, py_tool_a, storage_file_a):
         organization=org,
         name="combine-surface-a",
         instructions="be concise",
-        allow_creation=True,
     )
     SurfacePythonTool.objects.create(
         surface=surface, python_tool=py_tool_a, mode=ToolMode.ALLOW
@@ -399,7 +376,6 @@ def surface_b(db, org, py_tool_a, py_tool_b):
         organization=org,
         name="combine-surface-b",
         instructions="use bullet points",
-        allow_creation=False,
     )
     SurfacePythonTool.objects.create(
         surface=surface, python_tool=py_tool_a, mode=ToolMode.DENY
@@ -416,7 +392,6 @@ def surface_c(db, org):
         organization=org,
         name="combine-surface-c",
         instructions="",
-        allow_creation=True,
     )
 
 
@@ -439,13 +414,11 @@ def test_combine_happy_path_returns_merged_result(
         organization=default_org,
         name="api-combine-a",
         instructions="be concise",
-        allow_creation=True,
     )
     s_b = Surface.objects.create(
         organization=default_org,
         name="api-combine-b",
         instructions="use bullets",
-        allow_creation=False,
     )
 
     code = PythonCode.objects.create(code="def main(): pass")
@@ -466,8 +439,6 @@ def test_combine_happy_path_returns_merged_result(
     # Instructions joined
     assert "be concise" in data["instructions"]
     assert "use bullets" in data["instructions"]
-    # allow_creation AND
-    assert data["allow_creation"] is False
     # deny beats allow for py_tool
     tools_by_id = {t["python_tool"]: t["mode"] for t in data["python_tools"]}
     assert tools_by_id[tool.pk] == "deny"
@@ -558,7 +529,6 @@ def test_combine_single_surface_returns_its_effective_data(client):
         organization=default_org,
         name="api-single-combine",
         instructions="solo instructions",
-        allow_creation=True,
     )
 
     response = client.post(
@@ -570,4 +540,3 @@ def test_combine_single_surface_returns_its_effective_data(client):
     assert response.status_code == 200
     data = response.json()
     assert data["instructions"] == "solo instructions"
-    assert data["allow_creation"] is True

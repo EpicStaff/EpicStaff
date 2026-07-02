@@ -27,11 +27,6 @@ class Surface(TimestampMixin, models.Model):
         max_length=255,
         help_text="Stable identifier unique within the organization. Used as the user-facing name for this surface.",
     )
-    description = models.TextField(
-        blank=True,
-        default="",
-        help_text="Optional human-readable description shown in the UI. Empty string means no description.",
-    )
     instructions = models.TextField(
         blank=True,
         default="",
@@ -45,10 +40,6 @@ class Surface(TimestampMixin, models.Model):
         default=None,
         related_name="owned_surfaces",
         help_text="Agent that owns this surface. Null means shared — any agent or place may use it. Set means agent-specific — only that agent.",
-    )
-    allow_creation = models.BooleanField(
-        default=False,
-        help_text="Surface-wide permission: when True, the agent may create new storage files within this surface.",
     )
 
     class Meta(TimestampMixin.Meta):
@@ -325,10 +316,6 @@ class InlineSurface(TimestampMixin, models.Model):
         blank=True,
         default="",
         help_text="Free-form text appended to the agent prompt when this surface is active. Empty string means no extra instructions.",
-    )
-    allow_creation = models.BooleanField(
-        default=False,
-        help_text="Surface-wide permission: when True, the agent may create new storage files within this surface.",
     )
 
     class Meta(TimestampMixin.Meta):

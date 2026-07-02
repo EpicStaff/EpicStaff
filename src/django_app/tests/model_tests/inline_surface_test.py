@@ -164,13 +164,11 @@ def test_create_inline_surface(task_node):
     inline = InlineSurface.objects.create(
         task_node=task_node,
         instructions="be concise",
-        allow_creation=True,
     )
 
     assert inline.pk is not None
     assert inline.task_node == task_node
     assert inline.instructions == "be concise"
-    assert inline.allow_creation is True
 
 
 @pytest.mark.django_db
@@ -351,7 +349,6 @@ def test_post_with_full_inline_payload_returns_201_and_creates_rows(
             "node_name": "inline-full-payload",
             "inline_surface": {
                 "instructions": "be concise",
-                "allow_creation": True,
                 "python_tools": [
                     {"python_tool": py_tool.pk, "mode": "allow"},
                     {"python_tool": py_tool_b.pk, "mode": "deny"},
@@ -377,7 +374,6 @@ def test_post_with_full_inline_payload_returns_201_and_creates_rows(
     assert response.status_code == 201, response.data
     inline_data = response.data["inline_surface"]
     assert inline_data["instructions"] == "be concise"
-    assert inline_data["allow_creation"] is True
     assert len(inline_data["python_tools"]) == 2
     assert len(inline_data["mcp_tools"]) == 1
     assert len(inline_data["storage_items"]) == 1
@@ -719,7 +715,7 @@ def test_surface_combine_service_accepts_inline_read_serializer_output(
     alongside SurfaceReadSerializer output as input to SurfaceCombineService."""
     node = TaskNode.objects.create(graph=api_graph, node_name="inline-combine")
     inline = InlineSurface.objects.create(
-        task_node=node, instructions="inline instructions", allow_creation=True
+        task_node=node, instructions="inline instructions"
     )
     InlineSurfacePythonTool.objects.create(
         inline_surface=inline, python_tool=py_tool, mode=ToolMode.ALLOW
@@ -750,7 +746,6 @@ def test_surface_combine_service_accepts_inline_read_serializer_output(
 
     assert "inline instructions" in combined["instructions"]
     assert "catalog instructions" in combined["instructions"]
-    assert combined["allow_creation"] is False
     assert {t["python_tool"] for t in combined["python_tools"]} == {py_tool.pk}
     assert {t["mcp_tool"] for t in combined["mcp_tools"]} == {mcp_tool.pk}
     assert {s["storage_file"] for s in combined["storage_items"]} == {

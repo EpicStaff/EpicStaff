@@ -383,6 +383,65 @@ class TestTree:
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
 
+class TestFilesByIds:
+    def test_returns_matching_files_with_expected_fields(
+        self, auth_client, mock_manager
+    ):
+        mock_manager.list_.return_value = []
+        auth_client.get("/api/storage/list/", {"path": ""})
+        org = Organization.objects.get(name="Default Organization")
+
+        storage_file = StorageFile.objects.create(
+            org=org, path="reports/q1.pdf", name="q1.pdf", size=100
+        )
+
+        resp = auth_client.get("/api/storage/files/", {"ids": str(storage_file.id)})
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert len(resp.data) == 1
+        assert resp.data[0]["id"] == storage_file.id
+        assert resp.data[0]["path"] == "reports/q1.pdf"
+        assert resp.data[0]["name"] == "q1.pdf"
+        assert resp.data[0]["size"] == 100
+
+    def test_omits_missing_ids(self, auth_client, mock_manager):
+        mock_manager.list_.return_value = []
+        auth_client.get("/api/storage/list/", {"path": ""})
+        org = Organization.objects.get(name="Default Organization")
+
+        storage_file = StorageFile.objects.create(org=org, path="a.txt", name="a.txt")
+
+        resp = auth_client.get(
+            "/api/storage/files/", {"ids": f"{storage_file.id},999999"}
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert len(resp.data) == 1
+        assert resp.data[0]["id"] == storage_file.id
+
+    def test_omits_files_of_another_org(self, auth_client, mock_manager):
+        mock_manager.list_.return_value = []
+        auth_client.get("/api/storage/list/", {"path": ""})
+
+        other_org = Organization.objects.create(name="other-org")
+        foreign_file = StorageFile.objects.create(
+            org=other_org, path="foreign.txt", name="foreign.txt"
+        )
+
+        resp = auth_client.get("/api/storage/files/", {"ids": str(foreign_file.id)})
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data == []
+
+    def test_rejects_non_numeric_ids(self, auth_client, mock_manager):
+        resp = auth_client.get("/api/storage/files/", {"ids": "1,abc"})
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_rejects_empty_ids(self, auth_client, mock_manager):
+        resp = auth_client.get("/api/storage/files/", {"ids": ""})
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
 class TestSearch:
     def test_search_returns_paged_results(self, auth_client, mock_manager):
         mock_manager.search.return_value = (

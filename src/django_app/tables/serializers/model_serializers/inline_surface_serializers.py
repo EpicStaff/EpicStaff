@@ -96,7 +96,6 @@ class InlineSurfaceReadSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "instructions",
-            "allow_creation",
             "python_tools",
             "mcp_tools",
             "storage_items",
@@ -109,7 +108,6 @@ class InlineSurfaceReadSerializer(serializers.ModelSerializer):
 
 class InlineSurfaceWriteSerializer(serializers.Serializer):
     instructions = serializers.CharField(required=False, default="", allow_blank=True)
-    allow_creation = serializers.BooleanField(required=False, default=False)
     python_tools = SurfacePythonToolWriteSerializer(
         many=True, required=False, default=list
     )

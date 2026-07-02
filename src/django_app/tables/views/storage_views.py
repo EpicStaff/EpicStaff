@@ -15,6 +15,8 @@ from tables.serializers.storage_serializers import (
     StorageBulkDeleteSerializer,
     StorageCopySerializer,
     StorageDownloadZipSerializer,
+    StorageFilesByIdsQuerySerializer,
+    StorageFileSerializer,
     StorageGraphFilesQuerySerializer,
     StorageMkdirSerializer,
     StorageMoveSerializer,
@@ -38,6 +40,7 @@ from tables.swagger_schemas.storage_schema import (
     STORAGE_DELETE_SWAGGER,
     STORAGE_DOWNLOAD_SWAGGER,
     STORAGE_DOWNLOAD_ZIP_SWAGGER,
+    STORAGE_FILES_BY_IDS_SWAGGER,
     STORAGE_GRAPH_FILES_SWAGGER,
     STORAGE_INFO_SWAGGER,
     STORAGE_LIST_SWAGGER,
@@ -375,6 +378,17 @@ class StorageAPIView(ViewSet):
             .order_by("added_at")
         )
         return Response(GraphStorageFileSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=["get"], url_path="files")
+    @swagger_auto_schema(**STORAGE_FILES_BY_IDS_SWAGGER)
+    def files_by_ids(self, request):
+        _, org_id = self._resolve_context(request)
+        params = StorageFilesByIdsQuerySerializer(data=request.query_params)
+        params.is_valid(raise_exception=True)
+        qs = StorageFile.objects.filter(
+            org_id=org_id, id__in=params.validated_data["ids"]
+        )
+        return Response(StorageFileSerializer(qs, many=True).data)
 
     @action(detail=False, methods=["get"], url_path="search")
     @swagger_auto_schema(**STORAGE_SEARCH_SWAGGER)

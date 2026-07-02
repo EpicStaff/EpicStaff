@@ -165,10 +165,8 @@ class SurfaceReadSerializer(serializers.ModelSerializer):
             "id",
             "organization",
             "name",
-            "description",
             "instructions",
             "owner_agent",
-            "allow_creation",
             "python_tools",
             "mcp_tools",
             "storage_items",
@@ -181,9 +179,7 @@ class SurfaceReadSerializer(serializers.ModelSerializer):
 
 class SurfaceWriteSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=255)
-    description = serializers.CharField(required=False, default="", allow_blank=True)
     instructions = serializers.CharField(required=False, default="", allow_blank=True)
-    allow_creation = serializers.BooleanField(required=False, default=False)
     python_tools = SurfacePythonToolWriteSerializer(
         many=True, required=False, default=list
     )

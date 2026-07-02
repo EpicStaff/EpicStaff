@@ -342,3 +342,52 @@ class StorageSearchResponseSerializer(serializers.Serializer):
     offset = serializers.IntegerField()
     limit = serializers.IntegerField()
     results = StorageSearchResultSerializer(many=True)
+
+
+class StorageFilesByIdsQuerySerializer(serializers.Serializer):
+    ids = serializers.CharField(
+        required=True,
+        help_text="Comma-separated list of StorageFile IDs (e.g. `1,2,3`)",
+    )
+
+    def validate_ids(self, value: str) -> list[int]:
+        tokens = [token.strip() for token in value.split(",") if token.strip()]
+
+        if not tokens:
+            raise serializers.ValidationError("At least one id is required.")
+
+        if not all(token.isdigit() for token in tokens):
+            raise serializers.ValidationError(
+                "ids must be a comma-separated list of integers."
+            )
+
+        return [int(token) for token in tokens]
+
+
+class StorageFileSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True, help_text="StorageFile id")
+    path = serializers.CharField(read_only=True, help_text="Org-relative storage path")
+    name = serializers.CharField(read_only=True, help_text="Last path segment")
+    item_type = serializers.CharField(read_only=True, help_text="'file' or 'folder'")
+    size = serializers.IntegerField(
+        read_only=True,
+        allow_null=True,
+        help_text="File size in bytes, null for folders",
+    )
+    s3_modified = serializers.DateTimeField(
+        read_only=True,
+        allow_null=True,
+        help_text="Storage backend LastModified timestamp",
+    )
+    is_system = serializers.BooleanField(
+        read_only=True, help_text="True for platform-written files"
+    )
+    parent_path = serializers.CharField(
+        read_only=True, help_text="Immediate parent directory path"
+    )
+    created_at = serializers.DateTimeField(
+        read_only=True, help_text="Row creation timestamp"
+    )
+    updated_at = serializers.DateTimeField(
+        read_only=True, help_text="Row last update timestamp"
+    )

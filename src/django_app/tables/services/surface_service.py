@@ -20,9 +20,7 @@ class SurfaceService:
                 pk=instance.pk,
                 organization_id=instance.organization_id,
                 name=instance.name,
-                description=instance.description,
                 instructions=instance.instructions,
-                allow_creation=instance.allow_creation,
             )
             candidate._state.adding = False
         else:
@@ -30,9 +28,7 @@ class SurfaceService:
 
         for field_name in (
             "name",
-            "description",
             "instructions",
-            "allow_creation",
             "owner_agent",
         ):
             if field_name in attrs:

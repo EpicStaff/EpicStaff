@@ -27,7 +27,6 @@ class InlineSurfaceService:
             task_node=task_node,
             defaults={
                 "instructions": data.get("instructions", ""),
-                "allow_creation": data.get("allow_creation", False),
             },
         )
 

@@ -23,7 +23,6 @@ class SurfaceCombineService:
     def combine(surfaces: list[dict]) -> dict:
         return {
             "instructions": SurfaceCombineService._combine_instructions(surfaces),
-            "allow_creation": SurfaceCombineService._combine_allow_creation(surfaces),
             "python_tools": SurfaceCombineService._combine_tools(
                 surfaces, "python_tools", "python_tool"
             ),
@@ -120,7 +119,3 @@ class SurfaceCombineService:
                     )
 
         return list(seen.values())
-
-    @staticmethod
-    def _combine_allow_creation(surfaces: list[dict]) -> bool:
-        return all(s.get("allow_creation", False) for s in surfaces)

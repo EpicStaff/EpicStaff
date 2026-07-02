@@ -4,7 +4,7 @@ Integration tests for the Surface model rewrite.
 Covers:
 - Surface CRUD (shared/agent-specific)
 - SurfacePythonTool / SurfaceMcpTool with allow & deny modes
-- SurfaceStorageItem with the 4 boolean flags and Surface.allow_creation
+- SurfaceStorageItem with the 4 boolean flags
 - SurfaceKnowledge with naive, graph-basic, graph-local configs
 - AgentDefaultSurface places (all/flow/chat)
 - Round-trip GET returns nested shape
@@ -153,10 +153,8 @@ def shared_surface(db, org):
     return Surface.objects.create(
         organization=org,
         name="shared-surface",
-        description="shared desc",
         instructions="be concise",
         owner_agent=None,
-        allow_creation=False,
     )
 
 
@@ -189,20 +187,6 @@ def test_create_agent_specific_surface(org, agent):
     )
 
     assert surface.owner_agent == agent
-
-
-@pytest.mark.django_db
-def test_surface_allow_creation_defaults_false(org):
-    surface = Surface.objects.create(organization=org, name="no-create")
-    assert surface.allow_creation is False
-
-
-@pytest.mark.django_db
-def test_surface_allow_creation_true(org):
-    surface = Surface.objects.create(
-        organization=org, name="with-create", allow_creation=True
-    )
-    assert surface.allow_creation is True
 
 
 @pytest.mark.django_db
@@ -348,7 +332,7 @@ def test_mcp_tool_deny_mode_stored(shared_surface, mcp_tool_a):
 
 
 # ---------------------------------------------------------------------------
-# SurfaceStorageItem — 4 boolean flags + allow_creation
+# SurfaceStorageItem — 4 boolean flags
 # ---------------------------------------------------------------------------
 
 
@@ -535,9 +519,7 @@ def test_serializer_create_shared_surface(org):
     serializer = SurfaceWriteSerializer(
         data={
             "name": "new-shared",
-            "description": "desc",
             "instructions": "be brief",
-            "allow_creation": False,
         },
         context={"organization": org},
     )
@@ -618,7 +600,6 @@ def test_serializer_create_with_storage_items(org, storage_file_a):
     serializer = SurfaceWriteSerializer(
         data={
             "name": "storage-surface",
-            "allow_creation": True,
             "storage_items": [
                 {
                     "storage_file": storage_file_a.pk,
@@ -640,7 +621,6 @@ def test_serializer_create_with_storage_items(org, storage_file_a):
     assert item.can_view == StorageAccess.ALLOW
     assert item.can_edit == StorageAccess.UNSET
     assert item.can_delete == StorageAccess.DENY
-    assert surface.allow_creation is True
 
 
 @pytest.mark.django_db
