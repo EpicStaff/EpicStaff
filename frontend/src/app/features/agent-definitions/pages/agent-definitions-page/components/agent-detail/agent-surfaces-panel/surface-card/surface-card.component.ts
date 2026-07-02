@@ -6,11 +6,13 @@ import {
     computed,
     DestroyRef,
     effect,
+    ElementRef,
     inject,
     input,
     model,
     output,
     signal,
+    viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
@@ -127,6 +129,7 @@ export class SurfaceCardComponent {
     readonly instructions = signal<string>('');
 
     readonly menuOpen = signal<boolean>(false);
+    private readonly instructionsTextarea = viewChild<ElementRef<HTMLTextAreaElement>>('instrTa');
     private editedName = '';
 
     readonly moveTargets = computed(() => {
@@ -411,6 +414,16 @@ export class SurfaceCardComponent {
             if (!this.expanded()) return;
             this.loadCatalogs();
         });
+
+        effect(() => {
+            this.instructions();
+            const ta = this.instructionsTextarea()?.nativeElement;
+            if (!ta) return;
+            this.adjustInstructionsHeight(ta);
+            // Re-measure after layout settles (first show / font load), otherwise
+            // scrollHeight can read the minimal rows height before reflow.
+            requestAnimationFrame(() => this.adjustInstructionsHeight(ta));
+        });
     }
 
     private catalogsRequested = false;
@@ -445,6 +458,14 @@ export class SurfaceCardComponent {
 
     selectTab(tab: SurfaceTabId): void {
         this.activeTab.set(tab);
+    }
+
+    adjustInstructionsHeight(textarea: HTMLTextAreaElement): void {
+        const maxPx = 300;
+        textarea.style.height = 'auto';
+        const full = textarea.scrollHeight;
+        textarea.style.height = `${Math.min(full, maxPx)}px`;
+        textarea.style.overflowY = full > maxPx ? 'auto' : 'hidden';
     }
 
     onInstructionsBlur(): void {
@@ -561,6 +582,20 @@ export class SurfaceCardComponent {
         this.fileRows.update((rows) =>
             rows.map((r) => (r.id === row.id ? { ...r, perms: { ...r.perms, [key]: nextPermState(r.perms[key]) } } : r))
         );
+        this.emitStorageChange();
+    }
+
+    columnPermState(key: keyof SurfaceFilePerms): PermTriState {
+        const rows = this.fileRows();
+        if (!rows.length) return 'unset';
+        const first = rows[0].perms[key];
+        return rows.every((r) => r.perms[key] === first) ? first : 'unset';
+    }
+
+    toggleColumnPerm(key: keyof SurfaceFilePerms): void {
+        if (this.readOnly()) return;
+        const next = nextPermState(this.columnPermState(key));
+        this.fileRows.update((rows) => rows.map((r) => ({ ...r, perms: { ...r.perms, [key]: next } })));
         this.emitStorageChange();
     }
 
