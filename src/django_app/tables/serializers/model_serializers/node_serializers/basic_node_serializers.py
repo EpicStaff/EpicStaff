@@ -22,6 +22,7 @@ from tables.serializers.base_serializer import (
     ContentHashWritableMixin,
 )
 from tables.serializers.utils.mixins import NestedPythonCodeMixin
+from tables.validators.surface_validator import SurfaceValidator
 
 
 class CrewNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
@@ -86,6 +87,24 @@ class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
     class Meta:
         model = TaskNode
         fields = "__all__"
+
+    def validate(self, attrs):
+        surfaces = attrs.get("surface_list")
+        if surfaces:
+            organization = self.context.get("organization")
+            if "agent_definition" in attrs:
+                agent_definition = attrs["agent_definition"]
+            else:
+                agent_definition = (
+                    self.instance.agent_definition if self.instance else None
+                )
+            if organization is not None:
+                SurfaceValidator.validate_task_node_surfaces(
+                    surfaces=surfaces,
+                    agent_definition=agent_definition,
+                    organization=organization,
+                )
+        return attrs
 
 
 class AgentNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):

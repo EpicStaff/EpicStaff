@@ -955,6 +955,12 @@ class TaskNode(BaseNode):
         default=False,
         help_text="If True, task output is memoized in session state and reused on re-runs within the same session.",
     )
+    surface_list = models.ManyToManyField(
+        "Surface",
+        blank=True,
+        related_name="task_nodes",
+        help_text="Surfaces attached to this task node.",
+    )
 
 
 class AgentNode(BaseNode):

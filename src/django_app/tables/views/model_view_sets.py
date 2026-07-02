@@ -1037,8 +1037,15 @@ class CodeAgentNodeViewSet(IdempotentNodeCreateMixin, viewsets.ModelViewSet):
 class TaskNodeViewSet(
     IdempotentNodeCreateMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
 ):
-    queryset = TaskNode.objects.all()
+    queryset = TaskNode.objects.prefetch_related("surface_list")
     serializer_class = TaskNodeSerializer
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["organization"] = Organization.objects.get(
+            name=DEFAULT_ORGANIZATION_NAME
+        )
+        return context
 
 
 class AgentNodeViewSet(
