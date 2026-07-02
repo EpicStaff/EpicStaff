@@ -1,8 +1,8 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { Subject } from 'rxjs';
 
-import { ConfigService } from '../../../services/config/config.service';
 import { WsTicketService } from '../../../services/auth/ws-ticket.service';
+import { ConfigService } from '../../../services/config/config.service';
 
 export interface EditorInfo {
     user_id: number;
@@ -10,26 +10,25 @@ export interface EditorInfo {
     avatar_url?: string | null;
 }
 
-type ServerMessage = 
+type ServerMessage =
     | PresenceStateMessage
     | UserJoinedMessage
     | UserLeftMessage
     | GraphModifiedMessage
     | GraphSavedMessage
     | WsErrorMessage
-    | PresenceStateUpdated
-    
+    | PresenceStateUpdated;
 
-type PresenceStateMessage  = { type: 'presence_state'; editors: EditorInfo[] };
-type UserJoinedMessage     = { type: 'user_joined'; editor: EditorInfo };
-type UserLeftMessage       = { type: 'user_left'; user_id: number };
-type PresenceStateUpdated  = { type: 'presence_state_updated'; editor: EditorInfo};
-export type GraphModifiedMessage = { 
-    type: 'graph_modified'; 
-    graph_id: number; 
-    modified_by: EditorInfo 
+type PresenceStateMessage = { type: 'presence_state'; editors: EditorInfo[] };
+type UserJoinedMessage = { type: 'user_joined'; editor: EditorInfo };
+type UserLeftMessage = { type: 'user_left'; user_id: number };
+type PresenceStateUpdated = { type: 'presence_state_updated'; editor: EditorInfo };
+export type GraphModifiedMessage = {
+    type: 'graph_modified';
+    graph_id: number;
+    modified_by: EditorInfo;
 };
-export type GraphSavedMessage    = {
+export type GraphSavedMessage = {
     type: 'graph_saved';
     graph_id: number;
     new_save_version: number;
@@ -38,12 +37,11 @@ export type GraphSavedMessage    = {
 };
 type WsErrorMessage = { type: 'error'; code: string; message: string };
 
-type ClientMessage = { type: 'graph_modified' };
+// type ClientMessage = { type: 'graph_modified' };
 
 type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'reconnecting';
 
-@Injectable ({'providedIn': 'root'})
-
+@Injectable({ providedIn: 'root' })
 export class GraphCollaborationWsService {
     private configService = inject(ConfigService);
     private wsTicketService = inject(WsTicketService);
@@ -83,14 +81,12 @@ export class GraphCollaborationWsService {
             error: (err) => {
                 console.error('Failed to fetch WS ticket:', err);
                 this.handleConnectionLoss();
-            }
+            },
         });
     }
 
     private openSocket(ticket: string): void {
-        const wsBase = this.configService.apiUrl
-            .replace(/\/api\/$/, '')
-            .replace(/^http/, 'ws');
+        const wsBase = this.configService.apiUrl.replace(/\/api\/$/, '').replace(/^http/, 'ws');
         const url = `${wsBase}/ws/graphs/${this.currentGraphId}/edit/?ticket=${encodeURIComponent(ticket)}`;
         this.socket = new WebSocket(url);
 
@@ -107,7 +103,7 @@ export class GraphCollaborationWsService {
             } catch {
                 console.error('[WS] Failed to parse message:', event.data);
             }
-        }
+        };
 
         this.socket.onclose = (event) => {
             console.log('[WS] Closed, code:', event.code);
@@ -115,12 +111,11 @@ export class GraphCollaborationWsService {
             if (!this.isManualDisconnect) {
                 this.handleConnectionLoss();
             }
-        }
+        };
 
         this.socket.onerror = (err) => {
-            console.error('[WS] Error:', err)
-        }
-
+            console.error('[WS] Error:', err);
+        };
     }
 
     private handleMessage(message: ServerMessage): void {
@@ -131,13 +126,11 @@ export class GraphCollaborationWsService {
             case 'user_joined':
                 this.editors.update((editors) => {
                     const exists = editors.some((e) => e.user_id === message.editor.user_id);
-                    return exists ? editors : [...editors, message.editor]
+                    return exists ? editors : [...editors, message.editor];
                 });
                 break;
             case 'user_left':
-                this.editors.update((editors) =>
-                editors.filter((e) => e.user_id !== message.user_id)
-                );
+                this.editors.update((editors) => editors.filter((e) => e.user_id !== message.user_id));
                 break;
             case 'graph_modified':
                 this.updateEditorInfo(message.modified_by);
@@ -151,8 +144,8 @@ export class GraphCollaborationWsService {
                 console.error(`[WS] Server error [${message.code}]: ${message.message}`);
                 break;
             case 'presence_state_updated':
-                this.editors.update((editors) => 
-                editors.map((e) => e.user_id === message.editor.user_id ? message.editor : e)
+                this.editors.update((editors) =>
+                    editors.map((e) => (e.user_id === message.editor.user_id ? message.editor : e))
                 );
                 break;
         }
@@ -163,7 +156,7 @@ export class GraphCollaborationWsService {
         this.socket = null;
 
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.error(`[WS] Max reconnect attempts reached. Giving up.`)
+            console.error(`[WS] Max reconnect attempts reached. Giving up.`);
             this.connectionStatus.set('disconnected');
             return;
         }
@@ -176,14 +169,10 @@ export class GraphCollaborationWsService {
                 this.openConnection();
             }
         }, delay);
-
     }
 
     private calculateReconnectDelay(): number {
-        return Math.min(
-            this.baseReconnectDelayMs * Math.pow(2, this.reconnectAttempts - 1),
-            this.maxReconnectDelayMs
-        );
+        return Math.min(this.baseReconnectDelayMs * Math.pow(2, this.reconnectAttempts - 1), this.maxReconnectDelayMs);
     }
 
     private updateEditorInfo(editor: EditorInfo): void {
@@ -198,11 +187,11 @@ export class GraphCollaborationWsService {
 
     public sendUserEditing(): void {
         if (this.socket?.readyState === WebSocket.OPEN) {
-            this.socket?.send(JSON.stringify({type: 'graph_modified'}))
+            this.socket?.send(JSON.stringify({ type: 'graph_modified' }));
         }
     }
 
-    private cleanUp():void {
+    private cleanUp(): void {
         if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
             this.reconnectTimeout = null;
@@ -216,5 +205,4 @@ export class GraphCollaborationWsService {
         this.editors.set([]);
         this.connectionStatus.set('disconnected');
     }
-
 }

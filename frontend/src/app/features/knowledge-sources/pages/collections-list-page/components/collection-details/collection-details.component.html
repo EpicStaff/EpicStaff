@@ -35,6 +35,7 @@
                 <app-validation-errors [control]="collectionName" />
             </div>
             <app-svg-icon
+                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Delete]"
                 icon="trash"
                 class="details__action details__action--large"
                 size="1.5rem"

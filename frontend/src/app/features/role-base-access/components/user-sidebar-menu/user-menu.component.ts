@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, model, sig
 import { Router } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { FullMembership, GetMeResponse } from '@shared/models';
+import { ActionCode, FullMembership, GetMeResponse, ResourceCode } from '@shared/models';
 import { EMPTY } from 'rxjs';
 import { catchError, finalize } from 'rxjs/operators';
 
@@ -42,8 +42,8 @@ export class UserMenuComponent {
             .switchOrg(orgId)
             .pipe(
                 finalize(() => this.switching.set(false)),
-                catchError(() => {
-                    this.toast.error('You no longer have access to this organization.');
+                catchError((err) => {
+                    this.toast.error(err.error.message);
                     return EMPTY;
                 })
             )
@@ -83,4 +83,7 @@ export class UserMenuComponent {
             )
             .subscribe();
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

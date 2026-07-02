@@ -13,6 +13,8 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
@@ -38,6 +40,7 @@ interface FlatLabelNode {
         AppSvgIconComponent,
         LabelColorPickerComponent,
         MatTooltipModule,
+        HasPermissionDirective,
     ],
     templateUrl: './flows-label-sidebar.component.html',
     styleUrls: ['./flows-label-sidebar.component.scss'],
@@ -314,4 +317,7 @@ export class FlowsLabelSidebarComponent implements OnInit {
         }
         return 'Failed to save label. Please try again.';
     }
+
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }

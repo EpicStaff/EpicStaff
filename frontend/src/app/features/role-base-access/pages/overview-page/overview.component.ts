@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/directives/hide-inline-subtitle-on-overflow.directive';
 
@@ -19,4 +20,7 @@ import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/direct
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class OverviewComponent {}
+export class OverviewComponent {
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
+}

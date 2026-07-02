@@ -58,9 +58,7 @@ export class ProfileService {
      *  Called once by the route resolver on app load. */
     bootstrapUser(): Observable<GetMeResponse> {
         const cachedUser = this.currentUserSignal();
-        const user$ = cachedUser
-            ? of(cachedUser)
-            : this.http.get<GetMeResponse>(this.baseUrl).pipe(tap((u) => this.setUser(u)));
+        const user$ = cachedUser ? of(cachedUser) : this.getCurrentUser();
 
         return user$.pipe(
             switchMap((user) => {
@@ -116,6 +114,7 @@ export class ProfileService {
 
     private setUser(user: GetMeResponse): void {
         this.currentUser.set(user);
+        this.permissionsService.setSuperadmin(user.is_superadmin);
     }
 
     private updateUser(partial: Partial<GetMeResponse>): void {

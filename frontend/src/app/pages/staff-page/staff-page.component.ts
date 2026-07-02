@@ -1,10 +1,13 @@
 import { Dialog } from '@angular/cdk/dialog'; // Import from CDK instead of Material
 import { Component, HostListener, ViewChild } from '@angular/core';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { Observable, of } from 'rxjs';
 import { catchError, finalize, map, tap } from 'rxjs/operators';
 
 import { CanComponentDeactivate } from '../../core/guards/unsaved-changes.guard';
 import { FullAgent, FullAgentService } from '../../features/staff/services/full-agent.service';
+import { PermissionsService } from '../../services/auth/permissions.service';
 import { ToastService } from '../../services/notifications/toast.service';
 import { ButtonComponent } from '../../shared/components/buttons/button/button.component';
 import { CreateAgentFormComponent } from '../../shared/components/create-agent-form-dialog/create-agent-form-dialog.component';
@@ -24,6 +27,7 @@ import { AgentsTableComponent } from './components/agents-table/agents-table.com
         SaveWithIndicatorComponent,
         UnsavedIndicatorComponent,
         HideInlineSubtitleOnOverflowDirective,
+        HasPermissionDirective,
     ],
     templateUrl: './staff-page.component.html',
     styleUrls: ['./staff-page.component.scss'],
@@ -35,6 +39,7 @@ export class StaffPageComponent implements CanComponentDeactivate {
     constructor(
         private dialog: Dialog,
         private fullAgentService: FullAgentService,
+        private permissionsService: PermissionsService,
         private unsavedChangesDialog: UnsavedChangesDialogService,
         private toastService: ToastService
     ) {}
@@ -109,6 +114,7 @@ export class StaffPageComponent implements CanComponentDeactivate {
     }
 
     public canDeactivate(): boolean | Observable<boolean> {
+        if (!this.permissionsService.can(ResourceCode.Agents, ActionCode.Update)) return true;
         if (!this.hasUnsavedChanges) return true;
 
         return this.unsavedChangesDialog
@@ -149,4 +155,7 @@ export class StaffPageComponent implements CanComponentDeactivate {
         event.preventDefault();
         event.returnValue = '';
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

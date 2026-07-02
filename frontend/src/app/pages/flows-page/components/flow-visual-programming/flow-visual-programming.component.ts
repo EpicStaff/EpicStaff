@@ -21,6 +21,7 @@ import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-i
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router } from '@angular/router';
 import { GetLlmConfigRequest } from '@shared/models';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { LlmConfigStorageService } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
 import {
@@ -37,6 +38,7 @@ import {
     take,
     tap,
 } from 'rxjs';
+import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { EpicChatService } from '../../../../features/epic-chat/epic-chat.service';
@@ -61,6 +63,8 @@ import { FlowsStorageService } from '../../../../features/flows/services/flows-s
 import { RunGraphService } from '../../../../features/flows/services/run-graph-session.service';
 import { FlowMessagesPanelComponent } from '../../../../pages/running-graph/components/flow-messages-panel/flow-messages-panel.component';
 import { RunSessionSSEService } from '../../../../pages/running-graph/services/graph-session-sse.service';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config/config.service';
 import { ToastService } from '../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -68,8 +72,7 @@ import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.
 import { UnsavedChangesDialogService } from '../../../../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
 import { NodeType } from '../../../../visual-programming/core/enums/node-type';
 import { FlowModel } from '../../../../visual-programming/core/models/flow.model';
-import { ScheduleTriggerNodeModel } from '../../../../visual-programming/core/models/node.model';
-import { NodeModel } from '../../../../visual-programming/core/models/node.model';
+import { NodeModel, ScheduleTriggerNodeModel } from '../../../../visual-programming/core/models/node.model';
 import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/flow-graph.component';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
@@ -94,8 +97,6 @@ import { FlowUnsavedStateService } from '../../services/flow-unsaved-state.servi
 import { FlowHeaderComponent } from './components/header/flow-header.component';
 import { ShortcutsModalComponent } from './components/shortcuts-modal/shortcuts-modal.component';
 import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
-import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
-import { ProfileService } from '../../../../services/auth/profile.service';
 
 //.
 @Component({
@@ -184,6 +185,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         private readonly undoRedoService: UndoRedoService,
         private readonly createGraphWarningService: CreateGraphWarningsService,
         private readonly runSessionSSEService: RunSessionSSEService,
+        private readonly permissionsService: PermissionsService,
         private readonly sidePanelService: SidePanelService,
         private readonly llmConfigStorageService: LlmConfigStorageService
     ) {
@@ -211,21 +213,17 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((node) => this.handleNodeSaveRequest(node));
 
-        this.wsService.graphSaved$
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((event) => {
-                const currentId = this.profileService.currentUserSignal()?.id;
-                if (event.saved_by.user_id === currentId) return;
+        this.wsService.graphSaved$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
+            const currentId = this.profileService.currentUserSignal()?.id;
+            if (event.saved_by.user_id === currentId) return;
 
-                const savedBy = event.saved_by.display_name ?? `User ${event.saved_by.user_id}`;
-                this.toastService.info(`Graph was saved by ${savedBy}`, 4000, 'bottom-right');
+            const savedBy = event.saved_by.display_name ?? `User ${event.saved_by.user_id}`;
+            this.toastService.info(`Graph was saved by ${savedBy}`, 4000, 'bottom-right');
 
-                if (!this.hasUnsavedChangesSignal()) {
-                    this.graphState.update((state) =>
-                        state ? { ...state, save_version: event.new_save_version } : state
-                    );
-                }
-            })
+            if (!this.hasUnsavedChangesSignal()) {
+                this.graphState.update((state) => (state ? { ...state, save_version: event.new_save_version } : state));
+            }
+        });
     }
 
     public ngOnInit(): void {
@@ -561,6 +559,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public canDeactivate(): boolean | Observable<boolean> {
         if (this.isDeactivating) return true;
+        if (!this.permissionsService.can(ResourceCode.Flows, ActionCode.Update)) return true;
         if (!this.hasUnsavedChanges()) return true;
 
         this.isDeactivating = true;

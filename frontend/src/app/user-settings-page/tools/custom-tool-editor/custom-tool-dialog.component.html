@@ -22,9 +22,16 @@
 
         <!-- Body -->
         <div class="dialog-content">
-            <div class="content-split" #contentSplit>
+            <div
+                class="content-split"
+                #contentSplit
+            >
                 <!-- Left side - Form fields -->
-                <div class="form-fields" #formFields [style.width.px]="formFieldsWidth">
+                <div
+                    class="form-fields"
+                    #formFields
+                    [style.width.px]="formFieldsWidth"
+                >
                     <!-- Name Section -->
                     <div class="form-section name-section">
                         <div class="section-header">
@@ -129,7 +136,10 @@
                 </div>
 
                 <!-- Resizer -->
-                <div class="resizer" (mousedown)="onResizerMouseDown($event)">
+                <div
+                    class="resizer"
+                    (mousedown)="onResizerMouseDown($event)"
+                >
                     <div class="resizer-handle"></div>
                 </div>
 
@@ -150,13 +160,25 @@
                 (click)="close()"
                 >Close</app-button
             >
-            <app-button
-                type="primary"
-                [disabled]="form.invalid || !isInputsJsonValid()"
-                (click)="createTool()"
-            >
-                {{ selectedTool ? 'Update' : 'Create' }}
-            </app-button>
+            @if (selectedTool) {
+                <app-button
+                    *appHasPermission="[ResourceCode.Tools, ActionCode.Update]"
+                    type="primary"
+                    [disabled]="form.invalid || !isInputsJsonValid()"
+                    (click)="createTool()"
+                >
+                    Update
+                </app-button>
+            } @else {
+                <app-button
+                    *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
+                    type="primary"
+                    [disabled]="form.invalid || !isInputsJsonValid()"
+                    (click)="createTool()"
+                >
+                    Create
+                </app-button>
+            }
         </div>
     </form>
 </div>

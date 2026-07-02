@@ -14,6 +14,8 @@ import {
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { CheckboxComponent, IconButtonComponent, LoadingSpinnerComponent } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
 import { GraphDto } from '../../models/graph.model';
@@ -40,6 +42,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
         FlowSessionStatusFilterDropdownComponent,
         FlowNameFilterDropdownComponent,
         DurationFilterDropdownComponent,
+        HasPermissionDirective,
         MatTooltipModule,
     ],
     template: `
@@ -47,7 +50,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
             <table>
                 <thead>
                     <tr>
-                        <th>
+                        <th *appHasPermission="[ResourceCode.Flows, [ActionCode.Export, ActionCode.Delete]]">
                             <app-checkbox
                                 [checked]="areAllSelected()"
                                 [disabled]="isLoading || sessions.length === 0"
@@ -125,7 +128,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                     } @else {
                         <ng-container *ngFor="let session of sessions; trackBy: trackById">
                             <tr [class.row-expanded]="!externalPreview && expandedSessionId() === session.id">
-                                <td>
+                                <td *appHasPermission="[ResourceCode.Flows, [ActionCode.Export, ActionCode.Delete]]">
                                     <app-checkbox
                                         [checked]="isSelected(session.id)"
                                         (changed)="toggleSelection(session.id, $event)"
@@ -194,14 +197,16 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                                 class="arrow-icon"
                                             />
                                         </button>
-                                        <app-icon-button
-                                            *ngIf="!canStop(session.status)"
-                                            icon="x"
-                                            size="1.5rem"
-                                            ariaLabel="Delete session"
-                                            tooltip="Delete session"
-                                            (onClick)="deleteSelected.emit([session.id])"
-                                        ></app-icon-button>
+                                        <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]">
+                                            <app-icon-button
+                                                *ngIf="!canStop(session.status)"
+                                                icon="x"
+                                                size="1.5rem"
+                                                ariaLabel="Delete session"
+                                                tooltip="Delete session"
+                                                (onClick)="deleteSelected.emit([session.id])"
+                                            ></app-icon-button>
+                                        </ng-container>
                                     </div>
                                 </td>
                             </tr>
@@ -362,4 +367,7 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
         if (minutes > 0) return `${minutes}m ${seconds}s`;
         return `${seconds}s`;
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

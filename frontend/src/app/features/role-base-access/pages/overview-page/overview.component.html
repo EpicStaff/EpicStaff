@@ -15,7 +15,7 @@
             </div>
         </div>
         <nav class="overview-tabs">
-            <ng-container *appHasPermission="['organizations', 'read']">
+            <ng-container *appHasPermission="[ResourceCode.Organizations, ActionCode.Read]">
                 <a
                     routerLink="main"
                     routerLinkActive="active"
@@ -42,7 +42,7 @@
                 <span class="tab-divider">/</span>
             </ng-container>
             <a
-                *appHasPermission="['users', 'read']"
+                *appHasPermission="[ResourceCode.Users, ActionCode.Read]"
                 routerLink="users"
                 routerLinkActive="active"
                 class="overview-tab"
@@ -53,7 +53,7 @@
                 />
                 Users
             </a>
-            <ng-container *appHasPermission="['roles', 'read']">
+            <ng-container *appHasPermission="[ResourceCode.Roles, ActionCode.Read]">
                 <span class="tab-divider">/</span>
                 <a
                     routerLink="roles"

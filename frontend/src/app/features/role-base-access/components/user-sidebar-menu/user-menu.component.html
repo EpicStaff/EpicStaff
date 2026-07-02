@@ -34,7 +34,7 @@
     <div class="section-label">Navigation</div>
     <div class="nav-list">
         <button
-            *appHasPermission="['users', 'read']"
+            *appHasPermission="[ResourceCode.Users, ActionCode.Read]"
             class="nav-item"
             (click)="onWorkspaceClick()"
         >

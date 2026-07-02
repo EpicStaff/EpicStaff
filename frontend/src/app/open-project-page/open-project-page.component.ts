@@ -21,6 +21,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute } from '@angular/router';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { EMPTY, filter, forkJoin, from, Observable, of, Subscription } from 'rxjs';
 import { catchError, concatMap, finalize, map, switchMap, tap, toArray } from 'rxjs/operators';
 
@@ -31,6 +32,7 @@ import { CreateAgentRequest } from '../features/staff/models/agent.model';
 import { FullAgent, FullAgentService } from '../features/staff/services/full-agent.service';
 import { AgentsService } from '../features/staff/services/staff.service';
 import { TasksService } from '../features/tasks/services/tasks.service';
+import { PermissionsService } from '../services/auth/permissions.service';
 import { ToastService } from '../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../shared/components/app-svg-icon/app-svg-icon.component';
 import { CreateAgentFormComponent } from '../shared/components/create-agent-form-dialog/create-agent-form-dialog.component';
@@ -157,6 +159,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         private fullAgentService: FullAgentService,
         private fullTaskService: FullTaskService,
         public projectStateService: ProjectStateService,
+        private permissionsService: PermissionsService,
         private toastService: ToastService,
         private route: ActivatedRoute,
         private dialog: Dialog,
@@ -912,6 +915,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
     }
 
     public canDeactivate(): boolean | Observable<boolean> {
+        if (!this.permissionsService.can(ResourceCode.Projects, ActionCode.Update)) return true;
         if (!this.hasUnsavedChanges) return true;
 
         return this.unsavedChangesDialog

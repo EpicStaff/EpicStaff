@@ -16,6 +16,7 @@ import {
     SimpleChanges,
     ViewChild,
 } from '@angular/core';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { AgGridModule } from 'ag-grid-angular';
 import {
     CellClickedEvent,
@@ -43,6 +44,7 @@ import {
     TableFullAgent,
 } from '../../../../features/staff/services/full-agent.service';
 import { AgentsService } from '../../../../features/staff/services/staff.service';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications/toast.service';
 import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog/confimation-dialog.service';
 import { EnrichedCreateAgentPayload } from '../../../../shared/components/create-agent-form-dialog/create-agent-form-dialog.component';
@@ -139,6 +141,7 @@ export class AgentsTableComponent {
         private cdr: ChangeDetectorRef,
         private fullAgentService: FullAgentService,
         private agentsService: AgentsService,
+        private permissionsService: PermissionsService,
         private renderer: Renderer2,
         private toastService: ToastService,
         private confirmationDialogService: ConfirmationDialogService,
@@ -211,6 +214,12 @@ export class AgentsTableComponent {
         this.gridApi = params.api;
         this.gridApi.setGridOption('rowData', [...this.rowData]);
         this.gridApi.refreshCells({ force: true, columns: ['index'] });
+        this.gridApi.setColumnsVisible(
+            ['actions'],
+            this.permissionsService.can(ResourceCode.Agents, ActionCode.Update)
+        );
+        this.gridApi.setColumnsVisible(['copy'], this.permissionsService.can(ResourceCode.Agents, ActionCode.Create));
+        this.gridApi.setColumnsVisible(['delete'], this.permissionsService.can(ResourceCode.Agents, ActionCode.Delete));
         this.cdr.markForCheck();
     }
 
@@ -516,7 +525,6 @@ export class AgentsTableComponent {
             minWidth: 50,
             maxWidth: 50,
             cellClass: 'action-cell',
-
             editable: false,
         },
         {
@@ -2543,6 +2551,9 @@ export class AgentsTableComponent {
     }
 
     private ensureSingleSpareEmptyRow(): void {
+        const canCreateAgent = this.permissionsService.can(ResourceCode.Agents, ActionCode.Create);
+        if (!canCreateAgent) return;
+
         const spareIndexes: number[] = [];
 
         for (let i = 0; i < this.rowData.length; i++) {
@@ -2560,7 +2571,7 @@ export class AgentsTableComponent {
     }
 
     private shouldBlockInteraction(): boolean {
-        return this.isSaving;
+        return !this.permissionsService.can(ResourceCode.Agents, ActionCode.Update) || this.isSaving;
     }
 
     @HostListener('document:mousedown', ['$event'])
@@ -2571,4 +2582,6 @@ export class AgentsTableComponent {
         if (this.isClickInsideRow(target, this.activeRowId)) return;
         this.applyRequiredErrorsOnRowExit(this.activeRowId);
     }
+
+    protected readonly ResourceCode = ResourceCode;
 }

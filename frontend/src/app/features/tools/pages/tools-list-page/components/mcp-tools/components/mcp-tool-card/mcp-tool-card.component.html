@@ -28,6 +28,7 @@
     <div class="tool-footer">
         <app-button
             type="ghost"
+            *appHasPermission="[ResourceCode.Tools, [ActionCode.Update, ActionCode.Read]]"
             (click)="onConfigure()"
             >Configure</app-button
         >
@@ -55,6 +56,7 @@
                 />
             </button>
             <button
+                *appHasPermission="[ResourceCode.Tools, ActionCode.Delete]"
                 class="delete-btn"
                 aria-label="Delete tool"
                 matTooltip="Delete tool"
