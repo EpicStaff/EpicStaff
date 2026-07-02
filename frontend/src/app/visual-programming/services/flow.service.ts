@@ -697,7 +697,17 @@ export class FlowService {
             return false;
         });
     }
-    public deleteSelections(selections: { fNodeIds: string[]; fConnectionIds: string[] }): void {
+    public deleteSelections(selections: { fNodeIds: string[]; fConnectionIds: string[] }): {
+        removedNodes: NodeModel[];
+        removedConnections: ConnectionModel[];
+    } {
+        // Everything actually removed, including cascade (orphaned connections,
+        // auto-deleted EDGE nodes) — callers broadcast these over WS so the
+        // backend snapshot never keeps edges referencing deleted nodes.
+        const result: { removedNodes: NodeModel[]; removedConnections: ConnectionModel[] } = {
+            removedNodes: [],
+            removedConnections: [],
+        };
         this.flowSignal.update((flow: FlowModel) => {
             const nodeIdsToRemove = new Set(selections.fNodeIds);
             const connectionIdsToRemove = new Set<string>();
@@ -740,6 +750,9 @@ export class FlowService {
 
                 return true; // keep connection
             });
+
+            result.removedNodes = flow.nodes.filter((node) => nodeIdsToRemove.has(node.id));
+            result.removedConnections = removedConnections;
 
             const decisionTableUpdates = new Map<string, { table: DecisionTableNode; ports: ViewPort[] }>();
 
@@ -848,6 +861,7 @@ export class FlowService {
                 connections: updatedConnections,
             };
         });
+        return result;
     }
 
     /**

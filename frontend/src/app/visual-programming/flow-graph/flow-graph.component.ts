@@ -447,20 +447,33 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             newTargetPortId as CustomPortId
         );
 
+        const oldSourceIsCdt =
+            this.flowService.nodes().find((n) => n.id === existingConnection.sourceNodeId)?.type ===
+            NodeType.CLASSIFICATION_TABLE;
         const deleteRef = this.buildConnectionDeleteRef(existingConnection);
         this.flowService.removeConnection(event.connectionId);
-        this.wsService.sendConnectionDeleted(deleteRef);
+        if (!oldSourceIsCdt) {
+            this.wsService.sendConnectionDeleted(deleteRef);
+        }
         this.flowService.addConnection(updatedConnection);
+        if (oldSourceIsCdt) {
+            // Old CDT source lost this route — broadcast its updated routing.
+            this.broadcastCdtRoutingUpdate(existingConnection.sourceNodeId);
+        }
         const reassignSourceNode = this.flowService.nodes().find((n) => n.id === newSourceNodeId);
         const reassignTargetNode = this.flowService.nodes().find((n) => n.id === newTargetNodeId);
         if (reassignSourceNode && reassignTargetNode) {
-            this.wsService.sendConnectionCreated(
-                updatedConnection,
-                this.getConnectionListKey(updatedConnection),
-                reassignSourceNode,
-                reassignTargetNode,
-                this.currentFlowId!
-            );
+            if (reassignSourceNode.type === NodeType.CLASSIFICATION_TABLE) {
+                this.broadcastCdtRoutingUpdate(reassignSourceNode.id);
+            } else {
+                this.wsService.sendConnectionCreated(
+                    updatedConnection,
+                    this.getConnectionListKey(updatedConnection),
+                    reassignSourceNode,
+                    reassignTargetNode,
+                    this.currentFlowId!
+                );
+            }
         }
 
         this.toastService.success('Connection reassigned successfully', 3000, 'bottom-right');
@@ -513,13 +526,19 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const connSourceNode = connNodes.find((n) => n.id === sourceNodeId);
         const connTargetNode = connNodes.find((n) => n.id === targetNodeId);
         if (connSourceNode && connTargetNode) {
-            this.wsService.sendConnectionCreated(
-                newConnection,
-                this.getConnectionListKey(newConnection),
-                connSourceNode,
-                connTargetNode,
-                this.currentFlowId!
-            );
+            if (connSourceNode.type === NodeType.CLASSIFICATION_TABLE) {
+                // CDT routing is persisted inside the node entity, not as an edge —
+                // broadcast the node update instead of a connection_created.
+                this.broadcastCdtRoutingUpdate(connSourceNode.id);
+            } else {
+                this.wsService.sendConnectionCreated(
+                    newConnection,
+                    this.getConnectionListKey(newConnection),
+                    connSourceNode,
+                    connTargetNode,
+                    this.currentFlowId!
+                );
+            }
         }
 
         const nodes = this.flowService.nodes();
@@ -572,7 +591,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
             const updatedNode = { ...node, position: safePosition };
             this.flowService.updateNode(updatedNode);
-            this.wsService.sendNodeCreated(updatedNode, this.currentFlowId!, this.flowState.nodes);
+            this.wsService.sendNodeCreated(
+                updatedNode,
+                this.currentFlowId!,
+                this.flowState.nodes,
+                this.flowService.connections()
+            );
             placedNodes.push(updatedNode);
         }
 
@@ -692,7 +716,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             ),
         };
         this.flowService.updateNode(updatedNode);
-        this.wsService.sendNodeCreated(updatedNode, this.currentFlowId!, this.flowState.nodes);
+        this.wsService.sendNodeCreated(
+            updatedNode,
+            this.currentFlowId!,
+            this.flowState.nodes,
+            this.flowService.connections()
+        );
     }
 
     public onContextMenu(event: MouseEvent): void {
@@ -724,7 +753,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         );
         const newNode = this.nodeFactory.createNode(event.type, { ...event.overrides, position });
         this.flowService.addNode(newNode);
-        this.wsService.sendNodeCreated(newNode, this.currentFlowId!, this.flowState.nodes);
+        this.wsService.sendNodeCreated(
+            newNode,
+            this.currentFlowId!,
+            this.flowState.nodes,
+            this.flowService.connections()
+        );
     }
 
     public onOpenNodePanel(node: NodeModel): void {
@@ -792,7 +826,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public onNodePanelSaved(updatedNode: NodeModel): void {
         const normalizedNode = normalizeTableNodeSize(updatedNode);
         this.flowService.updateNode(normalizedNode);
-        this.wsService.sendNodeUpdated(normalizedNode, this.currentFlowId!, this.flowState.nodes);
+        this.wsService.sendNodeUpdated(
+            normalizedNode,
+            this.currentFlowId!,
+            this.flowState.nodes,
+            this.flowService.connections()
+        );
         const movedNodeIds = this.resolveTableOverlaps(normalizedNode);
         this.sidePanelService.clearSelection();
 
@@ -814,7 +853,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public onNodePanelAutosaved(updatedNode: NodeModel): void {
         const normalizedNode = normalizeTableNodeSize(updatedNode);
         this.flowService.updateNode(normalizedNode);
-        this.wsService.sendNodeUpdated(normalizedNode, this.currentFlowId!, this.flowState.nodes);
+        this.wsService.sendNodeUpdated(
+            normalizedNode,
+            this.currentFlowId!,
+            this.flowState.nodes,
+            this.flowService.connections()
+        );
         const movedNodeIds = this.resolveTableOverlaps(normalizedNode);
 
         setTimeout(() => {
@@ -867,7 +911,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         };
 
         this.flowService.updateNode(updatedNode);
-        this.wsService.sendNodeUpdated(updatedNode, this.currentFlowId!, this.flowState.nodes);
+        this.wsService.sendNodeUpdated(
+            updatedNode,
+            this.currentFlowId!,
+            this.flowState.nodes,
+            this.flowService.connections()
+        );
     }
 
     public onDragStarted(event: FDragStartedEvent): void {
@@ -1030,11 +1079,17 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 this.wsService.sendNodeUpdated(
                     { ...current, position: freePos },
                     this.currentFlowId!,
-                    this.flowState.nodes
+                    this.flowState.nodes,
+                    this.flowService.connections()
                 );
                 autoAlignedNodeIds.add(id);
             } else {
-                this.wsService.sendNodeUpdated(current, this.currentFlowId!, this.flowState.nodes);
+                this.wsService.sendNodeUpdated(
+                    current,
+                    this.currentFlowId!,
+                    this.flowState.nodes,
+                    this.flowService.connections()
+                );
             }
         }
 
@@ -1071,7 +1126,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         };
 
         this.flowService.updateNode(updatedNode);
-        this.wsService.sendNodePositionDuringDrag(updatedNode, this.currentFlowId!, this.flowState.nodes);
+        this.wsService.sendNodePositionDuringDrag(
+            updatedNode,
+            this.currentFlowId!,
+            this.flowState.nodes,
+            this.flowService.connections()
+        );
     }
 
     public onZoomInNode(node: NodeModel): void {
@@ -1118,7 +1178,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                                 position: { x: startPos.x + delta.x, y: startPos.y + delta.y },
                             },
                             this.currentFlowId!,
-                            this.flowState.nodes
+                            this.flowState.nodes,
+                            this.flowService.connections()
                         );
                     }
                 }
@@ -1263,7 +1324,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     //Broadcast nodes order after Auto arrange
                     const nodesAfterArrange = this.flowService.nodes();
                     for (const node of nodesAfterArrange) {
-                        this.wsService.sendNodeUpdated(node, this.currentFlowId!, this.flowState.nodes);
+                        this.wsService.sendNodeUpdated(
+                            node,
+                            this.currentFlowId!,
+                            this.flowState.nodes,
+                            this.flowService.connections()
+                        );
                     }
                     const connectionsAfterArrange = this.flowService.connections();
                     for (const connection of connectionsAfterArrange) {
@@ -1389,24 +1455,43 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             return node && node.type !== NodeType.START;
         });
 
-        const nodeRefs = nodeIdsToDelete
-            .map((id) => this.buildNodeDeleteRef(id))
-            .filter((r): r is EntryDeleteRef => r !== null);
-        const connectionRefs = selections.fConnectionIds
-            .map((id) => {
-                const conn = this.flowService.connections().find((c) => c.id === id);
-                return conn ? this.buildConnectionDeleteRef(conn) : null;
-            })
-            .filter((r): r is EntryDeleteRef => r !== null);
-        this.flowService.deleteSelections({
+        // Snapshot before deletion — connection list_key resolution needs the
+        // source node, which is gone from the flow state after the delete.
+        const nodesBeforeDelete = this.flowService.nodes();
+        const { removedNodes, removedConnections } = this.flowService.deleteSelections({
             fNodeIds: nodeIdsToDelete,
             fConnectionIds: selections.fConnectionIds,
         });
+
+        // Broadcast the full cascade (orphaned connections, auto-deleted EDGE
+        // nodes) — not just the explicit selection — so the backend snapshot
+        // never keeps edges referencing deleted nodes.
+        const nodeRefs = removedNodes
+            .map((node) => this.buildNodeDeleteRef(node))
+            .filter((r): r is EntryDeleteRef => r !== null);
+        // Connections sourced from a CDT node are not edges — their removal is a
+        // routing change on the CDT node itself, broadcast as node_updated below.
+        const cdtSourceIds = new Set<string>();
+        const connectionRefs: EntryDeleteRef[] = [];
+        for (const conn of removedConnections) {
+            const sourceNode = nodesBeforeDelete.find((n) => n.id === conn.sourceNodeId);
+            if (sourceNode?.type === NodeType.CLASSIFICATION_TABLE) {
+                cdtSourceIds.add(conn.sourceNodeId);
+            } else {
+                connectionRefs.push(this.buildConnectionDeleteRef(conn, nodesBeforeDelete));
+            }
+        }
         if (nodeRefs.length > 0) {
             this.wsService.sendNodesDeleted(nodeRefs);
         }
         if (connectionRefs.length > 0) {
             this.wsService.sendConnectionsDeleted(connectionRefs);
+        }
+        const removedNodeIds = new Set(removedNodes.map((n) => n.id));
+        for (const id of cdtSourceIds) {
+            if (!removedNodeIds.has(id)) {
+                this.broadcastCdtRoutingUpdate(id);
+            }
         }
     }
 
@@ -1448,23 +1533,39 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         return normalizeTableNodeSize(node).size.height;
     }
 
-    private getConnectionListKey(connection: ConnectionModel): string {
-        const sourceNode = this.flowService.nodes().find((n) => n.id === connection.sourceNodeId);
+    private getConnectionListKey(connection: ConnectionModel, nodes: NodeModel[] = this.flowService.nodes()): string {
+        const sourceNode = nodes.find((n) => n.id === connection.sourceNodeId);
         return sourceNode?.type === NodeType.TABLE || sourceNode?.type === NodeType.EDGE
             ? 'conditional_edge_list'
             : 'edge_list';
     }
 
-    private buildNodeDeleteRef(nodeId: string): EntryDeleteRef | null {
-        const node = this.flowService.nodes().find((n) => n.id === nodeId);
-        if (!node) return null;
+    // CDT routing (default/error/per-group next_node) is persisted inside the
+    // classification node entity, not as edge rows — connection changes whose
+    // source is a CDT node are broadcast as node_updated of that node.
+    private broadcastCdtRoutingUpdate(sourceNodeId: string): void {
+        const cdtNode = this.flowService.nodes().find((n) => n.id === sourceNodeId);
+        if (cdtNode) {
+            this.wsService.sendNodeUpdated(
+                cdtNode,
+                this.currentFlowId!,
+                this.flowService.nodes(),
+                this.flowService.connections()
+            );
+        }
+    }
+
+    private buildNodeDeleteRef(node: NodeModel): EntryDeleteRef | null {
         const list_key = nodeTypeToListKey(node.type);
         if (!list_key) return null;
         return node.backendId != null ? { list_key, id: node.backendId } : { list_key, temp_id: node.id };
     }
 
-    private buildConnectionDeleteRef(connection: ConnectionModel): EntryDeleteRef {
-        const list_key = this.getConnectionListKey(connection);
+    private buildConnectionDeleteRef(
+        connection: ConnectionModel,
+        nodes: NodeModel[] = this.flowService.nodes()
+    ): EntryDeleteRef {
+        const list_key = this.getConnectionListKey(connection, nodes);
         return connection.data?.id != null
             ? { list_key, id: connection.data.id }
             : { list_key, temp_id: connection.id };

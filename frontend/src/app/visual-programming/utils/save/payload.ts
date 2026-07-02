@@ -137,7 +137,7 @@ interface CdtConditionGroupUi {
     section?: string | null;
 }
 
-function buildCdtNodePayload(
+export function buildCdtNodePayload(
     node: ClassificationDecisionTableNodeModel,
     graphId: number,
     allNodes: NodeModel[],

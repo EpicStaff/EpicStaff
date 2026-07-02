@@ -85,6 +85,7 @@ import {
     normalizeFlowPorts,
 } from '../../../../visual-programming/utils/load';
 import { rewriteLegacyOnceScheduleName } from '../../../../visual-programming/utils/load/nodes/schedule-trigger-node.mapper';
+import { mapWsNodePayloadToModel } from '../../../../visual-programming/utils/load/ws-node-payload-to-model';
 import { getInputPortRole, getOutputPortRole } from '../../../../visual-programming/utils/node-port-roles';
 import {
     buildBulkSavePayload,
@@ -259,36 +260,28 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         });
 
         this.wsService.nodeCreated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
-            const p = msg.node as Record<string, unknown>;
-            if (p['temp_id']) {
-                const { temp_id, ...rest } = p;
-                this.flowService.addNode({ ...rest, id: temp_id, backendId: null } as unknown as NodeModel);
+            const node = mapWsNodePayloadToModel(msg.node as Record<string, unknown>, msg.list_key);
+            if (node) {
+                this.flowService.addNode(node);
             }
         });
 
         this.wsService.nodeUpdated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
             const p = msg.node as Record<string, unknown>;
+            const updated = mapWsNodePayloadToModel(p, msg.list_key);
+            if (!updated) return;
+
             if (p['temp_id']) {
-                const existing = this.flowService.nodes().find((n) => n.id === p['temp_id']);
-                if (existing) {
-                    const { temp_id, ...rest } = p;
-                    this.flowService.updateNode({
-                        ...existing,
-                        ...rest,
-                        id: temp_id,
-                        backendId: null,
-                    } as unknown as NodeModel);
+                const exists = this.flowService.nodes().some((n) => n.id === p['temp_id']);
+                if (exists) {
+                    this.flowService.updateNode(updated);
                 }
             } else if (typeof p['id'] === 'number') {
                 const existing = this.flowService.nodes().find((n) => n.backendId === p['id']);
                 if (existing) {
-                    const { id, ...rest } = p;
-                    this.flowService.updateNode({
-                        ...existing,
-                        ...rest,
-                        id: existing.id,
-                        backendId: id,
-                    } as unknown as NodeModel);
+                    // Preserve the canvas id — it may differ from stableNodeId when the
+                    // node was originally created via WS and never reloaded from the API.
+                    this.flowService.updateNode({ ...updated, id: existing.id });
                 }
             }
         });

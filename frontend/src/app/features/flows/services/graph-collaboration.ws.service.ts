@@ -26,6 +26,7 @@ import {
     WebhookTriggerNodeModel,
 } from '../../../visual-programming/core/models/node.model';
 import { toNodeMetadata } from '../../../visual-programming/utils/save/metadata';
+import { buildCdtNodePayload } from '../../../visual-programming/utils/save/payload';
 import { GraphDto } from '../models/graph.model';
 
 export interface EditorInfo {
@@ -154,6 +155,8 @@ export function nodeTypeToListKey(type: NodeType): string | null {
             return 'subgraph_node_list';
         case NodeType.TABLE:
             return 'decision_table_node_list';
+        case NodeType.CLASSIFICATION_TABLE:
+            return 'classification_decision_table_node_list';
         case NodeType.NOTE:
             return 'graph_note_list';
         case NodeType.WEBHOOK_TRIGGER:
@@ -180,7 +183,10 @@ export function nodeTypeToListKey(type: NodeType): string | null {
 export function buildNodeBackendPayload(
     node: NodeModel,
     graphId: number,
-    allNodes: NodeModel[] = []
+    allNodes: NodeModel[] = [],
+    // CDT routing (default/error/per-group next_node) is resolved by scanning
+    // canvas connections — same as the REST bulk-save path in payload.ts.
+    connections: ConnectionModel[] = []
 ): Record<string, unknown> | null {
     const idField = node.backendId != null ? { id: node.backendId } : { temp_id: node.id };
     const meta = toNodeMetadata(node);
@@ -359,11 +365,12 @@ export function buildNodeBackendPayload(
 
         case NodeType.CLASSIFICATION_TABLE: {
             const cdn = node as ClassificationDecisionTableNodeModel;
+            // Full bulk-save payload (prompt_configs, condition_groups, routing refs) —
+            // reuses the REST save builder; resolveNodeRef falls back to allNodes lookup,
+            // so an empty idMap is fine here.
             return {
                 ...idField,
-                node_name: cdn.node_name,
-                graph: graphId,
-                metadata: meta,
+                ...buildCdtNodePayload(cdn, graphId, allNodes, new Map(), connections),
             };
         }
 
@@ -387,7 +394,7 @@ function buildSchedulePayload(node: ScheduleTriggerNodeModel): Record<string, un
     if (d.runMode === 'once') {
         return {
             run_mode: 'once',
-            start_data_time: d.startDateTime,
+            start_date_time: d.startDateTime,
             interval: null,
             end: { type: 'never', date_time: null, max_runs: null },
             timezone: d.timezone,
@@ -718,31 +725,46 @@ export class GraphCollaborationWsService {
         });
     }
 
-    public sendNodeCreated(node: NodeModel, graphId: number, allNodes: NodeModel[] = []): void {
+    public sendNodeCreated(
+        node: NodeModel,
+        graphId: number,
+        allNodes: NodeModel[] = [],
+        connections: ConnectionModel[] = []
+    ): void {
         const list_key = nodeTypeToListKey(node.type);
         if (!list_key) return;
-        const payload = buildNodeBackendPayload(node, graphId, allNodes);
+        const payload = buildNodeBackendPayload(node, graphId, allNodes, connections);
         if (!payload) return;
         const editor = this.buildEditorInfo();
         if (editor) this.sendRaw({ type: 'node_created', node: payload, list_key, editor });
     }
 
-    public sendNodeUpdated(node: NodeModel, graphId: number, allNodes: NodeModel[] = []): void {
+    public sendNodeUpdated(
+        node: NodeModel,
+        graphId: number,
+        allNodes: NodeModel[] = [],
+        connections: ConnectionModel[] = []
+    ): void {
         const list_key = nodeTypeToListKey(node.type);
         if (!list_key) return;
-        const payload = buildNodeBackendPayload(node, graphId, allNodes);
+        const payload = buildNodeBackendPayload(node, graphId, allNodes, connections);
         if (!payload) return;
         const editor = this.buildEditorInfo();
         if (editor) this.sendRaw({ type: 'node_updated', node: payload, list_key, editor });
     }
 
-    public sendNodePositionDuringDrag(node: NodeModel, graphId: number, allNodes: NodeModel[] = []): void {
+    public sendNodePositionDuringDrag(
+        node: NodeModel,
+        graphId: number,
+        allNodes: NodeModel[] = [],
+        connections: ConnectionModel[] = []
+    ): void {
         const now = Date.now();
         if (now - this.lastNodeDragSendAt < 150) return;
         this.lastNodeDragSendAt = now;
         const list_key = nodeTypeToListKey(node.type);
         if (!list_key) return;
-        const payload = buildNodeBackendPayload(node, graphId, allNodes);
+        const payload = buildNodeBackendPayload(node, graphId, allNodes, connections);
         if (!payload) return;
         const editor = this.buildEditorInfo();
         if (editor) this.sendRaw({ type: 'node_updated', node: payload, list_key, editor });

@@ -70,6 +70,7 @@ _ALL_LIST_KEYS: frozenset[str] = frozenset(
         "telegram_trigger_node_list",
         "schedule_trigger_node_list",
         "code_agent_node_list",
+        "classification_decision_table_node_list",
         "edge_list",
         "conditional_edge_list",
     ]
