@@ -1,5 +1,7 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse
+
+from serializers.serializers import ProcessRagIndexingSerializer
 from tables.serializers.naive_rag_serializers import (
     ChunkPreviewResponseSerializer,
     ChunkingResponseSerializer,
@@ -750,6 +752,7 @@ NAIVE_RAG_DELETE = dict(
     },
 )
 
+# 
 NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST = dict(
     summary="Trigger document chunking and wait for completion",
     description=(
@@ -1006,6 +1009,7 @@ PROCESS_RAG_INDEXING_POST = dict(
         "All business logic is handled by IndexingService.\n\n"
         "URL: POST /process-rag-indexing/"
     ),
+    request=ProcessRagIndexingSerializer,
     responses={
         202: OpenApiResponse(
             response=OpenApiTypes.STR,
