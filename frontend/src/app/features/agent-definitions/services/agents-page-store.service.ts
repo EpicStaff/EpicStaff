@@ -194,7 +194,6 @@ export class AgentsPageStore {
                 this.agents.update((list) => list.map((a) => (a.id === agentId ? updated : a)));
                 this.saving.set(false);
                 this.selectAgentDoc(agentId, 'boot');
-                this.toast.success('Boot instructions updated');
             },
             error: (err) => {
                 this.saving.set(false);
@@ -417,7 +416,7 @@ export class AgentsPageStore {
         if (!agent) return;
         if (agent.default_surfaces.some((ds) => ds.surface === surfaceId && ds.place === place)) return;
         const next: AgentDefaultSurface[] = [...agent.default_surfaces, { surface: surfaceId, place }];
-        this.patchAgentDefaultSurfaces(agentId, next, 'Surface added to agent');
+        this.patchAgentDefaultSurfaces(agentId, next);
     }
 
     moveSurfacePlace(surfaceId: number, agentId: number, category: SurfaceCategoryId): void {
@@ -433,13 +432,24 @@ export class AgentsPageStore {
         const agent = this.agents().find((a) => a.id === agentId);
         if (!agent) return;
         const next = agent.default_surfaces.filter((ds) => ds.surface !== surfaceId);
-        this.patchAgentDefaultSurfaces(agentId, next, 'Surface detached', () => this.selectAgentSurfaces(agentId));
+        this.patchAgentDefaultSurfaces(agentId, next, undefined, () => this.selectAgentSurfaces(agentId));
     }
 
     duplicateSurface(id: number): void {
         const src = this.surfaces().find((s) => s.id === id);
         if (!src) return;
         const existingNames = this.surfaces().map((s) => s.name);
+        const ownerAgentId = src.owner_agent;
+        // Only mirror the source's place when it actually has a default_surfaces
+        // entry; otherwise leave the copy wherever the backend assigns it (don't
+        // force a category from a missing entry).
+        const srcPlace =
+            ownerAgentId != null
+                ? this.agents()
+                      .find((a) => a.id === ownerAgentId)
+                      ?.default_surfaces.find((ds) => ds.surface === src.id)?.place
+                : undefined;
+        const srcCategory = srcPlace != null ? placeToCategory(srcPlace) : null;
         this.createSurface(
             {
                 name: computeUniqueCopyName(src.name, existingNames),
@@ -453,8 +463,14 @@ export class AgentsPageStore {
                 knowledge: src.knowledge,
             },
             'Surface duplicated',
-            src.owner_agent != null
-                ? () => this.afterAgentSurfaceChange(src.owner_agent!, () => this.selectAgentSurfaces(src.owner_agent!))
+            ownerAgentId != null
+                ? (created) =>
+                      this.afterAgentSurfaceChange(ownerAgentId, () => {
+                          if (srcCategory != null && srcCategory !== 'every-place') {
+                              this.moveSurfacePlace(created.id, ownerAgentId, srcCategory);
+                          }
+                          this.selectAgentSurfaces(ownerAgentId);
+                      })
                 : undefined
         );
     }
@@ -578,7 +594,6 @@ export class AgentsPageStore {
             next: (updated) => {
                 this.agents.update((list) => list.map((a) => (a.id === id ? updated : a)));
                 this.saving.set(false);
-                this.toast.success('Agent saved');
             },
             error: (err) => {
                 this.saving.set(false);
@@ -594,7 +609,6 @@ export class AgentsPageStore {
             next: (updated) => {
                 this.surfaces.update((list) => list.map((s) => (s.id === id ? updated : s)));
                 this.saving.set(false);
-                this.toast.success('Surface saved');
             },
             error: (err) => {
                 this.saving.set(false);
