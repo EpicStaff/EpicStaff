@@ -27,12 +27,17 @@ import {
 } from '@shared/components';
 import { EnterBlurDirective } from '@shared/directives';
 import { Observable } from 'rxjs';
-import { take } from 'rxjs/operators';
-import { map } from 'rxjs/operators';
+import { map, switchMap, take } from 'rxjs/operators';
 
 import { CreateCustomToolDialogComponent } from '../../../../../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
+import {
+    CreateFolderDialogComponent,
+    CreateFolderDialogResult,
+} from '../../../../../../../files/components/create-folder-dialog/create-folder-dialog.component';
 import { StorageItem } from '../../../../../../../files/models/storage.models';
 import { StorageApiService } from '../../../../../../../files/services/storage-api.service';
+import { CreateCollectionDialogComponent } from '../../../../../../../knowledge-sources/components/create-collection-dialog/create-collection-dialog.component';
+import { CollectionsStorageService } from '../../../../../../../knowledge-sources/services/collections-storage.service';
 import { McpToolDialogComponent } from '../../../../../../../tools/components/mcp-tool-dialog/mcp-tool-dialog.component';
 import { GetMcpToolRequest } from '../../../../../../../tools/models/mcp-tool.model';
 import { GetPythonCodeToolRequest } from '../../../../../../../tools/models/python-code-tool.model';
@@ -76,6 +81,7 @@ import { SurfaceCatalogsStore } from '../../../../../../services/surface-catalog
 export class SurfaceCardComponent {
     private readonly catalogs: SurfaceCatalogsStore = inject(SurfaceCatalogsStore);
     private readonly storageApi: StorageApiService = inject(StorageApiService);
+    private readonly collectionsStorage: CollectionsStorageService = inject(CollectionsStorageService);
     private readonly destroyRef: DestroyRef = inject(DestroyRef);
     private readonly dialog: Dialog = inject(Dialog);
 
@@ -257,6 +263,8 @@ export class SurfaceCardComponent {
     readonly fileDropdownNodes = signal<SelectDropdownTreeNode[]>([]);
     private readonly fileMetaById = new Map<number, { name: string; path: string }>();
 
+    readonly filesHeaderAction: SelectDropdownHeaderAction = { icon: 'plus', label: 'Add files to storage' };
+
     readonly visiblePermColumns = computed(() => {
         if (!this.readOnly()) return SURFACE_FILE_PERM_COLUMNS;
         const used = new Set<keyof SurfaceFilePerms>();
@@ -297,6 +305,8 @@ export class SurfaceCardComponent {
     readonly selectedCollectionIds = signal<Set<number>>(new Set());
     readonly allowCollectionCreation = signal<boolean>(false);
     readonly collectionAdvancedOpen = signal<boolean>(false);
+
+    readonly collectionHeaderAction: SelectDropdownHeaderAction = { icon: 'plus', label: 'Add new collection' };
 
     readonly collectionItems = computed<SelectDropdownListItem<number>[]>(() =>
         this.collectionOptions().map((c) => ({ name: c.name, value: c.id }))
@@ -349,6 +359,10 @@ export class SurfaceCardComponent {
         this.catalogs.loadPythonTools().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
         this.catalogs.loadMcpTools().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
         this.catalogs.loadCollections().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+        this.refreshStorageRoot();
+    }
+
+    private refreshStorageRoot(): void {
         this.storageApi
             .list('')
             .pipe(takeUntilDestroyed(this.destroyRef))
@@ -490,6 +504,16 @@ export class SurfaceCardComponent {
         this.emitStorageChange();
     }
 
+    openAddFiles(): void {
+        if (this.readOnly()) return;
+        this.dialog
+            .open<CreateFolderDialogResult>(CreateFolderDialogComponent)
+            .closed.pipe(take(1))
+            .subscribe((result) => {
+                if (result?.type === 'upload') this.refreshStorageRoot();
+            });
+    }
+
     selectAllFilePerms(): void {
         if (this.readOnly()) return;
         this.fileRows.update((rows) =>
@@ -528,6 +552,40 @@ export class SurfaceCardComponent {
             return next;
         });
         this.emitKnowledgeChange();
+    }
+
+    openAddCollection(): void {
+        if (this.readOnly()) return;
+        this.collectionsStorage
+            .createCollection()
+            .pipe(
+                take(1),
+                switchMap(({ collection_id }) =>
+                    this.dialog
+                        .open(CreateCollectionDialogComponent, {
+                            width: 'calc(100vw - 2rem)',
+                            height: 'calc(100vh - 2rem)',
+                            data: { collection_id },
+                            disableClose: true,
+                        })
+                        .closed.pipe(
+                            take(1),
+                            map(() => collection_id)
+                        )
+                ),
+                switchMap((collection_id) =>
+                    this.catalogs.reloadCollections().pipe(
+                        take(1),
+                        map((cols) => ({ collection_id, cols }))
+                    )
+                ),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe(({ collection_id, cols }) => {
+                if (collection_id == null || !cols.some((c) => c.id === collection_id)) return;
+                this.selectedCollectionIds.update((set) => new Set([...set, collection_id]));
+                this.emitKnowledgeChange();
+            });
     }
 
     private buildKnowledgePayload(): SurfaceKnowledge[] {

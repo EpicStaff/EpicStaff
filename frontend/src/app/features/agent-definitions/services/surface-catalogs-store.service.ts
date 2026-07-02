@@ -87,4 +87,11 @@ export class SurfaceCatalogsStore {
         const target = tool.kind === 'python' ? this.pythonSignal : this.mcpSignal;
         target.update((cur) => [tool, ...cur.filter((t) => t.id !== tool.id)]);
     }
+
+    /** Force a re-fetch of the collection catalog (e.g. after a new one is created). */
+    reloadCollections(): Observable<SurfaceCollectionOption[]> {
+        this.collectionsLoaded = false;
+        this.collectionsRequest$ = undefined;
+        return this.loadCollections();
+    }
 }
