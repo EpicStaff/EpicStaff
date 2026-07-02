@@ -2,7 +2,7 @@ from datetime import datetime
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
-from src.knowledge_new.enums import (
+from enums import (
     ChunkStrategyEnum,
     DocumentErrorCode,
     DocumentStatusEnum,

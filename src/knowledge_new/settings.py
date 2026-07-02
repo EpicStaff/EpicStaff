@@ -4,7 +4,7 @@ from loguru import logger
 from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from shared.communication.dns import build_dns
+from src.shared.communication.dns import build_dns
 
 __all__ = ["settings"]
 
