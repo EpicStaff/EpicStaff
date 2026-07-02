@@ -260,6 +260,12 @@ export class SelectDropdownComponent {
                 .subscribe(() => this.close());
         }
 
+        this.overlayRef.updateSize({
+            width: this.panelWidth() ?? triggerEl.nativeElement.offsetWidth,
+            minWidth: this.minPanelWidth() ?? undefined,
+            maxWidth: this.maxPanelWidth() ?? undefined,
+        });
+
         this.search.set('');
         if (this.selectionMode() === 'multiple') {
             this.draft.set([...this.selected()]);

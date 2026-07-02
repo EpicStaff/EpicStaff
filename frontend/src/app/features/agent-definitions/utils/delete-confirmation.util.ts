@@ -119,7 +119,7 @@ export function buildDeleteSurfaceDialog(
             : 'You are about to remove this permission group and instructions.',
         confirmText: 'Delete',
         cancelText: 'Cancel',
-        type: 'danger',
+        type: shared ? 'danger' : 'warning',
         cautionTitle: shared ? 'Caution' : 'Attention',
         caution: buildSurfaceDeleteCaution(usage, bundle, shared),
         isShownBorder: true,
