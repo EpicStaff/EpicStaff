@@ -38,7 +38,7 @@ export interface UpdatePythonCodeToolRequest {
     name: string; // Required, minLength: 1
     description: string;
     args_schema: ArgsSchema; // Now an object rather than a JSON string
-    use_storage?: boolean;    
+    use_storage?: boolean;
 }
 
 /**

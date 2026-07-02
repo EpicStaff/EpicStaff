@@ -121,7 +121,7 @@ export class AgentsTableComponent {
     private currentCellElement: HTMLElement | null = null;
     private globalClickUnlistener: (() => void) | null = null;
     private globalKeydownUnlistener: (() => void) | null = null;
-    
+
     private childDialogOpen = false;
 
     @Output() dirtyChange = new EventEmitter<boolean>();

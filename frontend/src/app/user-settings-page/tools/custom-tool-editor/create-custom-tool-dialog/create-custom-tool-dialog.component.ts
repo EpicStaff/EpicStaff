@@ -25,13 +25,17 @@ import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip
 import { JsonEditorComponent, JsonError } from '../../../../shared/components/json-editor/json-editor.component';
 import { TextareaComponent } from '../../../../shared/components/textarea/textarea.component';
 import { CodeEditorComponent } from '../code-editor/code-editor.component';
-import { parseToolVariablesJson, serializeVariables, ToolVariable } from './parameters';
 import {
     DrillStep,
     ParametersTableViewComponent,
 } from './components/parameters-table-view/parameters-table-view.component';
 import { toCreatePayload } from './models/create-custom-tool-form.model';
-import { isToolJsonSchemaValid, objectDefaultDataMarkers, TOOL_VARIABLES_JSON_SCHEMA } from './schema/tool-variables-schema';
+import { parseToolVariablesJson, serializeVariables, ToolVariable } from './parameters';
+import {
+    isToolJsonSchemaValid,
+    objectDefaultDataMarkers,
+    TOOL_VARIABLES_JSON_SCHEMA,
+} from './schema/tool-variables-schema';
 
 enum ActiveEditor {
     None = 'none',

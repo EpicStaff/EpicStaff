@@ -31,7 +31,6 @@ export interface BaseNodeModel {
     output_variable_path: string | null;
     /** Unique incrementing number per graph, displayed as the #N badge. */
     nodeNumber?: number;
-    // UI-only flag for invalid references (e.g. deleted subgraph)
     isBlocked?: boolean;
 }
 export interface StartNodeData {
@@ -81,7 +80,7 @@ export interface EdgeNodeModel extends BaseNodeModel {
 export interface DecisionTableNodeModel extends BaseNodeModel {
     type: NodeType.TABLE;
     data: {
-        name: string; // this was used somehere  for saving dec table
+        name: string;
         table: DecisionTableNode;
     };
 }
@@ -130,6 +129,7 @@ export interface ClassificationDecisionTableNodeModel extends BaseNodeModel {
     type: NodeType.CLASSIFICATION_TABLE;
     data: {
         name?: string;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         table: any;
     };
 }

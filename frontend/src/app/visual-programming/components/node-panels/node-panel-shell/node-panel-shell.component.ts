@@ -57,7 +57,7 @@ import { SidePanelService } from '../../../services/side-panel.service';
                                 type="button"
                                 matTooltip="Save local node changes"
                                 matTooltipPosition="below"
-                                [disabled]="panelInstanceSig()?.form?.invalid || panelInstanceSig()?.isSaving?.()"
+                                [disabled]="panelInstanceSig()?.form?.invalid || panelInstanceSig()?.isSaving()"
                                 (click)="onHeaderSaveClick()"
                             >
                                 <app-svg-icon
@@ -128,7 +128,12 @@ export class NodePanelShellComponent {
 
     public readonly shouldShowExpandButton = computed(() => {
         const node = this.node();
-        return node && node.type !== 'table' && node.type !== NodeType.SCHEDULE_TRIGGER && node.type !== 'classification-decision-table';
+        return (
+            node &&
+            node.type !== 'table' &&
+            node.type !== NodeType.SCHEDULE_TRIGGER &&
+            node.type !== 'classification-decision-table'
+        );
     });
 
     protected readonly outlet = viewChild(NgComponentOutlet);

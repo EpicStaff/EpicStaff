@@ -62,34 +62,37 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
                             class="collapsible-content"
                             [@expandCollapse]="isDetailsExpanded ? 'expanded' : 'collapsed'"
                         >
-                            <div class="details-content">
+                            <div
+                                class="details-content"
+                                *ngIf="taskMessageData as data"
+                            >
                                 <div
                                     class="description-section"
-                                    *ngIf="taskMessageData?.description"
+                                    *ngIf="data.description"
                                 >
                                     <div class="subsection-heading">Description:</div>
                                     <div class="description-content">
-                                        {{ taskMessageData?.description }}
+                                        {{ data.description }}
                                     </div>
                                 </div>
 
                                 <div
                                     class="expected-output-section"
-                                    *ngIf="taskMessageData?.expected_output"
+                                    *ngIf="data.expected_output"
                                 >
                                     <div class="subsection-heading">Expected Output:</div>
                                     <div class="expected-output-content">
-                                        {{ taskMessageData?.expected_output }}
+                                        {{ data.expected_output }}
                                     </div>
                                 </div>
 
                                 <div
                                     class="agent-section"
-                                    *ngIf="taskMessageData?.agent"
+                                    *ngIf="data.agent"
                                 >
                                     <div class="subsection-heading">Assigned To:</div>
                                     <div class="agentData-content">
-                                        {{ taskMessageData?.agent }}
+                                        {{ data.agent }}
                                     </div>
                                 </div>
                             </div>

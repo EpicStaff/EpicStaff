@@ -80,8 +80,8 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     private readonly schemaId = `inmemory://json-editor-schema/${JsonEditorComponent.schemaSeq++}.json`;
     private markersDisposable: { dispose(): void } | null = null;
 
-    private get monacoGlobal(): any {
-        return (window as unknown as { monaco?: any }).monaco ?? null;
+    private get monacoGlobal(): typeof import('monaco-editor') | null {
+        return (window as unknown as { monaco?: typeof import('monaco-editor') }).monaco ?? null;
     }
 
     private get schemaMode(): boolean {
@@ -256,7 +256,7 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
         if (!monaco?.editor?.onDidChangeMarkers) {
             return;
         }
-        this.markersDisposable = monaco.editor.onDidChangeMarkers((uris: { toString(): string }[]) => {
+        this.markersDisposable = monaco.editor.onDidChangeMarkers((uris) => {
             const myUri = this.monacoEditor?.getModel()?.uri?.toString();
             if (myUri && uris.some((u) => u.toString() === myUri)) {
                 this.emitMarkers();

@@ -1,4 +1,5 @@
 import { GetAudioToTextNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/audio-to-text.model';
+import { GetClassificationDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { GetCodeAgentNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/code-agent-node.model';
 import { ConditionalEdge } from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
 import { CrewNode } from '../../../pages/flows-page/components/flow-visual-programming/models/crew-node.model';
@@ -17,9 +18,6 @@ import { StartNode } from '../../../pages/flows-page/components/flow-visual-prog
 import { SubGraphNode } from '../../../pages/flows-page/components/flow-visual-programming/models/subgraph-node.model';
 import { GetTelegramTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
 import { GetWebhookTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/webhook-trigger';
-import {
-    GetClassificationDecisionTableNodeRequest
-} from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { FlowModel } from '../../../visual-programming/core/models/flow.model';
 
 export interface SubflowLightDto {
