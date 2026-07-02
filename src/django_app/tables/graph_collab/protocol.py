@@ -91,7 +91,7 @@ class EntryDeleteRef(BaseModel):
         has_temp_id = self.temp_id is not None and self.temp_id != ""
         if has_id == has_temp_id:  # both set or neither set
             raise ValueError(
-                "NodeDeleteRef requires exactly one of 'id' or 'temp_id' to be set, "
+                "EntryDeleteRef requires exactly one of 'id' or 'temp_id' to be set, "
                 f"got id={self.id!r}, temp_id={self.temp_id!r}"
             )
         return self

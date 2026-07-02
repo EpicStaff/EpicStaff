@@ -25,7 +25,11 @@ from datetime import datetime, timezone
 
 from asgiref.sync import sync_to_async
 
-from tables.exceptions import BulkSaveValidationError, GraphSaveVersionConflictError
+from tables.exceptions import (
+    BulkSaveValidationError,
+    ContentHashConflictError,
+    GraphSaveVersionConflictError,
+)
 from tables.graph_collab.graph_state_service import (
     _KNOWN_LIST_KEYS,
     graph_state_service,
@@ -121,7 +125,7 @@ def _do_db_flush(graph_id: int, snapshot: dict):
         )
         return _DbFlushResult.GRAPH_NOT_FOUND
 
-    payload = inject_bulk_save_fields(snapshot)
+    payload = inject_bulk_save_fields(snapshot, graph_id=graph_id)
     # Server is the authority on save_version — use the DB value so we never
     # self-conflict against a version we just wrote.
     payload["save_version"] = graph.save_version
@@ -150,6 +154,14 @@ def _do_db_flush(graph_id: int, snapshot: dict):
         logger.warning(
             "GraphFlushService: GraphSaveVersionConflictError for graph {} — "
             "a concurrent REST save won; next autosave tick will retry. detail: {}",
+            graph_id,
+            exc,
+        )
+        return _DbFlushResult.VERSION_CONFLICT
+    except ContentHashConflictError as exc:
+        logger.warning(
+            "GraphFlushService: ContentHashConflictError for graph {} — "
+            "a concurrent edit modified a node; next autosave tick will retry. detail: {}",
             graph_id,
             exc,
         )
@@ -213,6 +225,17 @@ class GraphFlushService:
         flushed_temp_id_to_list_key: dict[str, str] = {}
         for list_key in _KNOWN_LIST_KEYS - {"edge_list", "conditional_edge_list"}:
             for entry in snapshot.get(list_key, []):
+                if entry is None:
+                    # Corrupted snapshot entry — skip; the serializer will reject
+                    # the payload and the flush will return FAILED so the snapshot
+                    # is retained for manual recovery.
+                    logger.warning(
+                        "GraphFlushService: None entry in {} for graph {} — "
+                        "snapshot may be corrupted",
+                        list_key,
+                        graph_id,
+                    )
+                    continue
                 tid = entry.get("temp_id")
                 if tid is not None:
                     flushed_temp_id_to_list_key[str(tid)] = list_key

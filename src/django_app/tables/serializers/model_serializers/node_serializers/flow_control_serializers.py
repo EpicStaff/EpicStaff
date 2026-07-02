@@ -79,12 +79,14 @@ class StartNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
         return instance
 
     def validate(self, attrs):
-        variables = attrs.get("variables")
-        actual_variables = variables.get(DOMAIN_VARIABLES_KEY, {})
+        variables = attrs.get("variables") or {}
+        actual_variables = variables.get(DOMAIN_VARIABLES_KEY, {}) or {}
 
-        persistent_variables = variables.get(DOMAIN_PERSISTENT_KEY, {})
-        organization_variables = persistent_variables.get(DOMAIN_ORGANIZATION_KEY, [])
-        user_variables = persistent_variables.get(DOMAIN_USER_KEY, [])
+        persistent_variables = variables.get(DOMAIN_PERSISTENT_KEY) or {}
+        organization_variables = (
+            persistent_variables.get(DOMAIN_ORGANIZATION_KEY, []) or []
+        )
+        user_variables = persistent_variables.get(DOMAIN_USER_KEY, []) or []
 
         service = PersistentVariablesService()
         for path in organization_variables + user_variables:

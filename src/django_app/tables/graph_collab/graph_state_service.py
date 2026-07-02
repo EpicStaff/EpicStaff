@@ -77,6 +77,7 @@ from tables.graph_collab.protocol import (
     NodeUpdatedMessage,
     NodesDeletedMessage,
 )
+from tables.graph_collab.op_normalize import normalize_op_entry
 from tables.graph_collab.snapshot_normalize import inject_bulk_save_fields
 from tables.services.redis_service import RedisService
 from utils.logger import logger
@@ -461,7 +462,7 @@ class GraphLiveStateService:
                     )
                     return
                 entries: list[dict] = snapshot.setdefault(list_key, [])
-                new_entry = message.node
+                new_entry = normalize_op_entry(list_key, message.node)
                 _upsert_entry(entries, new_entry)
 
                 # if this node has a real id that was previously deleted,
@@ -507,7 +508,10 @@ class GraphLiveStateService:
                     )
                     return
                 entries = snapshot.setdefault(list_key, [])
-                new_connection = message.connection
+                # Only edge_list gets op-time temp_id normalization — see
+                # op_normalize._normalize_edge_entry. conditional_edge_list is
+                # intentionally left untouched (separate, already-decided issue).
+                new_connection = normalize_op_entry(list_key, message.connection)
                 _upsert_entry(entries, new_connection)
                 # re-added connection — remove from deleted accumulator.
                 connection_id = new_connection.get("id")
@@ -617,7 +621,7 @@ def _load_graph_snapshot(graph_id: int) -> dict | None:
     data = GraphSerializer(graph).data
     # DRF ReturnDict is not plain dict — convert before injection/storage.
     snapshot = dict(data)
-    snapshot = inject_bulk_save_fields(snapshot)
+    snapshot = inject_bulk_save_fields(snapshot, graph_id=graph_id)
     snapshot.setdefault("deleted", _make_empty_deleted())
     return snapshot
 
