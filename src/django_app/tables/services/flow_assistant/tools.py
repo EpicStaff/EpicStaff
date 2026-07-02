@@ -200,7 +200,6 @@ def get_flow_overview(graph_id: int) -> dict:
     graph = Graph.objects.prefetch_related(
         "crew_node_list",
         "python_node_list",
-        "llm_node_list",
         "file_extractor_node_list",
         "audio_transcription_node_list",
         "code_agent_node_list",
@@ -220,7 +219,6 @@ def get_flow_overview(graph_id: int) -> dict:
     node_count_by_type = {
         "crew": graph.crew_node_list.count(),
         "python": graph.python_node_list.count(),
-        "llm": graph.llm_node_list.count(),
         "file_extractor": graph.file_extractor_node_list.count(),
         "audio_transcription": graph.audio_transcription_node_list.count(),
         "subgraph": graph.subgraph_node_list.count(),
@@ -311,7 +309,7 @@ def get_node(graph_id: int, node_id: str) -> dict:
         )
 
     # Phase C: attach LLM config summary for nodes that have an llm_config FK.
-    if node_type in ("llm", "code_agent"):
+    if node_type == "code_agent":
         llm_config_id = getattr(node, "llm_config_id", None)
         result["llm_config_summary"] = _resolve_llm_config_summary(llm_config_id)
 
@@ -839,7 +837,6 @@ def list_node_types(graph_id: int) -> list[str]:
     graph = Graph.objects.prefetch_related(
         "crew_node_list",
         "python_node_list",
-        "llm_node_list",
         "file_extractor_node_list",
         "audio_transcription_node_list",
         "subgraph_node_list",
@@ -856,7 +853,6 @@ def list_node_types(graph_id: int) -> list[str]:
     checks = [
         ("crew", graph.crew_node_list),
         ("python", graph.python_node_list),
-        ("llm", graph.llm_node_list),
         ("file_extractor", graph.file_extractor_node_list),
         ("audio_transcription", graph.audio_transcription_node_list),
         ("subgraph", graph.subgraph_node_list),

@@ -2,11 +2,12 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, forwardRef, input, model, output, signal } from '@angular/core';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
 
+import { ToggleSwitchComponent } from '../form-controls/toggle-switch/toggle-switch.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
 @Component({
     selector: 'app-slider-with-stepper',
-    imports: [CommonModule, FormsModule, TooltipComponent],
+    imports: [CommonModule, FormsModule, TooltipComponent, ToggleSwitchComponent],
     templateUrl: './slider-with-stepper.component.html',
     styleUrls: ['./slider-with-stepper.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -27,6 +28,7 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
     max = input<number>(100);
     step = input<number>(1);
     decimals = input<number>(0);
+    optional = input<boolean>(false);
 
     value = model<number | null>(null);
     changed = output<number | null>();
@@ -34,6 +36,10 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
     onChange: (value: number | null) => void = () => {};
     onTouched: () => void = () => {};
     isDisabled = signal(false);
+
+    private previousValue: number | null = null;
+
+    enabled = computed(() => this.value() !== null);
 
     displayValue = computed(() => {
         const val = this.value();
@@ -64,6 +70,16 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
         const current = this.value() ?? this.min();
         const newValue = Math.min(this.max(), current + this.step());
         this.updateValue(this.roundToDecimals(newValue));
+    }
+
+    onToggle(checked: boolean) {
+        if (checked) {
+            const restored = this.previousValue ?? this.min();
+            this.updateValue(this.roundToDecimals(restored));
+        } else {
+            this.previousValue = this.value();
+            this.updateValue(null);
+        }
     }
 
     private roundToDecimals(value: number): number {

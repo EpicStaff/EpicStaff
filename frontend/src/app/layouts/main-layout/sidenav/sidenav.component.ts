@@ -65,6 +65,7 @@ export class LeftSidebarComponent implements AfterViewInit {
     public apiBaseUrl: string;
     public accessToken: string;
     public showLogoTooltip = false;
+    public showProfileTooltip = false;
     public readonly epicChatThemeConfig = {
         semantic: {
             surface: 'var(--color-background-body)',
@@ -126,6 +127,7 @@ export class LeftSidebarComponent implements AfterViewInit {
 
     public user = this.currentUserService.currentUserSignal;
     public isUserMenuOpen = signal<boolean>(false);
+    public showAccountTooltip = false;
 
     @ViewChild('epicChat', { static: false })
     private epicChat?: ElementRef<HTMLElement>;

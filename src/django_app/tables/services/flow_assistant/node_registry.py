@@ -6,7 +6,6 @@ from __future__ import annotations
 NODE_RELATED_NAMES: tuple[tuple[str, str], ...] = (
     ("crew", "crew_node_list"),
     ("python", "python_node_list"),
-    ("llm", "llm_node_list"),
     ("file_extractor", "file_extractor_node_list"),
     ("audio_transcription", "audio_transcription_node_list"),
     ("subgraph", "subgraph_node_list"),

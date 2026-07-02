@@ -10,6 +10,7 @@ import {
     output,
     signal,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AgGridModule } from 'ag-grid-angular';
 import {
     AllCommunityModule,
@@ -29,6 +30,7 @@ import { NodeType } from '../../../../core/enums/node-type';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
 import { FlowService } from '../../../../services/flow.service';
 import { ExpressionEditorComponent } from './cell-editors/expression-editor/expression-editor.component';
+import { DeleteCellRendererComponent } from './cell-renderers/delete-cell-renderer/delete-cell-renderer.component';
 import { ExpressionRendererComponent } from './cell-renderers/expression-renderer/expression-renderer.component';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -36,7 +38,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 @Component({
     selector: 'app-decision-table-grid',
     standalone: true,
-    imports: [AgGridModule, ButtonComponent, AppSvgIconComponent],
+    imports: [AgGridModule, ButtonComponent, AppSvgIconComponent, MatTooltipModule],
     templateUrl: './decision-table-grid.component.html',
     styleUrls: ['./decision-table-grid.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -271,9 +273,7 @@ export class DecisionTableGridComponent implements OnInit {
         {
             headerName: '',
             field: 'actions',
-            cellRenderer: () => {
-                return `<i class="ti ti-trash" style="color: #ff3b30; font-size: 1.1rem; transition: all 0.2s ease; cursor: pointer;"></i>`;
-            },
+            cellRenderer: DeleteCellRendererComponent,
             width: 60,
             minWidth: 60,
             maxWidth: 60,

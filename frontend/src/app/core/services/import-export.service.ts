@@ -103,11 +103,11 @@ export class ImportExportService {
         );
     }
 
-    exportSession(id: number, format: ExportFormat): Observable<Blob> {
-        return this.http.get(`${this.sessionsApiUrl}${id}/export/?export_format=${format}`, {
-            responseType: 'blob',
-        });
-    }
+    // exportSession(id: number, format: ExportFormat): Observable<Blob> {
+    //     return this.http.get(`${this.sessionsApiUrl}${id}/export/?export_format=${format}`, {
+    //         responseType: 'blob',
+    //     });
+    // }
 
     bulkExportSessions(ids: number[], format: ExportFormat): Observable<Blob> {
         return this.http.post(

@@ -42,7 +42,7 @@
 
                 <button
                     class="select-button"
-                    [title]="agent.id === selectedAgentId ? 'Deselect this agent' : 'Select this agent'"
+                    [matTooltip]="agent.id === selectedAgentId ? 'Deselect this agent' : 'Select this agent'"
                 >
                     <app-svg-icon
                         [icon]="agent.id === selectedAgentId ? 'x' : 'plus'"

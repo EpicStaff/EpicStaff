@@ -193,7 +193,9 @@ def _make_async_stream(*events):
     return _gen
 
 
-def _make_conversation_with_messages(flow_assistant, organization_user, messages, **extra):
+def _make_conversation_with_messages(
+    flow_assistant, organization_user, messages, **extra
+):
     """Create a conversation and bulk-create its message rows from a list of dicts.
 
     Drop-in replacement for FlowAssistantConversation.objects.create(..., messages=[...]).
@@ -804,9 +806,9 @@ async def test_stream_reply_plain_text_emits_structured_event(
         f"All event types: {[e.type for e in events]}"
     )
     terminal = structured_events[0]
-    assert terminal.message == plain_text_reply, (
-        f"Expected message={plain_text_reply!r}, got {terminal.message!r}"
-    )
+    assert (
+        terminal.message == plain_text_reply
+    ), f"Expected message={plain_text_reply!r}, got {terminal.message!r}"
     assert terminal.ef_tables == []
     assert terminal.action_message == []
 
@@ -1238,9 +1240,9 @@ def test_messages_for_llm_strips_fa_fields_on_all_message_roles():
     _FA_ONLY_FIELDS = {"ef_tables", "action_message", "interrupted"}
     for i, out_msg in enumerate(result):
         for bad_field in _FA_ONLY_FIELDS:
-            assert bad_field not in out_msg, (
-                f"Field '{bad_field}' found in message[{i}]: {out_msg}"
-            )
+            assert (
+                bad_field not in out_msg
+            ), f"Field '{bad_field}' found in message[{i}]: {out_msg}"
 
     # LLM-compliant tool fields must survive.
     tool_msg = next(m for m in result if m["role"] == "tool")
@@ -1307,11 +1309,14 @@ async def test_stream_reply_second_turn_does_not_send_action_message_to_llm(
         )
         yield DoneEvent()
 
-    with patch(
-        "tables.services.flow_assistant.service.get_llm_client"
-    ) as mock_get_client, patch(
-        "tables.services.flow_assistant.helpers.RedisService",
-    ) as MockRedisService:
+    with (
+        patch(
+            "tables.services.flow_assistant.service.get_llm_client"
+        ) as mock_get_client,
+        patch(
+            "tables.services.flow_assistant.helpers.RedisService",
+        ) as MockRedisService,
+    ):
         mock_client = MagicMock()
         mock_client.stream_completion = fake_stream
         mock_get_client.return_value = mock_client
@@ -1766,34 +1771,6 @@ def test_get_session_detail_redacts_message_bodies(db):
     assert "node_trace" in result
 
 
-# ── Phase C: LLM config and knowledge metadata in get_node ────────────────────
-
-
-@pytest.mark.django_db
-def test_get_node_llm_includes_llm_config_summary(graph, llm_config, db):
-    """get_node for LLMNode must include llm_config_summary with provider/model/temperature."""
-    from tables.models.graph_models import LLMNode
-    from tables.services.flow_assistant import get_node
-
-    node = LLMNode.objects.create(
-        graph=graph,
-        node_name="llm_node",
-        llm_config=llm_config,
-    )
-
-    result = get_node(graph.pk, str(node.pk))
-    assert result.get("type") == "llm"
-    assert (
-        "llm_config_summary" in result
-    ), "llm_config_summary missing from LLMNode get_node response"
-
-    summary = result["llm_config_summary"]
-    assert summary is not None
-    assert summary["model"] == "gpt-4o"
-    assert summary["provider"] == "openai"
-    assert summary["temperature"] == 0.5
-
-
 @pytest.mark.django_db
 def test_get_node_knowledge_sources_metadata_only(graph, db):
     """Agent's knowledge_collection must appear as metadata — no document content."""
@@ -1925,7 +1902,7 @@ def test_build_system_prompt_file_load_and_substitution():
         yesterday_iso="2026-05-17",
         tomorrow_iso="2026-05-19",
         node_summary="  - crew: 1\n  - end: 1",
-        nodes_section="Nodes in this flow:\n  - id=1 type=crew name=\"intake\"",
+        nodes_section='Nodes in this flow:\n  - id=1 type=crew name="intake"',
         subflow_summary="  (none)",
     )
 
@@ -1936,7 +1913,9 @@ def test_build_system_prompt_file_load_and_substitution():
     assert "ef_tables" in result, "rich_format.md marker 'ef_tables' must be present"
     assert "${" not in result, "all Template placeholders must be substituted"
     assert "flow is your job description" in result, "personality.md must be loaded"
-    assert "## Operational rules" in result, "instructions.md must be loaded with new section header"
+    assert (
+        "## Operational rules" in result
+    ), "instructions.md must be loaded with new section header"
 
 
 # ── Phase F (Fix 16): python_code_summary in get_node ────────────────────────
@@ -2708,7 +2687,10 @@ async def test_stream_reply_bails_on_cancel_flag(
     from asgiref.sync import sync_to_async
     from tables.services.flow_assistant import FlowAssistantService
     from tables.services.flow_assistant.constants import _CANCEL_KEY
-    from tables.models.flow_assistant_models import FlowAssistant, FlowAssistantConversation
+    from tables.models.flow_assistant_models import (
+        FlowAssistant,
+        FlowAssistantConversation,
+    )
 
     user_message = "what does this flow do?"
 
@@ -2738,11 +2720,14 @@ async def test_stream_reply_bails_on_cancel_flag(
         yield TokenEvent(content="answer")
         yield DoneEvent()
 
-    with patch(
-        "tables.services.flow_assistant.service.get_llm_client"
-    ) as mock_get_client, patch(
-        "tables.services.flow_assistant.helpers.RedisService",
-    ) as MockRedisService:
+    with (
+        patch(
+            "tables.services.flow_assistant.service.get_llm_client"
+        ) as mock_get_client,
+        patch(
+            "tables.services.flow_assistant.helpers.RedisService",
+        ) as MockRedisService,
+    ):
         mock_client = MagicMock()
         mock_client.stream_completion = fake_stream
         mock_get_client.return_value = mock_client
@@ -2786,7 +2771,10 @@ async def test_stream_reply_disconnect_persists_partial(
     from unittest.mock import patch
     from asgiref.sync import sync_to_async
     from tables.services.flow_assistant import FlowAssistantService
-    from tables.models.flow_assistant_models import FlowAssistant, FlowAssistantConversation
+    from tables.models.flow_assistant_models import (
+        FlowAssistant,
+        FlowAssistantConversation,
+    )
 
     user_message = "hello"
 
@@ -2812,11 +2800,14 @@ async def test_stream_reply_disconnect_persists_partial(
         yield TokenEvent(content="world")
         raise asyncio.CancelledError("simulated disconnect")
 
-    with patch(
-        "tables.services.flow_assistant.service.get_llm_client"
-    ) as mock_get_client, patch(
-        "tables.services.flow_assistant.helpers.RedisService",
-    ) as MockRedisService:
+    with (
+        patch(
+            "tables.services.flow_assistant.service.get_llm_client"
+        ) as mock_get_client,
+        patch(
+            "tables.services.flow_assistant.helpers.RedisService",
+        ) as MockRedisService,
+    ):
         mock_client = MagicMock()
         mock_client.stream_completion = fake_stream_then_cancel
         mock_get_client.return_value = mock_client
@@ -2874,11 +2865,14 @@ async def test_reasoning_empty_and_no_tool_injects_hint(
         # Model only reasoned: no content tokens, no tool calls.
         yield DoneEvent(reasoning_observed=True)
 
-    with patch(
-        "tables.services.flow_assistant.service.get_llm_client"
-    ) as mock_get_client, patch(
-        "tables.services.flow_assistant.helpers.RedisService",
-    ) as MockRedisService:
+    with (
+        patch(
+            "tables.services.flow_assistant.service.get_llm_client"
+        ) as mock_get_client,
+        patch(
+            "tables.services.flow_assistant.helpers.RedisService",
+        ) as MockRedisService,
+    ):
         mock_client = MagicMock()
         mock_client.stream_completion = fake_stream
         mock_get_client.return_value = mock_client
@@ -2895,9 +2889,9 @@ async def test_reasoning_empty_and_no_tool_injects_hint(
     # Hint must appear in the streamed token output.
     hint_substring = "increasing `max_tokens`"
     token_contents = [e.content for e in events if e.type == "token"]
-    assert any(hint_substring in c for c in token_contents), (
-        f"Expected hint substring in streamed tokens, got: {token_contents}"
-    )
+    assert any(
+        hint_substring in c for c in token_contents
+    ), f"Expected hint substring in streamed tokens, got: {token_contents}"
 
     # Hint must NOT be persisted to conversation history.
     refreshed = await sync_to_async(FlowAssistantConversation.objects.get)(
@@ -2905,9 +2899,9 @@ async def test_reasoning_empty_and_no_tool_injects_hint(
     )
     persisted_messages = await sync_to_async(lambda: list(refreshed.messages))()
     for msg in persisted_messages:
-        assert hint_substring not in (msg.get("content") or ""), (
-            f"Hint leaked into persisted history: {msg}"
-        )
+        assert hint_substring not in (
+            msg.get("content") or ""
+        ), f"Hint leaked into persisted history: {msg}"
 
 
 @pytest.mark.asyncio
@@ -2942,11 +2936,14 @@ async def test_reasoning_with_content_does_not_inject_hint(
 
     fake_redis = fakeredis.FakeRedis(decode_responses=False)
 
-    with patch(
-        "tables.services.flow_assistant.service.get_llm_client"
-    ) as mock_get_client, patch(
-        "tables.services.flow_assistant.helpers.RedisService",
-    ) as MockRedisService:
+    with (
+        patch(
+            "tables.services.flow_assistant.service.get_llm_client"
+        ) as mock_get_client,
+        patch(
+            "tables.services.flow_assistant.helpers.RedisService",
+        ) as MockRedisService,
+    ):
         mock_client = MagicMock()
         mock_client.stream_completion = fake_stream
         mock_get_client.return_value = mock_client
@@ -2962,9 +2959,9 @@ async def test_reasoning_with_content_does_not_inject_hint(
 
     hint_substring = "increasing `max_tokens`"
     token_contents = [e.content for e in events if e.type == "token"]
-    assert not any(hint_substring in c for c in token_contents), (
-        f"Hint should have been suppressed when content was produced: {token_contents}"
-    )
+    assert not any(
+        hint_substring in c for c in token_contents
+    ), f"Hint should have been suppressed when content was produced: {token_contents}"
 
 
 @pytest.mark.asyncio
@@ -3008,11 +3005,14 @@ async def test_reasoning_with_tool_call_does_not_inject_hint(
 
     fake_redis = fakeredis.FakeRedis(decode_responses=False)
 
-    with patch(
-        "tables.services.flow_assistant.service.get_llm_client"
-    ) as mock_get_client, patch(
-        "tables.services.flow_assistant.helpers.RedisService",
-    ) as MockRedisService:
+    with (
+        patch(
+            "tables.services.flow_assistant.service.get_llm_client"
+        ) as mock_get_client,
+        patch(
+            "tables.services.flow_assistant.helpers.RedisService",
+        ) as MockRedisService,
+    ):
         mock_client = MagicMock()
         mock_client.stream_completion = fake_stream
         mock_get_client.return_value = mock_client
@@ -3028,6 +3028,6 @@ async def test_reasoning_with_tool_call_does_not_inject_hint(
 
     hint_substring = "increasing `max_tokens`"
     token_contents = [e.content for e in events if e.type == "token"]
-    assert not any(hint_substring in c for c in token_contents), (
-        f"Hint should have been suppressed when a tool was called: {token_contents}"
-    )
+    assert not any(
+        hint_substring in c for c in token_contents
+    ), f"Hint should have been suppressed when a tool was called: {token_contents}"

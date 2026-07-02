@@ -1,6 +1,6 @@
 from tables.import_export.enums import EntityType
 
-IMPORT_VERSION = 1
+IMPORT_VERSION = 2
 
 MAIN_ENTITY_KEY = "main_entity"
 NODE_MAPPING_KEY = "node"

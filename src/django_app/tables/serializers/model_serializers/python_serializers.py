@@ -66,7 +66,6 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             "favorite",
             "built_in",
             "use_storage",
-            "tool_fields",
         ]
         read_only_fields = ["id", "built_in"]
 

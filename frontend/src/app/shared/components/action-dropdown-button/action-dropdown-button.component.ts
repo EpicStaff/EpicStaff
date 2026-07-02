@@ -1,6 +1,7 @@
 import { OverlayModule } from '@angular/cdk/overlay';
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
@@ -12,7 +13,7 @@ export interface ActionDropdownItem {
 @Component({
     selector: 'app-action-dropdown-button',
     standalone: true,
-    imports: [OverlayModule, AppSvgIconComponent, CommonModule],
+    imports: [OverlayModule, AppSvgIconComponent, CommonModule, MatTooltipModule],
     templateUrl: './action-dropdown-button.component.html',
     styleUrls: ['./action-dropdown-button.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

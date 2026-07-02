@@ -28,7 +28,8 @@ import { ConfirmationDialogService } from '../../../../shared/components/cofirm-
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { LlmModelSelectorComponent } from '../../../../shared/components/llm-model-selector/llm-model-selector.component';
-import { FullLLMConfig, FullLLMConfigService } from '../../../../shared/services/llms/full-llm-config.service';
+import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
+import { FullLLMConfigService } from '../../../../shared/services/llms/full-llm-config.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { NodeType } from '../../../core/enums/node-type';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
@@ -61,6 +62,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         HelpTooltipComponent,
         AppSvgIconComponent,
         ActionDropdownButtonComponent,
+        SelectComponent,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
     styleUrls: ['./classification-decision-table-node-panel.component.scss'],
@@ -91,7 +93,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public conditionGroups = signal<ConditionGroup[]>([]);
     public prompts = signal<Record<string, PromptConfig>>({});
-    public llmConfigs: FullLLMConfig[] = [];
+    public readonly llmConfigs = this.fullLlmConfigService.fullLLMConfigs;
     public editingPromptId = signal<string | null>(null);
     public pendingPromptName = signal<string>('');
     public newPromptId = '';
@@ -151,12 +153,12 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         return [];
     });
 
-    public get llmConfigOptions(): { id: number; label: string }[] {
-        return this.llmConfigs.map((c) => ({
+    public readonly llmConfigOptions = computed<{ id: number; label: string }[]>(() =>
+        this.llmConfigs().map((c) => ({
             id: c.id,
             label: c.custom_name || `LLM #${c.id}`,
-        }));
-    }
+        }))
+    );
 
     constructor() {
         super();
@@ -179,26 +181,14 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.codeChange$
             .pipe(debounceTime(300), takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.sidePanelService.triggerAutosave());
-        this.fullLlmConfigService
-            .getFullLLMConfigs()
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (configs) => {
-                    this.llmConfigs = configs;
-                    this.cdr.markForCheck();
-                },
-                error: () => {
-                    this.llmConfigs = [];
-                    this.cdr.markForCheck();
-                },
-            });
+        this.fullLlmConfigService.getFullLLMConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
-    public availableNodes = computed(() => {
+    public availableNodeItems = computed<SelectItem[]>(() => {
         const nodes = this.flowService.nodes();
         const currentNodeId = this.node().id;
 
-        return nodes
+        const nodeItems = nodes
             .filter(
                 (node) =>
                     node.type !== NodeType.NOTE &&
@@ -209,8 +199,10 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             )
             .map((node) => ({
                 value: node.id,
-                label: node.node_name || node.id,
+                name: node.node_name || node.id,
             }));
+
+        return [{ name: 'Select Node', value: '' }, ...nodeItems];
     });
 
     get activeColor(): string {

@@ -1,5 +1,6 @@
 import { CommonModule, NgStyle } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
@@ -12,7 +13,7 @@ import {
 @Component({
     selector: 'app-memory-item',
     standalone: true,
-    imports: [CommonModule, NgStyle, AppSvgIconComponent],
+    imports: [CommonModule, NgStyle, AppSvgIconComponent, MatTooltip],
     template: `
         <div class="memory-item">
             <div class="memory-header">
@@ -21,6 +22,7 @@ import {
                     <span class="memory-date">{{ memory.payload.created_at | date: 'short' }}</span>
                     <button
                         class="delete-button"
+                        matTooltip="Delete memory"
                         (click)="onDelete()"
                     >
                         <app-svg-icon

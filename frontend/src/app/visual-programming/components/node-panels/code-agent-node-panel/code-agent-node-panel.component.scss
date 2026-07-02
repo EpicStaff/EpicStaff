@@ -81,6 +81,20 @@
     letter-spacing: 0.05em;
 }
 
+.llm-selector-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+
+    label {
+        display: block;
+        font-size: 0.875rem;
+        line-height: 130%;
+        color: var(--color-ks-text);
+        margin: 0;
+    }
+}
+
 .timeout-section {
     display: flex;
     flex-direction: column;

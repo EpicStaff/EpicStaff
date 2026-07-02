@@ -11,6 +11,7 @@ import {
     Output,
     signal,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { FlowMenuItemComponent } from './flow-menu-item/flow-menu-item.component';
@@ -18,7 +19,7 @@ import { FlowMenuItemComponent } from './flow-menu-item/flow-menu-item.component
 @Component({
     selector: 'app-flow-menu',
     standalone: true,
-    imports: [NgIf, NgClass, FlowMenuItemComponent, AppSvgIconComponent],
+    imports: [NgIf, NgClass, FlowMenuItemComponent, AppSvgIconComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './flow-menu.component.html',
     styleUrls: ['./flow-menu.component.scss'],

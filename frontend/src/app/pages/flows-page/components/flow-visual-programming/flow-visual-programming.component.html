@@ -15,6 +15,7 @@
         (getCurl)="handleGetCurl()"
         (toggleAssistant)="onToggleAssistant()"
         (flowEdited)="onFlowEdited($event)"
+        [editors]="collaborationEditors()"
     ></app-flow-header>
 
     <div class="body">
@@ -62,6 +63,8 @@
                     class="collapse-toggle"
                     (mousedown)="$event.stopPropagation()"
                     (click)="togglePanelCollapsed()"
+                    [matTooltip]="isPanelCollapsed() ? 'Open sessions panel' : 'Close sessions panel'"
+                    matTooltipPosition="left"
                 >
                     <span class="collapse-toggle__icon">
                         <app-svg-icon

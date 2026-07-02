@@ -27,15 +27,12 @@
                                 >Default Next Node
                                 <app-help-tooltip text="Fallback route when no condition matches" />
                             </label>
-                            <select
+                            <app-select
+                                label=""
+                                placeholder="Select Node"
                                 formControlName="default_next_node"
-                                class="header-select"
-                            >
-                                <option value="">Select Node</option>
-                                @for (node of availableNodes(); track node.value) {
-                                    <option [value]="node.value">{{ node.label }}</option>
-                                }
-                            </select>
+                                [items]="availableNodeItems()"
+                            />
                         </div>
 
                         <div class="header-field">
@@ -43,15 +40,12 @@
                                 >Error Next Node
                                 <app-help-tooltip text="Route taken if evaluation fails" />
                             </label>
-                            <select
+                            <app-select
+                                label=""
+                                placeholder="Select Node"
                                 formControlName="next_error_node"
-                                class="header-select"
-                            >
-                                <option value="">Select Node</option>
-                                @for (node of availableNodes(); track node.value) {
-                                    <option [value]="node.value">{{ node.label }}</option>
-                                }
-                            </select>
+                                [items]="availableNodeItems()"
+                            />
                         </div>
                     </div>
 
@@ -118,7 +112,7 @@
                             [storageNodeId]="gridStorageId()"
                             [prompts]="prompts()"
                             [defaultLlmId]="form.value.default_llm_config || null"
-                            [llmConfigs]="llmConfigOptions"
+                            [llmConfigs]="llmConfigOptions()"
                             [preInputMapKeys]="inputMapVariableNames()"
                             [domainKeys]="domainKeys()"
                             (conditionGroupsChange)="onConditionGroupsChange($event)"
@@ -279,7 +273,6 @@
                                                         >LLM Override <span class="required-star">*</span></label
                                                     >
                                                     <app-llm-model-selector
-                                                        [llmConfigs]="llmConfigs"
                                                         [ngModel]="getLlmIdAsNumber(prompt.llm_config)"
                                                         [ngModelOptions]="{ standalone: true }"
                                                         (modelSelected)="onPromptLlmChange(prompt.id, $event)"

@@ -1297,6 +1297,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onExportAllAsJson(): void {
+        const exportable = this.flowService
+            .nodes()
+            .filter((n) => n.type !== NodeType.START && n.type !== NodeType.END);
+        if (exportable.length === 0) {
+            this.toastService.warning('No nodes to export', 3000, 'bottom-right');
+            return;
+        }
         if (this.flowService.nodes().some((n) => n.backendId === null)) {
             this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
             return;
@@ -1341,9 +1348,19 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             },
             error: (err: HttpErrorResponse) => {
                 const body = typeof err.error === 'string' ? err.error : JSON.stringify(err.error ?? '');
-                const match = body.match(/'detail':\s*'([^']+)'/);
-                const message = match?.[1] ?? (err.error as Record<string, string>)?.['detail'] ?? 'Import failed';
-                this.toastService.error(message, 3000, 'bottom-right');
+                const rawMessage =
+                    (err.error as Record<string, string>)?.['message'] ??
+                    (err.error as Record<string, string>)?.['detail'] ??
+                    null;
+                if (body.includes('node_name must make a unique set')) {
+                    this.toastService.error(
+                        'Import failed: a Classification Decision Table node with this name already exists in this flow. This is a backend issue — delete the duplicate CDT nodes and try again.',
+                        6000,
+                        'bottom-right'
+                    );
+                } else {
+                    this.toastService.error(rawMessage ?? 'Import failed', 3000, 'bottom-right');
+                }
             },
         });
     }

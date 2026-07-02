@@ -89,10 +89,8 @@ class LogoutResponseSerializer(serializers.Serializer):
     detail = serializers.CharField()
 
 
-# ---- SSE ticket ----
-
-
-class SseTicketResponseSerializer(serializers.Serializer):
+# ---- Ticket ----
+class TicketResponseSerializer(serializers.Serializer):
     ticket = serializers.CharField()
     expires_in = serializers.IntegerField()
 

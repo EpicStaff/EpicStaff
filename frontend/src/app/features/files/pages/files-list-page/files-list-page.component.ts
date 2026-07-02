@@ -2,6 +2,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 
 import { ToastService } from '../../../../services/notifications/toast.service';
@@ -27,6 +28,7 @@ import { StorageApiService } from '../../services/storage-api.service';
         FormsModule,
         AppSvgIconComponent,
         HideInlineSubtitleOnOverflowDirective,
+        MatTooltipModule,
     ],
     templateUrl: './files-list-page.component.html',
     styleUrls: ['./files-list-page.component.scss'],

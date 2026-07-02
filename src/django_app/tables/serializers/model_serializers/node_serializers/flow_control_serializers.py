@@ -144,6 +144,19 @@ class DecisionTableNodeSerializer(
         fields = "__all__"
 
 
+def validate_classification_condition_group_names(condition_groups_data) -> list[str]:
+    """Return a list of error strings for any group with a blank/null group_name."""
+    errors = []
+
+    for idx, group in enumerate(condition_groups_data or []):
+        name = group.get("group_name")
+
+        if name is None or (isinstance(name, str) and not name.strip()):
+            errors.append(f"condition_groups[{idx}]: group_name may not be blank.")
+
+    return errors
+
+
 class ClassificationConditionGroupSerializer(serializers.ModelSerializer):
     classification_decision_table_node = serializers.PrimaryKeyRelatedField(
         read_only=True

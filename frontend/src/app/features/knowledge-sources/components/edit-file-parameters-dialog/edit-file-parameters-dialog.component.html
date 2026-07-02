@@ -8,6 +8,8 @@
                     icon="arrow-left"
                     size="1.5rem"
                     class="dialog__action"
+                    matTooltip="Previous file"
+                    matTooltipPosition="above"
                     [class.dialog__action--disabled]="isPrevDisabled()"
                     (click)="prevDocument()"
                 />
@@ -18,6 +20,8 @@
                     icon="arrow-right"
                     class="dialog__action"
                     size="1.5rem"
+                    matTooltip="Next file"
+                    matTooltipPosition="above"
                     [class.dialog__action--disabled]="isNextDisabled()"
                     (click)="nextDocument()"
                 />
@@ -26,6 +30,8 @@
                 icon="x"
                 size="1.5rem"
                 class="dialog__action"
+                matTooltip="Close"
+                matTooltipPosition="above"
                 (click)="onClose()"
             />
         </div>

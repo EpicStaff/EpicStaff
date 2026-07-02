@@ -12,6 +12,7 @@ import {
     ViewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { MonacoEditorModule } from 'ngx-monaco-editor-v2';
 import { from, of, Subject, Subscription } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
@@ -27,7 +28,7 @@ const LINT_DEBOUNCE_MS = 400;
 
 @Component({
     selector: 'app-code-editor',
-    imports: [FormsModule, NgIf, MonacoEditorModule, AppSvgIconComponent, IconButtonComponent],
+    imports: [FormsModule, NgIf, MonacoEditorModule, AppSvgIconComponent, IconButtonComponent, MatTooltipModule],
     templateUrl: './code-editor.component.html',
     styleUrls: ['./code-editor.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
