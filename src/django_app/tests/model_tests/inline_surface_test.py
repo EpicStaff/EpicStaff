@@ -542,6 +542,7 @@ def test_reject_duplicate_python_tool_ids(client, api_graph, py_tool):
     )
 
     assert response.status_code == 400, response.data
+    assert "inline_surface" in response.data["message"]
     assert "python_tools" in response.data["message"]
 
 
@@ -562,6 +563,7 @@ def test_reject_cross_org_storage_file(client, api_graph, other_org_storage_file
     )
 
     assert response.status_code == 400, response.data
+    assert "inline_surface" in response.data["message"]
     assert "storage_items" in response.data["message"]
 
 
@@ -590,7 +592,35 @@ def test_reject_naive_config_on_graph_only_collection(
     )
 
     assert response.status_code == 400, response.data
+    assert "inline_surface" in response.data["message"]
     assert "knowledge" in response.data["message"]
+
+
+@pytest.mark.django_db
+def test_reject_duplicate_python_tool_ids_nests_error_under_inline_surface_key(
+    client, api_graph, py_tool
+):
+    """Regression: SurfaceValidator errors raised from InlineSurfaceWriteSerializer
+    must be nested under `inline_surface`, distinct from top-level `surface_list`
+    errors raised by TaskNodeSerializer for the catalog-surface path."""
+    response = client.post(
+        "/api/tasknodes/",
+        {
+            "graph": api_graph.pk,
+            "node_name": "inline-dup-error-shape",
+            "inline_surface": {
+                "python_tools": [
+                    {"python_tool": py_tool.pk, "mode": "allow"},
+                    {"python_tool": py_tool.pk, "mode": "deny"},
+                ]
+            },
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.data
+    assert "inline_surface" in response.data["message"]
+    assert "surface_list" not in response.data["message"]
 
 
 @pytest.mark.django_db

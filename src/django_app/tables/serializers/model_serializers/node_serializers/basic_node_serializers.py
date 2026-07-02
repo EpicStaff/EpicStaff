@@ -99,21 +99,31 @@ class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
         fields = "__all__"
 
     def validate(self, attrs):
-        surfaces = attrs.get("surface_list")
-        if surfaces:
-            organization = self.context.get("organization")
-            if "agent_definition" in attrs:
-                agent_definition = attrs["agent_definition"]
-            else:
-                agent_definition = (
-                    self.instance.agent_definition if self.instance else None
-                )
-            if organization is not None:
-                SurfaceValidator.validate_task_node_surfaces(
-                    surfaces=surfaces,
-                    agent_definition=agent_definition,
-                    organization=organization,
-                )
+        organization = self.context.get("organization")
+        if organization is None:
+            return attrs
+
+        if "surface_list" in attrs:
+            surfaces = attrs["surface_list"]
+        elif "agent_definition" in attrs and self.instance is not None:
+            surfaces = list(self.instance.surface_list.all())
+        else:
+            surfaces = None
+
+        if not surfaces:
+            return attrs
+
+        if "agent_definition" in attrs:
+            agent_definition = attrs["agent_definition"]
+        else:
+            agent_definition = self.instance.agent_definition if self.instance else None
+
+        SurfaceValidator.validate_task_node_surfaces(
+            surfaces=surfaces,
+            agent_definition=agent_definition,
+            organization=organization,
+        )
+
         return attrs
 
     def create(self, validated_data):
@@ -123,7 +133,7 @@ class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
         with transaction.atomic():
             node = super().create(validated_data)
             if has_inline:
-                # Refresh stale select_related cache; None evicts it so to_representation re-queries.
+                # Prime select_related cache so to_representation avoids a query.
                 node.inline_surface = InlineSurfaceService.apply(
                     task_node=node, data=inline_data
                 )

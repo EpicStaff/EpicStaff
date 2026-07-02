@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from tables.exceptions import SurfaceValidationError
 from tables.models.agent_models.surface_models import (
     InlineSurface,
     InlineSurfaceGraphBasicSearchConfig,
@@ -121,14 +122,17 @@ class InlineSurfaceWriteSerializer(serializers.Serializer):
     def validate(self, attrs):
         organization = self.context.get("organization")
 
-        SurfaceValidator.validate_python_tools(attrs.get("python_tools", []))
-        SurfaceValidator.validate_mcp_tools(attrs.get("mcp_tools", []))
+        try:
+            SurfaceValidator.validate_python_tools(attrs.get("python_tools", []))
+            SurfaceValidator.validate_mcp_tools(attrs.get("mcp_tools", []))
 
-        if organization is not None:
-            SurfaceValidator.validate_storage_items(
-                attrs.get("storage_items", []), organization
-            )
+            if organization is not None:
+                SurfaceValidator.validate_storage_items(
+                    attrs.get("storage_items", []), organization
+                )
 
-        SurfaceValidator.validate_knowledge(attrs.get("knowledge", []))
+            SurfaceValidator.validate_knowledge(attrs.get("knowledge", []))
+        except SurfaceValidationError as exc:
+            raise SurfaceValidationError(detail={"inline_surface": exc.detail})
 
         return attrs

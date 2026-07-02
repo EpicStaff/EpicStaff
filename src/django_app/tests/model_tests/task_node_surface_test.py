@@ -445,3 +445,72 @@ def test_validator_rejects_duplicate_ids(org, shared_surface):
         )
 
     assert "surface_list" in exc_info.value.detail
+
+
+# ---------------------------------------------------------------------------
+# Agent-change re-validates existing attached surfaces (no surface_list in payload)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_patch_agent_definition_without_surface_list_rejects_stale_owned_surface(
+    client, graph, agent, agent_b, agent_owned_surface
+):
+    node = TaskNode.objects.create(
+        graph=graph, node_name="task-agent-change-stale-owned", agent_definition=agent
+    )
+    node.surface_list.add(agent_owned_surface)
+
+    response = client.patch(
+        f"/api/tasknodes/{node.pk}/",
+        {"agent_definition": agent_b.pk},
+        format="json",
+    )
+
+    assert response.status_code == 400, response.data
+    assert "surface_list" in response.data["message"]
+
+    node.refresh_from_db()
+    assert set(node.surface_list.values_list("pk", flat=True)) == {
+        agent_owned_surface.pk
+    }
+
+
+@pytest.mark.django_db
+def test_patch_agent_definition_to_null_without_surface_list_rejects_stale_owned_surface(
+    client, graph, agent, agent_owned_surface
+):
+    node = TaskNode.objects.create(
+        graph=graph, node_name="task-agent-clear-stale-owned", agent_definition=agent
+    )
+    node.surface_list.add(agent_owned_surface)
+
+    response = client.patch(
+        f"/api/tasknodes/{node.pk}/",
+        {"agent_definition": None},
+        format="json",
+    )
+
+    assert response.status_code == 400, response.data
+    assert "surface_list" in response.data["message"]
+
+
+@pytest.mark.django_db
+def test_patch_agent_definition_without_surface_list_accepts_shared_surfaces_only(
+    client, graph, agent, agent_b, shared_surface
+):
+    node = TaskNode.objects.create(
+        graph=graph, node_name="task-agent-change-shared-only", agent_definition=agent
+    )
+    node.surface_list.add(shared_surface)
+
+    response = client.patch(
+        f"/api/tasknodes/{node.pk}/",
+        {"agent_definition": agent_b.pk},
+        format="json",
+    )
+
+    assert response.status_code == 200, response.data
+    node.refresh_from_db()
+    assert node.agent_definition_id == agent_b.pk
+    assert set(node.surface_list.values_list("pk", flat=True)) == {shared_surface.pk}
