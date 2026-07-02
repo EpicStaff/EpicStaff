@@ -5,6 +5,7 @@ import { map, tap } from 'rxjs/operators';
 import { ToastService } from '../../../../../../services/notifications';
 import { CollectionGraphRag, CreateGraphRagIndexConfigRequest } from '../../../../models/graph-rag.model';
 import { GraphRagService } from '../../../../services/graph-rag.service';
+import { RagIndexingService } from '../../../../services/rag-indexing.service';
 import { GraphRagConfigurationComponent } from '../../../graph-rag-configuration/graph-rag-configuration.component';
 import { RagCreationStrategy } from '../interfaces/rag-creation-strategy.interface';
 
@@ -17,6 +18,7 @@ export class GraphRagStrategy implements RagCreationStrategy {
 
     constructor(
         private graphRagService: GraphRagService,
+        private ragIndexingService: RagIndexingService,
         private toastService: ToastService
     ) {}
 
@@ -31,13 +33,28 @@ export class GraphRagStrategy implements RagCreationStrategy {
         const ragId = this.graphRag.graph_rag_id;
         if (!ragId || !dto) return of(false);
 
-        return this.graphRagService
+        return this.ragIndexingService
             .startIndexing({
                 rag_id: ragId,
                 rag_type: 'graph',
             })
             .pipe(
                 tap(() => this.toastService.success('Indexing started')),
+                map(() => true)
+            );
+    }
+
+    stopIndexing() {
+        const ragId = this.graphRag.graph_rag_id;
+        if (!ragId) return of(false);
+
+        return this.ragIndexingService
+            .stopIndexing({
+                rag_id: ragId,
+                rag_type: 'graph',
+            })
+            .pipe(
+                tap(() => this.toastService.success('Indexing stopped')),
                 map(() => true)
             );
     }

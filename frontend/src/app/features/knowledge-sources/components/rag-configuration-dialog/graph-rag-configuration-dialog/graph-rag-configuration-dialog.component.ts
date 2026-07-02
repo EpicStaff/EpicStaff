@@ -39,7 +39,7 @@ export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent
             .pipe(
                 filter((result) => result === true),
                 switchMap(() =>
-                    this.graphRagService.startIndexing({
+                    this.ragIndexingService.startIndexing({
                         rag_id: this.data.ragId,
                         rag_type: 'graph',
                     })

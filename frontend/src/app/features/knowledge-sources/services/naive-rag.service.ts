@@ -3,9 +3,9 @@ import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { ConfigService } from '../../../services/config';
-import { StartIndexingDtoRequest, StartIndexingDtoResponse } from '../models/base-rag.model';
 import { CreateNaiveRagForCollectionResponse, DeleteNaiveRagResponse } from '../models/naive-rag.model';
 import {
+    CancelNaiveNaiveRagChunkingResponse,
     ChunkSearchResponse,
     GetChunksByIdsResponse,
     GetNaiveRagDocumentChunksResponse,
@@ -90,10 +90,6 @@ export class NaiveRagService {
         );
     }
 
-    startIndexing(dto: StartIndexingDtoRequest): Observable<StartIndexingDtoResponse> {
-        return this.http.post<StartIndexingDtoResponse>(`${this.configService.apiUrl}process-rag-indexing/`, dto);
-    }
-
     initializeDocuments(ragId: number): Observable<InitNaiveRagDocumentsResponse> {
         return this.http.post<InitNaiveRagDocumentsResponse>(`${this.apiUrl}${ragId}/document-configs/initialize/`, {});
     }
@@ -101,6 +97,13 @@ export class NaiveRagService {
     runChunkingProcess(ragId: number, documentId: number): Observable<NaiveRagChunkingResponse> {
         return this.http.post<NaiveRagChunkingResponse>(
             `${this.apiUrl}${ragId}/document-configs/${documentId}/process-chunking/`,
+            {}
+        );
+    }
+
+    stopChunkingByDocumentId(ragId: number, documentId: number): Observable<CancelNaiveNaiveRagChunkingResponse> {
+        return this.http.post<CancelNaiveNaiveRagChunkingResponse>(
+            `${this.apiUrl}${ragId}/document-configs/${documentId}/process-chunking/cancel/`,
             {}
         );
     }

@@ -28,6 +28,16 @@
             >
                 {{ nextText() }}
             </app-button>
+
+            @if (currentStepIndex() === 2) {
+                <app-button
+                    type="primary"
+                    (click)="stopIndexing()"
+                >
+                    Stop indexing
+                </app-button>
+            }
+
             <app-svg-icon
                 icon="x"
                 class="dialog__actions--close"

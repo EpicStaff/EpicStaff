@@ -7,6 +7,7 @@ import { CreateNaiveRag } from '../../../../models/naive-rag.model';
 import { NaiveRagService } from '../../../../services/naive-rag.service';
 import { NaiveRagDocumentsStorageService } from '../../../../services/naive-rag-documents-storage.service';
 import { NaiveRagPollingService } from '../../../../services/naive-rag-polling.service';
+import { RagIndexingService } from '../../../../services/rag-indexing.service';
 import { NaiveRagConfigurationComponent } from '../../../naive-rag-configuration/naive-rag-configuration.component';
 import { RagCreationStrategy } from '../interfaces/rag-creation-strategy.interface';
 
@@ -20,6 +21,7 @@ export class NaiveRagStrategy implements RagCreationStrategy {
 
     constructor(
         private naiveRagService: NaiveRagService,
+        private ragIndexingService: RagIndexingService,
         private documentsStorageService: NaiveRagDocumentsStorageService,
         private pollingService: NaiveRagPollingService,
         private toastService: ToastService
@@ -37,7 +39,7 @@ export class NaiveRagStrategy implements RagCreationStrategy {
         const configIds =
             data?.configIds ?? this.documentsStorageService.documents().map((d) => d.naive_rag_document_id);
 
-        return this.naiveRagService
+        return this.ragIndexingService
             .startIndexing({
                 rag_id: naiveRagId,
                 rag_type: 'naive',
@@ -47,6 +49,22 @@ export class NaiveRagStrategy implements RagCreationStrategy {
                 tap(() => {
                     this.toastService.success('Indexing started');
                     this.pollingService.pollDocumentStatuses(naiveRagId, configIds);
+                }),
+                map(() => true)
+            );
+    }
+
+    stopIndexing() {
+        const naiveRagId = this.naiveRag.naive_rag_id;
+
+        return this.ragIndexingService
+            .stopIndexing({
+                rag_id: naiveRagId,
+                rag_type: 'naive',
+            })
+            .pipe(
+                tap(() => {
+                    this.toastService.success('Indexing stopped');
                 }),
                 map(() => true)
             );

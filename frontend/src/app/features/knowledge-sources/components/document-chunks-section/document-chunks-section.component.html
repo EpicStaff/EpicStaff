@@ -17,6 +17,19 @@
                 </div>
             }
             @case ('chunking') {
+                <ng-container
+                    *ngTemplateOutlet="
+                        chunksHeader;
+                        context: {
+                            disabled: false,
+                            statusText: 'Chunking',
+                            statusClass: 'chunking',
+                            statusIcon: 'clock',
+                            btnText: 'Cancel',
+                            btnAction: 'cancel',
+                        }
+                    "
+                ></ng-container>
                 <app-spinner
                     class="chunks__loader"
                     text="Running chunking process..."
@@ -136,6 +149,7 @@
     let-statusClass="statusClass"
     let-statusIcon="statusIcon"
     let-btnText="btnText"
+    let-btnAction="btnAction"
 >
     <div class="chunks__header">
         <span>Chunk Preview</span>
@@ -149,7 +163,17 @@
             </div>
         }
 
-        <ng-content>
+        @if (btnAction === 'cancel') {
+            <app-button
+                class="chunks__action-btn"
+                type="secondary"
+                mod="small"
+                (click)="stopChunking()"
+                [disabled]="disabled"
+            >
+                {{ btnText }}
+            </app-button>
+        } @else {
             <app-button
                 class="chunks__action-btn"
                 type="primary"
@@ -159,6 +183,6 @@
             >
                 {{ btnText }}
             </app-button>
-        </ng-content>
+        }
     </div>
 </ng-template>
