@@ -3,6 +3,7 @@
     @case ('group') {
         <div
             class="row row--group"
+            [class.row--selected]="isSelected()"
             [style.padding-left.px]="12 + depth() * 20"
             (click)="onRowClick()"
             (mouseenter)="onMouseEnter()"
@@ -50,10 +51,13 @@
             <span class="row__chevron-spacer"></span>
             <app-svg-icon
                 class="row__icon row__icon--surface"
-                icon="surface-shared"
-                size="10px"
+                icon="surfaces-tab"
+                size="12px"
             />
             <span class="row__label row__label--surface">{{ n.label }}</span>
+            @if (n.shared) {
+                <span class="row__shared">Shared</span>
+            }
             @if (showHoverMenu()) {
                 <div
                     class="row__hover-actions"

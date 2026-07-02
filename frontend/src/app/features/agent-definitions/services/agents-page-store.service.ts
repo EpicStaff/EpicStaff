@@ -308,6 +308,7 @@ export class AgentsPageStore {
                         surfaceId: s.id,
                         label: s.name,
                         locked: !this.isSurfaceShared(s.id),
+                        shared: this.isSurfaceShared(s.id),
                         ownerAgentId: a.id,
                     }));
 

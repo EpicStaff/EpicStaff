@@ -16,6 +16,7 @@ export interface BranchSurfaceNode {
     surfaceId: number;
     label: string;
     locked?: boolean;
+    shared?: boolean;
     ownerAgentId?: number;
 }
 

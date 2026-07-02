@@ -60,6 +60,10 @@ export class TreeNodeComponent implements OnInit {
         if (n.kind === 'agent-doc') {
             return sel.kind === 'agent-doc' && sel.id === n.agentId && sel.docType === n.docType;
         }
+        if (n.kind === 'group') {
+            const match = /^agent:(\d+):surfaces$/.exec(n.id);
+            return match != null && sel.kind === 'agent-surfaces' && sel.id === Number(match[1]);
+        }
         return false;
     });
 
