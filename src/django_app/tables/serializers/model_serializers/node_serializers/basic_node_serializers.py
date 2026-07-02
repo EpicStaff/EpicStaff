@@ -123,6 +123,7 @@ class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
         with transaction.atomic():
             node = super().create(validated_data)
             if has_inline:
+                # Refresh stale select_related cache; None evicts it so to_representation re-queries.
                 node.inline_surface = InlineSurfaceService.apply(
                     task_node=node, data=inline_data
                 )
@@ -136,6 +137,7 @@ class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
         with transaction.atomic():
             node = super().update(instance, validated_data)
             if has_inline:
+                # Refresh stale select_related cache; None evicts it so to_representation re-queries.
                 node.inline_surface = InlineSurfaceService.apply(
                     task_node=node, data=inline_data
                 )
