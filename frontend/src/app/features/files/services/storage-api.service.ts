@@ -8,8 +8,10 @@ import { AddFilesPayload } from '../components/create-folder-dialog/create-folde
 import {
     GraphFileRecord,
     SessionOutputFile,
+    StorageFileRecord,
     StorageItem,
     StorageItemInfo,
+    StorageTreeResponse,
     StorageUploadResponse,
 } from '../models/storage.models';
 
@@ -65,6 +67,19 @@ export class StorageApiService {
             return of({ uploadedCount: 0 });
         }
         return this.uploadMany(normalizedTarget, files).pipe(map(() => ({ uploadedCount: files.length })));
+    }
+
+    tree(path = ''): Observable<StorageTreeResponse> {
+        return this.http.get<StorageTreeResponse>(`${this.apiUrl}tree/`, {
+            params: { path },
+        });
+    }
+
+    filesByIds(ids: number[]): Observable<StorageFileRecord[]> {
+        if (!ids.length) return of([]);
+        return this.http.get<StorageFileRecord[]>(`${this.apiUrl}files/`, {
+            params: { ids: ids.join(',') },
+        });
     }
 
     info(path: string): Observable<StorageItemInfo> {
