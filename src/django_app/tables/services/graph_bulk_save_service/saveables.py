@@ -376,13 +376,25 @@ class _EdgeSaveable:
     """
     Wraps a validated EdgeBulkSerializer and the parsed NodeRef for each end.
     At write time, temp refs are resolved from temp_id_map to real DB ids.
+
+    An optional temp_id (the edge's OWN client id, distinct from start_ref /
+    end_ref) is registered in temp_id_map after save so a subsequent flush
+    routes the same edge to UPDATE instead of re-creating it.
     """
 
-    def __init__(self, serializer, start_ref: NodeRef, end_ref: NodeRef, instance=None):
+    def __init__(
+        self,
+        serializer,
+        start_ref: NodeRef,
+        end_ref: NodeRef,
+        instance=None,
+        temp_id: str | None = None,
+    ):
         self._s = serializer
         self._start_ref = start_ref
         self._end_ref = end_ref
         self._instance = instance
+        self._temp_id = temp_id
 
     def resolve_and_save(self, temp_id_map: dict):
         s = self._s
@@ -404,9 +416,12 @@ class _EdgeSaveable:
         )
 
         if self._instance is None:
-            s.create(validated)
+            instance = s.create(validated)
         else:
-            s.update(self._instance, validated)
+            instance = s.update(self._instance, validated)
+
+        if self._temp_id and instance is not None:
+            temp_id_map[self._temp_id] = instance.id
 
 
 class _ConditionalEdgeSaveable:
@@ -414,12 +429,23 @@ class _ConditionalEdgeSaveable:
     Wraps a validated ConditionalEdgeBulkSerializer and the parsed source ref.
 
     If source_temp_id was provided, it is resolved from temp_id_map at write time.
+
+    An optional temp_id (the conditional edge's OWN client id, distinct from
+    source_ref) is registered in temp_id_map after save so a subsequent flush
+    routes the same conditional edge to UPDATE instead of re-creating it.
     """
 
-    def __init__(self, serializer, source_ref: NodeRef, instance=None):
+    def __init__(
+        self,
+        serializer,
+        source_ref: NodeRef,
+        instance=None,
+        temp_id: str | None = None,
+    ):
         self._s = serializer
         self._source_ref = source_ref
         self._instance = instance
+        self._temp_id = temp_id
 
     def resolve_and_save(self, temp_id_map: dict):
         s = self._s
@@ -435,6 +461,9 @@ class _ConditionalEdgeSaveable:
         )
 
         if self._instance is None:
-            s.create(validated)
+            instance = s.create(validated)
         else:
-            s.update(self._instance, validated)
+            instance = s.update(self._instance, validated)
+
+        if self._temp_id and instance is not None:
+            temp_id_map[self._temp_id] = instance.id

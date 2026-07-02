@@ -219,11 +219,12 @@ class GraphFlushService:
 
         # Build a mapping of temp_id → list_key from the snapshot BEFORE the
         # DB flush so apply_id_remap can identify the list_key of orphaned
-        # temp nodes.  Only node lists (not edge lists) are included
-        # because edges are identified by start/end_temp_id references, not
-        # by their own temp_id.
+        # entries. All list types are included: edges and conditional edges
+        # carry their own temp_id (distinct from the start/end/source_temp_id
+        # endpoint-reference fields on the same entry), and that own temp_id
+        # must also be self-stamped and orphan-checked like node temp_ids.
         flushed_temp_id_to_list_key: dict[str, str] = {}
-        for list_key in _KNOWN_LIST_KEYS - {"edge_list", "conditional_edge_list"}:
+        for list_key in _KNOWN_LIST_KEYS:
             for entry in snapshot.get(list_key, []):
                 if entry is None:
                     # Corrupted snapshot entry — skip; the serializer will reject

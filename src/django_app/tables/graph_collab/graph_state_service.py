@@ -119,9 +119,9 @@ def _upsert_entry(entries: list[dict], new_entry: dict) -> None:
     entries.append(new_entry)
 
 
-# Maps list_key to the corresponding deleted-accumulator key.
-# Edge lists are excluded from this map because they use their own keys
-# (edge_ids / conditional_edge_ids) rather than a <type>_node_ids pattern.
+# Maps list_key to the corresponding deleted-accumulator key. Covers every
+# list type: node lists use the <type>_node_ids pattern; edge lists use
+# edge_ids / conditional_edge_ids.
 _LIST_KEY_TO_DELETE_KEY: dict[str, str] = {
     "crew_node_list": "crew_node_ids",
     "python_node_list": "python_node_ids",
@@ -310,7 +310,7 @@ class GraphLiveStateService:
             # Simultaneously collect the set of temp_ids still present in the
             # LIVE snapshot so we can detect orphans
             live_temp_ids: set[str] = set()
-            for list_key in _KNOWN_LIST_KEYS - {"edge_list", "conditional_edge_list"}:
+            for list_key in _KNOWN_LIST_KEYS:
                 entries: list[dict] = snapshot.get(list_key, [])
                 for entry in entries:
                     tid = entry.get("temp_id")

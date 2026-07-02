@@ -262,6 +262,7 @@ class GraphBulkSaveService:
         for index, item_data in enumerate(incoming_list):
             item_data = dict(item_data)
             item_id = item_data.get("id")
+            temp_id = str(item_data.pop("temp_id", None) or "")  # wire-only, strip now
 
             start_parsed = self._parse_node_ref(
                 item_data, "start_node_id", "start_temp_id", payload_temp_ids, index
@@ -287,7 +288,13 @@ class GraphBulkSaveService:
                     result.errors.append({"index": index, "errors": s.errors})
                     continue
                 result.saveables.append(
-                    _EdgeSaveable(s, start_parsed.ref, end_parsed.ref, instance=None)
+                    _EdgeSaveable(
+                        s,
+                        start_parsed.ref,
+                        end_parsed.ref,
+                        instance=None,
+                        temp_id=temp_id or None,
+                    )
                 )
             else:
                 db_instance = db_map.get(item_id)
@@ -307,7 +314,11 @@ class GraphBulkSaveService:
                     continue
                 result.saveables.append(
                     _EdgeSaveable(
-                        s, start_parsed.ref, end_parsed.ref, instance=db_instance
+                        s,
+                        start_parsed.ref,
+                        end_parsed.ref,
+                        instance=db_instance,
+                        temp_id=temp_id or None,
                     )
                 )
 
@@ -327,6 +338,7 @@ class GraphBulkSaveService:
         for index, item_data in enumerate(incoming_list):
             item_data = dict(item_data)
             item_id = item_data.get("id")
+            temp_id = str(item_data.pop("temp_id", None) or "")  # wire-only, strip now
 
             source_parsed = self._parse_node_ref(
                 item_data, "source_node_id", "source_temp_id", payload_temp_ids, index
@@ -345,7 +357,9 @@ class GraphBulkSaveService:
                     result.errors.append({"index": index, "errors": s.errors})
                     continue
                 result.saveables.append(
-                    _ConditionalEdgeSaveable(s, source_parsed.ref, instance=None)
+                    _ConditionalEdgeSaveable(
+                        s, source_parsed.ref, instance=None, temp_id=temp_id or None
+                    )
                 )
             else:
                 db_instance = db_map.get(item_id)
@@ -364,7 +378,12 @@ class GraphBulkSaveService:
                     result.errors.append({"index": index, "errors": s.errors})
                     continue
                 result.saveables.append(
-                    _ConditionalEdgeSaveable(s, source_parsed.ref, instance=db_instance)
+                    _ConditionalEdgeSaveable(
+                        s,
+                        source_parsed.ref,
+                        instance=db_instance,
+                        temp_id=temp_id or None,
+                    )
                 )
 
         return result
@@ -482,7 +501,9 @@ class GraphBulkSaveService:
         """Atomically delete, then save nodes, then save edges.
 
         Returns the temp_id_map built during writes: maps each frontend temp uuid
-        string to the new DB integer id assigned on insert.
+        string to the new DB integer id assigned on insert. Covers node temp_ids
+        (registered by _NodeSaveable) as well as edge and conditional-edge temp_ids
+        (registered by _EdgeSaveable / _ConditionalEdgeSaveable), all in one flat map.
         """
 
         # check if graph was changed meanwhile editing
