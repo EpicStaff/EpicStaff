@@ -668,16 +668,11 @@ $remove-col: 28px;
     min-height: 28px;
 
     &--folder {
-        background-color: rgba(21, 21, 21, 0.28);
         border-bottom: 1px solid rgba(43, 45, 48, 1);
         box-shadow: none;
 
         .file-row__name {
             font-weight: 500;
-        }
-
-        &:hover {
-            background-color: rgba(21, 21, 21, 0.36);
         }
     }
 

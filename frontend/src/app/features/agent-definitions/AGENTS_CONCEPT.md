@@ -17,9 +17,10 @@ decisions made across several iterations of the concept.
 > - Surface tools/knowledge/files are real nested arrays (`python_tools`, `mcp_tools`,
 >   `knowledge`, `storage_items`) plus `allow_creation`. The **Files** tab is wired to
 >   real storage: `StorageItem.id` is the numeric `StorageFile` id (backend returns it),
->   and `storage_items[].storage_file` references it. Selected-file *names* are only
->   backfilled as the picker tree is browsed, so a file in an unopened folder shows as
->   `File #<id>` until then.
+>   and `storage_items[].storage_file` references it. Selected-file *names/paths* are
+>   resolved via `GET /api/storage/files/?ids=1,2,3` when the card body is shown, so the
+>   selected-files table renders as a folder tree; `File #<id>` remains only as a
+>   fallback for ids the backend no longer knows.
 
 ---
 

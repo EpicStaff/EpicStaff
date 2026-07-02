@@ -12,6 +12,7 @@ import {
     model,
     output,
     signal,
+    untracked,
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -24,11 +25,9 @@ import {
     SelectDropdownHeaderAction,
     SelectDropdownListItem,
     SelectDropdownTab,
-    SelectDropdownTreeNode,
     SelectDropdownTriggerDirective,
 } from '@shared/components';
 import { EnterBlurDirective } from '@shared/directives';
-import { Observable } from 'rxjs';
 import { map, switchMap, take } from 'rxjs/operators';
 
 import { CreateCustomToolDialogComponent } from '../../../../../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
@@ -36,7 +35,6 @@ import {
     CreateFolderDialogComponent,
     CreateFolderDialogResult,
 } from '../../../../../../../files/components/create-folder-dialog/create-folder-dialog.component';
-import { StorageItem } from '../../../../../../../files/models/storage.models';
 import { StorageApiService } from '../../../../../../../files/services/storage-api.service';
 import { CreateCollectionDialogComponent } from '../../../../../../../knowledge-sources/components/create-collection-dialog/create-collection-dialog.component';
 import { CollectionsStorageService } from '../../../../../../../knowledge-sources/services/collections-storage.service';
@@ -65,7 +63,7 @@ import {
     SurfaceToolOption,
 } from '../../../../../../models/surface-card.model';
 import { SURFACE_CATEGORIES, SurfaceCategoryId } from '../../../../../../models/surface-category.model';
-import { SurfaceCatalogsStore } from '../../../../../../services/surface-catalogs-store.service';
+import { StorageFileMeta, SurfaceCatalogsStore } from '../../../../../../services/surface-catalogs-store.service';
 import { DELETE_CONFIRM_DIALOG_WIDTH } from '../../../../../../utils/delete-confirmation.util';
 import {
     buildClearSurfaceBundleDialog,
@@ -323,8 +321,14 @@ export class SurfaceCardComponent {
     readonly collapsedFolderPaths = signal<Set<string>>(new Set());
     readonly permColumns = SURFACE_FILE_PERM_COLUMNS;
 
-    readonly fileDropdownNodes = signal<SelectDropdownTreeNode[]>([]);
-    private readonly fileMetaById = new Map<number, { name: string; path: string }>();
+    readonly fileDropdownNodes = this.catalogs.storageTree;
+    private readonly fileMetaById = new Map<number, StorageFileMeta>();
+    private readonly requestedFileMetaIds = new Set<number>();
+
+    /** Shared tree cache first, then this card's filesByIds backfill. */
+    private metaFor(id: number): StorageFileMeta | undefined {
+        return this.catalogs.storageFileMeta().get(id) ?? this.fileMetaById.get(id);
+    }
 
     readonly filesHeaderAction: SelectDropdownHeaderAction = { icon: 'plus', label: 'Add files to storage' };
 
@@ -346,27 +350,6 @@ export class SurfaceCardComponent {
     readonly displayFileRows = computed(() =>
         buildSurfaceFileDisplayRows(this.fileRows(), this.collapsedFolderPaths())
     );
-
-    readonly loadStorageChildren = (node: SelectDropdownTreeNode): Observable<SelectDropdownTreeNode[]> => {
-        const prefix = this.nodePathById.get(node.id) ?? '';
-        return this.storageApi.list(prefix).pipe(map((items) => items.map((i) => this.toTreeNode(i, prefix))));
-    };
-    private readonly nodePathById = new Map<number | string, string>();
-
-    private toTreeNode(item: StorageItem, parentPrefix: string): SelectDropdownTreeNode {
-        const fullPath = `${parentPrefix}${item.name}${item.type === 'folder' ? '/' : ''}`;
-        const id: number | string = item.type === 'file' && item.id != null ? item.id : fullPath;
-        this.nodePathById.set(id, fullPath);
-        if (item.type === 'file' && typeof id === 'number') {
-            this.fileMetaById.set(id, { name: item.name, path: fullPath });
-        }
-        return {
-            id,
-            name: item.name,
-            type: item.type,
-            hasChildren: item.type === 'folder' && !item.is_empty,
-        };
-    }
 
     readonly collectionOptions = this.catalogs.collections;
     readonly selectedCollectionIds = signal<Set<number>>(new Set());
@@ -394,7 +377,7 @@ export class SurfaceCardComponent {
             this.selectedCollectionIds.set(new Set((s?.knowledge ?? []).map((k) => k.collection)));
             this.fileRows.set(
                 (s?.storage_items ?? []).map((si) => {
-                    const meta = this.fileMetaById.get(si.storage_file);
+                    const meta = untracked(() => this.metaFor(si.storage_file));
                     return {
                         id: si.storage_file,
                         name: meta?.name ?? `File #${si.storage_file}`,
@@ -413,6 +396,25 @@ export class SurfaceCardComponent {
         effect(() => {
             if (!this.expanded()) return;
             this.loadCatalogs();
+        });
+
+        effect(() => {
+            if (!this.expanded() && !this.hideHeader()) return;
+            const missing = this.fileRows()
+                .map((r) => r.id)
+                .filter((id) => this.metaFor(id) == null && !this.requestedFileMetaIds.has(id));
+            if (!missing.length) return;
+            missing.forEach((id) => this.requestedFileMetaIds.add(id));
+            this.storageApi
+                .filesByIds(missing)
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe({
+                    next: (files) => {
+                        for (const f of files) this.fileMetaById.set(f.id, { name: f.name, path: f.path });
+                        this.refreshFileRowNames();
+                    },
+                    error: () => missing.forEach((id) => this.requestedFileMetaIds.delete(id)),
+                });
         });
 
         effect(() => {
@@ -438,19 +440,23 @@ export class SurfaceCardComponent {
     }
 
     private refreshStorageRoot(): void {
-        this.storageApi
-            .list('')
+        this.catalogs
+            .loadStorageTree()
             .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((items) => {
-                this.fileDropdownNodes.set(items.map((i) => this.toTreeNode(i, '')));
-                this.refreshFileRowNames();
-            });
+            .subscribe(() => this.refreshFileRowNames());
+    }
+
+    private reloadStorageRoot(): void {
+        this.catalogs
+            .reloadStorageTree()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.refreshFileRowNames());
     }
 
     private refreshFileRowNames(): void {
         this.fileRows.update((rows) =>
             rows.map((r) => {
-                const meta = this.fileMetaById.get(r.id);
+                const meta = this.metaFor(r.id);
                 return meta ? { ...r, name: meta.name, path: meta.path } : r;
             })
         );
@@ -565,7 +571,7 @@ export class SurfaceCardComponent {
         const next: SurfaceFileRow[] = keep.map((id) => {
             const existing = byId.get(id);
             if (existing) return existing;
-            const meta = this.fileMetaById.get(id);
+            const meta = this.metaFor(id);
             return {
                 id,
                 name: meta?.name ?? `File #${id}`,
@@ -628,7 +634,7 @@ export class SurfaceCardComponent {
             .open<CreateFolderDialogResult>(CreateFolderDialogComponent)
             .closed.pipe(take(1))
             .subscribe((result) => {
-                if (result?.type === 'upload') this.refreshStorageRoot();
+                if (result?.type === 'upload') this.reloadStorageRoot();
             });
     }
 
