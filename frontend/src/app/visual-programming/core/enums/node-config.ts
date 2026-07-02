@@ -2,7 +2,7 @@ import { NodeType } from './node-type';
 
 export const NODE_ICONS: Record<NodeType, string> = {
     [NodeType.AGENT]: 'ti ti-robot',
-    [NodeType.TASK]: 'ti ti-list-check',
+    [NodeType.TASK]: 'ti ti-circle-check',
     [NodeType.TOOL]: 'ti ti-tools',
     [NodeType.LLM]: 'ti ti-brain',
     [NodeType.PROJECT]: 'ti ti-folder',
@@ -24,7 +24,7 @@ export const NODE_ICONS: Record<NodeType, string> = {
 
 export const NODE_COLORS: Record<NodeType, string> = {
     [NodeType.AGENT]: '#8e5cd9',
-    [NodeType.TASK]: '#30a46c',
+    [NodeType.TASK]: '#2aba6b',
     [NodeType.TOOL]: '#9f6a00',
     [NodeType.LLM]: '#e0575b',
     [NodeType.PROJECT]: '#5672cd',

@@ -1,76 +1,55 @@
 import { BasePort } from '../../models/port.model';
 
+// Simple Task node (NodeType.TASK) — single In/Out ports, mirrors the
+// Python node's port layout. This replaced the old crew-task multi-port
+// layout (Prev. Task / Agent / Tools / Next task / Output log file etc.),
+// which is no longer used by any live node type.
 export const DEFAULT_TASK_NODE_PORTS: BasePort[] = [
     {
         port_type: 'input',
-        role: 'task-previous-task-with-context',
+        role: 'task-in',
         multiple: true,
-        label: 'Prev. Task with Context',
-        allowedConnections: [],
+        label: 'In',
+        allowedConnections: [
+            'project-out',
+            'python-out',
+            'edge-out',
+            'start-start',
+            'table-out',
+            'llm-out-right',
+            'file-extractor-out',
+            'subgraph-out',
+            'audio-to-text-out',
+            'webhook-trigger-out',
+            'telegram-trigger-out',
+            'schedule-trigger-out',
+            'code-agent-out',
+            'task-out',
+            'decision-default',
+            'decision-error',
+        ],
         position: 'left',
-        color: '#30a46c', // TASK color
-    },
-    {
-        port_type: 'input',
-        role: 'task-agent',
-        multiple: false,
-        label: 'Agent',
-        allowedConnections: ['agent-tasks'],
-        position: 'top',
-        color: '#8e5cd9', // AGENT color
+        color: '#2aba6b',
     },
     {
         port_type: 'output',
-        role: 'task-callback',
+        role: 'task-out',
         multiple: false,
-        label: 'Task callback',
-        allowedConnections: [],
-        position: 'top',
-        color: '#30a46c', // TASK color
-    },
-    {
-        port_type: 'output',
-        role: 'task-next-task',
-        multiple: false,
-        label: 'Next task',
-        allowedConnections: ['task-previous-task'],
+        label: 'Out',
+        allowedConnections: [
+            'project-in',
+            'python-in',
+            'edge-in',
+            'table-in',
+            'llm-out-left',
+            'file-extractor-in',
+            'end-in',
+            'subgraph-in',
+            'audio-to-text-in',
+            'code-agent-in',
+            'task-in',
+        ],
         position: 'right',
-        color: '#30a46c', // TASK color
-    },
-    {
-        port_type: 'output',
-        role: 'task-next-task-with-context',
-        multiple: true,
-        label: 'Next task with context',
-        allowedConnections: [],
-        position: 'right',
-        color: '#30a46c', // TASK color
-    },
-    {
-        port_type: 'output',
-        role: 'task-tools',
-        multiple: true,
-        label: 'Tools',
-        allowedConnections: [],
-        position: 'bottom',
-        color: '#9f6a00', // TOOL color
-    },
-    {
-        port_type: 'output',
-        role: 'task-output-log-file',
-        multiple: true,
-        label: 'Output log file',
-        allowedConnections: [],
-        position: 'bottom',
-        color: '#30a46c', // TASK color
-    },
-    {
-        port_type: 'input',
-        role: 'task-previous-task',
-        multiple: false,
-        label: 'Prev. Task',
-        allowedConnections: ['task-next-task'],
-        position: 'left',
-        color: '#30a46c', // TASK color
+        color: '#2aba6b',
     },
 ];

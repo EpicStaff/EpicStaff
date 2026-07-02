@@ -1,0 +1,250 @@
+<div class="panel-container">
+    <div class="panel-content">
+        <form
+            [formGroup]="form"
+            class="form-container"
+        >
+            @if (isExpanded()) {
+                <div class="form-layout expanded">
+                    <div class="form-fields">
+                        <app-custom-input
+                            label="Node Name"
+                            [required]="true"
+                            tooltipText="The unique identifier used to reference this Task node. This name must be unique within the flow."
+                            formControlName="node_name"
+                            placeholder="Enter node name"
+                            [activeColor]="activeColor"
+                            [errorMessage]="getNodeNameErrorMessage()"
+                        ></app-custom-input>
+
+                        <div class="field">
+                            <div class="field__label-row">
+                                <label class="field__label">Agent<span class="required">*</span></label>
+                                <app-help-tooltip
+                                    text="The agent that will execute this task."
+                                    position="right"
+                                    size="18px"
+                                />
+                            </div>
+                            <app-select-dropdown
+                                mode="list"
+                                selectionMode="single"
+                                searchPlaceholder="Search agent..."
+                                emptyText="No agents available"
+                                [items]="agentItems()"
+                                [selected]="selectedAgentValue()"
+                                (selectionChange)="onAgentSelectionChange($event)"
+                            >
+                                <button
+                                    type="button"
+                                    appSelectDropdownTrigger
+                                    class="dropdown-trigger"
+                                >
+                                    <span
+                                        class="dropdown-trigger__label"
+                                        [class.dropdown-trigger__label--placeholder]="!selectedAgentName()"
+                                    >
+                                        {{ selectedAgentName() || 'Select agent' }}
+                                    </span>
+                                    <app-svg-icon
+                                        icon="chevron-down-filled"
+                                        size="8px"
+                                    />
+                                </button>
+                            </app-select-dropdown>
+                        </div>
+
+                        <div class="field">
+                            <div class="field__label-row">
+                                <label class="field__label">Surface (Group of Permissions)</label>
+                                <app-help-tooltip
+                                    text="Assign one or more surfaces (permission groups) this task's agent can use while executing."
+                                    position="right"
+                                    size="18px"
+                                />
+                            </div>
+                            <div class="surface-row">
+                                <app-multi-select
+                                    class="surface-row__select"
+                                    [grouped]="true"
+                                    [label]="surfaceSummaryLabel()"
+                                    searchPlaceholder="Search item..."
+                                    checkboxPosition="left"
+                                    [items]="surfaceMultiSelectItems()"
+                                    [selectedValues]="selectedSurfaceIds()"
+                                    (selectionChange)="onSurfacesChange($event)"
+                                ></app-multi-select>
+                                <button
+                                    type="button"
+                                    class="view-summary-btn"
+                                    disabled
+                                    title="Coming soon"
+                                >
+                                    <app-svg-icon
+                                        icon="sum"
+                                        size="10px"
+                                    />
+                                    View Summary
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="input-map">
+                            <app-input-map [activeColor]="activeColor"></app-input-map>
+                        </div>
+
+                        <app-textarea
+                            label="Instructions"
+                            [required]="true"
+                            tooltipText="Instructions given to the agent describing what this task should accomplish."
+                            formControlName="instructions"
+                            placeholder="Enter task instructions..."
+                            [rows]="5"
+                        ></app-textarea>
+                    </div>
+
+                    <div class="output-schema-panel">
+                        <div class="output-schema-panel__header">
+                            <app-svg-icon
+                                icon="brackets"
+                                size="1rem"
+                            />
+                            <span>Output Schema</span>
+                        </div>
+                        <div class="output-schema-panel__body">
+                            <app-json-editor
+                                [jsonData]="outputSchemaText"
+                                (jsonChange)="onSchemaEditorChange($event)"
+                                (validationChange)="onSchemaValidChange($event)"
+                                [fullHeight]="true"
+                                [showHeader]="false"
+                            ></app-json-editor>
+                        </div>
+                    </div>
+                </div>
+            } @else {
+                <div class="form-layout collapsed">
+                    <app-custom-input
+                        label="Node Name"
+                        [required]="true"
+                        tooltipText="The unique identifier used to reference this Task node. This name must be unique within the flow."
+                        formControlName="node_name"
+                        placeholder="Enter node name"
+                        [activeColor]="activeColor"
+                        [errorMessage]="getNodeNameErrorMessage()"
+                    ></app-custom-input>
+
+                    <div class="field">
+                        <div class="field__label-row">
+                            <label class="field__label">Agent<span class="required">*</span></label>
+                            <app-help-tooltip
+                                text="The agent that will execute this task."
+                                position="right"
+                                size="18px"
+                            />
+                        </div>
+                        <app-select-dropdown
+                            mode="list"
+                            selectionMode="single"
+                            searchPlaceholder="Search agent..."
+                            emptyText="No agents available"
+                            [items]="agentItems()"
+                            [selected]="selectedAgentValue()"
+                            (selectionChange)="onAgentSelectionChange($event)"
+                        >
+                            <button
+                                type="button"
+                                appSelectDropdownTrigger
+                                class="dropdown-trigger"
+                            >
+                                <span
+                                    class="dropdown-trigger__label"
+                                    [class.dropdown-trigger__label--placeholder]="!selectedAgentName()"
+                                >
+                                    {{ selectedAgentName() || 'Select agent' }}
+                                </span>
+                                <app-svg-icon
+                                    icon="chevron-down-filled"
+                                    size="8px"
+                                />
+                            </button>
+                        </app-select-dropdown>
+                    </div>
+
+                    <div class="field">
+                        <div class="field__label-row">
+                            <label class="field__label">Surface (Group of Permissions)</label>
+                            <app-help-tooltip
+                                text="Assign one or more surfaces (permission groups) this task's agent can use while executing."
+                                position="right"
+                                size="18px"
+                            />
+                        </div>
+                        <div class="surface-row">
+                            <app-multi-select
+                                class="surface-row__select"
+                                [grouped]="true"
+                                [label]="surfaceSummaryLabel()"
+                                searchPlaceholder="Search item..."
+                                checkboxPosition="left"
+                                [items]="surfaceMultiSelectItems()"
+                                [selectedValues]="selectedSurfaceIds()"
+                                (selectionChange)="onSurfacesChange($event)"
+                            ></app-multi-select>
+                            <button
+                                type="button"
+                                class="view-summary-btn"
+                                disabled
+                                title="Coming soon"
+                            >
+                                <app-svg-icon
+                                    icon="sum"
+                                    size="10px"
+                                />
+                                View Summary
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="input-map">
+                        <app-input-map [activeColor]="activeColor"></app-input-map>
+                    </div>
+
+                    <app-textarea
+                        label="Instructions"
+                        [required]="true"
+                        tooltipText="Instructions given to the agent describing what this task should accomplish."
+                        formControlName="instructions"
+                        placeholder="Enter task instructions..."
+                        [rows]="5"
+                    ></app-textarea>
+
+                    <div class="output-schema-section">
+                        <button
+                            type="button"
+                            class="output-schema-toggle"
+                            (click)="toggleOutputSchema()"
+                        >
+                            <app-svg-icon
+                                class="output-schema-toggle__chevron"
+                                [class.output-schema-toggle__chevron--open]="outputSchemaExpanded()"
+                                icon="chevron-down-filled"
+                                size="8px"
+                            />
+                            <span>Output Schema</span>
+                        </button>
+                        @if (outputSchemaExpanded()) {
+                            <app-json-editor
+                                [jsonData]="outputSchemaText"
+                                (jsonChange)="onSchemaEditorChange($event)"
+                                (validationChange)="onSchemaValidChange($event)"
+                                [editorHeight]="220"
+                                [showHeader]="false"
+                            ></app-json-editor>
+                        }
+                    </div>
+                </div>
+            }
+        </form>
+    </div>
+</div>

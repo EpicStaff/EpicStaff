@@ -18,6 +18,7 @@ import { mapPythonNodeToModel } from './nodes/python-node.mapper';
 import { mapScheduleTriggerNodeToModel } from './nodes/schedule-trigger-node.mapper';
 import { mapStartNodeToModel } from './nodes/start-node.mapper';
 import { mapSubGraphNodeToModel } from './nodes/subgraph-node.mapper';
+import { mapTaskNodeToModel } from './nodes/task-node.mapper';
 import { mapTelegramTriggerNodeToModel } from './nodes/telegram-trigger-node.mapper';
 import { mapWebhookTriggerNodeToModel } from './nodes/webhook-trigger-node.mapper';
 import { resolveClassificationDecisionTableNodeRefs } from './ref-resolvers/classification-decision-table-refs';
@@ -28,6 +29,7 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
     const startNodes = (graph.start_node_list ?? []).map((n) => mapStartNodeToModel(n));
     const crewNodes = (graph.crew_node_list ?? []).map((n) => mapCrewNodeToModel(n));
     const pythonNodes = (graph.python_node_list ?? []).map((n) => mapPythonNodeToModel(n));
+    const taskNodes = (graph.task_node_list ?? []).map((n) => mapTaskNodeToModel(n));
     const llmNodes = (graph.llm_node_list ?? []).map((n) => mapLLMNodeToModel(n));
     const fileExtractorNodes = (graph.file_extractor_node_list ?? []).map((n) => mapFileExtractorNodeToModel(n));
     const audioToTextNodes = (graph.audio_transcription_node_list ?? []).map((n) => mapAudioToTextNodeToModel(n));
@@ -48,6 +50,7 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
         ...startNodes,
         ...crewNodes,
         ...pythonNodes,
+        ...taskNodes,
         ...llmNodes,
         ...fileExtractorNodes,
         ...audioToTextNodes,

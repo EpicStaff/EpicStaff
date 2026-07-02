@@ -19,6 +19,7 @@ export const DEFAULT_END_NODE_PORTS: BasePort[] = [
             'telegram-trigger-out',
             'schedule-trigger-out',
             'code-agent-out',
+            'task-out',
             'decision-default',
             'decision-error',
         ],

@@ -37,6 +37,7 @@ export function getNodeTitle(node: NodeModel): string {
         case NodeType.TELEGRAM_TRIGGER:
         case NodeType.CODE_AGENT:
         case NodeType.SCHEDULE_TRIGGER:
+        case NodeType.TASK:
             return node.node_name || '';
 
         // Entity-name types — display the referenced entity name with the badge number.

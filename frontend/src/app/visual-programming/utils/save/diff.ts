@@ -17,6 +17,7 @@ import {
     ScheduleTriggerNodeModel,
     StartNodeModel,
     SubGraphNodeModel,
+    TaskNodeModel,
     TelegramTriggerNodeModel,
     WebhookTriggerNodeModel,
 } from '../../core/models/node.model';
@@ -132,6 +133,21 @@ function toPythonComparable(node: PythonNodeModel): unknown {
         output_variable_path: node.output_variable_path || null,
         stream_config: node.stream_config ?? {},
         test_input: node.test_input ?? {},
+        metadata: toNodeMetadata(node),
+    };
+}
+
+function toTaskComparable(node: TaskNodeModel): unknown {
+    return {
+        node_name: node.node_name,
+        instructions: node.data.instructions,
+        output_schema: node.data.output_schema ?? {},
+        remember_output: node.data.remember_output ?? false,
+        agent_definition: node.data.agent_definition ?? null,
+        input_map: node.input_map || {},
+        output_variable_path: node.output_variable_path || null,
+        surface_list: node.data.surface_list ?? [],
+        inline_surface: node.data.inline_surface ?? null,
         metadata: toNodeMetadata(node),
     };
 }
@@ -342,6 +358,11 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<PythonNodeModel>(previous.nodes, NodeType.PYTHON),
             nodesByType<PythonNodeModel>(current.nodes, NodeType.PYTHON),
             toPythonComparable
+        ),
+        taskNodes: diffNodesByBackendId(
+            nodesByType<TaskNodeModel>(previous.nodes, NodeType.TASK),
+            nodesByType<TaskNodeModel>(current.nodes, NodeType.TASK),
+            toTaskComparable
         ),
         llmNodes: diffNodesByBackendId(
             nodesByType<LLMNodeModel>(previous.nodes, NodeType.LLM),

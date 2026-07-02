@@ -294,6 +294,7 @@ export function buildBulkSavePayload(
         start_node_ids: nodeDiff.startNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         crew_node_ids: nodeDiff.crewNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         python_node_ids: nodeDiff.pythonNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
+        task_node_ids: nodeDiff.taskNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         llm_node_ids: nodeDiff.llmNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         file_extractor_node_ids: nodeDiff.fileExtractorNodes.toDelete
             .map((n) => n.backendId!)
@@ -347,6 +348,19 @@ export function buildBulkSavePayload(
                 metadata: toNodeMetadata(n),
             };
         }),
+        task_node_list: nodeItems(nodeDiff.taskNodes, (n) => ({
+            node_name: n.node_name,
+            graph: graphId,
+            instructions: n.data.instructions,
+            output_schema: n.data.output_schema ?? {},
+            remember_output: n.data.remember_output ?? false,
+            agent_definition: n.data.agent_definition ?? null,
+            input_map: n.input_map || {},
+            output_variable_path: n.output_variable_path || null,
+            surface_list: n.data.surface_list ?? [],
+            inline_surface: n.data.inline_surface ?? null,
+            metadata: toNodeMetadata(n),
+        })),
         llm_node_list: nodeItems(nodeDiff.llmNodes, (n) => ({
             node_name: n.node_name,
             graph: graphId,

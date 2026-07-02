@@ -13,6 +13,7 @@ import {
     ScheduleTriggerNodeModel,
     StartNodeModel,
     SubGraphNodeModel,
+    TaskNodeModel,
     TelegramTriggerNodeModel,
     WebhookTriggerNodeModel,
 } from '../../core/models/node.model';
@@ -27,6 +28,7 @@ export interface NodeDiffByType {
     startNodes: NodeDiff<StartNodeModel>;
     crewNodes: NodeDiff<ProjectNodeModel>;
     pythonNodes: NodeDiff<PythonNodeModel>;
+    taskNodes: NodeDiff<TaskNodeModel>;
     llmNodes: NodeDiff<LLMNodeModel>;
     fileExtractorNodes: NodeDiff<FileExtractorNodeModel>;
     audioToTextNodes: NodeDiff<AudioToTextNodeModel>;

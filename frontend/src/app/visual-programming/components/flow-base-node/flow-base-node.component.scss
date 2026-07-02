@@ -303,24 +303,6 @@
     }
 }
 
-:host(.type-task) {
-    .port-position-top {
-        @include mixins.task-port-top-indexes;
-    }
-
-    .port-position-right {
-        @include mixins.task-port-right-indexes;
-    }
-
-    .port-position-bottom {
-        @include mixins.task-port-bottom-indexes;
-    }
-
-    .port-position-left {
-        @include mixins.task-port-left-indexes;
-    }
-}
-
 :host(.type-start) {
     width: 122px;
 }

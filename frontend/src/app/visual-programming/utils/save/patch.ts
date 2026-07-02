@@ -125,6 +125,7 @@ function buildCreatedNodeIdMap(
         responseGraph.python_node_list ?? [],
         existingIdsByType(NodeType.PYTHON)
     );
+    mapByNewIds(nodeDiff.taskNodes.toCreate, responseGraph.task_node_list ?? [], existingIdsByType(NodeType.TASK));
     mapByNewIds(nodeDiff.llmNodes.toCreate, responseGraph.llm_node_list ?? [], existingIdsByType(NodeType.LLM));
     mapByNewIds(
         nodeDiff.fileExtractorNodes.toCreate,
