@@ -89,6 +89,10 @@ def _redis_key(graph_id: int) -> str:
     return f"graph:live:{graph_id}"
 
 
+def _tempids_key(graph_id: int) -> str:
+    return f"graph:live:{graph_id}:tempids"
+
+
 def _match_entry(entry: dict, id_value: int | None, temp_id: str | None) -> bool:
     """Return True when *entry* matches the provided id or temp_id reference.
 
@@ -117,6 +121,38 @@ def _upsert_entry(entries: list[dict], new_entry: dict) -> None:
             entries[index] = new_entry
             return
     entries.append(new_entry)
+
+
+_EDGE_ENDPOINT_TEMP_FIELDS: dict[str, tuple[tuple[str, str], ...]] = {
+    "edge_list": (("start_temp_id", "start_node_id"), ("end_temp_id", "end_node_id")),
+    "conditional_edge_list": (("source_temp_id", "source_node_id"),),
+}
+
+
+def _resolve_edge_endpoints(
+    entry: dict, list_key: str, resolved_temp_ids: dict[str, int]
+) -> dict:
+    """Rewrite already-resolved endpoint temp_id refs on an edge *entry*.
+
+    Only touches endpoint reference fields (start_temp_id/end_temp_id for
+    edge_list, source_temp_id for conditional_edge_list) — never the edge's
+    own ``temp_id``. A ref is rewritten only when its value is present in
+    *resolved_temp_ids*; otherwise it is left untouched so the normal
+    flush-time resolution (via the referenced node's own temp_id) still
+    applies.
+    """
+    field_pairs = _EDGE_ENDPOINT_TEMP_FIELDS.get(list_key)
+    if not field_pairs:
+        return entry
+    for temp_field, real_field in field_pairs:
+        temp_value = entry.get(temp_field)
+        if temp_value is None:
+            continue
+        real_id = resolved_temp_ids.get(str(temp_value))
+        if real_id is not None:
+            entry[real_field] = real_id
+            entry.pop(temp_field, None)
+    return entry
 
 
 # Maps list_key to the corresponding deleted-accumulator key. Covers every
@@ -227,11 +263,30 @@ class GraphLiveStateService:
         Returns True when seeding succeeded, False when the graph was not found
         (deleted between handshake and seed).  Callers should close the
         connection cleanly when False is returned.
+
+        The DB load happens outside the per-graph lock (expensive, idempotent),
+        but the "is it already seeded?" check and the seed write are done
+        atomically under the lock.  Without this, two overlapping connects for
+        the same never-yet-seeded graph can both observe an absent snapshot,
+        both load the (near-empty) DB state, and the one that acquires the
+        lock last unconditionally overwrites whatever ops the other connection
+        already applied via apply_op — stomping live nodes/edges and resetting
+        the revision counter.
         """
         snapshot = await _load_graph_snapshot(graph_id)
         if snapshot is None:
             return False
         async with self._get_lock(graph_id):
+            # Re-check under the lock: a concurrent connect may have already
+            # seeded this graph (and clients may have applied ops on top).
+            # Overwriting now would stomp that live state and orphan edges
+            # referencing stomped nodes.
+            if await self.get_snapshot(graph_id) is not None:
+                logger.debug(
+                    "seed_from_db: graph {} already seeded concurrently — skipping",
+                    graph_id,
+                )
+                return True
             await self.seed(graph_id, snapshot)
             # Fresh seed from DB — treat as not dirty so the next autosave tick
             # does not immediately write back an unchanged snapshot.
@@ -250,11 +305,38 @@ class GraphLiveStateService:
     async def clear(self, graph_id: int) -> None:
         """Delete the live snapshot for *graph_id* (called when last editor leaves)."""
         await self._redis.delete(_redis_key(graph_id))
+        await self._redis.delete(_tempids_key(graph_id))
         logger.debug("Cleared live state for graph {}", graph_id)
         # Release the lock entry and revision counters — recreated on next use.
         self._locks.pop(graph_id, None)
         self._revision.pop(graph_id, None)
         self._flushed_revision.pop(graph_id, None)
+
+    async def record_resolved_temp_ids(
+        self, graph_id: int, mapping: dict[str, int]
+    ) -> None:
+        """Merge *mapping* into the retained temp_id -> real_id map for *graph_id*.
+
+        The retained map lets a late-arriving op that references an already
+        -remapped temp_id (the node was flushed and no longer carries that
+        temp_id in the live snapshot) resolve to the real id at apply_op time
+        instead of failing bulk-save validation on the next flush.
+
+        No-op when *mapping* is empty.
+        """
+        if not mapping:
+            return
+        resolved = await self.get_resolved_temp_ids(graph_id)
+        resolved.update(mapping)
+        ttl = getattr(settings, "GRAPH_LIVE_STATE_TTL_SECONDS", 86400)
+        await self._redis.set(_tempids_key(graph_id), json.dumps(resolved), ex=ttl)
+
+    async def get_resolved_temp_ids(self, graph_id: int) -> dict[str, int]:
+        """Return the retained temp_id -> real_id map for *graph_id* (or {})."""
+        raw = await self._redis.get(_tempids_key(graph_id))
+        if raw is None:
+            return {}
+        return json.loads(raw)
 
     async def apply_id_remap(
         self,
@@ -278,6 +360,9 @@ class GraphLiveStateService:
           ``end_temp_id``, or ``source_temp_id`` → the matching ``*_node_id``
           integer using *temp_id_map*, then remove the temp field.
         - Bump ``save_version`` to *new_save_version*.
+        - Merge *temp_id_map* into the retained temp_id -> real_id map (see
+          record_resolved_temp_ids) so a later op referencing one of these
+          temp_ids as an edge endpoint can still resolve to the real id.
         - Precise deleted-accumulator reconciliation (FIX 2): remove from the
           live accumulator ONLY the ids that were present in *flushed_deleted*
           (i.e. the exact set that was just persisted).  ids accumulated after
@@ -408,6 +493,7 @@ class GraphLiveStateService:
                         )
 
             await self.seed(graph_id, snapshot)
+            await self.record_resolved_temp_ids(graph_id, temp_id_map)
             logger.debug(
                 "apply_id_remap: remapped {} temp ids for graph {}, save_version={}",
                 len(temp_id_map),
@@ -512,10 +598,12 @@ class GraphLiveStateService:
                     )
                     return
                 entries = snapshot.setdefault(list_key, [])
-                # Only edge_list gets op-time temp_id normalization — see
-                # op_normalize._normalize_edge_entry. conditional_edge_list is
-                # intentionally left untouched (separate, already-decided issue).
                 new_connection = normalize_op_entry(list_key, message.connection)
+
+                resolved_temp_ids = await self.get_resolved_temp_ids(graph_id)
+                new_connection = _resolve_edge_endpoints(
+                    new_connection, list_key, resolved_temp_ids
+                )
                 _upsert_entry(entries, new_connection)
                 # re-added connection — remove from deleted accumulator.
                 connection_id = new_connection.get("id")
