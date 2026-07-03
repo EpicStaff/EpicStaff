@@ -37,6 +37,21 @@ const SCAN_FILES = ['frontend/src/index.html', 'frontend/angular.json'];
 const SCAN_DIRS = ['frontend/src'];
 const SCAN_EXTENSIONS = new Set(['.scss', '.css', '.html', '.ts']);
 
+// Prebuilt widget files that can realistically (re)introduce a runtime CDN
+// dependency: embed.js injects <script>/<link> tags, styles.css can
+// @import / url() remote fonts. For these files ANY external https?:// URL
+// inside url(...) or @import is also a violation, not just the named CDN
+// domains. main.js / polyfills.js are deliberately NOT scanned — minified
+// bundles full of benign doc-comment domains.
+const WIDGET_FILES = [
+  'frontend/public/epicchat-widget/embed.js',
+  'frontend/public/epicchat-widget/styles.css',
+];
+const WIDGET_EXTRA_PATTERNS = [
+  /@import\s+(?:url\(\s*)?["']?https?:\/\//i,
+  /url\(\s*["']?https?:\/\//i,
+];
+
 // Prebuilt bundles and third-party trees are excluded — they may contain
 // benign doc-comment domains and are not authored source.
 const EXCLUDED_DIR_NAMES = new Set(['node_modules', '.git', 'dist']);
@@ -66,6 +81,7 @@ function collectFiles(dir, out) {
 
 const allowlist = loadAllowlist();
 const files = new Set();
+const widgetFiles = new Set();
 
 for (const rel of SCAN_FILES) {
   const full = join(repoRoot, rel);
@@ -75,13 +91,23 @@ for (const rel of SCAN_DIRS) {
   const full = join(repoRoot, rel);
   if (existsSync(full)) collectFiles(full, files);
 }
+for (const rel of WIDGET_FILES) {
+  const full = join(repoRoot, rel);
+  if (existsSync(full)) {
+    files.add(full);
+    widgetFiles.add(full);
+  }
+}
 
 const violations = [];
 
 for (const file of files) {
+  const patterns = widgetFiles.has(file)
+    ? [...DENY_PATTERNS, ...WIDGET_EXTRA_PATTERNS]
+    : DENY_PATTERNS;
   const lines = readFileSync(file, 'utf8').split(/\r?\n/);
   lines.forEach((line, index) => {
-    const pattern = DENY_PATTERNS.find((re) => re.test(line));
+    const pattern = patterns.find((re) => re.test(line));
     if (!pattern) return;
     if (allowlist.some((allowed) => line.includes(allowed))) return;
     violations.push({
