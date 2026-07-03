@@ -90,3 +90,31 @@ def test_upload_denied_for_viewer(client_viewer):
     # Viewer has FILES READ only -> CREATE (upload) is denied before any backend call.
     resp = client_viewer.post("/api/storage/upload/", {"path": ""}, format="multipart")
     assert resp.status_code == 403
+
+
+# add-to-graph: a cross-org graph id and a non-existent id are rejected
+# identically (400 "Graphs not found") — no cross-org existence leak. The check
+# runs before any storage-backend call.
+
+
+@pytest.mark.django_db
+def test_add_to_graph_cross_org_graph_rejected(client_member, org_b):
+    b_graph = Graph.objects.create(name="B flow", org=org_b)
+    resp = client_member.post(
+        "/api/storage/add-to-graph/",
+        {"paths": ["report.pdf"], "graph_ids": [b_graph.id]},
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "not found" in str(resp.data).lower()
+
+
+@pytest.mark.django_db
+def test_add_to_graph_nonexistent_graph_rejected(client_member):
+    resp = client_member.post(
+        "/api/storage/add-to-graph/",
+        {"paths": ["report.pdf"], "graph_ids": [999999]},
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "not found" in str(resp.data).lower()
