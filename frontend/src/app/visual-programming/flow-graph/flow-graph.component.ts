@@ -447,24 +447,24 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             newTargetPortId as CustomPortId
         );
 
-        const oldSourceIsCdt =
-            this.flowService.nodes().find((n) => n.id === existingConnection.sourceNodeId)?.type ===
-            NodeType.CLASSIFICATION_TABLE;
+        const oldSourceIsDecisionRouting = this.isDecisionRoutingSource(
+            this.flowService.nodes().find((n) => n.id === existingConnection.sourceNodeId)?.type
+        );
         const deleteRef = this.buildConnectionDeleteRef(existingConnection);
         this.flowService.removeConnection(event.connectionId);
-        if (!oldSourceIsCdt) {
+        if (!oldSourceIsDecisionRouting) {
             this.wsService.sendConnectionDeleted(deleteRef);
         }
         this.flowService.addConnection(updatedConnection);
-        if (oldSourceIsCdt) {
-            // Old CDT source lost this route — broadcast its updated routing.
-            this.broadcastCdtRoutingUpdate(existingConnection.sourceNodeId);
+        if (oldSourceIsDecisionRouting) {
+            // Old table source lost this route — broadcast its updated routing.
+            this.broadcastDecisionRoutingUpdate(existingConnection.sourceNodeId);
         }
         const reassignSourceNode = this.flowService.nodes().find((n) => n.id === newSourceNodeId);
         const reassignTargetNode = this.flowService.nodes().find((n) => n.id === newTargetNodeId);
         if (reassignSourceNode && reassignTargetNode) {
-            if (reassignSourceNode.type === NodeType.CLASSIFICATION_TABLE) {
-                this.broadcastCdtRoutingUpdate(reassignSourceNode.id);
+            if (this.isDecisionRoutingSource(reassignSourceNode.type)) {
+                this.broadcastDecisionRoutingUpdate(reassignSourceNode.id);
             } else {
                 this.wsService.sendConnectionCreated(
                     updatedConnection,
@@ -526,10 +526,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const connSourceNode = connNodes.find((n) => n.id === sourceNodeId);
         const connTargetNode = connNodes.find((n) => n.id === targetNodeId);
         if (connSourceNode && connTargetNode) {
-            if (connSourceNode.type === NodeType.CLASSIFICATION_TABLE) {
-                // CDT routing is persisted inside the node entity, not as an edge —
-                // broadcast the node update instead of a connection_created.
-                this.broadcastCdtRoutingUpdate(connSourceNode.id);
+            if (this.isDecisionRoutingSource(connSourceNode.type)) {
+                // Decision/classification table routing is persisted inside the
+                // node entity, not as an edge — broadcast the node update
+                // instead of a connection_created.
+                this.broadcastDecisionRoutingUpdate(connSourceNode.id);
             } else {
                 this.wsService.sendConnectionCreated(
                     newConnection,
@@ -1469,14 +1470,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         const nodeRefs = removedNodes
             .map((node) => this.buildNodeDeleteRef(node))
             .filter((r): r is EntryDeleteRef => r !== null);
-        // Connections sourced from a CDT node are not edges — their removal is a
-        // routing change on the CDT node itself, broadcast as node_updated below.
-        const cdtSourceIds = new Set<string>();
+        // Connections sourced from a decision/classification table are not
+        // edges — their removal is a routing change on the table node itself,
+        // broadcast as node_updated below.
+        const decisionRoutingSourceIds = new Set<string>();
         const connectionRefs: EntryDeleteRef[] = [];
         for (const conn of removedConnections) {
             const sourceNode = nodesBeforeDelete.find((n) => n.id === conn.sourceNodeId);
-            if (sourceNode?.type === NodeType.CLASSIFICATION_TABLE) {
-                cdtSourceIds.add(conn.sourceNodeId);
+            if (this.isDecisionRoutingSource(sourceNode?.type)) {
+                decisionRoutingSourceIds.add(conn.sourceNodeId);
             } else {
                 connectionRefs.push(this.buildConnectionDeleteRef(conn, nodesBeforeDelete));
             }
@@ -1488,9 +1490,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             this.wsService.sendConnectionsDeleted(connectionRefs);
         }
         const removedNodeIds = new Set(removedNodes.map((n) => n.id));
-        for (const id of cdtSourceIds) {
+        for (const id of decisionRoutingSourceIds) {
             if (!removedNodeIds.has(id)) {
-                this.broadcastCdtRoutingUpdate(id);
+                this.broadcastDecisionRoutingUpdate(id);
             }
         }
     }
@@ -1534,20 +1536,27 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     private getConnectionListKey(connection: ConnectionModel, nodes: NodeModel[] = this.flowService.nodes()): string {
+        // TABLE is intentionally NOT here: decision-table routing lives inside
+        // the node entity and is broadcast via broadcastDecisionRoutingUpdate,
+        // never as an edge/conditional-edge entry.
         const sourceNode = nodes.find((n) => n.id === connection.sourceNodeId);
-        return sourceNode?.type === NodeType.TABLE || sourceNode?.type === NodeType.EDGE
-            ? 'conditional_edge_list'
-            : 'edge_list';
+        return sourceNode?.type === NodeType.EDGE ? 'conditional_edge_list' : 'edge_list';
     }
 
-    // CDT routing (default/error/per-group next_node) is persisted inside the
-    // classification node entity, not as edge rows — connection changes whose
-    // source is a CDT node are broadcast as node_updated of that node.
-    private broadcastCdtRoutingUpdate(sourceNodeId: string): void {
-        const cdtNode = this.flowService.nodes().find((n) => n.id === sourceNodeId);
-        if (cdtNode) {
+    // Connections sourced from these node types are not edges: their routing
+    // (default/error/per-group next_node) is persisted inside the node entity.
+    private isDecisionRoutingSource(nodeType: NodeType | undefined): boolean {
+        return nodeType === NodeType.TABLE || nodeType === NodeType.CLASSIFICATION_TABLE;
+    }
+
+    // Decision/classification table routing is persisted inside the node
+    // entity, not as edge rows — connection changes whose source is such a
+    // table are broadcast as node_updated of that node.
+    private broadcastDecisionRoutingUpdate(sourceNodeId: string): void {
+        const tableNode = this.flowService.nodes().find((n) => n.id === sourceNodeId);
+        if (tableNode) {
             this.wsService.sendNodeUpdated(
-                cdtNode,
+                tableNode,
                 this.currentFlowId!,
                 this.flowService.nodes(),
                 this.flowService.connections()
