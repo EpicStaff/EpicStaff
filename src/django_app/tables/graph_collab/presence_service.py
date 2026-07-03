@@ -1,0 +1,57 @@
+from tables.graph_collab.protocol import EditorInfo
+
+
+class GraphPresenceService:
+    """
+    Service that keeps all info about the active channels in specific graph.
+    Adds and removes new users and channels to/from the graph.
+    Prevents the deduplication when returning the list of active editors
+    """
+
+    def __init__(self):
+        # graph_id -> {channel_name -> EditorInfo}
+        self._store: dict[int, dict[str, EditorInfo]] = {}
+
+    def add(self, graph_id: int, channel_name: str, editor: EditorInfo) -> None:
+        if graph_id not in self._store:
+            self._store[graph_id] = {}
+        self._store[graph_id][channel_name] = editor
+
+    def remove(self, graph_id: int, channel_name: str) -> None:
+        graph_editors = self._store.get(graph_id)
+        if not graph_editors:
+            return
+        graph_editors.pop(channel_name, None)
+        if not graph_editors:
+            del self._store[graph_id]
+
+    def update_editor_for_user(self, user_id: int, editor: EditorInfo) -> list[int]:
+        affected: list[int] = []
+        for graph_id, channels in list(self._store.items()):
+            replaced = False
+            for channel_name, current in list(channels.items()):
+                if current.user_id == user_id:
+                    channels[channel_name] = editor
+                    replaced = True
+            if replaced:
+                affected.append(graph_id)
+        return affected
+
+    def has_user(self, graph_id: int, user_id: int) -> bool:
+        return any(
+            editor.user_id == user_id
+            for editor in self._store.get(graph_id, {}).values()
+        )
+
+    def get_editors(self, graph_id: int) -> list[EditorInfo]:
+        graph_editors = self._store.get(graph_id, {})
+        seen_user_ids: set[int] = set()
+        result: list[EditorInfo] = []
+        for editor in graph_editors.values():
+            if editor.user_id not in seen_user_ids:
+                seen_user_ids.add(editor.user_id)
+                result.append(editor)
+        return result
+
+
+presence_service = GraphPresenceService()

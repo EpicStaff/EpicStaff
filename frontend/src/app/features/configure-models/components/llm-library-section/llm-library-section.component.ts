@@ -5,32 +5,31 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnIni
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import {
+    AppSvgIconComponent,
     ConfirmationDialogData,
     ConfirmationDialogService,
+    EmbeddingModelConfigDialogComponent,
+    LlmModelConfigDialogComponent,
     LoadingSpinnerComponent,
     SelectComponent,
     SelectItem,
+    TranscriptionModelConfigDialogComponent,
+    VoiceModelConfigDialogComponent,
 } from '@shared/components';
-import { AppSvgIconComponent } from '@shared/components';
 import { ModelTypes } from '@shared/models';
+import { LlmLibraryModel, LlmLibraryProviderGroup } from '@shared/models';
 import {
     EmbeddingConfigStorageService,
     LlmConfigStorageService,
+    LLMLibraryService,
     RealtimeConfigStorageService,
     TranscriptionConfigStorageService,
 } from '@shared/services';
 import { Observable } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
-import { LlmLibraryModel } from '../../interfaces/llm-library-model.interface';
-import { LlmLibraryProviderGroup } from '../../interfaces/llm-library-provider-group.interface';
 import { DefaultModelsStorageService } from '../../services/default-models-storage.service';
-import { LLMLibraryService } from '../../services/llms/llm-library.service';
-import { EmbeddingModelConfigDialogComponent } from '../embedding-model-config-dialog/embedding-model-config-dialog.component';
 import { LlmLibraryCardComponent } from '../llm-library-card/llm-library-card.component';
-import { LlmModelConfigDialogComponent } from '../llm-model-config-dialog/llm-model-config-dialog.component';
-import { TranscriptionModelConfigDialogComponent } from '../transcription-model-config-dialog/transcription-model-config-dialog.component';
-import { VoiceModelConfigDialogComponent } from '../voice-config-model/voice-model-config-dialog.component';
 
 @Component({
     selector: 'app-llm-library-section',

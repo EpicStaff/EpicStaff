@@ -12,7 +12,7 @@
       "default": "./"
     },
     "overwrite": {
-      "type": ["string", "boolean"],
+      "type": "boolean",
       "description": "Whether to overwrite the file if it exists (true/false).",
       "default": false
     },

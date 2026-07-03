@@ -17,10 +17,11 @@ class PythonCode(ContentHashMixin, models.Model):
 class PythonCodeTool(OrgScopedModel, models.Model):
     name = models.TextField()
     description = models.TextField()
-    args_schema = models.JSONField()
+    variables = models.JSONField(default=list, blank=True)
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE, null=False)
     favorite = models.BooleanField(default=False)
     built_in = models.BooleanField(default=False)
+    use_storage = models.BooleanField(default=False)
 
     class Meta(OrgScopedModel.Meta):
         constraints = [

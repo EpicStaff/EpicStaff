@@ -6,6 +6,8 @@
             class="create-project__close-button"
             (click)="onCancel()"
             [disabled]="isSubmitting()"
+            matTooltip="Close"
+            matTooltipPosition="above"
         >
             <app-svg-icon
                 icon="close"

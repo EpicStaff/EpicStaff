@@ -14,6 +14,7 @@ export interface ConfirmationDialogData {
     cancelText?: string;
     type?: 'warning' | 'danger' | 'info';
     caution?: string;
+    cautionTitle?: string;
     isShownBorder?: boolean;
 }
 

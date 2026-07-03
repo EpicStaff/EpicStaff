@@ -99,6 +99,41 @@ class DotDict(dict):
                 result[key] = copy.deepcopy(value)
         return result
 
+    @classmethod
+    def _validate(cls, value: Any) -> "DotDict":
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, Mapping):
+            return cls(value)
+        raise TypeError(f"Expected dict or {cls.__name__}, got {type(value).__name__}")
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type, handler):
+        from pydantic_core import core_schema
+
+        return core_schema.no_info_after_validator_function(
+            cls._validate,
+            core_schema.dict_schema(
+                keys_schema=core_schema.str_schema(),
+                values_schema=core_schema.any_schema(),
+            ),
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                lambda v: v.deep_dump(),
+                return_schema=core_schema.dict_schema(),
+            ),
+        )
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, schema, handler):
+        from pydantic_core import core_schema
+
+        return handler(
+            core_schema.dict_schema(
+                keys_schema=core_schema.str_schema(),
+                values_schema=core_schema.any_schema(),
+            )
+        )
+
 
 class DotList(list):
     def __init__(self, iterable=None):
@@ -131,6 +166,33 @@ class DotList(list):
             else copy.deepcopy(item)
             for item in self
         ]
+
+    @classmethod
+    def _validate(cls, value: Any) -> "DotList":
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, (list, tuple)):
+            return cls(value)
+        raise TypeError(f"Expected list or {cls.__name__}, got {type(value).__name__}")
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type, handler):
+        from pydantic_core import core_schema
+
+        return core_schema.no_info_after_validator_function(
+            cls._validate,
+            core_schema.list_schema(items_schema=core_schema.any_schema()),
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                lambda v: v.deep_dump(),
+                return_schema=core_schema.list_schema(),
+            ),
+        )
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, schema, handler):
+        from pydantic_core import core_schema
+
+        return handler(core_schema.list_schema(items_schema=core_schema.any_schema()))
 
 
 def DotObject(data):

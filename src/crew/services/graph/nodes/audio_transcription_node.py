@@ -1,4 +1,4 @@
-from src.crew.services.graph.nodes.python_node import PythonNode
+from services.graph.nodes.python_node import PythonNode
 from src.shared.models import PythonCodeData
 
 

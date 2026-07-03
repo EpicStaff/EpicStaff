@@ -10,8 +10,9 @@
 <label class="switch">
     <input
         type="checkbox"
+        [attr.aria-label]="ariaLabel() || label() || 'Toggle'"
         [checked]="checked"
-        (change)="onToggle()"
+        (click)="$event.preventDefault(); onToggle()"
     />
     <span class="slider"></span>
 </label>

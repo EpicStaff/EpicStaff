@@ -1,7 +1,6 @@
 from rest_framework import serializers
 
 from tables.models import (
-    Provider,
     LLMConfig,
     LLMModel,
     EmbeddingModel,
@@ -35,23 +34,6 @@ class BaseConfigImportSerializer(serializers.ModelSerializer):
                 write_only=True,
             )
         return fields
-
-    def create(self, validated_data):
-        model = validated_data[self.model_fk_field]
-        validated_data["api_key"] = self._get_api_key(
-            getattr(model, self.provider_field).name
-        )
-
-        return super().create(validated_data)
-
-    def _get_api_key(self, provider_name):
-        return (
-            self.config_model.objects.filter(
-                **{f"{self.model_fk_field}__{self.provider_field}__name": provider_name}
-            )
-            .values_list("api_key", flat=True)
-            .first()
-        )
 
 
 class LLMConfigImportSerializer(BaseConfigImportSerializer):

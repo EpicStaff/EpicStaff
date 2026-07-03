@@ -31,7 +31,7 @@
       "description": "Optional metadata value to filter by."
     },
     "limit": {
-      "type": "integer",
+      "type": "number",
       "description": "Maximum number of results to return.",
       "default": 3
     },

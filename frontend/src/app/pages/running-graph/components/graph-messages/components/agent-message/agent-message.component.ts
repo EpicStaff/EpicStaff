@@ -5,12 +5,13 @@ import { NgxJsonViewerModule } from 'ngx-json-viewer';
 import { GetAgentRequest } from '../../../../../../features/staff/models/agent.model';
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { AgentMessageData, GraphMessage } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-agent-message',
     standalone: true,
-    imports: [CommonModule, NgxJsonViewerModule, AppSvgIconComponent],
+    imports: [CommonModule, NgxJsonViewerModule, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
         <div class="agent-flow-container">
@@ -63,6 +64,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
                             [@expandCollapse]="isThoughtExpanded ? 'expanded' : 'collapsed'"
                         >
                             <div class="thought-bubble">
+                                <app-copy-button [text]="copyText" />
                                 <span class="thought-quote">"</span>{{ cleanThought(getThought())
                                 }}<span class="thought-quote">"</span>
                             </div>
@@ -156,6 +158,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
         }
 
         .agent-flow-container {
+            position: relative;
             background-color: var(--color-nodes-background);
             border-radius: 8px;
             padding: var(--message-padding, 1.25rem);
@@ -260,6 +263,10 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
             color: var(--gray-200);
             font-style: italic;
             margin-left: 23px;
+
+            &:hover app-copy-button {
+                opacity: 1;
+            }
         }
 
         .thought-quote {
@@ -520,5 +527,14 @@ export class AgentMessageComponent implements OnInit {
     public getResult(): string {
         if (!this.message.message_data) return '';
         return (this.message.message_data as AgentMessageData).result?.trim() || '';
+    }
+
+    public get copyText(): string {
+        const parts: string[] = [];
+        if (this.hasThought()) parts.push(`Thought:\n${this.cleanThought(this.getThought())}`);
+        if (this.hasTool()) parts.push(`Tool: ${this.getTool()}`);
+        if (this.hasToolInput()) parts.push(`Tool Input:\n${this.getToolInput()}`);
+        if (this.getResult()) parts.push(`Tool Output:\n${this.getResult()}`);
+        return parts.join('\n\n');
     }
 }

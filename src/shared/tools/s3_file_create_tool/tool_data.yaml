@@ -1,0 +1,8 @@
+tool-data:
+  name: "S3 File Create Tool"
+  description: "Create or overwrite an S3-stored file with the given content."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true

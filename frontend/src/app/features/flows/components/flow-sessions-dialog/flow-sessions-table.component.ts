@@ -11,6 +11,7 @@ import {
     signal,
     SimpleChanges,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { CheckboxComponent, IconButtonComponent, LoadingSpinnerComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
@@ -42,6 +43,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
         FlowNameFilterDropdownComponent,
         DurationFilterDropdownComponent,
         HasPermissionDirective,
+        MatTooltipModule,
     ],
     template: `
         <div class="sessions-table-wrapper">
@@ -168,27 +170,40 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                         >
                                             {{ expandedSessionId() === session.id ? 'Hide' : 'Preview' }}
                                         </button>
-                                        <img
-                                            src="assets/icons/ui/session-arrow.svg"
-                                            alt="arrow-icon"
-                                            class="arrow-icon"
+                                        <button
+                                            type="button"
+                                            class="icon-img-btn"
+                                            matTooltip="View session"
+                                            matTooltipPosition="above"
                                             (click)="viewSession.emit(session.id)"
-                                        />
-                                        <img
-                                            src="assets/icons/ui/stop-session.svg"
-                                            alt="arrow-icon"
+                                        >
+                                            <img
+                                                src="assets/icons/ui/session-arrow.svg"
+                                                alt="arrow-icon"
+                                                class="arrow-icon"
+                                            />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="icon-img-btn"
                                             *ngIf="canStop(session.status)"
+                                            matTooltip="Stop session"
+                                            matTooltipPosition="above"
                                             (click)="stopSession.emit(session.id)"
-                                            title="Stop session"
-                                            style="margin-left: 8px;"
-                                            class="arrow-icon"
-                                        />
+                                        >
+                                            <img
+                                                src="assets/icons/ui/stop-session.svg"
+                                                alt="arrow-icon"
+                                                class="arrow-icon"
+                                            />
+                                        </button>
                                         <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]">
                                             <app-icon-button
                                                 *ngIf="!canStop(session.status)"
                                                 icon="x"
                                                 size="1.5rem"
                                                 ariaLabel="Delete session"
+                                                tooltip="Delete session"
                                                 (onClick)="deleteSelected.emit([session.id])"
                                             ></app-icon-button>
                                         </ng-container>

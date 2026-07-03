@@ -12,6 +12,7 @@ import {
     signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 
@@ -38,6 +39,7 @@ interface FlatLabelNode {
         DialogModule,
         AppSvgIconComponent,
         LabelColorPickerComponent,
+        MatTooltipModule,
         HasPermissionDirective,
     ],
     templateUrl: './flows-label-sidebar.component.html',
@@ -284,7 +286,6 @@ export class FlowsLabelSidebarComponent implements OnInit {
 
     getLabelIconColor(node: LabelTreeNode): string {
         const color = node.metadata?.color;
-        if (!color || color === LabelColor.Default) return '';
         return getLabelColorOption(color).circleBg;
     }
 

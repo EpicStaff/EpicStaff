@@ -41,6 +41,9 @@ import {
 import { CustomToolsService } from '../../../features/tools/services/custom-tools/custom-tools.service';
 import { ToastService } from '../../../services/notifications';
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { DynamicTableComponent } from '../../../shared/components/dynamic-table/dynamic-table.component';
+import { TableColumnDef } from '../../../shared/components/dynamic-table/dynamic-table.models';
+import { ToggleSwitchComponent } from '../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 import { CodeEditorComponent } from './code-editor/code-editor.component';
 import { ToolLibrariesComponent } from './tool-libraries/tool-libraries.component';
 
@@ -62,6 +65,8 @@ interface DialogData {
         HelpTooltipComponent,
         JsonEditorComponent,
         HasPermissionDirective,
+        DynamicTableComponent,
+        ToggleSwitchComponent,
     ],
     templateUrl: './custom-tool-dialog.component.html',
     styleUrls: ['./custom-tool-dialog.component.scss'],
@@ -74,6 +79,61 @@ export class CustomToolDialogComponent implements OnInit, AfterViewInit {
     toolEditorComponent!: CodeEditorComponent;
     @ViewChild('toolNameInput')
     toolNameInput!: ElementRef<HTMLInputElement>;
+    @ViewChild('contentSplit')
+    contentSplit!: ElementRef<HTMLDivElement>;
+    @ViewChild('formFields')
+    formFieldsRef!: ElementRef<HTMLDivElement>;
+
+    public formFieldsWidth = 640;
+    private dragStartX = 0;
+    private dragStartWidth = 0;
+
+    columnDefs: TableColumnDef[] = [
+        {
+            key: 'name',
+            header: 'name',
+            placeholder: 'Enter name',
+            type: 'input',
+        },
+        {
+            key: 'type',
+            header: 'Type',
+            placeholder: 'Enter type',
+            type: 'select',
+            options: [
+                {
+                    label: 'String',
+                    value: 'string',
+                },
+                {
+                    label: 'Integer',
+                    value: 'integer',
+                },
+            ],
+        },
+        {
+            key: 'description',
+            header: 'Description description description description',
+            placeholder: 'Enter description',
+            type: 'input',
+            validators: [Validators.required, Validators.minLength(3)],
+        },
+        {
+            key: 'default_value',
+            header: 'Default Value',
+            placeholder: 'Enter Value',
+            type: 'input',
+        },
+        {
+            key: 'is_required',
+            header: 'Required',
+            type: 'checkbox',
+        },
+    ];
+
+    onRowsChange(value: Record<string, unknown>[]) {
+        console.log(value);
+    }
 
     form!: FormGroup;
     public pythonCode: string =
@@ -116,6 +176,7 @@ export class CustomToolDialogComponent implements OnInit, AfterViewInit {
                 this.selectedTool ? this.selectedTool.description : '',
                 Validators.required
             ),
+            useStorage: new FormControl(this.selectedTool ? (this.selectedTool.use_storage ?? false) : false),
         });
 
         if (this.selectedTool) {
@@ -240,6 +301,7 @@ export class CustomToolDialogComponent implements OnInit, AfterViewInit {
             name: toolName,
             description: toolDescription,
             args_schema: argsSchemaObj,
+            use_storage: this.form.value.useStorage ?? false,
         };
 
         if (this.selectedTool) {
@@ -257,6 +319,7 @@ export class CustomToolDialogComponent implements OnInit, AfterViewInit {
                 name: toolName,
                 description: toolDescription,
                 args_schema: argsSchemaObj,
+                use_storage: this.form.value.useStorage ?? false,
             };
             this.customToolsService
                 .updatePythonCodeTool(String(this.selectedTool.id), updateTool)
@@ -296,6 +359,31 @@ export class CustomToolDialogComponent implements OnInit, AfterViewInit {
     public onEditorErrorChange(hasError: boolean): void {
         this.editorHasError = hasError;
         this.cdr.markForCheck();
+    }
+
+    public onResizerMouseDown(event: MouseEvent): void {
+        this.dragStartX = event.clientX;
+        this.dragStartWidth = this.formFieldsWidth;
+        event.preventDefault();
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'col-resize';
+
+        const onMouseMove = (e: MouseEvent) => {
+            const delta = e.clientX - this.dragStartX;
+            const containerWidth = this.contentSplit.nativeElement.offsetWidth;
+            this.formFieldsWidth = Math.max(280, Math.min(this.dragStartWidth + delta, containerWidth - 280));
+            this.cdr.markForCheck();
+        };
+
+        const onMouseUp = () => {
+            document.body.style.userSelect = '';
+            document.body.style.cursor = '';
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
     }
 
     protected readonly ResourceCode = ResourceCode;

@@ -33,6 +33,7 @@ export class ToggleSwitchComponent implements ControlValueAccessor {
     label = input<string>('');
     required = input<boolean>(false);
     tooltipText = input<string>('');
+    ariaLabel = input<string>('');
 
     @Input() checked = false;
     @Output() checkedChange = new EventEmitter<boolean>();
@@ -45,10 +46,12 @@ export class ToggleSwitchComponent implements ControlValueAccessor {
 
     onToggle() {
         if (this.isDisabled) return;
-        this.checked = !this.checked;
-        this.checkedChange.emit(this.checked);
-        this.onChange(this.checked);
+        const next = !this.checked;
+        this.checked = next;
+        this.checkedChange.emit(next);
+        this.onChange(next);
         this.onTouched();
+        this.cdr.markForCheck();
     }
 
     writeValue(value: boolean): void {

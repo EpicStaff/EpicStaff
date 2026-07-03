@@ -11,17 +11,17 @@ from crewai.task import TaskOutput
 from langgraph.types import StreamWriter
 from loguru import logger
 
-from src.crew.services.graph.events import StopEvent
-from src.crew.models.graph_models import (
+from services.graph.events import StopEvent
+from models.graph_models import (
     GraphMessage,
     AgentMessageData,
     AgentFinishMessageData,
     TaskMessageData,
     UpdateSessionStatusMessageData,
 )
-from src.crew.services.graph.custom_message_writer import CustomSessionMessageWriter
-from src.crew.services.redis_service import RedisService, SyncPubsubSubscriber
-from src.crew.services.knowledge_search_service import KnowledgeSearchService
+from services.graph.custom_message_writer import CustomSessionMessageWriter
+from services.redis_service import RedisService, SyncPubsubSubscriber
+from services.knowledge_search_service import KnowledgeSearchService
 
 
 SESSION_STATUS_CHANNEL = os.environ.get(

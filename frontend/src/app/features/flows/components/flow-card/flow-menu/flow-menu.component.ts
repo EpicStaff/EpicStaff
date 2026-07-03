@@ -11,6 +11,7 @@ import {
     Output,
     signal,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 
@@ -20,7 +21,7 @@ import { FlowMenuItemComponent } from './flow-menu-item/flow-menu-item.component
 @Component({
     selector: 'app-flow-menu',
     standalone: true,
-    imports: [NgIf, NgClass, FlowMenuItemComponent, AppSvgIconComponent, HasPermissionDirective],
+    imports: [NgIf, NgClass, FlowMenuItemComponent, AppSvgIconComponent, HasPermissionDirective, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './flow-menu.component.html',
     styleUrls: ['./flow-menu.component.scss'],

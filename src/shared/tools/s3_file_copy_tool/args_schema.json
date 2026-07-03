@@ -1,0 +1,15 @@
+{
+  "title": "S3FileCopyArgs",
+  "type": "object",
+  "properties": {
+    "src": {
+      "type": "string",
+      "description": "Source S3 file path."
+    },
+    "dst": {
+      "type": "string",
+      "description": "Destination S3 file path."
+    }
+  },
+  "required": ["src", "dst"]
+}

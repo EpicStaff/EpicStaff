@@ -74,7 +74,6 @@ export class RealtimeAPI extends RealtimeEventHandler {
       }
       const WebSocket = globalThis.WebSocket;
       const key = localStorage.getItem("connectionKey"); // Retrieve connection key
-      console.log(key);
       const ws = new WebSocket(
         `${this.url}${key ? `?connection_key=${key}` : ""}`,
         [

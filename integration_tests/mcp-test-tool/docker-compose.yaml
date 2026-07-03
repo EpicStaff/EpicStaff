@@ -3,16 +3,16 @@ version: "3.9"
 services:
   fastmcp:
     build: .
-
+    container_name: fastmcp
     ports:
       - "8082:8000"
     environment:
       - PYTHONUNBUFFERED=1
       - FASTMCP_LOG_LEVEL=debug
-    volumes:
-      - .:/app
     networks:
-        - mcp-network
+      mcp-network:
+        aliases:
+          - fastmcp
 networks:
   mcp-network:
     driver: bridge

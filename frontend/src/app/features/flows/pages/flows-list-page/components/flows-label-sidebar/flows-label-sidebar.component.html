@@ -2,6 +2,8 @@
     <span class="sidebar-title">Label Branches</span>
     <button
         class="close-btn"
+        matTooltip="Close sidebar"
+        matTooltipPosition="right"
         (click)="closeSidebar.emit()"
     >
         <app-svg-icon
@@ -38,7 +40,8 @@
             *appHasPermission="[ResourceCode.Flows, ActionCode.Create]"
             class="add-btn"
             (click)="startAddRootLabel()"
-            title="Add label"
+            matTooltip="Add label"
+            matTooltipPosition="above"
         >
             <app-svg-icon
                 icon="plus"
@@ -67,7 +70,8 @@
             <button
                 class="confirm-btn"
                 (click)="confirmAddLabel()"
-                title="Confirm"
+                matTooltip="Confirm"
+                matTooltipPosition="above"
             >
                 <app-svg-icon
                     icon="check"
@@ -77,7 +81,8 @@
             <button
                 class="cancel-btn"
                 (click)="cancelAddLabel()"
-                title="Cancel"
+                matTooltip="Cancel"
+                matTooltipPosition="above"
             >
                 <app-svg-icon
                     icon="x"
@@ -105,7 +110,8 @@
                 class="toggle-btn"
                 (click)="$event.stopPropagation(); toggleExpand(item.node.id)"
                 [style.visibility]="item.node.children.length > 0 ? 'visible' : 'hidden'"
-                title="{{ isExpanded(item.node.id) ? 'Collapse' : 'Expand' }}"
+                [matTooltip]="isExpanded(item.node.id) ? 'Collapse' : 'Expand'"
+                matTooltipPosition="above"
             >
                 <app-svg-icon
                     icon="expand"
@@ -139,7 +145,8 @@
                 <button
                     class="confirm-btn"
                     (click)="$event.stopPropagation(); confirmRename(item.node.id)"
-                    title="Confirm rename"
+                    matTooltip="Confirm"
+                    matTooltipPosition="above"
                 >
                     <app-svg-icon
                         icon="check"
@@ -149,7 +156,8 @@
                 <button
                     class="cancel-btn"
                     (click)="$event.stopPropagation(); cancelRename()"
-                    title="Cancel rename"
+                    matTooltip="Cancel"
+                    matTooltipPosition="above"
                 >
                     <app-svg-icon
                         icon="x"
@@ -165,7 +173,8 @@
                         *appHasPermission="[ResourceCode.Flows, ActionCode.Create]"
                         class="action-btn"
                         (click)="$event.stopPropagation(); startAddChildLabel(item.node.id)"
-                        title="Add sublabel"
+                        matTooltip="Add sublabel"
+                        matTooltipPosition="above"
                     >
                         <app-svg-icon
                             icon="plus"
@@ -176,7 +185,8 @@
                         *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
                         class="action-btn edit-label-btn"
                         (click)="$event.stopPropagation(); startRename(item.node)"
-                        title="Rename"
+                        matTooltip="Rename"
+                        matTooltipPosition="above"
                     >
                         <app-svg-icon
                             icon="edit-label"
@@ -187,7 +197,8 @@
                         *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
                         class="action-btn danger"
                         (click)="$event.stopPropagation(); openDeleteDialog(item.node)"
-                        title="Delete"
+                        matTooltip="Delete"
+                        matTooltipPosition="above"
                     >
                         <app-svg-icon
                             icon="trash"
@@ -231,7 +242,8 @@
                 <button
                     class="confirm-btn"
                     (click)="confirmAddLabel()"
-                    title="Confirm"
+                    matTooltip="Confirm"
+                    matTooltipPosition="above"
                 >
                     <app-svg-icon
                         icon="check"
@@ -241,7 +253,8 @@
                 <button
                     class="cancel-btn"
                     (click)="cancelAddLabel()"
-                    title="Cancel"
+                    matTooltip="Cancel"
+                    matTooltipPosition="above"
                 >
                     <app-svg-icon
                         icon="x"

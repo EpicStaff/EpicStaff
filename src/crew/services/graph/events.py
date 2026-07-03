@@ -1,6 +1,6 @@
 import threading
 
-from src.crew.services.graph.exceptions import StopSession
+from services.graph.exceptions import StopSession
 
 
 class StopEvent(threading.Event):

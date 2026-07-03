@@ -1,4 +1,5 @@
 import { GetAudioToTextNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/audio-to-text.model';
+import { GetClassificationDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { GetCodeAgentNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/code-agent-node.model';
 import { ConditionalEdge } from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
 import { CrewNode } from '../../../pages/flows-page/components/flow-visual-programming/models/crew-node.model';
@@ -57,6 +58,7 @@ export interface GraphDto extends GetGraphLightRequest {
     end_node_list: EndNode[];
     subgraph_node_list: SubGraphNode[];
     decision_table_node_list: GetDecisionTableNodeRequest[];
+    classification_decision_table_node_list: GetClassificationDecisionTableNodeRequest[];
     metadata: FlowModel;
     audio_transcription_node_list: GetAudioToTextNodeRequest[];
     graph_note_list: GraphNote[];

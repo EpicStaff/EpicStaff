@@ -21,6 +21,8 @@ import {
     ActionDropdownItem,
     IconButtonComponent,
     PaginationControlsComponent,
+    SelectComponent,
+    SelectItem,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
@@ -52,6 +54,7 @@ import { FlowSessionsTableComponent } from './flow-sessions-table.component';
         FlowSessionNodeFilterDropdownComponent,
         IconButtonComponent,
         ActionDropdownButtonComponent,
+        SelectComponent,
         HasPermissionDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -62,6 +65,11 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
     public isLoaded = signal<boolean>(false);
     public currentPage = signal(1);
     public pageSize = signal(10);
+    public readonly pageSizeItems: SelectItem[] = [
+        { name: '10', value: 10 },
+        { name: '20', value: 20 },
+        { name: '50', value: 50 },
+    ];
     public statusFilter = signal<string[]>(['all']);
     public nodeFilter = signal<string | null>(null);
     public totalCount = 0;
@@ -399,6 +407,7 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
 
     public onBulkDelete(): void {
         this.onDeleteSelected(Array.from(this.selectedIds()));
+        this.selectedIds.set(new Set());
     }
 
     public onExport(format: ExportFormat): void {

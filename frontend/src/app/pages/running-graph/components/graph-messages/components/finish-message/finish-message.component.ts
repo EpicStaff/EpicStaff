@@ -6,12 +6,13 @@ import { MarkdownModule } from 'ngx-markdown';
 import { GetProjectRequest } from '../../../../../../features/projects/models/project.model';
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { FinishMessageData, GraphMessage } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-finish-message',
     standalone: true,
-    imports: [CommonModule, NgxJsonViewerModule, MarkdownModule, AppSvgIconComponent],
+    imports: [CommonModule, NgxJsonViewerModule, MarkdownModule, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
         <div class="finish-container">
@@ -69,6 +70,7 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
                             [@expandCollapse]="isVariablesExpanded ? 'expanded' : 'collapsed'"
                         >
                             <div class="variables-content">
+                                <app-copy-button [text]="variablesJson" />
                                 <ngx-json-viewer
                                     [json]="getVariables()"
                                     [expanded]="false"
@@ -96,6 +98,7 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
                             [@expandCollapse]="isOutputExpanded ? 'expanded' : 'collapsed'"
                         >
                             <div class="output-content">
+                                <app-copy-button [text]="outputJson" />
                                 <ngx-json-viewer
                                     [json]="getOutput()"
                                     [expanded]="false"
@@ -204,6 +207,7 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
 
             .variables-content,
             .output-content {
+                position: relative;
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
                 border-radius: 8px;
@@ -211,6 +215,10 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
                 margin-left: 1.5rem;
                 max-height: 400px;
                 overflow: auto;
+
+                &:hover app-copy-button {
+                    opacity: 1;
+                }
             }
         }
     `,
@@ -224,6 +232,14 @@ export class FinishMessageComponent implements OnInit {
     isVariablesExpanded = false;
 
     ngOnInit() {}
+
+    get variablesJson(): string {
+        return JSON.stringify(this.getVariables(), null, 2);
+    }
+
+    get outputJson(): string {
+        return JSON.stringify(this.getOutput(), null, 2);
+    }
 
     toggleMessage(): void {
         this.isMessageExpanded = !this.isMessageExpanded;

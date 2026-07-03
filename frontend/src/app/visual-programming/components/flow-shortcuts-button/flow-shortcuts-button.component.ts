@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, input, output } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 
@@ -16,7 +17,7 @@ function isMacPlatform(): boolean {
 @Component({
     selector: 'app-flow-shortcuts-button',
     standalone: true,
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [CommonModule, AppSvgIconComponent, MatTooltipModule],
     templateUrl: './flow-shortcuts-button.component.html',
     styleUrls: ['./flow-shortcuts-button.component.scss'],
 })

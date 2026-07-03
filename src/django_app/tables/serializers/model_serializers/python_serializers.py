@@ -9,27 +9,12 @@ from tables.models.python_models import (
     PythonCodeResult,
     PythonCodeTool,
     PythonCodeToolConfig,
-    PythonCodeToolConfigField,
 )
 from tables.serializers.base_serializer import ContentHashWritableMixin
 from tables.serializers.org_scoped_fields import OrgVisiblePrimaryKeyRelatedField
 from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
-
-
-class PythonCodeToolConfigFieldSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PythonCodeToolConfigField
-        fields = [
-            "id",
-            "name",
-            "tool",
-            "description",
-            "data_type",
-            "required",
-            "secret",
-        ]
 
 
 class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
@@ -69,7 +54,6 @@ class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer
 
 class PythonCodeToolSerializer(serializers.ModelSerializer):
     python_code = PythonCodeSerializer()
-    tool_fields = PythonCodeToolConfigFieldSerializer(many=True, read_only=True)
     built_in = serializers.ReadOnlyField()
 
     class Meta:
@@ -78,13 +62,13 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "description",
-            "args_schema",
+            "variables",
             "python_code",
             "favorite",
             "built_in",
-            "tool_fields",
+            "use_storage",
         ]
-        read_only_fields = ["id", "built_in", "tool_fields"]
+        read_only_fields = ["id", "built_in"]
 
     def create(self, validated_data):
         python_code_data = validated_data.pop("python_code")

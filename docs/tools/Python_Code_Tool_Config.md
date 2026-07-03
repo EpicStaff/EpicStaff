@@ -1,4 +1,11 @@
-# Python Code Tools Configuration:
+# Python Code Tools Configuration
+
+> ⚠️ **This document is obsolete.**
+>
+> The Python tool configuration system has been unified into the `variables` list. The old workflow with separate `PythonCodeToolConfigField` entities and the `/python-code-tool-config-fields/` endpoint no longer exists.
+>
+> See **[tools-configuration.md](tools-configuration.md)** for the current documentation.
+
 
 This guide details the backend logic and workflow for creating dynamic configurations for Python tools. The feature enables the injection of variable settings (API keys, limits, URLs) directly into the tool's execution environment without modifying the source code.
 

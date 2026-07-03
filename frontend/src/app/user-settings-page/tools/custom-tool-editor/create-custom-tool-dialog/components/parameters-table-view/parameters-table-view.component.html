@@ -1,0 +1,35 @@
+<div class="ptv">
+    <app-variables-breadcrumb
+        [crumbs]="crumbs()"
+        (crumbClick)="onCrumbClick($event)"
+    />
+
+    @if (!isDrilling()) {
+        @for (section of VARIABLE_SECTIONS; track section.inputType) {
+            <app-variable-section
+                [config]="section"
+                [initialRows]="getSectionInitialRows(section.inputType)"
+                [externalDuplicates]="externalDuplicatesByType()[section.inputType]"
+                [rowDropListId]="parameterRowDropListId(section.inputType)"
+                [rowDropListConnectedTo]="parameterRowDropConnectedTo()"
+                [rowSyncRevision]="parameterRowSyncRevision()"
+                (rowsChange)="onSectionRowsChange(section.inputType, $event)"
+                (navigateRow)="onNavigate($event)"
+                (crossListDrop)="onCrossListDrop($event)"
+            />
+        }
+    } @else {
+        @if (currentDrillSectionConfig(); as cfg) {
+            <app-variable-section
+                [config]="cfg"
+                [mode]="currentDrillMode()"
+                [initialRows]="currentDrillRows()"
+                [rowDropListId]="null"
+                [rowDropListConnectedTo]="[]"
+                [rowSyncRevision]="parameterRowSyncRevision()"
+                (rowsChange)="onDrillRowsChange($event)"
+                (navigateRow)="onNavigate($event)"
+            />
+        }
+    }
+</div>

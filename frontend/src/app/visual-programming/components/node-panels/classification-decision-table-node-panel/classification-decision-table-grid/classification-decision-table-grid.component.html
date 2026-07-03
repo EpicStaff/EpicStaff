@@ -1,0 +1,214 @@
+<div class="decision-table-grid-container">
+    <div class="grid-header">
+        <h3>
+            Conditions
+            <app-help-tooltip text="Configure routing rules with continue flag and route codes for dock visibility." />
+        </h3>
+        <div class="grid-header-actions">
+            @if (selectedRowCount() > 0) {
+                <button
+                    type="button"
+                    class="grid-header-icon-btn"
+                    title="Delete selected"
+                    (click)="deleteSelectedRows()"
+                >
+                    <app-svg-icon
+                        icon="trash"
+                        size="14px"
+                    ></app-svg-icon>
+                </button>
+                <app-button
+                    type="outline-primary"
+                    [leftIcon]="'group'"
+                    [iconSize]="'12px'"
+                    (click)="groupSelectedRows()"
+                    [disabled]="!canGroupSelected()"
+                >
+                    Group rows
+                </app-button>
+            }
+            <app-button
+                type="primary"
+                [leftIcon]="'plus'"
+                (click)="addRow()"
+            >
+                Add Condition
+            </app-button>
+        </div>
+    </div>
+
+    <div
+        class="grid-wrapper"
+        [class.has-above-btns]="hasAboveAddButtons()"
+    >
+        <!-- Above-grid "+" buttons: shown only when the corresponding params group is empty -->
+        @if (!hasFieldCols() && exprAddPos()) {
+            <button
+                class="col-above-add-btn"
+                [style.left.px]="exprAddPos()!.x"
+                (click)="toggleFieldPicker($event)"
+                title="Add expression variable"
+            >
+                <i class="ti ti-plus"></i>
+            </button>
+        }
+        @if (!hasManipCols() && manipAddPos()) {
+            <button
+                class="col-above-add-btn"
+                [style.left.px]="manipAddPos()!.x"
+                (click)="toggleManipFieldPicker($event)"
+                title="Add manipulation variable"
+            >
+                <i class="ti ti-plus"></i>
+            </button>
+        }
+
+        <div class="group-overlays">
+            @for (item of groupOverlayItems(); track item.sectionId) {
+                <div
+                    class="group-overlay"
+                    [style.top.px]="item.top"
+                    [style.height.px]="item.height"
+                >
+                    <button
+                        type="button"
+                        class="group-overlay-chevron"
+                        [class.collapsed]="item.isCollapsed"
+                        [class.active]="groupMenuSectionId() === item.sectionId"
+                        (click)="openGroupMenuFromOverlay(item.sectionId, $event)"
+                        title="Group options"
+                    >
+                        <app-svg-icon
+                            icon="play"
+                            size="14px"
+                        ></app-svg-icon>
+                    </button>
+                    @if (!item.isCollapsed) {
+                        <div
+                            class="group-overlay-bracket"
+                            [class.active]="groupMenuSectionId() === item.sectionId"
+                        ></div>
+                    }
+                </div>
+            }
+        </div>
+
+        <ag-grid-angular
+            class="decision-grid ag-theme-quartz-dark"
+            [class.empty-state]="isEmpty()"
+            style="width: 100%"
+            [rowData]="displayedRowData()"
+            [columnDefs]="columnDefs"
+            [defaultColDef]="defaultColDef"
+            [gridOptions]="gridOptions"
+            (gridReady)="onGridReady($event)"
+            (cellValueChanged)="onCellValueChanged($event)"
+            (bodyScroll)="onBodyScroll($event)"
+        >
+        </ag-grid-angular>
+
+        @if (dropIndicatorTop() !== null) {
+            <div
+                class="row-drop-indicator"
+                [style.top.px]="dropIndicatorTop()"
+            ></div>
+        }
+
+        <!-- Hidden-column restore badges -->
+        @for (badge of hiddenColumnBadges(); track badge.colId) {
+            <button
+                class="hidden-col-badge"
+                [style.left.px]="badge.x"
+                [style.top.px]="badge.y"
+                [title]="'Restore: ' + badge.label"
+                (click)="unhideColumn(badge.colId)"
+            >
+                <i class="ti ti-arrows-horizontal"></i>
+            </button>
+        }
+    </div>
+
+    @if (contextMenu()) {
+        <div
+            class="context-menu"
+            [style.left.px]="contextMenu()!.x"
+            [style.top.px]="contextMenu()!.y"
+        >
+            <div
+                class="context-menu-item"
+                (click)="addRowAbove()"
+            >
+                <i class="ti ti-row-insert-top"></i> Add Row Above
+            </div>
+            <div
+                class="context-menu-item"
+                (click)="addRowBelow()"
+            >
+                <i class="ti ti-row-insert-bottom"></i> Add Row Below
+            </div>
+        </div>
+    }
+
+    <app-multi-select
+        #exprMultiSelect
+        [hideTrigger]="true"
+        [grouped]="true"
+        [showSearch]="true"
+        checkboxPosition="left"
+        color="white"
+        searchPlaceholder="Search fields..."
+        [items]="exprMultiSelectItems()"
+        [selectedValues]="exprSelectedFieldsModel()"
+        (selectionChange)="onExprSelectionChange($event)"
+    />
+    <app-multi-select
+        #manipMultiSelect
+        [hideTrigger]="true"
+        [grouped]="true"
+        [showSearch]="true"
+        checkboxPosition="left"
+        color="white"
+        searchPlaceholder="Search fields..."
+        [items]="manipMultiSelectItems()"
+        [selectedValues]="manipSelectedFieldsModel()"
+        (selectionChange)="onManipSelectionChange($event)"
+    />
+</div>
+
+<ng-template #groupMenuTemplate>
+    <div class="group-menu-dropdown">
+        <div
+            class="group-menu-item"
+            (click)="handleGroupMenuUngroup()"
+        >
+            Ungroup
+        </div>
+        @if (isCurrentGroupCollapsed()) {
+            <div
+                class="group-menu-item"
+                (click)="handleGroupMenuExpand()"
+            >
+                Expand Group
+            </div>
+        } @else {
+            <div
+                class="group-menu-item"
+                (click)="handleGroupMenuCollapse()"
+            >
+                Collapse Group
+            </div>
+        }
+        <div
+            class="group-menu-item"
+            (click)="handleGroupMenuExpandAll()"
+        >
+            Expand All Row Groups
+        </div>
+        <div
+            class="group-menu-item"
+            (click)="handleGroupMenuCollapseAll()"
+        >
+            Collapse All Row Groups
+        </div>
+    </div>
+</ng-template>

@@ -40,7 +40,7 @@
       "default": "embedding"
     },
     "limit": {
-      "type": "integer",
+      "type": "number",
       "description": "Number of results to return",
       "default": 3
     },

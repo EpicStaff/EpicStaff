@@ -11,6 +11,7 @@ import {
     Output,
     signal,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 
@@ -20,7 +21,7 @@ import { ProjectMenuItemComponent } from './project-menu-item/project-menu-item.
 @Component({
     selector: 'app-project-menu',
     standalone: true,
-    imports: [NgIf, NgClass, ProjectMenuItemComponent, AppSvgIconComponent, HasPermissionDirective],
+    imports: [NgIf, NgClass, ProjectMenuItemComponent, AppSvgIconComponent, HasPermissionDirective, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './project-menu.component.html',
     styleUrls: ['./project-menu.component.scss'],

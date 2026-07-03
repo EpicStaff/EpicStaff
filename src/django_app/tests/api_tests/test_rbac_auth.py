@@ -227,22 +227,20 @@ def test_sse_ticket_is_single_use(auth_client, regular_user):
     ticket = r.json()["ticket"]
     assert r.json()["expires_in"] == settings.SSE_TICKET_TTL_SECONDS
 
-    service = SseTicketService()
-    user = service.consume(ticket)
+    user = sse_ticket_service.consume(ticket)
     assert user is not None
     assert user.pk == regular_user.pk
 
     # Second consume fails — GETDEL already removed the ticket atomically.
-    assert service.consume(ticket) is None
+    assert sse_ticket_service.consume(ticket) is None
 
 
 @pytest.mark.django_db
 def test_sse_ticket_expired_or_unknown_returns_none():
     cache.clear()
-    service = SseTicketService()
-    assert service.consume("no-such-ticket") is None
-    assert service.consume("") is None
-    assert service.consume(None) is None
+    assert sse_ticket_service.consume("no-such-ticket") is None
+    assert sse_ticket_service.consume("") is None
+    assert sse_ticket_service.consume(None) is None
 
 
 @pytest.mark.django_db

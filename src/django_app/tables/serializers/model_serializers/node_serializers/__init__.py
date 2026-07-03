@@ -5,6 +5,9 @@ from .flow_control_serializers import (
     DecisionTableNodeSerializer,
     EndNodeSerializer,
     StartNodeSerializer,
+    ClassificationConditionGroupSerializer,
+    ClassificationDecisionTableNodeSerializer,
+    ClassificationDecisionTablePromptSerializer,
 )
 from .basic_node_serializers import (
     AudioTranscriptionNodeSerializer,

@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     ConfirmationDialogService,
     DragDropAreaComponent,
@@ -49,6 +50,7 @@ import { CollectionRagsComponent } from './collection-rags/collection-rags.compo
         SpinnerComponent,
         ValidationErrorsComponent,
         AppSvgIconComponent,
+        MatTooltipModule,
         HasPermissionDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,

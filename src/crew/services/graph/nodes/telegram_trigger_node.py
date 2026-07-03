@@ -4,10 +4,10 @@ from langgraph.types import StreamWriter
 from loguru import logger
 
 from src.shared.models import TelegramTriggerNodeFieldData
-from src.crew.models.state import State
-from src.crew.services.graph.events import StopEvent
-from src.crew.services.graph.nodes import BaseNode
-from src.crew.utils import set_output_variables
+from models.state import State
+from services.graph.events import StopEvent
+from services.graph.nodes import BaseNode
+from utils import set_output_variables
 
 
 class TelegramTriggerNode(BaseNode):

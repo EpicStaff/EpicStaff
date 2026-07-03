@@ -4,6 +4,7 @@ import { MarkdownModule } from 'ngx-markdown';
 
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import {
     CodeAgentStreamMessageData,
     CodeAgentToolCall,
@@ -20,7 +21,7 @@ interface ThinkingStep {
 @Component({
     selector: 'app-code-agent-stream-message',
     standalone: true,
-    imports: [CommonModule, MarkdownModule, AppSvgIconComponent],
+    imports: [CommonModule, MarkdownModule, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
         <div
@@ -134,6 +135,7 @@ interface ThinkingStep {
                 class="final-result"
                 *ngIf="getText()"
             >
+                <app-copy-button [text]="getText()" />
                 <markdown
                     [data]="getText()"
                     class="markdown-content"
@@ -234,10 +236,15 @@ interface ThinkingStep {
         }
 
         .final-result {
+            position: relative;
             padding: 1rem 1rem 0 5.5rem;
             color: var(--gray-200);
             max-height: 400px;
             overflow-y: auto;
+
+            &:hover app-copy-button {
+                opacity: 1;
+            }
         }
 
         .collapsible-content {

@@ -30,6 +30,7 @@
             icon="x"
             size="2rem"
             ariaLabel="Close"
+            tooltip="Close"
             (click)="onClose()"
             class="close-button"
         ></app-icon-button>
@@ -41,7 +42,9 @@
 
     @if (data.caution) {
         <div class="caution-block">
-            <span class="caution-title">Caution</span>
+            @if (data.cautionTitle) {
+                <span class="caution-title">{{ data.cautionTitle }}</span>
+            }
             <p
                 class="caution-message"
                 [innerHTML]="data.caution"

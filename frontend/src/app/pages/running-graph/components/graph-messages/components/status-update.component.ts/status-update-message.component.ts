@@ -2,12 +2,13 @@ import { CommonModule } from '@angular/common';
 import { Component, Input } from '@angular/core';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { GraphMessage, UpdateSessionStatusMessageData } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-status-update-message',
     standalone: true,
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [CommonModule, AppSvgIconComponent, CopyButtonComponent],
     template: `
         <div class="status-update-message">
             <div class="status-info">
@@ -25,7 +26,10 @@ import { GraphMessage, UpdateSessionStatusMessageData } from '../../../../models
                     />
                     Status Data:
                 </div>
-                <pre class="status-data-content">{{ statusData | json }}</pre>
+                <div class="status-data-wrapper">
+                    <app-copy-button [text]="statusDataJson" />
+                    <pre class="status-data-content">{{ statusData | json }}</pre>
+                </div>
             </div>
         </div>
     `,
@@ -62,6 +66,14 @@ import { GraphMessage, UpdateSessionStatusMessageData } from '../../../../models
                             margin-right: 0.5rem;
                         }
                     }
+                    .status-data-wrapper {
+                        position: relative;
+
+                        &:hover app-copy-button {
+                            opacity: 1;
+                        }
+                    }
+
                     .status-data-content {
                         background-color: var(--gray-800);
                         border-radius: 6px;
@@ -100,5 +112,9 @@ export class StatusUpdateMessageComponent {
 
     hasStatusData(): boolean {
         return !!(this.statusData && Object.keys(this.statusData).length);
+    }
+
+    get statusDataJson(): string {
+        return JSON.stringify(this.statusData, null, 2);
     }
 }

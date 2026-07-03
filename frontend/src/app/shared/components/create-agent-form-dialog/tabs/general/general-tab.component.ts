@@ -27,10 +27,6 @@ export class GeneralTabComponent {
     loadingLLMs = input<boolean>(false);
     mergedToolsChange = output<{ id: number; configName: string; toolName: string; type: string }[]>();
 
-    public onConfiguredToolsChange(toolConfigIds: number[]): void {
-        this.form().patchValue({ configured_tools: toolConfigIds });
-    }
-
     public onPythonToolsChange(pythonToolIds: number[]): void {
         this.form().patchValue({ python_code_tools: pythonToolIds });
     }
