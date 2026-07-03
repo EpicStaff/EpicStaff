@@ -8,19 +8,38 @@
             id="agent-section-basics"
             class="section"
         >
-            <button
-                type="button"
-                class="section__header"
-                (click)="toggleSection('basics')"
-            >
-                <app-svg-icon
-                    class="section__chevron"
-                    [class.section__chevron--open]="isOpen('basics')"
-                    icon="chevron-down-filled"
-                    size="8px"
-                />
-                <span class="section__title">Basics</span>
-            </button>
+            <div class="section__header-row">
+                <button
+                    type="button"
+                    class="section__header"
+                    (click)="toggleSection('basics')"
+                >
+                    <app-svg-icon
+                        class="section__chevron"
+                        [class.section__chevron--open]="isOpen('basics')"
+                        icon="chevron-down-filled"
+                        size="8px"
+                    />
+                    <span class="section__title">Basics</span>
+                </button>
+
+                @if (!isCreating() && agent()) {
+                    <button
+                        type="button"
+                        class="section__settings"
+                        aria-label="Additional Settings"
+                        matTooltip="Additional Settings"
+                        matTooltipPosition="above"
+                        matTooltipClass="custom-tooltip"
+                        (click)="openAdditionalSettings()"
+                    >
+                        <app-svg-icon
+                            icon="settings"
+                            size="16px"
+                        />
+                    </button>
+                }
+            </div>
 
             @if (isOpen('basics')) {
                 <div class="section__body">

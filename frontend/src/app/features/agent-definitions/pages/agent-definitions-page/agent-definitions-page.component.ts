@@ -223,6 +223,12 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
                 instructions: payload.instructions,
                 llm_config: payload.llm_config,
                 fcm_llm_config: payload.fcm_llm_config,
+                max_iter: payload.max_iter,
+                max_rpm: payload.max_rpm,
+                max_execution_time: payload.max_execution_time,
+                cache: payload.cache,
+                max_retry_limit: payload.max_retry_limit,
+                default_temperature: payload.default_temperature,
             });
         }
         this.hasUnsavedChanges.set(false);

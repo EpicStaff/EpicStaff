@@ -31,6 +31,11 @@ import { AgentDefinition } from '../../../../models/agent-definition.model';
 import { CreateSurfaceRequest, PartialUpdateSurfaceRequest, Surface } from '../../../../models/surface.model';
 import { SurfaceCategoryId } from '../../../../models/surface-category.model';
 import { INSTRUCTIONS_ACCEPT_ATTR, readFileAsText } from '../../../../utils/instructions-file.utils';
+import {
+    AgentAdditionalSettingsData,
+    AgentAdditionalSettingsDialogComponent,
+    AgentAdditionalSettingsResult,
+} from './agent-additional-settings-dialog/agent-additional-settings-dialog.component';
 import { AgentSurfacesPanelComponent } from './agent-surfaces-panel/agent-surfaces-panel.component';
 
 export interface AgentSavePayload {
@@ -258,6 +263,41 @@ export class AgentDetailComponent implements OnInit {
     private revertToSnapshot(): void {
         this.form.reset(this.savedSnapshot);
         this.bootLength.set((this.savedSnapshot.instructions ?? '').length);
+    }
+
+    openAdditionalSettings(): void {
+        const a = this.agent();
+        if (!a || this.saving()) return;
+        const data: AgentAdditionalSettingsData = {
+            fcm_llm_config: a.fcm_llm_config,
+            max_iter: a.max_iter,
+            max_rpm: a.max_rpm,
+            max_execution_time: a.max_execution_time,
+            max_retry_limit: a.max_retry_limit,
+            cache: a.cache,
+        };
+        this.dialog
+            .open<AgentAdditionalSettingsResult | undefined>(AgentAdditionalSettingsDialogComponent, { data })
+            .closed.pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((result) => {
+                if (!result) return;
+                const v = this.form.getRawValue();
+                this.savedSnapshot = { ...v, name: v.name.trim() || a.name };
+                this.save.emit({
+                    id: a.id,
+                    name: v.name.trim() || a.name,
+                    description: v.description ?? '',
+                    instructions: v.instructions ?? '',
+                    llm_config: v.llm_config,
+                    fcm_llm_config: result.fcm_llm_config,
+                    max_iter: result.max_iter,
+                    max_rpm: result.max_rpm,
+                    max_execution_time: result.max_execution_time,
+                    cache: result.cache,
+                    max_retry_limit: result.max_retry_limit,
+                    default_temperature: a.default_temperature,
+                });
+            });
     }
 
     createBootDoc(): void {
