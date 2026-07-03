@@ -83,7 +83,7 @@
     border-bottom: 2px solid transparent;
     border-radius: 4px 4px 0 0;
     margin-bottom: -1px;
-    color: var(--color-text-secondary);
+    color: var(--accent-color);
     font-size: 0.8rem;
     font-weight: 500;
     white-space: nowrap;
@@ -95,8 +95,8 @@
     }
 
     &--active {
-        color: var(--accent-color);
-        border-bottom-color: var(--accent-color);
+        color: var(--color-text-primary);
+        border-bottom-color: var(--color-text-primary);
     }
 }
 

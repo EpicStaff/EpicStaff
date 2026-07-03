@@ -42,6 +42,20 @@
         font-size: 1.5rem;
         color: var(--color-divider-subtle);
     }
+
+    app-tab-button ::ng-deep .tab-btn {
+        color: var(--accent-color);
+        font-weight: 500;
+
+        &:hover {
+            color: var(--color-text-primary);
+        }
+
+        &.active {
+            color: var(--color-text-primary);
+            border-bottom-color: var(--color-text-primary);
+        }
+    }
 }
 
 .scrollable-content {
