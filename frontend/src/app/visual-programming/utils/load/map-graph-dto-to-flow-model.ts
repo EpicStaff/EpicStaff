@@ -32,8 +32,10 @@ import { resolveDecisionTableNodeRefs } from './ref-resolvers/decision-table-ref
  */
 function mapList<R, T extends NodeModel>(raws: R[] | undefined | null, mapFn: (raw: R) => T): T[] {
     return (raws ?? []).map((raw) => {
-        const model = mapFn(raw);
         const tempId = (raw as { temp_id?: unknown })?.temp_id;
+
+        const safeRaw = tempId != null && (raw as { id?: unknown })?.id == null ? { ...raw, id: 0 } : raw;
+        const model = mapFn(safeRaw as R);
         return tempId ? { ...model, id: String(tempId), backendId: null } : model;
     });
 }

@@ -274,6 +274,7 @@ export function buildNodeBackendPayload(
                 node_name: sn.node_name,
                 graph: graphId,
                 subgraph: sn.data.id,
+                subgraph_detail: sn.data,
                 input_map: sn.input_map || {},
                 output_variable_path: sn.output_variable_path || null,
                 metadata: meta,
