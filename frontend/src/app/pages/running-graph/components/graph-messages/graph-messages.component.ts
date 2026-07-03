@@ -231,6 +231,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     private messageContexts: MessageContext[] = [];
     private messageContextByKey = new Map<string, MessageContext>();
     private messageByKey = new Map<string, GraphMessage>();
+    private codeAgentVisibleIndices = new Set<number>();
     private messageGraphIdByKey = new Map<string, number>();
     private graphCache = new Map<number, GraphDto>();
     private graphNameById = new Map<number, string>();
@@ -915,7 +916,11 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         const nestedPath = [...context.path, context.key];
         return this.messageContexts.reduce(
             (count, ctx) =>
-                this.pathsEqual(ctx.path, nestedPath) && this.isRenderableNestedMessage(ctx) ? count + 1 : count,
+                this.pathsEqual(ctx.path, nestedPath) &&
+                this.isRenderableNestedMessage(ctx) &&
+                this.isCodeAgentVisible(ctx)
+                    ? count + 1
+                    : count,
             0
         );
     }
@@ -1256,6 +1261,36 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         });
 
         this.buildMessageGraphContexts(messages);
+        this.computeCodeAgentVisibleIndices();
+    }
+
+    private computeCodeAgentVisibleIndices(): void {
+        const chosen = new Map<string, number>();
+        for (const ctx of this.messageContexts) {
+            const msg = this.messages[ctx.index];
+            if (msg?.message_data?.message_type !== MessageType.CODE_AGENT_STREAM) continue;
+
+            const groupKey = `${ctx.path.join('|')}::${msg.name}`;
+            const existing = chosen.get(groupKey);
+            const isFinal = (msg.message_data as CodeAgentStreamMessageData).is_final;
+
+            if (existing === undefined || isFinal) {
+                chosen.set(groupKey, ctx.index);
+            } else {
+                const existingMsg = this.messages[existing];
+                const existingFinal = (existingMsg?.message_data as CodeAgentStreamMessageData)?.is_final;
+                if (!existingFinal) {
+                    chosen.set(groupKey, ctx.index);
+                }
+            }
+        }
+        this.codeAgentVisibleIndices = new Set(chosen.values());
+    }
+
+    private isCodeAgentVisible(context: MessageContext): boolean {
+        const msg = this.messages[context.index];
+        if (msg?.message_data?.message_type !== MessageType.CODE_AGENT_STREAM) return true;
+        return this.codeAgentVisibleIndices.has(context.index);
     }
 
     private syncDrillPaths(messages: GraphMessage[]): void {
@@ -1337,40 +1372,13 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     }
 
     private updateVisibleMessages(): void {
-        // Build a set of message indices to show for code_agent_stream:
-        // One card per node name — prefer final, fall back to latest non-final.
-        const caShowIndex = new Map<string, number>(); // node_name -> message index to show
-
-        for (const context of this.messageContexts) {
-            if (context.path.length !== 0) continue;
-            const msg = this.messages[context.index];
-            if (msg?.message_data?.message_type !== 'code_agent_stream') continue;
-
-            const isFinal = (msg.message_data as CodeAgentStreamMessageData).is_final === true;
-            const existing = caShowIndex.get(msg.name);
-
-            if (isFinal) {
-                caShowIndex.set(msg.name, context.index);
-            } else if (existing === undefined) {
-                caShowIndex.set(msg.name, context.index);
-            } else {
-                const existingMsg = this.messages[existing];
-                if ((existingMsg?.message_data as CodeAgentStreamMessageData)?.is_final !== true) {
-                    caShowIndex.set(msg.name, context.index);
-                }
-            }
-        }
-
-        const caShowSet = new Set(caShowIndex.values());
-
         this.visibleMessageEntries = this.messageContexts
             .filter((context) => context.path.length === 0)
             .filter((context) => {
                 const msg = this.messages[context.index];
                 const type = msg?.message_data?.message_type;
                 if (!type || !RENDERABLE_MESSAGE_TYPES.has(type)) return false;
-                if (type !== MessageType.CODE_AGENT_STREAM) return true;
-                return caShowSet.has(context.index);
+                return this.isCodeAgentVisible(context);
             })
             .map((context) => this.buildMessageEntry(this.messages[context.index], context));
     }
@@ -1381,7 +1389,12 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
         this.drillPaths.forEach((path, rootKey) => {
             const nestedEntries = this.messageContexts
-                .filter((context) => this.pathsEqual(context.path, path) && this.isRenderableNestedMessage(context))
+                .filter(
+                    (context) =>
+                        this.pathsEqual(context.path, path) &&
+                        this.isRenderableNestedMessage(context) &&
+                        this.isCodeAgentVisible(context)
+                )
                 .map((context) => this.buildMessageEntry(this.messages[context.index], context));
             this.drilldownEntriesByRoot.set(rootKey, nestedEntries);
 
