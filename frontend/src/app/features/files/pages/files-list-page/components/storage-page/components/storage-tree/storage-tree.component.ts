@@ -1,8 +1,18 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ElementRef, input, output, signal, viewChild } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    ElementRef,
+    inject,
+    input,
+    output,
+    signal,
+    viewChild,
+} from '@angular/core';
 
 import { AppSvgIconComponent } from '../../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { StorageItem } from '../../../../../../models/storage.models';
+import { StorageDragService } from '../../../../../../services/storage-drag.service';
 import { getFileExtension } from '../../../../../../utils/storage-file.utils';
 
 @Component({
@@ -13,6 +23,8 @@ import { getFileExtension } from '../../../../../../utils/storage-file.utils';
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class StorageTreeComponent {
+    private readonly storageDrag = inject(StorageDragService);
+
     items = input<StorageItem[]>([]);
     showHeader = input<boolean>(true);
     fileSelected = output<StorageItem>();
@@ -305,9 +317,10 @@ export class StorageTreeComponent {
             event.preventDefault();
             return;
         }
-        event.dataTransfer!.effectAllowed = 'move';
+        event.dataTransfer!.effectAllowed = 'copyMove';
         event.dataTransfer!.setData('text/plain', item.path);
         this.draggedItem.set(item);
+        this.storageDrag.start(item);
     }
 
     onDragOver(event: DragEvent, node: StorageItem): void {
@@ -411,6 +424,7 @@ export class StorageTreeComponent {
         this.draggedItem.set(null);
         this.dropTarget.set(null);
         this.dropTargetRoot.set(false);
+        this.storageDrag.end();
         this.clearDragExpandTimer();
     }
 
