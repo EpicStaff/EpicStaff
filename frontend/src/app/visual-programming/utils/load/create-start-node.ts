@@ -5,9 +5,14 @@ import { NodeType } from '../../core/enums/node-type';
 import { getDefaultNodeSize } from '../../core/helpers/node-size.util';
 import { StartNodeModel } from '../../core/models/node.model';
 
-export function createStartNode(): StartNodeModel {
+export function tempStartNodeId(graphId: number): string {
+    const n = graphId.toString(16).padStart(12, '0');
+    return `00000000-0000-4000-ffff-${n}`;
+}
+
+export function createStartNode(graphId?: number): StartNodeModel {
     return {
-        id: uuidv4(),
+        id: graphId != null ? tempStartNodeId(graphId) : uuidv4(),
         backendId: null,
         type: NodeType.START,
         node_name: '__start__',

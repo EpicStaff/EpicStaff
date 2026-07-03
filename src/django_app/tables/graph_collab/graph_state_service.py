@@ -431,6 +431,37 @@ class GraphLiveStateService:
                         cond_edge["source_node_id"] = real_id
                         cond_edge.pop("source_temp_id", None)
 
+            # Rewrite routing references inside decision-table entries.
+            # Their default/error/per-group next-node refs use the same
+            # temp-vs-real duality as edge endpoints; without this rewrite a
+            # flushed routing target keeps a *_temp_id that no longer exists in
+            # any node list and every subsequent flush fails validation.
+            def _remap_ref(entry: dict, temp_key: str, id_key: str) -> None:
+                temp_val = entry.get(temp_key)
+                if temp_val is None:
+                    return
+                real = temp_id_map.get(str(temp_val))
+                if real is not None:
+                    entry[id_key] = real
+                    entry.pop(temp_key, None)
+
+            for list_key in (
+                "decision_table_node_list",
+                "classification_decision_table_node_list",
+            ):
+                for table_entry in snapshot.get(list_key, []):
+                    if table_entry is None:
+                        continue
+                    _remap_ref(
+                        table_entry, "default_next_node_temp_id", "default_next_node_id"
+                    )
+                    _remap_ref(
+                        table_entry, "next_error_node_temp_id", "next_error_node_id"
+                    )
+                    for group in table_entry.get("condition_groups") or []:
+                        if isinstance(group, dict):
+                            _remap_ref(group, "next_node_temp_id", "next_node_id")
+
             snapshot["save_version"] = new_save_version
 
             # Remove from the live accumulator only the ids that were in the

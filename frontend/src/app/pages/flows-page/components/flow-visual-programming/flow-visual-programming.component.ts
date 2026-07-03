@@ -69,6 +69,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
 import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.component';
 import { UnsavedChangesDialogService } from '../../../../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
 import { NodeType } from '../../../../visual-programming/core/enums/node-type';
+import { ConditionGroup } from '../../../../visual-programming/core/models/decision-table.model';
 import { FlowModel } from '../../../../visual-programming/core/models/flow.model';
 import { ScheduleTriggerNodeModel } from '../../../../visual-programming/core/models/node.model';
 import { NodeModel } from '../../../../visual-programming/core/models/node.model';
@@ -138,7 +139,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         if (!graph) return { nodes: [], connections: [] };
 
         let flowModel = mapGraphDtoToFlowModel(graph);
-        flowModel = this.addStartNodeIfNeeded(flowModel);
+        flowModel = this.addStartNodeIfNeeded(flowModel, graph.id);
         const validated = this.validateSubgraphNodes(flowModel, this.availableFlowLights());
         return validated.flowModel;
     });
@@ -248,9 +249,14 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             if (msg.restored_by && msg.restored_by.user_id === currentUserId) return;
 
             let flowModel = mapGraphDtoToFlowModel(msg.flow);
-            flowModel = this.addStartNodeIfNeeded(flowModel);
+            flowModel = this.addStartNodeIfNeeded(flowModel, msg.flow.id);
             const normalizedFlow = normalizeFlowPorts(flowModel);
             this.flowService.setFlow(normalizedFlow);
+
+            const startNode = normalizedFlow.nodes.find((n) => n.type === NodeType.START && n.backendId == null);
+            if (startNode) {
+                this.wsService.sendNodeCreated(startNode, msg.flow.id, normalizedFlow.nodes);
+            }
 
             if (msg.restored_by) {
                 this.undoRedoService.setUndoStack([]);
@@ -263,9 +269,15 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
         this.wsService.nodeCreated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
             const node = mapWsNodePayloadToModel(msg.node as Record<string, unknown>, msg.list_key);
-            if (node) {
+            if (!node) return;
+
+            const exists = this.flowService.nodes().some((n) => n.id === node.id);
+            if (exists) {
+                this.flowService.updateNode(node);
+            } else {
                 this.flowService.addNode(node);
             }
+            this.applyRemoteTableRouting(node.id, msg.node as Record<string, unknown>, msg.list_key);
         });
 
         this.wsService.nodeUpdated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
@@ -277,6 +289,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 const exists = this.flowService.nodes().some((n) => n.id === p['temp_id']);
                 if (exists) {
                     this.flowService.updateNode(updated);
+                    this.applyRemoteTableRouting(updated.id, p, msg.list_key);
                 }
             } else if (typeof p['id'] === 'number') {
                 const existing = this.flowService.nodes().find((n) => n.backendId === p['id']);
@@ -284,6 +297,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     // Preserve the canvas id — it may differ from stableNodeId when the
                     // node was originally created via WS and never reloaded from the API.
                     this.flowService.updateNode({ ...updated, id: existing.id });
+                    this.applyRemoteTableRouting(existing.id, p, msg.list_key);
                 }
             }
         });
@@ -824,9 +838,60 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.wsService.disconnect();
     }
 
-    private addStartNodeIfNeeded(flowModel: FlowModel): FlowModel {
+    /**
+     * Routing of decision/classification tables lives inside the node entity —
+     * remote node_created/node_updated carry the refs as *_node_id (persisted
+     * target) or *_temp_id (the target's canvas id). Resolve them onto this
+     * canvas and rebuild the table's outgoing connections so co-editors see
+     * routing changes live.
+     */
+    private applyRemoteTableRouting(canvasNodeId: string, payload: Record<string, unknown>, listKey: string): void {
+        if (listKey !== 'decision_table_node_list' && listKey !== 'classification_decision_table_node_list') return;
+        const nodes = this.flowService.nodes();
+        const node = nodes.find((n) => n.id === canvasNodeId);
+        const table = (node?.data as { table?: Record<string, unknown> } | undefined)?.table;
+        if (!node || !table) return;
+
+        const toCanvasId = (idVal: unknown, tempVal: unknown): string | null => {
+            if (typeof tempVal === 'string' && tempVal) return tempVal;
+            if (typeof idVal === 'number') return nodes.find((n) => n.backendId === idVal)?.id ?? null;
+            return null;
+        };
+
+        const rawGroups = (payload['condition_groups'] as Record<string, unknown>[] | undefined) ?? [];
+        const existingGroups = (table['condition_groups'] as Record<string, unknown>[] | undefined) ?? [];
+        // Groups arrive in the same order they were mapped into the node data.
+        const updatedGroups = existingGroups.map((group, index) => {
+            const raw = rawGroups[index];
+            if (!raw) return group;
+            return { ...group, next_node: toCanvasId(raw['next_node_id'], raw['next_node_temp_id']) };
+        });
+        const defaultNext = toCanvasId(payload['default_next_node_id'], payload['default_next_node_temp_id']);
+        const errorNext = toCanvasId(payload['next_error_node_id'], payload['next_error_node_temp_id']);
+
+        this.flowService.updateNode({
+            ...node,
+            data: {
+                ...(node.data as Record<string, unknown>),
+                table: {
+                    ...table,
+                    condition_groups: updatedGroups,
+                    default_next_node: defaultNext,
+                    next_error_node: errorNext,
+                },
+            },
+        } as NodeModel);
+        this.flowService.resetDecisionTableConnections(
+            canvasNodeId,
+            updatedGroups as unknown as ConditionGroup[],
+            defaultNext,
+            errorNext
+        );
+    }
+
+    private addStartNodeIfNeeded(flowModel: FlowModel, graphId?: number): FlowModel {
         if (hasStartNode(flowModel)) return flowModel;
-        return { ...flowModel, nodes: [createStartNode(), ...flowModel.nodes] };
+        return { ...flowModel, nodes: [createStartNode(graphId), ...flowModel.nodes] };
     }
 
     private validateSubgraphNodes(

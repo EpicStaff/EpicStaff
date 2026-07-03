@@ -23,24 +23,40 @@ import { mapWebhookTriggerNodeToModel } from './nodes/webhook-trigger-node.mappe
 import { resolveClassificationDecisionTableNodeRefs } from './ref-resolvers/classification-decision-table-refs';
 import { resolveDecisionTableNodeRefs } from './ref-resolvers/decision-table-refs';
 
+/**
+ * Maps a backend node list to UI models, preserving temp identity: live
+ * snapshot entries that are not persisted yet carry a `temp_id` (the author's
+ * canvas id) instead of a DB `id`. Reusing it as the canvas id keeps node
+ * identity identical across all clients, so WS refs (node_updated, edges'
+ * start/end_temp_id, locks) resolve on late-joining canvases too.
+ */
+function mapList<R, T extends NodeModel>(raws: R[] | undefined | null, mapFn: (raw: R) => T): T[] {
+    return (raws ?? []).map((raw) => {
+        const model = mapFn(raw);
+        const tempId = (raw as { temp_id?: unknown })?.temp_id;
+        return tempId ? { ...model, id: String(tempId), backendId: null } : model;
+    });
+}
+
 export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
     // ── 1. Map each backend node list to UI node models ──────────────────
-    const startNodes = (graph.start_node_list ?? []).map((n) => mapStartNodeToModel(n));
-    const crewNodes = (graph.crew_node_list ?? []).map((n) => mapCrewNodeToModel(n));
-    const pythonNodes = (graph.python_node_list ?? []).map((n) => mapPythonNodeToModel(n));
-    const llmNodes = (graph.llm_node_list ?? []).map((n) => mapLLMNodeToModel(n));
-    const fileExtractorNodes = (graph.file_extractor_node_list ?? []).map((n) => mapFileExtractorNodeToModel(n));
-    const audioToTextNodes = (graph.audio_transcription_node_list ?? []).map((n) => mapAudioToTextNodeToModel(n));
-    const subGraphNodes = (graph.subgraph_node_list ?? []).map((n) => mapSubGraphNodeToModel(n));
-    const noteNodes = (graph.graph_note_list ?? []).map((n) => mapGraphNoteToModel(n));
-    const webhookTriggerNodes = (graph.webhook_trigger_node_list ?? []).map((n) => mapWebhookTriggerNodeToModel(n));
-    const telegramTriggerNodes = (graph.telegram_trigger_node_list ?? []).map((n) => mapTelegramTriggerNodeToModel(n));
-    const scheduleTriggerNodes = (graph.schedule_trigger_node_list ?? []).map((n) => mapScheduleTriggerNodeToModel(n));
-    const endNodes = (graph.end_node_list ?? []).map((n) => mapEndNodeToModel(n));
-    const codeAgentNodes = (graph.code_agent_node_list ?? []).map((n) => mapCodeAgentNodeToModel(n));
-    const decisionTableNodes = (graph.decision_table_node_list ?? []).map((n) => mapDecisionTableNodeToModel(n));
-    const classificationDecisionTableNodes = (graph.classification_decision_table_node_list ?? []).map((n) =>
-        mapClassificationDecisionTableNodeToModel(n)
+    const startNodes = mapList(graph.start_node_list, mapStartNodeToModel);
+    const crewNodes = mapList(graph.crew_node_list, mapCrewNodeToModel);
+    const pythonNodes = mapList(graph.python_node_list, mapPythonNodeToModel);
+    const llmNodes = mapList(graph.llm_node_list, mapLLMNodeToModel);
+    const fileExtractorNodes = mapList(graph.file_extractor_node_list, mapFileExtractorNodeToModel);
+    const audioToTextNodes = mapList(graph.audio_transcription_node_list, mapAudioToTextNodeToModel);
+    const subGraphNodes = mapList(graph.subgraph_node_list, mapSubGraphNodeToModel);
+    const noteNodes = mapList(graph.graph_note_list, mapGraphNoteToModel);
+    const webhookTriggerNodes = mapList(graph.webhook_trigger_node_list, mapWebhookTriggerNodeToModel);
+    const telegramTriggerNodes = mapList(graph.telegram_trigger_node_list, mapTelegramTriggerNodeToModel);
+    const scheduleTriggerNodes = mapList(graph.schedule_trigger_node_list, mapScheduleTriggerNodeToModel);
+    const endNodes = mapList(graph.end_node_list, mapEndNodeToModel);
+    const codeAgentNodes = mapList(graph.code_agent_node_list, mapCodeAgentNodeToModel);
+    const decisionTableNodes = mapList(graph.decision_table_node_list, mapDecisionTableNodeToModel);
+    const classificationDecisionTableNodes = mapList(
+        graph.classification_decision_table_node_list,
+        mapClassificationDecisionTableNodeToModel
     );
 
     // ── 2. Combine into one flat node list ───────────────────────────────
@@ -97,7 +113,7 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
 
     // ── 5. Map all edge lists to canvas connections ──────────────────────
     const allConnections: ConnectionModel[] = [
-        ...mapEdgesToConnections(graph.edge_list ?? [], backendIdToUuid, nodeByBackendId),
+        ...mapEdgesToConnections(graph.edge_list ?? [], backendIdToUuid, nodeByBackendId, nodeByUuid),
         ...mapDecisionTableToConnections(
             decisionTableNodes,
             backendIdToUuid,

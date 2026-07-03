@@ -22,13 +22,17 @@ function extractPersistedWaypoints(metadata: Record<string, unknown>): IPoint[] 
 export function mapEdgesToConnections(
     edges: Edge[],
     backendIdToUuid: Map<number, string>,
-    nodeByBackendId: Map<number, NodeModel>
+    nodeByBackendId: Map<number, NodeModel>,
+    nodeByUuid?: Map<string, NodeModel>
 ): ConnectionModel[] {
     const connections: ConnectionModel[] = [];
 
     for (const edge of edges) {
-        const sourceUuid = backendIdToUuid.get(edge.start_node_id);
-        const targetUuid = backendIdToUuid.get(edge.end_node_id);
+        // Live-snapshot edges that are not persisted yet reference their
+        // endpoints by temp_id — which is the node's canvas id on all clients.
+        const e = edge as Edge & { start_temp_id?: string; end_temp_id?: string };
+        const sourceUuid = e.start_temp_id ?? backendIdToUuid.get(edge.start_node_id);
+        const targetUuid = e.end_temp_id ?? backendIdToUuid.get(edge.end_node_id);
         if (!sourceUuid || !targetUuid) {
             console.warn('[load:edges] skip edge: missing node uuid mapping', {
                 edgeId: edge.id,
@@ -40,8 +44,8 @@ export function mapEdgesToConnections(
             continue;
         }
 
-        const sourceNode = nodeByBackendId.get(edge.start_node_id);
-        const targetNode = nodeByBackendId.get(edge.end_node_id);
+        const sourceNode = nodeByUuid?.get(sourceUuid) ?? nodeByBackendId.get(edge.start_node_id);
+        const targetNode = nodeByUuid?.get(targetUuid) ?? nodeByBackendId.get(edge.end_node_id);
         if (!sourceNode || !targetNode) {
             console.warn('[load:edges] skip edge: missing node model by backend id', {
                 edgeId: edge.id,
@@ -69,7 +73,7 @@ export function mapEdgesToConnections(
                 `${sourceUuid}_${getOutputPortRole(sourceNode.type)}` as CustomPortId,
                 `${targetUuid}_${getInputPortRole(targetNode.type)}` as CustomPortId
             ),
-            data: edge,
+            data: edge.id != null ? edge : null,
             ...(restoredWaypoints ? { waypoints: restoredWaypoints, userAdjustedWaypoints: true } : {}),
         });
     }
