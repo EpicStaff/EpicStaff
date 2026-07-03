@@ -1,6 +1,8 @@
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from knowledge_new.enums import DocumentStatusEnum
 from src.shared.models.base import ValueObject
 
 from src.shared.enums.knowledge_new import GraphSearchMethodEnum, RAGStrategy
@@ -79,6 +81,7 @@ class PrechunkResponse(ValueObject):
     """Preview chunks produced for a `PrechunkRequest`."""
 
     request: PrechunkRequest
+    status: DocumentStatusEnum
     chunks: list[PreviewChunk]
 
 
