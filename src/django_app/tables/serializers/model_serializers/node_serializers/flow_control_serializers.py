@@ -24,6 +24,9 @@ from tables.serializers.utils.mixins import NestedPythonCodeMixin
 from tables.services.persistent_variables_service import (
     PersistentVariablesService,
 )
+from tables.services.classification_decision_table_node_children import (
+    sync_classification_decision_table_children,
+)
 from tables.constants.variables_constants import (
     DOMAIN_VARIABLES_KEY,
     DOMAIN_ORGANIZATION_KEY,
@@ -158,6 +161,15 @@ class ClassificationConditionGroupSerializer(serializers.ModelSerializer):
     classification_decision_table_node = serializers.PrimaryKeyRelatedField(
         read_only=True
     )
+    prompt = serializers.PrimaryKeyRelatedField(
+        queryset=ClassificationDecisionTablePrompt.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+    prompt_key = serializers.SerializerMethodField()
+
+    def get_prompt_key(self, obj):
+        return obj.prompt.prompt_key if obj.prompt else None
 
     class Meta:
         model = ClassificationConditionGroup
@@ -212,8 +224,8 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
-        condition_groups_data = validated_data.pop("condition_groups", [])
-        prompt_configs_data = validated_data.pop("prompt_configs", [])
+        condition_groups_data = validated_data.pop("condition_groups", None)
+        prompt_configs_data = validated_data.pop("prompt_configs", None)
         pre_python_code_data = validated_data.pop("pre_python_code", None)
         post_python_code_data = validated_data.pop("post_python_code", None)
 
@@ -231,16 +243,10 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
             **validated_data,
         )
 
-        for group_data in condition_groups_data:
-            ClassificationConditionGroup.objects.create(
-                classification_decision_table_node=node, **group_data
-            )
-
-        ClassificationDecisionTablePrompt.objects.bulk_create(
-            [
-                ClassificationDecisionTablePrompt(cdt_node=node, **prompt_data)
-                for prompt_data in prompt_configs_data
-            ]
+        sync_classification_decision_table_children(
+            node,
+            prompt_configs_data=prompt_configs_data,
+            condition_groups_data=condition_groups_data,
         )
 
         return node
@@ -289,20 +295,10 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
 
-        if condition_groups_data is not None:
-            instance.condition_groups.all().delete()
-            for group_data in condition_groups_data:
-                ClassificationConditionGroup.objects.create(
-                    classification_decision_table_node=instance, **group_data
-                )
-
-        if prompt_configs_data is not None:
-            instance.prompt_configs.all().delete()
-            ClassificationDecisionTablePrompt.objects.bulk_create(
-                [
-                    ClassificationDecisionTablePrompt(cdt_node=instance, **prompt_data)
-                    for prompt_data in prompt_configs_data
-                ]
-            )
+        sync_classification_decision_table_children(
+            instance,
+            prompt_configs_data=prompt_configs_data,
+            condition_groups_data=condition_groups_data,
+        )
 
         return instance

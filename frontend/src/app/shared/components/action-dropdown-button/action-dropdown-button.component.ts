@@ -24,6 +24,7 @@ export class ActionDropdownButtonComponent {
     items = input.required<ActionDropdownItem[]>();
     disabled = input<boolean>(false);
     loading = input<boolean>(false);
+    panelWidth = input<number>(160);
 
     mainClick = output<void>();
     itemClick = output<ActionDropdownItem>();

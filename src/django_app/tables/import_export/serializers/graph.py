@@ -112,13 +112,14 @@ class ClassificationConditionGroupImportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ClassificationConditionGroup
-        fields = "__all__"
+        exclude = ["created_at", "updated_at"]
 
 
 class ClassificationDecisionTablePromptImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = ClassificationDecisionTablePrompt
         fields = [
+            "id",
             "prompt_key",
             "prompt_text",
             "llm_config",
@@ -233,7 +234,7 @@ class GraphNoteImportSerializer(BaseNodeImportSerializer):
 class EdgeImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Edge
-        exclude = ["created_at", "updated_at"]
+        exclude = ["created_at", "updated_at", "graph"]
 
 
 class ConditionalEdgeImportSerializer(serializers.ModelSerializer):
