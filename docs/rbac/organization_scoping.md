@@ -54,6 +54,10 @@ This rule is applied uniformly wherever such references appear, including (non-e
 - **Label** — `parent`.
 - **Bulk save** (`POST /api/graphs/{pk}/save/`) enforces the same on every referenced entity — see
   `bulk_save/BULK_SAVE_API.md`.
+- **Storage / files** — every operation is scoped to the active org (files are keyed by org, gated by
+  the `FILES` permission). `add-to-graph` / `graph-files` reject a graph id outside the active org
+  exactly like a missing one; cross-org file `move` / `copy` is superadmin-only. See
+  `storage/STORAGE_API_REFERENCE.md`.
 
 ## Example
 
