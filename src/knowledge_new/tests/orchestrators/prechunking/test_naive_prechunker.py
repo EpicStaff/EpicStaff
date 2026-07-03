@@ -84,7 +84,9 @@ async def test_success_full_flow_returns_response_and_status_transitions():
     response = await NaivePrechunker(uow).execute(expected_request)
 
     expected_chunks = [PreviewChunk(text="alpha"), PreviewChunk(text="beta")]
-    assert response == PrechunkResponse(request=expected_request, chunks=expected_chunks)
+    assert response == PrechunkResponse(
+        request=expected_request, status=DocumentStatusEnum.CHUNKED, chunks=expected_chunks
+    )
     assert response.request == expected_request
     assert response.chunks == expected_chunks
     assert uow.naive_rag_repo.status_log == [
@@ -117,7 +119,9 @@ async def test_already_chunked_same_config_short_circuits_without_status_changes
 
     response = await NaivePrechunker(uow).execute(request)
 
-    assert response == PrechunkResponse(request=request, chunks=existing_chunks)
+    assert response == PrechunkResponse(
+        request=request, status=DocumentStatusEnum.CHUNKED, chunks=existing_chunks
+    )
     assert response.chunks == existing_chunks  # old chunks returned unchanged
     assert uow.naive_rag_repo.status_log == []  # no CHUNKING/CHUNKED transitions
     assert uow.naive_rag_repo.save_chunks_calls == []
@@ -152,7 +156,9 @@ async def test_already_chunked_different_config_rechunks_and_replaces_preview():
     response = await NaivePrechunker(uow).execute(request)
 
     new_chunks = [PreviewChunk(text="alpha"), PreviewChunk(text="beta")]
-    assert response == PrechunkResponse(request=request, chunks=new_chunks)
+    assert response == PrechunkResponse(
+        request=request, status=DocumentStatusEnum.CHUNKED, chunks=new_chunks
+    )
     assert response.chunks != old_chunks  # response differs from the stale preview
     assert document.preview_chunks == new_chunks  # old preview replaced by new
     assert uow.naive_rag_repo.status_log == [
