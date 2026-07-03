@@ -46,6 +46,7 @@ export class ToggleSwitchComponent implements ControlValueAccessor {
     onToggle() {
         if (this.isDisabled) return;
         const next = !this.checked;
+        this.checked = next;
         this.checkedChange.emit(next);
         this.onChange(next);
         this.onTouched();
