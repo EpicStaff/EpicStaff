@@ -32,7 +32,7 @@ class NaivePrechunker(AbstractPrechunker):
         document.status = DocumentStatusEnum.CHUNKED
         await self._update_document(request.rag_id, document)
 
-        return PrechunkResponse(request=request, chunks=document.preview_chunks)
+        return PrechunkResponse(request=request, status=document.status, chunks=document.preview_chunks)
 
     async def on_cancel(self, request: PrechunkRequest):
         if (document := self.state.get("document")) is not None:

@@ -590,6 +590,7 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
             {
                 "naive_rag_id": naive_rag_id,
                 "document_config_id": document_config_id,
+                "status": response.status,
                 "chunk_count": len(response.chunks),
                 "chunks": [chunk.model_dump() for chunk in response.chunks],
             },

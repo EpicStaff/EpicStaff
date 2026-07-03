@@ -1,6 +1,8 @@
+from django.contrib.postgres.fields import ArrayField
 from django.db import models
 import uuid
 
+from django.db.models import PositiveIntegerField
 from pgvector.django import VectorField
 
 
