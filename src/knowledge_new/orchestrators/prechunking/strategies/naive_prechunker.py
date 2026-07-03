@@ -14,7 +14,7 @@ class NaivePrechunker(AbstractPrechunker):
         self.state["last_status"] = document.status
 
         if document.status == DocumentStatusEnum.CHUNKED and not document.is_required_reindex():
-            return PrechunkResponse(request=request, chunks=document.preview_chunks)
+            return PrechunkResponse(request=request, status=document.status, chunks=document.preview_chunks)
 
         document.status = DocumentStatusEnum.CHUNKING
         await self._update_document(request.rag_id, document)
