@@ -14,7 +14,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import relationship
 from utils import utcnow
 
@@ -25,6 +25,7 @@ class NaiveRag(BaseModel):
     naive_rag_id = Column(Integer, primary_key=True, autoincrement=True)
     rag_status = Column(String(20), default="new")
     error_message = Column(Text, nullable=True)
+    indexing_document_config_ids = Column(ARRAY(Integer), nullable=False, server_default="{}")
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     indexed_at = Column(DateTime, nullable=True)
