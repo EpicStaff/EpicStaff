@@ -206,7 +206,7 @@
                                             [message]="drillEntry.message"
                                             [subgraphName]="drillEntry.subgraphName"
                                             [showViewNestedMessages]="drillEntry.hasNestedMessages"
-                                            [nestedMessagesCount]="rootView.drilldownEntries.length"
+                                            [nestedMessagesCount]="drillEntry.nestedMessagesCount"
                                             [isNestedMessagesOpen]="drillEntry.isNestedMessagesOpen"
                                             (viewNestedMessages)="onViewNestedMessages(drillEntry.message)"
                                         ></app-subgraph-start-message>

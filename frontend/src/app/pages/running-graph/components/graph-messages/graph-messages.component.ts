@@ -902,7 +902,13 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         const message = this.messages[context.index];
         const data = message?.message_data as StartSubflowMessageData | undefined;
         if (!data?.messages_count_by_subgraph || data.subgraph_id == null) return 0;
-        return data.messages_count_by_subgraph[data.subgraph_id] ?? 0;
+        const countsByType = data.messages_count_by_subgraph[data.subgraph_id];
+        if (!countsByType) return 0;
+        let sum = 0;
+        for (const [type, count] of Object.entries(countsByType)) {
+            if (RENDERABLE_MESSAGE_TYPES.has(type)) sum += count;
+        }
+        return sum;
     }
 
     private getLiveNestedMessagesCount(context: MessageContext): number {

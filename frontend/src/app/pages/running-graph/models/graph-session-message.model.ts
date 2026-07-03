@@ -163,7 +163,7 @@ export interface StartSubflowMessageData {
     state: SubflowState;
     subgraph_id: number;
     subgraph_execution_id?: string;
-    messages_count_by_subgraph: Record<number, number>;
+    messages_count_by_subgraph: Record<number, Record<string, number>>;
     message_type: MessageType.SUBGRAPH_START;
 }
 

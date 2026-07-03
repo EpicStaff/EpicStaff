@@ -60,34 +60,48 @@ class GraphSessionMessageSerializer(serializers.ModelSerializer):
             GraphSessionMessage.objects.filter(
                 session_id=instance.session_id,
                 message_data__subgraph_execution_ids__contains=[exec_id],
-            ).values("parent_subgraph_execution_id", "message_data")
+            )
+            .exclude(id=instance.id)
+            .values("parent_subgraph_execution_id", "message_data", "name")
         )
 
         exec_to_subgraph_id = {exec_id: message_data.get("subgraph_id")}
-        counts_by_exec_id = {}
+        counts_by_exec_id: dict[str, dict[str, int]] = {}
+        seen_code_agent_streams = set()
         for msg in subtree_messages:
-            parent_exec = msg["parent_subgraph_execution_id"]
-            if parent_exec:
-                parent_exec = str(parent_exec)
-                counts_by_exec_id[parent_exec] = counts_by_exec_id.get(parent_exec, 0) + 1
-
             msg_data = msg["message_data"] or {}
-            if msg_data.get("message_type") == "subgraph_start":
+            msg_type = msg_data.get("message_type")
+            if not msg_type:
+                continue
+
+            if msg_type == "subgraph_start":
                 child_exec = msg_data.get("subgraph_execution_id")
                 child_sgid = msg_data.get("subgraph_id")
                 if child_exec and child_sgid is not None:
                     exec_to_subgraph_id[child_exec] = child_sgid
 
-        if exec_id in counts_by_exec_id:
-            counts_by_exec_id[exec_id] = max(0, counts_by_exec_id[exec_id] - 1)
+            parent_exec = msg["parent_subgraph_execution_id"]
+            if not parent_exec:
+                continue
+            parent_exec = str(parent_exec)
 
-        messages_count_by_subgraph = {}
-        for e_id, count in counts_by_exec_id.items():
+            if msg_type == "code_agent_stream":
+                dedup_key = (parent_exec, msg["name"])
+                if dedup_key in seen_code_agent_streams:
+                    continue
+                seen_code_agent_streams.add(dedup_key)
+
+            per_type = counts_by_exec_id.setdefault(parent_exec, {})
+            per_type[msg_type] = per_type.get(msg_type, 0) + 1
+
+        messages_count_by_subgraph: dict[int, dict[str, int]] = {}
+        for e_id, per_type in counts_by_exec_id.items():
             sgid = exec_to_subgraph_id.get(e_id)
-            if sgid is not None:
-                messages_count_by_subgraph[sgid] = (
-                        messages_count_by_subgraph.get(sgid, 0) + count
-                )
+            if sgid is None:
+                continue
+            agg = messages_count_by_subgraph.setdefault(sgid, {})
+            for msg_type, count in per_type.items():
+                agg[msg_type] = agg.get(msg_type, 0) + count
 
         data["message_data"] = {
             **message_data,
