@@ -7,6 +7,7 @@ import { StorageDragService } from '../../../../../files/services/storage-drag.s
 import { ExplorerSectionId } from '../../../../models/explorer.model';
 import { BranchTreeNode } from '../../../../models/tree-node.model';
 import { AgentsPageStore } from '../../../../services/agents-page-store.service';
+import { SurfaceDragService } from '../../../../services/surface-drag.service';
 import { AgentsSectionComponent } from './agents-section/agents-section.component';
 import { BranchesFilterComponent } from './branches-filter/branches-filter.component';
 import { ExplorerContextMenuComponent } from './explorer-context-menu/explorer-context-menu.component';
@@ -14,7 +15,11 @@ import { ExplorerMenuItem, ExplorerMenuPosition } from './explorer-context-menu/
 import { SectionHeaderComponent } from './section-header/section-header.component';
 import { StorageSectionComponent } from './storage-section/storage-section.component';
 import { SurfacesSectionComponent } from './surfaces-section/surfaces-section.component';
-import { ExplorerTreeMenuEvent, ExplorerTreeMenuOpenEvent } from './tree-node/tree-node.component';
+import {
+    ExplorerTreeAttachSurfaceEvent,
+    ExplorerTreeMenuEvent,
+    ExplorerTreeMenuOpenEvent,
+} from './tree-node/tree-node.component';
 import { TreeSearchComponent } from './tree-search/tree-search.component';
 
 @Component({
@@ -37,6 +42,7 @@ import { TreeSearchComponent } from './tree-search/tree-search.component';
 export class ExplorerComponent {
     protected readonly store: AgentsPageStore = inject(AgentsPageStore);
     private readonly storageDrag = inject(StorageDragService);
+    private readonly surfaceDrag = inject(SurfaceDragService);
     private readonly orderedSectionIds: ExplorerSectionId[] = ['agents', 'surfaces', 'storage'];
     private readonly optionalOrder: ExplorerSectionId[] = ['surfaces', 'storage'];
 
@@ -47,6 +53,7 @@ export class ExplorerComponent {
     readonly addInSection = output<ExplorerSectionId>();
     readonly close = output<void>();
     readonly treeMenuAction = output<ExplorerTreeMenuEvent>();
+    readonly attachSharedSurface = output<ExplorerTreeAttachSurfaceEvent>();
 
     readonly filterOpen = signal<boolean>(false);
 
@@ -76,9 +83,9 @@ export class ExplorerComponent {
         this.selectNode.emit(node);
     }
 
-    /** Spring-load a collapsed section while a storage item is dragged over its header. */
+    /** Spring-load a collapsed section while a storage item or shared surface is dragged over its header. */
     onSectionDragHover(id: ExplorerSectionId): void {
-        if (!this.storageDrag.isDragging()) return;
+        if (!this.storageDrag.isDragging() && !this.surfaceDrag.isDragging()) return;
         if (!this.store.isSectionExpanded(id)) this.store.toggleSection(id);
     }
 
@@ -88,6 +95,10 @@ export class ExplorerComponent {
 
     onTreeMenuAction(event: ExplorerTreeMenuEvent): void {
         this.treeMenuAction.emit(event);
+    }
+
+    onAttachSharedSurface(event: ExplorerTreeAttachSurfaceEvent): void {
+        this.attachSharedSurface.emit(event);
     }
 
     onTreeMenuOpen(event: ExplorerTreeMenuOpenEvent): void {

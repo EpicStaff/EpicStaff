@@ -20,7 +20,13 @@
     >
         @for (category of categories; track categoryTrackBy($index, category)) {
             @let categorySurfaces = surfacesByCategory().get(category.id) ?? [];
-            <section class="surface-category">
+            <section
+                class="surface-category"
+                [class.surface-category--drop-target]="sharedDropCategoryId() === category.id"
+                (dragover)="onSharedDragOver($event, category.id)"
+                (dragleave)="onSharedDragLeave($event, category.id)"
+                (drop)="onSharedDrop($event, category.id)"
+            >
                 <div class="surface-category__header">
                     <div class="surface-category__title">
                         <app-svg-icon

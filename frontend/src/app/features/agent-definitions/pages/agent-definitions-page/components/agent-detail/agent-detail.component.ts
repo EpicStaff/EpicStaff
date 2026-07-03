@@ -31,6 +31,7 @@ import {
 import { AgentDefinition } from '../../../../models/agent-definition.model';
 import { CreateSurfaceRequest, PartialUpdateSurfaceRequest, Surface } from '../../../../models/surface.model';
 import { SurfaceCategoryId } from '../../../../models/surface-category.model';
+import { SurfaceDragService } from '../../../../services/surface-drag.service';
 import { INSTRUCTIONS_ACCEPT_ATTR, readFileAsText } from '../../../../utils/instructions-file.utils';
 import {
     AgentAdditionalSettingsData,
@@ -87,6 +88,7 @@ export class AgentDetailComponent implements OnInit {
     private readonly confirm: ConfirmationDialogService = inject(ConfirmationDialogService);
     private readonly storageApiService: StorageApiService = inject(StorageApiService);
     private readonly storageDrag = inject(StorageDragService);
+    private readonly surfaceDrag = inject(SurfaceDragService);
     private readonly toast: ToastService = inject(ToastService);
 
     readonly acceptAttr = INSTRUCTIONS_ACCEPT_ATTR;
@@ -108,6 +110,7 @@ export class AgentDetailComponent implements OnInit {
     readonly extractText = output<string>();
     readonly createSurface = output<{ body: CreateSurfaceRequest; place: SurfaceCategoryId }>();
     readonly addFromShared = output<number>();
+    readonly dropSharedSurface = output<{ surfaceId: number; category: SurfaceCategoryId }>();
     readonly moveSurfacePlace = output<{ id: number; place: SurfaceCategoryId }>();
     readonly makeSharedSurface = output<number>();
     readonly detachSurface = output<number>();
@@ -178,10 +181,10 @@ export class AgentDetailComponent implements OnInit {
             untracked(() => this.revertToSnapshot());
         });
 
-        // While a storage item is being dragged, an agent shown in the preview opens
-        // straight on its Surfaces section (Basics collapsed) — it's the drop area.
+        // While a storage item or shared surface is being dragged, an agent shown in the
+        // preview opens straight on its Surfaces section (Basics collapsed) — it's the drop area.
         effect(() => {
-            if (!this.storageDrag.isDragging()) return;
+            if (!this.storageDrag.isDragging() && !this.surfaceDrag.isDragging()) return;
             if (!this.agent()) return;
             untracked(() => this.sections.set({ basics: false, surfaces: true }));
         });

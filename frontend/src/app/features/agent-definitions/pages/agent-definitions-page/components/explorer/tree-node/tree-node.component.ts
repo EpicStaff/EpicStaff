@@ -5,6 +5,7 @@ import { DragHoverDirective } from '@shared/directives';
 import { StorageDragService } from '../../../../../../files/services/storage-drag.service';
 import { ExplorerSelection } from '../../../../../models/explorer.model';
 import { BranchTreeNode, nodeKey } from '../../../../../models/tree-node.model';
+import { SurfaceDragService } from '../../../../../services/surface-drag.service';
 import { ExplorerMenuItem, ExplorerMenuPosition } from '../explorer-context-menu/explorer-menu.model';
 import { menuPositionFromClick, treeNodeMenuItems } from '../explorer-menu.util';
 
@@ -19,6 +20,11 @@ export interface ExplorerTreeMenuOpenEvent {
     position: ExplorerMenuPosition;
 }
 
+export interface ExplorerTreeAttachSurfaceEvent {
+    agentId: number;
+    surfaceId: number;
+}
+
 @Component({
     selector: 'app-tree-node',
     imports: [AppSvgIconComponent, DragHoverDirective],
@@ -28,6 +34,7 @@ export interface ExplorerTreeMenuOpenEvent {
 })
 export class TreeNodeComponent implements OnInit {
     private readonly storageDrag = inject(StorageDragService);
+    private readonly surfaceDrag = inject(SurfaceDragService);
 
     node = input.required<BranchTreeNode>();
     depth = input(0);
@@ -36,6 +43,7 @@ export class TreeNodeComponent implements OnInit {
     selectNode = output<BranchTreeNode>();
     menuAction = output<ExplorerTreeMenuEvent>();
     menuOpen = output<ExplorerTreeMenuOpenEvent>();
+    attachSurface = output<ExplorerTreeAttachSurfaceEvent>();
 
     readonly expanded = signal(false);
     readonly hovered = signal(false);
@@ -127,14 +135,85 @@ export class TreeNodeComponent implements OnInit {
         this.selectNode.emit(this.node());
     }
 
-    /** While a storage item is dragged over a row: reveal children and show the node in the preview. */
+    /** While a storage item or shared surface is dragged over a row: reveal children and show the node in the preview. */
     onRowDragHover(): void {
-        if (!this.storageDrag.isDragging()) return;
         const n = this.node();
-        if ((n.kind === 'agent' || n.kind === 'group') && !this.expanded()) {
-            this.expanded.set(true);
+        if (this.storageDrag.isDragging()) {
+            if ((n.kind === 'agent' || n.kind === 'group') && !this.expanded()) {
+                this.expanded.set(true);
+            }
+            this.selectNode.emit(n);
+            return;
         }
+        if (!this.surfaceDrag.isDragging()) return;
+        if (n.kind !== 'agent' && n.kind !== 'group') return;
+        if (!this.expanded()) this.expanded.set(true);
         this.selectNode.emit(n);
+    }
+
+    // ---- shared surface drag & drop ----
+    readonly surfaceDropActive = signal<boolean>(false);
+
+    readonly isDraggableSurface = computed(() => {
+        const n = this.node();
+        return n.kind === 'surface' && n.ownerAgentId == null;
+    });
+
+    onSurfaceDragStart(event: DragEvent): void {
+        const n = this.node();
+        if (n.kind !== 'surface' || n.ownerAgentId != null) {
+            event.preventDefault();
+            return;
+        }
+        if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'copy';
+            event.dataTransfer.setData('text/plain', n.label);
+        }
+        this.surfaceDrag.start({ id: n.surfaceId, name: n.label });
+    }
+
+    onSurfaceDragEnd(): void {
+        this.surfaceDrag.end();
+    }
+
+    private dropAgentId(): number | null {
+        const n = this.node();
+        if (n.kind === 'agent') return n.agentId;
+        if (n.kind === 'group') {
+            const match = /^agent:(\d+):surfaces$/.exec(n.id);
+            return match ? Number(match[1]) : null;
+        }
+        return null;
+    }
+
+    onSurfaceDragOver(event: DragEvent): void {
+        if (!this.surfaceDrag.isDragging() || this.dropAgentId() == null) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+        this.surfaceDropActive.set(true);
+    }
+
+    onSurfaceDragLeave(event: DragEvent): void {
+        const host = event.currentTarget as HTMLElement;
+        const related = event.relatedTarget as Node | null;
+        if (related && host.contains(related)) return;
+        this.surfaceDropActive.set(false);
+    }
+
+    onSurfaceDrop(event: DragEvent): void {
+        this.surfaceDropActive.set(false);
+        const agentId = this.dropAgentId();
+        const dragged = this.surfaceDrag.dragged();
+        if (agentId == null || !dragged) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.surfaceDrag.end();
+        this.attachSurface.emit({ agentId, surfaceId: dragged.id });
+    }
+
+    onChildAttachSurface(event: ExplorerTreeAttachSurfaceEvent): void {
+        this.attachSurface.emit(event);
     }
 
     onChevron(event: Event): void {

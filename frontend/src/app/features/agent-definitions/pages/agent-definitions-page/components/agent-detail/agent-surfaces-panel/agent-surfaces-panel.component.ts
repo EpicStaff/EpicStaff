@@ -1,5 +1,15 @@
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
-import { ChangeDetectionStrategy, Component, computed, effect, input, output, signal, viewChild } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    effect,
+    inject,
+    input,
+    output,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
     AppSvgIconComponent,
@@ -17,6 +27,7 @@ import {
     SurfaceCategoryConfig,
     SurfaceCategoryId,
 } from '../../../../../models/surface-category.model';
+import { SurfaceDragService } from '../../../../../services/surface-drag.service';
 import { SurfaceCardComponent } from './surface-card/surface-card.component';
 
 @Component({
@@ -35,6 +46,8 @@ import { SurfaceCardComponent } from './surface-card/surface-card.component';
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AgentSurfacesPanelComponent {
+    private readonly surfaceDrag = inject(SurfaceDragService);
+
     surfaces = input<Surface[]>([]);
     agentId = input<number | null>(null);
     defaultSurfaces = input<AgentDefaultSurface[]>([]);
@@ -42,6 +55,7 @@ export class AgentSurfacesPanelComponent {
 
     readonly createSurface = output<{ body: CreateSurfaceRequest; place: SurfaceCategoryId }>();
     readonly addFromShared = output<number>();
+    readonly dropSharedSurface = output<{ surfaceId: number; category: SurfaceCategoryId }>();
     readonly moveSurfacePlace = output<{ id: number; place: SurfaceCategoryId }>();
     readonly makeSharedSurface = output<number>();
     readonly detachSurface = output<number>();
@@ -97,6 +111,32 @@ export class AgentSurfacesPanelComponent {
 
         return result;
     });
+
+    // ---- shared surface drop from the sidebar tree ----
+    readonly sharedDropCategoryId = signal<SurfaceCategoryId | null>(null);
+
+    onSharedDragOver(event: DragEvent, category: SurfaceCategoryId): void {
+        if (!this.surfaceDrag.isDragging()) return;
+        event.preventDefault();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+        this.sharedDropCategoryId.set(category);
+    }
+
+    onSharedDragLeave(event: DragEvent, category: SurfaceCategoryId): void {
+        const host = event.currentTarget as HTMLElement;
+        const related = event.relatedTarget as Node | null;
+        if (related && host.contains(related)) return;
+        if (this.sharedDropCategoryId() === category) this.sharedDropCategoryId.set(null);
+    }
+
+    onSharedDrop(event: DragEvent, category: SurfaceCategoryId): void {
+        this.sharedDropCategoryId.set(null);
+        const dragged = this.surfaceDrag.dragged();
+        if (!dragged) return;
+        event.preventDefault();
+        this.surfaceDrag.end();
+        this.dropSharedSurface.emit({ surfaceId: dragged.id, category });
+    }
 
     onSurfaceDropped(event: CdkDragDrop<SurfaceCategoryId>, target: SurfaceCategoryId): void {
         const surface = event.item.data as Surface;

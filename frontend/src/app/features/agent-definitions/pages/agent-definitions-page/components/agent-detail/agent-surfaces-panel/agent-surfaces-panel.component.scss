@@ -49,6 +49,12 @@
     flex-direction: column;
     gap: 0.5rem;
     min-width: 0;
+    border: 1px solid transparent;
+    border-radius: 8px;
+
+    &--drop-target {
+        border-color: var(--accent-color);
+    }
 }
 
 .surface-category__header {

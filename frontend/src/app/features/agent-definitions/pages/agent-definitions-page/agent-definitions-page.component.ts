@@ -42,7 +42,10 @@ import { AgentDocPreviewComponent } from './components/agent-doc-preview/agent-d
 import { DetailCrumb, DetailHeaderComponent } from './components/detail-header/detail-header.component';
 import { EmptyDetailComponent } from './components/empty-detail/empty-detail.component';
 import { ExplorerComponent } from './components/explorer/explorer.component';
-import { ExplorerTreeMenuEvent } from './components/explorer/tree-node/tree-node.component';
+import {
+    ExplorerTreeAttachSurfaceEvent,
+    ExplorerTreeMenuEvent,
+} from './components/explorer/tree-node/tree-node.component';
 import { SurfaceDetailComponent } from './components/surface-detail/surface-detail.component';
 import {
     SurfaceSummaryDialogComponent,
@@ -183,6 +186,10 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             if (section === 'surfaces') this.store.beginCreateSurface();
             else if (section === 'agents') this.store.beginCreateAgent();
         });
+    }
+
+    onExplorerAttachSharedSurface(event: ExplorerTreeAttachSurfaceEvent): void {
+        this.store.dropSharedSurfaceOnAgent(event.surfaceId, event.agentId);
     }
 
     onAddAgent(): void {
