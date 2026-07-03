@@ -4,7 +4,7 @@ import inspect
 from collections.abc import Awaitable, Callable
 
 from errors import RepositoryError
-from models import Document, EmbeddingConfig, FoundChunk, IndexedChunk, PreviewChunk
+from models import Document, EmbeddingConfig, FoundChunk, IndexedChunk, PreviewChunk, Rag
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -38,6 +38,22 @@ class BaseSQLAlchemyRepository:
 
 class AbstractNaiveRagRepository(RepositoryErrorWrapper, abc.ABC):
     """Abstract repository for naive RAG persistence operations."""
+
+    @abc.abstractmethod
+    async def get_rag(self, rag_id: int) -> Rag | None:
+        """Return the `Rag` aggregate identified by `rag_id`, or `None` if not found.
+
+        Args:
+            rag_id: Primary key of the RAG collection.
+        """
+
+    @abc.abstractmethod
+    async def update_rag(self, rag: Rag):
+        """Persist `rag`'s current status and `indexing_document_ids`.
+
+        Args:
+            rag: The `Rag` aggregate.
+        """
 
     @abc.abstractmethod
     async def get_embedding_config(self, rag_id: int) -> EmbeddingConfig | None:
@@ -79,15 +95,6 @@ class AbstractNaiveRagRepository(RepositoryErrorWrapper, abc.ABC):
 
         Args:
             rag_id: Primary key of the RAG collection.
-        """
-
-    @abc.abstractmethod
-    async def update_rag_status(self, rag_id: int, status: str):
-        """Persist a new status string for the RAG collection identified by `rag_id`.
-
-        Args:
-            rag_id: Primary key of the RAG collection.
-            status: New status value to persist.
         """
 
     @abc.abstractmethod

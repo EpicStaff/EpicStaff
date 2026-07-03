@@ -11,12 +11,42 @@ from database.models import (
 from database.models import EmbeddingConfig as ORMEmbeddingConfig
 from database.repositories.base import AbstractNaiveRagRepository, BaseSQLAlchemyRepository
 from enums import DocumentStatusEnum
-from models import ChunkingConfig, Document, EmbeddingConfig, FoundChunk, IndexedChunk, PreviewChunk
-from sqlalchemy import delete, select, update, exists
+from models import (
+    ChunkingConfig,
+    Document,
+    EmbeddingConfig,
+    FoundChunk,
+    IndexedChunk,
+    PreviewChunk,
+    Rag,
+)
+from sqlalchemy import delete, exists, select, update
 from sqlalchemy.orm import joinedload, selectinload
 
 
 class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRepository):
+    async def get_rag(self, rag_id: int) -> Rag | None:
+        result = await self._session.execute(
+            select(NaiveRag).where(NaiveRag.naive_rag_id == rag_id)
+        )
+        if orm_rag := result.scalar_one_or_none():
+            return Rag(
+                id=orm_rag.naive_rag_id,
+                status=orm_rag.rag_status,
+                indexing_document_ids=set(orm_rag.indexing_document_config_ids),
+            )
+        return None
+
+    async def update_rag(self, rag: Rag):
+        await self._session.execute(
+            update(NaiveRag)
+            .where(NaiveRag.naive_rag_id == rag.id)
+            .values(
+                rag_status=rag.status,
+                indexing_document_config_ids=list(rag.indexing_document_ids),
+            )
+        )
+
     async def get_embedding_config(self, rag_id: int) -> EmbeddingConfig | None:
         result = await self._session.execute(
             select(Provider.name, ORMEmbeddingConfig.api_key, EmbeddingModel.name)
@@ -86,11 +116,6 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
             )
         )
         return result.scalar_one()
-
-    async def update_rag_status(self, rag_id: int, status: str):
-        await self._session.execute(
-            update(NaiveRag).where(NaiveRag.naive_rag_id == rag_id).values(rag_status=status)
-        )
 
     async def save_preview_chunks(self, document_id: int, chunks: list[PreviewChunk]):
         await self._session.execute(

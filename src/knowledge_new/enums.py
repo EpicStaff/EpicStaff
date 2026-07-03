@@ -1,6 +1,6 @@
 from enum import StrEnum
 
-from src.shared.enums.knowledge_new import GraphSearchMethodEnum, RAGStrategy, DocumentStatusEnum
+from src.shared.enums.knowledge_new import DocumentStatusEnum, GraphSearchMethodEnum, RAGStrategy
 
 __all__ = [
     "ChunkStrategyEnum",
