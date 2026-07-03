@@ -33,6 +33,16 @@ COPY ./knowledge/libraries/ ./libraries
 # Install dependencies inside project .venv
 RUN poetry install --no-ansi --no-root
 
+# Pre-cache the gpt2 HF tokenizer (chonkie default chunker) and the tiktoken
+# encodings actually used at runtime (cl100k_base — GraphRAG's TiktokenTokenizer
+# default) into the image, under /app so it survives the COPY --from=builder
+# below. Cache dirs must live under /app since nothing outside it is copied
+# into the runtime stage.
+ENV HF_HOME=/app/.cache/huggingface \
+    TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken
+RUN poetry run python -c "from tokenizers import Tokenizer; Tokenizer.from_pretrained('gpt2')" \
+    && poetry run python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
+
 # Copy application source
 COPY ./knowledge /app/src/knowledge
 COPY ./shared /app/src/shared
@@ -47,11 +57,23 @@ RUN apt-get update && apt-get install -y libpq-dev \
 # Copy built app from builder
 COPY --from=builder /app /app
 
-# Add virtualenv to PATH
+# Add virtualenv to PATH.
+# HF_HOME/TIKTOKEN_CACHE_DIR point at the pre-baked caches from the builder
+# stage (EST-3245: no default-deploy runtime fetch to huggingface.co or
+# openaipublic.blob.core.windows.net). HF_HUB_OFFLINE=1 makes any future
+# accidental HF Hub call fail loudly instead of phoning home.
+# LITELLM_LOCAL_MODEL_COST_MAP=True: litellm otherwise does a live GET to
+# raw.githubusercontent.com on every `import litellm` (confirmed by runtime
+# trace, see docs/backend-runtime-fetch-audit.md item 7) — knowledge pulls in
+# litellm transitively via the graphrag poetry group.
 ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONPATH=/app \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    HF_HOME=/app/.cache/huggingface \
+    TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken \
+    HF_HUB_OFFLINE=1 \
+    LITELLM_LOCAL_MODEL_COST_MAP=True
 
 WORKDIR /app/src/knowledge
 

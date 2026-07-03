@@ -30,6 +30,15 @@ COPY ./realtime/pyproject.toml ./realtime/poetry.lock ./
 # Install dependencies inside project .venv
 RUN poetry install --no-ansi --no-root
 
+# Pre-cache the tiktoken encoding used by the chat-buffer tokenizer
+# (utils/tokenizer.py -> tiktoken.encoding_for_model, hardcoded default
+# model="gpt-4o" -> o200k_base) so no realtime/voice session downloads the
+# BPE file from openaipublic.blob.core.windows.net on first use. Cache dir
+# must live under /app since nothing outside it is copied into the runtime
+# stage below.
+ENV TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken
+RUN poetry run python -c "import tiktoken; tiktoken.encoding_for_model('gpt-4o')"
+
 # Copy application source
 COPY ./realtime /app/src/realtime
 COPY ./shared /app/src/shared
@@ -46,11 +55,15 @@ RUN apt-get update && apt-get install -y \
 # Copy built app from builder
 COPY --from=builder /app /app
 
-# Add virtualenv to PATH
+# Add virtualenv to PATH.
+# TIKTOKEN_CACHE_DIR points at the pre-baked cache from the builder stage
+# (EST-3245: chat-buffer tokenizer must not fetch from
+# openaipublic.blob.core.windows.net at runtime).
 ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONPATH=/app \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken
 
 WORKDIR /app/src/realtime
 
