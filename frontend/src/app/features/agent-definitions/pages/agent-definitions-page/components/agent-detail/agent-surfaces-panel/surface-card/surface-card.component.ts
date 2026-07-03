@@ -74,6 +74,7 @@ import {
     buildSurfaceFileStats,
     filesInFolder,
 } from '../../../../../../utils/surface-file-tree.util';
+import { SurfaceKnowledgeAdvancedComponent } from './surface-knowledge-advanced/surface-knowledge-advanced.component';
 
 @Component({
     selector: 'app-surface-card',
@@ -85,6 +86,7 @@ import {
         SelectDropdownComponent,
         SelectDropdownTriggerDirective,
         EnterBlurDirective,
+        SurfaceKnowledgeAdvancedComponent,
     ],
     templateUrl: './surface-card.component.html',
     styleUrls: ['./surface-card.component.scss'],
@@ -352,7 +354,10 @@ export class SurfaceCardComponent {
     );
 
     readonly collectionOptions = this.catalogs.collections;
-    readonly selectedCollectionIds = signal<Set<number>>(new Set());
+    readonly knowledgeItems = signal<SurfaceKnowledge[]>([]);
+    readonly selectedCollectionIds = computed<ReadonlySet<number>>(
+        () => new Set(this.knowledgeItems().map((k) => k.collection))
+    );
     readonly collectionAdvancedOpen = signal<boolean>(false);
 
     readonly collectionHeaderAction: SelectDropdownHeaderAction = { icon: 'plus', label: 'Add new collection' };
@@ -374,7 +379,7 @@ export class SurfaceCardComponent {
                 ...(s?.mcp_tools ?? []).map((t) => `mcp:${t.mcp_tool}`),
             ]);
             this.selectedToolKeys.set(toolKeys);
-            this.selectedCollectionIds.set(new Set((s?.knowledge ?? []).map((k) => k.collection)));
+            this.knowledgeItems.set(s?.knowledge ?? []);
             this.fileRows.set(
                 (s?.storage_items ?? []).map((si) => {
                     const meta = untracked(() => this.metaFor(si.storage_file));
@@ -663,25 +668,29 @@ export class SurfaceCardComponent {
 
     onCollectionsChange(values: unknown[]): void {
         if (this.readOnly()) return;
-        this.selectedCollectionIds.set(new Set(values as number[]));
+        const ids = values as number[];
+        const byId = new Map(this.knowledgeItems().map((k) => [k.collection, k]));
+        this.knowledgeItems.set(ids.map((id) => byId.get(id) ?? { collection: id }));
+        this.emitKnowledgeChange();
+    }
+
+    onKnowledgeConfigChange(item: SurfaceKnowledge): void {
+        if (this.readOnly()) return;
+        this.knowledgeItems.update((items) => items.map((k) => (k.collection === item.collection ? item : k)));
         this.emitKnowledgeChange();
     }
 
     removeCollection(id: number, event: MouseEvent): void {
         if (this.readOnly()) return;
         event.stopPropagation();
-        this.selectedCollectionIds.update((set) => {
-            const next = new Set(set);
-            next.delete(id);
-            return next;
-        });
+        this.knowledgeItems.update((items) => items.filter((k) => k.collection !== id));
         this.emitKnowledgeChange();
     }
 
     clearCollections(event: MouseEvent): void {
         event.stopPropagation();
         this.confirmClearBundle('collections', this.selectedCollectionIds().size, () => {
-            this.selectedCollectionIds.set(new Set());
+            this.knowledgeItems.set([]);
             this.emitKnowledgeChange();
         });
     }
@@ -715,13 +724,17 @@ export class SurfaceCardComponent {
             )
             .subscribe(({ collection_id, cols }) => {
                 if (collection_id == null || !cols.some((c) => c.id === collection_id)) return;
-                this.selectedCollectionIds.update((set) => new Set([...set, collection_id]));
+                this.knowledgeItems.update((items) =>
+                    items.some((k) => k.collection === collection_id)
+                        ? items
+                        : [...items, { collection: collection_id }]
+                );
                 this.emitKnowledgeChange();
             });
     }
 
     private buildKnowledgePayload(): SurfaceKnowledge[] {
-        return [...this.selectedCollectionIds()].map((collection) => ({ collection }));
+        return this.knowledgeItems();
     }
 
     private emitKnowledgeChange(): void {

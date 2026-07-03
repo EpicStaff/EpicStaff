@@ -22,14 +22,30 @@ export interface SurfaceStorageItem {
 
 export interface SurfaceNaiveSearchConfig {
     search_limit: number;
-    similarity_threshold: string;
+    similarity_threshold: string | number;
+}
+
+export interface SurfaceGraphBasicSearchConfig {
+    prompt?: string | null;
+    k: number;
+    max_context_tokens: number;
+}
+
+export interface SurfaceGraphLocalSearchConfig {
+    prompt?: string | null;
+    text_unit_prop: number;
+    community_prop: number;
+    conversation_history_max_turns: number;
+    top_k_entities: number;
+    top_k_relationships: number;
+    max_context_tokens: number;
 }
 
 export interface SurfaceKnowledge {
     collection: number;
     naive_search_config?: SurfaceNaiveSearchConfig | null;
-    graph_basic_search_config?: unknown | null;
-    graph_local_search_config?: unknown | null;
+    graph_basic_search_config?: SurfaceGraphBasicSearchConfig | null;
+    graph_local_search_config?: SurfaceGraphLocalSearchConfig | null;
 }
 
 export interface Surface {

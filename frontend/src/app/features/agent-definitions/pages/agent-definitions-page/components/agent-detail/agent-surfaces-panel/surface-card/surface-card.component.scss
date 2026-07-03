@@ -589,6 +589,13 @@ $remove-col: 28px;
     padding: 0 0 0 calc(0.75rem + var(--row-depth, 0) * 16px);
 }
 
+.file-table--readonly {
+    .file-table__head,
+    .file-row {
+        grid-template-columns: minmax(0, 1fr) repeat(var(--perm-count, 4), $perm-col);
+    }
+}
+
 .file-table__head {
     height: 32px;
     min-height: 32px;
