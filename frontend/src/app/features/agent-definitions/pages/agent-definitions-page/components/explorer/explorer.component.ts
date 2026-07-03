@@ -1,7 +1,9 @@
 import { ChangeDetectionStrategy, Component, inject, output, signal, viewChild } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
+import { DragHoverDirective } from '@shared/directives';
 
 import { StorageItem } from '../../../../../files/models/storage.models';
+import { StorageDragService } from '../../../../../files/services/storage-drag.service';
 import { ExplorerSectionId } from '../../../../models/explorer.model';
 import { BranchTreeNode } from '../../../../models/tree-node.model';
 import { AgentsPageStore } from '../../../../services/agents-page-store.service';
@@ -26,6 +28,7 @@ import { TreeSearchComponent } from './tree-search/tree-search.component';
         SurfacesSectionComponent,
         StorageSectionComponent,
         ExplorerContextMenuComponent,
+        DragHoverDirective,
     ],
     templateUrl: './explorer.component.html',
     styleUrls: ['./explorer.component.scss'],
@@ -33,6 +36,7 @@ import { TreeSearchComponent } from './tree-search/tree-search.component';
 })
 export class ExplorerComponent {
     protected readonly store: AgentsPageStore = inject(AgentsPageStore);
+    private readonly storageDrag = inject(StorageDragService);
     private readonly orderedSectionIds: ExplorerSectionId[] = ['agents', 'surfaces', 'storage'];
     private readonly optionalOrder: ExplorerSectionId[] = ['surfaces', 'storage'];
 
@@ -70,6 +74,12 @@ export class ExplorerComponent {
 
     onSelect(node: BranchTreeNode): void {
         this.selectNode.emit(node);
+    }
+
+    /** Spring-load a collapsed section while a storage item is dragged over its header. */
+    onSectionDragHover(id: ExplorerSectionId): void {
+        if (!this.storageDrag.isDragging()) return;
+        if (!this.store.isSectionExpanded(id)) this.store.toggleSection(id);
     }
 
     onStorageSelect(item: StorageItem): void {

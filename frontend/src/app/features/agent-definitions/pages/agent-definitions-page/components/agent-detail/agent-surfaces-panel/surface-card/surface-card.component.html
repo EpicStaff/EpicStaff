@@ -2,6 +2,12 @@
     class="surface-card"
     [class.surface-card--readonly]="readOnly()"
     [class.surface-card--expanded]="expanded() || hideHeader()"
+    [class.surface-card--drop-target]="fileDropActive()"
+    appDragHover
+    (dragHover)="onStorageDragHover()"
+    (dragover)="onStorageDragOver($event)"
+    (dragleave)="onStorageDragLeave($event)"
+    (drop)="onStorageDrop($event)"
 >
     @if (!hideHeader()) {
         <div class="surface-card__header">

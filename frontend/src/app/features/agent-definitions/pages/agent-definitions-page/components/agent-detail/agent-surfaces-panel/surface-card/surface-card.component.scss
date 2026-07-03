@@ -570,6 +570,10 @@
         border-color: var(--accent-color);
     }
 }
+.surface-card--drop-target {
+    border-color: var(--accent-color);
+}
+
 $perm-col: 48px;
 $remove-col: 28px;
 

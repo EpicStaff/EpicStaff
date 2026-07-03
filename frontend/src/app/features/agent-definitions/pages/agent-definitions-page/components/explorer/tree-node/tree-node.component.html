@@ -5,6 +5,8 @@
             class="row row--group"
             [class.row--selected]="isSelected()"
             [style.padding-left.px]="12 + depth() * 20"
+            appDragHover
+            (dragHover)="onRowDragHover()"
             (click)="onRowClick()"
             (mouseenter)="onMouseEnter()"
             (mouseleave)="onMouseLeave()"
@@ -44,6 +46,8 @@
             class="row row--surface"
             [class.row--selected]="isSelected()"
             [style.padding-left.px]="12 + depth() * 20"
+            appDragHover
+            (dragHover)="onRowDragHover()"
             (click)="onRowClick()"
             (mouseenter)="onMouseEnter()"
             (mouseleave)="onMouseLeave()"
@@ -83,6 +87,8 @@
             class="row row--agent"
             [class.row--selected]="isSelected()"
             [style.padding-left.px]="12 + depth() * 20"
+            appDragHover
+            (dragHover)="onRowDragHover()"
             (click)="onRowClick()"
             (mouseenter)="onMouseEnter()"
             (mouseleave)="onMouseLeave()"

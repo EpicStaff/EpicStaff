@@ -1,6 +1,8 @@
-import { ChangeDetectionStrategy, Component, computed, input, OnInit, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, output, signal } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
+import { DragHoverDirective } from '@shared/directives';
 
+import { StorageDragService } from '../../../../../../files/services/storage-drag.service';
 import { ExplorerSelection } from '../../../../../models/explorer.model';
 import { BranchTreeNode, nodeKey } from '../../../../../models/tree-node.model';
 import { ExplorerMenuItem, ExplorerMenuPosition } from '../explorer-context-menu/explorer-menu.model';
@@ -19,12 +21,14 @@ export interface ExplorerTreeMenuOpenEvent {
 
 @Component({
     selector: 'app-tree-node',
-    imports: [AppSvgIconComponent],
+    imports: [AppSvgIconComponent, DragHoverDirective],
     templateUrl: './tree-node.component.html',
     styleUrls: ['./tree-node.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TreeNodeComponent implements OnInit {
+    private readonly storageDrag = inject(StorageDragService);
+
     node = input.required<BranchTreeNode>();
     depth = input(0);
     selected = input<ExplorerSelection>({ kind: null, id: null });
@@ -121,6 +125,16 @@ export class TreeNodeComponent implements OnInit {
 
     onRowClick(): void {
         this.selectNode.emit(this.node());
+    }
+
+    /** While a storage item is dragged over a row: reveal children and show the node in the preview. */
+    onRowDragHover(): void {
+        if (!this.storageDrag.isDragging()) return;
+        const n = this.node();
+        if ((n.kind === 'agent' || n.kind === 'group') && !this.expanded()) {
+            this.expanded.set(true);
+        }
+        this.selectNode.emit(n);
     }
 
     onChevron(event: Event): void {

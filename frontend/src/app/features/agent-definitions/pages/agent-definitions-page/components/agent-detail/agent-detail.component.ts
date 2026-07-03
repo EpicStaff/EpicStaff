@@ -23,6 +23,7 @@ import { FullLLMConfig, FullLLMConfigService } from '@shared/services';
 import { ToastService } from '../../../../../../services/notifications/toast.service';
 import { StorageItem } from '../../../../../files/models/storage.models';
 import { StorageApiService } from '../../../../../files/services/storage-api.service';
+import { StorageDragService } from '../../../../../files/services/storage-drag.service';
 import {
     ExtractTextFromStorageDialogComponent,
     ExtractTextFromStorageDialogResult,
@@ -85,6 +86,7 @@ export class AgentDetailComponent implements OnInit {
     private readonly dialog: Dialog = inject(Dialog);
     private readonly confirm: ConfirmationDialogService = inject(ConfirmationDialogService);
     private readonly storageApiService: StorageApiService = inject(StorageApiService);
+    private readonly storageDrag = inject(StorageDragService);
     private readonly toast: ToastService = inject(ToastService);
 
     readonly acceptAttr = INSTRUCTIONS_ACCEPT_ATTR;
@@ -174,6 +176,14 @@ export class AgentDetailComponent implements OnInit {
         effect(() => {
             this.saveErrorTick();
             untracked(() => this.revertToSnapshot());
+        });
+
+        // While a storage item is being dragged, an agent shown in the preview opens
+        // straight on its Surfaces section (Basics collapsed) — it's the drop area.
+        effect(() => {
+            if (!this.storageDrag.isDragging()) return;
+            if (!this.agent()) return;
+            untracked(() => this.sections.set({ basics: false, surfaces: true }));
         });
     }
 
