@@ -1,6 +1,8 @@
 import pytest
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 from dotdict import DotDict
+from services.agent_task_service import AgentTaskService
+from services.graph.events import StopEvent
 from services.graph.graph_session_manager_service import (
     SessionGraphBuilder,
     RedisService,
@@ -9,6 +11,7 @@ from services.graph.graph_session_manager_service import (
     KnowledgeSearchService,
 )
 from src.shared.models import (
+    AgentDefinitionData,
     ConditionData,
     ConditionGroupData,
     LLMConfigData,
@@ -19,6 +22,7 @@ from src.shared.models import (
     PythonNodeData,
     EdgeData,
     DecisionTableNodeData,
+    TaskNodeData,
 )
 import asyncio
 
@@ -37,6 +41,7 @@ def mock_services():
             redis_service=redis_service
         ),
         "knowledge_search_service": Mock(spec=KnowledgeSearchService),
+        "agent_task_service": Mock(spec=AgentTaskService),
     }
 
 
@@ -211,3 +216,63 @@ def test_run_decision_table_node_with_error(mock_services, mock_session_data):
         assert last_chunk["variables"]["end_output"] == "ERROR HANDELED"
 
     asyncio.run(run_graph())
+
+
+def _task_node_session_data(mock_llm_data) -> SessionData:
+    return SessionData(
+        id=456,
+        initial_state={},
+        graph=GraphData(
+            name="task_node_graph",
+            task_node_list=[
+                TaskNodeData(
+                    node_name="task_node_1",
+                    agent_definition=AgentDefinitionData(
+                        id=1,
+                        name="researcher",
+                        instructions="Research the topic.",
+                        llm=mock_llm_data,
+                    ),
+                    instructions="Summarize the findings.",
+                )
+            ],
+            edge_list=[EdgeData(start_key="__start__", end_key="task_node_1")],
+            entrypoint="task_node_1",
+            end_node=None,
+        ),
+    )
+
+
+def test_compile_from_schema_with_task_node(mock_services, mock_llm_data):
+    builder = SessionGraphBuilder(
+        session_id=456,
+        redis_service=mock_services["redis_service"],
+        crew_parser_service=mock_services["crew_parser_service"],
+        python_code_executor_service=mock_services["python_code_executor_service"],
+        crewai_output_channel="output",
+        knowledge_search_service=mock_services["knowledge_search_service"],
+        stop_event=StopEvent(),
+        agent_task_service=mock_services["agent_task_service"],
+    )
+
+    compiled_graph = builder.compile_from_schema(_task_node_session_data(mock_llm_data))
+
+    assert compiled_graph is not None
+
+
+def test_compile_from_schema_with_task_node_raises_without_service(
+    mock_llm_data, mock_services
+):
+    builder = SessionGraphBuilder(
+        session_id=456,
+        redis_service=mock_services["redis_service"],
+        crew_parser_service=mock_services["crew_parser_service"],
+        python_code_executor_service=mock_services["python_code_executor_service"],
+        crewai_output_channel="output",
+        knowledge_search_service=mock_services["knowledge_search_service"],
+        stop_event=StopEvent(),
+        agent_task_service=None,
+    )
+
+    with pytest.raises(RuntimeError):
+        builder.compile_from_schema(_task_node_session_data(mock_llm_data))

@@ -28,6 +28,7 @@ from tables.models.graph_models import (
     ScheduleTriggerNode,
     StartNode,
     SubGraphNode,
+    TaskNode,
     TelegramTriggerNode,
     WebhookTriggerNode,
 )
@@ -45,11 +46,13 @@ from src.shared.models import (
     SessionData,
     SubGraphData,
     SubGraphNodeData,
+    TaskNodeData,
     TelegramTriggerNodeData,
 )
 from tables.constants.variables_constants import DOMAIN_VARIABLES_KEY
 from tables.services.converter_service import ConverterService
 from tables.services.redis_service import RedisService
+from tables.services.task_node_payload_service import TaskNodePayloadService
 from tables.validators.end_node_validator import EndNodeValidator
 from tables.validators.file_node_validator import FileNodeValidator
 from tables.validators.subgraph_validator import SubGraphValidator
@@ -365,6 +368,33 @@ class SessionManagerService(metaclass=SingletonMeta):
                 graph=graph.pk
             ).prefetch_related("condition_groups")
         )
+        task_node_list = (
+            TaskNode.objects.filter(graph=graph.pk)
+            .select_related(
+                "inline_surface",
+                "agent_definition",
+                "agent_definition__llm_config",
+                "agent_definition__llm_config__model",
+                "agent_definition__llm_config__model__llm_provider",
+                "agent_definition__fcm_llm_config",
+                "agent_definition__fcm_llm_config__model",
+                "agent_definition__fcm_llm_config__model__llm_provider",
+            )
+            .prefetch_related(
+                "surface_list__python_tools",
+                "surface_list__mcp_tools",
+                "surface_list__storage_items",
+                "surface_list__knowledge__naive_search_config",
+                "surface_list__knowledge__graph_basic_search_config",
+                "surface_list__knowledge__graph_local_search_config",
+                "inline_surface__python_tools",
+                "inline_surface__mcp_tools",
+                "inline_surface__storage_items",
+                "inline_surface__knowledge__naive_search_config",
+                "inline_surface__knowledge__graph_basic_search_config",
+                "inline_surface__knowledge__graph_local_search_config",
+            )
+        )
 
         if file_extractor_node_list:
             self.file_node_validator.validate_file_nodes(file_extractor_node_list)
@@ -398,6 +428,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             telegram_trigger_node_list,
             schedule_trigger_node_list,
             code_agent_node_list,
+            task_node_list,
         ):
             for n in node_list:
                 name_cache[n.id] = f"{n.node_name} #{n.id}"
@@ -499,6 +530,17 @@ class SessionManagerService(metaclass=SingletonMeta):
                 )
             )
 
+        task_node_payload_service = TaskNodePayloadService(cv)
+        task_node_data_list: list[TaskNodeData] = [
+            task_node_payload_service.build_task_node_data(
+                item,
+                node_name=resolver(item.id),
+                graph_id=graph.pk,
+                session_id=session.pk if session else None,
+            )
+            for item in task_node_list
+        ]
+
         entrypoint = session.entrypoint if session else None
         start_node_obj = StartNode.objects.filter(graph=graph.pk).first()
         start_node_id = start_node_obj.id if start_node_obj else None
@@ -586,6 +628,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             file_extractor_node_list=file_extractor_node_data_list,
             audio_transcription_node_list=audio_transcription_node_data_list,
             code_agent_node_list=code_agent_node_data_list,
+            task_node_list=task_node_data_list,
             edge_list=edge_data_list,
             conditional_edge_list=conditional_edge_data_list,
             decision_table_node_list=decision_table_node_data_list,

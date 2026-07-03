@@ -5,6 +5,7 @@ from tables.serializers.model_serializers.crew_serializers import (
 )
 from src.shared.models import (
     AgentData,
+    ArgsSchema,
     AudioTranscriptionNodeData,
     BaseToolData,
     ClassificationConditionGroupData,
@@ -40,6 +41,7 @@ from src.shared.models import (
     TelegramTriggerNodeFieldData,
     ToolConfigData,
     WebhookTriggerNodeData,
+    variables_to_args_schema,
 )
 
 from tables.models import (
@@ -581,13 +583,13 @@ class ConverterService(metaclass=SingletonMeta):
         python_code_tool: PythonCodeTool,
         graph_id: int | None = None,
         session_id: int | None = None,
-    ) -> PythonCodeToolData:      
+    ) -> PythonCodeToolData:
         storage_allowed_paths = None
         storage_org_prefix = None
         if python_code_tool.use_storage and graph_id is not None:
             storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
-            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)        
-        
+            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+
         variables = python_code_tool.variables or []
         user_defaults = self._get_user_input_defaults(variables)
         python_code_data = self.convert_python_code_to_pydantic(
@@ -606,6 +608,7 @@ class ConverterService(metaclass=SingletonMeta):
             name=python_code_tool.name,
             description=python_code_tool.description,
             variables=variables,
+            args_schema=ArgsSchema(**variables_to_args_schema(variables)),
             python_code=python_code_data,
         )
 
@@ -646,6 +649,7 @@ class ConverterService(metaclass=SingletonMeta):
             name=python_code_tool.name,
             description=python_code_tool.description,
             variables=variables,
+            args_schema=ArgsSchema(**variables_to_args_schema(variables)),
             python_code=python_code_data,
         )
 

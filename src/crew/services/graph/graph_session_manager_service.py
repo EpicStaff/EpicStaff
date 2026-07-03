@@ -8,6 +8,7 @@ import asyncio
 from loguru import logger
 from dotdict import DotDict
 
+from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
 from services.graph.exceptions import StopSession
 from services.crew.crew_parser_service import CrewParserService
@@ -43,6 +44,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         crewai_output_channel: str,
         stop_session_channel: str,
         knowledge_search_service: KnowledgeSearchService,
+        agent_task_service: AgentTaskService | None = None,
         max_concurrent_sessions: int = 20,
     ):
         """
@@ -54,6 +56,8 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             python_code_executor_service (RunPythonCodeService): The service responsible for executing Python code.
             session_schema_channel (str): The Redis channel for listening to session schema messages.
             crewai_output_channel (str): The Redis channel for publishing CrewAI output messages.
+            agent_task_service (AgentTaskService | None): The service responsible for delegating TaskNode
+                execution to the agent microservice.
         """
 
         self.redis_service = redis_service
@@ -64,6 +68,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         self.crewai_output_channel = crewai_output_channel
         self.stop_session_channel = stop_session_channel
         self.knowledge_search_service = knowledge_search_service
+        self.agent_task_service = agent_task_service
         self.session_graph_pool: dict[int, SessionCoroItem] = {}
         self.session_queue = asyncio.Queue()
         self._worker_task: asyncio.Task | None = None
@@ -88,6 +93,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 crewai_output_channel=self.crewai_output_channel,
                 knowledge_search_service=self.knowledge_search_service,
                 stop_event=stop_event,
+                agent_task_service=self.agent_task_service,
             )
 
             graph = session_graph_builder.compile_from_schema(session_data=session_data)

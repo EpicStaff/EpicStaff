@@ -14,7 +14,9 @@ from services.graph.nodes import (
     EndNode,
 )
 
+from services.agent_task_service import AgentTaskService
 from services.graph.nodes.code_agent_node import CodeAgentNode
+from services.graph.nodes.task_node import TaskNode
 from services.graph.nodes.webhook_trigger_node import WebhookTriggerNode
 from services.graph.nodes.telegram_trigger_node import TelegramTriggerNode
 from services.graph.nodes.schedule_trigger_node import ScheduleTriggerNode
@@ -54,6 +56,7 @@ class SessionGraphBuilder:
         crewai_output_channel: str,
         knowledge_search_service: KnowledgeSearchService,
         stop_event: StopEvent,
+        agent_task_service: AgentTaskService | None = None,
     ):
         """
         Initializes the SessionGraphBuilder with the required services and session details.
@@ -64,6 +67,8 @@ class SessionGraphBuilder:
             crew_parser_service (CrewParserService): The service responsible for parsing crew data.
             python_code_executor_service (RunPythonCodeService): The service responsible for executing Python code.
             crewai_output_channel (str): The output channel for CrewAI communications.
+            agent_task_service (AgentTaskService | None): The service responsible for delegating TaskNode
+                execution to the agent microservice. Required if the graph schema contains task nodes.
         """
 
         self.session_id = session_id
@@ -72,6 +77,7 @@ class SessionGraphBuilder:
         self.python_code_executor_service = python_code_executor_service
         self.crewai_output_channel = crewai_output_channel
         self.knowledge_search_service = knowledge_search_service
+        self.agent_task_service = agent_task_service
 
         self._graph_builder = StateGraph(State)
         self._end_node_result: dict | None = {}
@@ -266,6 +272,22 @@ class SessionGraphBuilder:
         """
 
         schema = session_data.graph
+
+        if schema.task_node_list and self.agent_task_service is None:
+            raise RuntimeError(
+                f"Graph '{schema.name}' contains {len(schema.task_node_list)} task node(s) "
+                "but no agent_task_service was provided to SessionGraphBuilder."
+            )
+
+        for task_node_data in schema.task_node_list:
+            task_node = TaskNode(
+                session_id=self.session_id,
+                node_name=task_node_data.node_name,
+                stop_event=self.stop_event,
+                task_node_data=task_node_data,
+                agent_task_service=self.agent_task_service,
+            )
+            self.add_node(task_node)
 
         for crew_node_data in schema.crew_node_list:
             crew_node = CrewNode(
