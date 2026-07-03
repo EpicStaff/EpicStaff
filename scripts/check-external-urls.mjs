@@ -30,7 +30,29 @@ const DENY_PATTERNS = [
   /use\.fontawesome\.com/i,
   /use\.typekit\.net/i,
   /https?:\/\/cdn\./i, // generic cdn.* hosts
+  /\.pages\.dev/i, // Cloudflare Pages hosts (e.g. epicstaffchat.pages.dev)
 ];
+
+// frontend/src/index.html is fully vendored: after EST-3245 there is NO
+// legitimate external <script src> / <link href> in it. Any active tag
+// pointing at an external origin is a violation regardless of the domain
+// denylist. HTML comments are stripped first, so commented-out examples
+// and doc links do not trip the check.
+const INDEX_HTML_FILE = 'frontend/src/index.html';
+const INDEX_HTML_EXTRA_PATTERNS = [
+  // Absolute (https?://host) and protocol-relative (//host) externals both
+  // fail; root-relative single-slash paths (/epicchat-widget/...) are fine.
+  /<script\b[^>]*\bsrc\s*=\s*["']?(?:https?:)?\/\//i,
+  /<link\b[^>]*\bhref\s*=\s*["']?(?:https?:)?\/\//i,
+];
+
+// Blank out <!-- ... --> blocks while preserving newlines so reported line
+// numbers still match the original file.
+function stripHtmlComments(content) {
+  return content.replace(/<!--[\s\S]*?-->/g, (comment) =>
+    comment.replace(/[^\r\n]/g, ' ')
+  );
+}
 
 // Files / directory subtrees to scan (relative to repo root).
 const SCAN_FILES = ['frontend/src/index.html', 'frontend/angular.json'];
@@ -101,11 +123,16 @@ for (const rel of WIDGET_FILES) {
 
 const violations = [];
 
+const indexHtmlFull = join(repoRoot, INDEX_HTML_FILE);
+
 for (const file of files) {
-  const patterns = widgetFiles.has(file)
-    ? [...DENY_PATTERNS, ...WIDGET_EXTRA_PATTERNS]
-    : DENY_PATTERNS;
-  const lines = readFileSync(file, 'utf8').split(/\r?\n/);
+  const isIndexHtml = file === indexHtmlFull;
+  let patterns = DENY_PATTERNS;
+  if (widgetFiles.has(file)) patterns = [...DENY_PATTERNS, ...WIDGET_EXTRA_PATTERNS];
+  if (isIndexHtml) patterns = [...DENY_PATTERNS, ...INDEX_HTML_EXTRA_PATTERNS];
+  let content = readFileSync(file, 'utf8');
+  if (isIndexHtml) content = stripHtmlComments(content);
+  const lines = content.split(/\r?\n/);
   lines.forEach((line, index) => {
     const pattern = patterns.find((re) => re.test(line));
     if (!pattern) return;
