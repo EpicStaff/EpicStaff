@@ -2,10 +2,9 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from knowledge_new.enums import DocumentStatusEnum
 from src.shared.models.base import ValueObject
 
-from src.shared.enums.knowledge_new import GraphSearchMethodEnum, RAGStrategy
+from src.shared.enums.knowledge_new import GraphSearchMethodEnum, RAGStrategy, DocumentStatusEnum
 
 __all__ = [
     "BaseSearchConfig",

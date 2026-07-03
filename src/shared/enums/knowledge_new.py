@@ -3,6 +3,7 @@ from enum import StrEnum
 __all__ = [
     "GraphSearchMethodEnum",
     "RAGStrategy",
+    "DocumentStatusEnum",
 ]
 
 
@@ -16,3 +17,12 @@ class GraphSearchMethodEnum(StrEnum):
     LOCAL = "local"
     GLOBAL = "global"
     DRIFT = "drift"
+
+class DocumentStatusEnum(StrEnum):
+    NEW = "new"
+    CHUNKING = "chunking"
+    CHUNKED = "chunked"
+    INDEXING = "indexing"
+    COMPLETED = "completed"
+    WARNING = "warning"
+    FAILED = "failed"
