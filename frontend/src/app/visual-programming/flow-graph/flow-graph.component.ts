@@ -794,6 +794,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     };
 
                     this.flowService.updateNode(updatedNode);
+                    this.wsService.sendNodeUpdated(
+                        updatedNode,
+                        this.currentFlowId!,
+                        this.flowState.nodes,
+                        this.flowService.connections()
+                    );
                     this.cd.detectChanges();
                 }
             });
@@ -1429,6 +1435,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             };
 
             this.flowService.updateNode(updatedStartNode);
+            this.wsService.sendNodeUpdated(
+                updatedStartNode,
+                this.currentFlowId!,
+                this.flowState.nodes,
+                this.flowService.connections()
+            );
         } else {
             this.toastService.error('Start node not found');
         }
