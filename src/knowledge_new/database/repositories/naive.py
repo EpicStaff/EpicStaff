@@ -10,8 +10,9 @@ from database.models import (
 )
 from database.models import EmbeddingConfig as ORMEmbeddingConfig
 from database.repositories.base import AbstractNaiveRagRepository, BaseSQLAlchemyRepository
+from enums import DocumentStatusEnum
 from models import ChunkingConfig, Document, EmbeddingConfig, FoundChunk, IndexedChunk, PreviewChunk
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select, update, exists
 from sqlalchemy.orm import joinedload, selectinload
 
 
@@ -47,10 +48,13 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
             return self._to_document(config)
         return None
 
-    async def get_all_documents(self, rag_id: int) -> list[Document]:
+    async def get_documents(self, rag_id: int, ids: frozenset[int]) -> list[Document]:
         result = await self._session.execute(
             select(NaiveRagDocumentConfig)
-            .where(NaiveRagDocumentConfig.naive_rag_id == rag_id)
+            .where(
+                NaiveRagDocumentConfig.naive_rag_id == rag_id,
+                NaiveRagDocumentConfig.naive_rag_document_id.in_(ids),
+            )
             .options(
                 joinedload(NaiveRagDocumentConfig.document).joinedload(
                     DocumentMetadata.document_content
@@ -60,6 +64,28 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
         )
         configs = result.scalars().all()
         return [self._to_document(c) for c in configs]
+
+    async def has_completed_document(self, rag_id: int) -> bool:
+        result = await self._session.execute(
+            select(
+                exists().where(
+                    NaiveRagDocumentConfig.naive_rag_id == rag_id,
+                    NaiveRagDocumentConfig.status == DocumentStatusEnum.COMPLETED,
+                )
+            )
+        )
+        return result.scalar_one()
+
+    async def has_failed_document(self, rag_id: int) -> bool:
+        result = await self._session.execute(
+            select(
+                exists().where(
+                    NaiveRagDocumentConfig.naive_rag_id == rag_id,
+                    NaiveRagDocumentConfig.status == DocumentStatusEnum.FAILED,
+                )
+            )
+        )
+        return result.scalar_one()
 
     async def update_rag_status(self, rag_id: int, status: str):
         await self._session.execute(

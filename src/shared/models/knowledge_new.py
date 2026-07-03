@@ -87,6 +87,7 @@ class IndexRequest(ValueObject):
 
     rag_id: int
     rag_strategy: RAGStrategy
+    document_ids: frozenset[int]
 
 
 class SearchRequest(ValueObject):
