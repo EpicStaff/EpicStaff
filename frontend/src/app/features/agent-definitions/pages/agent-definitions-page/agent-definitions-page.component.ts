@@ -42,7 +42,10 @@ import { AgentDocPreviewComponent } from './components/agent-doc-preview/agent-d
 import { DetailCrumb, DetailHeaderComponent } from './components/detail-header/detail-header.component';
 import { EmptyDetailComponent } from './components/empty-detail/empty-detail.component';
 import { ExplorerComponent } from './components/explorer/explorer.component';
-import { ExplorerTreeMenuEvent } from './components/explorer/tree-node/tree-node.component';
+import {
+    ExplorerTreeAttachSurfaceEvent,
+    ExplorerTreeMenuEvent,
+} from './components/explorer/tree-node/tree-node.component';
 import { SurfaceDetailComponent } from './components/surface-detail/surface-detail.component';
 import {
     SurfaceSummaryDialogComponent,
@@ -185,6 +188,10 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         });
     }
 
+    onExplorerAttachSharedSurface(event: ExplorerTreeAttachSurfaceEvent): void {
+        this.store.dropSharedSurfaceOnAgent(event.surfaceId, event.agentId);
+    }
+
     onAddAgent(): void {
         this.guardUnsaved(() => this.store.beginCreateAgent());
     }
@@ -223,6 +230,12 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
                 instructions: payload.instructions,
                 llm_config: payload.llm_config,
                 fcm_llm_config: payload.fcm_llm_config,
+                max_iter: payload.max_iter,
+                max_rpm: payload.max_rpm,
+                max_execution_time: payload.max_execution_time,
+                cache: payload.cache,
+                max_retry_limit: payload.max_retry_limit,
+                default_temperature: payload.default_temperature,
             });
         }
         this.hasUnsavedChanges.set(false);

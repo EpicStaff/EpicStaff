@@ -29,6 +29,7 @@
                 (selectStorageItem)="onSelectStorageItem($event)"
                 (addInSection)="onAddInSection($event)"
                 (treeMenuAction)="onExplorerTreeMenu($event)"
+                (attachSharedSurface)="onExplorerAttachSharedSurface($event)"
                 (close)="store.toggleSidebar()"
             />
         }
@@ -169,6 +170,13 @@
                                 store.createSurfaceForAgent(store.selectedAgent()!.id, $event.body, $event.place)
                             "
                             (addFromShared)="store.attachSharedSurfaceToAgent($event, store.selectedAgent()!.id)"
+                            (dropSharedSurface)="
+                                store.dropSharedSurfaceOnAgent(
+                                    $event.surfaceId,
+                                    store.selectedAgent()!.id,
+                                    $event.category
+                                )
+                            "
                             (moveSurfacePlace)="
                                 store.moveSurfacePlace($event.id, store.selectedAgent()!.id, $event.place)
                             "
@@ -193,6 +201,13 @@
                                 store.createSurfaceForAgent(store.surfacesOnlyAgent()!.id, $event.body, $event.place)
                             "
                             (addFromShared)="store.attachSharedSurfaceToAgent($event, store.surfacesOnlyAgent()!.id)"
+                            (dropSharedSurface)="
+                                store.dropSharedSurfaceOnAgent(
+                                    $event.surfaceId,
+                                    store.surfacesOnlyAgent()!.id,
+                                    $event.category
+                                )
+                            "
                             (moveSurfacePlace)="
                                 store.moveSurfacePlace($event.id, store.surfacesOnlyAgent()!.id, $event.place)
                             "

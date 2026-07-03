@@ -570,6 +570,10 @@
         border-color: var(--accent-color);
     }
 }
+.surface-card--drop-target {
+    border-color: var(--accent-color);
+}
+
 $perm-col: 48px;
 $remove-col: 28px;
 
@@ -587,6 +591,13 @@ $remove-col: 28px;
     grid-template-columns: minmax(0, 1fr) repeat(var(--perm-count, 4), $perm-col) $remove-col;
     align-items: center;
     padding: 0 0 0 calc(0.75rem + var(--row-depth, 0) * 16px);
+}
+
+.file-table--readonly {
+    .file-table__head,
+    .file-row {
+        grid-template-columns: minmax(0, 1fr) repeat(var(--perm-count, 4), $perm-col);
+    }
 }
 
 .file-table__head {

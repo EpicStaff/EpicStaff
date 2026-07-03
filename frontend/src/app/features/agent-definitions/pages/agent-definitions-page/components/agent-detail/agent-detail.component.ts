@@ -23,6 +23,7 @@ import { FullLLMConfig, FullLLMConfigService } from '@shared/services';
 import { ToastService } from '../../../../../../services/notifications/toast.service';
 import { StorageItem } from '../../../../../files/models/storage.models';
 import { StorageApiService } from '../../../../../files/services/storage-api.service';
+import { StorageDragService } from '../../../../../files/services/storage-drag.service';
 import {
     ExtractTextFromStorageDialogComponent,
     ExtractTextFromStorageDialogResult,
@@ -30,7 +31,13 @@ import {
 import { AgentDefinition } from '../../../../models/agent-definition.model';
 import { CreateSurfaceRequest, PartialUpdateSurfaceRequest, Surface } from '../../../../models/surface.model';
 import { SurfaceCategoryId } from '../../../../models/surface-category.model';
+import { SurfaceDragService } from '../../../../services/surface-drag.service';
 import { INSTRUCTIONS_ACCEPT_ATTR, readFileAsText } from '../../../../utils/instructions-file.utils';
+import {
+    AgentAdditionalSettingsData,
+    AgentAdditionalSettingsDialogComponent,
+    AgentAdditionalSettingsResult,
+} from './agent-additional-settings-dialog/agent-additional-settings-dialog.component';
 import { AgentSurfacesPanelComponent } from './agent-surfaces-panel/agent-surfaces-panel.component';
 
 export interface AgentSavePayload {
@@ -80,6 +87,8 @@ export class AgentDetailComponent implements OnInit {
     private readonly dialog: Dialog = inject(Dialog);
     private readonly confirm: ConfirmationDialogService = inject(ConfirmationDialogService);
     private readonly storageApiService: StorageApiService = inject(StorageApiService);
+    private readonly storageDrag = inject(StorageDragService);
+    private readonly surfaceDrag = inject(SurfaceDragService);
     private readonly toast: ToastService = inject(ToastService);
 
     readonly acceptAttr = INSTRUCTIONS_ACCEPT_ATTR;
@@ -101,6 +110,7 @@ export class AgentDetailComponent implements OnInit {
     readonly extractText = output<string>();
     readonly createSurface = output<{ body: CreateSurfaceRequest; place: SurfaceCategoryId }>();
     readonly addFromShared = output<number>();
+    readonly dropSharedSurface = output<{ surfaceId: number; category: SurfaceCategoryId }>();
     readonly moveSurfacePlace = output<{ id: number; place: SurfaceCategoryId }>();
     readonly makeSharedSurface = output<number>();
     readonly detachSurface = output<number>();
@@ -169,6 +179,14 @@ export class AgentDetailComponent implements OnInit {
         effect(() => {
             this.saveErrorTick();
             untracked(() => this.revertToSnapshot());
+        });
+
+        // While a storage item or shared surface is being dragged, an agent shown in the
+        // preview opens straight on its Surfaces section (Basics collapsed) — it's the drop area.
+        effect(() => {
+            if (!this.storageDrag.isDragging() && !this.surfaceDrag.isDragging()) return;
+            if (!this.agent()) return;
+            untracked(() => this.sections.set({ basics: false, surfaces: true }));
         });
     }
 
@@ -258,6 +276,41 @@ export class AgentDetailComponent implements OnInit {
     private revertToSnapshot(): void {
         this.form.reset(this.savedSnapshot);
         this.bootLength.set((this.savedSnapshot.instructions ?? '').length);
+    }
+
+    openAdditionalSettings(): void {
+        const a = this.agent();
+        if (!a || this.saving()) return;
+        const data: AgentAdditionalSettingsData = {
+            fcm_llm_config: a.fcm_llm_config,
+            max_iter: a.max_iter,
+            max_rpm: a.max_rpm,
+            max_execution_time: a.max_execution_time,
+            max_retry_limit: a.max_retry_limit,
+            cache: a.cache,
+        };
+        this.dialog
+            .open<AgentAdditionalSettingsResult | undefined>(AgentAdditionalSettingsDialogComponent, { data })
+            .closed.pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((result) => {
+                if (!result) return;
+                const v = this.form.getRawValue();
+                this.savedSnapshot = { ...v, name: v.name.trim() || a.name };
+                this.save.emit({
+                    id: a.id,
+                    name: v.name.trim() || a.name,
+                    description: v.description ?? '',
+                    instructions: v.instructions ?? '',
+                    llm_config: v.llm_config,
+                    fcm_llm_config: result.fcm_llm_config,
+                    max_iter: result.max_iter,
+                    max_rpm: result.max_rpm,
+                    max_execution_time: result.max_execution_time,
+                    cache: result.cache,
+                    max_retry_limit: result.max_retry_limit,
+                    default_temperature: a.default_temperature,
+                });
+            });
     }
 
     createBootDoc(): void {

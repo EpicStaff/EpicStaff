@@ -4,7 +4,13 @@
         <div
             class="row row--group"
             [class.row--selected]="isSelected()"
+            [class.row--drop-target]="surfaceDropActive()"
             [style.padding-left.px]="12 + depth() * 20"
+            appDragHover
+            (dragHover)="onRowDragHover()"
+            (dragover)="onSurfaceDragOver($event)"
+            (dragleave)="onSurfaceDragLeave($event)"
+            (drop)="onSurfaceDrop($event)"
             (click)="onRowClick()"
             (mouseenter)="onMouseEnter()"
             (mouseleave)="onMouseLeave()"
@@ -44,6 +50,11 @@
             class="row row--surface"
             [class.row--selected]="isSelected()"
             [style.padding-left.px]="12 + depth() * 20"
+            [attr.draggable]="isDraggableSurface() ? 'true' : null"
+            appDragHover
+            (dragHover)="onRowDragHover()"
+            (dragstart)="onSurfaceDragStart($event)"
+            (dragend)="onSurfaceDragEnd()"
             (click)="onRowClick()"
             (mouseenter)="onMouseEnter()"
             (mouseleave)="onMouseLeave()"
@@ -82,7 +93,13 @@
         <div
             class="row row--agent"
             [class.row--selected]="isSelected()"
+            [class.row--drop-target]="surfaceDropActive()"
             [style.padding-left.px]="12 + depth() * 20"
+            appDragHover
+            (dragHover)="onRowDragHover()"
+            (dragover)="onSurfaceDragOver($event)"
+            (dragleave)="onSurfaceDragLeave($event)"
+            (drop)="onSurfaceDrop($event)"
             (click)="onRowClick()"
             (mouseenter)="onMouseEnter()"
             (mouseleave)="onMouseLeave()"
@@ -160,6 +177,7 @@
                 (selectNode)="onChildSelect($event)"
                 (menuAction)="onChildMenuAction($event)"
                 (menuOpen)="onChildMenuOpen($event)"
+                (attachSurface)="onChildAttachSurface($event)"
             />
         }
     </div>

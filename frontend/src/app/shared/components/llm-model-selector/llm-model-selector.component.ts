@@ -4,6 +4,7 @@ import {
     ChangeDetectorRef,
     Component,
     DestroyRef,
+    ElementRef,
     EventEmitter,
     forwardRef,
     inject,
@@ -347,7 +348,8 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, OnChanges, 
 
     constructor(
         private cdr: ChangeDetectorRef,
-        private dropdownManager: DropdownManagerService
+        private dropdownManager: DropdownManagerService,
+        private elementRef: ElementRef<HTMLElement>
     ) {
         // Generate unique ID for this dropdown instance
         this.dropdownId = `llm-selector-${Math.random().toString(36).substr(2, 9)}`;
@@ -411,7 +413,7 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, OnChanges, 
 
     closeDropdownOnClickOutside = (event: MouseEvent): void => {
         const target = event.target as HTMLElement;
-        const selectorEl = document.querySelector('.llm-selector-container');
+        const selectorEl = this.elementRef.nativeElement.querySelector('.llm-selector-container');
 
         if (selectorEl && !selectorEl.contains(target)) {
             this.closeDropdown();
@@ -512,7 +514,7 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, OnChanges, 
     // Check available space and position dropdown accordingly
     private checkDropdownPosition(): void {
         setTimeout(() => {
-            const container = document.querySelector('.llm-selector-container') as HTMLElement;
+            const container = this.elementRef.nativeElement.querySelector<HTMLElement>('.llm-selector-container');
             if (!container) return;
 
             const rect = container.getBoundingClientRect();

@@ -412,6 +412,17 @@ export class AgentsPageStore {
         this.assignSurfaceToAgent(surfaceId, agentId, 'all');
     }
 
+    dropSharedSurfaceOnAgent(surfaceId: number, agentId: number, category?: SurfaceCategoryId): void {
+        const agent = this.agents().find((a) => a.id === agentId);
+        if (!agent) return;
+        if (agent.default_surfaces.some((ds) => ds.surface === surfaceId)) {
+            const name = this.surfaces().find((s) => s.id === surfaceId)?.name ?? 'Surface';
+            this.toast.info(`"${name}" is already attached to "${agent.name}"`);
+            return;
+        }
+        this.assignSurfaceToAgent(surfaceId, agentId, category ? categoryToPlace(category) : 'all');
+    }
+
     private assignSurfaceToAgent(surfaceId: number, agentId: number, place: AgentSurfacePlace): void {
         const agent = this.agents().find((a) => a.id === agentId);
         if (!agent) return;

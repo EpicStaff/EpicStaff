@@ -60,6 +60,8 @@
                     <app-section-header
                         label="Agents"
                         icon="folder"
+                        appDragHover
+                        (dragHover)="onSectionDragHover('agents')"
                         [expanded]="store.isSectionExpanded('agents')"
                         [showAdd]="true"
                         (toggleSection)="store.toggleSection('agents')"
@@ -74,6 +76,7 @@
                             (selectNode)="onSelect($event)"
                             (menuAction)="onTreeMenuAction($event)"
                             (menuOpen)="onTreeMenuOpen($event)"
+                            (attachSurface)="onAttachSharedSurface($event)"
                         />
                     </div>
                 </section>
@@ -88,6 +91,8 @@
                     <app-section-header
                         label="Shared Surfaces"
                         icon="surfaces-tab"
+                        appDragHover
+                        (dragHover)="onSectionDragHover('surfaces')"
                         [expanded]="store.isSectionExpanded('surfaces')"
                         [showAdd]="true"
                         (toggleSection)="store.toggleSection('surfaces')"
@@ -102,6 +107,7 @@
                             (selectNode)="onSelect($event)"
                             (menuAction)="onTreeMenuAction($event)"
                             (menuOpen)="onTreeMenuOpen($event)"
+                            (attachSurface)="onAttachSharedSurface($event)"
                         />
                     </div>
                 </section>

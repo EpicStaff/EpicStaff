@@ -27,15 +27,18 @@ import {
     SelectDropdownTab,
     SelectDropdownTriggerDirective,
 } from '@shared/components';
-import { EnterBlurDirective } from '@shared/directives';
+import { DragHoverDirective, EnterBlurDirective } from '@shared/directives';
 import { map, switchMap, take } from 'rxjs/operators';
 
+import { ToastService } from '../../../../../../../../services/notifications/toast.service';
 import { CreateCustomToolDialogComponent } from '../../../../../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
 import {
     CreateFolderDialogComponent,
     CreateFolderDialogResult,
 } from '../../../../../../../files/components/create-folder-dialog/create-folder-dialog.component';
+import { StorageItem } from '../../../../../../../files/models/storage.models';
 import { StorageApiService } from '../../../../../../../files/services/storage-api.service';
+import { StorageDragService } from '../../../../../../../files/services/storage-drag.service';
 import { CreateCollectionDialogComponent } from '../../../../../../../knowledge-sources/components/create-collection-dialog/create-collection-dialog.component';
 import { CollectionsStorageService } from '../../../../../../../knowledge-sources/services/collections-storage.service';
 import { McpToolDialogComponent } from '../../../../../../../tools/components/mcp-tool-dialog/mcp-tool-dialog.component';
@@ -74,6 +77,7 @@ import {
     buildSurfaceFileStats,
     filesInFolder,
 } from '../../../../../../utils/surface-file-tree.util';
+import { SurfaceKnowledgeAdvancedComponent } from './surface-knowledge-advanced/surface-knowledge-advanced.component';
 
 @Component({
     selector: 'app-surface-card',
@@ -85,6 +89,8 @@ import {
         SelectDropdownComponent,
         SelectDropdownTriggerDirective,
         EnterBlurDirective,
+        DragHoverDirective,
+        SurfaceKnowledgeAdvancedComponent,
     ],
     templateUrl: './surface-card.component.html',
     styleUrls: ['./surface-card.component.scss'],
@@ -93,6 +99,8 @@ import {
 export class SurfaceCardComponent {
     private readonly catalogs: SurfaceCatalogsStore = inject(SurfaceCatalogsStore);
     private readonly storageApi: StorageApiService = inject(StorageApiService);
+    private readonly storageDrag = inject(StorageDragService);
+    private readonly toast = inject(ToastService);
     private readonly collectionsStorage: CollectionsStorageService = inject(CollectionsStorageService);
     private readonly destroyRef: DestroyRef = inject(DestroyRef);
     private readonly dialog: Dialog = inject(Dialog);
@@ -352,7 +360,10 @@ export class SurfaceCardComponent {
     );
 
     readonly collectionOptions = this.catalogs.collections;
-    readonly selectedCollectionIds = signal<Set<number>>(new Set());
+    readonly knowledgeItems = signal<SurfaceKnowledge[]>([]);
+    readonly selectedCollectionIds = computed<ReadonlySet<number>>(
+        () => new Set(this.knowledgeItems().map((k) => k.collection))
+    );
     readonly collectionAdvancedOpen = signal<boolean>(false);
 
     readonly collectionHeaderAction: SelectDropdownHeaderAction = { icon: 'plus', label: 'Add new collection' };
@@ -374,7 +385,7 @@ export class SurfaceCardComponent {
                 ...(s?.mcp_tools ?? []).map((t) => `mcp:${t.mcp_tool}`),
             ]);
             this.selectedToolKeys.set(toolKeys);
-            this.selectedCollectionIds.set(new Set((s?.knowledge ?? []).map((k) => k.collection)));
+            this.knowledgeItems.set(s?.knowledge ?? []);
             this.fileRows.set(
                 (s?.storage_items ?? []).map((si) => {
                     const meta = untracked(() => this.metaFor(si.storage_file));
@@ -396,6 +407,15 @@ export class SurfaceCardComponent {
         effect(() => {
             if (!this.expanded()) return;
             this.loadCatalogs();
+        });
+
+        // While a storage item is being dragged, any visible editable card lands on the
+        // Files tab so the drop result is immediately in view.
+        effect(() => {
+            if (!this.storageDrag.isDragging()) return;
+            if (this.readOnly() || this.isCreating()) return;
+            if (!this.expanded() && !this.hideHeader()) return;
+            this.activeTab.set('files');
         });
 
         effect(() => {
@@ -646,6 +666,100 @@ export class SurfaceCardComponent {
         this.emitStorageChange();
     }
 
+    readonly fileDropActive = signal<boolean>(false);
+
+    private canAcceptFileDrop(): boolean {
+        return this.storageDrag.isDragging() && !this.readOnly() && !this.isCreating();
+    }
+
+    /** Spring-load: a storage item hovered over a collapsed card opens it on the Files tab. */
+    onStorageDragHover(): void {
+        if (!this.canAcceptFileDrop()) return;
+        if (!this.expanded() && !this.hideHeader()) this.expanded.set(true);
+        this.activeTab.set('files');
+    }
+
+    onStorageDragOver(event: DragEvent): void {
+        if (!this.canAcceptFileDrop()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+        this.fileDropActive.set(true);
+    }
+
+    onStorageDragLeave(event: DragEvent): void {
+        const host = event.currentTarget as HTMLElement;
+        const related = event.relatedTarget as Node | null;
+        if (related && host.contains(related)) return;
+        this.fileDropActive.set(false);
+    }
+
+    onStorageDrop(event: DragEvent): void {
+        this.fileDropActive.set(false);
+        if (!this.canAcceptFileDrop()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const dragged = this.storageDrag.dragged();
+        this.storageDrag.end();
+        if (!dragged) return;
+        if (!this.expanded() && !this.hideHeader()) this.expanded.set(true);
+        this.activeTab.set('files');
+        this.catalogs
+            .loadStorageTree()
+            .pipe(take(1), takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.addDroppedItem(dragged));
+    }
+
+    private addDroppedItem(item: StorageItem): void {
+        const ids = this.resolveDroppedFileIds(item);
+        if (!ids.length) {
+            this.toast.info(
+                item.type === 'folder' ? `No files found in "${item.name}"` : `Could not find "${item.name}" in storage`
+            );
+            return;
+        }
+        const existing = new Set(this.fileRows().map((r) => r.id));
+        const toAdd = ids.filter((id) => !existing.has(id));
+        if (!toAdd.length) {
+            this.toast.info(
+                item.type === 'folder'
+                    ? `All files from "${item.name}" are already in this surface`
+                    : `"${item.name}" is already in this surface`
+            );
+            return;
+        }
+        this.fileRows.update((rows) => [
+            ...rows,
+            ...toAdd.map((id) => {
+                const meta = this.metaFor(id);
+                return {
+                    id,
+                    name: meta?.name ?? `File #${id}`,
+                    path: meta?.path ?? '',
+                    perms: defaultFilePerms(),
+                };
+            }),
+        ]);
+        this.emitStorageChange();
+    }
+
+    private resolveDroppedFileIds(item: StorageItem): number[] {
+        const meta = this.catalogs.storageFileMeta();
+        if (item.type === 'file') {
+            if (typeof item.id === 'number') return [item.id];
+            for (const [id, m] of meta) {
+                if (m.path === item.path) return [id];
+            }
+            return [];
+        }
+        const prefix = `${item.path.replace(/\/+$/, '')}/`;
+        const ids: number[] = [];
+        for (const [id, m] of meta) {
+            if (m.path.startsWith(prefix)) ids.push(id);
+        }
+        return ids;
+    }
+
     private buildStoragePayload(): SurfaceStorageItem[] {
         return this.fileRows().map((r) => ({
             storage_file: r.id,
@@ -663,25 +777,29 @@ export class SurfaceCardComponent {
 
     onCollectionsChange(values: unknown[]): void {
         if (this.readOnly()) return;
-        this.selectedCollectionIds.set(new Set(values as number[]));
+        const ids = values as number[];
+        const byId = new Map(this.knowledgeItems().map((k) => [k.collection, k]));
+        this.knowledgeItems.set(ids.map((id) => byId.get(id) ?? { collection: id }));
+        this.emitKnowledgeChange();
+    }
+
+    onKnowledgeConfigChange(item: SurfaceKnowledge): void {
+        if (this.readOnly()) return;
+        this.knowledgeItems.update((items) => items.map((k) => (k.collection === item.collection ? item : k)));
         this.emitKnowledgeChange();
     }
 
     removeCollection(id: number, event: MouseEvent): void {
         if (this.readOnly()) return;
         event.stopPropagation();
-        this.selectedCollectionIds.update((set) => {
-            const next = new Set(set);
-            next.delete(id);
-            return next;
-        });
+        this.knowledgeItems.update((items) => items.filter((k) => k.collection !== id));
         this.emitKnowledgeChange();
     }
 
     clearCollections(event: MouseEvent): void {
         event.stopPropagation();
         this.confirmClearBundle('collections', this.selectedCollectionIds().size, () => {
-            this.selectedCollectionIds.set(new Set());
+            this.knowledgeItems.set([]);
             this.emitKnowledgeChange();
         });
     }
@@ -715,13 +833,17 @@ export class SurfaceCardComponent {
             )
             .subscribe(({ collection_id, cols }) => {
                 if (collection_id == null || !cols.some((c) => c.id === collection_id)) return;
-                this.selectedCollectionIds.update((set) => new Set([...set, collection_id]));
+                this.knowledgeItems.update((items) =>
+                    items.some((k) => k.collection === collection_id)
+                        ? items
+                        : [...items, { collection: collection_id }]
+                );
                 this.emitKnowledgeChange();
             });
     }
 
     private buildKnowledgePayload(): SurfaceKnowledge[] {
-        return [...this.selectedCollectionIds()].map((collection) => ({ collection }));
+        return this.knowledgeItems();
     }
 
     private emitKnowledgeChange(): void {

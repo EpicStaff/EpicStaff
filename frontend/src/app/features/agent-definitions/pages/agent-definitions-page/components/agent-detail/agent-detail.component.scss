@@ -30,6 +30,36 @@
 }
 $section-gutter: 22px;
 
+.section__header-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    .section__header {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+}
+
+.section__settings {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--accent-color);
+    border-radius: 8px;
+    color: var(--accent-color);
+    cursor: pointer;
+
+    &:hover {
+        background: var(--color-ghost-btn-hover);
+    }
+}
+
 .section__header {
     display: grid;
     grid-template-columns: $section-gutter minmax(0, 1fr);
