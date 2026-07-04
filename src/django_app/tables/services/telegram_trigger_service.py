@@ -1,12 +1,9 @@
+import functools
+import time
+
 import requests
 from loguru import logger
 from requests.exceptions import ConnectionError, Timeout
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
 
 from tables.exceptions import RegisterTelegramTriggerError
 from tables.models.graph_models import TelegramTriggerNode, GraphOrganization
@@ -15,6 +12,24 @@ from tables.services.session_manager_service import SessionManagerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from utils.graph_utils import generate_node_name
 from utils.singleton_meta import SingletonMeta
+
+
+def _retry_on_connection_errors(func):
+    """Retry up to 3 attempts on ConnectionError/Timeout, exponential backoff (2s, 2s), then reraise."""
+    max_attempts = 3
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return func(*args, **kwargs)
+            except (ConnectionError, Timeout):
+                if attempt == max_attempts:
+                    raise
+                wait_seconds = min(max(1 * (2 ** (attempt - 1)), 2), 10)
+                time.sleep(wait_seconds)
+
+    return wrapper
 
 
 class TelegramTriggerService(metaclass=SingletonMeta):
@@ -28,12 +43,7 @@ class TelegramTriggerService(metaclass=SingletonMeta):
             session_manager_service or SessionManagerService()
         )
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((ConnectionError, Timeout)),
-        reraise=True,
-    )
+    @_retry_on_connection_errors
     def _call_telegram_api(
         self, method: str, api_key: str, endpoint: str, params: dict = None
     ):
