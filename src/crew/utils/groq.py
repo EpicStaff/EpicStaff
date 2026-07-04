@@ -17,14 +17,12 @@ from langchain_core.pydantic_v1 import BaseModel
 from langchain_groq import ChatGroq
 from langchain_groq.chat_models import _convert_dict_to_message
 from langchain_community.chat_models.litellm import _convert_delta_to_message_chunk
-from rich.console import Console
 import tiktoken
 
 # from tiktoken.core import Encoding
 # from tiktoken.model import encoding_for_model, encoding_name_for_model
 # from tiktoken.registry import get_encoding, list_encoding_names
 
-console = Console()
 logger = logging.getLogger(__name__)
 
 

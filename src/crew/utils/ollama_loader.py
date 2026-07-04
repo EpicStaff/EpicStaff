@@ -1,7 +1,6 @@
 import logging
 import socket
 from langchain_community.llms.ollama import Ollama
-from rich.progress import Progress
 from ollama import list, pull, Client
 
 logger = logging.getLogger(__name__)
@@ -20,22 +19,27 @@ def running_in_docker():
 
 
 class OllamaLoader:
-    def handle_progress_updates(progress_update, progress, llm_task):
+    @staticmethod
+    def _log_progress_update(progress_update, model_name, progress_state):
         """
-        Handles progress updates during model download and initialization.
+        Logs progress updates during model download, throttled to ~10% steps,
+        plus every time the status text changes.
         """
-        if "total" in progress_update:
-            progress.update(llm_task, total=progress_update["total"])
-        if "completed" in progress_update:
-            current_completed = progress.tasks[llm_task].completed
-            new_advance = progress_update["completed"] - current_completed
-            progress.advance(llm_task, advance=new_advance)
-        if "status" in progress_update:
-            progress.update(
-                llm_task,
-                advance=0,
-                description=f"[cyan]LLM: {progress_update['status']}",
-            )
+        status = progress_update.get("status")
+        if status is not None and status != progress_state.get("last_status"):
+            logger.info(f"Downloading '{model_name}': {status}")
+            progress_state["last_status"] = status
+
+        total = progress_update.get("total")
+        completed = progress_update.get("completed")
+        if total:
+            percent = int(completed / total * 100) if completed else 0
+            last_percent = progress_state.get("last_percent", -1)
+            if percent >= last_percent + 10 or percent == 100:
+                logger.info(
+                    f"Downloading '{model_name}': {percent}% ({completed}/{total})"
+                )
+                progress_state["last_percent"] = percent
 
     def load(model_name=None, temperature=0.8, num_ctx=None, base_url=None, **kwargs):
         """
@@ -82,15 +86,13 @@ class OllamaLoader:
             f"I'm trying to download '{model_name}' from Ollama... This may take a while. Why not grab a cup of coffee..."
         )
 
-        progress = Progress(expand=True, transient=True)
-        with progress:
-            llm_task = progress.add_task(f"Downloading '{model_name}'", total=1000)
-            if ollama_client is None:
-                for response in pull(model=model_name, stream=True):
-                    OllamaLoader.handle_progress_updates(response, progress, llm_task)
-            else:
-                for response in ollama_client.pull(model=model_name, stream=True):
-                    OllamaLoader.handle_progress_updates(response, progress, llm_task)
+        progress_state = {"last_status": None, "last_percent": -1}
+        if ollama_client is None:
+            for response in pull(model=model_name, stream=True):
+                OllamaLoader._log_progress_update(response, model_name, progress_state)
+        else:
+            for response in ollama_client.pull(model=model_name, stream=True):
+                OllamaLoader._log_progress_update(response, model_name, progress_state)
 
         logger.info(f"Model '{model_name}' successfully pulled")
         logger.info(f"Attempting to load model '{model_name}'...")
