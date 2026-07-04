@@ -36,12 +36,12 @@ fastmcp = "^2.12.2"
 [tool.poetry.group.crew.dependencies]
 mem0ai = { path = "libraries/mem0" }
 crewai = {path = "libraries/crewAI"}
-watchfiles = "^0.22.0"
 
 [tool.poetry.group.dotdict.dependencies]
 dotdict = { path = "../shared/dotdict" }
 
 [tool.poetry.group.dev.dependencies]
+watchfiles = "^0.22.0"
 pytest = "^8.3.2"
 black = "^25.9.0"
 flake8 = "^7.1.1"
