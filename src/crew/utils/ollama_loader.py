@@ -1,9 +1,7 @@
-import logging
 import socket
+from loguru import logger
 from langchain_community.llms.ollama import Ollama
 from ollama import list, pull, Client
-
-logger = logging.getLogger(__name__)
 
 
 def running_in_docker():
@@ -27,7 +25,7 @@ class OllamaLoader:
         """
         status = progress_update.get("status")
         if status is not None and status != progress_state.get("last_status"):
-            logger.info(f"Downloading '{model_name}': {status}")
+            logger.info("Downloading '{}': {}", model_name, status)
             progress_state["last_status"] = status
 
         total = progress_update.get("total")
@@ -37,7 +35,11 @@ class OllamaLoader:
             last_percent = progress_state.get("last_percent", -1)
             if percent >= last_percent + 10 or percent == 100:
                 logger.info(
-                    f"Downloading '{model_name}': {percent}% ({completed}/{total})"
+                    "Downloading '{}': {}% ({}/{})",
+                    model_name,
+                    percent,
+                    completed,
+                    total,
                 )
                 progress_state["last_percent"] = percent
 
@@ -55,8 +57,9 @@ class OllamaLoader:
 
         parts = model_name.split(":")
         if len(parts) < 2:
-            print(
-                f"Ollama models usually have a version, like {model_name}:instruct, or {model_name}:latest. That's ok, I'll take a guess and use the latest version."
+            logger.info(
+                "Ollama models usually have a version, like {0}:instruct, or {0}:latest. That's ok, I'll take a guess and use the latest version.",
+                model_name,
             )
 
         model_list = (
@@ -67,7 +70,7 @@ class OllamaLoader:
 
         for model in model_list:
             if model["name"] == model_name:
-                logger.info(f"Model '{model_name}' found in Ollama, loading directly.")
+                logger.info("Model '{}' found in Ollama, loading directly.", model_name)
 
                 if base_url is not None:
                     return Ollama(
@@ -81,9 +84,10 @@ class OllamaLoader:
                         model=model_name, temperature=temperature, num_ctx=num_ctx
                     )
 
-        logger.info(f"No local matching model found for '{model_name}' in Ollama.")
-        print(
-            f"I'm trying to download '{model_name}' from Ollama... This may take a while. Why not grab a cup of coffee..."
+        logger.info("No local matching model found for '{}' in Ollama.", model_name)
+        logger.info(
+            "I'm trying to download '{}' from Ollama... This may take a while. Why not grab a cup of coffee...",
+            model_name,
         )
 
         progress_state = {"last_status": None, "last_percent": -1}
@@ -94,9 +98,11 @@ class OllamaLoader:
             for response in ollama_client.pull(model=model_name, stream=True):
                 OllamaLoader._log_progress_update(response, model_name, progress_state)
 
-        logger.info(f"Model '{model_name}' successfully pulled")
-        logger.info(f"Attempting to load model '{model_name}'...")
-        print(f"Model '{model_name}' successfully pulled. Now I'm trying to load it...")
+        logger.info("Model '{}' successfully pulled", model_name)
+        logger.info("Attempting to load model '{}'...", model_name)
+        logger.info(
+            "Model '{}' successfully pulled. Now I'm trying to load it...", model_name
+        )
         if base_url is not None:
             return Ollama(
                 model=model_name,
