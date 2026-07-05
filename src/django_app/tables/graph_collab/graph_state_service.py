@@ -179,6 +179,21 @@ _LIST_KEY_TO_DELETE_KEY: dict[str, str] = {
 
 _KNOWN_LIST_KEYS: frozenset[str] = frozenset(_LIST_KEY_TO_DELETE_KEY.keys())
 
+# Node-ref fields on each edge list that must be checked when cascading a
+# node delete — edge_list has two endpoints, conditional_edge_list has one
+# (conditional edges have no target_node_id field).
+_EDGE_NODE_REF_FIELDS: dict[str, tuple[str, ...]] = {
+    "edge_list": ("start_node_id", "end_node_id"),
+    "conditional_edge_list": ("source_node_id",),
+}
+
+# Decision-table-like list keys whose entries carry routing refs to other
+# nodes (default_next_node_id / next_error_node_id / condition_groups[].next_node_id).
+_DECISION_TABLE_LIST_KEYS: tuple[str, ...] = (
+    "decision_table_node_list",
+    "classification_decision_table_node_list",
+)
+
 _EMPTY_DELETED: dict[str, list] = {
     "edge_ids": [],
     "conditional_edge_ids": [],
@@ -549,7 +564,14 @@ class GraphLiveStateService:
           from the accumulator so a later flush does not delete the re-added node.
         - NodesDeletedMessage: remove each ref from its list_key; when a removed
           entry had a real integer id, append it to the snapshot's deleted
-          accumulator under the corresponding <type>_node_ids key.
+          accumulator under the corresponding <type>_node_ids key. For refs
+          with a real integer id, also cascades: drops edge_list /
+          conditional_edge_list entries pointing at the deleted node
+          (accumulating their real ids for deletion too) and nulls out any
+          decision-table routing ref (default_next_node_id,
+          next_error_node_id, condition_groups[].next_node_id) pointing at it.
+          Temp-only node refs are skipped for cascading — they were never
+          persisted, so they cannot have persisted edges or routing refs.
         - ConnectionCreatedMessage: upsert into edge_list or conditional_edge_list
           (determined by message.list_key).
         - ConnectionDeletedMessage: remove single entry from message.list_key.
@@ -618,6 +640,13 @@ class GraphLiveStateService:
                         else:
                             surviving.append(entry)
                     snapshot[list_key] = surviving
+
+                    # Cascade: a deleted node's edges/routing refs would
+                    # otherwise orphan (edges have no FK cascade; see module
+                    # docstring). Only real, persisted node ids can have
+                    # persisted edges or routing refs pointing at them.
+                    if isinstance(ref.id, int):
+                        _cascade_deleted_node_refs(snapshot, deleted, ref.id)
 
             elif isinstance(message, ConnectionCreatedMessage):
                 list_key = message.list_key
@@ -715,6 +744,70 @@ class GraphLiveStateService:
 
             await self.seed(graph_id, snapshot)
             self._revision[graph_id] = self._revision.get(graph_id, 0) + 1
+
+
+def _cascade_deleted_node_refs(snapshot: dict, deleted: dict, node_id: int) -> None:
+    """Drop edges and null decision-table routing refs pointing at *node_id*.
+
+    Called for every deleted node ref that carries a real integer id — a
+    temp-only node was never persisted, so it cannot have persisted edges or
+    routing refs pointing at it.  Mutates *snapshot* and *deleted* in place:
+
+    - Edges: any ``edge_list`` / ``conditional_edge_list`` entry whose
+      endpoint ref equals *node_id* is dropped from the snapshot; if the
+      dropped entry carries a real ``id``, that id is appended to the
+      matching ``deleted`` accumulator (deduped — a prior
+      ``connections_deleted`` op may already have queued it).
+    - Routing: any ``decision_table_node_list`` /
+      ``classification_decision_table_node_list`` entry's
+      ``default_next_node_id`` / ``next_error_node_id`` / per-group
+      ``next_node_id`` pointing at *node_id* is nulled out in place.
+    """
+    cascaded_edge_ids: dict[str, list] = {}
+
+    for list_key, ref_fields in _EDGE_NODE_REF_FIELDS.items():
+        entries = snapshot.get(list_key, [])
+        surviving = []
+        delete_key = _LIST_KEY_TO_DELETE_KEY[list_key]
+        accumulator: list = deleted.setdefault(delete_key, [])
+        for entry in entries:
+            references_node = entry is not None and any(
+                entry.get(field) == node_id for field in ref_fields
+            )
+            if references_node:
+                entry_id = entry.get("id")
+                if entry_id is not None and entry_id not in accumulator:
+                    accumulator.append(entry_id)
+                    cascaded_edge_ids.setdefault(delete_key, []).append(entry_id)
+            else:
+                surviving.append(entry)
+        snapshot[list_key] = surviving
+
+    nulled_routing_ref_count = 0
+    for list_key in _DECISION_TABLE_LIST_KEYS:
+        for entry in snapshot.get(list_key, []):
+            if entry is None:
+                continue
+            if entry.get("default_next_node_id") == node_id:
+                entry["default_next_node_id"] = None
+                nulled_routing_ref_count += 1
+            if entry.get("next_error_node_id") == node_id:
+                entry["next_error_node_id"] = None
+                nulled_routing_ref_count += 1
+            for group in entry.get("condition_groups") or []:
+                if isinstance(group, dict) and group.get("next_node_id") == node_id:
+                    group["next_node_id"] = None
+                    nulled_routing_ref_count += 1
+
+    if cascaded_edge_ids or nulled_routing_ref_count:
+        logger.debug(
+            "_cascade_deleted_node_refs: node_id={} — edge_ids={}, "
+            "conditional_edge_ids={}, nulled_routing_refs={}",
+            node_id,
+            cascaded_edge_ids.get("edge_ids", []),
+            cascaded_edge_ids.get("conditional_edge_ids", []),
+            nulled_routing_ref_count,
+        )
 
 
 def _make_empty_deleted() -> dict:

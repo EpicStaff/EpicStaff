@@ -166,6 +166,17 @@ def reconcile_against_db(payload: dict, graph) -> dict:
        edges, ``source_node_id`` on conditional edges — conditional edges have
        no ``target_node_id`` field) points at an id no longer in that set.
        temp_id-only refs (new, not-yet-persisted endpoints) are left untouched.
+       When a dropped entry carries a real int ``id``, that id is also queued
+       in ``payload["deleted"]["edge_ids"]`` / ``["conditional_edge_ids"]``
+       (deduped) so ``_execute_deletions`` removes the now-orphan DB row
+       instead of merely omitting it from this flush's payload — otherwise
+       the row survives and reappears on the next ``seed_from_db``.
+    3. For each ``decision_table_node_list`` / ``classification_decision_table_node_list``
+       entry, null any ``default_next_node_id`` / ``next_error_node_id`` /
+       ``condition_groups[].next_node_id`` that points at an id no longer in
+       ``surviving_node_ids`` — otherwise the flush fails validation with
+       "routing references node IDs that do not exist" for a decision-table
+       node still routing to a node that is already gone from the DB.
 
     Never silently drops without logging — every prune is summarised via
     ``logger.info`` so recovery from drift is auditable.
@@ -205,6 +216,7 @@ def reconcile_against_db(payload: dict, graph) -> dict:
             pruned_nodes[config.list_key] = sorted(gone_ids)
 
     pruned_edges: dict[str, list] = {}
+    deleted: dict = payload.setdefault("deleted", {})
 
     edge_entries = payload.get("edge_list") or []
     if edge_entries:
@@ -221,6 +233,7 @@ def reconcile_against_db(payload: dict, graph) -> dict:
             ) or (isinstance(end_id, int) and end_id not in surviving_node_ids)
             if dangling:
                 gone_edge_refs.append(entry.get("id") or entry.get("temp_id") or entry)
+                _enqueue_deletion(deleted, "edge_ids", entry.get("id"))
             else:
                 surviving_edges.append(entry)
         if gone_edge_refs:
@@ -243,19 +256,84 @@ def reconcile_against_db(payload: dict, graph) -> dict:
                 gone_conditional_edge_refs.append(
                     entry.get("id") or entry.get("temp_id") or entry
                 )
+                _enqueue_deletion(deleted, "conditional_edge_ids", entry.get("id"))
             else:
                 surviving_conditional_edges.append(entry)
         if gone_conditional_edge_refs:
             payload["conditional_edge_list"] = surviving_conditional_edges
             pruned_edges["conditional_edge_list"] = gone_conditional_edge_refs
 
-    if pruned_nodes or pruned_edges:
+    nulled_routing_refs = _null_dangling_routing_refs(payload, surviving_node_ids)
+
+    if pruned_nodes or pruned_edges or nulled_routing_refs:
         graph_id = getattr(graph, "id", graph)
         logger.info(
-            "reconcile_against_db: pruned stale refs for graph {} — nodes={}, edges={}",
+            "reconcile_against_db: pruned stale refs for graph {} — "
+            "nodes={}, edges={}, nulled_routing_refs={}",
             graph_id,
             pruned_nodes,
             pruned_edges,
+            nulled_routing_refs,
         )
 
     return payload
+
+
+def _enqueue_deletion(deleted: dict, delete_key: str, entry_id: int | None) -> None:
+    """Append *entry_id* to ``deleted[delete_key]`` if it's a real id, deduped.
+
+    No-op when *entry_id* is None (temp-only entry — never persisted, so
+    there is no DB row to delete).
+    """
+    if entry_id is None:
+        return
+    accumulator: list = deleted.setdefault(delete_key, [])
+    if entry_id not in accumulator:
+        accumulator.append(entry_id)
+
+
+_ROUTING_LIST_KEYS: tuple[str, ...] = (
+    "decision_table_node_list",
+    "classification_decision_table_node_list",
+)
+
+
+def _null_dangling_routing_refs(payload: dict, surviving_node_ids: set[int]) -> dict:
+    """Null decision-table routing refs pointing at a node gone from the DB.
+
+    Checks ``default_next_node_id``, ``next_error_node_id``, and every
+    ``condition_groups[].next_node_id`` on each decision-table-like entry in
+    *payload*. Mutates entries in place. Returns a summary of what was
+    nulled, keyed by list_key, for logging.
+    """
+    nulled: dict[str, list[dict]] = {}
+    for list_key in _ROUTING_LIST_KEYS:
+        for entry in payload.get(list_key) or []:
+            if entry is None:
+                continue
+            entry_nulled: dict = {}
+
+            for field in ("default_next_node_id", "next_error_node_id"):
+                value = entry.get(field)
+                if isinstance(value, int) and value not in surviving_node_ids:
+                    entry[field] = None
+                    entry_nulled[field] = value
+
+            nulled_group_refs = []
+            for group in entry.get("condition_groups") or []:
+                if not isinstance(group, dict):
+                    continue
+                value = group.get("next_node_id")
+                if isinstance(value, int) and value not in surviving_node_ids:
+                    group["next_node_id"] = None
+                    nulled_group_refs.append(value)
+            if nulled_group_refs:
+                entry_nulled["condition_groups.next_node_id"] = nulled_group_refs
+
+            if entry_nulled:
+                entry_ref = entry.get("id") or entry.get("temp_id")
+                nulled.setdefault(list_key, []).append(
+                    {"entry": entry_ref, **entry_nulled}
+                )
+
+    return nulled
