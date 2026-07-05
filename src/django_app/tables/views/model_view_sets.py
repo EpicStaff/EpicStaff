@@ -798,13 +798,7 @@ class PythonCodeToolConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.TOOLS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
-    queryset = PythonCodeToolConfig.objects.select_related("tool").prefetch_related(
-        Prefetch(
-            "tool__tool_fields",
-            queryset=PythonCodeToolConfigField.objects.all(),
-            to_attr="prefetched_config_fields",
-        )
-    )
+    queryset = PythonCodeToolConfig.objects.select_related("tool")
     serializer_class = PythonCodeToolConfigSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["tool", "name"]
