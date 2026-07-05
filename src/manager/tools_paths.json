@@ -11,5 +11,9 @@
     "EditFileTool": "custom_tools",
     "LineReadFileTool": "custom_tools",
     "FolderTool": "custom_tools",
-    "CreateDraftTool": "custom_tools"
+    "CreateDraftTool": "custom_tools",
+    "ReadFileTool": "custom_tools",
+    "WriteFileTool": "custom_tools",
+    "StringEditTool": "custom_tools",
+    "NotebookEditTool": "custom_tools"
 }

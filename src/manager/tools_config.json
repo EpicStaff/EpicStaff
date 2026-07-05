@@ -264,10 +264,22 @@
         },
         "custom_folder_tool":{
           "class_name": "FolderTool"
+        },
+        "custom_read_file":{
+          "class_name": "ReadFileTool"
+        },
+        "custom_write_file":{
+          "class_name": "WriteFileTool"
+        },
+        "custom_string_edit":{
+          "class_name": "StringEditTool"
+        },
+        "custom_notebook_edit":{
+          "class_name": "NotebookEditTool"
         }
     },
     "dependencies": [
-      "crewai==0.86.0"
+      "crewai==0.86.0", "pypdfium2", "nbformat", "charset-normalizer"
     ]
   }
 ]

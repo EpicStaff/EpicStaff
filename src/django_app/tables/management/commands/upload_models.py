@@ -1052,6 +1052,29 @@ def upload_legacy_tools():
             "description": "Tool for managing folders",
         },
         {
+            "name": "Read File Tool",
+            "name_alias": "custom_read_file",
+            "description": (
+                "Read a file's content: plain text with offset/limit, PDF page "
+                "ranges, or Jupyter notebook cells"
+            ),
+        },
+        {
+            "name": "Write File Tool",
+            "name_alias": "custom_write_file",
+            "description": "Create a new file or overwrite an existing one, with an explicit overwrite guard",
+        },
+        {
+            "name": "String Edit Tool",
+            "name_alias": "custom_string_edit",
+            "description": "Edit a file by exact string replacement (old_string/new_string anchor)",
+        },
+        {
+            "name": "Notebook Edit Tool",
+            "name_alias": "custom_notebook_edit",
+            "description": "Replace, insert, or delete a cell in a Jupyter notebook",
+        },
+        {
             "name": "Custom CLI Tool",
             "name_alias": "custom_cli",
             "description": "Tool for executing custom CLI commands",
