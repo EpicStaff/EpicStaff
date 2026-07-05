@@ -18,21 +18,6 @@ export interface DisplayedTelegramField extends TelegramTriggerFieldWithModel {
     variable_path: string;
 }
 
-export interface CreateTelegramTriggerNodeField {
-    parent: string;
-    field_name: string;
-    variable_path: string;
-}
-
-export interface CreateTelegramTriggerNodeRequest {
-    node_name: string;
-    graph: number;
-    telegram_bot_api_key: string;
-    webhook_trigger: WebhookTriggerModel | null;
-    fields: CreateTelegramTriggerNodeField[];
-    metadata?: Record<string, unknown>;
-}
-
 export interface TelegramTriggerNodeField {
     id: number;
     parent: TelegramFieldParent;

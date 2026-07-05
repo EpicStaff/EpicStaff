@@ -15,7 +15,7 @@
       "description": "Mandatory semantic search query you want to use to search the database's content."
     },
     "limit": {
-      "type": "integer",
+      "type": "number",
       "description": "Optional limit of results to return."
     }
   },

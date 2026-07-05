@@ -15,6 +15,17 @@ class StoragePermissionError(PermissionError):
     pass
 
 
+class StorageSizeLimitError(RuntimeError):
+    pass
+
+
+class StorageLineEditMismatchError(ValueError):
+    pass
+
+
+MAX_LINE_READ_BYTES = 50 * 1024 * 1024
+
+
 __cache: dict[str, list[str] | None] = {}
 
 _mutations: list[dict] = []
@@ -288,6 +299,87 @@ class EpicStaffStorage:
             "content_type": response.get("ContentType", ""),
             "modified": modified.isoformat() if modified else None,
         }
+
+    def read_lines(
+        self, path: str, line_number: int, num_lines: int | None = None
+    ) -> str:
+        file_info = self.info(path)
+        if file_info["size"] > MAX_LINE_READ_BYTES:
+            raise StorageSizeLimitError(
+                f"File '{path}' exceeds the {MAX_LINE_READ_BYTES // (1024 * 1024)} MB read limit."
+            )
+
+        if line_number < 1:
+            raise ValueError(f"line_number must be >= 1, got {line_number}.")
+
+        content = self.read(path)
+        lines = content.split("\n")
+
+        if line_number > len(lines):
+            raise ValueError(
+                f"line_number {line_number} is out of range (file has {len(lines)} lines)."
+            )
+
+        end_index = line_number - 1 + num_lines if num_lines is not None else len(lines)
+        selected = lines[line_number - 1 : end_index]
+
+        return "".join(
+            f"{line_number + idx}: {line}\n" for idx, line in enumerate(selected)
+        )
+
+    def count_lines(self, path: str) -> int:
+        file_info = self.info(path)
+        if file_info["size"] > MAX_LINE_READ_BYTES:
+            raise StorageSizeLimitError(
+                f"File '{path}' exceeds the {MAX_LINE_READ_BYTES // (1024 * 1024)} MB read limit."
+            )
+
+        content = self.read(path)
+        return len(content.split("\n"))
+
+    def edit_line(
+        self, path: str, line_number: int, expected_text: str, new_text: str
+    ) -> None:
+        content = self.read(path)
+        lines = content.split("\n")
+
+        if line_number < 1 or line_number > len(lines):
+            raise ValueError(
+                f"line_number {line_number} is out of range (file has {len(lines)} lines)."
+            )
+
+        actual = lines[line_number - 1].rstrip("\n")
+        expected = expected_text.rstrip("\n")
+        if actual != expected:
+            raise StorageLineEditMismatchError(
+                f"Line {line_number} mismatch: expected {expected!r}, got {actual!r}."
+            )
+
+        lines[line_number - 1] = new_text
+        self.write(path, "\n".join(lines))
+
+    def append_text(self, path: str, content: str) -> None:
+        try:
+            existing = self.read(path)
+        except FileNotFoundError:
+            existing = ""
+
+        self.write(path, existing + content)
+
+    def insert_lines(self, path: str, line_number: int, content: str) -> None:
+        if line_number < 1:
+            raise ValueError(f"line_number must be >= 1, got {line_number}")
+
+        try:
+            existing = self.read(path)
+        except FileNotFoundError:
+            existing = ""
+
+        lines = existing.split("\n")
+        idx = min(line_number - 1, len(lines))
+        new_lines = content.split("\n")
+        merged = lines[:idx] + new_lines + lines[idx:]
+        self.write(path, "\n".join(merged))
 
     @contextmanager
     def as_local(self, path: str) -> Generator[str, None, None]:

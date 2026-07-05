@@ -1,0 +1,146 @@
+<div
+    class="decision-table"
+    [class.is-blocked-llm]="hasMissingLlmConfig"
+    appClickOrDrag
+    (actualClick)="onEditClick()"
+>
+    @if (inputPort; as port) {
+        <div class="input-port-wrapper">
+            <div
+                class="port-circle"
+                fNodeInput
+                [fInputMultiple]="port.multiple"
+                [fInputId]="port.id"
+                [fInputConnectableSide]="port.position"
+                [ngStyle]="{
+                    'border-color': 'hsl(0, 0%, 15%)',
+                    'background-color': port.color,
+                }"
+            >
+                <i
+                    class="fa-solid fa-plus plus-icon"
+                    [ngStyle]="{ color: 'hsl(0, 0%, 15%)' }"
+                ></i>
+            </div>
+        </div>
+    }
+
+    <div class="decision-table__header">
+        <div class="icon-wrapper">
+            <i
+                [class]="node.icon"
+                [style.color]="node.color"
+            ></i>
+        </div>
+        <div class="title">{{ node.node_name || 'Classification Table' }}</div>
+        @if (hasMissingLlmConfig) {
+            <div
+                class="blocked-badge"
+                title="LLM config is missing or was deleted"
+            >
+                Missed LLM config in prompt
+            </div>
+        }
+    </div>
+
+    <div class="decision-table__groups">
+        @if (conditionGroups.length > 0) {
+            @for (group of conditionGroups; track trackConditionGroup($index, group)) {
+                @if (group.route_code) {
+                    <div class="decision-table__group">
+                        <span class="group-name">{{ group.route_code }}</span>
+
+                        @if (getPortForGroup(group); as port) {
+                            <div class="port-wrapper">
+                                <div
+                                    class="port-circle"
+                                    fNodeOutput
+                                    [fOutputMultiple]="port.multiple"
+                                    [fOutputId]="port.id"
+                                    [fOutputConnectableSide]="port.position"
+                                    [ngStyle]="{
+                                        'border-color': port.color,
+                                        'background-color': 'hsl(0, 0%, 15%)',
+                                    }"
+                                >
+                                    <i
+                                        class="fa-solid fa-plus plus-icon"
+                                        [ngStyle]="{ color: port.color }"
+                                    ></i>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        } @else {
+            <div class="decision-table__group decision-table__empty">
+                <span class="group-name">No condition groups</span>
+            </div>
+        }
+
+        <div class="decision-table__group">
+            <span class="group-name">
+                Default
+                @if (!defaultNextNodeName) {
+                    <span class="group-status">(not set)</span>
+                } @else {
+                    <span class="group-status">({{ defaultNextNodeName }})</span>
+                }
+            </span>
+
+            @if (defaultPort; as port) {
+                <div class="port-wrapper">
+                    <div
+                        class="port-circle"
+                        fNodeOutput
+                        [fOutputMultiple]="port.multiple"
+                        [fOutputId]="port.id"
+                        [fOutputConnectableSide]="port.position"
+                        [ngStyle]="{
+                            'border-color': port.color,
+                            'background-color': 'hsl(0, 0%, 15%)',
+                        }"
+                    >
+                        <i
+                            class="fa-solid fa-plus plus-icon"
+                            [ngStyle]="{ color: port.color }"
+                        ></i>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="decision-table__group">
+            <span class="group-name">
+                Error
+                @if (!nextErrorNodeName) {
+                    <span class="group-status">(not set)</span>
+                } @else {
+                    <span class="group-status">({{ nextErrorNodeName }})</span>
+                }
+            </span>
+
+            @if (errorPort; as port) {
+                <div class="port-wrapper">
+                    <div
+                        class="port-circle"
+                        fNodeOutput
+                        [fOutputMultiple]="port.multiple"
+                        [fOutputId]="port.id"
+                        [fOutputConnectableSide]="port.position"
+                        [ngStyle]="{
+                            'border-color': port.color,
+                            'background-color': 'hsl(0, 0%, 15%)',
+                        }"
+                    >
+                        <i
+                            class="fa-solid fa-plus plus-icon"
+                            [ngStyle]="{ color: port.color }"
+                        ></i>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>

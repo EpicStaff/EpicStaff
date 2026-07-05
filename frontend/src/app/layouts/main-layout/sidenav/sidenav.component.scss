@@ -96,6 +96,7 @@
                 justify-content: center;
                 text-decoration: none;
                 color: #fff;
+                cursor: pointer;
                 width: 2.5rem;
                 height: 2.5rem;
                 border-radius: 0.5rem;
@@ -132,10 +133,24 @@
 
 .user-avatar-wrapper {
     position: relative;
+    display: flex;
+    justify-content: center;
 }
 
 .user-avatar-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.5rem;
+    margin: 0 auto;
     cursor: pointer;
+    transition: background-color 0.2s ease-out;
+
+    &:hover {
+        background-color: rgba(255, 255, 255, 0.05);
+    }
 }
 
 .epic-chat-host {

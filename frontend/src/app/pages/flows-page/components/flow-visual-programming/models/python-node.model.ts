@@ -1,4 +1,4 @@
-import { CreatePythonCodeRequest, GetPythonCodeRequest } from '../../../../../features/tools/models/python-code.model';
+import { GetPythonCodeRequest } from '../../../../../features/tools/models/python-code.model';
 
 export interface PythonNode {
     id: number;
@@ -10,16 +10,5 @@ export interface PythonNode {
     output_variable_path: string | null;
     stream_config?: Record<string, boolean>;
     metadata: Record<string, unknown>;
-    use_storage?: boolean;
-}
-
-export interface CreatePythonNodeRequest {
-    node_name: string;
-    graph: number;
-    python_code: CreatePythonCodeRequest;
-    input_map: Record<string, unknown>;
-    output_variable_path: string | null;
-    stream_config?: Record<string, boolean>;
-    metadata?: Record<string, unknown>;
     use_storage?: boolean;
 }

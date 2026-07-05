@@ -41,7 +41,7 @@ $transition-default: all 0.2s ease;
 .llm-list-container {
     background-color: $bg-card;
     border-radius: 8px;
-    width: 350px;
+    width: 480px;
     color: $text-primary;
     box-shadow: 0 10px 40px $shadow-color;
     border: 1px solid $border-color;
@@ -50,90 +50,104 @@ $transition-default: all 0.2s ease;
     display: flex;
     flex-direction: column;
 
-    .list-header {
+    .header {
         display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
+        flex-direction: column;
         padding: 16px;
         padding-bottom: 0px;
 
-        input {
-            flex: 1;
-            padding: 7px 14px;
-            border-radius: 6px;
-            background-color: $bg-input;
-            color: $text-primary;
-            font-size: 13px;
-            border: 1px solid $border-color;
-            transition: $transition-default;
-            outline: none;
-
-            &::placeholder {
-                color: $text-tertiary;
-            }
-
-            &:focus {
-                border-color: $accent-blue;
-                box-shadow: 0 0 0 2px rgba($accent-blue, 0.15);
-            }
-        }
-
-        .filter-button {
+        .list-header {
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 8px 12px;
-            background-color: $bg-input;
-            color: $text-secondary;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 500;
-            transition: $transition-default;
-            border: none;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 8px;
 
-            i {
-                font-size: 14px;
-                width: 14px;
-                height: 14px;
-                margin-bottom: 2px;
+            input {
+                flex: 1;
+                padding: 7px 14px;
+                border-radius: 6px;
+                background-color: $bg-input;
+                color: $text-primary;
+                font-size: 13px;
+                border: 1px solid $border-color;
+                transition: $transition-default;
+                outline: none;
+
+                &::placeholder {
+                    color: $text-tertiary;
+                }
+
+                &:focus {
+                    border-color: $accent-blue;
+                    box-shadow: 0 0 0 2px rgba($accent-blue, 0.15);
+                }
             }
 
-            &:hover {
-                background-color: color.adjust($bg-input, $lightness: 5%);
-                color: $text-primary;
+            .filter-button {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 12px;
+                background-color: $bg-input;
+                color: $text-secondary;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 13px;
+                font-weight: 500;
+                transition: $transition-default;
+                border: none;
+
+                i {
+                    font-size: 14px;
+                    width: 14px;
+                    height: 14px;
+                    margin-bottom: 2px;
+                }
+
+                &:hover {
+                    background-color: color.adjust($bg-input, $lightness: 5%);
+                    color: $text-primary;
+                }
             }
         }
     }
 
-    .tabs-header {
+    .menu-header {
         display: flex;
-        border-bottom: 1px solid $border-color;
+        justify-content: space-between;
+        padding: 0;
         margin-bottom: 8px;
-
+        border-bottom: 1px solid $border-color;
         gap: 10px;
-        margin-inline: 16px;
-        .tab {
-            padding: 8px 16px;
-            text-align: center;
-            font-size: 13px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: $transition-default;
-            color: $text-secondary;
-            border-bottom: 2px solid transparent;
-            border-radius: 4px 4px 0 0;
-            min-width: auto;
-            margin-bottom: -1px;
 
-            &:hover {
-                color: $text-primary;
-            }
+        .menu-tabs {
+            display: flex;
+            justify-content: flex-start;
+            gap: 10px;
 
-            &.active {
-                color: $accent-blue;
-                border-bottom: 2px solid $accent-blue;
+            button {
+                background: transparent;
+                border: none;
+                color: $text-secondary;
+                font-size: 13px;
+                padding: 8px 16px;
+                cursor: pointer;
+                position: relative;
+                transition: color 0.2s;
+                font-weight: 500;
+                border-bottom: 2px solid transparent;
+                border-radius: 4px 4px 0 0;
+                margin-bottom: -1px;
+
+                &:hover {
+                    color: $text-primary;
+                }
+
+                &.active {
+                    color: $accent-blue;
+                    border-bottom: 2px solid $accent-blue;
+                }
             }
         }
     }
@@ -215,44 +229,11 @@ $transition-default: all 0.2s ease;
         }
     }
 
-    // Controls footer
-    .controls-footer {
+    .footer {
         display: flex;
         justify-content: flex-end;
-        gap: 8px;
         padding: 12px;
         border-top: 1px solid $border-color;
-
-        .cancel-button {
-            padding: 7px 14px;
-            background-color: transparent;
-            border: none;
-            color: $text-secondary;
-            font-size: 13px;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: $transition-default;
-
-            &:hover {
-                color: $text-primary;
-                background-color: rgba(255, 255, 255, 0.1);
-            }
-        }
-
-        .save-button {
-            padding: 7px 16px;
-            background-color: $accent-blue;
-            border: none;
-            color: white;
-            font-size: 13px;
-            font-weight: 500;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: $transition-default;
-
-            &:hover {
-                background-color: $accent-hover;
-            }
-        }
+        gap: 8px;
     }
 }

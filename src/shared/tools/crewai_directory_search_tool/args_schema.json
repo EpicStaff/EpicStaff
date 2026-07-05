@@ -11,7 +11,7 @@
       "description": "Optional directory to search"
     },
     "limit": {
-      "type": "integer",
+      "type": "number",
       "description": "Maximum number of matches per file",
       "default": 5
     }

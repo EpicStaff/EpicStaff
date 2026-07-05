@@ -1,0 +1,15 @@
+{
+  "title": "S3FileAppendArgs",
+  "type": "object",
+  "properties": {
+    "file_path": {
+      "type": "string",
+      "description": "S3 file path to append to."
+    },
+    "content": {
+      "type": "string",
+      "description": "Text to append to the file."
+    }
+  },
+  "required": ["file_path", "content"]
+}

@@ -2,6 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from tables.views.model_view_sets import (
+    ClassificationDecisionTableNodeModelViewSet,
     ConditionalEdgeViewSet,
     CrewNodeViewSet,
     DecisionTableNodeModelViewSet,
@@ -14,7 +15,6 @@ from tables.views.model_view_sets import (
     GraphVersionViewSet,
     McpToolViewSet,
     NgrokWebhookConfigViewSet,
-    PythonCodeToolConfigFieldViewSet,
     PythonCodeToolConfigViewSet,
     PythonNodeViewSet,
     FileExtractorNodeViewSet,
@@ -118,6 +118,15 @@ from tables.views.sse_views import (
     RunSessionSSEViewSwagger,
     FilteredRunSessionSSEView,
 )
+from tables.views.flow_assistant_views import (
+    FlowAssistantAuditView,
+    FlowAssistantCancelView,
+    FlowAssistantConfigView,
+    FlowAssistantConversationsView,
+    FlowAssistantConversationView,
+    FlowAssistantSendMessageView,
+    FlowAssistantStreamView,
+)
 
 from tables.views.organization_admin_views import OrganizationAdminViewSet
 from tables.views.role_admin_views import (
@@ -182,6 +191,9 @@ router.register(r"realtime-session-items", RealtimeSessionItemViewSet)
 router.register(r"realtime-agents", RealtimeAgentViewSet)
 router.register(r"realtime-agent-chats", RealtimeAgentChatViewSet)
 router.register(r"decision-table-node", DecisionTableNodeModelViewSet)
+router.register(
+    r"classification-decision-table-node", ClassificationDecisionTableNodeModelViewSet
+)
 
 router.register(r"sessions", SessionViewSet, basename="session")
 router.register(r"mcp-tools", McpToolViewSet)
@@ -192,7 +204,6 @@ router.register(r"webhook-trigger-nodes", WebhookTriggerNodeViewSet)
 router.register(r"webhook-triggers", WebhookTriggerViewSet)
 router.register(r"telegram-trigger-nodes", TelegramTriggerNodeViewSet)
 router.register(r"python-code-tool-configs", PythonCodeToolConfigViewSet)
-router.register(r"python-code-tool-config-fields", PythonCodeToolConfigFieldViewSet)
 router.register(r"graph-notes", GraphNoteViewSet)
 router.register(r"ngrok-config", NgrokWebhookConfigViewSet)
 router.register(r"schedule-trigger-nodes", ScheduleTriggerNodeViewSet)
@@ -467,5 +478,41 @@ urlpatterns = [
         "twilio/configure-webhook/",
         TwilioConfigureWebhookView.as_view(),
         name="twilio-configure-webhook",
+    ),
+    # Flow Assistant endpoints
+    path(
+        "flow-assistants/audit/conversations/",
+        FlowAssistantAuditView.as_view(),
+        name="flow-assistant-audit-conversations",
+    ),
+    path(
+        "flow-assistants/<int:graph_id>/",
+        FlowAssistantConfigView.as_view(),
+        name="flow-assistant-config",
+    ),
+    path(
+        "flow-assistants/<int:graph_id>/conversations/",
+        FlowAssistantConversationsView.as_view(),
+        name="flow-assistant-conversations",
+    ),
+    path(
+        "flow-assistants/<int:graph_id>/conversations/<int:conversation_id>/",
+        FlowAssistantConversationView.as_view(),
+        name="flow-assistant-conversation",
+    ),
+    path(
+        "flow-assistants/<int:graph_id>/conversations/<int:conversation_id>/messages/",
+        FlowAssistantSendMessageView.as_view(),
+        name="flow-assistant-send-message",
+    ),
+    path(
+        "flow-assistants/<int:graph_id>/conversations/<int:conversation_id>/stream/",
+        FlowAssistantStreamView.as_view(),
+        name="flow-assistant-stream",
+    ),
+    path(
+        "flow-assistants/<int:graph_id>/conversations/<int:conversation_id>/cancel/",
+        FlowAssistantCancelView.as_view(),
+        name="flow-assistant-cancel",
     ),
 ]

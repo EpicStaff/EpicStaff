@@ -71,6 +71,8 @@ import { SidePanelService } from '../../../services/side-panel.service';
                             <button
                                 class="expand-btn"
                                 aria-label="Toggle panel size"
+                                [matTooltip]="isExpanded() ? 'Minimize panel' : 'Expand panel'"
+                                matTooltipPosition="below"
                                 (click)="toggleExpanded()"
                             >
                                 <app-svg-icon
@@ -84,6 +86,8 @@ import { SidePanelService } from '../../../services/side-panel.service';
                             <button
                                 class="close-btn"
                                 aria-label="Close dialog"
+                                matTooltip="Close"
+                                matTooltipPosition="below"
                                 (click)="onCloseClick()"
                             >
                                 <app-svg-icon icon="x"></app-svg-icon>
@@ -128,7 +132,7 @@ export class NodePanelShellComponent {
 
     public readonly shouldShowExpandButton = computed(() => {
         const node = this.node();
-        return node && node.type !== 'table' && node.type !== NodeType.SCHEDULE_TRIGGER;
+        return node && node.type !== 'table' && node.type !== NodeType.SCHEDULE_TRIGGER && node.type !== 'classification-decision-table';
     });
 
     protected readonly outlet = viewChild(NgComponentOutlet);
@@ -181,7 +185,7 @@ export class NodePanelShellComponent {
                 }
 
                 // Auto-expand for decision table nodes
-                if (node.type === 'table') {
+                if (node.type === 'table' || node.type === 'classification-decision-table') {
                     this.isExpanded.set(true);
                 }
 

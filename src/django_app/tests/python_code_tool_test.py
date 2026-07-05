@@ -7,11 +7,7 @@ from tables.serializers.model_serializers import (
     PythonCodeToolConfigSerializer,
     PythonCodeToolSerializer,
 )
-from tables.models import (
-    PythonCode,
-    PythonCodeTool,
-    PythonCodeToolConfigField,
-)
+from tables.models import PythonCode, PythonCodeTool
 from tables.models.rbac_models import Organization
 
 
@@ -47,7 +43,7 @@ def test_python_code_tool_serializer_create_and_update():
     tool_data = {
         "name": "MyTool",
         "description": "test tool",
-        "args_schema": {},
+        "variables": [],
         "python_code": {
             "code": code.code,
             "entrypoint": code.entrypoint,
@@ -79,7 +75,7 @@ def test_python_code_tool_serializer_prevents_built_in_update():
     tool = PythonCodeTool.objects.create(
         name="BuiltIn",
         description="desc",
-        args_schema={},
+        variables=[],
         python_code=code,
         built_in=True,
     )
@@ -103,20 +99,24 @@ def test_python_code_tool_config_serializer_validation():
 
     code = PythonCode.objects.create(code="def main(): pass")
     tool = PythonCodeTool.objects.create(
-        name="Tool1", description="desc", args_schema={}, python_code=code, org=org
-    )
-
-    field1 = PythonCodeToolConfigField.objects.create(
-        tool=tool,
-        name="arg1",
-        data_type=PythonCodeToolConfigField.FieldType.STRING,
-        required=True,
-    )
-    field2 = PythonCodeToolConfigField.objects.create(
-        tool=tool,
-        name="arg2",
-        data_type=PythonCodeToolConfigField.FieldType.INTEGER,
-        required=False,
+        name="Tool1",
+        description="desc",
+        python_code=code,
+        org=org,
+        variables=[
+            {
+                "name": "arg1",
+                "type": "string",
+                "input_type": "user_input",
+                "required": True,
+            },
+            {
+                "name": "arg2",
+                "type": "integer",
+                "input_type": "user_input",
+                "required": False,
+            },
+        ],
     )
 
     config_data = {
@@ -133,8 +133,9 @@ def test_python_code_tool_config_serializer_validation():
     invalid_data = {
         "name": "config2",
         "tool": tool.pk,
-        "configuration": {"arg23": 10},
+        "configuration": {"arg1": "val"},
     }
-    serializer = PythonCodeToolConfigSerializer(data=invalid_data, context=context)
+    invalid_data["configuration"]["arg2"] = "not_a_number"
+    serializer = PythonCodeToolConfigSerializer(data=invalid_data)
     with pytest.raises(PythonCodeToolConfigSerializerError):
         serializer.is_valid(raise_exception=True)

@@ -14,8 +14,8 @@ redis = "5.2.0"
 loguru = "0.7.2"
 sqlalchemy = "^2.0.40"
 asyncpg = "^0.30.0"
-pydantic = ">=2.10.5"
-pytz = ">=2024.1"
+pydantic = ">=2.10.5,<3.0.0"
+pytz = "^2026.1"
 apscheduler = "^3.10.4"
 
 [tool.poetry.group.dev.dependencies]

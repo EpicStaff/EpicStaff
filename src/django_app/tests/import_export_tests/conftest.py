@@ -13,7 +13,6 @@ from tables.models import (
     Edge,
     PythonCode,
     PythonCodeTool,
-    PythonCodeToolConfigField,
     RealtimeAgent,
     AgentPythonCodeTools,
     AgentConfiguredTools,

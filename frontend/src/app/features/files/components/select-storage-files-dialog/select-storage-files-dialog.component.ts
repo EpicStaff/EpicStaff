@@ -2,6 +2,7 @@ import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { forkJoin } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications/toast.service';
@@ -41,7 +42,7 @@ interface TreeNode {
 
 @Component({
     selector: 'app-select-storage-files-dialog',
-    imports: [FormsModule, AppSvgIconComponent, Spinner2Component],
+    imports: [FormsModule, AppSvgIconComponent, Spinner2Component, MatTooltipModule],
     templateUrl: './select-storage-files-dialog.component.html',
     styleUrls: ['./select-storage-files-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

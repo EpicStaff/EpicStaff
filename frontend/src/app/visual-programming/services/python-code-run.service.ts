@@ -1,9 +1,8 @@
-import { HttpClient, HttpContext, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable, of, timer } from 'rxjs';
 import { catchError, filter, map, switchMap, take, takeWhile, timeout } from 'rxjs/operators';
 
-import { SKIP_NOT_FOUND_REDIRECT } from '../../core/interceptors/not-found.interceptor';
 import { ConfigService } from '../../services/config/config.service';
 
 export interface RunPythonCodeRequest {
@@ -41,9 +40,7 @@ export class PythonCodeRunService {
     }
 
     getResult(executionId: string): Observable<PythonCodeResult> {
-        return this.http.get<PythonCodeResult>(`${this.apiUrl}python-code-result/${executionId}/`, {
-            context: new HttpContext().set(SKIP_NOT_FOUND_REDIRECT, true),
-        });
+        return this.http.get<PythonCodeResult>(`${this.apiUrl}python-code-result/${executionId}/`);
     }
 
     pollResult(executionId: string): Observable<PythonCodeResult> {

@@ -6,7 +6,8 @@
     <button
         class="menu-button"
         [class.active]="isMenuOpen()"
-        title="Options"
+        matTooltip="Project options"
+        matTooltipPosition="above"
         (click)="toggleMenu($event)"
         (mouseenter)="onButtonEnter()"
         (mouseleave)="onButtonLeave()"
@@ -22,11 +23,6 @@
         (mouseenter)="onMenuEnter()"
         (mouseleave)="onMenuLeave()"
     >
-        <!-- <app-project-menu-item
-            icon="ti-tags"
-            label="Manage Tags"
-            (itemClick)="onActionClick($event, 'manage-tags')"
-        ></app-project-menu-item> -->
         <!-- <app-project-menu-item
       icon="ti-download"
       label="Export"

@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, effect, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CollapseOnOverflowDirective } from '../../../../../../shared/directives/collapse-on-overflow.directive';
@@ -19,6 +20,7 @@ import { VoiceVisualizerComponent } from './voice-visualizer/voice-visualizer.co
         VoiceVisualizerComponent,
         CollapseOnOverflowDirective,
         AppSvgIconComponent,
+        MatTooltip,
     ],
     templateUrl: './chat-controls.component.html',
     styleUrls: ['./chat-controls.component.scss'],

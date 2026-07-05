@@ -11,6 +11,7 @@ import {
     signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import {
     ExportSessionFilesDialogComponent,
@@ -36,7 +37,7 @@ const POST_TERMINAL_RETRY_DELAYS_MS = [1000, 2000, 4000];
 @Component({
     selector: 'app-session-files-button',
     standalone: true,
-    imports: [AppSvgIconComponent, CollapseOnOverflowDirective],
+    imports: [AppSvgIconComponent, CollapseOnOverflowDirective, MatTooltip],
     templateUrl: './session-files-button.component.html',
     styleUrls: ['./session-files-button.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

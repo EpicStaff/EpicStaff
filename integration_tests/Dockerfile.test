@@ -19,3 +19,5 @@ RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /
     apt-get install -y docker-ce-cli
 
 COPY . .
+
+CMD ["pytest", "integration_test.py", "-v"]

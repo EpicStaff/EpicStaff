@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, forwardRef, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, forwardRef, input, signal, ViewChild } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 
 import { TooltipComponent } from '../tooltip/tooltip.component';
@@ -29,6 +29,13 @@ export class TextareaComponent implements ControlValueAccessor {
 
     value = signal<string>('');
 
+    @ViewChild('textareaRef') private textareaRef!: ElementRef<HTMLTextAreaElement>;
+
+    private readonly minHeightPx = 40;
+    private resizing = false;
+    private dragStartY = 0;
+    private dragStartHeight = 0;
+
     private onChange: (value: string) => void = () => {};
     private onTouched: () => void = () => {};
 
@@ -56,5 +63,27 @@ export class TextareaComponent implements ControlValueAccessor {
 
     handleBlur(): void {
         this.onTouched();
+    }
+
+    onResizeStart(event: PointerEvent): void {
+        if (this.disabled()) return;
+        event.preventDefault();
+        this.resizing = true;
+        this.dragStartY = event.clientY;
+        this.dragStartHeight = this.textareaRef.nativeElement.offsetHeight;
+        (event.target as HTMLElement).setPointerCapture(event.pointerId);
+    }
+
+    onResizeMove(event: PointerEvent): void {
+        if (!this.resizing) return;
+        const delta = event.clientY - this.dragStartY;
+        const newHeight = Math.max(this.minHeightPx, this.dragStartHeight + delta);
+        this.textareaRef.nativeElement.style.height = `${newHeight}px`;
+    }
+
+    onResizeEnd(event: PointerEvent): void {
+        if (!this.resizing) return;
+        this.resizing = false;
+        (event.target as HTMLElement).releasePointerCapture(event.pointerId);
     }
 }

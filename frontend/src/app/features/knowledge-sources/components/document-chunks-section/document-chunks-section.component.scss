@@ -41,6 +41,11 @@
             color: var(--color-ks-status-warning);
             background: var(--color-ks-transparent-yellow);
         }
+
+        &--failed {
+            color: var(--color-ks-status-failed);
+            background: var(--color-ks-transparent-red);
+        }
     }
 
     &__action-btn {

@@ -11,14 +11,19 @@ import {
     ElementRef,
     HostListener,
     inject,
+    Injector,
     OnDestroy,
     OnInit,
     signal,
     ViewChild,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router } from '@angular/router';
+import { GetLlmConfigRequest } from '@shared/models';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { LlmConfigStorageService } from '@shared/services';
+import { extractHttpErrorMessage } from '@shared/utils';
 import {
     catchError,
     defaultIfEmpty,
@@ -33,9 +38,12 @@ import {
     take,
     tap,
 } from 'rxjs';
+import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { EpicChatService } from '../../../../features/epic-chat/epic-chat.service';
+import { FlowAssistantPanelComponent } from '../../../../features/flow-assistant/components/flow-assistant-panel/flow-assistant-panel.component';
+import { FlowAssistantService } from '../../../../features/flow-assistant/flow-assistant.service';
 import { FlowSessionsListComponent } from '../../../../features/flows/components/flow-sessions-dialog/flow-sessions-list.component';
 import { RestoreWarningsDialogComponent } from '../../../../features/flows/components/restore-warnings-dialog/restore-warnings-dialog.component';
 import {
@@ -56,6 +64,7 @@ import { RunGraphService } from '../../../../features/flows/services/run-graph-s
 import { FlowMessagesPanelComponent } from '../../../../pages/running-graph/components/flow-messages-panel/flow-messages-panel.component';
 import { RunSessionSSEService } from '../../../../pages/running-graph/services/graph-session-sse.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config/config.service';
 import { ToastService } from '../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -78,6 +87,7 @@ import { rewriteLegacyOnceScheduleName } from '../../../../visual-programming/ut
 import {
     buildBulkSavePayload,
     buildUuidToBackendIdMap,
+    clearStaleIds,
     cloneFlowState,
     getConnectionDiff,
     getNodeDiff,
@@ -99,6 +109,8 @@ import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
         SpinnerComponent,
         ShortcutsModalComponent,
         FlowMessagesPanelComponent,
+        MatTooltipModule,
+        FlowAssistantPanelComponent,
     ],
     templateUrl: './flow-visual-programming.component.html',
     styleUrl: './flow-visual-programming.component.scss',
@@ -106,13 +118,18 @@ import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
 })
 export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanComponentDeactivate {
     private readonly destroyRef = inject(DestroyRef);
+    private readonly wsService = inject(GraphCollaborationWsService);
+    private readonly profileService = inject(ProfileService);
+    private readonly injector = inject(Injector);
 
+    public readonly flowAssistantService = inject(FlowAssistantService);
     public readonly isEpicChatEnabled: boolean;
     public initialNodeId: string | null = null;
     public isLoaded = signal(false);
     private readonly graphState = signal<GraphDto | null>(null);
     private readonly availableFlowLights = signal<GetGraphLightRequest[]>([]);
     private readonly savedFlowState = signal<FlowModel>({ nodes: [], connections: [] });
+    protected readonly collaborationEditors = this.wsService.editors;
     public readonly loadedFlowState = computed<FlowModel>(() => {
         const graph = this.graphState();
         if (!graph) return { nodes: [], connections: [] };
@@ -169,7 +186,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         private readonly createGraphWarningService: CreateGraphWarningsService,
         private readonly runSessionSSEService: RunSessionSSEService,
         private readonly permissionsService: PermissionsService,
-        private readonly sidePanelService: SidePanelService
+        private readonly sidePanelService: SidePanelService,
+        private readonly llmConfigStorageService: LlmConfigStorageService
     ) {
         this.isEpicChatEnabled = this.configService.isEpicChatEnabled;
         this.routeParamMap = toSignal(this.route.paramMap, { initialValue: this.route.snapshot.paramMap });
@@ -194,6 +212,18 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.sidePanelService.saveNodeRequest$
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((node) => this.handleNodeSaveRequest(node));
+
+        this.wsService.graphSaved$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
+            const currentId = this.profileService.currentUserSignal()?.id;
+            if (event.saved_by.user_id === currentId) return;
+
+            const savedBy = event.saved_by.display_name ?? `User ${event.saved_by.user_id}`;
+            this.toastService.info(`Graph was saved by ${savedBy}`, 4000, 'bottom-right');
+
+            if (!this.hasUnsavedChangesSignal()) {
+                this.graphState.update((state) => (state ? { ...state, save_version: event.new_save_version } : state));
+            }
+        });
     }
 
     public ngOnInit(): void {
@@ -215,6 +245,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 takeUntilDestroyed(this.destroyRef),
                 tap(({ graph, flows }) => {
                     this.applyLoadedGraphState(graph, flows, showRefreshToast);
+                    this.wsService.connect(graph.id);
                 }),
                 catchError(() => {
                     this.toastService.error('Failed to load graph');
@@ -232,21 +263,50 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public onGraphSave(flowState: FlowModel): void {
         if (!this.graph?.id || this.isSaving()) return;
 
+        this.cleanupCdtGridState(flowState);
         this.saveFlowState(flowState, true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+    }
+
+    private cleanupCdtGridState(flowState: FlowModel): void {
+        const match = window.location.pathname.match(/\/flows\/(\d+)/);
+        const graphId = match?.[1];
+        if (!graphId) return;
+
+        const liveSuffixes = new Set<string>();
+        for (const node of flowState.nodes) {
+            if (node.type !== NodeType.CLASSIFICATION_TABLE) continue;
+            const nodeNum = node.nodeNumber ?? node.backendId;
+            if (nodeNum == null) continue;
+            liveSuffixes.add(`${graphId}_${nodeNum}`);
+        }
+
+        const prefix = 'cdt-grid-state-';
+        const toRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (!key || !key.startsWith(prefix)) continue;
+            const suffix = key.slice(prefix.length);
+            if (!suffix.startsWith(`${graphId}_`)) continue;
+            if (!liveSuffixes.has(suffix)) toRemove.push(key);
+        }
+        for (const key of toRemove) {
+            localStorage.removeItem(key);
+        }
     }
 
     private saveFlowState(flowState: FlowModel, showSuccessToast: boolean): Observable<void> {
         if (!this.graph?.id) return EMPTY;
 
         const previous = this.loadedFlowState();
-        const nodeDiff = getNodeDiff(previous, flowState);
-        const idMap = buildUuidToBackendIdMap(flowState.nodes);
-        const connectionDiff = getConnectionDiff(previous, flowState, idMap);
+        const flowToSave = clearStaleIds(previous, flowState);
+        const nodeDiff = getNodeDiff(previous, flowToSave);
+        const idMap = buildUuidToBackendIdMap(flowToSave.nodes);
+        const connectionDiff = getConnectionDiff(previous, flowToSave, idMap);
         const payload = buildBulkSavePayload(
             this.graph.id,
             nodeDiff,
             connectionDiff,
-            flowState,
+            flowToSave,
             idMap,
             this.graphState()!.save_version
         );
@@ -263,7 +323,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             tap(({ graph, flows }) => {
                 this.graphState.set(graph);
                 this.availableFlowLights.set(flows);
-                const patchedFlow = patchFlowStateWithBackendIds(flowState, previous, nodeDiff, graph);
+                const patchedFlow = patchFlowStateWithBackendIds(flowToSave, previous, nodeDiff, graph);
 
                 this.flowService.setFlow(patchedFlow);
                 // Sync isActive from the save response: patchFlowStateWithBackendIds only assigns
@@ -281,6 +341,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 this.sidePanelService.notifyGraphSaved();
                 if (showSuccessToast) {
                     this.toastService.success('Graph saved successfully');
+                    this.warnIfCdtMissingLlmConfig(patchedFlow);
                 }
             }),
             map(() => void 0),
@@ -290,7 +351,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                         'This graph was modified by another user. Please refresh to see the latest changes.'
                     );
                 } else {
-                    this.toastService.error(`Failed to save graph: ${err?.error?.error || 'Unknown error'}`);
+                    this.toastService.error(`Failed to save graph: ${extractHttpErrorMessage(err)}`);
                 }
                 return EMPTY;
             }),
@@ -367,7 +428,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                         'This graph was modified by another user. Please refresh to see the latest changes.'
                     );
                 } else {
-                    this.toastService.error(`Failed to save node: ${err?.error?.error || 'Unknown error'}`);
+                    this.toastService.error(`Failed to save node: ${extractHttpErrorMessage(err)}`);
                 }
                 return EMPTY;
             })
@@ -383,7 +444,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public saveCurrentState(): Observable<void> {
         if (!this.hasUnsavedChanges()) return of(void 0);
-        return toObservable(this.isSaving).pipe(
+        return toObservable(this.isSaving, { injector: this.injector }).pipe(
             filter((saving) => !saving),
             take(1),
             switchMap(() => this.saveFlowState(this.currentFlowState(), false))
@@ -410,8 +471,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     this.isPanelCollapsed.set(false);
                     this.cdr.markForCheck();
                 }),
-                catchError((error: { error?: { error?: string } }) => {
-                    this.toastService.error(`Failed to run graph: ${error?.error?.error || 'Unknown error'}`);
+                catchError((error: HttpErrorResponse) => {
+                    this.toastService.error(`Failed to run graph: ${extractHttpErrorMessage(error)}`);
                     return EMPTY;
                 }),
                 finalize(() => {
@@ -521,6 +582,11 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             );
     }
 
+    public onToggleAssistant(): void {
+        if (!this.graph?.id) return;
+        this.flowAssistantService.toggle(this.graph.id);
+    }
+
     public connectToEpicChat(): void {
         if (!this.graph?.id) {
             this.toastService.error('Unable to connect chat: Missing flow ID');
@@ -600,6 +666,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public ngOnDestroy(): void {
         this.flowUnsavedStateService.unregister();
         this.runSessionSSEService.stopStream();
+        this.wsService.disconnect();
     }
 
     private addStartNodeIfNeeded(flowModel: FlowModel): FlowModel {
@@ -665,10 +732,72 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 'bottom-right'
             );
         }
+
+        const loadedFlow = this.loadedFlowState();
+        this.llmConfigStorageService
+            .getAllConfigs()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((configs) => {
+                const cdtMissingCount = this.countCdtNodesWithMissingLlmConfig(loadedFlow, configs);
+                if (cdtMissingCount > 0) {
+                    this.toastService.warning(
+                        `${cdtMissingCount} classification decision table node(s) reference a missing LLM config.`,
+                        6000,
+                        'bottom-right'
+                    );
+                }
+            });
     }
 
     private countBlockedSubgraphNodes(flowModel: FlowModel): number {
         return flowModel.nodes.filter((node) => node.type === NodeType.SUBGRAPH && node.isBlocked).length;
+    }
+
+    private countCdtNodesWithMissingLlmConfig(flowModel: FlowModel, configs: GetLlmConfigRequest[]): number {
+        const availableIds = new Set(configs.map((c) => c.id));
+        return flowModel.nodes.filter((node) => {
+            if (node.type !== NodeType.CLASSIFICATION_TABLE) return false;
+            const table = (
+                node as {
+                    data?: {
+                        table?: {
+                            default_llm_config?: number | null;
+                            prompts?: Record<string, { llm_config: number | null }>;
+                        };
+                    };
+                }
+            ).data?.table;
+            if (!table) return false;
+
+            // Any prompt with no LLM config selected counts as missing.
+            if (table.prompts) {
+                for (const prompt of Object.values(table.prompts)) {
+                    if (prompt.llm_config == null) return true;
+                }
+            }
+            // Deleted-config references also count as missing.
+            if (table.default_llm_config != null && !availableIds.has(table.default_llm_config)) {
+                return true;
+            }
+            if (table.prompts) {
+                for (const prompt of Object.values(table.prompts)) {
+                    if (prompt.llm_config != null && !availableIds.has(prompt.llm_config)) return true;
+                }
+            }
+            return false;
+        }).length;
+    }
+
+    private warnIfCdtMissingLlmConfig(flowState: FlowModel): void {
+        if (!this.llmConfigStorageService.isConfigsLoaded()) return;
+        const count = this.countCdtNodesWithMissingLlmConfig(flowState, this.llmConfigStorageService.configs());
+        if (count > 0) {
+            this.toastService.warning(
+                `${count} decision table node(s) have a prompt with a missing LLM config.`,
+                6000,
+                'bottom-right'
+            );
+        }
     }
 
     public isShortcutsOpen = signal(false);
@@ -768,7 +897,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                                 description: result.description,
                             })
                             .pipe(
-                                tap(() => this.toastService.success(`Version '${result.name}' saved`)),
+                                tap(() => {
+                                    this.toastService.success(`Version '${result.name}' saved`);
+                                    this.warnIfCdtMissingLlmConfig(this.loadedFlowState());
+                                }),
                                 catchError(() => {
                                     this.toastService.error('Failed to save version');
                                     return EMPTY;

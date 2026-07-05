@@ -3,9 +3,9 @@ import asyncio
 from typing import Any
 
 from loguru import logger
-from src.crew.services.graph.events import StopEvent
-from src.crew.utils.singleton_meta import SingletonMeta
-from src.crew.services.redis_service import AsyncPubsubSubscriber, RedisService
+from services.graph.events import StopEvent
+from utils.singleton_meta import SingletonMeta
+from services.redis_service import AsyncPubsubSubscriber, RedisService
 from src.shared.models import CodeResultData, CodeTaskData, PythonCodeData
 
 

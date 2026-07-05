@@ -24,11 +24,8 @@ import { takeUntil } from 'rxjs/operators';
 import { McpToolDialogComponent } from '../../../../../features/tools/components/mcp-tool-dialog/mcp-tool-dialog.component';
 import { GetMcpToolRequest } from '../../../../../features/tools/models/mcp-tool.model';
 import { GetPythonCodeToolRequest } from '../../../../../features/tools/models/python-code-tool.model';
-import { GetToolConfigRequest } from '../../../../../features/tools/models/tool-config.model';
-import { CustomToolsService } from '../../../../../features/tools/services/custom-tools/custom-tools.service';
-import { FullToolConfig } from '../../../../../features/tools/services/full-tool-config.service';
 import { McpToolsService } from '../../../../../features/tools/services/mcp-tools/mcp-tools.service';
-import { CustomToolDialogComponent } from '../../../../../user-settings-page/tools/custom-tool-editor/custom-tool-dialog.component';
+import { CreateCustomToolDialogComponent } from '../../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
 import { PythonCodeToolService } from '../../../../../user-settings-page/tools/custom-tool-editor/services/pythonCodeToolService.service';
 import { McpToolItemComponent } from './mcp-tool-item/mcp-tool-item.component';
 import { PythonToolItemComponent } from './python-tool-item/python-tool-item.component';
@@ -65,9 +62,9 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
     >();
 
     @Output() public cancel = new EventEmitter<void>();
+    @Output() public childDialogOpenChange = new EventEmitter<boolean>();
 
     public menuItems: { type: 'custom' | 'mcp'; label: string }[] = [
-        // { type: 'builtin', label: 'Built-in Tools' },
         { type: 'custom', label: 'Custom Tools' },
         { type: 'mcp', label: 'MCP Tools' },
     ];
@@ -75,16 +72,13 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
     public searchTerm = '';
     public loading = true;
 
-    public tools: FullToolConfig[] = [];
     public pythonTools: GetPythonCodeToolRequest[] = [];
     public mcpTools: GetMcpToolRequest[] = [];
 
-    public selectedToolConfigs = new Set<number>();
     public selectedPythonTools = new Set<number>();
     public selectedMcpTools = new Set<number>();
 
     public showPythonTools = false;
-    public expandedToolConfigs = new Set<number>();
 
     private readonly _destroyed$ = new Subject<void>();
 
@@ -92,7 +86,6 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
         private readonly _pythonCodeToolService: PythonCodeToolService,
         private readonly _cdr: ChangeDetectorRef,
         private readonly cdkDialog: Dialog,
-        private readonly customToolsService: CustomToolsService,
         private readonly mcpToolsService: McpToolsService,
         private readonly cdr: ChangeDetectorRef
     ) {}
@@ -152,21 +145,6 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
             });
     }
 
-    public get filteredTools(): FullToolConfig[] {
-        let toolsToFilter = this.tools;
-
-        if (this.searchTerm) {
-            const query = this.searchTerm.toLowerCase();
-            toolsToFilter = toolsToFilter.filter(
-                (tool) =>
-                    tool.name.toLowerCase().includes(query) ||
-                    tool.toolConfigs.some((config) => config.name.toLowerCase().includes(query))
-            );
-        }
-
-        return this._sortToolsBySelection(toolsToFilter);
-    }
-
     // Computed getter for filtering python/custom tools based on searchTerm
     public get filteredPythonTools(): GetPythonCodeToolRequest[] {
         let toolsToFilter = this.pythonTools;
@@ -192,18 +170,6 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
         }
 
         return this._sortMcpToolsBySelection(toolsToFilter);
-    }
-
-    // Helper method to sort tools with selected items at the top
-    private _sortToolsBySelection(tools: FullToolConfig[]): FullToolConfig[] {
-        return tools.sort((a, b) => {
-            const aSelected = this.isToolSelected(a);
-            const bSelected = this.isToolSelected(b);
-
-            if (aSelected && !bSelected) return -1;
-            if (!aSelected && bSelected) return 1;
-            return 0;
-        });
     }
 
     // Helper method to sort python tools with selected items at the top
@@ -232,10 +198,6 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
 
     private _preselectMergedTools(): void {
         if (this.mergedTools && this.mergedTools.length) {
-            const preselectedToolConfigIds = this.mergedTools
-                .filter((item) => item.type === 'tool-config')
-                .map((item) => item.id);
-            this.selectedToolConfigs = new Set(preselectedToolConfigIds);
             const preselectedPythonToolIds = this.mergedTools
                 .filter((item) => item.type === 'python-tool')
                 .map((item) => item.id);
@@ -246,7 +208,6 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
             this.selectedMcpTools = new Set(preselectedMcpToolIds);
 
             // Re-sort tools after preselection
-            this.tools = this._sortToolsBySelection(this.tools);
             this.pythonTools = this._sortPythonToolsBySelection(this.pythonTools);
             this.mcpTools = this._sortMcpToolsBySelection(this.mcpTools);
         }
@@ -265,21 +226,6 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
     }
 
     public save(): void {
-        // Build tools map for getting actual tool names
-        const toolsMap = new Map<number, string>();
-        this.tools.forEach((tool) => {
-            toolsMap.set(tool.id, tool.name);
-        });
-
-        const mergedToolConfigs = this.tools
-            .flatMap((tool) => tool.toolConfigs)
-            .filter((config) => this.selectedToolConfigs.has(config.id))
-            .map((config) => ({
-                id: config.id,
-                configName: config.name, // This is the config name
-                toolName: toolsMap.get(config.tool) || 'Unknown Tool', // This is the actual tool name
-                type: 'tool-config',
-            }));
         const mergedPythonTools = this.pythonTools
             .filter((pTool) => this.selectedPythonTools.has(pTool.id))
             .map((pTool) => ({
@@ -298,41 +244,8 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
                 type: 'mcp-tool',
             }));
 
-        const updatedMergedTools = [...mergedToolConfigs, ...mergedPythonTools, ...mergedMcpTools];
+        const updatedMergedTools = [...mergedPythonTools, ...mergedMcpTools];
         this.mergedToolsUpdated.emit(updatedMergedTools);
-    }
-
-    public onCheckboxToggle(tool: FullToolConfig): void {
-        // For tools with empty tool_fields (simple tools that don't need configuration)
-        if (tool.tool_fields.length === 0) {
-            if (tool.toolConfigs.length > 0) {
-                const firstConfig = tool.toolConfigs[0];
-                const isToolSelected = this.isToolSelected(tool);
-
-                if (isToolSelected) {
-                    this.selectedToolConfigs.delete(firstConfig.id);
-                } else {
-                    this.selectedToolConfigs.add(firstConfig.id);
-                }
-            }
-            this._cdr.markForCheck();
-            return;
-        }
-
-        // For tools with tool_fields (complex tools that need configuration)
-        // Select/deselect only the first config, not all configs
-        if (tool.toolConfigs.length > 0) {
-            const firstConfig = tool.toolConfigs[0];
-            const isToolSelected = this.isToolSelected(tool);
-
-            if (isToolSelected) {
-                this.selectedToolConfigs.delete(firstConfig.id);
-            } else {
-                this.selectedToolConfigs.add(firstConfig.id);
-            }
-        }
-
-        this._cdr.markForCheck();
     }
 
     public onPythonToolToggle(pTool: GetPythonCodeToolRequest): void {
@@ -353,67 +266,38 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
         this._cdr.markForCheck();
     }
 
-    public isToolSelected(tool: FullToolConfig): boolean {
-        return tool.toolConfigs.some((config) => this.selectedToolConfigs.has(config.id));
-    }
-
-    public toggleToolConfigs(tool: FullToolConfig): void {
-        if (this.expandedToolConfigs.has(tool.id)) {
-            this.expandedToolConfigs.delete(tool.id);
-        } else {
-            this.expandedToolConfigs.add(tool.id);
-        }
-        this._cdr.markForCheck();
-    }
-
-    public onConfigToggle(config: GetToolConfigRequest): void {
-        if (this.selectedToolConfigs.has(config.id)) {
-            this.selectedToolConfigs.delete(config.id);
-        } else {
-            this.selectedToolConfigs.add(config.id);
-        }
-        this._cdr.markForCheck();
-    }
-
     public openCustomToolDialog(): void {
-        // Load tools fresh for the dialog
-        this.customToolsService.getPythonCodeTools().subscribe((tools) => {
-            const dialogRef = this.cdkDialog.open(CustomToolDialogComponent, {
-                data: { pythonTools: tools },
-                disableClose: true,
-            });
-            dialogRef.closed.subscribe((result) => {
-                if (result) {
-                    console.log('New tool created:', result);
-                }
-                this.cdr.markForCheck();
-            });
+        this.childDialogOpenChange.emit(true);
+        const dialogRef = this.cdkDialog.open<GetPythonCodeToolRequest>(CreateCustomToolDialogComponent);
+
+        dialogRef.closed.pipe(takeUntil(this._destroyed$)).subscribe((result) => {
+            if (result) {
+                // Auto-select the newly created tool, preserving existing selections.
+                this.selectedPythonTools.add(result.id);
+                this.pythonTools = this._sortPythonToolsBySelection([result, ...this.pythonTools]);
+                this._cdr.markForCheck();
+            }
+            this._notifyChildDialogClosed();
         });
     }
 
     public openMcpToolDialog(): void {
-        const dialogRef = this.cdkDialog.open(McpToolDialogComponent, {
+        this.childDialogOpenChange.emit(true);
+        const dialogRef = this.cdkDialog.open<GetMcpToolRequest>(McpToolDialogComponent, {
             data: {},
         });
 
-        dialogRef.closed.subscribe((result) => {
+        dialogRef.closed.pipe(takeUntil(this._destroyed$)).subscribe((result) => {
             if (result) {
-                console.log('New MCP tool created:', result);
-                // Reload the MCP tools list to include the newly created tool
-                this.loadToolsData();
+                this.selectedMcpTools.add(result.id);
+                this.mcpTools = this._sortMcpToolsBySelection([result, ...this.mcpTools]);
+                this._cdr.markForCheck();
             }
+            this._notifyChildDialogClosed();
         });
     }
 
-    // This method is commented out as per the requirement
-    /* public onCreateConfig(tool: FullToolConfig): void {
-      if (!tool) return;
-
-      this.toastService.showToast({
-        title: "Create Config",
-        message: `Creating a new configuration for tool: ${tool.name}`,
-      });
-
-      // Additional logic for creating a configuration would go here
-    } */
+    private _notifyChildDialogClosed(): void {
+        setTimeout(() => this.childDialogOpenChange.emit(false));
+    }
 }

@@ -132,7 +132,6 @@ export class ConsoleService implements OnDestroy {
             })
             .pipe(
                 tap((response) => {
-                    console.log('POST Response:', response);
                     if (response.connection_key) {
                         localStorage.setItem('connectionKey', response.connection_key);
                     } else {
@@ -144,7 +143,6 @@ export class ConsoleService implements OnDestroy {
 
                 switchMap(() => {
                     const storedKey: string | null = localStorage.getItem('connectionKey');
-                    console.log('Retrieved connectionKey:', storedKey);
 
                     if (!storedKey) {
                         throw new Error('No connectionKey found in localStorage');

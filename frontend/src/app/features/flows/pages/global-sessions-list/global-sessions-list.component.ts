@@ -17,6 +17,8 @@ import {
     ActionDropdownItem,
     AppSvgIconComponent,
     PaginationControlsComponent,
+    SelectComponent,
+    SelectItem,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
@@ -47,169 +49,10 @@ import {
         RouterModule,
         GraphMessagesComponent,
         ActionDropdownButtonComponent,
+        SelectComponent,
         HasPermissionDirective,
     ],
-    template: ` <div class="global-sessions-wrapper">
-        <div class="global-sessions-header">
-            <div class="flows-prefix">
-                <app-svg-icon
-                    icon="arrow-left"
-                    size="20px"
-                    class="back-arrow"
-                />
-                <span routerLink="/flows">Flows</span>
-                <span class="slash">/All sessions</span>
-            </div>
-        </div>
-        <div
-            class="global-sessions-content"
-            #contentRef
-        >
-            <div class="left-panel">
-                <div class="filter-controls">
-                    <div class="right-actions">
-                        <button
-                            *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
-                            class="delete-btn"
-                            [class.invisible]="selectedIds().size === 0"
-                            (click)="onBulkDelete()"
-                        >
-                            Delete Selected ({{ selectedIds().size }})
-                        </button>
-                        <app-action-dropdown-button
-                            *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
-                            [label]="'Export (' + (selectedIds().size === 0 ? totalCount() : selectedIds().size) + ')'"
-                            [items]="exportItems"
-                            [disabled]="
-                                isDeleting() || isExporting() || (selectedIds().size === 0 && totalCount() === 0)
-                            "
-                            (mainClick)="onExport('json')"
-                            (itemClick)="onExportItemSelected($event)"
-                        />
-                        <span
-                            [class.invisible]="selectedIds().size > 0"
-                            class="results-length"
-                        >
-                            {{ totalCount() }} Results
-                        </span>
-                    </div>
-                </div>
-                <div class="table-container">
-                    <app-flow-sessions-table
-                        [sessions]="sessions()"
-                        [showFlowName]="true"
-                        [showDuration]="true"
-                        [sortable]="true"
-                        [sortOrder]="sortOrder()"
-                        [statusFilter]="statusFilter()"
-                        [flows]="availableFlows()"
-                        [flowNameFilter]="flowFilter()"
-                        (flowNameFilterChange)="onFlowFilterChange($event)"
-                        [durationFilter]="durationFilter()"
-                        (durationFilterChange)="onDurationFilterChange($event)"
-                        [isLoading]="!isLoaded()"
-                        [showEmptyState]="isLoaded() && sessions().length === 0"
-                        [externalPreview]="true"
-                        [selectedIds]="selectedIds()"
-                        (deleteSelected)="onDeleteSelected($event)"
-                        (viewSession)="onViewSession($event)"
-                        (stopSession)="onStopSession($event)"
-                        (sortChange)="onSortChange($event)"
-                        (statusFilterChange)="onStatusFilterChange($event)"
-                        (previewSession)="onPreviewSession($event)"
-                        [activePreviewId]="previewSession()?.id ?? null"
-                        (selectedIdsChange)="selectedIds.set($event)"
-                    ></app-flow-sessions-table>
-                </div>
-
-                <div class="pagination-container">
-                    @if (isLoaded() && totalCount() > pageSize()) {
-                        <app-pagination-controls
-                            [pageSize]="pageSize()"
-                            [totalCount]="totalCount()"
-                            [currentPage]="currentPage()"
-                            [maxPagesToShow]="5"
-                            (pageChange)="onPageChange($event)"
-                        ></app-pagination-controls>
-                    }
-                    <label class="page-size-selector">
-                        <span>Sessions per page</span>
-                        <select
-                            [value]="pageSize()"
-                            (change)="onPageSizeChange(+$any($event.target).value)"
-                        >
-                            <option value="10">10</option>
-                            <option value="20">20</option>
-                            <option value="50">50</option>
-                        </select>
-                    </label>
-                </div>
-            </div>
-
-            <div
-                class="panel-divider"
-                [class.panel-divider--open]="isPanelOpen()"
-                (mousedown)="isPanelOpen() && startResize($event)"
-            >
-                <button
-                    class="panel-toggle-btn"
-                    (click)="togglePanel(); $event.stopPropagation()"
-                    [title]="isPanelOpen() ? 'Close panel' : 'Open panel'"
-                >
-                    <app-svg-icon
-                        [icon]="isPanelOpen() ? 'arrow-right' : 'arrow-left'"
-                        size="12px"
-                    >
-                    </app-svg-icon>
-                </button>
-            </div>
-
-            <!-- RIGHT PANEL: session details -->
-            <div
-                class="right-panel"
-                [class.right-panel--open]="isPanelOpen()"
-                [style.width]="isPanelOpen() ? rightPanelWidth() + '%' : '0'"
-            >
-                @if (previewSession(); as session) {
-                    <div class="preview-header">
-                        <div class="preview-header-left">
-                            <div class="preview-header-icon">
-                                <app-svg-icon
-                                    icon="heartbeat"
-                                    size="18px"
-                                />
-                            </div>
-                            <span class="preview-header-title">Session execution</span>
-                        </div>
-                        <div class="preview-header-right">
-                            <span class="preview-session-id-badge">#{{ session.id }}</span>
-                            <button
-                                class="preview-open-btn"
-                                (click)="onViewSession(session.id)"
-                                title="Open session"
-                            >
-                                <app-svg-icon
-                                    icon="arrow-up-right"
-                                    size="16px"
-                                />
-                            </button>
-                        </div>
-                    </div>
-                    <div class="preview-body">
-                        <app-graph-messages
-                            [graphId]="session.graph_id"
-                            [sessionId]="session.id.toString()"
-                            [compact]="true"
-                        ></app-graph-messages>
-                    </div>
-                } @else {
-                    <div class="preview-empty">
-                        <span>Click Preview to view session details</span>
-                    </div>
-                }
-            </div>
-        </div>
-    </div>`,
+    templateUrl: './global-sessions-list.component.html',
     styleUrls: ['./global-sessions-list.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -220,6 +63,11 @@ export class GlobalSessionsListComponent {
     public isLoaded = signal<boolean>(false);
     public currentPage = signal(1);
     public pageSize = signal(10);
+    public readonly pageSizeItems: SelectItem[] = [
+        { name: '10', value: 10 },
+        { name: '20', value: 20 },
+        { name: '50', value: 50 },
+    ];
     public statusFilter = signal<string[]>(['all']);
     public sortOrder = signal<'asc' | 'desc'>('desc');
     public flowFilter = signal<string | null>(null);

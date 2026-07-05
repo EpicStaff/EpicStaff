@@ -122,6 +122,7 @@
 }
 
 .chunk-card {
+    position: relative;
     background: var(--gray-850);
     border: 1px solid var(--gray-775);
     border-radius: 8px;
@@ -129,6 +130,10 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+
+    &:hover app-copy-button {
+        opacity: 1;
+    }
 }
 
 .chunk-header {

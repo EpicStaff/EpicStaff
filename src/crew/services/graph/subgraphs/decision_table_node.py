@@ -6,16 +6,16 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.graph import START, END
 from langgraph.types import StreamWriter
 
-from src.crew.services.graph.events import StopEvent
-from src.crew.services.graph.custom_message_writer import CustomSessionMessageWriter
+from services.graph.events import StopEvent
+from services.graph.custom_message_writer import CustomSessionMessageWriter
 from src.shared.models import (
     ConditionGroupData,
     DecisionTableNodeData,
     PythonCodeData,
 )
-from src.crew.models.state import State
+from models.state import State
 
-from src.crew.services.run_python_code_service import RunPythonCodeService
+from services.run_python_code_service import RunPythonCodeService
 
 
 class DecisionTableNodeDataError(Exception):

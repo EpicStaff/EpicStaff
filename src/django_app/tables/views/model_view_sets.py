@@ -4,6 +4,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import NOT_PROVIDED, IntegerField, Prefetch, Q
@@ -141,6 +142,9 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.db import transaction
 from django.db.models import Prefetch
 from tables.models.graph_models import (
+    ClassificationConditionGroup,
+    ClassificationDecisionTableNode,
+    ClassificationDecisionTablePrompt,
     Condition,
     ConditionGroup,
     DecisionTableNode,
@@ -159,7 +163,7 @@ from tables.models.llm_models import (
 )
 from tables.models.knowledge_models.naive_rag_models import AgentNaiveRag
 from tables.models.mcp_models import McpTool
-from tables.models.python_models import PythonCodeToolConfig, PythonCodeToolConfigField
+from tables.models.python_models import PythonCodeToolConfig
 from tables.models.realtime_models import (
     RealtimeAgent,
     RealtimeAgentChat,
@@ -200,6 +204,8 @@ from tables.services.rbac.permissions import HasOrgPermission, IsSuperadmin
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.serializers.model_serializers import (
     AgentReadSerializer,
+    ClassificationDecisionTableNodeSerializer,
+    AgentTagSerializer,
     AgentWriteSerializer,
     AudioTranscriptionNodeSerializer,
     CodeAgentNodeSerializer,
@@ -225,7 +231,6 @@ from tables.serializers.model_serializers import (
     ProviderSerializer,
     PythonCodeResultSerializer,
     PythonCodeSerializer,
-    PythonCodeToolConfigFieldSerializer,
     PythonCodeToolConfigSerializer,
     PythonCodeToolSerializer,
     PythonNodeSerializer,
@@ -256,6 +261,7 @@ from tables.swagger_schemas.twilio_schemas import (
     TWILIO_PHONE_NUMBERS_GET,
     TWILIO_CONFIGURE_WEBHOOK_POST,
 )
+from tables.graph_collab.notifications import GraphEditNotifier
 from utils.logger import logger
 
 redis_service = RedisService()
@@ -430,11 +436,6 @@ class AgentViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet):
             "python_code_tools",
             queryset=AgentPythonCodeTools.objects.select_related(
                 "pythoncodetool__python_code"
-            ).prefetch_related(
-                Prefetch(
-                    "pythoncodetool__tool_fields",
-                    queryset=PythonCodeToolConfigField.objects.all(),
-                )
             ),
             to_attr="prefetched_python_code_tools",
         ),
@@ -626,9 +627,7 @@ class TaskReadWriteViewSet(OrgScopedChildViewSetMixin, ModelViewSet):
     queryset = Task.objects.prefetch_related(
         Prefetch(
             "task_python_code_tool_list",
-            queryset=TaskPythonCodeTools.objects.select_related(
-                "tool__python_code"
-            ).prefetch_related("tool__tool_fields"),
+            queryset=TaskPythonCodeTools.objects.select_related("tool__python_code"),
         ),
         Prefetch(
             "task_python_code_tool_config_list",
@@ -642,9 +641,7 @@ class TaskReadWriteViewSet(OrgScopedChildViewSetMixin, ModelViewSet):
         ),
         Prefetch(
             "task_configured_tool_list",
-            queryset=TaskConfiguredTools.objects.select_related(
-                "tool__tool"
-            ).prefetch_related("tool__tool__tool_fields"),
+            queryset=TaskConfiguredTools.objects.select_related("tool__tool"),
         ),
         Prefetch(
             "task_mcp_tool_list",
@@ -785,11 +782,7 @@ class PythonCodeToolViewSet(
     copy_service_class = PythonCodeToolCopyService
     copy_serializer_class = PythonCodeToolSerializer
 
-    queryset = (
-        PythonCodeTool.objects.all()
-        .select_related("python_code")
-        .prefetch_related("tool_fields")
-    )
+    queryset = PythonCodeTool.objects.all().select_related("python_code")
     serializer_class = PythonCodeToolSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["name", "python_code"]
@@ -815,34 +808,6 @@ class PythonCodeToolConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     serializer_class = PythonCodeToolConfigSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["tool", "name"]
-
-
-class PythonCodeToolConfigFieldViewSet(OrgScopedQuerysetMixin, viewsets.ModelViewSet):
-    """
-    A viewset for viewing and editing PythonCodeToolConfigFields instances.
-
-    Fields have no org column; they inherit the visibility of their parent tool
-    (built-in tools' fields are global, custom tools' fields are org-private).
-    New fields may only be added to a tool the active org owns.
-    """
-
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.TOOLS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
-    queryset = PythonCodeToolConfigField.objects.all()
-    serializer_class = PythonCodeToolConfigFieldSerializer
-    filter_backends = [DjangoFilterBackend]
-
-    def get_org_scope_q(self, org_id: int) -> Q:
-        return Q(tool__built_in=True) | Q(tool__org_id=org_id)
-
-    def perform_create(self, serializer):
-        # A field may only be added to a tool the active org owns (not to a
-        # shared built-in tool or another org's tool).
-        tool = serializer.validated_data.get("tool")
-        if tool is not None and tool.org_id != self.get_active_org_id():
-            raise NotFound()
-        serializer.save()
 
 
 class PythonCodeResultReadViewSet(ReadOnlyModelViewSet):
@@ -979,6 +944,19 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
         )
         return Response(data, status=status.HTTP_200_OK)
 
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        instance = self.get_object()
+        instance.refresh_from_db(fields=["save_version"])
+
+        GraphEditNotifier.notify_graph_saved(
+            graph_id=instance.pk,
+            new_save_version=instance.save_version,
+            user=request.user,
+            saved_at=timezone.now().isoformat(),
+        )
+        return response
+
     @action(detail=True, methods=["post"], url_path="save")
     @extend_schema(**_SAVE_FLOW_SWAGGER)
     def save_flow(self, request, pk=None):
@@ -998,6 +976,14 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
         # GraphSaveVersionConflictError propagates → DRF returns 409 automatically.
 
         refreshed = self.get_queryset().get(pk=pk)
+
+        GraphEditNotifier.notify_graph_saved(
+            graph_id=refreshed.pk,
+            new_save_version=refreshed.save_version,
+            user=request.user,
+            saved_at=timezone.now().isoformat(),
+        )
+
         return Response(GraphSerializer(refreshed).data, status=status.HTTP_200_OK)
 
 
@@ -1123,6 +1109,19 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
             expected_save_version=expected_save_version,
             backup=backup,
         )
+
+        graph_id = result["graph_id"]
+        new_save_version = Graph.objects.values("save_version").get(pk=graph_id)[
+            "save_version"
+        ]
+
+        GraphEditNotifier.notify_graph_saved(
+            graph_id=graph_id,
+            new_save_version=new_save_version,
+            user=request.user,
+            saved_at=timezone.now().isoformat(),
+        )
+
         return Response(result, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="create-graph")
@@ -1582,6 +1581,80 @@ class DecisionTableNodeModelViewSet(
 
         # Re-save node so its hash includes the updated group hashes
         node.save()
+
+
+class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
+    queryset = ClassificationDecisionTableNode.objects.all()
+    serializer_class = ClassificationDecisionTableNodeSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["graph"]
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        node, _ = self._create_or_update_node(data=request.data)
+        return Response(self.get_serializer(node).data, status=status.HTTP_201_CREATED)
+
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        node, _ = self._create_or_update_node(
+            data=request.data, instance=instance, partial=partial
+        )
+        return Response(self.get_serializer(node).data, status=status.HTTP_200_OK)
+
+    def _create_or_update_node(self, data, instance=None, partial=False):
+        data = data.copy()
+        condition_groups_data = data.pop("condition_groups", None)
+        prompt_configs_data = data.pop("prompt_configs", None)
+
+        node_serializer = self.get_serializer(instance, data=data, partial=partial)
+        node_serializer.is_valid(raise_exception=True)
+        node = node_serializer.save()
+
+        if partial and condition_groups_data is None and prompt_configs_data is None:
+            return node, None
+
+        if instance:
+            ClassificationConditionGroup.objects.filter(
+                classification_decision_table_node=node
+            ).delete()
+
+        if condition_groups_data:
+            groups_to_create = []
+            for group_data in condition_groups_data:
+                gd = {
+                    k: v
+                    for k, v in group_data.items()
+                    if k not in ("id", "classification_decision_table_node")
+                }
+                groups_to_create.append(
+                    ClassificationConditionGroup(
+                        classification_decision_table_node=node, **gd
+                    )
+                )
+            ClassificationConditionGroup.objects.bulk_create(groups_to_create)
+
+        if prompt_configs_data is not None:
+            if instance:
+                ClassificationDecisionTablePrompt.objects.filter(cdt_node=node).delete()
+
+            ClassificationDecisionTablePrompt.objects.bulk_create(
+                [
+                    ClassificationDecisionTablePrompt(
+                        cdt_node=node,
+                        llm_config_id=prompt_data.get("llm_config"),
+                        **{
+                            k: v
+                            for k, v in prompt_data.items()
+                            if k not in ("id", "cdt_node", "llm_config")
+                        },
+                    )
+                    for prompt_data in prompt_configs_data
+                ]
+            )
+
+        return node, condition_groups_data
 
 
 class McpToolViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet):

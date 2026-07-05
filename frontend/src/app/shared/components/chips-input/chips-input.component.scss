@@ -9,18 +9,20 @@
         .input-icon {
             height: 40px;
             width: 40px;
-            border-radius: 8px;
-            background-color: var(--accent-color);
-            color: #ffffff;
+            align-self: center;
+            border-radius: 50%;
+            border: 1px solid var(--accent-color);
+            background: transparent;
+            color: var(--accent-color);
             cursor: pointer;
 
             &.disabled {
-                opacity: 0.7;
+                opacity: 0.5;
                 cursor: not-allowed;
             }
 
             &:hover {
-                background-color: var(--accent-color-hover);
+                background: rgba(104, 95, 255, 0.15);
             }
         }
     }

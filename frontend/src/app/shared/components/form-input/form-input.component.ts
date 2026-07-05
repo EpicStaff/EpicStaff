@@ -1,13 +1,23 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, forwardRef, Input, Output } from '@angular/core';
+import {
+    AfterViewInit,
+    Component,
+    ElementRef,
+    EventEmitter,
+    forwardRef,
+    Input,
+    Output,
+    ViewChild,
+} from '@angular/core';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 
 @Component({
     selector: 'app-custom-input',
     standalone: true,
-    imports: [CommonModule, FormsModule, HelpTooltipComponent],
+    imports: [CommonModule, FormsModule, HelpTooltipComponent, MatTooltipModule],
     template: `
         <div class="form-group">
             @if (label) {
@@ -29,23 +39,27 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
             }
             <div class="input-wrapper">
                 <input
+                    #inputEl
                     [type]="effectiveType"
                     [id]="id"
                     [name]="name"
+                    [attr.autocomplete]="effectiveAutocomplete"
                     [placeholder]="placeholder"
                     [(ngModel)]="value"
                     (blur)="onTouched(); blur.emit()"
                     class="text-input"
-                    [class.has-toggle]="type === 'password'"
+                    [class.has-toggle]="hasToggle"
+                    [class.masked]="isMasked"
                     [class.error]="errorMessage"
                     [disabled]="disabled"
-                    [autofocus]="autofocus"
                     [style.--active-color]="activeColor"
                 />
-                @if (type === 'password') {
+                @if (hasToggle) {
                     <button
                         type="button"
                         class="toggle-visibility"
+                        [matTooltip]="passwordVisible ? 'Hide' : 'Show'"
+                        matTooltipPosition="above"
                         (click)="togglePasswordVisibility()"
                         tabindex="-1"
                     >
@@ -110,6 +124,10 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                         color: var(--color-input-text-placeholder);
                     }
 
+                    &.masked {
+                        -webkit-text-security: disc;
+                    }
+
                     &.has-toggle {
                         padding-right: 36px;
                     }
@@ -162,12 +180,15 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
         },
     ],
 })
-export class CustomInputComponent implements ControlValueAccessor {
+export class CustomInputComponent implements ControlValueAccessor, AfterViewInit {
+    @ViewChild('inputEl') inputEl!: ElementRef<HTMLInputElement>;
+
     @Input() label: string = '';
     @Input() placeholder: string = '';
     @Input() type: string = 'text';
     @Input() id: string = '';
     @Input() name: string = '';
+    @Input() autocomplete: string | null = null;
     @Input() autofocus: boolean = false;
     @Input() tooltipText: string = '';
     @Input() icon: string = 'help';
@@ -178,6 +199,11 @@ export class CustomInputComponent implements ControlValueAccessor {
     @Output() blur = new EventEmitter<void>();
 
     passwordVisible: boolean = false;
+
+    private readonly supportsTextSecurity: boolean =
+        typeof CSS !== 'undefined' &&
+        typeof CSS.supports === 'function' &&
+        CSS.supports('-webkit-text-security', 'disc');
 
     private _value: string = '';
     private _disabled: boolean = false;
@@ -203,8 +229,32 @@ export class CustomInputComponent implements ControlValueAccessor {
         this._disabled = val;
     }
 
+    get isSecret(): boolean {
+        return this.type === 'secret';
+    }
+
+    get isPassword(): boolean {
+        return this.type === 'password';
+    }
+
     get effectiveType(): string {
-        return this.type === 'password' && this.passwordVisible ? 'text' : this.type;
+        if (this.isSecret) {
+            if (this.passwordVisible) return 'text';
+            return this.supportsTextSecurity ? 'text' : 'password';
+        }
+        return this.isPassword && this.passwordVisible ? 'text' : this.type;
+    }
+
+    get isMasked(): boolean {
+        return this.isSecret && !this.passwordVisible && this.supportsTextSecurity;
+    }
+
+    get hasToggle(): boolean {
+        return this.isSecret || this.isPassword;
+    }
+
+    get effectiveAutocomplete(): string | null {
+        return this.isSecret ? 'off' : this.autocomplete;
     }
 
     get isClassIcon(): boolean {
@@ -229,5 +279,11 @@ export class CustomInputComponent implements ControlValueAccessor {
 
     setDisabledState(isDisabled: boolean): void {
         this._disabled = isDisabled;
+    }
+
+    ngAfterViewInit(): void {
+        if (this.autofocus) {
+            queueMicrotask(() => this.inputEl?.nativeElement.focus());
+        }
     }
 }

@@ -1,9 +1,23 @@
 import { DecimalPipe, JsonPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, input, output, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    DestroyRef,
+    effect,
+    ElementRef,
+    inject,
+    input,
+    output,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { DomSanitizer, SafeHtml, SafeResourceUrl } from '@angular/platform-browser';
-import * as mammoth from 'mammoth';
-import * as XLSX from 'xlsx';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { renderAsync } from 'docx-preview';
+import * as Papa from 'papaparse';
+import type { Sheet as ExcelSheet } from 'read-excel-file/browser';
+import readXlsxFile from 'read-excel-file/browser';
 
 import { AppSvgIconComponent } from '../../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../../../../../../../../shared/components/buttons/button/button.component';
@@ -22,7 +36,7 @@ export interface SheetData {
 
 @Component({
     selector: 'app-storage-preview',
-    imports: [DecimalPipe, JsonPipe, AppSvgIconComponent, ButtonComponent],
+    imports: [DecimalPipe, JsonPipe, AppSvgIconComponent, ButtonComponent, MatTooltipModule],
     templateUrl: './storage-preview.component.html',
     styleUrls: ['./storage-preview.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -45,7 +59,8 @@ export class StoragePreviewComponent {
     pdfUrl = signal<SafeResourceUrl | null>(null);
     imageUrl = signal<string | null>(null);
     sheetData = signal<SheetData | null>(null);
-    docxHtml = signal<SafeHtml | null>(null);
+    docxBlob = signal<Blob | null>(null);
+    docxContainer = viewChild<ElementRef<HTMLDivElement>>('docxContainer');
     isLoadingPreview = signal<boolean>(false);
     previewError = signal<string | null>(null);
     csvDelimiter = signal<string>('auto');
@@ -63,10 +78,18 @@ export class StoragePreviewComponent {
 
     private currentBlobUrl: string | null = null;
     private currentCsvText: string | null = null;
+    private currentSheets: ExcelSheet[] | null = null;
 
     constructor() {
         effect(() => {
             this.loadPreview(this.item());
+        });
+        effect(() => {
+            const blob = this.docxBlob();
+            const container = this.docxContainer();
+            if (blob && container) {
+                this.renderDocx(blob, container.nativeElement);
+            }
         });
     }
 
@@ -134,8 +157,11 @@ export class StoragePreviewComponent {
     }
 
     onSheetChange(sheetName: string): void {
-        if (!this.currentWorkbook) return;
-        this.sheetData.set(this.parseSheet(this.currentWorkbook, sheetName));
+        if (!this.currentSheets) return;
+        const sheet = this.currentSheets.find((s) => s.sheet === sheetName);
+        if (!sheet) return;
+        const sheetNames = this.currentSheets.map((s) => s.sheet);
+        this.sheetData.set(this.rowsToSheetData(sheetNames, sheetName, sheet.data));
     }
 
     onDelimiterChange(delimiter: string): void {
@@ -145,8 +171,6 @@ export class StoragePreviewComponent {
         }
     }
 
-    private currentWorkbook: XLSX.WorkBook | null = null;
-
     private loadPreview(currentItem: StorageItem | null): void {
         this.revokeCurrentBlob();
         this.textContent.set('');
@@ -154,8 +178,8 @@ export class StoragePreviewComponent {
         this.pdfUrl.set(null);
         this.imageUrl.set(null);
         this.sheetData.set(null);
-        this.docxHtml.set(null);
-        this.currentWorkbook = null;
+        this.docxBlob.set(null);
+        this.currentSheets = null;
         this.currentCsvText = null;
         this.csvDelimiter.set('auto');
         this.previewError.set(null);
@@ -218,12 +242,8 @@ export class StoragePreviewComponent {
                 break;
             }
             case 'docx': {
-                blob.arrayBuffer().then((buf) => {
-                    mammoth.convertToHtml({ arrayBuffer: buf }).then((result) => {
-                        this.docxHtml.set(this.sanitizer.bypassSecurityTrustHtml(result.value));
-                        this.isLoadingPreview.set(false);
-                    });
-                });
+                this.docxBlob.set(blob);
+                this.isLoadingPreview.set(false);
                 break;
             }
             case 'sheet': {
@@ -234,10 +254,16 @@ export class StoragePreviewComponent {
                         this.isLoadingPreview.set(false);
                     });
                 } else {
-                    blob.arrayBuffer().then((buf) => {
-                        const wb = XLSX.read(buf, { type: 'array' });
-                        this.currentWorkbook = wb;
-                        this.sheetData.set(this.parseSheet(wb, wb.SheetNames[0]));
+                    blob.arrayBuffer().then(async (buf) => {
+                        try {
+                            const sheets = await readXlsxFile(buf);
+                            this.currentSheets = sheets;
+                            const sheetNames = sheets.map((s) => s.sheet);
+                            const firstSheet = sheets[0];
+                            this.sheetData.set(this.rowsToSheetData(sheetNames, firstSheet.sheet, firstSheet.data));
+                        } catch {
+                            this.previewError.set('Failed to parse spreadsheet');
+                        }
                         this.isLoadingPreview.set(false);
                     });
                 }
@@ -247,17 +273,48 @@ export class StoragePreviewComponent {
     }
 
     private parseCsv(text: string, delimiter: string): SheetData {
-        const opts: XLSX.ParsingOptions = delimiter === 'auto' ? {} : { FS: delimiter };
-        const wb = XLSX.read(text, { type: 'string', ...opts });
-        return this.parseSheet(wb, wb.SheetNames[0]);
-    }
-
-    private parseSheet(wb: XLSX.WorkBook, sheetName: string): SheetData {
-        const ws = wb.Sheets[sheetName];
-        const rows: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as string[][];
+        const config: Papa.ParseConfig = {
+            header: false,
+            skipEmptyLines: true,
+        };
+        if (delimiter !== 'auto') {
+            config.delimiter = delimiter;
+        }
+        const result = Papa.parse<string[]>(text, config);
+        const rows = result.data as string[][];
         const headers = rows.length > 0 ? rows[0].map(String) : [];
         const dataRows = rows.slice(1).map((r) => headers.map((_, i) => String(r[i] ?? '')));
-        return { sheetNames: wb.SheetNames, activeSheet: sheetName, headers, rows: dataRows };
+        return { sheetNames: ['Sheet1'], activeSheet: 'Sheet1', headers, rows: dataRows };
+    }
+
+    private rowsToSheetData(
+        sheetNames: string[],
+        activeSheet: string,
+        data: (string | number | boolean | typeof Date | null)[][]
+    ): SheetData {
+        const rows = data.map((row) => row.map((cell) => String(cell ?? '')));
+        const headers = rows.length > 0 ? rows[0] : [];
+        const dataRows = rows.slice(1).map((r) => headers.map((_, i) => r[i] ?? ''));
+        return { sheetNames, activeSheet, headers, rows: dataRows };
+    }
+
+    private async renderDocx(blob: Blob, container: HTMLElement): Promise<void> {
+        container.innerHTML = '';
+        // .docx is a ZIP archive — verify the "PK\x03\x04" magic before rendering
+        // so we can surface a clean error for misnamed/corrupt files.
+        const head = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+        const isZip = head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04;
+        if (!isZip) {
+            this.previewError.set('File is not a valid .docx document');
+            return;
+        }
+        try {
+            // renderAltChunks=false: altChunk embeds raw HTML from the .docx
+            // into an iframe srcdoc in the same origin — a known XSS vector.
+            await renderAsync(blob, container, undefined, { renderAltChunks: false });
+        } catch {
+            this.previewError.set('Failed to render document preview');
+        }
     }
 
     private resolvePreviewType(ext: string): PreviewType {
@@ -265,7 +322,7 @@ export class StoragePreviewComponent {
         const jsonExts = ['json'];
         const pdfExts = ['pdf'];
         const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'];
-        const sheetExts = ['xlsx', 'xls', 'xlsm', 'ods', 'csv'];
+        const sheetExts = ['xlsx', 'xlsm', 'csv'];
         const docxExts = ['docx'];
 
         if (textExts.includes(ext)) return 'text';

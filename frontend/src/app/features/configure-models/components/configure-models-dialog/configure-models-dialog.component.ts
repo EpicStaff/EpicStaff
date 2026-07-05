@@ -1,6 +1,7 @@
 import { DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 import { CONFIGURE_MODELS_TABS } from '../../constants/configure-models-tabs.constant';
@@ -21,6 +22,7 @@ import { VoiceSettingsSectionComponent } from '../voice-settings-section/voice-s
         AppNgrokSectionComponent,
         VoiceSettingsSectionComponent,
         AppSvgIconComponent,
+        MatTooltipModule,
     ],
     templateUrl: './configure-models-dialog.component.html',
     styleUrls: ['./configure-models-dialog.component.scss'],

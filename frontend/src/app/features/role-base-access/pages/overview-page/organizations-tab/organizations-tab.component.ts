@@ -2,6 +2,7 @@ import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     AppTableCellDirective,
@@ -44,6 +45,7 @@ const STATUS_ITEMS: SelectItem[] = [
         OrgAvatarComponent,
         AdminsCellComponent,
         DatePipe,
+        MatTooltip,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

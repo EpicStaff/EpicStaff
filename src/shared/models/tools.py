@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Literal, Any, Optional
+from typing import Any, Optional
 from pydantic import ConfigDict, model_validator
 from .ai_providers import LLMData, EmbedderData
 
@@ -58,18 +58,11 @@ class PythonCodeData(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class ArgsSchema(BaseModel):
-    type: Literal["object"] = "object"
-    title: str = "ArgumentsSchema"
-    properties: dict[str, Any]
-    required: list[str] = []
-
-
 class PythonCodeToolData(BaseModel):
     id: int
     name: str
     description: str
-    args_schema: ArgsSchema
+    variables: list[dict] = []
     python_code: PythonCodeData
 
     model_config = ConfigDict(from_attributes=True)

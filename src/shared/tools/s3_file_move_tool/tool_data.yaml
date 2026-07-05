@@ -1,0 +1,8 @@
+tool-data:
+  name: "S3 File Move Tool"
+  description: "Move (rename) a file in S3 storage from one path to another."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true
