@@ -11,7 +11,14 @@ from shutil import rmtree
 
 import pytest
 
-from custom_tools import ReadFileTool, WriteFileTool, StringEditTool, NotebookEditTool
+from custom_tools import (
+    ReadFileTool,
+    WriteFileTool,
+    StringEditTool,
+    NotebookEditTool,
+    GlobTool,
+    GrepTool,
+)
 from tests.conftest import test_dir
 
 
@@ -55,5 +62,27 @@ def notebook_edit_tool(monkeypatch):
     monkeypatch.setenv("SAVE_FILE_PATH", test_dir)
 
     yield NotebookEditTool()
+
+    rmtree(path)
+
+
+@pytest.fixture
+def glob_tool(monkeypatch):
+    path = Path(test_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("SAVE_FILE_PATH", test_dir)
+
+    yield GlobTool()
+
+    rmtree(path)
+
+
+@pytest.fixture
+def grep_tool(monkeypatch):
+    path = Path(test_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("SAVE_FILE_PATH", test_dir)
+
+    yield GrepTool()
 
     rmtree(path)

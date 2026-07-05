@@ -1075,6 +1075,16 @@ def upload_legacy_tools():
             "description": "Replace, insert, or delete a cell in a Jupyter notebook",
         },
         {
+            "name": "Glob Tool",
+            "name_alias": "custom_glob",
+            "description": "Find files by glob pattern, newest-first",
+        },
+        {
+            "name": "Grep Tool",
+            "name_alias": "custom_grep",
+            "description": "Search file contents by regular expression (ripgrep-backed)",
+        },
+        {
             "name": "Custom CLI Tool",
             "name_alias": "custom_cli",
             "description": "Tool for executing custom CLI commands",

@@ -2,6 +2,8 @@ FROM python:3.12.10
 
 WORKDIR /home/user/root/app
 
+RUN apt-get update && apt-get install -y --no-install-recommends ripgrep && rm -rf /var/lib/apt/lists/*
+
 RUN pip install --upgrade --no-cache-dir pip setuptools wheel
 
 RUN pip install poetry

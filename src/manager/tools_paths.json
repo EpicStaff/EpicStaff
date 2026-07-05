@@ -15,5 +15,7 @@
     "ReadFileTool": "custom_tools",
     "WriteFileTool": "custom_tools",
     "StringEditTool": "custom_tools",
-    "NotebookEditTool": "custom_tools"
+    "NotebookEditTool": "custom_tools",
+    "GlobTool": "custom_tools",
+    "GrepTool": "custom_tools"
 }

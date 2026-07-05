@@ -12,3 +12,5 @@ from .read_file_tool import ReadFileTool
 from .write_file_tool import WriteFileTool
 from .string_edit_tool import StringEditTool
 from .notebook_edit_tool import NotebookEditTool
+from .glob_tool import GlobTool
+from .grep_tool import GrepTool

@@ -276,6 +276,12 @@
         },
         "custom_notebook_edit":{
           "class_name": "NotebookEditTool"
+        },
+        "custom_glob":{
+          "class_name": "GlobTool"
+        },
+        "custom_grep":{
+          "class_name": "GrepTool"
         }
     },
     "dependencies": [
