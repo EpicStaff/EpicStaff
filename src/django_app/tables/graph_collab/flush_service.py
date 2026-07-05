@@ -34,7 +34,10 @@ from tables.graph_collab.graph_state_service import (
     _KNOWN_LIST_KEYS,
     graph_state_service,
 )
-from tables.graph_collab.snapshot_normalize import inject_bulk_save_fields
+from tables.graph_collab.snapshot_normalize import (
+    inject_bulk_save_fields,
+    reconcile_against_db,
+)
 from tables.serializers.graph_bulk_save_serializers import GraphBulkSaveInputSerializer
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
 from utils.logger import logger
@@ -129,6 +132,12 @@ def _do_db_flush(graph_id: int, snapshot: dict):
     # Server is the authority on save_version — use the DB value so we never
     # self-conflict against a version we just wrote.
     payload["save_version"] = graph.save_version
+
+    # Self-heal drift: drop payload refs to node rows already gone from the DB
+    # (e.g. a Crew delete cascaded its CrewNode while the live snapshot still
+    # holds the stale node/edge refs). Payload-only — the retained Redis
+    # snapshot itself is left untouched.
+    payload = reconcile_against_db(payload, graph=graph)
 
     serializer = GraphBulkSaveInputSerializer(data=payload)
     if not serializer.is_valid():

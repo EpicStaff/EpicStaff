@@ -48,9 +48,25 @@ All other node types
     No injection needed.
   - edge_list : start_node_id and end_node_id are plain integer fields.
     No injection needed beyond graph.
+
+reconcile_against_db()
+=======================
+Prunes a flush payload of references to node rows that no longer exist in the
+DB. This self-heals drift caused by an external CASCADE delete on a node's
+related row (e.g. deleting a ``Crew`` cascades its ``CrewNode``) that leaves
+the live Redis snapshot holding a stale node entry and/or stale edge refs to
+it. Without this, ``GraphBulkSaveInputSerializer``/``GraphBulkSaveService``
+would reject the entire flush every tick — permanently wedging autosave.
+
+Generic across every node type in ``NODE_TYPE_REGISTRY`` (not crew-specific):
+any node model with an externally-CASCADE-able FK can hit this same drift.
+Payload-only — the retained Redis snapshot is never mutated here.
 """
 
 import copy
+
+from tables.services.graph_bulk_save_service.registry import NODE_TYPE_REGISTRY
+from utils.logger import logger
 
 # All snapshot list keys that require ``graph`` injection.
 # Defined here (not imported from graph_state_service) to avoid a circular
@@ -128,3 +144,118 @@ def inject_bulk_save_fields(snapshot: dict, graph_id: int) -> dict:
                 end["type"] = "never"
 
     return snapshot
+
+
+def reconcile_against_db(payload: dict, graph) -> dict:
+    """Prune *payload* of references to node rows already gone from the DB.
+
+    Mutates and returns *payload* in place (the caller already owns a
+    deep-copied dict from ``inject_bulk_save_fields``, so a second copy here
+    would be wasted work). Never mutates the live Redis snapshot — that is a
+    separate object owned by the caller.
+
+    Two-step prune, driven by ``NODE_TYPE_REGISTRY`` so it covers every node
+    type generically (not just ``crew_node_list``):
+
+    1. For each ``<type>_node_list``, drop any entry carrying a real int ``id``
+       that no longer exists in the DB for this graph. New entries (no ``id``,
+       i.e. temp_id-only creates) are left untouched.
+    2. Compute the set of node ids that still exist in the DB for this graph
+       (across all node types) and drop any ``edge_list`` / ``conditional_edge_list``
+       entry whose real endpoint ref (``start_node_id``/``end_node_id`` on
+       edges, ``source_node_id`` on conditional edges — conditional edges have
+       no ``target_node_id`` field) points at an id no longer in that set.
+       temp_id-only refs (new, not-yet-persisted endpoints) are left untouched.
+
+    Never silently drops without logging — every prune is summarised via
+    ``logger.info`` so recovery from drift is auditable.
+    """
+    pruned_nodes: dict[str, list[int]] = {}
+    surviving_node_ids: set[int] = set()
+
+    for config in NODE_TYPE_REGISTRY:
+        # Always query existing ids for this node type, even when the payload
+        # carries no entries for it: an edge may legitimately reference a DB
+        # node of this type that simply wasn't touched by this flush (not
+        # every node on the graph is re-submitted every time). Skipping this
+        # query when the payload list is empty would make such untouched,
+        # perfectly valid nodes look "gone" in step 2 below.
+        existing_ids = set(
+            config.model_class.objects.filter(graph=graph).values_list("id", flat=True)
+        )
+        surviving_node_ids |= existing_ids
+
+        entries = payload.get(config.list_key) or []
+        if not entries:
+            continue
+
+        requested_ids = {
+            entry["id"]
+            for entry in entries
+            if entry is not None and isinstance(entry.get("id"), int)
+        }
+
+        gone_ids = requested_ids - existing_ids
+        if gone_ids:
+            payload[config.list_key] = [
+                entry
+                for entry in entries
+                if entry is None or entry.get("id") not in gone_ids
+            ]
+            pruned_nodes[config.list_key] = sorted(gone_ids)
+
+    pruned_edges: dict[str, list] = {}
+
+    edge_entries = payload.get("edge_list") or []
+    if edge_entries:
+        surviving_edges = []
+        gone_edge_refs = []
+        for entry in edge_entries:
+            if entry is None:
+                surviving_edges.append(entry)
+                continue
+            start_id = entry.get("start_node_id")
+            end_id = entry.get("end_node_id")
+            dangling = (
+                isinstance(start_id, int) and start_id not in surviving_node_ids
+            ) or (isinstance(end_id, int) and end_id not in surviving_node_ids)
+            if dangling:
+                gone_edge_refs.append(entry.get("id") or entry.get("temp_id") or entry)
+            else:
+                surviving_edges.append(entry)
+        if gone_edge_refs:
+            payload["edge_list"] = surviving_edges
+            pruned_edges["edge_list"] = gone_edge_refs
+
+    conditional_edge_entries = payload.get("conditional_edge_list") or []
+    if conditional_edge_entries:
+        surviving_conditional_edges = []
+        gone_conditional_edge_refs = []
+        for entry in conditional_edge_entries:
+            if entry is None:
+                surviving_conditional_edges.append(entry)
+                continue
+            source_id = entry.get("source_node_id")
+            dangling = (
+                isinstance(source_id, int) and source_id not in surviving_node_ids
+            )
+            if dangling:
+                gone_conditional_edge_refs.append(
+                    entry.get("id") or entry.get("temp_id") or entry
+                )
+            else:
+                surviving_conditional_edges.append(entry)
+        if gone_conditional_edge_refs:
+            payload["conditional_edge_list"] = surviving_conditional_edges
+            pruned_edges["conditional_edge_list"] = gone_conditional_edge_refs
+
+    if pruned_nodes or pruned_edges:
+        graph_id = getattr(graph, "id", graph)
+        logger.info(
+            "reconcile_against_db: pruned stale refs for graph {} — nodes={}, edges={}",
+            graph_id,
+            pruned_nodes,
+            pruned_edges,
+        )
+
+    return payload

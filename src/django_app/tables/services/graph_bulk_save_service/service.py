@@ -29,6 +29,7 @@ from tables.services.graph_bulk_save_service.saveables import (
     _EdgeSaveable,
     _NodeSaveable,
 )
+from utils.logger import logger
 
 
 class GraphBulkSaveService:
@@ -435,7 +436,7 @@ class GraphBulkSaveService:
         return ParsedNodeRef(ref=NodeRef(is_temp=False, value=node_id))
 
     def _validate_deletions(self, graph: Graph, deleted_data: dict) -> list[str]:
-        """Verify all IDs in deleted dict belong to this graph. Returns error strings."""
+        """Check deletion ids in ``deleted_data`` against the DB. Never raises."""
         errors = []
         # edges first, then nodes — matches deletion order
         for config in [*EDGE_DELETE_CONFIGS, *NODE_TYPE_REGISTRY]:
@@ -449,8 +450,12 @@ class GraphBulkSaveService:
             )
             invalid_ids = set(ids) - found_ids
             if invalid_ids:
-                errors.append(
-                    f"{config.delete_key}: IDs {sorted(invalid_ids)} not found in graph {graph.id}"
+                logger.debug(
+                    "{}: IDs {} already absent from graph {} — deletion intent "
+                    "already satisfied, skipping",
+                    config.delete_key,
+                    sorted(invalid_ids),
+                    graph.id,
                 )
         return errors
 

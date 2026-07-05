@@ -3,12 +3,15 @@ from datetime import datetime, timezone
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
+from tables.graph_collab.graph_state_service import graph_state_service
 from tables.graph_collab.utils import build_editor_info
 from tables.graph_collab.presence_service import presence_service
 from tables.graph_collab.protocol import (
     EditorInfo,
+    EntryDeleteRef,
     GraphSaveFailedMessage,
     GraphSavedMessage,
+    NodesDeletedMessage,
     PresenceStateUpdatedMessage,
 )
 
@@ -92,6 +95,50 @@ class GraphEditNotifier:
             temp_id_map=temp_id_map,
         )
         GraphEditNotifier._send(graph_id, message)
+
+    @staticmethod
+    def broadcast_nodes_deleted(
+        graph_id: int,
+        node_ids: list[int],
+        editor: EditorInfo | None = None,
+    ) -> None:
+        """Broadcast nodes_deleted for a set of ``crew_node_list`` row ids.
+
+        Used when a node's row was removed by a cascade external to the
+        collab flow (e.g. deleting the ``Crew`` a ``CrewNode`` points at)
+        rather than through a WS delete op — the live snapshot and any
+        connected editors need to converge on the node's removal.
+
+        Gated on the graph having a *live* snapshot in Redis
+        (``graph_state_service.get_snapshot``, cross-process) rather than
+        ``presence_service.has_editors`` (in-memory, per-process — unreliable
+        when the HTTP worker deleting the Crew differs from the ASGI worker
+        holding the sockets).
+
+        ``node_ids`` are ``CrewNode`` DB row ids — NOT crew ids.
+
+        Intentionally crew-specific (hardcodes ``list_key="crew_node_list"``).
+        Other CASCADE-able node types (e.g. ``PythonNode.python_code``) are
+        covered only by the generic ``reconcile_against_db`` flush-time safety
+        net, not by a live source-side broadcast like this one — adding that
+        for non-crew node types is left as a separate ticket.
+        """
+        if async_to_sync(graph_state_service.get_snapshot)(graph_id) is None:
+            logger.debug(
+                "broadcast_nodes_deleted: no live snapshot for graph {} — skipping",
+                graph_id,
+            )
+            return
+
+        message = NodesDeletedMessage(
+            refs=[
+                EntryDeleteRef(list_key="crew_node_list", id=node_id)
+                for node_id in node_ids
+            ],
+            editor=editor or _SYSTEM_EDITOR,
+        )
+        async_to_sync(graph_state_service.apply_op)(graph_id, message)
+        GraphEditNotifier._send(graph_id, message.model_dump())
 
     @staticmethod
     def notify_profile_updated(user) -> None:
