@@ -34,7 +34,14 @@ class GrepToolSchema(BaseModel):
     )
     glob: str | None = Field(
         None,
-        description="Filename filter, e.g. '*.log' or '*.{ts,tsx}'.",
+        description=(
+            "Filename filter, e.g. '*.log' or '*.{ts,tsx}'. When ripgrep is "
+            "available, full glob syntax (including brace expansion) is "
+            "supported. Without ripgrep, the pure-Python fallback matches "
+            "against both the filename and the sandbox-relative path (so "
+            "patterns like 'src/**/*.py' work), but does not support brace "
+            "expansion such as '*.{ts,tsx}'."
+        ),
     )
     output_mode: Literal["files_with_matches", "content", "count"] = Field(
         "files_with_matches",
@@ -247,7 +254,17 @@ class GrepTool(RouteTool):
                 try:
                     current_path = str(Path(text_path).resolve().relative_to(resolved_root))
                 except (ValueError, OSError, TypeError):
-                    current_path = text_path
+                    # rg reported a path we can't resolve relative to the search
+                    # root — never surface the raw (possibly absolute/outside
+                    # sandbox) path, just drop this file's matches instead.
+                    logger.warning(
+                        "GrepTool: could not resolve rg path {!r} relative to "
+                        "search root {}; skipping its matches",
+                        text_path,
+                        resolved_root,
+                    )
+                    current_path = None
+                    continue
                 per_file.setdefault(current_path, ({}, []))
             elif event_type in ("match", "context"):
                 if current_path is None:
@@ -323,7 +340,15 @@ class GrepTool(RouteTool):
             try:
                 rel = str(file_path.resolve().relative_to(resolved_root))
             except (ValueError, OSError):
-                rel = str(file_path)
+                # Never surface a raw, unresolvable path outside the sandbox-
+                # relative view — skip this file's matches instead.
+                logger.warning(
+                    "GrepTool: could not resolve path {!r} relative to search "
+                    "root {}; skipping its matches",
+                    file_path,
+                    resolved_root,
+                )
+                continue
 
             matches.append((rel, line_map, matched_linenos))
 
@@ -342,7 +367,28 @@ class GrepTool(RouteTool):
         if not glob_filter:
             return candidates
 
-        return [c for c in candidates if fnmatch.fnmatch(c.name, glob_filter)]
+        resolved_root = search_root.resolve() if search_root.is_dir() else search_root.parent.resolve()
+
+        matched: List[Path] = []
+        for candidate in candidates:
+            if fnmatch.fnmatch(candidate.name, glob_filter):
+                matched.append(candidate)
+                continue
+
+            # rg's --glob supports full glob syntax (including path segments,
+            # e.g. 'src/**/*.py'); fnmatch only matches basenames, so also try
+            # matching the sandbox-relative posix path for parity. This still
+            # doesn't support brace expansion (e.g. '*.{ts,tsx}') — see the
+            # glob field description.
+            try:
+                rel_posix = candidate.resolve().relative_to(resolved_root).as_posix()
+            except (ValueError, OSError):
+                continue
+
+            if fnmatch.fnmatch(rel_posix, glob_filter):
+                matched.append(candidate)
+
+        return matched
 
     @staticmethod
     def _looks_binary(raw: bytes) -> bool:

@@ -1,4 +1,4 @@
-from typing import Any, List, Optional, Type
+from typing import Any, Type
 
 import httpx
 from crewai.tools import BaseTool
@@ -21,10 +21,10 @@ class WebSearchToolSchema(BaseModel):
     query: str = Field(
         ..., min_length=MIN_QUERY_LENGTH, description="The search query."
     )
-    allowed_domains: Optional[List[str]] = Field(
+    allowed_domains: list[str] | None = Field(
         None, description="Only return results from these domains."
     )
-    blocked_domains: Optional[List[str]] = Field(
+    blocked_domains: list[str] | None = Field(
         None, description="Never return results from these domains."
     )
     max_results: int = Field(
@@ -40,7 +40,7 @@ class WebSearchTool(BaseTool):
     description: str = ""
     args_schema: Type[BaseModel] = WebSearchToolSchema
 
-    api_key: Optional[str] = None
+    api_key: str | None = None
     """Serper API key, injected via tool_init_configuration (config field 'api_key')."""
 
     def __init__(self, **kwargs):
@@ -79,6 +79,9 @@ class WebSearchTool(BaseTool):
         has_domain_filter = bool(allowed_domains or blocked_domains)
         request_num = max_results
         if has_domain_filter:
+            # Over-fetch so that after client-side domain filtering we still have
+            # enough candidates left to satisfy max_results (Serper has no
+            # server-side domain filter, so filtering happens post-hoc below).
             request_num = min(max_results * DOMAIN_FILTER_MULTIPLIER, SERPER_PAGE_SIZE_CAP)
 
         try:
@@ -133,7 +136,7 @@ class WebSearchTool(BaseTool):
 
     @staticmethod
     def _format_results(
-        results: List[dict], total_available: int, query: str
+        results: list[dict], total_available: int, query: str
     ) -> str:
         rendered = []
         for idx, item in enumerate(results, start=1):
@@ -154,8 +157,8 @@ class WebSearchTool(BaseTool):
     @staticmethod
     def _passes_domain_filter(
         url: str,
-        allowed_domains: Optional[List[str]],
-        blocked_domains: Optional[List[str]],
+        allowed_domains: list[str] | None,
+        blocked_domains: list[str] | None,
     ) -> bool:
         try:
             host = (httpx.URL(url).host or "").lower()
@@ -165,7 +168,7 @@ class WebSearchTool(BaseTool):
         if not host:
             return False
 
-        def _matches(domain_list: List[str]) -> bool:
+        def _matches(domain_list: list[str]) -> bool:
             for domain in domain_list:
                 domain = domain.lower().lstrip(".")
                 if host == domain or host.endswith(f".{domain}"):

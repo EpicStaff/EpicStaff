@@ -1,7 +1,7 @@
 import ipaddress
 import socket
 import time
-from typing import Any, Optional, Type
+from typing import Any, Type
 
 import httpx
 import litellm
@@ -31,7 +31,7 @@ class WebFetchToolSchema(BaseModel):
     url: str = Field(
         ..., description="URL to fetch. http and https only; http is upgraded to https."
     )
-    prompt: Optional[str] = Field(
+    prompt: str | None = Field(
         None,
         description=(
             "If given, an extraction LLM answers this prompt over the fetched "
@@ -45,7 +45,7 @@ class WebFetchTool(BaseTool):
     description: str = ""
     args_schema: Type[BaseModel] = WebFetchToolSchema
 
-    config: Optional[dict] = None
+    config: dict | None = None
     """LLM configuration injected via tool_init_configuration (config field
     'llm_config'), shaped like {"llm": {"provider": ..., "config": {"model": ...}}}."""
 
@@ -108,7 +108,7 @@ class WebFetchTool(BaseTool):
     # Fetch + SSRF guard + redirect handling
     # ------------------------------------------------------------------
 
-    def _fetch_and_convert(self, url: str) -> tuple[Optional[str], Optional[str]]:
+    def _fetch_and_convert(self, url: str) -> tuple[str | None, str | None]:
         current_url = url
         original_host = httpx.URL(url).host
 
@@ -171,7 +171,7 @@ class WebFetchTool(BaseTool):
         return httpx.Client(timeout=DEFAULT_TIMEOUT_SECONDS, follow_redirects=False)
 
     @staticmethod
-    def _ssrf_guard(url: str) -> tuple[bool, Optional[str]]:
+    def _ssrf_guard(url: str) -> tuple[bool, str | None]:
         parsed = httpx.URL(url)
         if parsed.scheme not in ("http", "https"):
             return (
@@ -219,7 +219,7 @@ class WebFetchTool(BaseTool):
     @staticmethod
     def _convert_body(
         body: bytes, content_type: str, truncated: bool, url: str
-    ) -> tuple[Optional[str], Optional[str]]:
+    ) -> tuple[str | None, str | None]:
         content_type_main = content_type.split(";")[0].strip().lower()
 
         note = ""
@@ -270,7 +270,7 @@ class WebFetchTool(BaseTool):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _get_cached(url: str) -> Optional[str]:
+    def _get_cached(url: str) -> str | None:
         entry = _MARKDOWN_CACHE.get(url)
         if entry is None:
             return None
@@ -290,7 +290,7 @@ class WebFetchTool(BaseTool):
     # LLM extraction
     # ------------------------------------------------------------------
 
-    def _get_llm_config(self) -> Optional[dict]:
+    def _get_llm_config(self) -> dict | None:
         if not self.config:
             return None
 

@@ -69,6 +69,17 @@ class TestGrepToolPythonFallback:
 
         assert result == "match.log"
 
+    def test_glob_filter_matches_path_style_pattern(self, grep_tool: GrepTool):
+        """rg's --glob supports path segments (e.g. 'sub/*.py'); the
+        pure-Python fallback should match against the sandbox-relative path
+        too, not just the basename."""
+        _write(Path(test_dir) / "sub" / "match.py", "needle here\n")
+        _write(Path(test_dir) / "match.py", "needle here\n")
+
+        result = grep_tool._run(pattern="needle", glob="sub/*.py")
+
+        assert result == str(Path("sub") / "match.py")
+
     def test_invalid_regex_returns_readable_error_no_traceback(
         self, grep_tool: GrepTool
     ):
