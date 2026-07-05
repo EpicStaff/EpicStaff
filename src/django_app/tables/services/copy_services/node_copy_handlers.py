@@ -228,24 +228,7 @@ def copy_classification_decision_table_node(
         metadata=node.metadata,
     )
 
-    for group in node.condition_groups.all():
-        ClassificationConditionGroup.objects.create(
-            classification_decision_table_node=new_node,
-            group_name=group.group_name,
-            order=group.order,
-            expression=group.expression,
-            prompt_id=group.prompt_id,
-            manipulation=group.manipulation,
-            continue_flag=group.continue_flag,
-            next_node_id=group.next_node_id,
-            dock_visible=group.dock_visible,
-            field_expressions=group.field_expressions,
-            field_manipulations=group.field_manipulations,
-            route_code=group.route_code,
-            section=group.section,
-        )
-
-    ClassificationDecisionTablePrompt.objects.bulk_create(
+    new_prompts = ClassificationDecisionTablePrompt.objects.bulk_create(
         [
             ClassificationDecisionTablePrompt(
                 cdt_node=new_node,
@@ -259,6 +242,23 @@ def copy_classification_decision_table_node(
             for pc in node.prompt_configs.all()
         ]
     )
+    new_prompt_map = {p.prompt_key: p for p in new_prompts}
+
+    for group in node.condition_groups.all():
+        ClassificationConditionGroup.objects.create(
+            classification_decision_table_node=new_node,
+            group_name=group.group_name,
+            order=group.order,
+            expression=group.expression,
+            prompt=new_prompt_map.get(group.prompt.prompt_key)
+            if group.prompt
+            else None,
+            manipulation=group.manipulation,
+            continue_flag=group.continue_flag,
+            dock_visible=group.dock_visible,
+            field_expressions=group.field_expressions,
+            field_manipulations=group.field_manipulations,
+        )
 
     return new_node
 

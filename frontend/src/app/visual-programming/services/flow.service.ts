@@ -34,7 +34,7 @@ export class FlowService {
         connections: [],
     });
 
-    private _nextNodeNumber = 1;
+    private _lastIssuedNumber = 0;
 
     // Subject to request canvas redraw (e.g., after port reordering)
     private canvasRedrawRequest$ = new Subject<void>();
@@ -79,19 +79,17 @@ export class FlowService {
 
     public setFlow(flow: FlowModel) {
         this.flowSignal.set(flow);
-        // Re-seed the counter above the highest existing nodeNumber
-        let max = 0;
-        for (const n of flow.nodes) {
-            if (n.nodeNumber != null && n.nodeNumber > max) {
-                max = n.nodeNumber;
-            }
-        }
-        this._nextNodeNumber = max + 1;
+        this._lastIssuedNumber = 0;
     }
 
-    /** Returns the next node number and increments the counter. */
     public getNextNodeNumber(): number {
-        return this._nextNodeNumber++;
+        const next = Math.max(this.highestNodeNumber(), this._lastIssuedNumber) + 1;
+        this._lastIssuedNumber = next;
+        return next;
+    }
+
+    private highestNodeNumber(): number {
+        return this.flowSignal().nodes.reduce((max, n) => Math.max(max, n.nodeNumber ?? 0), 0);
     }
 
     public addNode(node: NodeModel) {

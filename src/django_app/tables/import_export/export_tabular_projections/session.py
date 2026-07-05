@@ -1,6 +1,6 @@
 import json
 
-from tables.import_export.tabular.base import TabularProjection
+from tables.import_export.export_tabular_projections.base import TabularProjection
 
 
 class SessionTabularProjection(TabularProjection):
