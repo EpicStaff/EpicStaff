@@ -1085,6 +1085,32 @@ def upload_legacy_tools():
             "description": "Search file contents by regular expression (ripgrep-backed)",
         },
         {
+            "name": "Web Search Tool",
+            "name_alias": "custom_web_search",
+            "description": "Search the web via the Serper API, with optional domain allow/block filters",
+            "fields": [
+                {
+                    "name": "api_key",
+                    "description": "Serper API key used to authenticate search requests",
+                    "data_type": ToolConfigField.FieldType.STRING,
+                    "required": True,
+                },
+            ],
+        },
+        {
+            "name": "Web Fetch Tool",
+            "name_alias": "custom_web_fetch",
+            "description": "Fetch a URL, convert it to markdown, and optionally answer an extraction prompt with a configured LLM",
+            "fields": [
+                {
+                    "name": "llm_config",
+                    "description": "Field for LLM Configuration used to answer extraction prompts",
+                    "data_type": ToolConfigField.FieldType.LLM_CONFIG,
+                    "required": False,
+                },
+            ],
+        },
+        {
             "name": "Custom CLI Tool",
             "name_alias": "custom_cli",
             "description": "Tool for executing custom CLI commands",

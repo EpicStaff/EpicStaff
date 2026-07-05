@@ -18,6 +18,8 @@ from custom_tools import (
     NotebookEditTool,
     GlobTool,
     GrepTool,
+    WebSearchTool,
+    WebFetchTool,
 )
 from tests.conftest import test_dir
 
@@ -86,3 +88,30 @@ def grep_tool(monkeypatch):
     yield GrepTool()
 
     rmtree(path)
+
+
+@pytest.fixture
+def web_search_tool():
+    return WebSearchTool(api_key="test-serper-key")
+
+
+@pytest.fixture
+def web_search_tool_no_key():
+    return WebSearchTool()
+
+
+@pytest.fixture
+def web_fetch_tool():
+    return WebFetchTool()
+
+
+@pytest.fixture
+def web_fetch_tool_with_llm():
+    return WebFetchTool(
+        config={
+            "llm": {
+                "provider": "openai",
+                "config": {"model": "gpt-4o-mini", "api_key": "test-llm-key"},
+            }
+        }
+    )

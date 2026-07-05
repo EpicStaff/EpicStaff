@@ -17,5 +17,7 @@
     "StringEditTool": "custom_tools",
     "NotebookEditTool": "custom_tools",
     "GlobTool": "custom_tools",
-    "GrepTool": "custom_tools"
+    "GrepTool": "custom_tools",
+    "WebSearchTool": "custom_tools",
+    "WebFetchTool": "custom_tools"
 }

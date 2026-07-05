@@ -282,10 +282,17 @@
         },
         "custom_grep":{
           "class_name": "GrepTool"
+        },
+        "custom_web_search":{
+          "class_name": "WebSearchTool"
+        },
+        "custom_web_fetch":{
+          "class_name": "WebFetchTool"
         }
     },
     "dependencies": [
-      "crewai==0.86.0", "pypdfium2", "nbformat", "charset-normalizer"
+      "crewai==0.86.0", "pypdfium2", "nbformat", "charset-normalizer",
+      "httpx", "trafilatura>=1.8", "markdownify", "litellm"
     ]
   }
 ]

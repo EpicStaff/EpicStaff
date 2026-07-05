@@ -14,3 +14,5 @@ from .string_edit_tool import StringEditTool
 from .notebook_edit_tool import NotebookEditTool
 from .glob_tool import GlobTool
 from .grep_tool import GrepTool
+from .web_search_tool import WebSearchTool
+from .web_fetch_tool import WebFetchTool
