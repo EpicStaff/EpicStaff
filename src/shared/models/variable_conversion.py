@@ -1,3 +1,5 @@
+from .variables import VariableTypeInput
+
 __all__ = [
     "args_schema_to_variables",
     "json_schema_node_to_nested_variable",
@@ -58,9 +60,18 @@ def args_schema_to_variables(
         # API key). Absent that key, behavior is unchanged (falls back to the
         # `input_type` argument, "agent_input" by default) — fully backward
         # compatible with existing tool_data.yaml / args_schema.json files.
+        property_input_type = prop.get("input_type", input_type)
+        allowed_input_types = {v.value for v in VariableTypeInput}
+        if property_input_type not in allowed_input_types:
+            allowed = ", ".join(sorted(allowed_input_types))
+            raise ValueError(
+                f"Invalid input_type {property_input_type!r} for property {name!r}: "
+                f"allowed values are {allowed}"
+            )
+
         variable = {
             "name": name,
-            "input_type": prop.get("input_type", input_type),
+            "input_type": property_input_type,
             "required": name in required_names,
         }
         variable.update(json_schema_node_to_nested_variable(prop))
