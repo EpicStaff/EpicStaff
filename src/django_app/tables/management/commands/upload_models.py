@@ -1052,65 +1052,6 @@ def upload_legacy_tools():
             "description": "Tool for managing folders",
         },
         {
-            "name": "Read File Tool",
-            "name_alias": "custom_read_file",
-            "description": (
-                "Read a file's content: plain text with offset/limit, PDF page "
-                "ranges, or Jupyter notebook cells"
-            ),
-        },
-        {
-            "name": "Write File Tool",
-            "name_alias": "custom_write_file",
-            "description": "Create a new file or overwrite an existing one, with an explicit overwrite guard",
-        },
-        {
-            "name": "String Edit Tool",
-            "name_alias": "custom_string_edit",
-            "description": "Edit a file by exact string replacement (old_string/new_string anchor)",
-        },
-        {
-            "name": "Notebook Edit Tool",
-            "name_alias": "custom_notebook_edit",
-            "description": "Replace, insert, or delete a cell in a Jupyter notebook",
-        },
-        {
-            "name": "Glob Tool",
-            "name_alias": "custom_glob",
-            "description": "Find files by glob pattern, newest-first",
-        },
-        {
-            "name": "Grep Tool",
-            "name_alias": "custom_grep",
-            "description": "Search file contents by regular expression (ripgrep-backed)",
-        },
-        {
-            "name": "Web Search Tool",
-            "name_alias": "custom_web_search",
-            "description": "Search the web via the Serper API, with optional domain allow/block filters",
-            "fields": [
-                {
-                    "name": "api_key",
-                    "description": "Serper API key used to authenticate search requests",
-                    "data_type": ToolConfigField.FieldType.STRING,
-                    "required": True,
-                },
-            ],
-        },
-        {
-            "name": "Web Fetch Tool",
-            "name_alias": "custom_web_fetch",
-            "description": "Fetch a URL, convert it to markdown, and optionally answer an extraction prompt with a configured LLM",
-            "fields": [
-                {
-                    "name": "llm_config",
-                    "description": "Field for LLM Configuration used to answer extraction prompts",
-                    "data_type": ToolConfigField.FieldType.LLM_CONFIG,
-                    "required": False,
-                },
-            ],
-        },
-        {
             "name": "Custom CLI Tool",
             "name_alias": "custom_cli",
             "description": "Tool for executing custom CLI commands",

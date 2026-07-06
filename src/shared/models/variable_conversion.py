@@ -53,9 +53,14 @@ def args_schema_to_variables(
     variables = []
 
     for name, prop in args_schema.get("properties", {}).items():
+        # A property may opt out of the schema-wide default by declaring its
+        # own "input_type" (e.g. "user_input" for a config-only secret like an
+        # API key). Absent that key, behavior is unchanged (falls back to the
+        # `input_type` argument, "agent_input" by default) — fully backward
+        # compatible with existing tool_data.yaml / args_schema.json files.
         variable = {
             "name": name,
-            "input_type": input_type,
+            "input_type": prop.get("input_type", input_type),
             "required": name in required_names,
         }
         variable.update(json_schema_node_to_nested_variable(prop))

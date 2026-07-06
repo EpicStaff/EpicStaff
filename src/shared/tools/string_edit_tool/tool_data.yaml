@@ -1,0 +1,7 @@
+tool-data:
+  name: "String Edit Tool"
+  description: "Precise in-place file edit by exact string match (old_string -> new_string). old_string must match exactly once unless replace_all is set. Path is relative to the sandbox root."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

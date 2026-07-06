@@ -1,68 +1,90 @@
+# String Edit Tool
+import os
 from pathlib import Path
-from typing import Any, Type
-
-from loguru import logger
-from pydantic import BaseModel, Field
-
-from ._text_utils import decode_bytes
-from .route_tool import RouteTool
+from typing import Optional, Tuple
 
 
-class StringEditToolSchema(BaseModel):
-    """Input for StringEditTool."""
+class RouteTool:
+    @staticmethod
+    def _is_path_within_path(source_path: Path, dest_path: Path) -> bool:
+        source_path = source_path.resolve()
+        dest_path = dest_path.resolve()
+        return dest_path in source_path.parents or source_path == dest_path
 
-    file_path: str = Field(
-        ..., description="Path to the file to edit, relative to the sandbox root."
-    )
-    old_string: str = Field(
-        ..., description="Exact text to find. May be multi-line. Matched verbatim, no regex."
-    )
-    new_string: str = Field(
-        ..., description="Replacement text. Must differ from old_string."
-    )
-    replace_all: bool = Field(
-        False,
-        description="Replace every occurrence of old_string instead of requiring exactly one match.",
-    )
+    @staticmethod
+    def is_path_has_permission(path: Path | str) -> bool:
+        save_file_path = os.getenv("CONTAINER_SAVEFILES_PATH", ".")
+        return RouteTool._is_path_within_path(path, Path(save_file_path))
+
+    def construct_savepath(self, *, frompath: Path | str) -> Path:
+        save_file_path = os.getenv("CONTAINER_SAVEFILES_PATH", ".")
+        return Path(save_file_path) / Path(frompath)
 
 
-class StringEditTool(RouteTool):
-    name: str = "Edit a file by exact string replacement"
-    description: str = ""
-    args_schema: Type[BaseModel] = StringEditToolSchema
+def _decode_bytes(raw: bytes) -> Tuple[Optional[str], Optional[str]]:
+    try:
+        return raw.decode("utf-8"), "utf-8"
+    except UnicodeDecodeError:
+        pass
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self._generate_description()
+    try:
+        from charset_normalizer import from_bytes
 
-    def _run(self, **kwargs: Any) -> str:
-        try:
-            return self._run_impl(**kwargs)
-        except Exception as e:
-            logger.error("StringEditTool failed unexpectedly: {}", e)
-            return f"Error: failed to edit file. Unexpected exception: {e}"
+        match = from_bytes(raw).best()
+        if match is None:
+            return None, None
+        return str(match), match.encoding
+    except Exception:
+        return None, None
 
-    def _run_impl(self, **kwargs: Any) -> str:
-        file_path = kwargs.get("file_path")
+
+def _context_snippet(text: str, edit_start_index: int) -> str:
+    lines = text.split("\n")
+
+    cumulative = 0
+    line_no = len(lines) - 1
+    for idx, line in enumerate(lines):
+        line_len = len(line) + 1  # account for the stripped "\n"
+        if cumulative + line_len > edit_start_index:
+            line_no = idx
+            break
+        cumulative += line_len
+
+    start = max(0, line_no - 1)
+    end = min(len(lines), line_no + 2)
+    return "\n".join(lines[start:end])
+
+
+def main(
+    file_path: str,
+    old_string: str,
+    new_string: str,
+    replace_all: bool = False,
+) -> str:
+    """
+    Edit a file by exact string replacement. old_string must occur exactly
+    once unless replace_all is set. Never raises: all failures are returned
+    as readable error strings.
+    """
+    try:
         if not file_path:
             return "Error: file_path argument is mandatory and was not given to the tool."
 
-        old_string = kwargs.get("old_string")
         if old_string is None:
             return "Error: old_string argument is mandatory and was not given to the tool."
 
-        new_string = kwargs.get("new_string")
         if new_string is None:
             return "Error: new_string argument is mandatory and was not given to the tool."
 
         if old_string == new_string:
             return "Error: new_string must differ from old_string."
 
-        replace_all = bool(kwargs.get("replace_all", False))
+        replace_all = bool(replace_all)
 
-        file_savepath = self.construct_savepath(frompath=file_path)
+        route_tool = RouteTool()
+        file_savepath = route_tool.construct_savepath(frompath=file_path)
 
-        if not self.is_path_has_permission(file_savepath):
+        if not RouteTool.is_path_has_permission(file_savepath):
             return f"Error: path {file_path} is outside the allowed directory."
 
         if not file_savepath.exists():
@@ -76,7 +98,7 @@ class StringEditTool(RouteTool):
         except Exception as e:
             return f"Error: could not read file {file_path}: {e}"
 
-        text, encoding = decode_bytes(raw)
+        text, encoding = _decode_bytes(raw)
         if text is None:
             return (
                 f"Error: could not decode {file_path} as text. It may be a binary file."
@@ -115,7 +137,7 @@ class StringEditTool(RouteTool):
             )
             occurrences = 1
 
-        context = self._context_snippet(new_normalized_text, first_index)
+        context = _context_snippet(new_normalized_text, first_index)
 
         final_text = (
             new_normalized_text.replace("\n", "\r\n") if has_crlf else new_normalized_text
@@ -127,20 +149,5 @@ class StringEditTool(RouteTool):
             return f"Error: could not write file {file_path}: {e}"
 
         return f"Replaced {occurrences} occurrence(s) in {file_path}\n{context}"
-
-    @staticmethod
-    def _context_snippet(text: str, edit_start_index: int) -> str:
-        lines = text.split("\n")
-
-        cumulative = 0
-        line_no = len(lines) - 1
-        for idx, line in enumerate(lines):
-            line_len = len(line) + 1  # account for the stripped "\n"
-            if cumulative + line_len > edit_start_index:
-                line_no = idx
-                break
-            cumulative += line_len
-
-        start = max(0, line_no - 1)
-        end = min(len(lines), line_no + 2)
-        return "\n".join(lines[start:end])
+    except Exception as e:
+        return f"Error: failed to edit file. Unexpected exception: {e}"
