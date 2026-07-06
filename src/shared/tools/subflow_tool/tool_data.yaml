@@ -1,0 +1,7 @@
+tool-data:
+  name: "Sub-Flow Tool"
+  description: "Runs another saved EpicStaff flow (graph) as a sub-flow and returns its final output. Requires the 'graph_id' (which saved flow to run) and 'api_key' (an EpicStaff API key) configuration fields to be set when configuring this tool for an agent. The agent only supplies 'input_variables' — the payload passed into the target flow."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

@@ -116,6 +116,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         variables: dict | None = None,
         username: str | None = None,
         entrypoint: str | None = None,
+        parent_session_id: int | None = None,
     ) -> Session:
         if variables is None:
             variables = dict()
@@ -152,6 +153,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             time_to_live=time_to_live,
             graph_user=graph_user,
             entrypoint=entrypoint,
+            parent_session_id=parent_session_id,
         )
         return session
 
@@ -177,6 +179,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         variables: dict | None = None,
         username: str | None = None,
         entrypoint: str | None = None,
+        parent_session_id: int | None = None,
     ) -> int:
         variables = self._get_actual_variables(variables)
         logger.info(f"'run_session' got variables: {variables=}")
@@ -189,6 +192,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             variables=variables,
             username=username,
             entrypoint=entrypoint,
+            parent_session_id=parent_session_id,
         )
         try:
             session_data: SessionData = self.create_session_data(session=session)

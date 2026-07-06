@@ -455,6 +455,37 @@ class RunSession(APIView):
             graph__id=graph_id
         ).first()
 
+        parent_session_id = serializer.validated_data.get("parent_session_id")
+        if parent_session_id is not None:
+            parent_session = Session.objects.filter(id=parent_session_id).first()
+            if parent_session is None:
+                return Response(
+                    {"message": f"Parent session {parent_session_id} not found."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            parent_graph_organization = GraphOrganization.objects.filter(
+                graph_id=parent_session.graph_id
+            ).first()
+            current_org_id = (
+                graph_organization.organization_id if graph_organization else None
+            )
+            parent_org_id = (
+                parent_graph_organization.organization_id
+                if parent_graph_organization
+                else None
+            )
+            if current_org_id != parent_org_id:
+                return Response(
+                    {
+                        "message": (
+                            "Parent session does not belong to the same "
+                            "organization as the target graph."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         if graph_organization:
             if not username and graph_organization.user_variables:
                 warning_messages.append(SessionWarningType.USER_VARS_WITH_NO_USER.value)
@@ -513,7 +544,10 @@ class RunSession(APIView):
         try:
             # Publish session to: crew, maanger
             session_id = session_manager_service.run_session(
-                graph_id=graph_id, variables=variables, username=username
+                graph_id=graph_id,
+                variables=variables,
+                username=username,
+                parent_session_id=serializer.validated_data.get("parent_session_id"),
             )
             logger.info(f"Session {session_id} successfully started.")
         except Exception as e:

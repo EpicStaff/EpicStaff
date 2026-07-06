@@ -18,6 +18,12 @@ class RunSessionSerializer(serializers.Serializer):
         child=serializers.CharField(), required=False, allow_null=True, default=dict
     )
     username = serializers.CharField(required=False)
+    # Optional: links the newly created Session to a caller session via the
+    # existing Session.parent_session self-FK (see migration 0162). Used by
+    # the built-in "subflow_tool" so a sub-flow run is traceable back to the
+    # agent session that triggered it. Not exposed by any UI form — purely a
+    # programmatic/tool-runtime input.
+    parent_session_id = serializers.IntegerField(required=False, allow_null=True)
 
     def validate(self, attrs):
         if not attrs.get("graph_id") and not attrs.get("graph_uuid"):
