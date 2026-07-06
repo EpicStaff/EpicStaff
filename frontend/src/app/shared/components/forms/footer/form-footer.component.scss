@@ -12,7 +12,7 @@
         border: 1px solid var(--gray-700);
         background-color: var(--gray-850);
         padding: 0.625rem 1.25rem;
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         font-weight: 500;
         font-size: 0.9375rem;
         cursor: pointer;
@@ -31,7 +31,7 @@
         background-color: var(--accent-color);
         color: white;
         font-weight: 500;
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         padding: 0.625rem 1.25rem;
         font-size: 0.9375rem;
         cursor: pointer;
@@ -53,7 +53,7 @@
 .spinner {
     width: 16px;
     height: 16px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
+    border: 2px solid var(--white-alpha-30);
     border-radius: 50%;
     border-top-color: white;
     animation: spin 0.8s linear infinite;

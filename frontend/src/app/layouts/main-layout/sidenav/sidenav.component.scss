@@ -99,16 +99,16 @@
                 cursor: pointer;
                 width: 2.5rem;
                 height: 2.5rem;
-                border-radius: 0.5rem;
+                border-radius: var(--radius-lg);
                 transition: all 0.2s ease-out;
                 margin: 0 auto;
                 position: relative;
 
                 &:hover {
-                    background-color: rgba(255, 255, 255, 0.05);
+                    background-color: var(--white-alpha-5);
                 }
                 &.active {
-                    background-color: rgba(104, 95, 255, 0.15);
+                    background-color: var(--purple-alpha-15);
                 }
 
                 .sidenav-link-icon {
@@ -143,13 +143,13 @@
     justify-content: center;
     width: 2.5rem;
     height: 2.5rem;
-    border-radius: 0.5rem;
+    border-radius: var(--radius-lg);
     margin: 0 auto;
     cursor: pointer;
     transition: background-color 0.2s ease-out;
 
     &:hover {
-        background-color: rgba(255, 255, 255, 0.05);
+        background-color: var(--white-alpha-5);
     }
 }
 

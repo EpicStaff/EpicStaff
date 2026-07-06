@@ -22,7 +22,7 @@
             }
 
             &:hover {
-                background: rgba(104, 95, 255, 0.15);
+                background: var(--purple-alpha-15);
             }
         }
     }
@@ -49,8 +49,8 @@
             column-gap: 0.5rem;
             padding: 0.25rem 0.75rem;
             height: 40px;
-            border-radius: 6px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--white-alpha-10);
             background-color: var(--color-input-background);
             color: var(--color-text-primary);
             font-size: 0.875rem;

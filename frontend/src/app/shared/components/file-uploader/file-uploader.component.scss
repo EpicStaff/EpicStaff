@@ -34,7 +34,7 @@
         justify-content: center;
         height: 160px;
         width: 160px;
-        border-radius: 10px;
+        border-radius: var(--radius-xl);
         border: 2px dashed var(--color-input-border);
         background-color: var(--color-divider-subtle);
         cursor: pointer;

@@ -37,7 +37,7 @@
     &__name-input {
         height: 2.5rem;
         padding: 0 1rem;
-        border-radius: 0.5rem;
+        border-radius: var(--radius-lg);
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
@@ -149,17 +149,17 @@
 
     &__empty-text {
         font-size: 16px;
-        color: rgba(255, 255, 255, 0.8);
+        color: var(--white-alpha-80);
         margin-bottom: 20px;
     }
 
     &__empty-icon {
-        border-radius: 12px;
+        border-radius: var(--radius-2xl);
         display: flex;
         align-items: center;
         justify-content: center;
         margin-bottom: 1rem;
-        color: rgba(255, 255, 255, 0.7);
+        color: var(--white-alpha-70);
 
         svg {
             width: 48px;

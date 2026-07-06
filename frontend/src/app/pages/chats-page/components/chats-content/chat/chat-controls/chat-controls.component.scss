@@ -12,9 +12,9 @@
     width: auto;
     padding: 0.5rem;
     background-color: var(--gray-900);
-    border-radius: 12px;
+    border-radius: var(--radius-2xl);
     margin-bottom: 1.5rem;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 16px var(--black-alpha-30);
     border: 1px solid var(--gray-800);
     max-width: calc(100% - 1rem);
     transition: all 0.3s ease;
@@ -24,7 +24,7 @@
         position: relative;
         margin-bottom: 0.5rem;
         background-color: var(--gray-800);
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         padding: 0.5rem;
         margin-inline: 0.5rem;
         display: flex;
@@ -69,7 +69,7 @@
             transition: all 0.2s ease;
 
             &:hover {
-                background-color: rgba(104, 95, 255, 0.1);
+                background-color: var(--purple-alpha-10);
             }
 
             i {
@@ -101,7 +101,7 @@
         background-color: var(--accent-color, var(--accent-color));
         color: var(--white);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         padding: 0.6rem 1.2rem;
         font-weight: 500;
         font-size: 14px;
@@ -114,7 +114,7 @@
         overflow: hidden;
 
         &:hover:not(:disabled) {
-            background-color: rgba(104, 95, 255, 0.8);
+            background-color: var(--purple-alpha-80);
         }
 
         &:disabled {
@@ -147,7 +147,7 @@
         display: flex;
         align-items: center;
         background-color: var(--gray-800);
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         padding: 4px;
         gap: 4px;
         height: 41px;
@@ -160,7 +160,7 @@
             background-color: transparent;
             color: var(--gray-300);
             border: none;
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             width: 32px;
             height: 32px;
             cursor: pointer;
@@ -181,7 +181,7 @@
             }
 
             &.active {
-                background-color: rgba(104, 95, 255, 0.2);
+                background-color: var(--purple-alpha-20);
                 color: var(--accent-color, var(--accent-color));
             }
 
@@ -194,7 +194,7 @@
 
             &.generate-btn {
                 width: auto;
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 padding: 0 12px 0 10px;
                 display: flex;
                 align-items: center;

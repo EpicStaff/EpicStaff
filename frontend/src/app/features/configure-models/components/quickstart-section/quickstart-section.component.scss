@@ -19,7 +19,7 @@
     &__subtitle {
         margin: 0;
         font-size: 14px;
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--fog-alpha-60);
     }
 
     &__layout {
@@ -55,11 +55,11 @@
         align-items: center;
         gap: 12px;
         font-size: 14px;
-        color: rgba(217, 217, 222, 0.8);
+        color: var(--fog-alpha-80);
 
         i {
             font-size: 14px;
-            color: rgba(217, 217, 222, 0.5);
+            color: var(--fog-alpha-50);
         }
     }
 
@@ -81,7 +81,7 @@
     &__primary {
         height: 36px;
         padding: 0 18px;
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         border: none;
         background: var(--accent-color);
         color: var(--white);
@@ -101,9 +101,9 @@
     }
 
     &__card {
-        border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        background: rgba(255, 255, 255, 0.02);
+        border-radius: var(--radius-2xl);
+        border: 1px solid var(--white-alpha-8);
+        background: var(--white-alpha-2);
         padding: 24px;
     }
 
@@ -134,7 +134,7 @@
         flex-direction: column;
         gap: 12px;
         font-size: 14px;
-        color: rgba(217, 217, 222, 0.8);
+        color: var(--fog-alpha-80);
         line-height: 1.6;
         list-style: decimal;
 
@@ -142,7 +142,7 @@
             padding-left: 4px;
 
             &::marker {
-                color: rgba(217, 217, 222, 0.8);
+                color: var(--fog-alpha-80);
             }
         }
     }
@@ -164,12 +164,12 @@
     &__card-text {
         margin: 12px 0 0;
         font-size: 13px;
-        color: rgba(217, 217, 222, 0.7);
+        color: var(--fog-alpha-70);
         line-height: 1.6;
     }
 
     &__card--success {
-        background: rgba(255, 255, 255, 0.02);
+        background: var(--white-alpha-2);
     }
 
     &__card-title--success {

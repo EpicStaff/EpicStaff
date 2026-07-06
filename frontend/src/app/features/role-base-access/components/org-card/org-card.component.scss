@@ -1,6 +1,6 @@
 :host {
     background: var(--color-nodes-background);
-    border-radius: 10px;
+    border-radius: var(--radius-xl);
     display: flex;
     flex-direction: column;
 }

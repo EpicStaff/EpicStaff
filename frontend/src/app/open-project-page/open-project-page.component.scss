@@ -20,7 +20,7 @@ $inactive-tab-bg: var(--graphite-780);
         display: flex;
         flex-direction: column;
         padding: 0 3rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        border-bottom: 1px solid var(--white-alpha-10);
 
         .tabs-navigation {
             display: flex;
@@ -95,7 +95,7 @@ $inactive-tab-bg: var(--graphite-780);
 
     .section-item {
         margin-bottom: 8px;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
 
         &.expanded {
             background-color: $section-expanded-bg;
@@ -121,7 +121,7 @@ $inactive-tab-bg: var(--graphite-780);
         font-size: 1rem;
         user-select: none;
         transition: background-color 0.2s;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
 
         &:hover {
             background-color: $hover-color;
@@ -166,7 +166,7 @@ $inactive-tab-bg: var(--graphite-780);
         justify-content: center;
         padding: 2px;
         margin-left: 12px;
-        border-radius: 3px;
+        border-radius: var(--radius-sm);
         color: $muted-text-color;
         margin-left: auto;
         cursor: pointer;

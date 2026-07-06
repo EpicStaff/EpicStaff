@@ -20,7 +20,7 @@
         overflow: hidden;
         margin: 0.5rem 0 0.5rem 2.5rem;
         width: 645px;
-        border-radius: 10px;
+        border-radius: var(--radius-xl);
         border: 1px solid var(--color-divider-subtle);
     }
 
@@ -57,7 +57,7 @@
         display: block;
         font-size: 0.75rem;
         margin: 0 0.625rem 0.5rem;
-        border-radius: 5px;
+        border-radius: var(--radius-md);
         border-left: 3px solid var(--color-ks-status-failed);
         background-color: var(--color-ks-transparent-red);
         color: var(--color-ks-status-failed);

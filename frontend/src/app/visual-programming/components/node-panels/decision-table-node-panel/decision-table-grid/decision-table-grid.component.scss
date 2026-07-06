@@ -35,7 +35,7 @@
             height: 18px;
             border-radius: 50%;
             color: var(--accent-color);
-            background: rgba(104, 95, 255, 0.1);
+            background: var(--purple-alpha-10);
             font-size: 0.75rem;
             cursor: help;
             transition:
@@ -44,7 +44,7 @@
 
             &:hover {
                 color: var(--white);
-                background: rgba(104, 95, 255, 0.35);
+                background: var(--purple-alpha-35);
             }
         }
     }

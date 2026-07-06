@@ -45,7 +45,7 @@
         font-weight: 400;
         white-space: nowrap;
         padding: 3px 8px;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         border: 1px solid var(--color-input-border);
         pointer-events: none;
         z-index: 100;

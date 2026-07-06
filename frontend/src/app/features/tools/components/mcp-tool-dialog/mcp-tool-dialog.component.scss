@@ -1,6 +1,6 @@
 .mcp-tool-dialog {
     background: var(--color-sidenav-background);
-    border-radius: 12px;
+    border-radius: var(--radius-2xl);
     width: 100%;
     height: 100%;
     color: var(--color-text-primary);
@@ -42,7 +42,7 @@
         margin-bottom: 1rem;
         background-color: rgba(244, 67, 54, 0.1);
         border: 1px solid rgba(244, 67, 54, 0.3);
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         color: var(--red-500);
         font-size: 0.875rem;
 

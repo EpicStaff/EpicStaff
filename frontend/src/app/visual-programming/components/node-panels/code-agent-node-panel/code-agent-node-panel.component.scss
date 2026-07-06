@@ -51,7 +51,7 @@
                 transform: translateY(-50%);
                 z-index: 10;
                 border-width: 1px 1px 1px 0;
-                border-radius: 0 8px 8px 0;
+                border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
             }
         }
     }
@@ -143,8 +143,8 @@
 .output-schema-textarea {
     background: var(--color-nodes-background, var(--graphite-875));
     color: var(--gray-300);
-    border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
-    border-radius: 8px;
+    border: 1px solid var(--color-divider-subtle, var(--white-alpha-10));
+    border-radius: var(--radius-lg);
     padding: 0.5rem 0.75rem;
     font-family: var(--font-family-mono);
     font-size: 0.8rem;
@@ -190,7 +190,7 @@
         border-color: var(--graphite-700);
         background: transparent;
         cursor: pointer;
-        border-radius: 8px 0 0 8px;
+        border-radius: var(--radius-lg) 0 0 var(--radius-lg);
         transition: all 0.2s ease;
         padding: 0;
         color: #d9d9d999;
@@ -213,8 +213,8 @@
     height: 100%;
     min-height: 0;
     min-width: 0;
-    border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
-    border-radius: 0 8px 8px 0;
+    border: 1px solid var(--color-divider-subtle, var(--white-alpha-10));
+    border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
     overflow: hidden;
     transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
 
@@ -236,7 +236,7 @@
 
 .editor-tabs {
     display: flex;
-    border-bottom: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
+    border-bottom: 1px solid var(--color-divider-subtle, var(--white-alpha-10));
     flex-shrink: 0;
 }
 

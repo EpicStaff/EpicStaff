@@ -18,7 +18,7 @@
         align-items: center;
 
         h3 {
-            color: rgba(255, 255, 255, 0.9);
+            color: var(--white-alpha-90);
             margin: 0;
             font-size: 16px;
             font-weight: 600;
@@ -26,7 +26,7 @@
 
         .model-info {
             font-size: 12px;
-            color: rgba(255, 255, 255, 0.6);
+            color: var(--white-alpha-60);
             margin-top: 2px;
         }
     }
@@ -42,7 +42,7 @@
             border-radius: 20px;
             padding: 3px;
             overflow: hidden;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 2px 4px var(--black-alpha-20);
 
             .toggle-btn {
                 padding: 0.5rem 1.2rem;
@@ -53,12 +53,12 @@
                 font-weight: 500;
                 cursor: pointer;
                 transition: all 0.2s ease;
-                border-radius: 16px;
+                border-radius: var(--radius-3xl);
 
                 &.active {
                     background-color: var(--accent-color, var(--accent-color));
                     color: var(--white);
-                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+                    box-shadow: 0 1px 3px var(--black-alpha-30);
                 }
 
                 &:hover:not(.active) {
@@ -89,7 +89,7 @@
                     background-color: var(--gray-800);
                     color: var(--white);
                     border: 1px solid var(--gray-700);
-                    border-radius: 4px;
+                    border-radius: var(--radius-sm);
                     padding: 0.5rem;
                     padding-left: 32px;
                     outline: none;
@@ -131,7 +131,7 @@
                 background-color: var(--gray-800);
                 color: var(--gray-400);
                 border: 1px solid var(--gray-700);
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 padding: 0.5rem;
                 cursor: pointer;
                 transition: all 0.2s ease;

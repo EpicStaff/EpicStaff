@@ -2,7 +2,7 @@
     display: flex;
     flex-direction: column;
     background-color: var(--color-background-body);
-    border-radius: 0.75rem;
+    border-radius: var(--radius-2xl);
     width: calc(100vw - 36px);
     height: calc(100vh - 40px);
     overflow: hidden;
@@ -64,7 +64,7 @@
             }
 
             &:not(:disabled):hover {
-                background-color: rgba(104, 95, 255, 0.85);
+                background-color: var(--purple-alpha-85);
             }
         }
     }
@@ -114,7 +114,7 @@
         padding: 0 0.75rem;
         background-color: var(--color-input-background);
         border: 1px solid var(--color-divider-regular);
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         transition: border-color 0.15s ease;
 
         &:focus-within {
@@ -147,7 +147,7 @@
         height: 28px;
         padding: 0 14px;
         border: 1px solid var(--accent-color);
-        border-radius: 0.375rem;
+        border-radius: var(--radius-md);
         font-size: 12px;
         font-weight: 400;
         color: var(--accent-color);
@@ -157,7 +157,7 @@
         white-space: nowrap;
 
         &:hover {
-            background-color: rgba(104, 95, 255, 0.08);
+            background-color: var(--purple-alpha-8);
         }
     }
 
@@ -178,7 +178,7 @@
         overflow-y: auto;
         overflow-x: auto;
         border: 1px solid var(--color-flow-card-bg);
-        border-radius: 10px;
+        border-radius: var(--radius-xl);
     }
 
     &__state {
@@ -205,7 +205,7 @@
         }
 
         &:hover {
-            background-color: rgba(104, 95, 255, 0.08);
+            background-color: var(--purple-alpha-8);
         }
     }
 
@@ -218,7 +218,7 @@
         background: transparent;
         border: none;
         cursor: pointer;
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--fog-alpha-60);
         padding: 0;
         flex-shrink: 0;
         transition: transform 0.15s;
@@ -241,8 +241,8 @@
         flex-shrink: 0;
         width: 16px;
         height: 16px;
-        border: 1px solid rgba(217, 217, 222, 1);
-        border-radius: 4px;
+        border: 1px solid var(--fog-200);
+        border-radius: var(--radius-sm);
         background: transparent;
         transition:
             background-color 0.1s ease,
@@ -250,14 +250,14 @@
 
         &--checked,
         &--indeterminate {
-            background-color: rgba(217, 217, 222, 1);
-            border-color: rgba(217, 217, 222, 1);
+            background-color: var(--fog-200);
+            border-color: var(--fog-200);
             color: var(--color-background-body);
         }
     }
 
     &__file-icon {
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--fog-alpha-60);
         flex-shrink: 0;
     }
 
@@ -275,13 +275,13 @@
         padding-left: 1rem;
         font-size: 14px;
         font-weight: 400;
-        color: rgba(217, 217, 222, 0.16);
+        color: var(--fog-alpha-16);
         white-space: nowrap;
     }
 
     &__node-spinner {
         font-size: 0.75rem;
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--fog-alpha-60);
         flex-shrink: 0;
     }
 }

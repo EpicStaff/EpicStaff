@@ -38,7 +38,7 @@
     border: none;
     cursor: pointer;
     color: var(--color-text-secondary);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     padding: 0.2rem;
     transition:
         color 0.15s ease,

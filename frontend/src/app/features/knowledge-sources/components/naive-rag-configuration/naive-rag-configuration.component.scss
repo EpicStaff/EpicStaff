@@ -30,7 +30,7 @@
         width: 2.5rem;
         height: 2.5rem;
         padding: 0.75rem;
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         border: 1px solid var(--accent-color);
         background: transparent;
         color: var(--accent-color);

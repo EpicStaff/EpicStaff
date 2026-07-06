@@ -115,7 +115,7 @@
     font-size: 0.875rem;
     font-weight: 500;
     line-height: 130%;
-    color: rgba(217, 217, 222, 0.6);
+    color: var(--fog-alpha-60);
 }
 
 .help-icon {
@@ -188,7 +188,7 @@
 .next-run-label {
     font-size: 0.8125rem;
     font-weight: 400;
-    color: rgba(217, 217, 222, 0.6);
+    color: var(--fog-alpha-60);
     line-height: 130%;
 }
 

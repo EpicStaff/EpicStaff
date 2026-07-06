@@ -121,9 +121,9 @@
         gap: 18px;
 
         .card {
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            background: rgba(255, 255, 255, 0.02);
+            border-radius: var(--radius-2xl);
+            border: 1px solid var(--white-alpha-8);
+            background: var(--white-alpha-2);
             padding: 24px;
 
             .card-title {

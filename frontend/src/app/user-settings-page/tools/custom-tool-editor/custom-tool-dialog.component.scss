@@ -1,12 +1,12 @@
 .custom-tool-dialog {
     background-color: var(--graphite-850);
-    border-radius: 12px;
+    border-radius: var(--radius-2xl);
     border: 1px solid var(--color-divider-subtle);
     color: var(--white);
     min-width: 400px;
     width: 90vw;
     height: 90vh;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 8px 24px var(--black-alpha-60);
     overflow: hidden;
 
     form {
@@ -42,7 +42,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             margin-left: 10px;
             transition: all 0.2s ease;
             opacity: 0.8;
@@ -97,16 +97,16 @@
                         .input-field {
                             width: 100%;
                             padding: 0.5rem 0.75rem;
-                            background-color: rgba(30, 30, 30, 0.6);
-                            border: 1px solid rgba(255, 255, 255, 0.1);
-                            border-radius: 6px;
+                            background-color: var(--color-backdrop);
+                            border: 1px solid var(--white-alpha-10);
+                            border-radius: var(--radius-md);
                             color: var(--white);
                             font-size: 0.875rem;
                             outline: none;
                             transition: border-color 0.2s ease;
 
                             &::placeholder {
-                                color: rgba(255, 255, 255, 0.3);
+                                color: var(--white-alpha-30);
                             }
 
                             &:focus {
@@ -128,8 +128,8 @@
                     }
 
                     .json-editor-wrapper {
-                        border: 1px solid rgba(255, 255, 255, 0.1);
-                        border-radius: 6px;
+                        border: 1px solid var(--white-alpha-10);
+                        border-radius: var(--radius-md);
                         overflow: hidden;
                     }
                 }
@@ -159,14 +159,14 @@
                 .resizer-handle {
                     width: 2px;
                     height: 36px;
-                    background: rgba(255, 255, 255, 0.2);
-                    border-radius: 2px;
+                    background: var(--white-alpha-20);
+                    border-radius: var(--radius-xs);
                     z-index: 1;
                     transition: background 0.15s ease;
                 }
 
                 &:hover .resizer-handle {
-                    background: rgba(255, 255, 255, 0.5);
+                    background: var(--white-alpha-50);
                 }
             }
 
@@ -211,8 +211,8 @@
 }
 
 .spinner {
-    border: 3px solid rgba(255, 255, 255, 0.1);
-    border-top: 3px solid rgba(255, 255, 255, 0.9);
+    border: 3px solid var(--white-alpha-10);
+    border-top: 3px solid var(--white-alpha-90);
     border-radius: 50%;
     width: 24px;
     height: 24px;

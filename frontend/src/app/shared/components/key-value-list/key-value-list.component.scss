@@ -20,7 +20,7 @@
         padding: 0 0.75rem;
         background-color: var(--color-input-background);
         border: 1px solid var(--color-input-border);
-        border-radius: 0.5rem;
+        border-radius: var(--radius-lg);
         color: var(--color-text-primary);
         font-size: 0.875rem;
         transition: border-color 0.2s ease;
@@ -49,7 +49,7 @@
         align-items: center;
         justify-content: center;
         border: none;
-        border-radius: 0.5rem;
+        border-radius: var(--radius-lg);
         cursor: pointer;
         transition:
             opacity 0.2s ease,
@@ -74,7 +74,7 @@
             color: var(--color-input-text-placeholder);
 
             &:hover:not(:disabled) {
-                background-color: rgba(255, 255, 255, 0.08);
+                background-color: var(--white-alpha-8);
                 color: var(--color-text-primary);
             }
         }
@@ -89,7 +89,7 @@
         display: flex;
         flex-direction: column;
         border: 1px solid var(--color-input-border);
-        border-radius: 0.5rem;
+        border-radius: var(--radius-lg);
         overflow: hidden;
     }
 
@@ -111,7 +111,7 @@
         }
 
         &--editing {
-            background-color: rgba(104, 95, 255, 0.08);
+            background-color: var(--purple-alpha-8);
             border-left: 2px solid var(--accent-color, var(--accent-color));
         }
     }
@@ -134,7 +134,7 @@
 
     &__card-value {
         font-size: 0.8125rem;
-        color: var(--color-text-secondary, rgba(255, 255, 255, 0.6));
+        color: var(--color-text-secondary, var(--white-alpha-60));
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -151,7 +151,7 @@
         background: none;
         color: var(--color-input-text-placeholder);
         cursor: pointer;
-        border-radius: 0.25rem;
+        border-radius: var(--radius-sm);
         transition:
             color 0.15s ease,
             background-color 0.15s ease;
@@ -162,7 +162,7 @@
 
         &:hover:not(:disabled) {
             color: var(--color-text-primary);
-            background-color: rgba(255, 255, 255, 0.08);
+            background-color: var(--white-alpha-8);
         }
 
         &:disabled {

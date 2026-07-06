@@ -22,7 +22,7 @@
         flex-grow: 1;
         height: 2.5rem;
         padding: 0 1rem;
-        border-radius: 0.5rem;
+        border-radius: var(--radius-lg);
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);

@@ -1,11 +1,11 @@
 .create-custom-tool-dialog {
     background-color: var(--color-modals-background);
     border: 1px solid var(--color-divider-subtle);
-    border-radius: 12px;
+    border-radius: var(--radius-2xl);
     color: var(--white);
     width: 95vw;
     height: 95vh;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 8px 24px var(--black-alpha-60);
     overflow: hidden;
 
     form {
@@ -158,7 +158,7 @@
             padding: 0;
             background: transparent;
             border: 1px solid transparent;
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             color: var(--fog-200);
             cursor: pointer;
             transition:
@@ -167,7 +167,7 @@
                 color 0.2s ease;
 
             &:hover {
-                background-color: rgba(255, 255, 255, 0.06);
+                background-color: var(--white-alpha-6);
                 color: var(--white);
             }
 
@@ -241,7 +241,7 @@
         color: var(--red-400);
         background: rgba(255, 85, 85, 0.1);
         border: 1px solid rgba(255, 85, 85, 0.4);
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         padding: 4px 10px;
         line-height: 1.2;
         white-space: nowrap;
@@ -255,7 +255,7 @@
         height: 28px;
         padding: 0;
         border: 1px solid var(--accent-color);
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         background: transparent;
         color: var(--accent-color);
         cursor: pointer;
@@ -285,8 +285,8 @@
 
     .editor-card {
         overflow: hidden;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 8px;
+        border: 1px solid var(--white-alpha-8);
+        border-radius: var(--radius-lg);
         background-color: transparent;
         flex-shrink: 0;
         display: flex;
@@ -304,7 +304,7 @@
     }
 
     .editor-card.has-inline .editor-card-header {
-        border-bottom-color: rgba(255, 255, 255, 0.08);
+        border-bottom-color: var(--white-alpha-8);
     }
 
     .editor-card-title {
@@ -343,7 +343,7 @@
             height: 28px;
             padding: 0;
             border: 1px solid transparent;
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             background: transparent;
             color: var(--fog-200);
             cursor: pointer;
@@ -353,12 +353,12 @@
                 color 0.2s ease;
 
             &:hover {
-                background-color: rgba(255, 255, 255, 0.06);
+                background-color: var(--white-alpha-6);
                 color: var(--white);
             }
 
             &.active {
-                background-color: rgba(104, 95, 255, 0.9);
+                background-color: var(--purple-alpha-90);
                 border-color: var(--accent-color);
                 color: var(--white);
             }

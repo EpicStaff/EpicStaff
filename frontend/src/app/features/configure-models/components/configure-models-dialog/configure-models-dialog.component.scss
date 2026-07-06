@@ -5,7 +5,7 @@
     width: 100%;
     overflow: hidden;
     background: var(--color-modals-background);
-    border-radius: 12px;
+    border-radius: var(--radius-2xl);
     color: var(--color-text-primary);
 
     &__header {

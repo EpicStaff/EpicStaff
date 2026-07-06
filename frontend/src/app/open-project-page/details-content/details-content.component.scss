@@ -64,7 +64,7 @@ $hover-color: var(--gray-800);
         color: $muted-text-color;
         margin-bottom: 28px;
         position: relative;
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         transition: all 0.2s ease;
 
         border: 1px solid var(--gray-750);

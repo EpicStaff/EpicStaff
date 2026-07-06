@@ -46,7 +46,7 @@ $transition-default: all 0.2s ease;
     max-height: 500px;
     width: 480px; // Wider to accommodate MCP tools
     overflow: hidden;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     background-color: $bg-card; // Match LLM popup background
     box-shadow: 0 10px 40px $shadow-color; // Match LLM popup shadow
     color: $text-primary;
@@ -72,7 +72,7 @@ $transition-default: all 0.2s ease;
         input {
             flex: 1;
             padding: 7px 14px;
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             background-color: $bg-input;
             color: $text-primary;
             font-size: 13px;
@@ -97,7 +97,7 @@ $transition-default: all 0.2s ease;
             padding: 8px 12px;
             background-color: $bg-input;
             color: $text-secondary;
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             cursor: pointer;
             font-size: 13px;
             font-weight: 500;
@@ -143,7 +143,7 @@ $transition-default: all 0.2s ease;
             transition: color 0.2s;
             font-weight: 500;
             border-bottom: 2px solid transparent;
-            border-radius: 4px 4px 0 0;
+            border-radius: var(--radius-sm) var(--radius-sm) 0 0;
             margin-bottom: -1px;
 
             &:hover {
@@ -232,7 +232,7 @@ $transition-default: all 0.2s ease;
         background-color: $accent-blue;
         color: white;
         padding: 8px 16px;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         font-weight: 500;
         display: flex;
         align-items: center;

@@ -39,7 +39,7 @@ app-flow-header {
     background: #2a1a1a;
     color: var(--red-400);
     border: 1px solid #7f1d1d;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     font-size: 0.85rem;
     font-weight: 500;
     cursor: pointer;
@@ -112,7 +112,7 @@ app-flow-header {
 
     &__icon {
         display: inline-flex;
-        color: rgba(255, 255, 255, 0.6);
+        color: var(--white-alpha-60);
     }
 }
 

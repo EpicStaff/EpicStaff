@@ -1,11 +1,11 @@
 .tool-card {
     background-color: var(--color-nodes-background);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 1.25rem;
     border: 1.5px solid var(--color-components-card-border);
     box-shadow:
-        0 8px 16px rgba(0, 0, 0, 0.12),
-        0 2px 4px rgba(0, 0, 0, 0.08);
+        0 8px 16px var(--black-alpha-12),
+        0 2px 4px var(--black-alpha-8);
     transition: all 0.2s ease-in-out;
     cursor: pointer;
     width: 100%;
@@ -21,8 +21,8 @@
     &:hover {
         border-color: #3a3d45;
         box-shadow:
-            0 12px 20px rgba(0, 0, 0, 0.18),
-            0 3px 6px rgba(0, 0, 0, 0.1);
+            0 12px 20px var(--black-alpha-18),
+            0 3px 6px var(--black-alpha-10);
 
         .tool-footer {
             opacity: 1;
@@ -41,12 +41,12 @@
     font-size: 0.55rem;
     font-weight: 600;
     padding: 0.1rem 0.35rem;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     line-height: 1;
     pointer-events: none;
     z-index: 5;
     white-space: nowrap;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 1px 2px var(--black-alpha-20);
 }
 
 .tool-header {
@@ -61,7 +61,7 @@
     flex-shrink: 0;
     flex-grow: 0;
     background: var(--color-secondary-btn-background);
-    border-radius: 10px;
+    border-radius: var(--radius-xl);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -124,14 +124,14 @@
         opacity 0.22s ease-out,
         transform 0.22s ease-out;
     z-index: 2;
-    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 -2px 8px var(--black-alpha-8);
     will-change: transform, opacity; /* Optimize for animations */
 
     .configure-btn {
         background: var(--accent-color);
         color: var(--white);
         border: none;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         padding: 0.35rem 1.1rem;
         font-size: 0.95rem;
         font-weight: 500;

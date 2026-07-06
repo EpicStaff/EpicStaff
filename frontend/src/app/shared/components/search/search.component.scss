@@ -35,7 +35,7 @@
         min-width: 0;
         box-sizing: border-box;
         padding: 0 0.875rem 0 2.25rem;
-        border-radius: 0.5rem;
+        border-radius: var(--radius-lg);
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);

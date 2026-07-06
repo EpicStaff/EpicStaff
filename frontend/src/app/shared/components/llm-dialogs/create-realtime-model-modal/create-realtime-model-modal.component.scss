@@ -5,10 +5,10 @@
     max-height: 85vh;
     background: var(--color-background-body, var(--color-background-body));
     border: 1px solid var(--color-ks-line, var(--graphite-750));
-    border-radius: 0.625rem;
+    border-radius: var(--radius-xl);
     box-shadow:
-        0px 6px 10px 0px rgba(0, 0, 0, 0.15),
-        0px 2px 3px 0px rgba(0, 0, 0, 0.3);
+        0px 6px 10px 0px var(--black-alpha-15),
+        0px 2px 3px 0px var(--black-alpha-30);
 
     &__header {
         display: flex;
@@ -33,7 +33,7 @@
         height: 1.5rem;
         border: none;
         background: transparent;
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--fog-alpha-60);
         cursor: pointer;
     }
 
@@ -52,8 +52,8 @@
 
     &__provider {
         height: 2.25rem;
-        border: 1px solid rgba(217, 217, 222, 0.16);
-        border-radius: 0.25rem;
+        border: 1px solid var(--fog-alpha-16);
+        border-radius: var(--radius-sm);
         background: var(--color-ks-line, var(--graphite-750));
         color: var(--color-text-primary, var(--color-text-primary));
         padding: 0 0.75rem;

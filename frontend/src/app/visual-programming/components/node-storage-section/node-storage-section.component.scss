@@ -39,8 +39,8 @@
 .select-input {
     background: var(--color-nodes-background, var(--graphite-875));
     color: var(--gray-300);
-    border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
-    border-radius: 8px;
+    border: 1px solid var(--color-divider-subtle, var(--white-alpha-10));
+    border-radius: var(--radius-lg);
     padding: 0.45rem 0.75rem;
     font-size: 0.875rem;
     cursor: pointer;
@@ -68,9 +68,9 @@
     font-family: var(--font-family-mono);
     font-size: 0.8rem;
     color: var(--gray-300);
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
-    border-radius: 6px;
+    background: var(--white-alpha-5);
+    border: 1px solid var(--color-divider-subtle, var(--white-alpha-10));
+    border-radius: var(--radius-md);
     padding: 0.3rem 0.6rem;
 }
 
@@ -84,9 +84,9 @@
     font-family: var(--font-family-mono);
     font-size: 0.75rem;
     color: var(--gray-300);
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
-    border-radius: 6px;
+    background: var(--white-alpha-5);
+    border: 1px solid var(--color-divider-subtle, var(--white-alpha-10));
+    border-radius: var(--radius-md);
     padding: 0.5rem 0.75rem;
     margin: 0;
     white-space: pre-wrap;
@@ -97,7 +97,7 @@
     background: var(--active-color, var(--accent-color));
     color: var(--white);
     border: none;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 0.45rem 0.9rem;
     font-size: 0.8rem;
     cursor: pointer;

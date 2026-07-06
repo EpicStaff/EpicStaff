@@ -3,8 +3,8 @@
     height: 28px;
     padding: 8px 12px;
     background-color: var(--color-input-background);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
+    border: 1px solid var(--white-alpha-10);
+    border-radius: var(--radius-md);
     color: var(--color-ks-transparent-text-80);
     font-size: 12px;
     transition: border-color 0.2s ease;

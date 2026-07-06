@@ -4,7 +4,7 @@
     flex-grow: 1;
     overflow: hidden;
     background-color: var(--color-ks-card-background);
-    border-radius: 0 0 10px 10px;
+    border-radius: 0 0 var(--radius-xl) var(--radius-xl);
     padding: 0.5rem 0;
     position: relative;
 
@@ -55,7 +55,7 @@
         width: fit-content;
         text-align: center;
         border-left: 2px solid;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
 
         &--even {
             color: var(--color-ks-status-blue);
@@ -139,7 +139,7 @@
     &__item ::ng-deep .chunk__highlight {
         background-color: rgba(255, 207, 0, 0.3);
         color: inherit;
-        border-radius: 2px;
+        border-radius: var(--radius-xs);
         padding: 0 1px;
 
         &--active {

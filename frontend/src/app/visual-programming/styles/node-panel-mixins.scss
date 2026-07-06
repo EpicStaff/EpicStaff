@@ -12,7 +12,7 @@
 @mixin primary-button {
     padding: 0.5rem 1rem;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
@@ -41,7 +41,7 @@
 @mixin secondary-button {
     padding: 0.5rem 1rem;
     border: 1px solid var(--color-divider-subtle, var(--graphite-640));
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-size: 0.875rem;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -63,7 +63,7 @@
 @mixin danger-button {
     padding: 0.5rem 1rem;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
@@ -92,7 +92,7 @@
 @mixin icon-button {
     width: 32px;
     height: 32px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     display: flex;
     align-items: center;
     justify-content: center;

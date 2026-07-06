@@ -4,7 +4,7 @@
 
 .rag {
     padding: 1.5rem 1rem 1.5rem 1.5rem;
-    border-radius: 10px;
+    border-radius: var(--radius-xl);
     background-color: var(--color-ks-line);
     display: flex;
     flex-direction: column;

@@ -13,7 +13,7 @@
     max-height: 100%;
     overflow: hidden;
     border: 1px solid var(--color-divider-subtle);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
 }
 
 // ===== HEADER =====
@@ -75,7 +75,7 @@
     }
 
     &.selected {
-        background: var(--transparent-white-8, rgba(255, 255, 255, 0.08));
+        background: var(--transparent-white-8, var(--white-alpha-8));
     }
 
     &.selectable {
@@ -83,7 +83,7 @@
     }
 
     &:hover:not(.table-row--selected) {
-        background: var(--transparent-white-4, rgba(255, 255, 255, 0.04));
+        background: var(--transparent-white-4, var(--white-alpha-4));
     }
 }
 

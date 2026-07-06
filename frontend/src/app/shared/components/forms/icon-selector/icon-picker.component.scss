@@ -7,7 +7,7 @@
 .icon-selector {
     min-width: 25px;
     height: 25px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background-color: var(--gray-750);
     display: flex;
     align-items: center;
@@ -82,8 +82,8 @@
     overflow-y: auto; /* Enable vertical scroll if needed */
     background-color: var(--gray-850);
     border: 1px solid var(--gray-700);
-    border-radius: 8px;
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 16px var(--black-alpha-20);
     z-index: 10;
 }
 
@@ -102,7 +102,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
 
     span {
@@ -160,7 +160,7 @@
     background: none;
     border: none;
     padding: 6px 12px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     font-size: 0.875rem;
     color: var(--gray-300);

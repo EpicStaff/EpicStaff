@@ -61,7 +61,7 @@
 
             .message-content {
                 background-color: var(--accent-color);
-                border-radius: 12px 12px 0 12px;
+                border-radius: var(--radius-2xl) var(--radius-2xl) 0 var(--radius-2xl);
                 color: white;
             }
 
@@ -75,7 +75,7 @@
 
             .message-content {
                 background-color: #151515;
-                border-radius: 12px 12px 12px 0;
+                border-radius: var(--radius-2xl) var(--radius-2xl) var(--radius-2xl) 0;
             }
         }
     }
@@ -167,8 +167,8 @@
         .tool-response-content {
             margin-top: 0.5rem;
             padding: 0.5rem;
-            background-color: rgba(0, 0, 0, 0.1);
-            border-radius: 4px;
+            background-color: var(--black-alpha-10);
+            border-radius: var(--radius-sm);
             font-family: monospace;
             white-space: pre-wrap;
         }

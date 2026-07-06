@@ -10,7 +10,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-radius: 0.5rem;
+    border-radius: var(--radius-lg);
     margin-bottom: 1rem;
     position: relative;
     height: 2.5rem;
@@ -38,8 +38,8 @@
         flex: 1 1 320px;
         height: 36px;
         transition: all 0.2s ease;
-        background-color: rgba(255, 255, 255, 0.04);
-        border-radius: 6px;
+        background-color: var(--white-alpha-4);
+        border-radius: var(--radius-md);
         position: relative;
 
         &.has-content {
@@ -49,7 +49,7 @@
         }
 
         &:focus-within {
-            background-color: rgba(255, 255, 255, 0.06);
+            background-color: var(--white-alpha-6);
 
             app-svg-icon {
                 color: var(--accent-color);
@@ -94,7 +94,7 @@
             justify-content: center;
             color: #6b7280;
             padding: 0.25rem 0.5rem;
-            border-radius: 0.25rem;
+            border-radius: var(--radius-sm);
             max-width: calc(100% - 16px);
             white-space: nowrap;
             overflow: hidden;
@@ -112,7 +112,7 @@
             }
 
             &:hover {
-                background-color: rgba(255, 255, 255, 0.06);
+                background-color: var(--white-alpha-6);
                 color: #f9fafb;
             }
         }
@@ -146,9 +146,9 @@
                 height: 4px;
                 -webkit-appearance: none;
                 appearance: none;
-                background: rgba(255, 255, 255, 0.1);
+                background: var(--white-alpha-10);
                 outline: none;
-                border-radius: 2px;
+                border-radius: var(--radius-xs);
 
                 &::-webkit-slider-thumb {
                     -webkit-appearance: none;
@@ -159,7 +159,7 @@
                     background: var(--accent-color);
                     cursor: pointer;
                     border: 2px solid #1f2937;
-                    box-shadow: 0 0 0 2px rgba(104, 95, 255, 0.2);
+                    box-shadow: 0 0 0 2px var(--purple-alpha-20);
                     transition: all 0.2s ease;
 
                     &:hover {
@@ -175,7 +175,7 @@
                     background: var(--accent-color);
                     cursor: pointer;
                     border: 2px solid #1f2937;
-                    box-shadow: 0 0 0 2px rgba(104, 95, 255, 0.2);
+                    box-shadow: 0 0 0 2px var(--purple-alpha-20);
                     transition: all 0.2s ease;
 
                     &:hover {

@@ -27,7 +27,7 @@
     }
 
     &__file-error {
-        border-radius: 5px;
+        border-radius: var(--radius-md);
         background-color: var(--color-ks-transparent-red);
         color: var(--color-ks-status-failed);
         padding: 0.25rem 0.5rem;
@@ -45,7 +45,7 @@
     }
 
     &__error {
-        border-radius: 5px;
+        border-radius: var(--radius-md);
         background-color: var(--color-ks-transparent-red);
         color: var(--color-ks-status-failed);
         padding: 0.25rem 0.5rem;

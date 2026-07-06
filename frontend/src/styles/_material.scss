@@ -13,7 +13,7 @@ $compact-theme: mat.define-theme(
 );
 
 :root {
-    --mdc-plain-tooltip-container-color: rgba(33, 35, 37, 1);
+    --mdc-plain-tooltip-container-color: var(--graphite-900);
     --mdc-plain-tooltip-supporting-text-color: var(--color-text-primary);
 
     @include mat.form-field-density($compact-theme);
@@ -25,8 +25,8 @@ $compact-theme: mat.define-theme(
 
 .mat-mdc-tooltip .mdc-tooltip__surface {
     box-shadow:
-        0 6px 10px 4px rgba(0, 0, 0, 0.15),
-        0 2px 3px 0 rgba(0, 0, 0, 0.3);
+        0 6px 10px 4px var(--black-alpha-15),
+        0 2px 3px 0 var(--black-alpha-30);
 }
 
 .allow-scroll-tooltip .mdc-tooltip__surface {

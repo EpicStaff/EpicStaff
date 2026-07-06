@@ -6,7 +6,7 @@
     color: var(--color-text-secondary);
     cursor: pointer;
     transition: all 0.15s ease;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     margin: 0;
 
     i {
@@ -15,7 +15,7 @@
     }
 
     &:hover {
-        background: rgba(255, 255, 255, 0.06);
+        background: var(--white-alpha-6);
         color: var(--color-text-primary);
     }
 

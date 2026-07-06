@@ -6,8 +6,8 @@
     max-height: 85vh;
     background: var(--color-modals-background, #1e1e22);
     color: var(--color-text-primary, var(--white));
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    border-radius: var(--radius-2xl);
+    box-shadow: 0 4px 20px var(--black-alpha-30);
     overflow: hidden;
 }
 
@@ -16,7 +16,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--white-alpha-8);
 }
 
 .title-group {
@@ -44,15 +44,15 @@
     height: 30px;
     border: none;
     background: transparent;
-    color: rgba(255, 255, 255, 0.6);
-    border-radius: 6px;
+    color: var(--white-alpha-60);
+    border-radius: var(--radius-md);
     cursor: pointer;
     transition:
         background 0.15s ease,
         color 0.15s ease;
 
     &:hover {
-        background: rgba(255, 255, 255, 0.08);
+        background: var(--white-alpha-8);
         color: var(--white);
     }
 
@@ -73,7 +73,7 @@
 .lead {
     margin: 0;
     font-size: 0.85rem;
-    color: rgba(255, 255, 255, 0.65);
+    color: var(--white-alpha-65);
     line-height: 1.4;
 }
 
@@ -87,9 +87,9 @@
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 8px;
+    background: var(--white-alpha-4);
+    border: 1px solid var(--white-alpha-6);
+    border-radius: var(--radius-lg);
     padding: 0.6rem 0.75rem;
 }
 
@@ -97,7 +97,7 @@
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: rgba(255, 255, 255, 0.45);
+    color: var(--white-alpha-45);
 }
 
 .meta-value {
@@ -120,24 +120,24 @@
 .section-title {
     font-size: 0.8rem;
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.75);
+    color: var(--white-alpha-75);
 }
 
 .empty {
     margin: 0;
     font-size: 0.82rem;
-    color: rgba(255, 255, 255, 0.45);
+    color: var(--white-alpha-45);
     padding: 0.75rem;
-    border: 1px dashed rgba(255, 255, 255, 0.12);
-    border-radius: 8px;
+    border: 1px dashed var(--white-alpha-12);
+    border-radius: var(--radius-lg);
     text-align: center;
 }
 
 .groups-table-wrapper {
     max-height: 220px;
     overflow-y: auto;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
+    border: 1px solid var(--white-alpha-8);
+    border-radius: var(--radius-lg);
 }
 
 .groups-table {
@@ -152,14 +152,14 @@
         text-align: left;
         padding: 0.5rem 0.75rem;
         font-weight: 500;
-        color: rgba(255, 255, 255, 0.7);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        color: var(--white-alpha-70);
+        border-bottom: 1px solid var(--white-alpha-8);
     }
 
     tbody td {
         padding: 0.5rem 0.75rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        color: rgba(255, 255, 255, 0.85);
+        border-bottom: 1px solid var(--white-alpha-5);
+        color: var(--white-alpha-85);
         word-break: break-word;
     }
 
@@ -173,12 +173,12 @@
     justify-content: flex-end;
     gap: 0.75rem;
     padding: 1rem 1.5rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid var(--white-alpha-8);
 }
 
 .btn {
     border: none;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 0.55rem 1.1rem;
     font-size: 0.85rem;
     font-weight: 500;
@@ -188,8 +188,8 @@
         opacity 0.15s ease;
 
     &--ghost {
-        background: rgba(255, 255, 255, 0.08);
-        color: rgba(255, 255, 255, 0.85);
+        background: var(--white-alpha-8);
+        color: var(--white-alpha-85);
 
         &:hover {
             background: rgba(255, 255, 255, 0.14);

@@ -23,7 +23,7 @@
     align-items: center;
     justify-content: center;
     padding: 6px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     transition: all 0.2s ease;
 }
 

@@ -2,9 +2,9 @@
 .code-tooltip-popover {
     position: fixed;
     z-index: 10000;
-    border: 1px solid rgba(104, 95, 255, 0.35);
-    border-radius: 3px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--purple-alpha-35);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 4px 16px var(--black-alpha-50);
     overflow: hidden;
     animation: ptp-fade-in 0.08s ease-out;
 }
@@ -22,11 +22,11 @@
     max-height: 480px;
     overflow-y: auto;
     background: var(--graphite-875);
-    border: 1px solid rgba(104, 95, 255, 0.4);
-    border-radius: 8px;
+    border: 1px solid var(--purple-alpha-40);
+    border-radius: var(--radius-lg);
     box-shadow:
-        0 8px 32px rgba(0, 0, 0, 0.5),
-        0 0 0 1px rgba(255, 255, 255, 0.05);
+        0 8px 32px var(--black-alpha-50),
+        0 0 0 1px var(--white-alpha-5);
     padding: 12px;
     display: flex;
     flex-direction: column;
@@ -37,8 +37,8 @@
         width: 5px;
     }
     &::-webkit-scrollbar-thumb {
-        background: rgba(255, 255, 255, 0.15);
-        border-radius: 4px;
+        background: var(--white-alpha-15);
+        border-radius: var(--radius-sm);
     }
 }
 
@@ -56,7 +56,7 @@
     align-items: center;
     gap: 8px;
     padding-bottom: 6px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--white-alpha-8);
 }
 
 .ptp-title {
@@ -68,10 +68,10 @@
 
 .ptp-badge {
     font-size: 11px;
-    color: rgba(104, 95, 255, 0.9);
-    background: rgba(104, 95, 255, 0.12);
+    color: var(--purple-alpha-90);
+    background: var(--purple-alpha-12);
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     white-space: nowrap;
 }
 
@@ -84,7 +84,7 @@
 .ptp-label {
     font-size: 11px;
     font-weight: 500;
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--white-alpha-50);
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -93,8 +93,8 @@
     width: 100%;
     background: #141414;
     color: var(--gray-300);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
+    border: 1px solid var(--white-alpha-10);
+    border-radius: var(--radius-md);
     padding: 8px 10px;
     font-family: var(--font-family-mono);
     font-size: 12px;
@@ -105,10 +105,10 @@
     box-sizing: border-box;
 
     &:focus {
-        border-color: rgba(104, 95, 255, 0.5);
+        border-color: var(--purple-alpha-50);
     }
 
     &::placeholder {
-        color: rgba(255, 255, 255, 0.2);
+        color: var(--white-alpha-20);
     }
 }

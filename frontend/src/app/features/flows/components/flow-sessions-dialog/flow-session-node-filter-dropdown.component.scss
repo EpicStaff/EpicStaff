@@ -12,8 +12,8 @@
     z-index: 100;
     background: var(--color-background-body, var(--graphite-850));
     border: 1px solid var(--color-divider-regular, var(--graphite-640));
-    border-radius: 8px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 4px 24px var(--black-alpha-18);
     min-width: 220px;
 }
 
@@ -114,7 +114,7 @@
     padding: 4px;
     justify-content: space-between;
     border: 1px solid var(--color-divider-regular, var(--graphite-640));
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--color-background-body, var(--graphite-850));
     color: var(--color-text-primary, var(--white));
     font-size: 1em;
@@ -186,9 +186,9 @@
 
 .group-item {
     padding-left: 18px !important;
-    border: 1px solid rgba(217, 217, 222, 0.16);
-    border-radius: 3px;
-    background-color: rgba(43, 45, 48, 1);
+    border: 1px solid var(--fog-alpha-16);
+    border-radius: var(--radius-sm);
+    background-color: var(--graphite-750);
 }
 
 .clear-filter-footer {
@@ -201,7 +201,7 @@
 .clear-filter-btn {
     background: none;
     border: 1px solid var(--accent-color, var(--blue-400));
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     color: var(--accent-color, var(--blue-400));
     font-size: 12px;
     padding: 4px 12px;

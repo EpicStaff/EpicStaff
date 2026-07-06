@@ -1,11 +1,11 @@
 .container {
     background-color: var(--color-modals-background);
-    border-radius: 12px;
+    border-radius: var(--radius-2xl);
     width: 480px;
     max-width: 90vw;
     box-shadow:
-        0 12px 28px rgba(0, 0, 0, 0.4),
-        0 4px 8px rgba(0, 0, 0, 0.2);
+        0 12px 28px var(--black-alpha-40),
+        0 4px 8px var(--black-alpha-20);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -32,7 +32,7 @@
 .title {
     font-size: 16px;
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--white-alpha-90);
     margin: 0;
 }
 
@@ -44,13 +44,13 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    color: rgba(255, 255, 255, 0.6);
-    border-radius: 6px;
+    color: var(--white-alpha-60);
+    border-radius: var(--radius-md);
     transition: background 0.15s;
 
     &:hover {
-        background: rgba(255, 255, 255, 0.1);
-        color: rgba(255, 255, 255, 0.9);
+        background: var(--white-alpha-10);
+        color: var(--white-alpha-90);
     }
 }
 
@@ -77,6 +77,6 @@
 
 .section-label {
     font-size: 14px;
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--white-alpha-70);
     font-weight: 400;
 }

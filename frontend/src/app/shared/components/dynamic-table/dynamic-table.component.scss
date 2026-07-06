@@ -7,7 +7,7 @@
     display: flex;
     flex-direction: column;
     border: 1px solid var(--color-divider-subtle);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     overflow: hidden;
 
     &__header {
@@ -41,7 +41,7 @@
         color: var(--accent-color);
 
         &:hover:not(.disabled) {
-            background-color: rgba(104, 95, 255, 0.12);
+            background-color: var(--purple-alpha-12);
         }
 
         &.disabled {
@@ -107,7 +107,7 @@
         font-size: 12px;
         font-weight: 400;
         line-height: 130%;
-        color: rgba(217, 217, 222, 0.8);
+        color: var(--fog-alpha-80);
         border-bottom: 1px solid var(--color-divider-subtle);
         white-space: nowrap;
         user-select: none;
@@ -163,7 +163,7 @@
     }
 
     &__th-required {
-        color: var(--color-ks-status-failed, #dc2626);
+        color: var(--color-ks-status-failed, var(--red-550));
         margin-left: 2px;
     }
 
@@ -186,9 +186,9 @@
     &__col-drag-placeholder {
         min-width: 80px;
         height: 36px;
-        background-color: rgba(104, 95, 255, 0.1);
+        background-color: var(--purple-alpha-10);
         border: 1px dashed var(--accent-color, var(--accent-color));
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
     }
 
     // Rows
@@ -200,7 +200,7 @@
         }
 
         &:hover {
-            background-color: rgba(255, 255, 255, 0.03);
+            background-color: var(--white-alpha-3);
         }
 
         &.cdk-drag-animating {
@@ -216,7 +216,7 @@
         vertical-align: middle;
 
         &--invalid {
-            box-shadow: inset 0 0 0 1px var(--color-ks-status-failed, #dc2626);
+            box-shadow: inset 0 0 0 1px var(--color-ks-status-failed, var(--red-550));
         }
 
         &--drag {
@@ -236,7 +236,7 @@
             right: 0;
             z-index: 1;
             background-color: var(--color-modals-background);
-            border-radius: 4px;
+            border-radius: var(--radius-sm);
         }
     }
 
@@ -275,7 +275,7 @@
         font-size: 12px;
         font-weight: 400;
         line-height: 130%;
-        color: rgba(217, 217, 222, 0.8);
+        color: var(--fog-alpha-80);
         outline: none;
 
         &::placeholder {
@@ -321,12 +321,12 @@
         border: 1px solid var(--accent-color);
         color: var(--accent-color);
         cursor: pointer;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         padding: 0;
         transition: background-color 0.15s ease;
 
         &:hover {
-            background-color: rgba(104, 95, 255, 0.12);
+            background-color: var(--purple-alpha-12);
         }
 
         &--cell {
@@ -342,9 +342,9 @@
         justify-content: center;
         background: none;
         border: none;
-        color: var(--color-text-secondary, rgba(255, 255, 255, 0.4));
+        color: var(--color-text-secondary, var(--white-alpha-40));
         cursor: pointer;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         padding: 0;
         transition:
             color 0.15s ease,
@@ -356,7 +356,7 @@
 
         &:hover {
             color: var(--color-text-primary);
-            background-color: rgba(255, 255, 255, 0.08);
+            background-color: var(--white-alpha-8);
         }
     }
 
@@ -371,7 +371,7 @@
     background-color: var(--color-flow-card-bg);
     padding: 8px 8px 8px 16px;
     margin-top: 8px;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     border-left: 2px solid var(--color-ks-status-failed);
 
     &__list {
@@ -394,8 +394,8 @@
 .cdk-drag-preview {
     background-color: var(--color-surface, #1e1e2e);
     border: 1px solid var(--accent-color, var(--accent-color));
-    border-radius: 4px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 4px 16px var(--black-alpha-40);
     opacity: 0.9;
     display: table;
     width: auto !important;

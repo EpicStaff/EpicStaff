@@ -8,7 +8,7 @@
     &__item {
         display: block;
         font-size: 0.75rem;
-        border-radius: 5px;
+        border-radius: var(--radius-md);
         border-left: 3px solid var(--color-ks-status-failed);
         background-color: var(--color-ks-transparent-red);
         color: var(--color-ks-status-failed);

@@ -10,10 +10,10 @@
     height: 28px;
     padding: 0 10px;
     margin: 0;
-    border-radius: 4px;
-    border: 1px solid rgba(104, 95, 255, 1);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--accent-color);
     background: transparent;
-    color: rgba(104, 95, 255, 1);
+    color: var(--accent-color);
     font-size: 13px;
     line-height: 1;
     cursor: pointer;
@@ -25,11 +25,11 @@
     transition: background-color 0.15s ease;
 
     &:hover {
-        background-color: rgba(104, 95, 255, 0.08);
+        background-color: var(--purple-alpha-8);
     }
 
     &__icon {
-        color: rgba(104, 95, 255, 1);
+        color: var(--accent-color);
         flex-shrink: 0;
     }
 

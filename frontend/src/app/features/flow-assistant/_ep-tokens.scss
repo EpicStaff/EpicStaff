@@ -16,7 +16,7 @@
     // accent
     --ep-color-accent: var(--accent-color);
     --ep-color-accent-contrast: var(--color-ks-white);
-    --ep-color-accent-soft: rgba(104, 95, 255, 0.12);
+    --ep-color-accent-soft: var(--purple-alpha-12);
     --ep-color-header-icon: var(--ep-color-accent);
 
     // danger / link
@@ -30,7 +30,7 @@
     --ep-chat-text-question: var(--white);
 
     // menu panel
-    --ep-menu-panel-item-hover-bg: rgba(255, 255, 255, 0.06);
+    --ep-menu-panel-item-hover-bg: var(--white-alpha-6);
 
     // radius scale
     --ep-radius-sm: 4px;

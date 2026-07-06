@@ -169,7 +169,7 @@
         max-width: 100%;
         display: block;
         margin: 1em auto;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
     }
 
     // Code
@@ -178,7 +178,7 @@
         font-size: 0.9em;
         padding: 0.2em 0.4em;
         background-color: var(--gray-750);
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         color: #e06c75;
         border: 1px solid var(--gray-700);
     }
@@ -187,9 +187,9 @@
         margin: 1em 0;
         padding: 1em 1.2em;
         background: linear-gradient(90deg, #181c20 0%, #23272b 100%);
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         border: 1px solid var(--gray-700);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 2px 8px var(--black-alpha-10);
         overflow-x: auto;
         font-family: var(--font-family-mono);
         font-size: 0.98em;

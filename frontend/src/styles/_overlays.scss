@@ -13,9 +13,9 @@
 // Column header freeze/hide dropdown (CDK overlay, rendered to document body)
 .chm-dropdown {
     background: var(--graphite-800);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.55);
+    border: 1px solid var(--white-alpha-12);
+    border-radius: var(--radius-md);
+    box-shadow: 0 4px 20px var(--black-alpha-55);
     min-width: 140px;
     padding: 4px 0;
     z-index: 10000;
@@ -27,23 +27,23 @@
     gap: 0.5rem;
     padding: 0.45rem 0.85rem;
     font-size: 0.82rem;
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--white-alpha-85);
     cursor: pointer;
     transition: background 0.1s ease;
     white-space: nowrap;
 
     i {
         font-size: 0.9rem;
-        color: rgba(255, 255, 255, 0.5);
+        color: var(--white-alpha-50);
         flex-shrink: 0;
     }
 
     &:hover {
-        background: rgba(104, 95, 255, 0.2);
+        background: var(--purple-alpha-20);
         color: var(--white);
 
         i {
-            color: rgba(104, 95, 255, 0.85);
+            color: var(--purple-alpha-85);
         }
     }
 }

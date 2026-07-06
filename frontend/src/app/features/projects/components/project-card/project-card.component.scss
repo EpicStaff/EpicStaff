@@ -1,12 +1,12 @@
 .project-card {
     background: var(--color-sidenav-background);
-    border-radius: 12px;
+    border-radius: var(--radius-2xl);
     padding: 13px;
     color: var(--color-text-primary);
 
     box-shadow:
-        0 8px 16px rgba(0, 0, 0, 0.12),
-        0 2px 4px rgba(0, 0, 0, 0.08);
+        0 8px 16px var(--black-alpha-12),
+        0 2px 4px var(--black-alpha-8);
     display: flex;
     flex-direction: column;
     height: 165px;
@@ -21,8 +21,8 @@
     &:hover {
         border-color: #3a3d45;
         box-shadow:
-            0 12px 20px rgba(0, 0, 0, 0.18),
-            0 3px 6px rgba(0, 0, 0, 0.1);
+            0 12px 20px var(--black-alpha-18),
+            0 3px 6px var(--black-alpha-10);
     }
 
     .card-header {
@@ -36,7 +36,7 @@
             width: 40px;
             height: 40px;
             background-color: #2a2c34;
-            border-radius: 8px;
+            border-radius: var(--radius-lg);
             display: flex;
             align-items: center;
             justify-content: center;

@@ -1,10 +1,10 @@
 .extracted-chunks-container {
     border-left: 4px solid #5c7cfa;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     background: var(--color-nodes-background);
     padding: 1rem;
 
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 4px 16px var(--black-alpha-20);
 }
 
 .header {
@@ -73,7 +73,7 @@
     background: rgba(92, 124, 250, 0.15);
     color: #bec8ff;
     padding: 0.15rem 0.65rem;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     font-size: 0.8rem;
 }
 
@@ -96,7 +96,7 @@
 
 .stat {
     background: var(--gray-850);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 0.65rem;
 }
 
@@ -125,7 +125,7 @@
     position: relative;
     background: var(--gray-850);
     border: 1px solid var(--gray-775);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 0.75rem;
     display: flex;
     flex-direction: column;
@@ -167,7 +167,7 @@
     white-space: pre-wrap;
     color: var(--gray-50);
     background: var(--gray-900);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 0.75rem;
     overflow: visible;
 }

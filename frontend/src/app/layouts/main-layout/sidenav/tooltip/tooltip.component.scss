@@ -7,7 +7,7 @@ $tooltip-text: var(--gray-200);
     font-weight: 500;
     font-size: 0.875rem; // 14px
     padding: 0.5rem 0.75rem;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     white-space: nowrap;
     pointer-events: none;
     z-index: 10000;

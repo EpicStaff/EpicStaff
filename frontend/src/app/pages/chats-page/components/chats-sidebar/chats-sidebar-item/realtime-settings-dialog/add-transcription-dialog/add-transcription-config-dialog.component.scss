@@ -1,8 +1,8 @@
 .dialog-container {
     background-color: var(--graphite-875);
-    border-radius: 12px;
+    border-radius: var(--radius-2xl);
     padding: 24px;
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--white-alpha-90);
     min-width: 400px;
 
     .dialog-header {
@@ -20,18 +20,18 @@
         .close-button {
             background: none;
             border: none;
-            color: rgba(255, 255, 255, 0.6);
+            color: var(--white-alpha-60);
             cursor: pointer;
             padding: 4px;
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 4px;
+            border-radius: var(--radius-sm);
             margin-left: 10px;
 
             &:hover {
-                background-color: rgba(255, 255, 255, 0.1);
-                color: rgba(255, 255, 255, 0.9);
+                background-color: var(--white-alpha-10);
+                color: var(--white-alpha-90);
             }
         }
     }
@@ -47,15 +47,15 @@
             display: block;
             margin-bottom: 8px;
             font-size: 14px;
-            color: rgba(255, 255, 255, 0.7);
+            color: var(--white-alpha-70);
         }
 
         .text-input {
             width: 100%;
             padding: 10px 12px;
-            background-color: rgba(30, 30, 30, 0.6);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
+            background-color: var(--color-backdrop);
+            border: 1px solid var(--white-alpha-10);
+            border-radius: var(--radius-md);
             color: white;
             font-size: 14px;
             transition: border-color 0.2s ease;
@@ -84,7 +84,7 @@
                 transform: translateY(-50%);
                 background: none;
                 border: none;
-                color: rgba(255, 255, 255, 0.6);
+                color: var(--white-alpha-60);
                 cursor: pointer;
                 padding: 4px;
                 display: flex;
@@ -92,7 +92,7 @@
                 justify-content: center;
 
                 &:hover {
-                    color: rgba(255, 255, 255, 0.9);
+                    color: var(--white-alpha-90);
                 }
             }
         }
@@ -111,7 +111,7 @@
 
         .button {
             padding: 8px 16px;
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             font-size: 14px;
             font-weight: 500;
             cursor: pointer;
@@ -119,11 +119,11 @@
             border: none;
 
             &.secondary {
-                background-color: rgba(255, 255, 255, 0.1);
-                color: rgba(255, 255, 255, 0.9);
+                background-color: var(--white-alpha-10);
+                color: var(--white-alpha-90);
 
                 &:hover {
-                    background-color: rgba(255, 255, 255, 0.15);
+                    background-color: var(--white-alpha-15);
                 }
             }
 
@@ -136,7 +136,7 @@
                 }
 
                 &:disabled {
-                    background-color: rgba(104, 95, 255, 0.5);
+                    background-color: var(--purple-alpha-50);
                     cursor: not-allowed;
                 }
             }

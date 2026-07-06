@@ -32,7 +32,7 @@
             overflow: hidden;
 
             .flows-prefix {
-                color: rgba(255, 255, 255, 0.6);
+                color: var(--white-alpha-60);
                 cursor: pointer;
                 transition: all 0.2s ease;
                 display: flex;
@@ -53,7 +53,7 @@
                 }
 
                 &:hover {
-                    color: rgba(255, 255, 255, 0.9);
+                    color: var(--white-alpha-90);
                 }
             }
         }
@@ -106,7 +106,7 @@
             gap: 0.5rem;
             padding: 0 0.75rem;
             height: 36px;
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             font-size: 14px;
             font-weight: 400;
             cursor: pointer;
@@ -190,7 +190,7 @@
             display: flex;
             align-items: stretch;
             border: 1px solid var(--accent-color);
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             overflow: hidden;
             max-width: 100%;
             flex: 0 1 auto;

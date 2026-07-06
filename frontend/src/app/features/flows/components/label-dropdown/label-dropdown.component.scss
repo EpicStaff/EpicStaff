@@ -11,7 +11,7 @@
     padding: 0.525rem 0.625rem;
     background-color: var(--color-input-background);
     border: 1px solid var(--color-input-border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     color: var(--color-text-primary);
     font-size: 0.875rem;
     cursor: pointer;
@@ -52,10 +52,10 @@
     z-index: 200;
     background: var(--color-sidenav-background);
     border: 1px solid var(--color-input-border);
-    border-radius: 10px;
+    border-radius: var(--radius-xl);
     box-shadow:
-        0px 6px 10px rgba(0, 0, 0, 0.15),
-        0px 2px 3px rgba(0, 0, 0, 0.3);
+        0px 6px 10px var(--black-alpha-15),
+        0px 2px 3px var(--black-alpha-30);
 }
 
 .labels-section-header {
@@ -84,7 +84,7 @@
     gap: 0.25rem;
     background: var(--accent-color);
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     color: var(--color-text-primary);
     font-size: 0.75rem;
@@ -123,7 +123,7 @@
     }
     &::-webkit-scrollbar-thumb {
         background: var(--color-text-secondary);
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         opacity: 0.5;
     }
 }
@@ -146,8 +146,8 @@
     position: relative;
     height: 40px;
     background: var(--color-input-background);
-    border: 1px solid rgba(217, 217, 222, 0.16);
-    border-radius: 4px;
+    border: 1px solid var(--fog-alpha-16);
+    border-radius: var(--radius-sm);
     flex-shrink: 0;
     transition: border-color 0.15s;
     min-width: max-content;
@@ -167,7 +167,7 @@
 
     &.selected {
         border-color: var(--accent-color);
-        background: rgba(104, 95, 255, 0.08);
+        background: var(--purple-alpha-8);
     }
 
     .label-name {
@@ -220,7 +220,7 @@
     align-items: center;
     justify-content: center;
     padding: 0;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     flex-shrink: 0;
     width: 28px;
     height: 28px;
@@ -256,7 +256,7 @@
         min-width: 100px;
         background: var(--color-input-background);
         border: 1px solid var(--color-input-border);
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         color: var(--color-text-primary);
         padding: 0.25rem 0.5rem;
         font-size: 0.85rem;
@@ -285,7 +285,7 @@
         align-items: center;
         justify-content: center;
         padding: 0.2rem;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         flex-shrink: 0;
         width: 26px;
         height: 26px;
@@ -304,7 +304,7 @@
         align-items: center;
         justify-content: center;
         padding: 0.2rem;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         flex-shrink: 0;
         width: 26px;
         height: 26px;
@@ -320,7 +320,7 @@
     padding: 0.35rem 0.6rem;
     background: rgba(220, 91, 96, 0.12);
     border: 1px solid rgba(220, 91, 96, 0.3);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     color: var(--color-ks-status-failed);
     font-size: 0.8rem;
     line-height: 1.4;

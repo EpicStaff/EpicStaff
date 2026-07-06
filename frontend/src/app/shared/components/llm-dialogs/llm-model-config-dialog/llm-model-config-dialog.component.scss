@@ -5,7 +5,7 @@
     overflow: hidden;
     background: var(--color-background-body, var(--color-background-body));
     border: 1px solid var(--color-ks-line, var(--graphite-750));
-    border-radius: 0.625rem;
+    border-radius: var(--radius-xl);
 
     .header {
         display: flex;
@@ -25,7 +25,7 @@
         color: var(--color-error, var(--red-500));
         padding: 0.75rem 1rem;
         margin: 1rem 1.5rem 0;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
 
         p {
             margin: 0;

@@ -6,7 +6,7 @@
 
     background: var(--color-nodes-background);
 
-    border-radius: 16px;
+    border-radius: var(--radius-3xl);
 
     .node-name-wrapper {
         position: absolute;
@@ -21,7 +21,7 @@
         color: var(--gray-300);
         font-size: 12px;
         padding: 2px 6px;
-        border-radius: 3px;
+        border-radius: var(--radius-sm);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -38,7 +38,7 @@
         gap: 8px;
         z-index: 11;
         padding: 8px;
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         transition: opacity 0.2s ease;
 
         // Create a larger hit area before the actions
@@ -69,7 +69,7 @@
     .action-button {
         width: 28px;
         height: 28px;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -132,7 +132,7 @@
         border: 2px solid var(--color-divider-subtle);
         cursor: pointer;
         padding: 1rem;
-        border-radius: 16px;
+        border-radius: var(--radius-3xl);
         .header {
             display: flex;
             align-items: center;
@@ -175,7 +175,7 @@
                 margin-left: auto;
                 font-size: 11px;
                 padding: 2px 6px;
-                border-radius: 10px;
+                border-radius: var(--radius-xl);
                 background: rgba(255, 107, 107, 0.15);
                 color: #ffb3b3;
                 border: 1px solid rgba(255, 107, 107, 0.6);

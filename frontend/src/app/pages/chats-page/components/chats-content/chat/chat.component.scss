@@ -13,7 +13,7 @@
     flex-direction: column;
     flex: 1;
     min-height: 0; /* Critical for nested flex containers */
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     overflow: hidden;
 }
 
@@ -25,5 +25,5 @@
     color: var(--gray-500);
     font-style: italic;
     background-color: var(--gray-850);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
 }

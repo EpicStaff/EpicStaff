@@ -34,7 +34,7 @@
     min-height: 0;
     overflow: auto;
     border: 1px solid var(--color-divider-subtle);
-    border-radius: 10px;
+    border-radius: var(--radius-xl);
     position: relative;
 }
 
@@ -108,7 +108,7 @@
             color: var(--color-text-secondary);
             background: var(--transparent-white-8);
             padding: 2px 6px;
-            border-radius: 4px;
+            border-radius: var(--radius-sm);
         }
 
         .group-actions {
@@ -193,13 +193,13 @@
     color: var(--color-text-primary);
     background-color: var(--color-input-background);
     border: 1px solid var(--color-input-border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     transition: color 0.15s ease;
 
     &.small {
         height: 28px;
         font-size: 10px;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
     }
 
     &:hover {

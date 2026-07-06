@@ -10,7 +10,7 @@ $transition-default: all 0.2s ease;
 
 .wrapper {
     height: 100%;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
     box-shadow: 1px 1px 10px rgba(3, 3, 5, 0.35);
 }
@@ -56,11 +56,11 @@ $transition-default: all 0.2s ease;
     font-size: 0.8rem;
     padding: 4px 10px;
     line-height: 1.2;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background-color: var(--graphite-780);
     color: var(--gray-200);
     border: 1px solid var(--graphite-600);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 1px 2px var(--black-alpha-10);
     transition: all 0.15s ease;
     cursor: pointer;
     font-weight: 500;
@@ -76,7 +76,7 @@ $transition-default: all 0.2s ease;
     background-color: var(--graphite-640);
     border-color: var(--gray-700);
     transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 2px 4px var(--black-alpha-15);
 }
 //tools column
 //cells
@@ -95,7 +95,7 @@ $transition-default: all 0.2s ease;
         background-color: var(--graphite-780);
         border: 1px solid $border-color;
 
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         padding: 6px 8px;
 
         margin-bottom: 4px; // Adds spacing between tool items
@@ -188,7 +188,7 @@ $transition-default: all 0.2s ease;
     margin: 6px auto !important;
     padding: 6px 8px;
     background-color: var(--graphite-780);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     cursor: default; // or pointer if you want it clickable
     transition:
         background-color 0.3s,
@@ -210,7 +210,7 @@ $transition-default: all 0.2s ease;
         width: 20px;
         height: 20px;
         margin-right: 6px;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
     }
 
     .item-content {
@@ -254,7 +254,7 @@ $transition-default: all 0.2s ease;
 :host ::ng-deep .cell-required-invalid {
     border: 1px solid rgba(255, 77, 79, 0.95) !important;
     box-shadow: inset 0 0 0 1px rgba(255, 77, 79, 0.35);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
 }
 
 .ag-grid-wrap.tasks-table-wrap--saving {

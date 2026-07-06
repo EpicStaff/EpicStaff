@@ -48,13 +48,13 @@
     align-items: center;
     background-color: var(--gray-800);
     z-index: 10;
-    border-radius: 0.5rem;
+    border-radius: var(--radius-lg);
 }
 
 .loading-spinner {
     width: 50px;
     height: 50px;
-    border: 4px solid rgba(255, 255, 255, 0.1);
+    border: 4px solid var(--white-alpha-10);
     border-radius: 50%;
     border-top-color: var(--blue-500);
     animation: spin 1s ease-in-out infinite;

@@ -18,19 +18,19 @@ $purple-accent: rgba(104, 95, 255, 0.5);
     min-width: 0;
 
     .settings-group {
-        background: rgba(255, 255, 255, 0.03);
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: var(--white-alpha-3);
+        border-radius: var(--radius-2xl);
+        box-shadow: 0 4px 12px var(--black-alpha-15);
+        border: 1px solid var(--white-alpha-8);
         overflow: visible;
         min-width: 0;
         box-sizing: border-box;
 
         .group-header {
             padding: 1rem 1.5rem;
-            background: rgba(255, 255, 255, 0.05);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 12px 12px 0 0;
+            background: var(--white-alpha-5);
+            border-bottom: 1px solid var(--white-alpha-8);
+            border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
 
             h3 {
                 margin: 0;
@@ -50,12 +50,12 @@ $purple-accent: rgba(104, 95, 255, 0.5);
         &.hierarchical-group,
         &.memory-group {
             margin-top: 2rem;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: var(--white-alpha-3);
+            border: 1px solid var(--white-alpha-8);
 
             .group-header {
-                background: rgba(255, 255, 255, 0.05);
-                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                background: var(--white-alpha-5);
+                border-bottom: 1px solid var(--white-alpha-8);
             }
         }
     }
@@ -86,7 +86,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
             h3 {
                 margin: 0;
                 font-size: 14px;
-                color: rgba(255, 255, 255, 0.7);
+                color: var(--white-alpha-70);
                 font-weight: 400;
             }
 
@@ -97,11 +97,11 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                 left: 1.5rem;
                 right: 1.5rem;
                 height: 1px;
-                background: rgba(255, 255, 255, 0.06);
+                background: var(--white-alpha-6);
             }
 
             &:hover {
-                background: rgba(255, 255, 255, 0.02);
+                background: var(--white-alpha-2);
             }
 
             .setting-label {
@@ -150,8 +150,8 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                     max-width: 100%;
                     flex-shrink: 1;
                     background: rgba(20, 20, 20, 0.4);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 8px;
+                    border: 1px solid var(--white-alpha-10);
+                    border-radius: var(--radius-lg);
                     overflow: hidden;
                     cursor: pointer;
                     transition: all 0.2s ease;
@@ -164,7 +164,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                         cursor: default;
 
                         &:hover {
-                            border-color: rgba(255, 255, 255, 0.1);
+                            border-color: var(--white-alpha-10);
                         }
                     }
 
@@ -182,7 +182,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                         width: 100%;
 
                         &:hover:not(.active):not(.disabled-option) {
-                            background: rgba(255, 255, 255, 0.05);
+                            background: var(--white-alpha-5);
                         }
 
                         &.active {
@@ -193,7 +193,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                         &.disabled-option {
                             cursor: default;
                             color: var(--gray-600);
-                            background: rgba(255, 255, 255, 0.02);
+                            background: var(--white-alpha-2);
                             display: flex;
                             flex-direction: row;
                             align-items: center;
@@ -225,7 +225,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                         appearance: none;
                         width: 100%;
                         height: 6px;
-                        border-radius: 3px;
+                        border-radius: var(--radius-sm);
                         background: var(--gray-700);
                         outline: none;
                         cursor: pointer;
@@ -234,7 +234,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                         /* WebKit track */
                         &::-webkit-slider-runnable-track {
                             height: 6px;
-                            border-radius: 3px;
+                            border-radius: var(--radius-sm);
                             background: var(--gray-700);
                         }
 
@@ -260,7 +260,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                         /* Firefox track */
                         &::-moz-range-track {
                             height: 6px;
-                            border-radius: 3px;
+                            border-radius: var(--radius-sm);
                             background: grey;
                         }
 
@@ -304,8 +304,8 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                         padding: 0.6rem 1rem;
                         padding-right: 2rem;
                         background: rgba(20, 20, 20, 0.4);
-                        border: 1px solid rgba(255, 255, 255, 0.1);
-                        border-radius: 8px;
+                        border: 1px solid var(--white-alpha-10);
+                        border-radius: var(--radius-lg);
                         color: $text-color;
                         font-size: 0.9rem;
                         appearance: none;
@@ -355,8 +355,8 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                     width: 120px;
                     padding: 0.6rem 1rem;
                     background: rgba(20, 20, 20, 0.4);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 8px;
+                    border: 1px solid var(--white-alpha-10);
+                    border-radius: var(--radius-lg);
                     color: $text-color;
                     font-size: 0.9rem;
                     transition: all 0.2s ease;

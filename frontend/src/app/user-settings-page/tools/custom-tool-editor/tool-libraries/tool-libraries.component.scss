@@ -1,7 +1,7 @@
 .tool-libraries {
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-size: 14px;
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--white-alpha-90);
 
     .header {
         display: flex;
@@ -13,7 +13,7 @@
             margin: 0;
             padding: 0;
             font-size: 14px;
-            color: rgba(255, 255, 255, 0.7);
+            color: var(--white-alpha-70);
             font-weight: 400;
             line-height: 1;
         }
@@ -33,9 +33,9 @@
             .library-item {
                 display: flex;
                 align-items: center;
-                background-color: rgba(30, 30, 30, 0.6);
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 6px;
+                background-color: var(--color-backdrop);
+                border: 1px solid var(--white-alpha-10);
+                border-radius: var(--radius-md);
                 padding: 8px 12px;
                 transition: all 0.2s ease;
                 max-width: 100%;
@@ -44,7 +44,7 @@
 
                 &:hover {
                     background-color: rgba(50, 50, 50, 0.6);
-                    border-color: rgba(255, 255, 255, 0.2);
+                    border-color: var(--white-alpha-20);
                 }
 
                 .library-name {
@@ -63,7 +63,7 @@
                     background: transparent;
                     border: none;
                     cursor: pointer;
-                    color: rgba(255, 255, 255, 0.5);
+                    color: var(--white-alpha-50);
                     font-size: 14px;
                     width: 20px;
                     height: 20px;
@@ -92,16 +92,16 @@
                 .library-input {
                     height: 38px;
                     padding: 0 12px;
-                    background-color: rgba(30, 30, 30, 0.6);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 6px;
+                    background-color: var(--color-backdrop);
+                    border: 1px solid var(--white-alpha-10);
+                    border-radius: var(--radius-md);
                     color: white;
                     font-size: 14px;
                     transition: border-color 0.2s ease;
                     outline: none;
 
                     &::placeholder {
-                        color: rgba(255, 255, 255, 0.4);
+                        color: var(--white-alpha-40);
                     }
 
                     &:focus {
@@ -115,9 +115,9 @@
                     justify-content: center;
                     height: 38px;
                     width: 38px;
-                    background-color: rgba(30, 30, 30, 0.6);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 6px;
+                    background-color: var(--color-backdrop);
+                    border: 1px solid var(--white-alpha-10);
+                    border-radius: var(--radius-md);
                     cursor: pointer;
                     color: var(--accent-color);
                     transition: all 0.2s ease;
@@ -128,7 +128,7 @@
                     }
 
                     &:hover {
-                        background-color: rgba(104, 95, 255, 0.1);
+                        background-color: var(--purple-alpha-10);
                         border-color: var(--accent-color);
                     }
                 }

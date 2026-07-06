@@ -1,6 +1,6 @@
 .dialog-container {
     background: var(--color-modals-background);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     border: 1px solid var(--color-divider-regular);
     width: 485px;
     max-width: 100%;
@@ -70,7 +70,7 @@
 
 .button {
     padding: 8px 12px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
@@ -117,7 +117,7 @@
         &.danger {
             background: var(--red-500);
             &:hover:not(:disabled) {
-                background: #d32f2f;
+                background: var(--red-550);
             }
         }
 
@@ -190,7 +190,7 @@
     color: white;
 }
 .button.save-button.danger:hover:not(:disabled) {
-    background: #d32f2f;
+    background: var(--red-550);
 }
 .button.save-button.warning {
     background: var(--accent-color);

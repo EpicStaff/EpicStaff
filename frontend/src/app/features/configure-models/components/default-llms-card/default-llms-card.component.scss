@@ -3,8 +3,8 @@
 }
 
 .default-llms-card {
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
+    border: 1px solid var(--white-alpha-8);
+    border-radius: var(--radius-2xl);
     padding: 16px;
     display: flex;
     flex-grow: 1;
@@ -64,13 +64,13 @@
 
     &__divider {
         height: 1px;
-        background: rgba(255, 255, 255, 0.08);
+        background: var(--white-alpha-8);
     }
 
     &__add {
         height: 40px;
         aspect-ratio: 1;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         border: none;
         background: var(--accent-color);
         color: var(--white);
@@ -102,6 +102,6 @@
         font-size: 12px;
         font-weight: 400;
         line-height: 1;
-        color: rgba(217, 217, 222, 0.6);
+        color: var(--fog-alpha-60);
     }
 }

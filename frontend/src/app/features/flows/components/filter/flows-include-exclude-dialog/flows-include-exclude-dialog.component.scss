@@ -7,12 +7,12 @@
     max-height: 80vh;
     background: var(--color-sidenav-background);
     border: 1px solid var(--color-input-border);
-    border-radius: 10px;
+    border-radius: var(--radius-xl);
     padding: 1.25rem;
     color: var(--color-text-primary);
     box-shadow:
-        0 6px 10px rgba(0, 0, 0, 0.15),
-        0 2px 3px rgba(0, 0, 0, 0.3);
+        0 6px 10px var(--black-alpha-15),
+        0 2px 3px var(--black-alpha-30);
 
     .dialog-header {
         margin-bottom: 0.75rem;
@@ -30,7 +30,7 @@
     gap: 0.5rem;
     background: var(--color-input-background);
     padding: 0.25rem;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     margin-bottom: 10px;
 
     .tab-btn {
@@ -42,7 +42,7 @@
         padding: 0.55rem 0.75rem;
         background: transparent;
         border: none;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         color: var(--color-text-secondary);
         font-size: 0.875rem;
         cursor: pointer;
@@ -84,7 +84,7 @@
     padding: 0.6rem 0.75rem;
     background: var(--color-input-background);
     border: 1px solid var(--color-input-border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     color: var(--color-text-primary);
     font-size: 0.875rem;
     margin-bottom: 0.75rem;
@@ -120,7 +120,7 @@
     }
     &::-webkit-scrollbar-thumb {
         background: var(--color-text-secondary);
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         opacity: 0.5;
     }
 
@@ -139,8 +139,8 @@
     min-height: 2.85rem;
     padding: 0.5rem 0.75rem;
     background: var(--color-input-background);
-    border: 1px solid rgba(217, 217, 222, 0.16);
-    border-radius: 6px;
+    border: 1px solid var(--fog-alpha-16);
+    border-radius: var(--radius-md);
     cursor: pointer;
     font-size: 0.875rem;
     transition: border-color 0.15s;

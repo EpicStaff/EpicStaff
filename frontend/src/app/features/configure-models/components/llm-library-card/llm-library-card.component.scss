@@ -4,8 +4,8 @@
 
 .llm-card {
     overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
+    border: 1px solid var(--white-alpha-8);
+    border-radius: var(--radius-2xl);
     padding: 14px 16px;
     display: flex;
     flex-grow: 1;
@@ -31,7 +31,7 @@
         white-space: nowrap;
         font-size: 11px;
         font-weight: 500;
-        color: rgba(217, 217, 222, 0.5);
+        color: var(--fog-alpha-50);
     }
 
     &__actions {
@@ -44,7 +44,7 @@
         width: 28px;
         height: 28px;
         border-radius: 50%;
-        border: 1px solid rgba(104, 95, 255, 0.4);
+        border: 1px solid var(--purple-alpha-40);
         background: transparent;
         color: var(--accent-color);
         display: inline-flex;
@@ -62,8 +62,8 @@
         }
 
         &:hover {
-            background: rgba(104, 95, 255, 0.12);
-            border-color: rgba(104, 95, 255, 0.7);
+            background: var(--purple-alpha-12);
+            border-color: var(--purple-alpha-70);
         }
 
         &--delete {
@@ -91,7 +91,7 @@
     &__tag {
         font-size: 11px;
         font-weight: 500;
-        color: rgba(217, 217, 222, 0.5);
+        color: var(--fog-alpha-50);
     }
 
     &__bottom {
@@ -107,7 +107,7 @@
         align-items: center;
         gap: 4px;
         font-size: 12px;
-        color: rgba(217, 217, 222, 0.5);
+        color: var(--fog-alpha-50);
 
         i {
             font-size: 14px;
@@ -116,7 +116,7 @@
 
     &__usage {
         font-size: 12px;
-        color: rgba(217, 217, 222, 0.5);
+        color: var(--fog-alpha-50);
 
         &--active {
             color: var(--accent-color);

@@ -23,7 +23,7 @@
         gap: 0.5rem;
         justify-content: flex-start;
         position: relative;
-        border-radius: 0.5rem;
+        border-radius: var(--radius-lg);
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
@@ -116,11 +116,11 @@
 
     &__dropdown {
         width: 100%;
-        border-radius: 10px;
+        border-radius: var(--radius-xl);
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+        box-shadow: 0 8px 24px var(--black-alpha-24);
         z-index: 1005;
         max-height: 240px;
         overflow-y: auto;

@@ -36,7 +36,7 @@
         border: none;
         cursor: pointer;
         color: var(--color-text-secondary);
-        border-radius: 0.25rem;
+        border-radius: var(--radius-sm);
 
         &:hover {
             color: var(--color-text-primary);
@@ -71,7 +71,7 @@
         border: none;
         cursor: pointer;
         color: var(--color-text-secondary);
-        border-radius: 0.25rem;
+        border-radius: var(--radius-sm);
 
         &:hover {
             color: var(--color-text-primary);
@@ -85,7 +85,7 @@
         overflow-x: auto;
 
         &--drop-target-root {
-            background-color: rgba(104, 95, 255, 0.05);
+            background-color: var(--purple-alpha-5);
             outline: 2px dashed var(--accent-color);
             outline-offset: -2px;
         }
@@ -116,7 +116,7 @@
 
         &--drop-target {
             position: relative;
-            background-color: rgba(104, 95, 255, 0.08);
+            background-color: var(--purple-alpha-8);
 
             &::after {
                 content: '';
@@ -173,8 +173,8 @@
         background: inherit;
         border: none;
         cursor: pointer;
-        color: rgba(217, 217, 222, 0.16);
-        border-radius: 3px;
+        color: var(--fog-alpha-16);
+        border-radius: var(--radius-sm);
         position: relative;
         z-index: 3;
 
@@ -187,7 +187,7 @@
         }
 
         &:hover {
-            background-color: rgba(217, 217, 222, 0.08);
+            background-color: var(--fog-alpha-8);
         }
     }
 
@@ -246,8 +246,8 @@
         flex: 1;
         margin-left: 30px;
         padding: 0.125rem 0.375rem;
-        border: 1px solid rgba(43, 45, 48, 1);
-        border-radius: 0.25rem;
+        border: 1px solid var(--graphite-750);
+        border-radius: var(--radius-sm);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
         font-size: 0.8rem;
@@ -328,16 +328,16 @@
         background: transparent;
         border: none;
         cursor: pointer;
-        color: rgba(217, 217, 222, 0.6);
-        border-radius: 0.25rem;
+        color: var(--fog-alpha-60);
+        border-radius: var(--radius-sm);
 
         &--plus {
-            color: rgba(217, 217, 222, 0.6);
+            color: var(--fog-alpha-60);
         }
 
         &:hover {
-            color: rgba(217, 217, 222, 1);
-            background-color: rgba(217, 217, 222, 0.08);
+            color: var(--fog-200);
+            background-color: var(--fog-alpha-8);
         }
     }
 
@@ -357,10 +357,10 @@
         padding: 0;
         background-color: var(--color-background-body);
         border: 1px solid var(--graphite-750);
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         box-shadow:
-            0 2px 3px rgba(0, 0, 0, 0.3),
-            0 6px 10px rgba(0, 0, 0, 0.15);
+            0 2px 3px var(--black-alpha-30),
+            0 6px 10px var(--black-alpha-15);
         overflow: hidden;
     }
 

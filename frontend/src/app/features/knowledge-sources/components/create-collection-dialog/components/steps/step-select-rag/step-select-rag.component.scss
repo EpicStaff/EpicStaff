@@ -43,7 +43,7 @@
     &__config {
         width: 100%;
         padding: 1.5rem 1rem 1.5rem 1.5rem;
-        border-radius: 10px;
+        border-radius: var(--radius-xl);
         row-gap: 1.5rem;
         background-color: var(--color-ks-line);
         display: flex;

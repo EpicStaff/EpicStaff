@@ -63,8 +63,8 @@
     min-width: 220px;
     background: var(--color-background-body, var(--graphite-850));
     border: 1px solid var(--color-divider-regular, var(--graphite-640));
-    border-radius: 8px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 4px 24px var(--black-alpha-18);
     margin-top: 4px;
     padding: 4px 0;
     list-style: none;

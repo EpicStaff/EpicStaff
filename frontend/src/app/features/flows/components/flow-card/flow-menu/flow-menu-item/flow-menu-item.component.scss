@@ -4,7 +4,7 @@
     padding: 8px 12px;
     font-size: 13px;
     color: var(--color-text-primary);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     cursor: pointer;
     transition:
         background-color 0.15s,
@@ -12,11 +12,11 @@
     user-select: none;
 
     &:hover {
-        background-color: rgba(255, 255, 255, 0.08);
+        background-color: var(--white-alpha-8);
     }
 
     &:active {
-        background-color: rgba(255, 255, 255, 0.12);
+        background-color: var(--white-alpha-12);
     }
 
     &.delete-action {

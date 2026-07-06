@@ -15,9 +15,9 @@
     height: 100%;
 
     ::ng-deep .variable {
-        background-color: rgba(104, 95, 255, 0.2);
+        background-color: var(--purple-alpha-20);
         color: #a5a5ff;
-        border-radius: 3px;
+        border-radius: var(--radius-sm);
         padding: 0 2px;
         margin: 0 -2px;
         display: inline;

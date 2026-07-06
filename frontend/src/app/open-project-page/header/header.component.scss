@@ -33,7 +33,7 @@
             flex: 1 1 auto;
 
             .project-prefix {
-                color: rgba(255, 255, 255, 0.6);
+                color: var(--white-alpha-60);
                 cursor: pointer;
                 transition: all 0.2s ease;
                 display: flex;
@@ -55,7 +55,7 @@
             }
 
             .separator {
-                color: rgba(255, 255, 255, 0.4);
+                color: var(--white-alpha-40);
                 margin: 0 0.5rem;
                 flex-shrink: 0;
             }
@@ -79,7 +79,7 @@
                 &__edit {
                     transition: all 0.2s ease;
                     cursor: pointer;
-                    color: rgba(255, 255, 255, 0.6);
+                    color: var(--white-alpha-60);
 
                     &:hover {
                         color: var(--white);

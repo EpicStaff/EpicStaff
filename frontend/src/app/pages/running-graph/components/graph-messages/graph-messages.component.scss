@@ -15,8 +15,8 @@
     align-items: center;
     overflow-y: auto;
 
-    //   background-color: rgba(255, 255, 255, 0.03);
-    //   border-radius: 12px;
+    //   background-color: var(--white-alpha-3);
+    //   border-radius: var(--radius-2xl);
 
     .connection-status {
         width: 100%;
@@ -29,7 +29,7 @@
             align-items: center;
             gap: 0.5rem;
             padding: 0.75rem 1rem;
-            border-radius: 8px;
+            border-radius: var(--radius-lg);
             font-size: 0.875rem;
             font-weight: 500;
             transition: all 0.3s ease;
@@ -94,7 +94,7 @@
                     margin-left: 0.5rem;
                     background-color: rgba(0, 191, 165, 0.015);
                     border-left: 2px solid rgba(0, 191, 165, 0.2);
-                    border-radius: 0 8px 8px 0;
+                    border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
                 }
 
                 // Level 2 - Second nesting level
@@ -103,7 +103,7 @@
                     margin-left: 1rem;
                     background-color: rgba(0, 191, 165, 0.03);
                     border-left: 2px solid rgba(0, 191, 165, 0.3);
-                    border-radius: 0 8px 8px 0;
+                    border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
                 }
 
                 // Level 3 - Third nesting level
@@ -112,7 +112,7 @@
                     margin-left: 1.5rem;
                     background-color: rgba(0, 191, 165, 0.045);
                     border-left: 2px solid rgba(0, 191, 165, 0.4);
-                    border-radius: 0 8px 8px 0;
+                    border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
                 }
 
                 // Level 4+ - Deep nesting
@@ -121,7 +121,7 @@
                     margin-left: 2rem;
                     background-color: rgba(0, 191, 165, 0.06);
                     border-left: 2px solid rgba(0, 191, 165, 0.5);
-                    border-radius: 0 8px 8px 0;
+                    border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
                 }
             }
 
@@ -305,7 +305,7 @@
         .breadcrumbs-arrow {
             width: 40px;
             height: 40px;
-            border-radius: 8px;
+            border-radius: var(--radius-lg);
             border: none;
             font-size: 23px;
             background-color: var(--color-nodes-background);
@@ -320,7 +320,7 @@
         }
 
         .breadcrumbs-arrow:hover {
-            background-color: rgba(255, 255, 255, 0.08);
+            background-color: var(--white-alpha-8);
             color: var(--gray-100);
         }
 
@@ -330,9 +330,9 @@
             gap: 0.35rem;
             height: 40px;
             width: 40px;
-            border-radius: 8px;
+            border-radius: var(--radius-lg);
             border: 1px solid #00ac98;
-            background-color: rgba(255, 255, 255, 0.04);
+            background-color: var(--white-alpha-4);
             color: var(--gray-300);
             overflow: hidden;
             transition: width 0.25s ease;
@@ -411,7 +411,7 @@
         }
 
         .breadcrumbs-scroll::-webkit-scrollbar-thumb {
-            background-color: rgba(255, 255, 255, 0.35);
+            background-color: var(--white-alpha-35);
             border-radius: 90px;
         }
 
@@ -434,7 +434,7 @@
             padding: 8px 16px;
             font-weight: 500;
             border-left: 4px solid var(--teal-500);
-            border-radius: 8px;
+            border-radius: var(--radius-lg);
             background-color: var(--color-nodes-background);
         }
 
@@ -482,8 +482,8 @@
         width: 36px;
         height: 36px;
         flex-shrink: 0;
-        border-radius: 6px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: var(--radius-md);
+        border: 1px solid var(--white-alpha-10);
         background-color: var(--graphite-700);
         color: var(--color-ks-transparent-text-60);
         font-size: 16px;
@@ -492,7 +492,7 @@
         align-items: center;
         justify-content: center;
         z-index: 10;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 2px 8px var(--black-alpha-30);
         transition:
             background-color 0.2s,
             transform 0.2s;

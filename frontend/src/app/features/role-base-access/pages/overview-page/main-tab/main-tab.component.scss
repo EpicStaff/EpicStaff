@@ -49,7 +49,7 @@
 .org-card-create {
     height: 130px;
     background: transparent;
-    border-radius: 10px;
+    border-radius: var(--radius-xl);
     border: 1px dashed var(--color-divider-subtle);
     display: flex;
     flex-direction: column;

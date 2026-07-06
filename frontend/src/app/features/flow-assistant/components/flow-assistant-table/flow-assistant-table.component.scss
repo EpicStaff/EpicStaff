@@ -1,7 +1,7 @@
 .table-wrapper {
     overflow-x: auto;
     margin-top: 0.5rem;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     border: 1px solid var(--color-divider-subtle);
 }
 

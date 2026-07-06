@@ -4,8 +4,8 @@
     background-color: var(--color-background-body);
     color: var(--color-text-primary);
     padding: 32px;
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+    border-radius: var(--radius-2xl);
+    box-shadow: 0 8px 32px var(--black-alpha-25);
     margin: 0 auto;
 
     height: 90vh;
@@ -102,7 +102,7 @@
     position: relative;
     width: 36px;
     height: 20px;
-    border-radius: 5px;
+    border-radius: var(--radius-md);
     background: var(--color-divider-regular, var(--gray-700));
     transition: background 0.2s;
     cursor: pointer;
@@ -140,7 +140,7 @@
     border: none;
     outline: none;
     padding: 6px 14px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-size: 0.95em;
     font-weight: 500;
     cursor: pointer;
@@ -149,7 +149,7 @@
         color 0.18s;
 
     &:hover {
-        background: #b32b36 !important;
+        background: var(--red-700) !important;
         color: var(--white) !important;
     }
 

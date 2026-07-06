@@ -12,7 +12,7 @@
     width: 100%;
     min-width: 0;
     border: none;
-    border-radius: 7px;
+    border-radius: var(--radius-lg);
     color: var(--color-text-primary);
     background: var(--accent-color);
     cursor: pointer;
@@ -39,7 +39,7 @@
         background: var(--color-secondary-btn-background-hover);
     }
     //   &:active {
-    //     background: rgba(104, 95, 255, 0.15);
+    //     background: var(--purple-alpha-15);
     //   }
 }
 

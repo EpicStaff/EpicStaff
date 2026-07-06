@@ -34,8 +34,8 @@
     z-index: 1100;
     background: var(--color-background-body, var(--graphite-850));
     border: 1px solid var(--color-divider-regular, var(--graphite-640));
-    border-radius: 8px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 4px 24px var(--black-alpha-18);
     min-width: 240px;
     padding: 12px;
     display: flex;
@@ -52,7 +52,7 @@
     flex: 1;
     padding: 4px;
     border: 1px solid var(--color-divider-regular, var(--graphite-640));
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--color-text-secondary);
     font-size: 11px;
@@ -81,7 +81,7 @@
     flex: 1;
     padding: 4px;
     border: 1px solid var(--color-divider-regular, var(--graphite-640));
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--color-text-secondary);
     font-size: 11px;
@@ -112,7 +112,7 @@
     min-width: 0;
     padding: 6px 8px;
     border: 1px solid var(--color-divider-regular, var(--graphite-640));
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--color-text-primary);
     font-size: 13px;
@@ -141,7 +141,7 @@
 .apply-btn {
     padding: 4px 14px;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: var(--accent-color, var(--blue-400));
     color: var(--white);
     font-size: 12px;
@@ -155,7 +155,7 @@
 .clear-btn {
     padding: 4px 14px;
     border: 1px solid var(--color-divider-regular, var(--graphite-640));
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--color-text-secondary);
     font-size: 12px;

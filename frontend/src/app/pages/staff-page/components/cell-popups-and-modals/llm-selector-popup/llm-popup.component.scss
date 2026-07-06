@@ -40,7 +40,7 @@ $transition-default: all 0.2s ease;
 
 .llm-list-container {
     background-color: $bg-card;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     width: 480px;
     color: $text-primary;
     box-shadow: 0 10px 40px $shadow-color;
@@ -66,7 +66,7 @@ $transition-default: all 0.2s ease;
             input {
                 flex: 1;
                 padding: 7px 14px;
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 background-color: $bg-input;
                 color: $text-primary;
                 font-size: 13px;
@@ -91,7 +91,7 @@ $transition-default: all 0.2s ease;
                 padding: 8px 12px;
                 background-color: $bg-input;
                 color: $text-secondary;
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 cursor: pointer;
                 font-size: 13px;
                 font-weight: 500;
@@ -137,7 +137,7 @@ $transition-default: all 0.2s ease;
                 transition: color 0.2s;
                 font-weight: 500;
                 border-bottom: 2px solid transparent;
-                border-radius: 4px 4px 0 0;
+                border-radius: var(--radius-sm) var(--radius-sm) 0 0;
                 margin-bottom: -1px;
 
                 &:hover {

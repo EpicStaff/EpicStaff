@@ -5,10 +5,10 @@
     padding: 0.25rem;
     background: var(--color-sidenav-background);
     border: 1px solid var(--color-input-border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     box-shadow:
-        0 6px 10px rgba(0, 0, 0, 0.15),
-        0 2px 3px rgba(0, 0, 0, 0.3);
+        0 6px 10px var(--black-alpha-15),
+        0 2px 3px var(--black-alpha-30);
 }
 
 .menu-item {
@@ -19,7 +19,7 @@
     padding: 0.55rem 0.75rem;
     background: transparent;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     color: var(--color-text-primary);
     font-size: 0.875rem;
     text-align: left;
@@ -27,7 +27,7 @@
     transition: background 0.1s ease;
 
     &:hover {
-        background: var(--color-ghost-btn-hover, rgba(255, 255, 255, 0.05));
+        background: var(--color-ghost-btn-hover, var(--white-alpha-5));
     }
 
     .label {

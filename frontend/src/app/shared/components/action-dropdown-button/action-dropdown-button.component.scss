@@ -7,7 +7,7 @@
     display: inline-flex;
     width: 160px;
     min-width: 160px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     overflow: hidden;
 
     &--disabled {
@@ -45,7 +45,7 @@
         background: var(--accent-color, var(--blue-400));
         color: var(--white);
         border: none;
-        border-left: 1px solid rgba(255, 255, 255, 0.2);
+        border-left: 1px solid var(--white-alpha-20);
         padding: 6px 8px;
         cursor: pointer;
         display: flex;

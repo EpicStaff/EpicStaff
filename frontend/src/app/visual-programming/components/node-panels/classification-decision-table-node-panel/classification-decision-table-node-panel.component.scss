@@ -45,7 +45,7 @@
     min-width: 0; /* prevent overflow */
     gap: 1rem;
     padding: 20px 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    border-bottom: 1px solid var(--white-alpha-7);
 }
 
 .header-field {
@@ -63,7 +63,7 @@
 .header-label {
     font-size: 0.75rem;
     font-weight: 500;
-    color: rgba(255, 255, 255, 0.55);
+    color: var(--white-alpha-55);
     display: flex;
     align-items: center;
     gap: 0.3rem;
@@ -85,9 +85,9 @@
 }
 
 .header-input {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
+    background: var(--white-alpha-6);
+    border: 1px solid var(--white-alpha-12);
+    border-radius: var(--radius-md);
     color: var(--gray-200);
     padding: 0.4rem 0.6rem;
     font-size: 0.85rem;
@@ -99,11 +99,11 @@
 
     &:focus {
         border-color: var(--accent-color);
-        box-shadow: 0 0 0 2px rgba(104, 95, 255, 0.2);
+        box-shadow: 0 0 0 2px var(--purple-alpha-20);
     }
 
     &::placeholder {
-        color: rgba(255, 255, 255, 0.25);
+        color: var(--white-alpha-25);
     }
 }
 
@@ -121,8 +121,8 @@
     position: relative;
     width: 50px;
     height: 20px;
-    background: rgba(255, 255, 255, 0.15);
-    border-radius: 8px;
+    background: var(--white-alpha-15);
+    border-radius: var(--radius-lg);
     cursor: default;
     transition: background 0.2s ease;
     margin-top: 2px;
@@ -153,7 +153,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 1.5rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid var(--white-alpha-10);
     min-height: 44px;
 
     &__left {
@@ -234,7 +234,7 @@
 }
 
 .tab-separator {
-    color: rgba(255, 255, 255, 0.2);
+    color: var(--white-alpha-20);
     font-size: 0.875rem;
     user-select: none;
 }
@@ -243,7 +243,7 @@
 .tabs-row__divider {
     width: 1px;
     height: 18px;
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--white-alpha-12);
     margin: 0 0.25rem;
 }
 
@@ -252,7 +252,7 @@
     align-items: center;
     width: 100px;
     min-width: 100px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--accent-color, var(--blue-400));
     color: var(--white);
     border: none;
@@ -301,7 +301,7 @@
 
         .section-label {
             margin: 0;
-            color: rgba(255, 255, 255, 0.7);
+            color: var(--white-alpha-70);
             font-size: 0.85rem;
             font-weight: 500;
         }
@@ -310,8 +310,8 @@
     .code-editor-section {
         flex: 1;
         min-height: 0;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 8px;
+        border: 1px solid var(--white-alpha-10);
+        border-radius: var(--radius-lg);
         overflow: hidden;
         display: flex;
         flex-direction: column;
@@ -340,13 +340,13 @@
 
 .help-text {
     font-size: 0.85rem;
-    color: rgba(255, 255, 255, 0.6);
+    color: var(--white-alpha-60);
     margin: 0;
 
     code {
-        background: rgba(255, 255, 255, 0.1);
+        background: var(--white-alpha-10);
         padding: 0.2rem 0.4rem;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         font-family: var(--font-family-mono);
         font-size: 0.8rem;
     }
@@ -354,10 +354,10 @@
 
 .scope-info {
     font-size: 0.85rem;
-    color: rgba(255, 255, 255, 0.7);
-    background: rgba(104, 95, 255, 0.1);
+    color: var(--white-alpha-70);
+    background: var(--purple-alpha-10);
     padding: 0.75rem 1rem;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     border-left: 3px solid var(--accent-color);
 
     strong {
@@ -365,9 +365,9 @@
     }
 
     code {
-        background: rgba(255, 255, 255, 0.1);
+        background: var(--white-alpha-10);
         padding: 0.2rem 0.4rem;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         font-family: var(--font-family-mono);
         font-size: 0.8rem;
         color: #a0d7ff;
@@ -387,7 +387,7 @@
         align-items: center;
         justify-content: space-between;
         padding-bottom: 0.5rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+        border-bottom: 1px solid var(--white-alpha-7);
         flex-shrink: 0;
     }
 
@@ -397,11 +397,11 @@
         gap: 0.4rem;
         font-size: 0.95rem;
         font-weight: 500;
-        color: rgba(255, 255, 255, 0.8);
+        color: var(--white-alpha-80);
 
         i {
             font-size: 0.85rem;
-            color: rgba(255, 255, 255, 0.35);
+            color: var(--white-alpha-35);
             cursor: help;
         }
     }
@@ -413,7 +413,7 @@
         background: var(--accent-color);
         color: var(--white);
         border: none;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         padding: 0.4rem 0.85rem;
         font-size: 0.82rem;
         font-weight: 500;
@@ -452,8 +452,8 @@
             width: 18px;
             height: 18px;
             border-radius: 50%;
-            color: rgba(255, 255, 255, 0.6);
-            background: rgba(255, 255, 255, 0.08);
+            color: var(--white-alpha-60);
+            background: var(--white-alpha-8);
             font-size: 0.75rem;
             cursor: help;
             transition:
@@ -462,7 +462,7 @@
 
             &:hover {
                 color: var(--white);
-                background: rgba(104, 95, 255, 0.35);
+                background: var(--purple-alpha-35);
             }
         }
     }
@@ -476,8 +476,8 @@
     .prompt-id-input {
         flex: 1;
         background: var(--graphite-800);
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        border-radius: 8px;
+        border: 1px solid var(--white-alpha-15);
+        border-radius: var(--radius-lg);
         color: var(--white);
         padding: 0.6rem 1rem;
         font-size: 0.85rem;
@@ -486,11 +486,11 @@
 
         &:focus {
             border-color: var(--accent-color);
-            box-shadow: 0 0 0 3px rgba(104, 95, 255, 0.2);
+            box-shadow: 0 0 0 3px var(--purple-alpha-20);
         }
 
         &::placeholder {
-            color: rgba(255, 255, 255, 0.3);
+            color: var(--white-alpha-30);
         }
     }
 
@@ -501,7 +501,7 @@
         background: var(--accent-color);
         color: var(--white);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         padding: 0.6rem 1rem;
         font-size: 0.85rem;
         font-weight: 500;
@@ -535,19 +535,19 @@
             padding: 2rem;
             color: var(--gray-500);
             font-size: 13px;
-            background-color: rgba(255, 255, 255, 0.02);
-            border-radius: 8px;
-            border: 1px dashed rgba(255, 255, 255, 0.1);
+            background-color: var(--white-alpha-2);
+            border-radius: var(--radius-lg);
+            border: 1px dashed var(--white-alpha-10);
         }
     }
 
     .prompt-card {
         background: var(--graphite-750);
-        border-radius: 10px;
+        border-radius: var(--radius-xl);
         border: 1px solid transparent;
         box-shadow:
-            0 2px 1.5px rgba(0, 0, 0, 0.3),
-            0 6px 5px rgba(0, 0, 0, 0.15);
+            0 2px 1.5px var(--black-alpha-30),
+            0 6px 5px var(--black-alpha-15);
         overflow: hidden;
         transition:
             background 0.15s ease,
@@ -599,12 +599,12 @@
     }
 
     .result-badge {
-        background: rgba(104, 95, 255, 0.08);
+        background: var(--purple-alpha-8);
         color: var(--accent-color);
         font-size: 12px;
         line-height: 1;
         padding: 4px 8px;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         white-space: nowrap;
         font-weight: 400;
     }
@@ -613,7 +613,7 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
-        color: rgba(255, 255, 255, 0.5);
+        color: var(--white-alpha-50);
     }
 
     .prompt-card-actions__trash {
@@ -629,11 +629,11 @@
         border: none;
         background: transparent;
         cursor: pointer;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         transition: background 0.15s ease;
 
         &:hover {
-            background: rgba(255, 255, 255, 0.06);
+            background: var(--white-alpha-6);
         }
     }
 
@@ -652,8 +652,8 @@
 
     .field-input {
         background: var(--graphite-800);
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        border-radius: 8px;
+        border: 1px solid var(--white-alpha-15);
+        border-radius: var(--radius-lg);
         color: var(--white);
         padding: 0.55rem 0.75rem;
         font-size: 0.85rem;
@@ -662,24 +662,24 @@
 
         &:focus {
             border-color: var(--accent-color);
-            box-shadow: 0 0 0 3px rgba(104, 95, 255, 0.2);
+            box-shadow: 0 0 0 3px var(--purple-alpha-20);
         }
 
         &::placeholder {
-            color: rgba(255, 255, 255, 0.3);
+            color: var(--white-alpha-30);
         }
     }
 
     .prompt-textarea-wrapper {
         position: relative;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        border-radius: 8px;
+        border: 1px solid var(--white-alpha-15);
+        border-radius: var(--radius-lg);
         background: var(--gray-850);
         overflow: hidden;
 
         &:focus-within {
             border-color: var(--accent-color);
-            box-shadow: 0 0 0 3px rgba(104, 95, 255, 0.2);
+            box-shadow: 0 0 0 3px var(--purple-alpha-20);
         }
     }
 
@@ -695,7 +695,7 @@
         word-break: break-word;
         overflow: hidden;
         pointer-events: none;
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
     }
 
     .var-token {
@@ -705,8 +705,8 @@
 
     .prompt-textarea {
         background: var(--gray-850);
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        border-radius: 8px;
+        border: 1px solid var(--white-alpha-15);
+        border-radius: var(--radius-lg);
         color: var(--white);
         padding: 0.75rem;
         font-family: var(--font-family-mono);
@@ -718,11 +718,11 @@
 
         &:focus {
             border-color: var(--accent-color);
-            box-shadow: 0 0 0 3px rgba(104, 95, 255, 0.2);
+            box-shadow: 0 0 0 3px var(--purple-alpha-20);
         }
 
         &::placeholder {
-            color: rgba(255, 255, 255, 0.25);
+            color: var(--white-alpha-25);
         }
 
         &--transparent {
@@ -752,8 +752,8 @@
 
     .prompt-info {
         padding: 0.75rem;
-        background-color: rgba(104, 95, 255, 0.1);
-        border-radius: 6px;
+        background-color: var(--purple-alpha-10);
+        border-radius: var(--radius-md);
         font-size: 13px;
         color: #ffffffb3;
         border-left: 3px solid var(--accent-color);

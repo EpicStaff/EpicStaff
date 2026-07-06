@@ -17,11 +17,11 @@
     }
 
     &__dropdown {
-        border-radius: 10px;
+        border-radius: var(--radius-xl);
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+        box-shadow: 0 4px 10px var(--black-alpha-12);
         z-index: 1005;
         height: 475px;
         width: 338px;
@@ -34,7 +34,7 @@
         padding: 0 1rem;
         height: 40px;
         font-size: 0.75rem;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         border: 1px solid var(--color-ks-transparent-text-20);
         color: var(--color-ks-transparent-text-60);
         background-color: var(--color-ks-line);
@@ -70,7 +70,7 @@
         padding: 0 1rem;
         cursor: pointer;
         font-size: 0.75rem;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         border: 1px solid var(--color-ks-transparent-text-20);
         background-color: var(--color-ks-line);
         color: var(--color-text-primary);
@@ -92,7 +92,7 @@
         // White checkbox override: border and check mark become white
         &--checkbox-white {
             ::ng-deep app-checkbox input[type='checkbox'] {
-                border-color: rgba(255, 255, 255, 0.6);
+                border-color: var(--white-alpha-60);
                 background: transparent;
             }
 

@@ -3,7 +3,7 @@
     min-width: 300px;
     background: #181818;
 
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 8px var(--black-alpha-30);
     z-index: 1000;
 
     border-radius: 15px;
@@ -16,7 +16,7 @@
         background: var(--graphite-875); /* Darker background */
         margin: 16px;
         padding: 10px 10px; /* Smaller padding for compact size */
-        border-radius: 6px; /* Slightly rounded corners */
+        border-radius: var(--radius-md); /* Slightly rounded corners */
         border: 1px solid var(--graphite-640); /* Thin, subtle border */
 
         max-height: 40px; /* Reduce height */

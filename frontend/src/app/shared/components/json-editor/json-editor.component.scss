@@ -179,7 +179,7 @@
 .json-errors {
     margin-top: 8px;
     border: 1px solid rgba(255, 85, 85, 0.4);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background-color: rgba(255, 85, 85, 0.06);
     overflow: hidden;
 
