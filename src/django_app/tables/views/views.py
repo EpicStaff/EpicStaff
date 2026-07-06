@@ -960,8 +960,9 @@ class CancelRagIndexingView(APIView):
 
         rag_id = serializer.validated_data["rag_id"]
         rag_type = serializer.validated_data["rag_type"]
+        document_ids = serializer.validated_data["document_config_ids"]
 
-        target_request = IndexRequest(rag_id=rag_id, rag_strategy=rag_type).model_dump()
+        target_request = IndexRequest(rag_id=rag_id, rag_strategy=rag_type, document_ids=document_ids).model_dump()
         producer.send(
             settings.KNOWLEDGE_CANCEL_CHANNEL,
             Message(payload=CancelRequest(target_request=target_request).model_dump()),
