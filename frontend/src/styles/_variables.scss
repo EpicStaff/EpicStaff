@@ -1,38 +1,41 @@
+// ============================================================================
+// Design tokens
+// Two layers:
+//   1. PRIMITIVES  — raw palette values. Never use directly in components.
+//   2. SEMANTIC    — role-based tokens that reference primitives.
+//                    Components must only use semantic tokens.
+// See frontend/THEME_TOKENS_AUDIT.md for the full architecture rationale.
+// ============================================================================
+
 :root {
-    //colors
-    --color-sidenav-background: #222225;
-    --color-background-body: #212325;
-    --color-flow-card-bg: #2b2d30;
+    // ------------------------------------------------------------------
+    // PRIMITIVES — colors
+    // ------------------------------------------------------------------
 
-    --accent-color: #685fff;
-    --accent-color-hover: #574fd6;
-    --accent-color-active: #473fb3;
-    --color-required-asterisk: var(--accent-color);
-    --color-text-primary: #d9d9de;
-    --color-text-secondary: #c8ceda99;
-    --color-text-primary-hover: #ececf3;
-    --color-secondary-btn-background: #27272b;
-    --color-secondary-btn-background-hover: #ffffff17;
-    --color-ghost-btn-hover: rgba(104, 95, 255, 0.08);
-    --color-ghost-btn-active: rgba(104, 95, 255, 0.15);
-    --color-input-text-placeholder: #c8ceda4d;
-    --color-input-background: #27272b;
-    --color-input-border: #c8ceda24;
-    --color-modals-background: #222225;
-    --color-drag-drop-active: rgba(15, 15, 15, 0.28);
-    --color-nodes-flow-link: #00bfa5;
-    --color-nodes-flow-link-hover-bg: rgba(0, 191, 165, 0.08);
+    // Brand purple
+    --purple-300: #8c7fff;
+    --purple-400: #7a70ff;
+    --purple-500: #685fff;
+    --purple-600: #574fd6;
+    --purple-700: #473fb3;
+    --purple-rgb: 104, 95, 255;
+    --purple-alpha-8: rgba(104, 95, 255, 0.08);
+    --purple-alpha-15: rgba(104, 95, 255, 0.15);
+    --purple-alpha-40: rgba(104, 95, 255, 0.4);
 
-    //border colors
-    --color-components-card-border: #ffffff08;
-    --color-divider-regular: #c8ceda24;
-    --color-divider-subtle: #c8ceda14;
+    // Graphite — dark surfaces
+    --graphite-950: #1a1a1c;
+    --graphite-900: #212325;
+    --graphite-850: #222225;
+    --graphite-825: #232323;
+    --graphite-800: #27272b;
+    --graphite-750: #2b2d30;
+    --graphite-700: #2c2c2e;
+    --graphite-650: #3a3e48;
 
-    //scrollbar colors
-    --color-scrollbar-thumb: rgba(217, 217, 227, 0.16);
-    --color-scrollbar-thumb-hover: rgba(217, 217, 227, 0.24);
-    --color-scrollbar-track: transparent;
-
+    // Gray scale
+    --white: #ffffff;
+    --black: #000000;
     --gray-50: #f9f9f9;
     --gray-100: #ececec;
     --gray-200: #e3e3e3;
@@ -47,93 +50,259 @@
     --gray-900: #171717;
     --gray-950: #0d0d0d;
 
-    //nodes
-    --color-nodes-background: #27272b;
-    --color-nodes-actionbar-bg: #222225;
-    --color-nodes-actionbar-border: #c8ceda14;
-    --color-nodes-sidepanel-bg: #222225;
+    // Steel — cool border/muted base (#c8ceda + alpha)
+    --steel-alpha-8: #c8ceda14;
+    --steel-alpha-14: #c8ceda24;
+    --steel-alpha-30: #c8ceda4d;
 
-    //knowledge-sources
+    // Fog — light text base (#d9d9de + alpha)
+    --fog-100: #ececf3;
+    --fog-200: #d9d9de;
+    --fog-alpha-80: rgba(217, 217, 222, 0.8);
+    --fog-alpha-60: rgba(217, 217, 222, 0.6);
+    --fog-alpha-40: rgba(217, 217, 222, 0.4);
+    --fog-alpha-20: rgba(217, 217, 222, 0.2);
+    --fog-alpha-8: rgba(217, 217, 222, 0.08);
+
+    // White / black washes
+    --white-alpha-3: #ffffff08;
+    --white-alpha-6: rgba(255, 255, 255, 0.06);
+    --white-alpha-9: #ffffff17;
+    --white-alpha-10: rgba(255, 255, 255, 0.1);
+    --black-alpha-28: rgba(15, 15, 15, 0.28);
+    --black-alpha-30: rgba(0, 0, 0, 0.3);
+
+    // Status / feedback
+    --green-400: #4caf82;
+    --green-500: #2aba6b;
+    --green-alpha-8: rgba(42, 186, 107, 0.08);
+    --yellow-500: #ffcf00;
+    --yellow-alpha-6: rgba(255, 207, 0, 0.06);
+    --amber-500: #f5a623;
+    --orange-500: #ff8f3f;
+    --orange-alpha-8: rgba(255, 143, 63, 0.08);
+    --red-400: #ff6b6b;
+    --red-500: #f54242;
+    --red-600: #dc5b60;
+    --red-alpha-8: rgba(245, 66, 66, 0.08);
+    --red-alpha-15: rgba(245, 66, 66, 0.15);
+    --red-alpha-25: rgba(245, 66, 66, 0.25);
+    --sky-500: #48cbff;
+    --sky-alpha-6: rgba(72, 203, 255, 0.06);
+    --teal-500: #00bfa5;
+    --teal-alpha-8: rgba(0, 191, 165, 0.08);
+    --blue-400: #5e9eff;
+    --blue-500: #5672cd;
+    --blue-600: #3e63dd;
+
+    // ------------------------------------------------------------------
+    // PRIMITIVES — typography
+    // ------------------------------------------------------------------
+    --font-family-base: 'Inter', 'Roboto', 'Helvetica Neue', sans-serif;
+    --font-family-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+
+    --font-size-2xs: 0.625rem; // 10px
+    --font-size-xs: 0.75rem; // 12px
+    --font-size-sm: 0.8125rem; // 13px
+    --font-size-md: 0.875rem; // 14px
+    --font-size-lg: 1rem; // 16px
+    --font-size-xl: 1.125rem; // 18px
+    --font-size-2xl: 1.25rem; // 20px
+    --font-size-3xl: 1.5rem; // 24px
+    --font-size-4xl: 1.75rem; // 28px
+
+    --font-weight-light: 300;
+    --font-weight-regular: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
+
+    --line-height-tight: 1.2;
+    --line-height-base: 1.5;
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — surfaces
+    // ------------------------------------------------------------------
+    --color-background-body: var(--graphite-900);
+    --color-sidenav-background: var(--graphite-850);
+    --color-modals-background: var(--graphite-850);
+    --color-flow-card-bg: var(--graphite-750);
+    --color-surface: var(--graphite-900);
+    --color-surface-hover: var(--graphite-800);
+    --color-surface-card: var(--graphite-825);
+    --color-drag-drop-active: var(--black-alpha-28);
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — interactive (accent, buttons)
+    // ------------------------------------------------------------------
+    --accent-color: var(--purple-500);
+    --accent-color-hover: var(--purple-600);
+    --accent-color-active: var(--purple-700);
+    --accent-light: var(--purple-300);
+    --accent-dark: var(--purple-600);
+    --accent-darker: var(--purple-700);
+    --active-color: var(--accent-color);
+    --inactive-purple: var(--purple-alpha-40);
+    --purple-primary: var(--purple-500);
+    --color-required-asterisk: var(--accent-color);
+    --color-secondary-btn-background: var(--graphite-800);
+    --color-secondary-btn-background-hover: var(--white-alpha-9);
+    --color-ghost-btn-hover: var(--purple-alpha-8);
+    --color-ghost-btn-active: var(--purple-alpha-15);
+    --color-action-btn-background: var(--graphite-800);
+    --color-action-btn-background-hover: var(--white-alpha-9);
+    --focus-ring: 0 0 0 2px var(--purple-alpha-40);
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — text
+    // ------------------------------------------------------------------
+    --color-text-primary: var(--fog-200);
+    --color-text-secondary: var(--fog-alpha-60);
+    --color-text-tertiary: var(--fog-alpha-40);
+    --color-text-subtle: rgba(255, 255, 255, 0.7);
+    --color-text-primary-hover: var(--fog-100);
+    --color-text-disabled: var(--gray-600);
+    --text: var(--color-text-primary);
+    --text-secondary-60: var(--fog-alpha-60);
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — forms
+    // ------------------------------------------------------------------
+    --color-input-background: var(--graphite-800);
+    --color-input-background-hover: var(--white-alpha-6);
+    --color-input-border: var(--steel-alpha-14);
+    --color-input-text-placeholder: var(--steel-alpha-30);
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — borders & dividers (independent from form borders)
+    // ------------------------------------------------------------------
+    --color-components-card-border: var(--white-alpha-3);
+    --color-components-card-border-disabled: var(--white-alpha-3);
+    --color-border: var(--color-input-border);
+    --color-border-disabled: var(--gray-600);
+    --color-divider: var(--color-divider-regular);
+    --color-divider-regular: var(--steel-alpha-14);
+    --color-divider-subtle: var(--steel-alpha-8);
+    --color-divider-strong: var(--fog-alpha-20);
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — statuses & feedback (independent from buttons)
+    // ------------------------------------------------------------------
+    --color-error: var(--red-500);
+    --error-color: var(--red-500);
+    --red-color: var(--red-500);
+    --success-color: var(--green-500);
+    --color-warning: var(--amber-500);
+    --color-status-error: var(--red-500);
+    --color-status-error-subtle: var(--red-alpha-15);
+    --color-status-error-hover: var(--red-alpha-25);
+    --transparent-white-8: var(--fog-alpha-8);
+    --transparent-white-4: rgba(255, 255, 255, 0.04);
+    --transparent-green-8: var(--green-alpha-8);
+    --transparent-orange-8: var(--orange-alpha-8);
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — scrollbar
+    // ------------------------------------------------------------------
+    --color-scrollbar-thumb: rgba(217, 217, 227, 0.16);
+    --color-scrollbar-thumb-hover: rgba(217, 217, 227, 0.24);
+    --color-scrollbar-track: transparent;
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — visual programming nodes
+    // ------------------------------------------------------------------
+    --color-nodes-background: var(--graphite-800);
+    --color-nodes-background-disabled: var(--graphite-850);
+    --color-nodes-input-bg: var(--graphite-800);
+    --color-nodes-actionbar-bg: var(--graphite-850);
+    --color-nodes-actionbar-border: var(--steel-alpha-8);
+    --color-nodes-sidepanel-bg: var(--graphite-850);
+    --color-nodes-flow-link: var(--teal-500);
+    --color-nodes-flow-link-hover-bg: var(--teal-alpha-8);
+
+    // ------------------------------------------------------------------
+    // SEMANTIC — knowledge sources
+    // ------------------------------------------------------------------
     --color-ks-primary: #0a0a0a;
     --color-ks-secondary: #666666;
     --color-ks-tetriary: #cccccc;
     --color-ks-quarternary: #f5f5f5;
-    --color-ks-white: #ffffff;
+    --color-ks-white: var(--white);
 
     --color-ks-card-background: #1e1e1e;
-    --color-ks-background: #212325;
-    --color-ks-text: #d9d9de;
-    --color-ks-button-activated: #685fff;
-    --color-ks-line: #2c2c2e;
-    --color-ks-hover-row: #3a3e48;
+    --color-ks-card-tag-background: var(--graphite-700);
+    --color-ks-background: var(--graphite-900);
+    --color-ks-text: var(--color-text-primary);
+    --color-ks-button-activated: var(--purple-500);
+    --color-ks-line: var(--graphite-700);
+    --color-ks-hover-row: var(--graphite-650);
 
     --color-ks-transparent-black-72: rgba(21, 21, 21, 0.72);
     --color-ks-transparent-black-60: rgba(21, 21, 21, 0.6);
     --color-ks-transparent-black-28: rgba(21, 21, 21, 0.28);
-    --color-ks-transparent-text-80: rgba(217, 217, 222, 0.8);
-    --color-ks-transparent-text-60: rgba(217, 217, 222, 0.6);
-    --color-ks-transparent-text-20: rgba(217, 217, 222, 0.2);
-    --color-ks-transparent-blue: rgba(72, 203, 255, 0.06);
+    --color-ks-transparent-text-80: var(--fog-alpha-80);
+    --color-ks-transparent-text-60: var(--fog-alpha-60);
+    --color-ks-transparent-text-20: var(--fog-alpha-20);
+    --color-ks-transparent-blue: var(--sky-alpha-6);
     --color-ks-transparent-purple: rgba(104, 95, 255, 0.06);
-    --color-ks-transparent-yellow: rgba(255, 207, 0, 0.06);
+    --color-ks-transparent-yellow: var(--yellow-alpha-6);
     --color-ks-transparent-red: rgba(220, 91, 96, 0.06);
 
-    --color-ks-status-blue: #48cbff;
-    --color-ks-status-completed: #685fff;
-    --color-ks-status-new: #2aba6b;
-    --color-ks-status-warning: #ffcf00;
-    --color-ks-status-processing: #ff8f3f;
-    --color-ks-status-failed: #dc5b60;
-    --color-error: #f54242;
+    --color-ks-status-blue: var(--sky-500);
+    --color-ks-status-completed: var(--purple-500);
+    --color-ks-status-new: var(--green-500);
+    --color-ks-status-warning: var(--yellow-500);
+    --color-ks-status-processing: var(--orange-500);
+    --color-ks-status-failed: var(--red-600);
 
-    //ui-kit colors
-    --inactive-purple: rgba(104, 95, 255, 0.4);
-    --purple-primary: rgba(104, 95, 255, 1);
-    --transparent-white-8: rgba(217, 217, 222, 0.08);
-    --transparent-green-8: rgba(42, 186, 107, 0.08);
-    --transparent-orange-8: rgba(255, 143, 63, 0.08);
-
-    --text: rgba(217, 217, 222, 1);
-    --text-secondary-60: rgba(217, 217, 222, 0.6);
-
-    //storage
+    // ------------------------------------------------------------------
+    // SEMANTIC — misc
+    // ------------------------------------------------------------------
     --color-storage-icon: rgba(230, 230, 230, 1);
 }
 
+// ============================================================================
+// Light theme — overrides primitives (semantic tokens follow automatically)
+// plus a few explicit semantic exceptions.
+// ============================================================================
 .my-app-light {
-    //colors
-    --color-sidenav-background: #ffffff;
-    --color-background-body: #f8fafc;
+    // Surface primitives flip to a light slate ramp
+    --graphite-950: #e2e8f0;
+    --graphite-900: #f8fafc;
+    --graphite-850: #ffffff;
+    --graphite-825: #ffffff;
+    --graphite-800: #ffffff;
+    --graphite-750: #f1f5f9;
+    --graphite-700: #e2e8f0;
+    --graphite-650: #e2e8f0;
 
-    --accent-color: #685fff;
-    --accent-color-hover: #574fd6;
-    --accent-color-active: #473fb3;
-    --color-required-asterisk: var(--accent-color);
-    --color-text-primary: #1e293b;
+    // Text primitives flip to dark slate
+    --fog-100: #0f172a;
+    --fog-200: #1e293b;
+    --fog-alpha-80: rgba(30, 41, 59, 0.8);
+    --fog-alpha-60: rgba(30, 41, 59, 0.6);
+    --fog-alpha-40: rgba(30, 41, 59, 0.4);
+    --fog-alpha-20: rgba(30, 41, 59, 0.2);
+    --fog-alpha-8: rgba(30, 41, 59, 0.08);
+
+    // Border / wash primitives
+    --steel-alpha-8: #f1f5f9;
+    --steel-alpha-14: #e2e8f0;
+    --steel-alpha-30: #94a3b8;
+    --white-alpha-3: #e2e8f0;
+    --white-alpha-6: rgba(15, 23, 42, 0.06);
+    --white-alpha-9: #e2e8f0;
+    --white-alpha-10: rgba(15, 23, 42, 0.1);
+
+    // Explicit semantic exceptions
     --color-text-secondary: #64748b;
-    --color-text-primary-hover: #0f172a;
-    --color-secondary-btn-background: #f1f5f9;
-    --color-secondary-btn-background-hover: #e2e8f0;
-    --color-ghost-btn-hover: rgba(104, 95, 255, 0.08);
-    --color-ghost-btn-active: rgba(104, 95, 255, 0.15);
+    --color-text-subtle: rgba(15, 23, 42, 0.7);
     --color-input-text-placeholder: #94a3b8;
-    --color-input-background: #ffffff;
-    --color-input-border: #e2e8f0;
-    --color-modals-background: #ffffff;
-
-    //border colors
-    --color-components-card-border: #e2e8f0;
-    --color-divider-regular: #e2e8f0;
-    --color-divider-subtle: #f1f5f9;
-
-    //scrollbar colors
     --color-scrollbar-thumb: rgba(71, 85, 105, 0.2);
     --color-scrollbar-thumb-hover: rgba(71, 85, 105, 0.3);
     --color-scrollbar-track: transparent;
-
-    //nodes
-    --color-nodes-background: #ffffff;
-    --color-nodes-actionbar-bg: #f8fafc;
-    --color-nodes-actionbar-border: #e2e8f0;
-    --color-nodes-sidepanel-bg: #ffffff;
+    --color-drag-drop-active: rgba(15, 15, 15, 0.12);
+    --color-ks-card-background: #ffffff;
+    --color-ks-primary: #f5f5f5;
+    --color-storage-icon: rgba(51, 65, 85, 1);
 }
