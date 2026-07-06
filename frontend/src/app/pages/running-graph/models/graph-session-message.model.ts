@@ -34,6 +34,7 @@ export enum MessageType {
     CLASSIFICATION_PROMPT = 'classification_prompt',
     CONDITION_GROUP_MANIPULATION = 'condition_group_manipulation',
     CODE_AGENT_STREAM = 'code_agent_stream',
+    FINDINGS = 'findings',
 }
 
 // Message data interfaces - these match the camelCase structure used in your code
@@ -217,6 +218,28 @@ export interface CodeAgentStreamMessageData {
     message_type: MessageType.CODE_AGENT_STREAM;
 }
 
+export type FindingSeverity = 'info' | 'low' | 'medium' | 'high' | 'critical';
+
+export interface Finding {
+    title: string;
+    severity: FindingSeverity;
+    category: string | null;
+    file: string | null;
+    line: number | null;
+    detail: string | null;
+}
+
+export interface FindingsMessageData {
+    title: string | null;
+    summary: string | null;
+    findings: Finding[];
+    total_submitted: number;
+    total_returned: number;
+    truncated: boolean;
+    message: string;
+    message_type: MessageType.FINDINGS;
+}
+
 // Type union for all message data types
 export type MessageData =
     | FinishMessageData
@@ -236,4 +259,5 @@ export type MessageData =
     | ConditionGroupMessageData
     | ClassificationPromptMessageData
     | ConditionGroupManipulationMessageData
-    | CodeAgentStreamMessageData;
+    | CodeAgentStreamMessageData
+    | FindingsMessageData;
