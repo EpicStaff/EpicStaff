@@ -1,3 +1,4 @@
+from django.db.models import Count
 from rest_framework import viewsets, status
 from drf_spectacular.utils import (
     extend_schema,
@@ -60,21 +61,12 @@ class SourceCollectionViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "patch", "put", "delete"]
 
     def get_queryset(self):
-        """Optimize queries based on action."""
-        queryset = SourceCollection.objects.all()
+        """Queryset per action."""
 
         if self.action == "list":
-            queryset = queryset.prefetch_related(
-                "documents",
-                *CollectionManagementService.rag_configurations_brief_prefetch(),
-            )
-        elif self.action == "retrieve":
-            queryset = queryset.prefetch_related(
-                "documents",
-                *CollectionManagementService.rag_configurations_prefetch(),
-            )
+            return SourceCollection.objects.annotate(document_count=Count("documents"))
 
-        return queryset
+        return SourceCollection.objects.all()
 
     def get_serializer_class(self):
         """Return appropriate serializer based on action."""

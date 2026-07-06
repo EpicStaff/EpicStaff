@@ -1,10 +1,15 @@
+import itertools
+
 from rest_framework import serializers
 from loguru import logger
+from django.db.models import Count, F
 
 from tables.models.knowledge_models import (
     SourceCollection,
     DocumentMetadata,
     BaseRagType,
+    NaiveRag,
+    GraphRag,
 )
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
@@ -218,7 +223,9 @@ class SourceCollectionListSerializer(serializers.ModelSerializer):
     served by the retrieve endpoint.
     """
 
-    document_count = serializers.IntegerField(source="documents.count", read_only=True)
+    document_count = serializers.IntegerField(
+        read_only=True,
+    )
     rag_configurations = serializers.SerializerMethodField(
         help_text="Compact list of RAG configurations (rag_id, rag_type, status)"
     )
@@ -240,29 +247,30 @@ class SourceCollectionListSerializer(serializers.ModelSerializer):
     def get_rag_configurations(self, obj):
         """Compact RAG configs (rag_id/rag_type/status) for the collection list.
 
-        Uses the cheap ``brief`` builder; the queryset must be prefetched via
-        ``CollectionManagementService.rag_configurations_brief_prefetch()``.
-        Returns ``[]`` on error so one bad collection never breaks the list.
+        Queries NaiveRag/GraphRag directly (one query each) and merges them; the
+        rag_type comes from the BaseRagType discriminator column. Returns ``[]``
+        on error so one bad collection never breaks the list.
         """
         try:
-            rag_configs = []
-            for base_rag_type in obj.rag_types.all():
-                for naive_rag in base_rag_type.naive_rags.all():
-                    rag_configs.append(
-                        {
-                            "rag_id": naive_rag.naive_rag_id,
-                            "rag_type": "naive",
-                            "status": naive_rag.rag_status,
-                        }
-                    )
-                for graph_rag in base_rag_type.graph_rags.all():
-                    rag_configs.append(
-                        {
-                            "rag_id": graph_rag.graph_rag_id,
-                            "rag_type": "graph",
-                            "status": graph_rag.rag_status,
-                        }
-                    )
+            naive_rags = (
+                NaiveRag.objects.filter(base_rag_type__source_collection=obj)
+                .annotate(
+                    rag_id=F("naive_rag_id"),
+                    rag_type=F("base_rag_type__rag_type"),
+                    status=F("rag_status"),
+                )
+                .values("rag_id", "rag_type", "status")
+            )
+            graph_rags = (
+                GraphRag.objects.filter(base_rag_type__source_collection=obj)
+                .annotate(
+                    rag_id=F("graph_rag_id"),
+                    rag_type=F("base_rag_type__rag_type"),
+                    status=F("rag_status"),
+                )
+                .values("rag_id", "rag_type", "status")
+            )
+            rag_configs = list(itertools.chain(naive_rags, graph_rags))
             return RagConfigurationBriefSerializer(rag_configs, many=True).data
         except Exception as e:
             logger.error(
@@ -303,16 +311,32 @@ class SourceCollectionDetailSerializer(serializers.ModelSerializer):
         """
 
         try:
-            rag_configs = []
-            for base_rag_type in obj.rag_types.all():
-                for naive_rag in base_rag_type.naive_rags.all():
-                    rag_configs.append(
-                        CollectionManagementService._get_naive_rag_summary(naive_rag)
-                    )
-                for graph_rag in base_rag_type.graph_rags.all():
-                    rag_configs.append(
-                        CollectionManagementService._get_graph_rag_summary(graph_rag)
-                    )
+            naive_rags = (
+                NaiveRag.objects.filter(base_rag_type__source_collection=obj)
+                .select_related("embedder")
+                .annotate(
+                    document_configs_count=Count("naive_rag_configs", distinct=True),
+                    chunks_count=Count("naive_rag_configs__chunks", distinct=True),
+                    embeddings_count=Count(
+                        "naive_rag_configs__embeddings", distinct=True
+                    ),
+                )
+            )
+            graph_rags = (
+                GraphRag.objects.filter(base_rag_type__source_collection=obj)
+                .select_related("embedder", "llm")
+                .annotate(documents_count=Count("graph_rag_documents"))
+            )
+            rag_configs = [
+                *(
+                    CollectionManagementService._get_naive_rag_summary(r)
+                    for r in naive_rags
+                ),
+                *(
+                    CollectionManagementService._get_graph_rag_summary(r)
+                    for r in graph_rags
+                ),
+            ]
             return RagConfigurationSummarySerializer(rag_configs, many=True).data
         except Exception as e:
             logger.error(

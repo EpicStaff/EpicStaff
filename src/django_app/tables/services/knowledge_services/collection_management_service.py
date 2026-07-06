@@ -319,21 +319,6 @@ class CollectionManagementService:
         )
 
     @staticmethod
-    def rag_configurations_brief_prefetch():
-        """Lightweight prefetch chain for the compact RAG list
-        (``rag_id``/``rag_type``/``status``); spread into
-        ``queryset.prefetch_related(*...())``.
-
-        Loads only rag_types and their naive_rags/graph_rags — no count
-        annotations or nested relations, since the brief view needs none of them.
-        """
-        return (
-            "rag_types",
-            "rag_types__naive_rags",
-            "rag_types__graph_rags",
-        )
-
-    @staticmethod
     def get_rag_configurations(collection_id: int) -> List[Dict[str, Any]]:
         """
         Get all RAG configurations for a collection.
@@ -384,13 +369,14 @@ class CollectionManagementService:
         Get summary data for a NaiveRag configuration.
 
         Args:
-            naive_rag: NaiveRag instance (counts annotated by
-                rag_configurations_prefetch)
+            naive_rag: NaiveRag instance with the count annotations and
+                ``embedder`` prefetched by the caller's queryset
+                (``rag_configurations_prefetch`` or the detail serializer's
+                direct query).
 
         Returns:
             Dict with NaiveRag summary
         """
-        # counts are annotated by rag_configurations_prefetch()
         document_configs_count = naive_rag.document_configs_count
         chunks_count = naive_rag.chunks_count
         embeddings_count = naive_rag.embeddings_count
@@ -422,13 +408,15 @@ class CollectionManagementService:
         Get summary data for a GraphRag configuration.
 
         Args:
-            graph_rag: GraphRag instance (documents_count annotated by
-                rag_configurations_prefetch)
+            graph_rag: GraphRag instance with ``documents_count`` and the
+                ``embedder``/``llm`` relations provided by the caller's queryset
+                (``rag_configurations_prefetch`` or the detail serializer's
+                direct query).
 
         Returns:
             Dict with GraphRag summary
         """
-        # documents_count is annotated by rag_configurations_prefetch()
+        # documents_count is annotated on the queryset by the caller
         documents_count = graph_rag.documents_count
 
         # Determine if ready for indexing
