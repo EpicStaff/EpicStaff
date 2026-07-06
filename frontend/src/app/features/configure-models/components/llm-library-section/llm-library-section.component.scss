@@ -22,7 +22,7 @@
         margin: 0;
         font-size: 20px;
         font-weight: 500;
-        color: var(--configure-models-dialog-active-color, #d9d9de);
+        color: var(--color-text-primary);
     }
 
     &__subtitle {
@@ -69,7 +69,7 @@
 
         &:focus {
             outline: none;
-            border-color: var(--configure-models-dialog-inactive-color, #685fff);
+            border-color: var(--accent-color);
         }
     }
 
@@ -95,7 +95,7 @@
         padding: 0 18px;
         border-radius: 8px;
         border: none;
-        background: var(--configure-models-dialog-inactive-color, #685fff);
+        background: var(--accent-color);
         color: #ffffff;
         font-size: 14px;
         font-weight: 500;
@@ -137,7 +137,7 @@
     &__provider-name {
         font-size: 16px;
         font-weight: 500;
-        color: var(--configure-models-dialog-active-color, #d9d9de);
+        color: var(--color-text-primary);
     }
 
     &__grid {

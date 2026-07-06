@@ -102,7 +102,7 @@ export interface IconHeaderParams extends IHeaderParams {
             }
             .icon-header-delete-svg {
                 cursor: pointer;
-                color: var(--purple-primary);
+                color: var(--accent-color);
             }
         `,
     ],

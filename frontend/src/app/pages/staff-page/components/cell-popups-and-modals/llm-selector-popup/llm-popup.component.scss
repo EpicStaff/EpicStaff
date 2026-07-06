@@ -1,16 +1,16 @@
 @use 'sass:color';
 
-$bg-dark: #121212;
-$bg-card: #1e1e1e;
-$bg-input: #2d2d2d;
-$bg-item: #2a2a2a;
-$bg-item-hover: #333333;
-$accent-blue: #4f46e5;
-$accent-hover: #6366f1;
-$text-primary: #f5f5f5;
-$text-secondary: #a0a0a0;
-$text-tertiary: #777777;
-$border-color: rgba(255, 255, 255, 0.1);
+$bg-dark: var(--graphite-1000);
+$bg-card: var(--graphite-875);
+$bg-input: #2d2d2d; // literal: consumed by color.adjust()
+$bg-item: var(--graphite-780);
+$bg-item-hover: var(--graphite-640);
+$accent-blue: #685fff; // unified brand accent (kept literal for rgba())
+$accent-hover: #574fd6;
+$text-primary: var(--gray-50);
+$text-secondary: var(--gray-500);
+$text-tertiary: var(--gray-600);
+$border-color: var(--white-alpha-10);
 $shadow-color: rgba(0, 0, 0, 0.5);
 $transition-default: all 0.2s ease;
 

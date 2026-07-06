@@ -21,7 +21,7 @@ import { IHeaderParams } from 'ag-grid-community';
                 height: 100%;
             }
             .sel-count {
-                color: var(--purple-primary);
+                color: var(--accent-color);
                 font-weight: 500;
                 font-size: 13px;
             }

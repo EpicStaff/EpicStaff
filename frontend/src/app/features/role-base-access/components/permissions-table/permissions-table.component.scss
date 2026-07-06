@@ -19,7 +19,7 @@
     white-space: nowrap;
 
     .count {
-        color: var(--purple-primary);
+        color: var(--accent-color);
         font-weight: 600;
     }
 }
@@ -91,12 +91,12 @@
         }
 
         .collapse-icon {
-            color: var(--text-secondary-60);
+            color: var(--color-text-secondary);
             flex-shrink: 0;
         }
 
         .group-icon {
-            color: var(--purple-primary);
+            color: var(--accent-color);
             flex-shrink: 0;
         }
 
@@ -105,7 +105,7 @@
         }
 
         .group-count {
-            color: var(--text-secondary-60);
+            color: var(--color-text-secondary);
             background: var(--transparent-white-8);
             padding: 2px 6px;
             border-radius: 4px;
@@ -162,7 +162,7 @@
 
         .resource-desc {
             font-size: 10px;
-            color: var(--text-secondary-60);
+            color: var(--color-text-secondary);
         }
     }
 }
@@ -177,7 +177,7 @@
 
 .empty-cell {
     font-size: 14px;
-    color: var(--text-secondary-60);
+    color: var(--color-text-secondary);
     opacity: 0.5;
 }
 

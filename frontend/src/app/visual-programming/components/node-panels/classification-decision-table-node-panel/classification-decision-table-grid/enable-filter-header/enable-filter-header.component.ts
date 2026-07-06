@@ -105,7 +105,7 @@ interface EnableFilterHeaderParams extends IHeaderParams {
                 transition: color 0.15s ease;
             }
             .enable-filter-btn:hover {
-                color: var(--purple-primary);
+                color: var(--accent-color);
             }
             .ef-dropdown {
                 background: #212325;
@@ -129,7 +129,7 @@ interface EnableFilterHeaderParams extends IHeaderParams {
                 background: rgba(255, 255, 255, 0.04);
             }
             .ef-item.selected {
-                color: var(--purple-primary);
+                color: var(--accent-color);
             }
         `,
     ],

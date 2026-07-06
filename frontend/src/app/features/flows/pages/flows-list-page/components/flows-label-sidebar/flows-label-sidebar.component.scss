@@ -44,7 +44,7 @@
         border-radius: 4px;
 
         &:hover {
-            color: var(--color-ks-text);
+            color: var(--color-text-primary);
         }
     }
 }
@@ -62,14 +62,14 @@
     gap: 0.4rem;
     padding: 0.45rem 0.75rem 0.45rem 1rem;
     cursor: pointer;
-    color: var(--color-ks-text);
+    color: var(--color-text-primary);
     font-size: 14px;
     position: relative;
     min-width: max-content;
 
     &:hover {
         background: var(--color-ghost-btn-hover);
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
     }
 
     &.active {
@@ -123,14 +123,14 @@
         gap: 0.6rem;
 
         app-svg-icon {
-            color: var(--color-ks-text);
+            color: var(--color-text-primary);
             opacity: 0.4;
         }
     }
 
     .section-label {
         font-size: 14px;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
         letter-spacing: 0.08em;
     }
 
@@ -145,11 +145,11 @@
         border-radius: 4px;
 
         &:hover {
-            color: var(--color-ks-text);
+            color: var(--color-text-primary);
         }
 
         &:active {
-            color: var(--color-ks-text);
+            color: var(--color-text-primary);
         }
     }
 }
@@ -247,7 +247,7 @@
 
     &:hover {
         background: var(--color-ghost-btn-hover);
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
     }
 
     &:active {
@@ -295,11 +295,11 @@
     border-radius: 3px;
 
     &:hover {
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
     }
 
     &:active {
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
     }
 }
 
@@ -309,7 +309,7 @@
 
     &:hover,
     &:active {
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
     }
 }
 
@@ -326,7 +326,7 @@
     transition: color 0.15s ease;
 
     &:hover {
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
     }
 
     &:active,
@@ -337,7 +337,7 @@
 
 .label-item {
     ::ng-deep .label-icon {
-        color: var(--label-color, var(--color-ks-text));
+        color: var(--label-color, var(--color-text-primary));
         transition: color 0.15s ease;
     }
 }
@@ -347,7 +347,7 @@
     transition: color 0.15s ease;
 
     &:hover {
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
     }
 
     &:active,

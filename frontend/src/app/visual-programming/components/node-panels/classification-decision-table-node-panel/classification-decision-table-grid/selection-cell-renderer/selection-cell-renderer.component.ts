@@ -92,8 +92,8 @@ import { ICellRendererParams, IRowNode } from 'ag-grid-community';
                     border-color 0.15s ease;
             }
             .selection-checkbox input:checked + .checkmark {
-                background: var(--purple-primary);
-                border-color: var(--purple-primary);
+                background: var(--accent-color);
+                border-color: var(--accent-color);
             }
             .selection-checkbox input:checked + .checkmark::after {
                 content: '';

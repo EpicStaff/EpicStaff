@@ -321,7 +321,8 @@
         display: flex;
         flex-direction: column;
         padding: 5px;
-        --color-nodes-background: rgba(60, 60, 72, 0.65);
+        // scoped re-binding: preview nodes use the translucent variant
+        --color-nodes-background: var(--color-nodes-background-translucent);
     }
 
     .preview-empty {

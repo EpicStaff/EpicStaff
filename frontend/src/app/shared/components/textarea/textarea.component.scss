@@ -40,7 +40,7 @@
     outline: none;
     resize: none;
     font-size: 0.875rem;
-    color: var(--color-ks-text);
+    color: var(--color-text-primary);
 
     &:disabled {
         cursor: not-allowed;
@@ -57,7 +57,7 @@
     width: 14px;
     height: 14px;
     cursor: ns-resize;
-    color: var(--color-ks-text);
+    color: var(--color-text-primary);
     opacity: 0.4;
     touch-action: none;
     transition: opacity 0.15s ease;

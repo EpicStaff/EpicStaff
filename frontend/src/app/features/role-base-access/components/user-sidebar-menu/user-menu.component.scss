@@ -38,7 +38,7 @@
 
 .user-role {
     font-size: 0.6875rem;
-    color: var(--text-secondary-60);
+    color: var(--color-text-secondary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -52,7 +52,7 @@
 .section-label {
     font-size: 14px;
     padding: 8px 16px;
-    color: var(--text-secondary-60);
+    color: var(--color-text-secondary);
 }
 
 .org-list {
@@ -115,7 +115,7 @@
     border: none;
     cursor: pointer;
     text-align: left;
-    color: var(--text);
+    color: var(--color-text-primary);
     font-size: 14px;
     transition: background-color 0.15s ease;
     &:hover {

@@ -17,7 +17,7 @@
 .section-title {
     font-size: 20px;
     font-weight: 700;
-    color: var(--text);
+    color: var(--color-text-primary);
     margin: 0 0 1rem;
 }
 
@@ -61,11 +61,11 @@
     font-weight: 500;
 
     .plus {
-        color: var(--purple-primary);
+        color: var(--accent-color);
     }
 
     .label {
-        color: var(--text-secondary-60);
+        color: var(--color-text-secondary);
     }
 
     &:hover {

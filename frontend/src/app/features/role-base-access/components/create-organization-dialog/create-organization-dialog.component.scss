@@ -65,10 +65,10 @@
             .label {
                 white-space: nowrap;
                 font-size: 0.875rem;
-                color: var(--text-secondary-60);
+                color: var(--color-text-secondary);
 
                 .count {
-                    color: var(--purple-primary);
+                    color: var(--accent-color);
                     font-weight: 600;
                 }
             }
@@ -93,12 +93,12 @@ app-select.row-unselected {
         .user-name {
             font-size: 0.875rem;
             font-weight: 500;
-            color: var(--text);
+            color: var(--color-text-primary);
         }
 
         .user-email {
             font-size: 0.75rem;
-            color: var(--text-secondary-60);
+            color: var(--color-text-secondary);
         }
     }
 }

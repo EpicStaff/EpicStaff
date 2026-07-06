@@ -71,12 +71,12 @@
                     .user-name {
                         font-size: 24px;
                         font-weight: 500;
-                        color: var(--text);
+                        color: var(--color-text-primary);
                     }
 
                     .user-email {
                         font-size: 14px;
-                        color: var(--text-secondary-60);
+                        color: var(--color-text-secondary);
                     }
                 }
             }
@@ -125,11 +125,11 @@
     gap: 6px;
     margin: 0;
     font-weight: 700;
-    color: var(--text);
+    color: var(--color-text-primary);
 
     .count,
     .icon {
-        color: var(--purple-primary);
+        color: var(--accent-color);
     }
 
     &.section-title {
@@ -161,14 +161,14 @@
         font-size: 12px;
 
         .label {
-            color: var(--text-secondary-60);
+            color: var(--color-text-secondary);
         }
 
         .value {
-            color: var(--text);
+            color: var(--color-text-primary);
 
             &.role {
-                color: var(--purple-primary);
+                color: var(--accent-color);
                 font-weight: 500;
             }
         }
@@ -183,7 +183,7 @@
             padding: 4px 8px;
             border-radius: 4px;
             font-size: 12px;
-            color: var(--text);
+            color: var(--color-text-primary);
             background: var(--transparent-white-8);
         }
     }
@@ -198,7 +198,7 @@
         .org-name {
             flex: 1;
             font-size: 14px;
-            color: var(--text);
+            color: var(--color-text-primary);
         }
     }
 
@@ -210,7 +210,7 @@
 
         .org-role {
             font-size: 14px;
-            color: var(--purple-primary);
+            color: var(--accent-color);
         }
     }
 }

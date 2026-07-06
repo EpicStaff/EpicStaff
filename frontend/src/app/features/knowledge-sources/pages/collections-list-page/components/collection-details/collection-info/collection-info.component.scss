@@ -20,7 +20,7 @@
         font-size: 0.875rem;
         font-weight: bold;
         line-height: 130%;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
         margin-bottom: 0.25rem;
     }
 
@@ -39,7 +39,7 @@
     }
 
     &__meta-value {
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
     }
 
     // issues
@@ -57,7 +57,7 @@
         font-size: 0.875rem;
         font-weight: bold;
         line-height: 130%;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
     }
 
     &__issues-list {
@@ -69,7 +69,7 @@
     &__issue {
         padding: 0.5rem 1rem;
         font-size: 0.625rem;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
         display: flex;
         flex-direction: column;
         row-gap: 0.5rem;

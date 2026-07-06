@@ -1,11 +1,11 @@
 @use 'sass:color';
 
-$accent-color: #685fff;
-$background-color: #1a181a;
+$accent-color: #685fff; // brand accent (kept literal for rgba())
+$background-color: var(--graphite-950);
 $card-background: rgba(255, 255, 255, 0.05);
-$border-color: #2a2a2a;
-$text-color: #ebebeb;
-$muted-text-color: #999999;
+$border-color: var(--graphite-780);
+$text-color: var(--gray-100);
+$muted-text-color: var(--gray-500);
 $purple-accent: rgba(104, 95, 255, 0.5);
 
 .settings-section {

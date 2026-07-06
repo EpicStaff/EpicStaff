@@ -18,7 +18,7 @@
         background: transparent;
         min-width: 100px;
         padding: 0.25rem 0.5rem;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
     }
 
     &__items {
@@ -30,7 +30,7 @@
     &__item {
         border: 1px solid var(--color-input-border);
         background: var(--color-ks-line);
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
         border-radius: 4px;
         padding: 0.25rem 0.5rem;
         display: flex;
@@ -41,7 +41,7 @@
     &__item-remove {
         background: transparent;
         border: none;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
         cursor: pointer;
     }
 

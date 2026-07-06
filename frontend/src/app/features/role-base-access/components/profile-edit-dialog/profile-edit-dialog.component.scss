@@ -15,7 +15,7 @@
         .title {
             font-size: 20px;
             font-weight: 500;
-            color: var(--text);
+            color: var(--color-text-primary);
         }
 
         .close {
@@ -26,13 +26,13 @@
             height: 28px;
             border: none;
             background: transparent;
-            color: var(--text-secondary-60);
+            color: var(--color-text-secondary);
             cursor: pointer;
             border-radius: 4px;
 
             &:hover {
                 background: var(--transparent-white-8);
-                color: var(--text);
+                color: var(--color-text-primary);
             }
         }
     }
@@ -54,7 +54,7 @@
             align-items: center;
             gap: 4px;
             font-size: 0.8125rem;
-            color: var(--text-secondary-60);
+            color: var(--color-text-secondary);
         }
 
         .required {

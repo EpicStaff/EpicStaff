@@ -56,7 +56,7 @@
         &--confirm {
             background: var(--accent-color);
             border: none;
-            color: var(--text);
+            color: var(--color-text-primary);
 
             &:disabled {
                 opacity: 0.4;
@@ -103,7 +103,7 @@
     }
 
     &__footer-right {
-        color: var(--text-secondary-60);
+        color: var(--color-text-secondary);
         text-align: right;
         flex: 1;
         min-width: 0;
@@ -113,7 +113,7 @@
     }
 
     &__footer-label {
-        color: var(--text);
+        color: var(--color-text-primary);
     }
 
     &__footer-formats {
@@ -186,7 +186,7 @@
         margin: 0;
         font-size: 20px;
         font-weight: 500;
-        color: var(--text);
+        color: var(--color-text-primary);
     }
 
     &__formats-close {
@@ -199,11 +199,11 @@
         background: transparent;
         border: none;
         cursor: pointer;
-        color: var(--text-secondary-60);
+        color: var(--color-text-secondary);
         border-radius: 4px;
 
         &:hover {
-            color: var(--text);
+            color: var(--color-text-primary);
             background-color: var(--transparent-white-8);
         }
     }
@@ -233,7 +233,7 @@
             margin: 0;
             font-size: 14px;
             font-weight: 500;
-            color: var(--text-secondary-60);
+            color: var(--color-text-secondary);
             text-align: right;
         }
 
@@ -257,10 +257,10 @@
         padding-left: 20px;
         font-size: 14px;
         font-weight: 400;
-        color: var(--text-secondary-60);
+        color: var(--color-text-secondary);
 
         strong {
-            color: var(--text);
+            color: var(--color-text-primary);
             font-weight: 500;
         }
     }
@@ -429,7 +429,7 @@
     }
 
     &__selector-chevron {
-        color: var(--text);
+        color: var(--color-text-primary);
         flex-shrink: 0;
         transition: transform 0.15s ease;
 
@@ -622,12 +622,12 @@
         height: 24px;
         font-size: 12px;
         font-weight: 400;
-        color: var(--text-secondary-60);
+        color: var(--color-text-secondary);
     }
 
     &__file-icon {
         flex-shrink: 0;
-        color: var(--text);
+        color: var(--color-text-primary);
     }
 
     &__file-info {
@@ -673,7 +673,7 @@
     &__file-size {
         flex-shrink: 0;
         font-size: 10px;
-        color: var(--text-secondary-60);
+        color: var(--color-text-secondary);
     }
 
     &__file-remove {

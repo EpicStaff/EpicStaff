@@ -71,7 +71,7 @@
 }
 
 .grid-header-secondary-btn:hover:not(:disabled) {
-    border-color: var(--purple-primary);
+    border-color: var(--accent-color);
 }
 
 .grid-header-secondary-btn:disabled {
@@ -85,7 +85,7 @@
     border-radius: 6px;
     border: 1px solid #2b2d30;
     background: transparent;
-    color: var(--purple-primary);
+    color: var(--accent-color);
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -343,13 +343,13 @@
 }
 
 .group-overlay-chevron.active {
-    border-color: var(--purple-primary);
-    color: var(--purple-primary);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
 }
 
 .group-overlay-bracket.active {
-    border-left-color: var(--purple-primary);
-    border-bottom-color: var(--purple-primary);
+    border-left-color: var(--accent-color);
+    border-bottom-color: var(--accent-color);
 }
 
 .row-drop-indicator {
@@ -357,7 +357,7 @@
     left: 28px;
     right: 0;
     height: 2px;
-    background: var(--purple-primary);
+    background: var(--accent-color);
     z-index: 3;
     pointer-events: none;
     box-shadow: 0 0 4px rgba(104, 95, 255, 0.6);

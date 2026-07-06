@@ -20,7 +20,7 @@
         .name {
             font-size: 0.875rem;
             font-weight: 500;
-            color: var(--text);
+            color: var(--color-text-primary);
         }
     }
 
@@ -39,7 +39,7 @@
     font-size: 14px;
 
     .org-users {
-        color: var(--purple-primary);
+        color: var(--accent-color);
     }
 
     .org-metrics {
@@ -51,7 +51,7 @@
             display: inline-flex;
             align-items: center;
             gap: 4px;
-            color: var(--text-secondary-60);
+            color: var(--color-text-secondary);
         }
     }
 }

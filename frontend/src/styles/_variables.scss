@@ -24,14 +24,20 @@
     --purple-alpha-40: rgba(104, 95, 255, 0.4);
 
     // Graphite — dark surfaces
+    --graphite-1000: #121212;
     --graphite-950: #1a1a1c;
     --graphite-900: #212325;
+    --graphite-875: #1e1e1e;
     --graphite-850: #222225;
     --graphite-825: #232323;
     --graphite-800: #27272b;
+    --graphite-780: #2a2a2a;
     --graphite-750: #2b2d30;
+    --graphite-720: #2d2d2d;
     --graphite-700: #2c2c2e;
     --graphite-650: #3a3e48;
+    --graphite-640: #333333;
+    --graphite-600: #3a3a3a;
 
     // Gray scale
     --white: #ffffff;
@@ -143,7 +149,6 @@
     --accent-darker: var(--purple-700);
     --active-color: var(--accent-color);
     --inactive-purple: var(--purple-alpha-40);
-    --purple-primary: var(--purple-500);
     --color-required-asterisk: var(--accent-color);
     --color-secondary-btn-background: var(--graphite-800);
     --color-secondary-btn-background-hover: var(--white-alpha-9);
@@ -162,8 +167,6 @@
     --color-text-subtle: rgba(255, 255, 255, 0.7);
     --color-text-primary-hover: var(--fog-100);
     --color-text-disabled: var(--gray-600);
-    --text: var(--color-text-primary);
-    --text-secondary-60: var(--fog-alpha-60);
 
     // ------------------------------------------------------------------
     // SEMANTIC — forms
@@ -212,6 +215,7 @@
     // SEMANTIC — visual programming nodes
     // ------------------------------------------------------------------
     --color-nodes-background: var(--graphite-800);
+    --color-nodes-background-translucent: rgba(60, 60, 72, 0.65); // flow previews
     --color-nodes-background-disabled: var(--graphite-850);
     --color-nodes-input-bg: var(--graphite-800);
     --color-nodes-actionbar-bg: var(--graphite-850);
@@ -232,7 +236,6 @@
     --color-ks-card-background: #1e1e1e;
     --color-ks-card-tag-background: var(--graphite-700);
     --color-ks-background: var(--graphite-900);
-    --color-ks-text: var(--color-text-primary);
     --color-ks-button-activated: var(--purple-500);
     --color-ks-line: var(--graphite-700);
     --color-ks-hover-row: var(--graphite-650);
@@ -267,14 +270,20 @@
 // ============================================================================
 .my-app-light {
     // Surface primitives flip to a light slate ramp
+    --graphite-1000: #e2e8f0;
     --graphite-950: #e2e8f0;
     --graphite-900: #f8fafc;
+    --graphite-875: #ffffff;
     --graphite-850: #ffffff;
     --graphite-825: #ffffff;
     --graphite-800: #ffffff;
+    --graphite-780: #f1f5f9;
     --graphite-750: #f1f5f9;
+    --graphite-720: #ffffff;
     --graphite-700: #e2e8f0;
     --graphite-650: #e2e8f0;
+    --graphite-640: #e2e8f0;
+    --graphite-600: #e2e8f0;
 
     // Text primitives flip to dark slate
     --fog-100: #0f172a;

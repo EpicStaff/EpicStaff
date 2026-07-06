@@ -13,7 +13,7 @@
     &__title {
         margin: 0;
         font-size: 20px;
-        color: var(--configure-models-dialog-active-color, #d9d9de);
+        color: var(--color-text-primary);
     }
 
     &__subtitle {
@@ -83,7 +83,7 @@
         padding: 0 18px;
         border-radius: 8px;
         border: none;
-        background: var(--configure-models-dialog-inactive-color, #685fff);
+        background: var(--accent-color);
         color: #ffffff;
         cursor: pointer;
 
@@ -113,11 +113,11 @@
         gap: 8px;
         font-size: 16px;
         font-weight: 500;
-        color: var(--configure-models-dialog-inactive-color, #685fff);
+        color: var(--accent-color);
         line-height: 1.4;
 
         i {
-            color: var(--configure-models-dialog-inactive-color, #685fff);
+            color: var(--accent-color);
         }
     }
 
@@ -148,7 +148,7 @@
     }
 
     &__arrow-icon {
-        color: var(--configure-models-dialog-inactive-color, #685fff);
+        color: var(--accent-color);
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -173,15 +173,15 @@
     }
 
     &__card-title--success {
-        color: var(--configure-models-dialog-active-color, #d9d9de);
+        color: var(--color-text-primary);
 
         i {
-            color: var(--configure-models-dialog-inactive-color, #685fff);
+            color: var(--accent-color);
         }
     }
 
     &__card-link {
-        color: var(--configure-models-dialog-inactive-color, #685fff);
+        color: var(--accent-color);
     }
 
     &__card-actions {

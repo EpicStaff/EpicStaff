@@ -1,10 +1,10 @@
-$bg-dark: #1e1e1e;
-$bg-item: #2a2a2a;
-$bg-item-hover: #3a3a3a;
-$accent-blue: #6562f5;
-$border-color: #404040;
-$text-light: #e0e0e0;
-$text-secondary: #aaa;
+$bg-dark: var(--graphite-875);
+$bg-item: var(--graphite-780);
+$bg-item-hover: var(--graphite-600);
+$accent-blue: #685fff; // unified brand accent (kept literal for rgba())
+$border-color: var(--gray-700);
+$text-light: var(--gray-200);
+$text-secondary: var(--gray-400);
 $shadow-color: rgba(0, 0, 0, 0.2);
 $transition-default: all 0.2s ease;
 

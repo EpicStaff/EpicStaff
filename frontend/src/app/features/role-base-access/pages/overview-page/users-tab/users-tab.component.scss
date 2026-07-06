@@ -4,7 +4,7 @@
 
 .user-email {
     font-size: 10px;
-    color: var(--text-secondary-60);
+    color: var(--color-text-secondary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -14,7 +14,7 @@
     padding: 2px 8px;
     border-radius: 4px;
     font-size: 12px;
-    color: var(--text);
+    color: var(--color-text-primary);
     background: var(--transparent-white-8);
     white-space: nowrap;
     flex-shrink: 0;

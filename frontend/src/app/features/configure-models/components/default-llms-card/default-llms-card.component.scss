@@ -34,7 +34,7 @@
     &__icon {
         width: 2rem;
         height: 2rem;
-        color: var(--color-ks-text);
+        color: var(--color-text-primary);
     }
 
     &__close-icon {
@@ -48,7 +48,7 @@
     &__title {
         font-size: 16px;
         font-weight: 500;
-        color: var(--configure-models-dialog-inactive-color, #685fff);
+        color: var(--accent-color);
     }
 
     &__controls {
@@ -72,7 +72,7 @@
         aspect-ratio: 1;
         border-radius: 6px;
         border: none;
-        background: var(--configure-models-dialog-inactive-color, #685fff);
+        background: var(--accent-color);
         color: #ffffff;
         display: inline-flex;
         align-items: center;

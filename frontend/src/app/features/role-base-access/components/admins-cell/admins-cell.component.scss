@@ -7,7 +7,7 @@
 
 .empty {
     font-size: 14px;
-    color: var(--text-secondary-60);
+    color: var(--color-text-secondary);
 }
 
 .admin-chips {
@@ -46,13 +46,13 @@
 }
 
 .overflow-count {
-    color: var(--text-secondary-60);
+    color: var(--color-text-secondary);
     white-space: nowrap;
     flex-shrink: 0;
 }
 
 .chevron {
-    color: var(--text-secondary-60);
+    color: var(--color-text-secondary);
     flex-shrink: 0;
 }
 
@@ -68,7 +68,7 @@
 
 .members-count {
     font-size: 12px;
-    color: var(--text-secondary-60);
+    color: var(--color-text-secondary);
 }
 
 .member-row {
@@ -99,7 +99,7 @@
 }
 
 .member-email {
-    color: var(--text-secondary-60);
+    color: var(--color-text-secondary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

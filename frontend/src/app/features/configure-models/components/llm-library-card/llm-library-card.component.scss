@@ -46,7 +46,7 @@
         border-radius: 50%;
         border: 1px solid rgba(104, 95, 255, 0.4);
         background: transparent;
-        color: var(--configure-models-dialog-inactive-color, #685fff);
+        color: var(--accent-color);
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -78,7 +78,7 @@
     &__name {
         font-size: 15px;
         font-weight: 600;
-        color: var(--configure-models-dialog-active-color, #d9d9de);
+        color: var(--color-text-primary);
         word-break: break-word;
     }
 
@@ -119,7 +119,7 @@
         color: rgba(217, 217, 222, 0.5);
 
         &--active {
-            color: var(--configure-models-dialog-inactive-color, #685fff);
+            color: var(--accent-color);
             font-weight: 500;
             cursor: pointer;
 

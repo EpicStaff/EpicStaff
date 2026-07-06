@@ -431,7 +431,7 @@
     }
 
     .required-star {
-        color: var(--purple-primary);
+        color: var(--accent-color);
         margin-left: 2px;
         font-weight: 500;
     }
@@ -600,7 +600,7 @@
 
     .result-badge {
         background: rgba(104, 95, 255, 0.08);
-        color: var(--purple-primary);
+        color: var(--accent-color);
         font-size: 12px;
         line-height: 1;
         padding: 4px 8px;
@@ -617,7 +617,7 @@
     }
 
     .prompt-card-actions__trash {
-        color: var(--purple-primary);
+        color: var(--accent-color);
     }
 
     .icon-btn {

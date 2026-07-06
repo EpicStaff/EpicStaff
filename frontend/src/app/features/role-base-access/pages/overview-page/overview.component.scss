@@ -54,7 +54,7 @@
     gap: 8px;
     padding: 8px;
     font-size: 0.875rem;
-    color: var(--purple-primary);
+    color: var(--accent-color);
     text-decoration: none;
     border-bottom: 2px solid transparent;
     transition:
@@ -66,8 +66,8 @@
     }
 
     &.active {
-        color: var(--text);
-        border-bottom-color: var(--text);
+        color: var(--color-text-primary);
+        border-bottom-color: var(--color-text-primary);
     }
 }
 

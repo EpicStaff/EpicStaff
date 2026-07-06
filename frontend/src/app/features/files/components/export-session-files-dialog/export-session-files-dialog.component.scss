@@ -56,7 +56,7 @@
         &--confirm {
             background: var(--accent-color);
             border: none;
-            color: var(--text);
+            color: var(--color-text-primary);
 
             &:disabled {
                 opacity: 0.4;
@@ -90,7 +90,7 @@
     }
 
     &__selected-label {
-        color: var(--text);
+        color: var(--color-text-primary);
     }
 
     &__selected-count {

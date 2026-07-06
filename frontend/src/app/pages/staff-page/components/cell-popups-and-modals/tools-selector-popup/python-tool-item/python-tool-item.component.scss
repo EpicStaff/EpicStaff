@@ -1,10 +1,10 @@
 // Variables
-$bg-item: #2a2a2a;
-$bg-item-hover: #333333;
-$accent-blue: #4f46e5;
-$text-primary: #f5f5f5;
-$text-secondary: #a0a0a0;
-$border-color: rgba(255, 255, 255, 0.1);
+$bg-item: var(--graphite-780);
+$bg-item-hover: var(--graphite-640);
+$accent-blue: #685fff; // unified brand accent (kept literal for rgba())
+$text-primary: var(--gray-50);
+$text-secondary: var(--gray-500);
+$border-color: var(--white-alpha-10);
 
 .python-tool-item {
     display: flex;

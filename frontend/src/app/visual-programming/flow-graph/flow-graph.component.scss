@@ -454,8 +454,8 @@
 }
 
 .arrange-btn {
-    --arrange-icon-left: #d9d9de99;
-    --arrange-icon-right: #d9d9de;
+    --arrange-icon-left: var(--fog-alpha-60);
+    --arrange-icon-right: var(--fog-200);
 
     width: 38px;
     height: 38px;
@@ -484,8 +484,8 @@
     }
 
     &:disabled {
-        --arrange-icon-left: #2b2d30;
-        --arrange-icon-right: #d9d9de29;
+        --arrange-icon-left: var(--graphite-750);
+        --arrange-icon-right: var(--fog-alpha-20);
         cursor: not-allowed;
         pointer-events: all;
     }
