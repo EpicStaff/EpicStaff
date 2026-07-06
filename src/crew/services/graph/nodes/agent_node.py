@@ -7,48 +7,53 @@ from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
 from services.graph.nodes import BaseNode
 from services.graph.nodes.instruction_render import render_instructions
-from src.shared.models import TaskNodeData
+from src.shared.models import AgentNodeData
 
 
-class TaskNode(BaseNode):
-    TYPE = "TASK"
+class AgentNode(BaseNode):
+    TYPE = "AGENT"
 
     def __init__(
         self,
         session_id: int,
         node_name: str,
         stop_event: StopEvent,
-        task_node_data: TaskNodeData,
+        agent_node_data: AgentNodeData,
         agent_task_service: AgentTaskService,
     ):
         super().__init__(
             session_id=session_id,
             node_name=node_name,
             stop_event=stop_event,
-            input_map=task_node_data.input_map or None,
+            input_map=agent_node_data.input_map or None,
             output_variable_path=None,
         )
-        self.task_node_data = task_node_data
+        self.agent_node_data = agent_node_data
         self.agent_task_service = agent_task_service
 
     async def execute(
         self, state: State, writer: StreamWriter, execution_order: int, input_: Any
     ):
-        agent_definition = self.task_node_data.agent_definition
+        agent_definition = self.agent_node_data.agent_definition
         if agent_definition is None:
             raise ValueError(
-                f"TaskNode '{self.node_name}' requires an agent_definition"
+                f"AgentNode '{self.node_name}' requires an agent_definition"
             )
         if agent_definition.llm is None:
             raise ValueError(
-                f"TaskNode '{self.node_name}' requires agent_definition.llm"
+                f"AgentNode '{self.node_name}' requires agent_definition.llm"
             )
+        if not self.agent_node_data.tasks:
+            raise ValueError(f"AgentNode '{self.node_name}' has no tasks to execute.")
 
-        rendered_instructions = render_instructions(
-            self.task_node_data.instructions, input_
-        )
-        task_node_data = self.task_node_data.model_copy(
-            update={"instructions": rendered_instructions}
+        rendered_tasks = [
+            task.model_copy(
+                update={"instructions": render_instructions(task.instructions, input_)}
+            )
+            for task in self.agent_node_data.tasks
+        ]
+        agent_node_data = self.agent_node_data.model_copy(
+            update={"tasks": rendered_tasks}
         )
 
         step_id = 0
@@ -62,7 +67,7 @@ class TaskNode(BaseNode):
                 writer=writer,
                 execution_order=execution_order,
                 message_data={
-                    "message_type": "task_node_stream",
+                    "message_type": "agent_node_stream",
                     "event": "tool_call"
                     if envelope.type == "agent.tool_call"
                     else "tool_result",
@@ -73,13 +78,9 @@ class TaskNode(BaseNode):
                 },
             )
 
-        result = await self.agent_task_service.run_task(
-            task_node_data, self.stop_event, on_event=_on_agent_event
+        result = await self.agent_task_service.run_agent_node(
+            agent_node_data, self.stop_event, on_event=_on_agent_event
         )
-
-        # TODO(remember_output): when task_node_data.remember_output is True,
-        # store the final result in a per-agent Redis key so later tasks in
-        # the flow can consume it as additional context.
 
         return {
             "message": result.get("final_text"),

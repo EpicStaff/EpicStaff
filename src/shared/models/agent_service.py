@@ -31,6 +31,21 @@ from .knowledge import RagSearchConfig
 from .tools import BaseToolData
 
 
+class AgentTaskSpec(BaseModel):
+    """Shape of one entry in ``AgentRequest.payload["tasks"]`` for ``run_type=LIST_OF_TASKS``.
+
+    ``context`` carries the names of earlier tasks whose outputs should be
+    injected before this task runs.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    instructions: str
+    output_schema: dict | None = None
+    context: list[str] = []
+
+
 class RunType(str, Enum):
     """Execution mode for an agent request.
 

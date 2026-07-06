@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from tables.models.agent_models.surface_models import AgentInlineSurface, InlineSurface
 from tables.serializers.model_serializers.inline_surface_serializers import (
+    AgentInlineSurfaceReadSerializer,
     InlineSurfaceReadSerializer,
 )
 from tables.serializers.model_serializers.surface_serializers import (
@@ -15,7 +17,9 @@ class NodeSurfaceService:
         surface_dicts = [SurfaceReadSerializer(s).data for s in node.surface_list.all()]
 
         inline_surface = getattr(node, "inline_surface", None)
-        if inline_surface is not None:
+        if isinstance(inline_surface, AgentInlineSurface):
+            surface_dicts.append(AgentInlineSurfaceReadSerializer(inline_surface).data)
+        elif isinstance(inline_surface, InlineSurface):
             surface_dicts.append(InlineSurfaceReadSerializer(inline_surface).data)
 
         return SurfaceCombineService.combine(surface_dicts)

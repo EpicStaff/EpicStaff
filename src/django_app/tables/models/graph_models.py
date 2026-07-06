@@ -981,6 +981,12 @@ class AgentNode(BaseNode):
         related_name="agent_nodes",
         help_text="AgentDefinition that executes this node's tasks. Null allowed — runtime surfaces a missing-agent error.",
     )
+    surface_list = models.ManyToManyField(
+        "Surface",
+        blank=True,
+        related_name="agent_nodes",
+        help_text="Surfaces attached to this agent node.",
+    )
 
 
 class AgentNodeTask(TimestampMixin):
@@ -991,6 +997,10 @@ class AgentNodeTask(TimestampMixin):
         on_delete=models.CASCADE,
         related_name="tasks",
         help_text="Parent AgentNode this task belongs to.",
+    )
+    name = models.CharField(
+        max_length=255,
+        help_text="Name of this sub-task, unique within the parent agent node.",
     )
     order = models.PositiveIntegerField(
         help_text="Zero-based position within the parent agent node. Tasks execute in ascending order.",
@@ -1019,6 +1029,12 @@ class AgentNodeTask(TimestampMixin):
             models.UniqueConstraint(
                 fields=["agent_node", "order"],
                 name="uniq_agentnodetask_node_order",
+                deferrable=models.Deferrable.DEFERRED,
+            ),
+            models.UniqueConstraint(
+                fields=["agent_node", "name"],
+                name="uniq_agentnodetask_node_name",
+                deferrable=models.Deferrable.DEFERRED,
             ),
         ]
 

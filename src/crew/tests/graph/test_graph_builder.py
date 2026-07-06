@@ -12,6 +12,8 @@ from services.graph.graph_session_manager_service import (
 )
 from src.shared.models import (
     AgentDefinitionData,
+    AgentNodeData,
+    AgentNodeTaskData,
     ConditionData,
     ConditionGroupData,
     LLMConfigData,
@@ -276,3 +278,69 @@ def test_compile_from_schema_with_task_node_raises_without_service(
 
     with pytest.raises(RuntimeError):
         builder.compile_from_schema(_task_node_session_data(mock_llm_data))
+
+
+def _agent_node_session_data(mock_llm_data) -> SessionData:
+    return SessionData(
+        id=789,
+        initial_state={},
+        graph=GraphData(
+            name="agent_node_graph",
+            agent_node_list=[
+                AgentNodeData(
+                    node_name="agent_node_1",
+                    agent_definition=AgentDefinitionData(
+                        id=1,
+                        name="researcher",
+                        instructions="Research the topic.",
+                        llm=mock_llm_data,
+                    ),
+                    tasks=[
+                        AgentNodeTaskData(
+                            name="task_a", order=0, instructions="Write draft."
+                        )
+                    ],
+                )
+            ],
+            edge_list=[EdgeData(start_key="__start__", end_key="agent_node_1")],
+            entrypoint="agent_node_1",
+            end_node=None,
+        ),
+    )
+
+
+def test_compile_from_schema_with_agent_node(mock_services, mock_llm_data):
+    builder = SessionGraphBuilder(
+        session_id=789,
+        redis_service=mock_services["redis_service"],
+        crew_parser_service=mock_services["crew_parser_service"],
+        python_code_executor_service=mock_services["python_code_executor_service"],
+        crewai_output_channel="output",
+        knowledge_search_service=mock_services["knowledge_search_service"],
+        stop_event=StopEvent(),
+        agent_task_service=mock_services["agent_task_service"],
+    )
+
+    compiled_graph = builder.compile_from_schema(
+        _agent_node_session_data(mock_llm_data)
+    )
+
+    assert compiled_graph is not None
+
+
+def test_compile_from_schema_with_agent_node_raises_without_service(
+    mock_llm_data, mock_services
+):
+    builder = SessionGraphBuilder(
+        session_id=789,
+        redis_service=mock_services["redis_service"],
+        crew_parser_service=mock_services["crew_parser_service"],
+        python_code_executor_service=mock_services["python_code_executor_service"],
+        crewai_output_channel="output",
+        knowledge_search_service=mock_services["knowledge_search_service"],
+        stop_event=StopEvent(),
+        agent_task_service=None,
+    )
+
+    with pytest.raises(RuntimeError):
+        builder.compile_from_schema(_agent_node_session_data(mock_llm_data))

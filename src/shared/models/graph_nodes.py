@@ -164,6 +164,29 @@ class TaskNodeData(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class AgentNodeTaskData(BaseModel):
+    name: str
+    order: int
+    instructions: str = ""
+    output_schema: dict[str, Any] = {}
+    context_tasks: list[str] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AgentNodeData(BaseModel):
+    node_name: str
+    agent_definition: AgentDefinitionData | None = None
+    input_map: dict[str, Any] = {}
+    surface: CombinedSurfaceData = CombinedSurfaceData()
+    tools: list[BaseToolData] = []
+    collections: list[CollectionSpec] = []
+    s3_files: list[S3FileSpec] = []
+    tasks: list[AgentNodeTaskData] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class EndNodeData(BaseModel):
     node_name: str
     output_map: dict[str, Any]
@@ -245,6 +268,7 @@ class GraphData(BaseModel):
     subgraph_node_list: list[SubGraphNodeData] = []
     code_agent_node_list: list[CodeAgentNodeData] = []
     task_node_list: list[TaskNodeData] = []
+    agent_node_list: list[AgentNodeData] = []
     edge_list: list[EdgeData] = []
     conditional_edge_list: list[ConditionalEdgeData] = []
     decision_table_node_list: list[DecisionTableNodeData] = []

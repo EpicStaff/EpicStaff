@@ -5,6 +5,13 @@ from dataclasses import dataclass
 from django.db import models
 
 from tables.models.agent_models.surface_models import (
+    AgentInlineSurfaceGraphBasicSearchConfig,
+    AgentInlineSurfaceGraphLocalSearchConfig,
+    AgentInlineSurfaceKnowledge,
+    AgentInlineSurfaceMcpTool,
+    AgentInlineSurfaceNaiveSearchConfig,
+    AgentInlineSurfacePythonTool,
+    AgentInlineSurfaceStorageItem,
     InlineSurfaceGraphBasicSearchConfig,
     InlineSurfaceGraphLocalSearchConfig,
     InlineSurfaceKnowledge,
@@ -61,6 +68,17 @@ INLINE_SURFACE_CONTENT = SurfaceContentModels(
     naive_config=InlineSurfaceNaiveSearchConfig,
     graph_basic_config=InlineSurfaceGraphBasicSearchConfig,
     graph_local_config=InlineSurfaceGraphLocalSearchConfig,
+)
+
+AGENT_INLINE_SURFACE_CONTENT = SurfaceContentModels(
+    parent_field="agent_inline_surface",
+    python_tool=AgentInlineSurfacePythonTool,
+    mcp_tool=AgentInlineSurfaceMcpTool,
+    storage_item=AgentInlineSurfaceStorageItem,
+    knowledge=AgentInlineSurfaceKnowledge,
+    naive_config=AgentInlineSurfaceNaiveSearchConfig,
+    graph_basic_config=AgentInlineSurfaceGraphBasicSearchConfig,
+    graph_local_config=AgentInlineSurfaceGraphLocalSearchConfig,
 )
 
 

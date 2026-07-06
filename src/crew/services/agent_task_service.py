@@ -31,8 +31,13 @@ from loguru import logger
 
 from services.graph.events import StopEvent
 from services.redis_service import RedisService
-from src.shared.models import TaskNodeData
-from src.shared.models.agent_service import AgentRequest, AgentSpec, RunType
+from src.shared.models import AgentDefinitionData, AgentNodeData, TaskNodeData
+from src.shared.models.agent_service import (
+    AgentRequest,
+    AgentSpec,
+    AgentTaskSpec,
+    RunType,
+)
 from src.shared.redis_streams import StreamEnvelope
 
 FAILURE_STOP_REASONS = frozenset({"llm_error", "timeout"})
@@ -73,12 +78,35 @@ class AgentTaskService:
         stop_event: StopEvent,
         on_event: Callable[[StreamEnvelope], None] | None = None,
     ) -> dict:
+        blob = self._build_request_blob(node_data)
+        timeout_s = self._resolve_timeout_s(node_data.agent_definition)
+        return await self._dispatch(blob, timeout_s, stop_event, on_event)
+
+    async def run_agent_node(
+        self,
+        agent_node_data: AgentNodeData,
+        stop_event: StopEvent,
+        on_event: Callable[[StreamEnvelope], None] | None = None,
+    ) -> dict:
+        blob = self._build_agent_node_request_blob(agent_node_data)
+        task_count = len(agent_node_data.tasks)
+        timeout_s = self._resolve_timeout_s(
+            agent_node_data.agent_definition, task_count=task_count
+        )
+        return await self._dispatch(blob, timeout_s, stop_event, on_event)
+
+    async def _dispatch(
+        self,
+        blob: str,
+        timeout_s: float,
+        stop_event: StopEvent,
+        on_event: Callable[[StreamEnvelope], None] | None = None,
+    ) -> dict:
         client = self.redis_service.aioredis_client
         correlation_id = str(uuid.uuid4())
         request_key = f"agent:request:{correlation_id}"
 
         last_id = await self._tail_result_id(client)
-        blob = self._build_request_blob(node_data)
         await client.set(request_key, blob, ex=self.request_key_ttl_s)
 
         envelope = StreamEnvelope(
@@ -89,7 +117,7 @@ class AgentTaskService:
         await client.xadd(self.request_stream, envelope.to_fields())
         logger.info("published agent.run correlation_id={}", correlation_id)
 
-        deadline = time.monotonic() + self._resolve_timeout_s(node_data)
+        deadline = time.monotonic() + timeout_s
 
         try:
             return await self._await_result(
@@ -103,14 +131,15 @@ class AgentTaskService:
         finally:
             await client.delete(request_key)
 
-    def _resolve_timeout_s(self, node_data: TaskNodeData) -> float:
-        agent_definition = node_data.agent_definition
+    def _resolve_timeout_s(
+        self, agent_definition: AgentDefinitionData | None, task_count: int = 1
+    ) -> float:
         max_execution_time = (
             agent_definition.max_execution_time if agent_definition else None
         )
         if max_execution_time is not None:
-            return max_execution_time + self.timeout_buffer_s
-        return self.default_timeout_s
+            return max_execution_time * task_count + self.timeout_buffer_s
+        return self.default_timeout_s * task_count
 
     async def _tail_result_id(self, client) -> str:
         entries = await client.xrevrange(self.result_stream, count=1)
@@ -175,14 +204,19 @@ class AgentTaskService:
                             )
                         return envelope.payload
 
-    def _build_request_blob(self, node_data: TaskNodeData) -> str:
-        agent_definition = node_data.agent_definition
-
+    def _build_agent_spec(
+        self,
+        agent_definition: AgentDefinitionData,
+        surface_instructions: str,
+        tools,
+        collections,
+        s3_files,
+    ) -> AgentSpec:
         instructions = agent_definition.instructions
-        if node_data.surface.instructions:
-            instructions = f"{instructions}\n\n{node_data.surface.instructions}"
+        if surface_instructions:
+            instructions = f"{instructions}\n\n{surface_instructions}"
 
-        agent_spec = AgentSpec(
+        return AgentSpec(
             id=agent_definition.id,
             name=agent_definition.name,
             instructions=instructions,
@@ -194,11 +228,20 @@ class AgentTaskService:
             cache=agent_definition.cache,
             max_retry_limit=agent_definition.max_retry_limit,
             default_temperature=agent_definition.default_temperature,
-            tool_refs=[tool.unique_name for tool in node_data.tools],
-            collection_refs=[
-                collection.unique_name for collection in node_data.collections
-            ],
-            s3_refs=[s3_file.id for s3_file in node_data.s3_files],
+            tool_refs=[tool.unique_name for tool in tools],
+            collection_refs=[collection.unique_name for collection in collections],
+            s3_refs=[s3_file.id for s3_file in s3_files],
+        )
+
+    def _build_request_blob(self, node_data: TaskNodeData) -> str:
+        agent_definition = node_data.agent_definition
+
+        agent_spec = self._build_agent_spec(
+            agent_definition,
+            node_data.surface.instructions,
+            node_data.tools,
+            node_data.collections,
+            node_data.s3_files,
         )
 
         payload = {"task_instructions": node_data.instructions}
@@ -212,6 +255,41 @@ class AgentTaskService:
             tools=node_data.tools,
             collections=node_data.collections,
             s3_files=node_data.s3_files,
+            payload=payload,
+        )
+        dumped = request.model_dump(mode="json", exclude={"correlation_id"})
+        return json.dumps(dumped)
+
+    def _build_agent_node_request_blob(self, agent_node_data: AgentNodeData) -> str:
+        agent_definition = agent_node_data.agent_definition
+
+        agent_spec = self._build_agent_spec(
+            agent_definition,
+            agent_node_data.surface.instructions,
+            agent_node_data.tools,
+            agent_node_data.collections,
+            agent_node_data.s3_files,
+        )
+
+        payload = {
+            "tasks": [
+                AgentTaskSpec(
+                    name=task.name,
+                    instructions=task.instructions,
+                    output_schema=task.output_schema or None,
+                    context=task.context_tasks,
+                ).model_dump()
+                for task in agent_node_data.tasks
+            ]
+        }
+
+        request = AgentRequest(
+            correlation_id="unused",
+            run_type=RunType.LIST_OF_TASKS,
+            agents=[agent_spec],
+            tools=agent_node_data.tools,
+            collections=agent_node_data.collections,
+            s3_files=agent_node_data.s3_files,
             payload=payload,
         )
         dumped = request.model_dump(mode="json", exclude={"correlation_id"})

@@ -421,3 +421,121 @@ class InlineSurfaceGraphLocalSearchConfig(BaseSurfaceGraphLocalSearchConfig):
         related_name="graph_local_search_config",
         help_text="InlineSurfaceKnowledge entry this GraphRAG local search configuration applies to.",
     )
+
+
+class AgentInlineSurface(TimestampMixin, models.Model):
+    agent_node = models.OneToOneField(
+        "AgentNode",
+        on_delete=models.CASCADE,
+        related_name="inline_surface",
+        help_text="AgentNode that owns this ad-hoc surface. Deleted with the node.",
+    )
+    instructions = models.TextField(
+        blank=True,
+        default="",
+        help_text="Free-form text appended to the agent prompt when this surface is active. Empty string means no extra instructions.",
+    )
+
+    class Meta(TimestampMixin.Meta):
+        pass
+
+
+class AgentInlineSurfacePythonTool(BaseSurfacePythonTool):
+    agent_inline_surface = models.ForeignKey(
+        AgentInlineSurface,
+        on_delete=models.CASCADE,
+        related_name="python_tools",
+        help_text="AgentInlineSurface this entry belongs to.",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["agent_inline_surface", "python_tool"],
+                name="uniq_agent_inline_surface_python_tool",
+            ),
+        ]
+
+
+class AgentInlineSurfaceMcpTool(BaseSurfaceMcpTool):
+    agent_inline_surface = models.ForeignKey(
+        AgentInlineSurface,
+        on_delete=models.CASCADE,
+        related_name="mcp_tools",
+        help_text="AgentInlineSurface this entry belongs to.",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["agent_inline_surface", "mcp_tool"],
+                name="uniq_agent_inline_surface_mcp_tool",
+            ),
+        ]
+
+
+class AgentInlineSurfaceStorageItem(BaseSurfaceStorageItem):
+    agent_inline_surface = models.ForeignKey(
+        AgentInlineSurface,
+        on_delete=models.CASCADE,
+        related_name="storage_items",
+        help_text="AgentInlineSurface this storage permission entry belongs to.",
+    )
+    storage_file = models.ForeignKey(
+        "StorageFile",
+        on_delete=models.CASCADE,
+        related_name="+",
+        help_text="StorageFile whose access is being configured for this surface.",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["agent_inline_surface", "storage_file"],
+                name="uniq_agent_inline_surface_storage_item",
+            ),
+        ]
+
+
+class AgentInlineSurfaceKnowledge(BaseSurfaceKnowledge):
+    agent_inline_surface = models.ForeignKey(
+        AgentInlineSurface,
+        on_delete=models.CASCADE,
+        related_name="knowledge",
+        help_text="AgentInlineSurface this knowledge collection is attached to.",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["agent_inline_surface", "collection"],
+                name="uniq_agent_inline_surface_knowledge",
+            ),
+        ]
+
+
+class AgentInlineSurfaceNaiveSearchConfig(BaseSurfaceNaiveSearchConfig):
+    surface_knowledge = models.OneToOneField(
+        AgentInlineSurfaceKnowledge,
+        on_delete=models.CASCADE,
+        related_name="naive_search_config",
+        help_text="AgentInlineSurfaceKnowledge entry this naive search configuration applies to.",
+    )
+
+
+class AgentInlineSurfaceGraphBasicSearchConfig(BaseSurfaceGraphBasicSearchConfig):
+    surface_knowledge = models.OneToOneField(
+        AgentInlineSurfaceKnowledge,
+        on_delete=models.CASCADE,
+        related_name="graph_basic_search_config",
+        help_text="AgentInlineSurfaceKnowledge entry this GraphRAG basic search configuration applies to.",
+    )
+
+
+class AgentInlineSurfaceGraphLocalSearchConfig(BaseSurfaceGraphLocalSearchConfig):
+    surface_knowledge = models.OneToOneField(
+        AgentInlineSurfaceKnowledge,
+        on_delete=models.CASCADE,
+        related_name="graph_local_search_config",
+        help_text="AgentInlineSurfaceKnowledge entry this GraphRAG local search configuration applies to.",
+    )

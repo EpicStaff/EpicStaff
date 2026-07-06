@@ -1,3 +1,5 @@
+from collections import Counter
+
 from django.db import transaction
 from rest_framework import serializers
 
@@ -23,10 +25,13 @@ from tables.serializers.base_serializer import (
     ContentHashWritableMixin,
 )
 from tables.serializers.model_serializers.inline_surface_serializers import (
+    AgentInlineSurfaceReadSerializer,
+    AgentInlineSurfaceWriteSerializer,
     InlineSurfaceReadSerializer,
     InlineSurfaceWriteSerializer,
 )
 from tables.serializers.utils.mixins import NestedPythonCodeMixin
+from tables.services.agent_inline_surface_service import AgentInlineSurfaceService
 from tables.services.inline_surface_service import InlineSurfaceService
 from tables.validators.surface_validator import SurfaceValidator
 
@@ -163,10 +168,221 @@ class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
         return data
 
 
+class AgentNodeTaskWriteSerializer(serializers.Serializer):
+    id = serializers.IntegerField(required=False, allow_null=True)
+    temp_id = serializers.UUIDField(required=False, allow_null=True, write_only=True)
+    name = serializers.CharField(max_length=255)
+    order = serializers.IntegerField(min_value=0)
+    instructions = serializers.CharField(required=False, default="", allow_blank=True)
+    output_schema = serializers.JSONField(required=False, default=dict)
+    context_task_temp_ids = serializers.ListField(
+        child=serializers.UUIDField(), required=False, default=list, write_only=True
+    )
+    context_task_ids = serializers.ListField(
+        child=serializers.IntegerField(), required=False, default=list, write_only=True
+    )
+
+
+class AgentNodeTaskReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AgentNodeTask
+        fields = [
+            "id",
+            "name",
+            "order",
+            "instructions",
+            "output_schema",
+            "context_tasks",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
 class AgentNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+    tasks = AgentNodeTaskWriteSerializer(many=True, required=False)
+    inline_surface = AgentInlineSurfaceWriteSerializer(
+        required=False, allow_null=True, write_only=True
+    )
+
     class Meta:
         model = AgentNode
         fields = "__all__"
+
+    def validate(self, attrs):
+        if "tasks" in attrs:
+            self._validate_tasks(attrs["tasks"])
+
+        organization = self.context.get("organization")
+        if organization is None:
+            return attrs
+
+        if "surface_list" in attrs:
+            surfaces = attrs["surface_list"]
+        elif "agent_definition" in attrs and self.instance is not None:
+            surfaces = list(self.instance.surface_list.all())
+        else:
+            surfaces = None
+
+        if not surfaces:
+            return attrs
+
+        if "agent_definition" in attrs:
+            agent_definition = attrs["agent_definition"]
+        else:
+            agent_definition = self.instance.agent_definition if self.instance else None
+
+        SurfaceValidator.validate_agent_node_surfaces(
+            surfaces=surfaces,
+            agent_definition=agent_definition,
+            organization=organization,
+        )
+
+        return attrs
+
+    @staticmethod
+    def _validate_tasks(tasks_data):
+        names = [task["name"] for task in tasks_data]
+        duplicate_names = [name for name, count in Counter(names).items() if count > 1]
+
+        if duplicate_names:
+            raise serializers.ValidationError(
+                {"tasks": f"Duplicate task names: {sorted(duplicate_names)}"}
+            )
+
+        order_by_temp_id = {
+            task["temp_id"]: task["order"] for task in tasks_data if task.get("temp_id")
+        }
+        order_by_id = {
+            task["id"]: task["order"] for task in tasks_data if task.get("id")
+        }
+
+        for task in tasks_data:
+            order = task["order"]
+
+            for ref_temp_id in task.get("context_task_temp_ids", []):
+                if (
+                    ref_temp_id not in order_by_temp_id
+                    or order_by_temp_id[ref_temp_id] >= order
+                ):
+                    raise serializers.ValidationError(
+                        {
+                            "tasks": f"context_task_temp_ids must reference an earlier sibling task (temp_id={ref_temp_id})."
+                        }
+                    )
+
+            for ref_id in task.get("context_task_ids", []):
+                if ref_id not in order_by_id or order_by_id[ref_id] >= order:
+                    raise serializers.ValidationError(
+                        {
+                            "tasks": f"context_task_ids must reference an earlier sibling task (id={ref_id})."
+                        }
+                    )
+
+    def create(self, validated_data):
+        tasks_data = validated_data.pop("tasks", [])
+        has_inline = "inline_surface" in validated_data
+        inline_data = validated_data.pop("inline_surface", None)
+
+        with transaction.atomic():
+            node = super().create(validated_data)
+            self._save_tasks(node, tasks_data)
+            if has_inline:
+                # Prime select_related cache so to_representation avoids a query.
+                node.inline_surface = AgentInlineSurfaceService.apply(
+                    agent_node=node, data=inline_data
+                )
+
+        return node
+
+    def update(self, instance, validated_data):
+        has_tasks = "tasks" in validated_data
+        tasks_data = validated_data.pop("tasks", None)
+        has_inline = "inline_surface" in validated_data
+        inline_data = validated_data.pop("inline_surface", None)
+
+        with transaction.atomic():
+            node = super().update(instance, validated_data)
+            if has_tasks:
+                self._save_tasks(node, tasks_data)
+            if has_inline:
+                # Refresh stale select_related cache; None evicts it so to_representation re-queries.
+                node.inline_surface = AgentInlineSurfaceService.apply(
+                    agent_node=node, data=inline_data
+                )
+
+        return node
+
+    @staticmethod
+    def _save_tasks(node, tasks_data):
+        """Upsert tasks by id, delete siblings missing from the payload, then
+        resolve each task's context_tasks from temp_id/id references."""
+        existing_tasks = {task.id: task for task in node.tasks.all()}
+        incoming_ids = {
+            task_data["id"] for task_data in tasks_data if task_data.get("id")
+        }
+        stale_ids = [
+            task_id for task_id in existing_tasks if task_id not in incoming_ids
+        ]
+
+        # Delete omitted siblings before upserting so freed `order` values are
+        # available for updated/new tasks (unique constraint on agent_node+order).
+        if stale_ids:
+            AgentNodeTask.objects.filter(id__in=stale_ids).delete()
+            for task_id in stale_ids:
+                del existing_tasks[task_id]
+
+        saved_tasks = []
+        temp_id_to_task_id = {}
+
+        for task_data in tasks_data:
+            task_id = task_data.get("id")
+
+            if task_id and task_id in existing_tasks:
+                task = existing_tasks[task_id]
+                task.name = task_data["name"]
+                task.order = task_data["order"]
+                task.instructions = task_data.get("instructions", "")
+                task.output_schema = task_data.get("output_schema", {})
+                task.save()
+            else:
+                task = AgentNodeTask.objects.create(
+                    agent_node=node,
+                    name=task_data["name"],
+                    order=task_data["order"],
+                    instructions=task_data.get("instructions", ""),
+                    output_schema=task_data.get("output_schema", {}),
+                )
+
+            temp_id = task_data.get("temp_id")
+            if temp_id:
+                temp_id_to_task_id[temp_id] = task.id
+
+            saved_tasks.append(
+                (
+                    task,
+                    task_data.get("context_task_temp_ids", []),
+                    task_data.get("context_task_ids", []),
+                )
+            )
+
+        for task, context_temp_ids, context_task_ids in saved_tasks:
+            resolved_ids = set(context_task_ids)
+            resolved_ids.update(
+                temp_id_to_task_id[temp_id] for temp_id in context_temp_ids
+            )
+            task.context_tasks.set(resolved_ids)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["tasks"] = AgentNodeTaskReadSerializer(
+            instance.tasks.all(), many=True
+        ).data
+        inline = getattr(instance, "inline_surface", None)
+        data["inline_surface"] = (
+            AgentInlineSurfaceReadSerializer(inline).data if inline else None
+        )
+        return data
 
 
 class AgentNodeTaskSerializer(serializers.ModelSerializer):
@@ -175,6 +391,7 @@ class AgentNodeTaskSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "agent_node",
+            "name",
             "order",
             "instructions",
             "output_schema",

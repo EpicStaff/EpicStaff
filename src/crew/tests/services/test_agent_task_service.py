@@ -24,7 +24,14 @@ from services.agent_task_service import (
 )
 from services.graph.events import StopEvent
 from services.graph.exceptions import StopSession
-from src.shared.models import AgentDefinitionData, LLMConfigData, LLMData, TaskNodeData
+from src.shared.models import (
+    AgentDefinitionData,
+    AgentNodeData,
+    AgentNodeTaskData,
+    LLMConfigData,
+    LLMData,
+    TaskNodeData,
+)
 from src.shared.models.agent_service import AgentRequest
 from src.shared.models.surfaces import CombinedSurfaceData
 from src.shared.redis_streams import StreamEnvelope
@@ -419,3 +426,127 @@ def test_build_request_blob_appends_surface_instructions(redis_service_stub, llm
     instructions = blob["agents"][0]["instructions"]
     assert "Research the topic." in instructions
     assert "Never reveal secrets." in instructions
+
+
+def test_resolve_timeout_s_scales_with_task_count(redis_service_stub):
+    service = AgentTaskService(
+        redis_service=redis_service_stub, default_timeout_s=600.0, timeout_buffer_s=60.0
+    )
+    agent_definition = AgentDefinitionData(
+        id=1, name="researcher", instructions="Research.", max_execution_time=10
+    )
+
+    single_task_timeout = service._resolve_timeout_s(agent_definition, task_count=1)
+    multi_task_timeout = service._resolve_timeout_s(agent_definition, task_count=3)
+
+    assert single_task_timeout == 10 + 60.0
+    assert multi_task_timeout == 10 * 3 + 60.0
+
+
+def test_resolve_timeout_s_defaults_unchanged_for_single_task(redis_service_stub):
+    service = AgentTaskService(
+        redis_service=redis_service_stub, default_timeout_s=600.0
+    )
+
+    assert service._resolve_timeout_s(None) == 600.0
+    assert service._resolve_timeout_s(None, task_count=1) == 600.0
+    assert service._resolve_timeout_s(None, task_count=3) == 600.0 * 3
+
+
+@pytest.mark.asyncio
+async def test_run_task_resolves_timeout_for_single_task(
+    redis_service_stub, task_node_data, monkeypatch
+):
+    service = AgentTaskService(
+        redis_service=redis_service_stub, default_timeout_s=600.0, timeout_buffer_s=60.0
+    )
+    task_node_data.agent_definition.max_execution_time = 10
+    captured_timeout = {}
+
+    async def fake_dispatch(blob, timeout_s, stop_event, on_event=None):
+        captured_timeout["value"] = timeout_s
+        return {"final_text": "done"}
+
+    monkeypatch.setattr(service, "_dispatch", fake_dispatch)
+
+    await service.run_task(task_node_data, StopEvent())
+
+    assert captured_timeout["value"] == 10 + 60.0
+
+
+@pytest.mark.asyncio
+async def test_run_agent_node_resolves_timeout_scaled_by_task_count(
+    redis_service_stub, llm_data, monkeypatch
+):
+    service = AgentTaskService(
+        redis_service=redis_service_stub, default_timeout_s=600.0, timeout_buffer_s=60.0
+    )
+    agent_node_data = AgentNodeData(
+        node_name="agent_node_1",
+        agent_definition=AgentDefinitionData(
+            id=1,
+            name="researcher",
+            instructions="Research the topic.",
+            llm=llm_data,
+            max_execution_time=10,
+        ),
+        tasks=[
+            AgentNodeTaskData(name="task_a", order=0, instructions="Write draft."),
+            AgentNodeTaskData(name="task_b", order=1, instructions="Polish draft."),
+            AgentNodeTaskData(name="task_c", order=2, instructions="Review draft."),
+        ],
+    )
+    captured_timeout = {}
+
+    async def fake_dispatch(blob, timeout_s, stop_event, on_event=None):
+        captured_timeout["value"] = timeout_s
+        return {"final_text": "done"}
+
+    monkeypatch.setattr(service, "_dispatch", fake_dispatch)
+
+    await service.run_agent_node(agent_node_data, StopEvent())
+
+    assert captured_timeout["value"] == 10 * 3 + 60.0
+
+
+def test_build_agent_node_request_blob(redis_service_stub, llm_data):
+    service = AgentTaskService(redis_service=redis_service_stub)
+    agent_node_data = AgentNodeData(
+        node_name="agent_node_1",
+        agent_definition=AgentDefinitionData(
+            id=1, name="researcher", instructions="Research the topic.", llm=llm_data
+        ),
+        surface=CombinedSurfaceData(instructions="Never reveal secrets."),
+        tasks=[
+            AgentNodeTaskData(name="task_a", order=0, instructions="Write draft."),
+            AgentNodeTaskData(
+                name="task_b",
+                order=1,
+                instructions="Polish draft.",
+                output_schema={"type": "object"},
+                context_tasks=["task_a"],
+            ),
+        ],
+    )
+
+    blob = json.loads(service._build_agent_node_request_blob(agent_node_data))
+
+    assert blob["run_type"] == "LIST_OF_TASKS"
+    assert len(blob["agents"]) == 1
+    instructions = blob["agents"][0]["instructions"]
+    assert "Research the topic." in instructions
+    assert "Never reveal secrets." in instructions
+
+    tasks = blob["payload"]["tasks"]
+    assert tasks[0] == {
+        "name": "task_a",
+        "instructions": "Write draft.",
+        "output_schema": None,
+        "context": [],
+    }
+    assert tasks[1] == {
+        "name": "task_b",
+        "instructions": "Polish draft.",
+        "output_schema": {"type": "object"},
+        "context": ["task_a"],
+    }

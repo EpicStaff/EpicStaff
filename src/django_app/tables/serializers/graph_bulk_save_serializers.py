@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from tables.serializers.model_serializers import (
+    AgentNodeSerializer,
     AudioTranscriptionNodeSerializer,
     ClassificationDecisionTableNodeSerializer,
     CodeAgentNodeSerializer,
@@ -73,6 +74,10 @@ class SubGraphNodeBulkSerializer(BulkSaveEntityMixin, SubGraphNodeSerializer):
 
 
 class TaskNodeBulkSerializer(BulkSaveEntityMixin, TaskNodeSerializer):
+    pass
+
+
+class AgentNodeBulkSerializer(BulkSaveEntityMixin, AgentNodeSerializer):
     pass
 
 

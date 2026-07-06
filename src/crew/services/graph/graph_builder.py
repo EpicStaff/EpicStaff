@@ -15,6 +15,7 @@ from services.graph.nodes import (
 )
 
 from services.agent_task_service import AgentTaskService
+from services.graph.nodes.agent_node import AgentNode
 from services.graph.nodes.code_agent_node import CodeAgentNode
 from services.graph.nodes.task_node import TaskNode
 from services.graph.nodes.webhook_trigger_node import WebhookTriggerNode
@@ -288,6 +289,22 @@ class SessionGraphBuilder:
                 agent_task_service=self.agent_task_service,
             )
             self.add_node(task_node)
+
+        if schema.agent_node_list and self.agent_task_service is None:
+            raise RuntimeError(
+                f"Graph '{schema.name}' contains {len(schema.agent_node_list)} agent node(s) "
+                "but no agent_task_service was provided to SessionGraphBuilder."
+            )
+
+        for agent_node_data in schema.agent_node_list:
+            agent_node = AgentNode(
+                session_id=self.session_id,
+                node_name=agent_node_data.node_name,
+                stop_event=self.stop_event,
+                agent_node_data=agent_node_data,
+                agent_task_service=self.agent_task_service,
+            )
+            self.add_node(agent_node)
 
         for crew_node_data in schema.crew_node_list:
             crew_node = CrewNode(
