@@ -100,8 +100,8 @@
         justify-content: center;
         border-width: 1px 0px 1px 1px;
         border-style: solid;
-        border-color: #2c2c2e;
-        background: #1e1e1e;
+        border-color: var(--graphite-700);
+        background: var(--graphite-875);
         cursor: pointer;
         border-radius: 8px 0 0 8px;
         transition: all 0.2s ease;
@@ -114,7 +114,7 @@
 
         &:hover:not(:disabled) {
             color: #d9d9d9;
-            background: #2c2c2e;
+            background: var(--graphite-700);
         }
 
         &:active:not(:disabled) {
@@ -192,7 +192,7 @@
 }
 
 .webhook-url-error {
-    color: #ef4444;
+    color: var(--red-500);
 }
 
 .copy-button {
@@ -211,7 +211,7 @@
 }
 
 .copy-button:hover:not(:disabled) {
-    border-color: var(--active-color, #685fff);
+    border-color: var(--active-color, var(--accent-color));
     color: white;
 }
 

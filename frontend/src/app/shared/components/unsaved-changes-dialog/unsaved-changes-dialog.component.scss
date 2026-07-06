@@ -115,7 +115,7 @@
         }
 
         &.danger {
-            background: #f44336;
+            background: var(--red-500);
             &:hover:not(:disabled) {
                 background: #d32f2f;
             }
@@ -169,7 +169,7 @@
 }
 
 .dialog-container.danger .dialog-icon {
-    color: #f44336;
+    color: var(--red-500);
 }
 .dialog-container.warning .dialog-icon {
     color: #ffb400;
@@ -186,7 +186,7 @@
     background: var(--accent-color-hover);
 }
 .button.save-button.danger {
-    background: #f44336;
+    background: var(--red-500);
     color: white;
 }
 .button.save-button.danger:hover:not(:disabled) {

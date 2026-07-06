@@ -221,7 +221,7 @@ table {
 
 .view-btn {
     background: var(--accent-color);
-    color: #fff;
+    color: var(--white);
 }
 .view-btn:hover {
     background: var(--accent-color-hover);
@@ -229,7 +229,7 @@ table {
 
 .delete-btn {
     background: #e0575b !important;
-    color: #fff !important;
+    color: var(--white) !important;
     border: none;
     outline: none;
     padding: 6px 14px;
@@ -244,19 +244,19 @@ table {
 }
 .delete-btn:hover {
     background: #b32b36 !important;
-    color: #fff !important;
+    color: var(--white) !important;
 }
 
 .session-search-input {
     padding: 6px 12px;
-    border: 1px solid var(--color-divider-regular, #ccc);
+    border: 1px solid var(--color-divider-regular, var(--gray-300));
     border-radius: 6px;
     font-size: 1em;
     outline: none;
     transition: border 0.18s;
     min-width: 220px;
     max-width: 320px;
-    background: var(--color-background-body, #fff);
+    background: var(--color-background-body, var(--white));
     color: var(--color-text-primary, #222);
 }
 .session-search-input:focus {
@@ -265,7 +265,7 @@ table {
 
 .stop-btn {
     background: #e0575b;
-    color: #fff;
+    color: var(--white);
     border: none;
     outline: none;
     padding: 6px 14px;
@@ -284,7 +284,7 @@ table {
 }
 .stop-btn:hover {
     background: #b32b36;
-    color: #fff;
+    color: var(--white);
 }
 
 .no-sessions-message {

@@ -139,7 +139,7 @@
     }
 
     &.text-active {
-        color: #fff;
+        color: var(--white);
         border-color: transparent;
     }
 }

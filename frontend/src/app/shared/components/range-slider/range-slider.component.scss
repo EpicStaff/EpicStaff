@@ -21,7 +21,7 @@
             width: 16px;
             height: 16px;
             border-radius: 50%;
-            background-color: var(--accent-color, #685fff);
+            background-color: var(--accent-color, var(--accent-color));
             cursor: pointer;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
         }
@@ -30,7 +30,7 @@
             width: 16px;
             height: 16px;
             border-radius: 50%;
-            background-color: var(--accent-color, #685fff);
+            background-color: var(--accent-color, var(--accent-color));
             cursor: pointer;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
             border: none;

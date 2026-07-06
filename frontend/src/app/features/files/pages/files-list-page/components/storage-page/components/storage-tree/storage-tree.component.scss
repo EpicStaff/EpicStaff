@@ -125,7 +125,7 @@
                 right: 0;
                 bottom: 0;
                 height: 1px;
-                background-color: #685fff;
+                background-color: var(--accent-color);
                 z-index: 1;
                 pointer-events: none;
             }
@@ -144,12 +144,12 @@
 
         &--selected {
             background-color: #685fff14;
-            color: #685fff;
+            color: var(--accent-color);
 
             .storage-tree__name,
             .storage-tree__icon,
             .storage-tree__chevron-btn {
-                color: #685fff;
+                color: var(--accent-color);
             }
 
             .storage-tree__empty-badge {
@@ -229,7 +229,7 @@
     }
 
     &__empty-badge {
-        font-family: Inter, sans-serif;
+        font-family: var(--font-family-base);
         font-style: normal;
         font-weight: 400;
         font-size: 14px;
@@ -355,8 +355,8 @@
         display: flex;
         flex-direction: column;
         padding: 0;
-        background-color: #212325;
-        border: 1px solid #2b2d30;
+        background-color: var(--color-background-body);
+        border: 1px solid var(--graphite-750);
         border-radius: 8px;
         box-shadow:
             0 2px 3px rgba(0, 0, 0, 0.3),

@@ -72,7 +72,7 @@
                     padding: 0;
 
                     &:hover {
-                        color: #ff4d4f;
+                        color: var(--red-500);
                         background-color: rgba(255, 77, 79, 0.1);
                     }
 
@@ -105,7 +105,7 @@
                     }
 
                     &:focus {
-                        border-color: #685fff;
+                        border-color: var(--accent-color);
                     }
                 }
 
@@ -119,7 +119,7 @@
                     border: 1px solid rgba(255, 255, 255, 0.1);
                     border-radius: 6px;
                     cursor: pointer;
-                    color: #685fff;
+                    color: var(--accent-color);
                     transition: all 0.2s ease;
 
                     i {
@@ -129,7 +129,7 @@
 
                     &:hover {
                         background-color: rgba(104, 95, 255, 0.1);
-                        border-color: #685fff;
+                        border-color: var(--accent-color);
                     }
                 }
             }

@@ -95,7 +95,7 @@
                 align-items: center;
                 justify-content: center;
                 text-decoration: none;
-                color: #fff;
+                color: var(--white);
                 cursor: pointer;
                 width: 2.5rem;
                 height: 2.5rem;
@@ -117,14 +117,14 @@
                     justify-content: center;
                     width: 1.4rem;
                     height: 1.4rem;
-                    color: #b4b4b4;
+                    color: var(--gray-400);
                     transition: color 0.2s ease-in-out;
                 }
                 &:hover .sidenav-link-icon {
-                    color: #e3e3e3;
+                    color: var(--gray-200);
                 }
                 &.active .sidenav-link-icon {
-                    color: #685fff;
+                    color: var(--accent-color);
                 }
             }
         }

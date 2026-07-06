@@ -37,8 +37,8 @@
 }
 
 .select-input {
-    background: var(--color-nodes-background, #1e1e1e);
-    color: #d4d4d4;
+    background: var(--color-nodes-background, var(--graphite-875));
+    color: var(--gray-300);
     border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
     border-radius: 8px;
     padding: 0.45rem 0.75rem;
@@ -49,12 +49,12 @@
     transition: border-color 0.2s ease;
 
     &:focus {
-        border-color: var(--active-color, #685fff);
+        border-color: var(--active-color, var(--accent-color));
     }
 
     option {
-        background: #1e1e1e;
-        color: #d4d4d4;
+        background: var(--graphite-875);
+        color: var(--gray-300);
     }
 }
 
@@ -65,9 +65,9 @@
 }
 
 .input-map-key {
-    font-family: 'Fira Code', 'Consolas', monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.8rem;
-    color: #d4d4d4;
+    color: var(--gray-300);
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
     border-radius: 6px;
@@ -81,9 +81,9 @@
 }
 
 .code-preview-text {
-    font-family: 'Fira Code', 'Consolas', monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.75rem;
-    color: #d4d4d4;
+    color: var(--gray-300);
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
     border-radius: 6px;
@@ -94,8 +94,8 @@
 }
 
 .insert-btn {
-    background: var(--active-color, #685fff);
-    color: #fff;
+    background: var(--active-color, var(--accent-color));
+    color: var(--white);
     border: none;
     border-radius: 8px;
     padding: 0.45rem 0.9rem;

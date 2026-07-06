@@ -1,5 +1,5 @@
 .ngx-json-viewer {
-    font-family: 'Courier New', monospace !important;
+    font-family: var(--font-family-mono) !important;
     background-color: transparent !important;
 
     .segment-key {

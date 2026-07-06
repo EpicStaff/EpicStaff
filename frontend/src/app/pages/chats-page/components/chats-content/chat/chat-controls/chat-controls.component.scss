@@ -56,7 +56,7 @@
         .send-btn {
             background-color: transparent;
             border: none;
-            color: var(--accent-color, #685fff);
+            color: var(--accent-color, var(--accent-color));
             display: flex;
             align-items: center;
             justify-content: center;
@@ -98,7 +98,7 @@
         justify-content: center;
         flex: 0 10 auto;
         gap: 0.5rem;
-        background-color: var(--accent-color, #685fff);
+        background-color: var(--accent-color, var(--accent-color));
         color: var(--white);
         border: none;
         border-radius: 8px;
@@ -182,13 +182,13 @@
 
             &.active {
                 background-color: rgba(104, 95, 255, 0.2);
-                color: var(--accent-color, #685fff);
+                color: var(--accent-color, var(--accent-color));
             }
 
             &.end-btn {
                 &:hover {
                     background-color: rgba(220, 53, 69, 0.2);
-                    color: #dc3545;
+                    color: var(--red-500);
                 }
             }
 

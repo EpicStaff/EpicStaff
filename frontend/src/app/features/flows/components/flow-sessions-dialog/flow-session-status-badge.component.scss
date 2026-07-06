@@ -6,14 +6,14 @@
     border-radius: 5px;
     font-size: 0.85em;
     font-weight: 400;
-    color: #fff;
+    color: var(--white);
     white-space: nowrap;
     letter-spacing: 0.01em;
     transition: background 0.18s;
 }
 .status-running {
     background: rgba(94, 158, 255, 0.18);
-    color: #5e9eff;
+    color: var(--blue-400);
 }
 .status-error {
     background: rgba(224, 87, 91, 0.18);
@@ -37,7 +37,7 @@
 }
 .status-expired {
     background: rgba(136, 136, 136, 0.18);
-    color: #888888;
+    color: var(--gray-500);
 }
 .status-unknown {
     background: rgba(68, 71, 79, 0.18);

@@ -1,11 +1,11 @@
 @mixin panel-footer {
     padding: 1rem;
-    border-top: 1px solid var(--color-divider-subtle, #333);
+    border-top: 1px solid var(--color-divider-subtle, var(--graphite-640));
     display: flex;
     justify-content: space-between;
     gap: 1rem;
     flex-shrink: 0;
-    background-color: var(--color-nodes-sidepanel-bg, #1a1a1a);
+    background-color: var(--color-nodes-sidepanel-bg, var(--gray-850));
     margin-top: auto;
 }
 
@@ -17,8 +17,8 @@
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
-    background-color: var(--accent-color, #685fff);
-    color: #fff;
+    background-color: var(--accent-color, var(--accent-color));
+    color: var(--white);
     min-width: 80px;
 
     &:hover:enabled {
@@ -31,7 +31,7 @@
     }
 
     &:disabled {
-        background-color: #666;
+        background-color: var(--gray-600);
         cursor: not-allowed;
         opacity: 0.5;
         transform: none;
@@ -40,18 +40,18 @@
 
 @mixin secondary-button {
     padding: 0.5rem 1rem;
-    border: 1px solid var(--color-divider-subtle, #333);
+    border: 1px solid var(--color-divider-subtle, var(--graphite-640));
     border-radius: 6px;
     font-size: 0.875rem;
     cursor: pointer;
     transition: all 0.2s ease;
     background: transparent;
-    color: #ccc;
+    color: var(--gray-300);
     min-width: 80px;
 
     &:hover {
-        background: var(--color-divider-subtle, #333);
-        color: #fff;
+        background: var(--color-divider-subtle, var(--graphite-640));
+        color: var(--white);
         transform: translateY(-1px);
     }
 
@@ -68,8 +68,8 @@
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
-    background-color: #dc3545;
-    color: #fff;
+    background-color: var(--red-500);
+    color: var(--white);
     min-width: 80px;
 
     &:hover:enabled {
@@ -82,7 +82,7 @@
     }
 
     &:disabled {
-        background-color: #666;
+        background-color: var(--gray-600);
         cursor: not-allowed;
         opacity: 0.5;
         transform: none;
@@ -97,26 +97,26 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    background-color: #2a2a2a;
+    background-color: var(--graphite-780);
     border: none;
     transition: all 0.15s cubic-bezier(0.25, 0.8, 0.25, 1);
 
     &:hover {
-        background-color: #3a3a3a;
+        background-color: var(--graphite-600);
     }
 
     &:active:not(.disabled) {
         transform: scale(0.85);
-        background-color: #444;
+        background-color: var(--gray-700);
     }
 
     i {
         font-size: 16px;
-        color: #aaa;
+        color: var(--gray-400);
     }
 
     &:hover i {
-        color: #fff;
+        color: var(--white);
     }
 }
 
@@ -134,10 +134,10 @@
 @mixin section-header {
     font-size: 1rem;
     font-weight: 600;
-    color: #fff;
+    color: var(--white);
     margin: 0 0 1rem 0;
     padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--color-divider-subtle, #333);
+    border-bottom: 1px solid var(--color-divider-subtle, var(--graphite-640));
 }
 
 @mixin form-container {

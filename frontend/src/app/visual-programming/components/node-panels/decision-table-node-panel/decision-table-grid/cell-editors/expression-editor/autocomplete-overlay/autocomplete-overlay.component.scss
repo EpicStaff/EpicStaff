@@ -1,8 +1,8 @@
 :host {
     display: block;
     width: 280px;
-    background-color: #27272b;
-    border: 1px solid var(--color-divider-subtle, #333);
+    background-color: var(--graphite-800);
+    border: 1px solid var(--color-divider-subtle, var(--graphite-640));
     border-radius: 6px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     position: relative;
@@ -34,9 +34,9 @@
     align-items: center;
     padding: 8px 10px;
     background-color: #1e1e20;
-    border-bottom: 1px solid var(--color-divider-subtle, #333);
+    border-bottom: 1px solid var(--color-divider-subtle, var(--graphite-640));
     font-size: 11px;
-    color: #888;
+    color: var(--gray-500);
     overflow-x: auto;
     white-space: nowrap;
     gap: 4px;
@@ -53,7 +53,7 @@
         height: 22px;
         border-radius: 4px;
         background: rgba(104, 95, 255, 0.15);
-        color: #685fff;
+        color: var(--accent-color);
         cursor: pointer;
         transition: all 0.15s ease;
         flex-shrink: 0;
@@ -65,7 +65,7 @@
 
         &:hover {
             background: rgba(104, 95, 255, 0.3);
-            color: #fff;
+            color: var(--white);
         }
     }
 
@@ -76,14 +76,14 @@
         transition: all 0.15s ease;
 
         &:hover {
-            color: #fff;
+            color: var(--white);
             background: rgba(255, 255, 255, 0.1);
         }
     }
 
     .separator {
         margin: 0 2px;
-        color: #555;
+        color: var(--gray-600);
     }
 }
 
@@ -93,8 +93,8 @@
     padding: 4px;
     max-height: 220px;
     overflow-y: auto;
-    color: #d9d9de;
-    font-family: 'JetBrains Mono', monospace;
+    color: var(--color-text-primary);
+    font-family: var(--font-family-mono);
     font-size: 13px;
 
     li {
@@ -110,11 +110,11 @@
         &.active,
         &:hover {
             background-color: rgba(104, 95, 255, 0.2);
-            color: #fff;
+            color: var(--white);
 
             .drill-arrow {
                 background: rgba(104, 95, 255, 0.4);
-                color: #fff;
+                color: var(--white);
             }
         }
 
@@ -131,7 +131,7 @@
 
             i {
                 font-size: 16px;
-                color: #685fff;
+                color: var(--accent-color);
                 flex-shrink: 0;
                 margin-top: 1px;
             }
@@ -164,7 +164,7 @@
 
         .item-type {
             font-size: 10px;
-            color: #666;
+            color: var(--gray-600);
             flex-shrink: 0;
         }
 
@@ -176,7 +176,7 @@
             height: 24px;
             border-radius: 4px;
             background: rgba(255, 255, 255, 0.08);
-            color: #888;
+            color: var(--gray-500);
             cursor: pointer;
             transition: all 0.15s ease;
             flex-shrink: 0;
@@ -186,8 +186,8 @@
             }
 
             &:hover {
-                background: #685fff;
-                color: #fff;
+                background: var(--accent-color);
+                color: var(--white);
                 transform: translateX(2px);
             }
         }
@@ -198,7 +198,7 @@
         width: 6px;
     }
     &::-webkit-scrollbar-thumb {
-        background: #444;
+        background: var(--gray-700);
         border-radius: 3px;
     }
     &::-webkit-scrollbar-track {

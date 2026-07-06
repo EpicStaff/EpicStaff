@@ -18,7 +18,7 @@
 
     .node-name-label {
         background-color: var(--color-nodes-actionbar-bg);
-        color: #ccc;
+        color: var(--gray-300);
         font-size: 12px;
         padding: 2px 6px;
         border-radius: 3px;
@@ -74,29 +74,29 @@
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        background-color: #2a2a2a;
+        background-color: var(--graphite-780);
         transition: all 0.15s cubic-bezier(0.25, 0.8, 0.25, 1);
 
         &:active:not(.disabled) {
             transform: scale(0.85);
-            background-color: #444;
+            background-color: var(--gray-700);
         }
 
         &:hover {
-            background-color: #3a3a3a;
+            background-color: var(--graphite-600);
         }
 
         &.edit-button i {
-            color: #aaa;
+            color: var(--gray-400);
             font-size: 16px;
 
             &:hover {
-                color: #fff;
+                color: var(--white);
             }
         }
 
         &.toggle-button i {
-            color: var(--accent-color, #2196f3);
+            color: var(--accent-color, var(--blue-400));
             font-size: 16px;
 
             &.disabled {
@@ -107,17 +107,17 @@
         }
 
         &.ungroup-button i {
-            color: var(--accent-color, #2196f3);
+            color: var(--accent-color, var(--blue-400));
             font-size: 16px;
         }
 
         &.delete-button i {
-            color: #aaa;
+            color: var(--gray-400);
             font-size: 16px;
         }
 
         &.delete-button:hover i {
-            color: #ff6b6b;
+            color: var(--red-400);
         }
     }
 

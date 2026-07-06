@@ -9,7 +9,7 @@
     overflow-y: auto;
     overflow-x: auto;
     flex-shrink: 0;
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-family-base);
 }
 
 .sidebar-header {
@@ -206,7 +206,7 @@
 }
 
 .confirm-btn {
-    color: #ffffff;
+    color: var(--white);
     background: var(--accent-color);
 
     &:hover {

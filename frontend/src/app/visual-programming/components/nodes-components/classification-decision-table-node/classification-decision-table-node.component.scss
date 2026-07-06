@@ -76,7 +76,7 @@
         .title {
             font-size: 15px;
             font-weight: 600;
-            color: #ffffff;
+            color: var(--white);
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -128,7 +128,7 @@
         }
 
         .group-name {
-            color: #ffffff;
+            color: var(--white);
             font-size: 13px;
             font-weight: 500;
             overflow: hidden;
@@ -189,7 +189,7 @@
     &__empty {
         padding: 1rem;
         text-align: center;
-        color: #999;
+        color: var(--gray-500);
         font-size: 13px;
     }
 }

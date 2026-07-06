@@ -3,8 +3,8 @@
     flex-direction: column;
     width: 100%;
     max-height: 85vh;
-    background: var(--color-background-body, #212325);
-    border: 1px solid var(--color-ks-line, #2b2d30);
+    background: var(--color-background-body, var(--color-background-body));
+    border: 1px solid var(--color-ks-line, var(--graphite-750));
     border-radius: 0.625rem;
     box-shadow:
         0px 6px 10px 0px rgba(0, 0, 0, 0.15),
@@ -15,14 +15,14 @@
         align-items: center;
         justify-content: space-between;
         padding: 1rem 1.25rem;
-        border-bottom: 1px solid var(--color-ks-line, #2b2d30);
+        border-bottom: 1px solid var(--color-ks-line, var(--graphite-750));
     }
 
     &__title {
         margin: 0;
         font-size: 1rem;
         font-weight: 500;
-        color: var(--color-text-primary, #d9d9de);
+        color: var(--color-text-primary, var(--color-text-primary));
     }
 
     &__close-btn {
@@ -63,8 +63,8 @@
         height: 2.25rem;
         border: 1px solid rgba(217, 217, 222, 0.16);
         border-radius: 0.25rem;
-        background: var(--color-ks-line, #2b2d30);
-        color: var(--color-text-primary, #d9d9de);
+        background: var(--color-ks-line, var(--graphite-750));
+        color: var(--color-text-primary, var(--color-text-primary));
         padding: 0 0.75rem;
         font-size: 0.875rem;
     }
@@ -80,6 +80,6 @@
         justify-content: flex-end;
         gap: 0.5rem;
         padding: 0.875rem 1.25rem;
-        border-top: 1px solid var(--color-ks-line, #2b2d30);
+        border-top: 1px solid var(--color-ks-line, var(--graphite-750));
     }
 }

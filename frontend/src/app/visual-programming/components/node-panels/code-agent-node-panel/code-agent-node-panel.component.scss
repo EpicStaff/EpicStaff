@@ -124,7 +124,7 @@
     align-items: center;
     gap: 0.5rem;
     font-size: 0.85rem;
-    color: #d4d4d4;
+    color: var(--gray-300);
     cursor: pointer;
 
     input[type='checkbox'] {
@@ -141,12 +141,12 @@
 }
 
 .output-schema-textarea {
-    background: var(--color-nodes-background, #1e1e1e);
-    color: #d4d4d4;
+    background: var(--color-nodes-background, var(--graphite-875));
+    color: var(--gray-300);
     border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
     border-radius: 8px;
     padding: 0.5rem 0.75rem;
-    font-family: 'Fira Code', 'Consolas', monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.8rem;
     resize: vertical;
     outline: none;
@@ -154,7 +154,7 @@
     min-height: 80px;
 
     &:focus {
-        border-color: var(--active-color, #685fff);
+        border-color: var(--active-color, var(--accent-color));
     }
 
     &::placeholder {
@@ -164,7 +164,7 @@
 
 .schema-error {
     font-size: 0.75rem;
-    color: #ff6b6b;
+    color: var(--red-400);
 }
 
 .editor-panel-wrapper {
@@ -187,7 +187,7 @@
         justify-content: center;
         border-width: 1px 0 1px 1px;
         border-style: solid;
-        border-color: #2c2c2e;
+        border-color: var(--graphite-700);
         background: transparent;
         cursor: pointer;
         border-radius: 8px 0 0 8px;
@@ -201,7 +201,7 @@
 
         &:hover:not(:disabled) {
             color: #d9d9d9;
-            background: #2c2c2e;
+            background: var(--graphite-700);
         }
     }
 }
@@ -253,12 +253,12 @@
         border-bottom 0.2s;
 
     &:hover {
-        color: #ffffff;
+        color: var(--white);
     }
 
     &.active {
-        color: var(--color-text-primary, #d4d4d4);
-        border-bottom-color: var(--accent-color, #685fff);
+        color: var(--color-text-primary, var(--gray-300));
+        border-bottom-color: var(--accent-color, var(--accent-color));
     }
 }
 

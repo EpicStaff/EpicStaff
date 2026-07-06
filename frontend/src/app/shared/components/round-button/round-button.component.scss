@@ -22,14 +22,14 @@
         color 0.15s ease;
 
     &:hover:not(.round-btn--active) {
-        border-color: var(--active-color, var(--accent-color, #685fff));
-        color: var(--active-color, var(--accent-color, #685fff));
+        border-color: var(--active-color, var(--accent-color, var(--accent-color)));
+        color: var(--active-color, var(--accent-color, var(--accent-color)));
     }
 
     &--active {
-        background: var(--active-color, var(--accent-color, #685fff));
-        border-color: var(--active-color, var(--accent-color, #685fff));
-        color: #fff;
+        background: var(--active-color, var(--accent-color, var(--accent-color)));
+        border-color: var(--active-color, var(--accent-color, var(--accent-color)));
+        color: var(--white);
         font-weight: 600;
     }
 

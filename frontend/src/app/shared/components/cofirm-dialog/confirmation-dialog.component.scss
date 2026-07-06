@@ -8,7 +8,7 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-family-base);
 }
 
 .dialog-header {
@@ -100,7 +100,7 @@
     height: 40px;
     padding: 0 24px;
     border-radius: 8px;
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-family-base);
     font-size: 14px;
     font-weight: 500;
     line-height: 1;
@@ -112,8 +112,8 @@
     justify-content: center;
 
     &.cancel-button {
-        color: #d9d9de;
-        border: 1px solid #2b2d30;
+        color: var(--color-text-primary);
+        border: 1px solid var(--graphite-750);
 
         &:hover {
             background: rgba(255, 255, 255, 0.04);
@@ -122,7 +122,7 @@
     }
 
     &.confirm-button {
-        color: #ffffff;
+        color: var(--white);
         border: 1px solid var(--accent-color);
         background: var(--accent-color);
 
@@ -132,8 +132,8 @@
         }
 
         &.danger {
-            color: #d9d9de;
-            background: #f54242;
+            color: var(--color-text-primary);
+            background: var(--red-500);
             border: none;
 
             &:hover {
@@ -142,24 +142,24 @@
         }
 
         &.warning {
-            color: #ffffff;
-            background: #685fff;
-            border-color: #685fff;
+            color: var(--white);
+            background: var(--accent-color);
+            border-color: var(--accent-color);
 
             &:hover {
-                background: #574fd6;
-                border-color: #574fd6;
+                background: var(--accent-color-hover);
+                border-color: var(--accent-color-hover);
             }
         }
 
         &.info {
-            color: #ffffff;
-            background: #685fff;
-            border-color: #685fff;
+            color: var(--white);
+            background: var(--accent-color);
+            border-color: var(--accent-color);
 
             &:hover {
-                background: #574fd6;
-                border-color: #574fd6;
+                background: var(--accent-color-hover);
+                border-color: var(--accent-color-hover);
             }
         }
     }
@@ -191,15 +191,15 @@
 .dialog-icon {
     display: flex;
     align-items: center;
-    color: #2196f3;
+    color: var(--blue-400);
 }
 
 .dialog-container.danger .dialog-icon {
-    color: #f44336;
+    color: var(--red-500);
 }
 .dialog-container.warning .dialog-icon {
     color: #e0a83a;
 }
 .dialog-container.info .dialog-icon {
-    color: #685fff;
+    color: var(--accent-color);
 }

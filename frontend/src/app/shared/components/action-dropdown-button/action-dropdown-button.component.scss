@@ -18,8 +18,8 @@
     &__main {
         flex: 1 1 auto;
         min-width: 0;
-        background: var(--accent-color, #5e9eff);
-        color: #fff;
+        background: var(--accent-color, var(--blue-400));
+        color: var(--white);
         border: none;
         padding: 6px 14px;
         font-size: 0.95em;
@@ -42,8 +42,8 @@
 
     &__chevron {
         flex: 0 0 40px;
-        background: var(--accent-color, #5e9eff);
-        color: #fff;
+        background: var(--accent-color, var(--blue-400));
+        color: var(--white);
         border: none;
         border-left: 1px solid rgba(255, 255, 255, 0.2);
         padding: 6px 8px;

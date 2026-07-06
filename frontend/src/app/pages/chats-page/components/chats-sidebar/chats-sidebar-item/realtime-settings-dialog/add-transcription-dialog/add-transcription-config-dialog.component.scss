@@ -1,5 +1,5 @@
 .dialog-container {
-    background-color: #1e1e1e;
+    background-color: var(--graphite-875);
     border-radius: 12px;
     padding: 24px;
     color: rgba(255, 255, 255, 0.9);
@@ -62,7 +62,7 @@
 
             &:focus {
                 outline: none;
-                border-color: #685fff;
+                border-color: var(--accent-color);
             }
 
             &.masked {
@@ -99,7 +99,7 @@
 
         .error-message {
             font-size: 12px;
-            color: #ff4d4f;
+            color: var(--red-500);
             margin-top: 4px;
         }
     }
@@ -128,11 +128,11 @@
             }
 
             &.primary {
-                background-color: #685fff;
+                background-color: var(--accent-color);
                 color: white;
 
                 &:hover {
-                    background-color: #7a70ff;
+                    background-color: var(--purple-400);
                 }
 
                 &:disabled {

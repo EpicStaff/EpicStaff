@@ -12,8 +12,8 @@
     justify-content: center;
     font-size: 11px;
     font-weight: 600;
-    color: #fff;
-    border: 2px solid #1e1e1e;
+    color: var(--white);
+    border: 2px solid var(--graphite-875);
     cursor: default;
     flex-shrink: 0;
     animation: avatar-in 0.25s ease;
@@ -23,7 +23,7 @@
     }
 
     &--overflow {
-        background-color: #555;
+        background-color: var(--gray-600);
         font-size: 10px;
     }
 
@@ -36,6 +36,12 @@
 }
 
 @keyframes avatar-in {
-    from { opacity: 0; transform: scale(0.7); }
-    to   { opacity: 1; transform: scale(1); }
+    from {
+        opacity: 0;
+        transform: scale(0.7);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
 }

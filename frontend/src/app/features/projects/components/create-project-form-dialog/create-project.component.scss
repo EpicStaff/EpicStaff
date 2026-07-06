@@ -59,13 +59,13 @@
         position: relative;
 
         ::ng-deep .mdc-label {
-            color: var(--color-text-secondary, #888);
+            color: var(--color-text-secondary, var(--gray-500));
         }
     }
 
     &__coming-soon-title {
         font-size: 0.75rem;
-        color: var(--color-text-secondary, #888);
+        color: var(--color-text-secondary, var(--gray-500));
         font-style: italic;
         margin-left: 0.5rem;
         display: inline;
@@ -76,7 +76,7 @@
         flex-shrink: 0;
         padding: 1.5rem;
         padding-top: 0;
-        border-left: 1px solid var(--color-border, #e0e0e0);
+        border-left: 1px solid var(--color-border, var(--gray-200));
     }
 
     &__setting {
@@ -117,7 +117,7 @@
 
     &__setting-value {
         font-size: 0.9rem;
-        color: var(--color-text-secondary, #666);
+        color: var(--color-text-secondary, var(--gray-600));
         font-weight: 500;
     }
 

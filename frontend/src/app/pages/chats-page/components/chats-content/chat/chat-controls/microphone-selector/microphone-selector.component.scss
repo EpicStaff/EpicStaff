@@ -26,7 +26,7 @@
         gap: 8px;
 
         &:hover:not(.disabled) {
-            border-color: var(--accent-color, #685fff);
+            border-color: var(--accent-color, var(--accent-color));
         }
 
         &.disabled {
@@ -109,7 +109,7 @@
             margin-right: 8px;
             width: 16px;
             opacity: 0;
-            color: var(--accent-color, #685fff);
+            color: var(--accent-color, var(--accent-color));
         }
 
         span {

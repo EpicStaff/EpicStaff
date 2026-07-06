@@ -32,7 +32,7 @@
         }
 
         &:focus {
-            border-color: var(--accent-color, #685fff);
+            border-color: var(--accent-color, var(--accent-color));
         }
 
         &:disabled {
@@ -61,8 +61,8 @@
 
         &--add,
         &--confirm {
-            background-color: var(--accent-color, #685fff);
-            color: #fff;
+            background-color: var(--accent-color, var(--accent-color));
+            color: var(--white);
 
             &:hover:not(:disabled) {
                 opacity: 0.85;
@@ -112,7 +112,7 @@
 
         &--editing {
             background-color: rgba(104, 95, 255, 0.08);
-            border-left: 2px solid var(--accent-color, #685fff);
+            border-left: 2px solid var(--accent-color, var(--accent-color));
         }
     }
 
@@ -126,7 +126,7 @@
     &__card-name {
         font-size: 0.875rem;
         font-weight: 500;
-        color: var(--accent-color, #685fff);
+        color: var(--accent-color, var(--accent-color));
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;

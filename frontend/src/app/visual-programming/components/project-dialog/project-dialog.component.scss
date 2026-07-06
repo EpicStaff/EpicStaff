@@ -5,8 +5,8 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    color: #fff;
-    border: 1px solid var(--color-divider-subtle, #333);
+    color: var(--white);
+    border: 1px solid var(--color-divider-subtle, var(--graphite-640));
     overflow: hidden;
 }
 
@@ -16,7 +16,7 @@
     justify-content: space-between;
     padding: 1rem 4.7rem;
     margin-bottom: 1rem;
-    border-bottom: 1px solid var(--color-divider-subtle, #333);
+    border-bottom: 1px solid var(--color-divider-subtle, var(--graphite-640));
 }
 
 .icon-and-title {
@@ -51,12 +51,12 @@
 
     .esc-label {
         font-size: 0.75rem;
-        color: #666;
+        color: var(--gray-600);
         font-weight: 500;
         padding: 0.15rem 0.3rem;
-        border: 1px solid #444;
+        border: 1px solid var(--gray-700);
         border-radius: 4px;
-        background: #2a2a2a;
+        background: var(--graphite-780);
     }
 
     i {

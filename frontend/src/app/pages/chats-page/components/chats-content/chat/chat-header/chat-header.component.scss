@@ -56,7 +56,7 @@
                 border-radius: 16px;
 
                 &.active {
-                    background-color: var(--accent-color, #685fff);
+                    background-color: var(--accent-color, var(--accent-color));
                     color: var(--white);
                     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
                 }
@@ -100,7 +100,7 @@
                     transition: border-color 0.2s ease;
 
                     &:focus {
-                        border-color: var(--accent-color, #685fff);
+                        border-color: var(--accent-color, var(--accent-color));
                     }
 
                     option {
@@ -144,7 +144,7 @@
                 &:hover {
                     background-color: var(--gray-750);
                     color: var(--gray-200);
-                    border-color: var(--accent-color, #685fff);
+                    border-color: var(--accent-color, var(--accent-color));
                 }
             }
         }

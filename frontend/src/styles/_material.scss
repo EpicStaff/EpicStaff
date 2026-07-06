@@ -14,7 +14,7 @@ $compact-theme: mat.define-theme(
 
 :root {
     --mdc-plain-tooltip-container-color: rgba(33, 35, 37, 1);
-    --mdc-plain-tooltip-supporting-text-color: #d9d9de;
+    --mdc-plain-tooltip-supporting-text-color: var(--color-text-primary);
 
     @include mat.form-field-density($compact-theme);
 }

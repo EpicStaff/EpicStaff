@@ -13,7 +13,7 @@
 
     &__error-message {
         background-color: rgba(255, 77, 79, 0.1);
-        color: var(--color-error, #ff4d4f);
+        color: var(--color-error, var(--red-500));
         padding: 0.75rem;
         border-radius: 4px;
         margin-bottom: 1rem;

@@ -6,8 +6,8 @@
     grid-template-columns: repeat(3, 1fr);
     grid-template-rows: repeat(3, 1fr);
 
-    background-color: #212325;
-    border: 1px solid #2c2c2e;
+    background-color: var(--color-background-body);
+    border: 1px solid var(--graphite-700);
     border-radius: 4px;
 
     cursor: pointer;
@@ -23,7 +23,7 @@
 
 .flow-shortcuts-btn--active {
     background-color: #2d2b45;
-    border-color: #685fff;
+    border-color: var(--accent-color);
 }
 
 .flow-shortcuts-btn--active:hover {
@@ -43,7 +43,7 @@
     grid-column: 1 / span 3;
     grid-row: 3;
 
-    font-family: Inter;
+    font-family: var(--font-family-base);
     font-size: 7px;
     font-weight: 400;
     line-height: 100%;

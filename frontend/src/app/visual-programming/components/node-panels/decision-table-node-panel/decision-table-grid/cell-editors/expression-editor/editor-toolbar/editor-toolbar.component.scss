@@ -2,7 +2,7 @@
     display: flex;
     padding: 4px 8px;
     background-color: #252526;
-    border-bottom: 1px solid var(--color-divider-subtle, #333);
+    border-bottom: 1px solid var(--color-divider-subtle, var(--graphite-640));
     border-top-left-radius: 3px;
     border-top-right-radius: 3px;
     gap: 4px;
@@ -10,28 +10,28 @@
 
     .separator {
         width: 1px;
-        background-color: var(--color-divider-subtle, #444);
+        background-color: var(--color-divider-subtle, var(--gray-700));
         margin: 0 2px;
     }
 
     .toolbar-btn {
         background: transparent;
-        border: 1px solid var(--color-divider-subtle, #444);
+        border: 1px solid var(--color-divider-subtle, var(--gray-700));
         border-radius: 3px;
         padding: 2px 6px;
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-family: 'JetBrains Mono', monospace;
+        font-family: var(--font-family-mono);
         font-size: 11px;
         transition: background 0.2s;
         min-width: 24px;
-        color: #d9d9de;
+        color: var(--color-text-primary);
 
         &:hover {
             background-color: rgba(255, 255, 255, 0.1);
-            color: #fff;
+            color: var(--white);
         }
 
         .keyword {

@@ -9,7 +9,7 @@
     flex-direction: column;
     height: 100%;
     background-color: rgba(33, 35, 37, 1);
-    color: #e0e0e0;
+    color: var(--gray-200);
 }
 
 .dialog-header {
@@ -24,7 +24,7 @@
         margin: 0;
         font-size: 1rem;
         font-weight: 600;
-        color: #ffffff;
+        color: var(--white);
     }
 }
 
@@ -45,7 +45,7 @@
     height: 100%;
     padding: 3rem 1.5rem;
     text-align: center;
-    color: #888;
+    color: var(--gray-500);
 
     h2 {
         margin: 0 0 0.5rem;
@@ -57,7 +57,7 @@
         margin: 0;
         font-size: 0.8rem;
         font-weight: 400;
-        color: #666;
+        color: var(--gray-600);
     }
 }
 
@@ -98,19 +98,19 @@
     border: 1px solid rgba(217, 217, 222, 0.16);
     border-radius: 4px;
     outline: none;
-    color: #ffffff;
+    color: var(--white);
     font-size: 0.875rem;
     font-weight: 500;
     padding: 2px 6px;
     font-family: inherit;
-    caret-color: #ffffff;
+    caret-color: var(--white);
     box-sizing: border-box;
 }
 
 .version-edit-textarea {
     font-size: 0.8rem;
     font-weight: 400;
-    color: #aaa;
+    color: var(--gray-400);
     resize: none;
     line-height: 1.4;
     height: 1.6rem;
@@ -120,7 +120,7 @@
 .version-name {
     font-size: 0.875rem;
     font-weight: 500;
-    color: #ffffff;
+    color: var(--white);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -128,7 +128,7 @@
 
 .version-description {
     font-size: 0.8rem;
-    color: #aaa;
+    color: var(--gray-400);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -166,8 +166,8 @@
 .restore-version-btn {
     width: 100%;
     padding: 0.75rem;
-    background: #685fff;
-    color: #ffffff;
+    background: var(--accent-color);
+    color: var(--white);
     border: none;
     border-radius: 6px;
     font-size: 0.875rem;
@@ -176,7 +176,7 @@
     transition: background 0.2s;
 
     &:hover:not(:disabled) {
-        background: #574fd6;
+        background: var(--accent-color-hover);
     }
 
     &:disabled {
@@ -193,12 +193,12 @@
     border: none;
     text-align: left;
     font-size: 0.85rem;
-    color: #ddd;
+    color: var(--gray-300);
     cursor: pointer;
 
     &:hover {
         background-color: #353550;
-        color: #fff;
+        color: var(--white);
     }
 
     &--danger {

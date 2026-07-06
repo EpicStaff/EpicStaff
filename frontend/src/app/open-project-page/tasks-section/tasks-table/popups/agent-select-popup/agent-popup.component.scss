@@ -30,7 +30,7 @@ $transition-default: all 0.2s ease;
     border-radius: 8px;
     width: 400px;
     color: $text-primary;
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-family-base);
     box-shadow: 0 10px 40px $shadow-color;
     border: 1px solid $border-color;
     animation: fadeIn 0.3s ease;

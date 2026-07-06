@@ -37,7 +37,7 @@ app-flow-header {
     gap: 0.5rem;
     padding: 0.5rem 1rem;
     background: #2a1a1a;
-    color: #f87171;
+    color: var(--red-400);
     border: 1px solid #7f1d1d;
     border-radius: 8px;
     font-size: 0.85rem;
@@ -107,7 +107,7 @@ app-flow-header {
 
     &:hover {
         border-color: var(--accent-color, #675fff2a);
-        // border-color: var(--accent-color, #685fff);
+        // border-color: var(--accent-color, var(--accent-color));
     }
 
     &__icon {

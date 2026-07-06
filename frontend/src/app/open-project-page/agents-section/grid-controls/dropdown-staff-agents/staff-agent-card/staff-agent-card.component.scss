@@ -127,7 +127,7 @@
                     transform: scale(1.05);
 
                     .close-icon {
-                        color: var(--red-color, #dc3545);
+                        color: var(--red-color, var(--red-500));
                     }
                 }
 
@@ -136,7 +136,7 @@
                     transform: scale(0.95);
 
                     .close-icon {
-                        color: var(--red-color, #dc3545);
+                        color: var(--red-color, var(--red-500));
                     }
                 }
             }

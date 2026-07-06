@@ -64,7 +64,7 @@
                 display: flex;
                 gap: 0.25rem;
                 align-items: flex-start;
-                color: var(--color-text-primary, #d9d9de);
+                color: var(--color-text-primary, var(--color-text-primary));
                 max-width: 500px;
                 min-width: 0;
                 overflow: hidden;
@@ -82,7 +82,7 @@
                     color: rgba(255, 255, 255, 0.6);
 
                     &:hover {
-                        color: #ffffff;
+                        color: var(--white);
                     }
                 }
             }

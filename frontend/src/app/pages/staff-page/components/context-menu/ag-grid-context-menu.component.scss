@@ -36,10 +36,10 @@
 
             &:not(.divider):hover {
                 background: #292a2f;
-                color: #ffffff;
+                color: var(--white);
 
                 i.icon {
-                    color: #ffffff;
+                    color: var(--white);
                 }
             }
 

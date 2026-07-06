@@ -3,8 +3,8 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: var(--color-background-body, #212325);
-    border: 1px solid var(--color-ks-line, #2b2d30);
+    background: var(--color-background-body, var(--color-background-body));
+    border: 1px solid var(--color-ks-line, var(--graphite-750));
     border-radius: 0.625rem;
 
     .header {
@@ -22,7 +22,7 @@
 
     .error-message {
         background-color: rgba(255, 77, 79, 0.1);
-        color: var(--color-error, #ff4d4f);
+        color: var(--color-error, var(--red-500));
         padding: 0.75rem 1rem;
         margin: 1rem 1.5rem 0;
         border-radius: 4px;

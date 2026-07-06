@@ -10,7 +10,7 @@
         margin-bottom: 24px;
 
         h2 {
-            color: #ebebeb;
+            color: var(--gray-100);
             font-size: 18px;
             font-weight: 500;
             margin: 0;
@@ -27,7 +27,7 @@
             button {
                 background: transparent;
                 border: none;
-                color: #999;
+                color: var(--gray-500);
                 padding: 6px 12px;
                 border-radius: 4px;
                 cursor: pointer;
@@ -40,7 +40,7 @@
 
                 &.active {
                     background: rgba(154, 115, 175, 0.2);
-                    color: #ebebeb;
+                    color: var(--gray-100);
                 }
             }
         }
@@ -82,7 +82,7 @@
                 align-items: center;
 
                 .session-id {
-                    color: #ebebeb;
+                    color: var(--gray-100);
                     font-weight: 500;
                     min-width: 100px;
                 }
@@ -90,14 +90,14 @@
                 .session-times {
                     display: flex;
                     gap: 16px;
-                    color: #cccccc;
+                    color: var(--gray-300);
 
                     .time-label {
-                        color: #999;
+                        color: var(--gray-500);
                     }
 
                     .time-value {
-                        color: #ebebeb;
+                        color: var(--gray-100);
                     }
                 }
 
@@ -105,7 +105,7 @@
                     display: flex;
                     align-items: center;
                     gap: 8px;
-                    color: #cccccc;
+                    color: var(--gray-300);
                     text-transform: capitalize;
 
                     .status-indicator {
@@ -121,11 +121,11 @@
             }
 
             &.finished .status-indicator {
-                background: #2196f3;
+                background: var(--blue-400);
             }
 
             &.error .status-indicator {
-                background: #f44336;
+                background: var(--red-500);
             }
 
             .session-actions {
@@ -138,7 +138,7 @@
                     gap: 4px;
                     background: rgba(255, 255, 255, 0.05);
                     border: 1px solid rgba(255, 255, 255, 0.1);
-                    color: #ebebeb;
+                    color: var(--gray-100);
                     padding: 6px 12px;
                     border-radius: 4px;
                     cursor: pointer;

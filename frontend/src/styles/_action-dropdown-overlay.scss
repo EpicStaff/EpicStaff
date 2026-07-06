@@ -10,7 +10,7 @@
 
     &__separator {
         height: 1px;
-        background: var(--color-divider-regular, #333);
+        background: var(--color-divider-regular, var(--graphite-640));
         margin: 4px 0;
     }
 

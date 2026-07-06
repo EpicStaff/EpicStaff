@@ -32,7 +32,7 @@
             width: 18px;
             height: 18px;
             border-radius: 50%;
-            color: #a89fff;
+            color: var(--purple-300);
             background: rgba(104, 95, 255, 0.2);
             border: 1px solid rgba(104, 95, 255, 0.35);
             font-size: 0.75rem;
@@ -42,7 +42,7 @@
                 color 0.2s ease;
 
             &:hover {
-                color: #fff;
+                color: var(--white);
                 background: rgba(104, 95, 255, 0.45);
                 border-color: rgba(104, 95, 255, 0.6);
             }
@@ -61,9 +61,9 @@
     padding: 0 12px;
     border-radius: 6px;
     background: transparent;
-    border: 1px solid #2b2d30;
+    border: 1px solid var(--graphite-750);
     color: var(--color-text-primary);
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-family-base);
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
@@ -83,7 +83,7 @@
     width: 32px;
     height: 32px;
     border-radius: 6px;
-    border: 1px solid #2b2d30;
+    border: 1px solid var(--graphite-750);
     background: transparent;
     color: var(--accent-color);
     cursor: pointer;
@@ -98,7 +98,7 @@
 }
 
 .group-menu-dropdown {
-    background: #27272b;
+    background: var(--graphite-800);
     border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 6px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
@@ -115,7 +115,7 @@
 
     &:hover {
         background: rgba(104, 95, 255, 0.2);
-        color: #fff;
+        color: var(--white);
     }
 }
 
@@ -130,7 +130,7 @@
     align-items: center;
     gap: 0.4rem;
     background: var(--accent-color);
-    color: #ffffff;
+    color: var(--white);
     border: none;
     border-radius: 6px;
     padding: 0.4rem 0.85rem;
@@ -172,7 +172,7 @@
     border-radius: 4px;
     color: rgba(255, 255, 255, 0.85);
     font-size: 0.75rem;
-    font-family: 'Menlo', 'Monaco', monospace;
+    font-family: var(--font-family-mono);
 
     .field-chip-prefix {
         display: inline-flex;
@@ -183,7 +183,7 @@
         border-radius: 3px;
         font-size: 0.6rem;
         font-weight: 700;
-        font-family: system-ui, sans-serif;
+        font-family: var(--font-family-base);
         flex-shrink: 0;
     }
 
@@ -193,7 +193,7 @@
 
         .field-chip-prefix {
             background: rgba(104, 95, 255, 0.6);
-            color: #fff;
+            color: var(--white);
         }
     }
 
@@ -203,7 +203,7 @@
 
         .field-chip-prefix {
             background: rgba(255, 165, 0, 0.6);
-            color: #fff;
+            color: var(--white);
         }
     }
 
@@ -261,13 +261,13 @@
     &--expr:hover {
         background: rgba(104, 95, 255, 0.15);
         border-color: rgba(104, 95, 255, 0.4);
-        color: #fff;
+        color: var(--white);
     }
 
     &--manip:hover {
         background: rgba(255, 165, 0, 0.12);
         border-color: rgba(255, 165, 0, 0.4);
-        color: #fff;
+        color: var(--white);
     }
 }
 
@@ -309,7 +309,7 @@
     margin-left: 2px;
     border: 1px solid var(--color-text-primary);
     border-radius: 4px;
-    background: #212325;
+    background: var(--color-background-body);
     color: var(--color-text-primary);
     display: inline-flex;
     align-items: center;
@@ -368,7 +368,7 @@
     width: 20px;
     height: 20px;
     border-radius: 5px;
-    background: #27272b;
+    background: var(--graphite-800);
     border: 1px solid rgba(255, 255, 255, 0.25);
     color: rgba(255, 255, 255, 0.7);
     cursor: pointer;
@@ -387,7 +387,7 @@
 
     &:hover {
         background: var(--inactive-purple);
-        color: #fff;
+        color: var(--white);
         border-color: rgba(104, 95, 255, 0.7);
     }
 
@@ -424,8 +424,8 @@
 
     &:hover {
         background: rgba(104, 95, 255, 0.15);
-        color: #a89fff;
-        border-color: #a89fff;
+        color: var(--purple-300);
+        border-color: var(--purple-300);
     }
 
     i {
@@ -437,7 +437,7 @@
 .context-menu {
     position: fixed;
     z-index: 10000;
-    background: #27272b;
+    background: var(--graphite-800);
     border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 6px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
@@ -462,7 +462,7 @@
 
     &:hover {
         background: rgba(104, 95, 255, 0.2);
-        color: #fff;
+        color: var(--white);
 
         i {
             color: rgba(104, 95, 255, 0.9);
@@ -470,19 +470,19 @@
     }
 
     &--danger {
-        color: var(--error-color, #ff3b30);
+        color: var(--error-color, var(--red-500));
 
         i {
-            color: var(--error-color, #ff3b30);
+            color: var(--error-color, var(--red-500));
             opacity: 0.8;
         }
 
         &:hover {
             background: rgba(255, 59, 48, 0.15);
-            color: var(--error-color, #ff3b30);
+            color: var(--error-color, var(--red-500));
 
             i {
-                color: var(--error-color, #ff3b30);
+                color: var(--error-color, var(--red-500));
                 opacity: 1;
             }
         }
@@ -586,7 +586,7 @@
             border-radius: 3px !important;
 
             &.ag-checked {
-                background-color: #ffffff !important;
+                background-color: var(--white) !important;
 
                 &::after {
                     color: var(--accent-color) !important;
@@ -625,7 +625,7 @@
 
         .cell-warning {
             background-color: rgba(255, 59, 48, 0.15) !important;
-            border: 1px solid #ff3b30 !important;
+            border: 1px solid var(--red-500) !important;
         }
 
         .ag-root-wrapper:not(:focus-within) .ag-cell.cell-required-invalid,

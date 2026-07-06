@@ -23,15 +23,15 @@
         cursor: pointer;
 
         &:hover {
-            border-color: var(--active-color, var(--accent-color, #685fff));
+            border-color: var(--active-color, var(--accent-color, var(--accent-color)));
         }
 
         &--open {
-            border-color: var(--active-color, var(--accent-color, #685fff));
+            border-color: var(--active-color, var(--accent-color, var(--accent-color)));
         }
 
         &--error {
-            border-color: #ef4444;
+            border-color: var(--red-500);
         }
 
         &--disabled {
@@ -132,7 +132,7 @@
         }
 
         &--selected {
-            color: var(--active-color, var(--accent-color, #685fff));
+            color: var(--active-color, var(--accent-color, var(--accent-color)));
         }
 
         &--empty {
@@ -146,7 +146,7 @@
     }
 
     &__error {
-        color: #ef4444;
+        color: var(--red-500);
         font-size: 12px;
         margin-top: 4px;
         line-height: 1.4;

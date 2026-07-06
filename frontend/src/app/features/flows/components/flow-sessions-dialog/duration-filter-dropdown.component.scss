@@ -32,8 +32,8 @@
     top: calc(100% + 8px);
     left: 0;
     z-index: 1100;
-    background: var(--color-background-body, #23232a);
-    border: 1px solid var(--color-divider-regular, #333);
+    background: var(--color-background-body, var(--graphite-850));
+    border: 1px solid var(--color-divider-regular, var(--graphite-640));
     border-radius: 8px;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
     min-width: 240px;
@@ -51,7 +51,7 @@
 .op-btn {
     flex: 1;
     padding: 4px;
-    border: 1px solid var(--color-divider-regular, #333);
+    border: 1px solid var(--color-divider-regular, var(--graphite-640));
     border-radius: 4px;
     background: transparent;
     color: var(--color-text-secondary);
@@ -67,8 +67,8 @@
 
     &--active {
         background: rgba(94, 158, 255, 0.18);
-        border-color: var(--accent-color, #5e9eff);
-        color: var(--accent-color, #5e9eff);
+        border-color: var(--accent-color, var(--blue-400));
+        color: var(--accent-color, var(--blue-400));
     }
 }
 
@@ -80,7 +80,7 @@
 .unit-btn {
     flex: 1;
     padding: 4px;
-    border: 1px solid var(--color-divider-regular, #333);
+    border: 1px solid var(--color-divider-regular, var(--graphite-640));
     border-radius: 4px;
     background: transparent;
     color: var(--color-text-secondary);
@@ -95,8 +95,8 @@
 
     &--active {
         background: rgba(94, 158, 255, 0.18);
-        border-color: var(--accent-color, #5e9eff);
-        color: var(--accent-color, #5e9eff);
+        border-color: var(--accent-color, var(--blue-400));
+        color: var(--accent-color, var(--blue-400));
     }
 }
 
@@ -111,7 +111,7 @@
     flex: 1;
     min-width: 0;
     padding: 6px 8px;
-    border: 1px solid var(--color-divider-regular, #333);
+    border: 1px solid var(--color-divider-regular, var(--graphite-640));
     border-radius: 4px;
     background: transparent;
     color: var(--color-text-primary);
@@ -119,11 +119,11 @@
     outline: none;
 
     &:focus {
-        border-color: var(--accent-color, #5e9eff);
+        border-color: var(--accent-color, var(--blue-400));
     }
 
     &::placeholder {
-        color: var(--color-text-secondary, #888);
+        color: var(--color-text-secondary, var(--gray-500));
     }
 }
 
@@ -142,8 +142,8 @@
     padding: 4px 14px;
     border: none;
     border-radius: 4px;
-    background: var(--accent-color, #5e9eff);
-    color: #fff;
+    background: var(--accent-color, var(--blue-400));
+    color: var(--white);
     font-size: 12px;
     cursor: pointer;
 
@@ -154,7 +154,7 @@
 
 .clear-btn {
     padding: 4px 14px;
-    border: 1px solid var(--color-divider-regular, #333);
+    border: 1px solid var(--color-divider-regular, var(--graphite-640));
     border-radius: 4px;
     background: transparent;
     color: var(--color-text-secondary);

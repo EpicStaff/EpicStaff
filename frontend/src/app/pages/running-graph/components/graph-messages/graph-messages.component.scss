@@ -42,7 +42,7 @@
 
             &.disconnected {
                 background-color: rgba(239, 68, 68, 0.1);
-                color: #ef4444;
+                color: var(--red-500);
                 border: 1px solid rgba(239, 68, 68, 0.2);
             }
 
@@ -429,11 +429,11 @@
         .breadcrumb-button {
             background: transparent;
             border: none;
-            color: #00bfa5;
+            color: var(--teal-500);
             cursor: pointer;
             padding: 8px 16px;
             font-weight: 500;
-            border-left: 4px solid #00bfa5;
+            border-left: 4px solid var(--teal-500);
             border-radius: 8px;
             background-color: var(--color-nodes-background);
         }
@@ -484,7 +484,7 @@
         flex-shrink: 0;
         border-radius: 6px;
         border: 1px solid rgba(255, 255, 255, 0.1);
-        background-color: #2c2c2e;
+        background-color: var(--graphite-700);
         color: var(--color-ks-transparent-text-60);
         font-size: 16px;
         cursor: pointer;
@@ -503,9 +503,9 @@
 
         &:active,
         &[aria-pressed='true'] {
-            background-color: #685fff;
+            background-color: var(--accent-color);
             color: var(--color-text-primary);
-            border-color: #685fff;
+            border-color: var(--accent-color);
         }
     }
 
@@ -522,8 +522,8 @@
             height: 18px;
             padding: 0 5px;
             border-radius: 9px;
-            background-color: #685fff;
-            color: #fff;
+            background-color: var(--accent-color);
+            color: var(--white);
             font-size: 11px;
             font-weight: 600;
             line-height: 18px;

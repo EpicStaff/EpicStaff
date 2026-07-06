@@ -10,12 +10,12 @@
         h3 {
             margin: 0;
             font-size: 0.875rem;
-            color: #aaa;
+            color: var(--gray-400);
             font-weight: 500;
         }
 
         .add-icon {
-            color: #685fff;
+            color: var(--accent-color);
             cursor: pointer;
             padding: 4px;
             border-radius: 4px;
@@ -50,12 +50,12 @@
                 background-color: rgba(30, 30, 30, 0.6);
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 6px;
-                color: #fff;
+                color: var(--white);
                 padding: 8px 12px;
                 font-size: 0.875rem;
 
                 &:focus {
-                    border-color: #685fff;
+                    border-color: var(--accent-color);
                     outline: none;
                 }
 
@@ -84,12 +84,12 @@
                     cursor: pointer;
                     height: 16px;
                     width: 16px;
-                    accent-color: #685fff;
+                    accent-color: var(--accent-color);
                 }
 
                 .checkbox-label {
                     font-size: 0.75rem;
-                    color: #aaa;
+                    color: var(--gray-400);
                 }
             }
 
@@ -106,7 +106,7 @@
                 transition: all 0.2s ease;
 
                 &:hover {
-                    color: #ff4444;
+                    color: var(--red-500);
                     background-color: rgba(255, 68, 68, 0.1);
                 }
             }

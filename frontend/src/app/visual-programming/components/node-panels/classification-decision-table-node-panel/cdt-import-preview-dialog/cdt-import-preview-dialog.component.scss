@@ -5,7 +5,7 @@
     max-width: 92vw;
     max-height: 85vh;
     background: var(--color-modals-background, #1e1e22);
-    color: var(--color-text-primary, #fff);
+    color: var(--color-text-primary, var(--white));
     border-radius: 12px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     overflow: hidden;
@@ -25,7 +25,7 @@
     gap: 0.6rem;
 
     i {
-        color: #685fff;
+        color: var(--accent-color);
         font-size: 1.1rem;
     }
 }
@@ -53,7 +53,7 @@
 
     &:hover {
         background: rgba(255, 255, 255, 0.08);
-        color: #fff;
+        color: var(--white);
     }
 
     i {
@@ -102,7 +102,7 @@
 
 .meta-value {
     font-size: 0.9rem;
-    color: #fff;
+    color: var(--white);
     word-break: break-word;
 
     &--count {
@@ -197,8 +197,8 @@
     }
 
     &--primary {
-        background: #685fff;
-        color: #fff;
+        background: var(--accent-color);
+        color: var(--white);
 
         &:hover {
             background: #7a6fff;

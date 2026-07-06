@@ -18,7 +18,7 @@
         align-items: center;
         flex-shrink: 0;
         height: 1.75rem;
-        background: var(--color-background-body, #212325);
+        background: var(--color-background-body, var(--color-background-body));
         border: 1px solid var(--color-divider-subtle);
         border-radius: 0.5rem;
         overflow: hidden;
@@ -29,14 +29,14 @@
             justify-content: center;
             width: 1.75rem;
             height: 100%;
-            background: var(--color-ks-line, #2b2d30);
-            border: 1px solid var(--color-ks-line, #2b2d30);
-            color: var(--color-text-primary, #d9d9de);
+            background: var(--color-ks-line, var(--graphite-750));
+            border: 1px solid var(--color-ks-line, var(--graphite-750));
+            color: var(--color-text-primary, var(--color-text-primary));
             cursor: pointer;
             transition: background-color 0.2s ease;
 
             &:hover:not(:disabled) {
-                background: var(--accent-color, #685fff);
+                background: var(--accent-color, var(--accent-color));
             }
 
             &:disabled {
@@ -53,10 +53,10 @@
         .value {
             min-width: 2.5rem;
             text-align: center;
-            font-family: 'Inter', sans-serif;
+            font-family: var(--font-family-base);
             font-weight: 400;
             font-size: 0.625rem;
-            color: #ffffff;
+            color: var(--white);
         }
     }
 
@@ -90,7 +90,7 @@
             width: 1.25rem;
             height: 1.25rem;
             border-radius: 50%;
-            border: 2px solid var(--color-background-body, #212325);
+            border: 2px solid var(--color-background-body, var(--color-background-body));
             cursor: pointer;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
@@ -100,7 +100,7 @@
             width: 1.25rem;
             height: 1.25rem;
             border-radius: 50%;
-            border: 2px solid var(--color-background-body, #212325);
+            border: 2px solid var(--color-background-body, var(--color-background-body));
             cursor: pointer;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }

@@ -215,7 +215,7 @@
     background: transparent;
     border: none;
     cursor: pointer;
-    color: #ffffff;
+    color: var(--white);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -280,7 +280,7 @@
         background: var(--accent-color);
         border: none;
         cursor: pointer;
-        color: #ffffff;
+        color: var(--white);
         display: flex;
         align-items: center;
         justify-content: center;

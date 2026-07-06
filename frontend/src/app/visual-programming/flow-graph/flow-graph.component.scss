@@ -40,10 +40,10 @@
         }
 
         svg.f-marker circle {
-            fill: var(--marker-start-color, #555);
+            fill: var(--marker-start-color, var(--gray-600));
         }
         svg.f-marker path {
-            fill: var(--marker-end-color, #555);
+            fill: var(--marker-end-color, var(--gray-600));
         }
 
         &.f-selected {
@@ -148,19 +148,19 @@
                 align-items: center;
                 justify-content: center;
                 cursor: pointer;
-                background-color: #2a2a2a;
-                border: 1px solid #444;
+                background-color: var(--graphite-780);
+                border: 1px solid var(--gray-700);
                 box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
                 padding: 0;
                 transition: all 0.15s cubic-bezier(0.25, 0.8, 0.25, 1);
 
                 &:hover {
-                    background-color: #3a3a3a;
+                    background-color: var(--graphite-600);
                 }
 
                 &:active {
                     transform: scale(0.85);
-                    background-color: #444;
+                    background-color: var(--gray-700);
                 }
 
                 i {
@@ -169,13 +169,13 @@
 
                 &.plus-icon {
                     i {
-                        color: var(--accent-color, #2196f3);
+                        color: var(--accent-color, var(--blue-400));
                     }
                 }
 
                 &.delete-icon {
                     i {
-                        color: #aaa;
+                        color: var(--gray-400);
                         transition: color 0.2s ease;
                     }
 
@@ -183,7 +183,7 @@
                         background-color: rgba(255, 82, 82, 0.1);
 
                         i {
-                            color: #ff5252;
+                            color: var(--red-500);
                         }
                     }
 
@@ -263,7 +263,7 @@
                 fill: #e0575b;
             }
             &.Project-Node:not(.f-selected) {
-                fill: #5672cd;
+                fill: var(--blue-500);
             }
             &.Python-Node:not(.f-selected) {
                 fill: #ffcf3f;
@@ -302,7 +302,7 @@
                 left: -5px;
                 right: -5px;
                 bottom: -5px;
-                border: 1.5px dashed #b4b4b4;
+                border: 1.5px dashed var(--gray-400);
                 border-radius: 50%;
                 pointer-events: none;
                 animation: rotateBorder 3s linear infinite;
@@ -366,9 +366,9 @@
     font-size: 12px;
     font-weight: 400;
     border-radius: 4px;
-    border: 1.5px solid var(--color-divider-subtle, #444);
-    background: var(--color-surface-card, #232323);
-    color: var(--color-text-primary, #fff);
+    border: 1.5px solid var(--color-divider-subtle, var(--gray-700));
+    background: var(--color-surface-card, var(--graphite-825));
+    color: var(--color-text-primary, var(--white));
     cursor: pointer;
     transition:
         background 0.15s,
@@ -379,8 +379,8 @@
 
     &:hover,
     &:focus {
-        background: #222222;
-        color: #fff;
+        background: var(--graphite-850);
+        color: var(--white);
     }
 
     i {
@@ -418,9 +418,9 @@
     padding: 0.5rem 1.25rem;
     font-size: 12px;
     border-radius: 4px;
-    border: 1.5px solid var(--color-divider-subtle, #444);
-    background: var(--color-surface-card, #232323);
-    color: var(--color-text-primary, #fff);
+    border: 1.5px solid var(--color-divider-subtle, var(--gray-700));
+    background: var(--color-surface-card, var(--graphite-825));
+    color: var(--color-text-primary, var(--white));
     cursor: pointer;
     transition:
         background 0.15s,
@@ -432,13 +432,13 @@
 }
 .show-inputs-btn:hover,
 .show-inputs-btn:focus {
-    background: #222222;
-    color: #fff;
+    background: var(--graphite-850);
+    color: var(--white);
 }
 .show-inputs-btn.active {
-    background: #222222;
-    border-color: #888;
-    color: #fff;
+    background: var(--graphite-850);
+    border-color: var(--gray-500);
+    color: var(--white);
     font-weight: 600;
     box-shadow: 0 0 0 2px #222 inset;
 }
@@ -448,8 +448,8 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.4rem 1rem;
-    background: var(--color-surface-card, #232323);
-    border: 1.5px solid var(--color-divider-subtle, #444);
+    background: var(--color-surface-card, var(--graphite-825));
+    border: 1.5px solid var(--color-divider-subtle, var(--gray-700));
     border-radius: 4px;
 }
 
@@ -479,7 +479,7 @@
 
     &:active:not(:disabled) {
         transform: scale(0.95);
-        background-color: #685fff;
+        background-color: var(--accent-color);
         border-color: transparent;
     }
 

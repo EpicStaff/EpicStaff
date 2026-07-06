@@ -93,7 +93,7 @@ $radius: 8px;
     font-weight: 500;
     line-height: 1.6;
     cursor: pointer;
-    border: 1px solid #2b2d30;
+    border: 1px solid var(--graphite-750);
     background: transparent;
     transition:
         background 0.15s ease,
@@ -180,7 +180,7 @@ $radius: 8px;
     flex-shrink: 0;
     align-items: center;
     gap: 6px;
-    font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+    font-family: var(--font-family-mono);
     font-size: 13px;
     line-height: 1.5;
     color: #6a9955;
@@ -222,7 +222,7 @@ $radius: 8px;
     padding: 12px;
     color: $text;
     caret-color: $accent-light;
-    font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
+    font-family: var(--font-family-mono);
     font-size: 13px;
     line-height: 1.5;
     box-sizing: border-box;
@@ -240,8 +240,8 @@ $radius: 8px;
 .eb-mention-dropdown {
     position: absolute;
     z-index: 200;
-    background: #212325;
-    border: 1px solid #2b2d30;
+    background: var(--color-background-body);
+    border: 1px solid var(--graphite-750);
     border-radius: 4px;
     min-width: 180px;
     max-width: 260px;
@@ -255,14 +255,14 @@ $radius: 8px;
 
 .eb-mention-item {
     padding: 4px 12px;
-    font-family: 'Consolas', 'Courier New', monospace;
+    font-family: var(--font-family-mono);
     font-size: 13px;
     line-height: 1.4;
     color: $text;
     cursor: pointer;
 
     &:not(:last-child) {
-        border-bottom: 1px solid #2b2d30;
+        border-bottom: 1px solid var(--graphite-750);
     }
 
     &:hover {
@@ -293,7 +293,7 @@ $radius: 8px;
     gap: 6px;
     margin: 8px;
     padding: 6px 8px;
-    border: 1px solid #2b2d30;
+    border: 1px solid var(--graphite-750);
     border-radius: 4px;
     background: transparent;
 }
@@ -334,7 +334,7 @@ $radius: 8px;
     color: var(--color-text-primary);
     cursor: pointer;
     background: transparent;
-    border: 1px solid #2b2d30;
+    border: 1px solid var(--graphite-750);
     border-radius: 4px;
     transition: background 0.1s;
     white-space: nowrap;
@@ -368,8 +368,8 @@ $radius: 8px;
     padding: 4px 12px;
     font-size: 13px;
     font-weight: 500;
-    color: #d4d4d4;
-    background: #27272b;
+    color: var(--gray-300);
+    background: var(--graphite-800);
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 4px;
     cursor: pointer;

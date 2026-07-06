@@ -153,10 +153,10 @@
             animation: spin 2s linear infinite;
         }
         &--failed {
-            color: #f54242;
+            color: var(--red-500);
         }
         &--success {
-            color: #685fff;
+            color: var(--accent-color);
         }
     }
     &__error-message {

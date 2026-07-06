@@ -11,10 +11,10 @@
 
     &:focus {
         outline: none;
-        border-color: var(--active-color, #685fff);
+        border-color: var(--active-color, var(--accent-color));
     }
 
     &--invalid {
-        border-color: #ef4444;
+        border-color: var(--red-500);
     }
 }

@@ -21,10 +21,12 @@
     width: 420px;
     max-height: 480px;
     overflow-y: auto;
-    background: #1e1e1e;
+    background: var(--graphite-875);
     border: 1px solid rgba(104, 95, 255, 0.4);
     border-radius: 8px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255, 255, 255, 0.05);
     padding: 12px;
     display: flex;
     flex-direction: column;
@@ -60,8 +62,8 @@
 .ptp-title {
     font-weight: 600;
     font-size: 13px;
-    color: #e0e0e0;
-    font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+    color: var(--gray-200);
+    font-family: var(--font-family-mono);
 }
 
 .ptp-badge {
@@ -90,11 +92,11 @@
 .ptp-textarea {
     width: 100%;
     background: #141414;
-    color: #d4d4d4;
+    color: var(--gray-300);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 6px;
     padding: 8px 10px;
-    font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+    font-family: var(--font-family-mono);
     font-size: 12px;
     line-height: 1.5;
     resize: vertical;

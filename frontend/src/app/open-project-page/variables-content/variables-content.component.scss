@@ -1,14 +1,14 @@
 @use 'sass:color';
 
-$accent-color: var(--accent-color, #685fff);
+$accent-color: #685fff; // brand accent (kept literal for rgba())
 $accent-light: var(--accent-light, #8c7fff);
 $background-color: var(--gray-900);
 $card-background: var(--gray-850);
 $border-color: var(--gray-750);
 $text-color: var(--gray-50);
 $muted-text-color: var(--gray-400);
-$error-color: var(--red-500, #ff4444);
-$success-color: var(--green-500, #4caf50);
+$error-color: #f54242; // unified error red (kept literal for rgba())
+$success-color: #2aba6b; // unified success green (kept literal for rgba())
 
 @keyframes shake {
     0%,
@@ -129,7 +129,7 @@ $success-color: var(--green-500, #4caf50);
                 .chain-separator {
                     margin: 0 12px;
                     font-weight: bold;
-                    color: var(--accent-color, #685fff);
+                    color: var(--accent-color, var(--accent-color));
                     flex-shrink: 0;
                     font-size: 16px;
                 }
@@ -190,7 +190,7 @@ $success-color: var(--green-500, #4caf50);
                 }
 
                 .chain-separator {
-                    color: var(--accent-color, #685fff);
+                    color: var(--accent-color, var(--accent-color));
                     font-weight: bold;
                     font-size: 16px;
                 }
@@ -286,7 +286,7 @@ $success-color: var(--green-500, #4caf50);
                     color: $text-color;
                     transition: all 0.25s ease;
                     font-size: 14px;
-                    font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+                    font-family: var(--font-family-mono);
 
                     &.name-input {
                         min-width: 80px;
@@ -311,7 +311,7 @@ $success-color: var(--green-500, #4caf50);
                         outline: none;
                         border-color: $accent-color;
                         box-shadow: 0 0 0 1px rgba($accent-color, 0.3);
-                        background: var(--gray-725, #1e1e1e);
+                        background: var(--gray-725, var(--graphite-875));
                     }
 
                     &.invalid {
@@ -322,7 +322,7 @@ $success-color: var(--green-500, #4caf50);
 
                 .chain-separator {
                     font-weight: bold;
-                    color: var(--accent-color, #685fff);
+                    color: var(--accent-color, var(--accent-color));
                     flex-shrink: 0;
                     font-size: 16px;
                 }

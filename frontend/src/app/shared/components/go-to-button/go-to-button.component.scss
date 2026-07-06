@@ -32,7 +32,7 @@
         opacity: 0.4;
         cursor: not-allowed;
         pointer-events: none;
-        border-color: var(--color-border-disabled, #555);
+        border-color: var(--color-border-disabled, var(--gray-600));
         color: var(--color-text-disabled, #777);
         background-color: transparent;
     }

@@ -103,7 +103,7 @@
     &.has-row-error {
         ::ng-deep .time-picker__trigger,
         ::ng-deep .date-picker__trigger {
-            border-color: #ef4444;
+            border-color: var(--red-500);
         }
     }
 }
@@ -148,7 +148,7 @@
 
 .row-error {
     font-size: 0.75rem;
-    color: #ef4444;
+    color: var(--red-500);
     line-height: 1.4;
     margin-top: 4px;
 }

@@ -3,7 +3,7 @@
 }
 
 .dialog-container {
-    background-color: #1e1e1e;
+    background-color: var(--graphite-875);
     color: rgba(255, 255, 255, 0.9);
     display: flex;
     flex-direction: column;
@@ -108,7 +108,7 @@
 
             &.selected {
                 background-color: rgba(104, 95, 255, 0.1);
-                border-left: 3px solid #685fff;
+                border-left: 3px solid var(--accent-color);
             }
 
             &:last-child {
@@ -162,7 +162,7 @@
 
                         &:checked {
                             background-color: transparent;
-                            border-color: #685fff;
+                            border-color: var(--accent-color);
                         }
 
                         &:focus {
@@ -176,7 +176,7 @@
                         top: 2px;
                         width: 5px;
                         height: 10px;
-                        border: solid #685fff;
+                        border: solid var(--accent-color);
                         border-width: 0 2px 2px 0;
                         transform: rotate(45deg);
                         pointer-events: none;
@@ -221,11 +221,11 @@
         }
 
         &:last-child {
-            background-color: #685fff;
+            background-color: var(--accent-color);
             color: white;
 
             &:hover {
-                background-color: #7a70ff;
+                background-color: var(--purple-400);
             }
 
             &:disabled {
@@ -269,11 +269,11 @@
 
                 &.mdc-switch--checked {
                     .mdc-switch__track {
-                        background-color: #685fff;
+                        background-color: var(--accent-color);
                     }
 
                     .mdc-switch__handle-track {
-                        background-color: #685fff;
+                        background-color: var(--accent-color);
                     }
                 }
             }

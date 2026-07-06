@@ -89,7 +89,7 @@
     gap: 8px;
     cursor: pointer;
     font-size: 13px;
-    color: var(--color-text-primary, #fff);
+    color: var(--color-text-primary, var(--white));
     user-select: none;
     padding: 5px;
 
@@ -103,13 +103,13 @@
     width: 36px;
     height: 20px;
     border-radius: 5px;
-    background: var(--color-divider-regular, #444);
+    background: var(--color-divider-regular, var(--gray-700));
     transition: background 0.2s;
     cursor: pointer;
     flex-shrink: 0;
 
     &.active {
-        background: var(--accent-color, #5e9eff);
+        background: var(--accent-color, var(--blue-400));
     }
 
     &.disabled {
@@ -126,7 +126,7 @@
     width: 16px;
     height: 16px;
     border-radius: 30%;
-    background: #fff;
+    background: var(--white);
     transition: transform 0.2s;
 
     .toggle-switch.active & {
@@ -136,7 +136,7 @@
 
 .delete-btn {
     background: #e0575b !important;
-    color: #fff !important;
+    color: var(--white) !important;
     border: none;
     outline: none;
     padding: 6px 14px;
@@ -150,7 +150,7 @@
 
     &:hover {
         background: #b32b36 !important;
-        color: #fff !important;
+        color: var(--white) !important;
     }
 
     &--hidden {

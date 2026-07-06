@@ -192,7 +192,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
 
                         &.disabled-option {
                             cursor: default;
-                            color: #666666;
+                            color: var(--gray-600);
                             background: rgba(255, 255, 255, 0.02);
                             display: flex;
                             flex-direction: row;
@@ -203,7 +203,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
 
                             .coming-soon-label {
                                 font-size: 0.7rem;
-                                color: #888888;
+                                color: var(--gray-500);
                                 font-style: italic;
                                 font-weight: 300;
                             }

@@ -35,11 +35,11 @@
         }
 
         &:hover {
-            border-color: var(--accent-color, #685fff);
+            border-color: var(--accent-color, var(--accent-color));
         }
 
         &--open {
-            border-color: var(--accent-color, #685fff);
+            border-color: var(--accent-color, var(--accent-color));
         }
 
         &--default {
@@ -181,7 +181,7 @@
         }
 
         &--selected {
-            color: var(--accent-color, #685fff);
+            color: var(--accent-color, var(--accent-color));
             font-weight: 500;
         }
 

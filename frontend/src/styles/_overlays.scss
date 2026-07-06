@@ -12,7 +12,7 @@
 
 // Column header freeze/hide dropdown (CDK overlay, rendered to document body)
 .chm-dropdown {
-    background: #27272b;
+    background: var(--graphite-800);
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 6px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.55);
@@ -40,7 +40,7 @@
 
     &:hover {
         background: rgba(104, 95, 255, 0.2);
-        color: #fff;
+        color: var(--white);
 
         i {
             color: rgba(104, 95, 255, 0.85);

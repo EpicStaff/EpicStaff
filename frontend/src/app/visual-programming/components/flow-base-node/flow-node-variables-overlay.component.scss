@@ -13,7 +13,7 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    border: 1.5px solid var(--color-divider-subtle, #333);
+    border: 1.5px solid var(--color-divider-subtle, var(--graphite-640));
     max-height: 220px;
     overflow-y: auto;
     pointer-events: none;
@@ -23,7 +23,7 @@
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.5px;
-    color: #aaa;
+    color: var(--gray-400);
 }
 
 .inputs-list {
@@ -52,7 +52,7 @@
 }
 
 .equals-sign {
-    color: #fff;
+    color: var(--white);
     margin: 0 2px;
 }
 
@@ -80,7 +80,7 @@
     flex-direction: column;
     align-items: flex-start;
     pointer-events: none;
-    border: 1.5px solid var(--color-divider-subtle, #333);
+    border: 1.5px solid var(--color-divider-subtle, var(--graphite-640));
     max-height: 220px;
     overflow-y: auto;
 }
@@ -89,7 +89,7 @@
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.5px;
-    color: #aaa;
+    color: var(--gray-400);
     margin-bottom: 4px;
 }
 

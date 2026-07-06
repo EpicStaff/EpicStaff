@@ -43,7 +43,7 @@
                 color 0.2s ease;
 
             &:hover {
-                color: #fff;
+                color: var(--white);
                 background: rgba(104, 95, 255, 0.35);
             }
         }
@@ -60,7 +60,7 @@
         }
 
         .ti-trash {
-            color: #ff3b30;
+            color: var(--red-500);
             font-size: 1.1rem;
             transition: all 0.2s ease;
             cursor: pointer;
@@ -73,7 +73,7 @@
 
         .cell-warning {
             background-color: rgba(255, 59, 48, 0.15) !important;
-            border: 1px solid #ff3b30 !important;
+            border: 1px solid var(--red-500) !important;
         }
 
         // Fix for "No Rows To Show" message being cut off - only when empty

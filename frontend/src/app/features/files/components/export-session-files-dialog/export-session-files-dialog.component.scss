@@ -17,7 +17,7 @@
     }
 
     &__title {
-        font-family: Inter, sans-serif;
+        font-family: var(--font-family-base);
         font-size: 20px;
         font-weight: 500;
         line-height: 1;
@@ -84,7 +84,7 @@
         align-items: center;
         gap: 8px;
         flex-shrink: 0;
-        font-family: Inter, sans-serif;
+        font-family: var(--font-family-base);
         font-size: 14px;
         font-weight: 400;
     }

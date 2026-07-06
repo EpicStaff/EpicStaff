@@ -1,6 +1,6 @@
 .expression-editor-container {
     background-color: #1e1e20;
-    border: 1px solid #685fff;
+    border: 1px solid var(--accent-color);
     border-radius: 4px;
     box-shadow:
         0 0 0 2px rgba(104, 95, 255, 0.2),
@@ -31,9 +31,9 @@
         bottom: 0;
         z-index: 0;
         background-color: #1e1e20;
-        color: #d9d9de;
+        color: var(--color-text-primary);
         padding: 0.5rem;
-        font-family: 'JetBrains Mono', monospace;
+        font-family: var(--font-family-mono);
         font-size: 14px;
         line-height: 1.5;
         white-space: pre-wrap;
@@ -76,10 +76,10 @@
         height: 100%; // Fill wrapper
         background-color: transparent;
         color: transparent;
-        caret-color: #d9d9de;
+        caret-color: var(--color-text-primary);
         border: none;
         padding: 0.5rem;
-        font-family: 'JetBrains Mono', monospace;
+        font-family: var(--font-family-mono);
         font-size: 14px;
         resize: none;
         outline: none;

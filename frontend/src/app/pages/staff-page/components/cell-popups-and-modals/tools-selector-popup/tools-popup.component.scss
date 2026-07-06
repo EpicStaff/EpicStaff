@@ -50,7 +50,7 @@ $transition-default: all 0.2s ease;
     background-color: $bg-card; // Match LLM popup background
     box-shadow: 0 10px 40px $shadow-color; // Match LLM popup shadow
     color: $text-primary;
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-family-base);
     border: 1px solid $border-color;
     animation: fadeIn 0.3s ease;
     position: relative;

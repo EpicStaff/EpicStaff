@@ -16,7 +16,7 @@
         background: rgba(255, 255, 255, 0.06);
         border: none;
         border-radius: 8px;
-        color: #d4d4dc;
+        color: var(--fog-200);
         cursor: pointer;
         transition:
             background-color 0.15s ease,
@@ -24,7 +24,7 @@
 
         &:hover {
             background: rgba(255, 255, 255, 0.1);
-            color: #fff;
+            color: var(--white);
         }
 
         &:focus-visible {

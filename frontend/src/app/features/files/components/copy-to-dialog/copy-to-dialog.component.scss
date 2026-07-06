@@ -1,8 +1,8 @@
 .copy-to-dialog {
     display: flex;
     flex-direction: column;
-    background-color: #212325;
-    border: 1px solid #2b2d30;
+    background-color: var(--color-background-body);
+    border: 1px solid var(--graphite-750);
     border-radius: 10px;
     width: min(520px, 90vw);
 
@@ -11,7 +11,7 @@
         align-items: center;
         justify-content: space-between;
         padding: 1.25rem 1.5rem;
-        border-bottom: 1px solid #2b2d30;
+        border-bottom: 1px solid var(--graphite-750);
         flex-shrink: 0;
     }
 
@@ -69,7 +69,7 @@
         justify-content: space-between;
         padding: 0 0.75rem;
         height: 40px;
-        background-color: #2b2d30;
+        background-color: var(--graphite-750);
         border: 1px solid rgba(217, 217, 222, 0.16);
         border-radius: 4px;
         cursor: pointer;
@@ -112,8 +112,8 @@
         top: calc(100% + 4px);
         left: 0;
         right: 0;
-        background-color: #212325;
-        border: 1px solid #2b2d30;
+        background-color: var(--color-background-body);
+        border: 1px solid var(--graphite-750);
         border-radius: 6px;
         box-shadow:
             0 2px 8px rgba(0, 0, 0, 0.4),
@@ -131,7 +131,7 @@
         gap: 0.5rem;
         padding: 0 0.75rem;
         height: 40px;
-        border-bottom: 1px solid #2b2d30;
+        border-bottom: 1px solid var(--graphite-750);
         flex-shrink: 0;
     }
 
@@ -244,7 +244,7 @@
         justify-content: flex-end;
         gap: 0.75rem;
         padding: 1rem 1.5rem;
-        border-top: 1px solid #2b2d30;
+        border-top: 1px solid var(--graphite-750);
         flex-shrink: 0;
     }
 
@@ -262,8 +262,8 @@
 
         &--cancel {
             background: transparent;
-            border: 1px solid #685fff;
-            color: #685fff;
+            border: 1px solid var(--accent-color);
+            color: var(--accent-color);
 
             &:hover {
                 background-color: rgba(104, 95, 255, 0.08);
@@ -271,9 +271,9 @@
         }
 
         &--confirm {
-            background: #685fff;
+            background: var(--accent-color);
             border: none;
-            color: #d9d9de;
+            color: var(--color-text-primary);
 
             &:hover:not(:disabled) {
                 background-color: rgba(104, 95, 255, 0.85);

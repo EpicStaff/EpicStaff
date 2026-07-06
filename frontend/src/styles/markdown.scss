@@ -1,7 +1,7 @@
 @use 'sass:color';
 
 .markdown-content {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-family-base);
     line-height: 1.6;
     color: var(--gray-200);
 
@@ -52,7 +52,7 @@
 
     // Links
     a {
-        color: #5672cd;
+        color: var(--blue-500);
         text-decoration: none;
         transition: color 0.2s ease;
 
@@ -97,7 +97,7 @@
         margin-bottom: 0.5em;
 
         &::marker {
-            color: #5672cd;
+            color: var(--blue-500);
         }
 
         p {
@@ -116,7 +116,7 @@
         padding: 0.5em 1em;
         color: var(--gray-300);
         background-color: rgba(86, 114, 205, 0.1);
-        border-left: 4px solid #5672cd;
+        border-left: 4px solid var(--blue-500);
 
         p {
             margin-bottom: 0.5em;
@@ -174,7 +174,7 @@
 
     // Code
     code {
-        font-family: 'SFMono-Regular', Consolas, monospace;
+        font-family: var(--font-family-mono);
         font-size: 0.9em;
         padding: 0.2em 0.4em;
         background-color: var(--gray-750);
@@ -191,16 +191,16 @@
         border: 1px solid var(--gray-700);
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         overflow-x: auto;
-        font-family: 'Fira Mono', 'SFMono-Regular', Consolas, monospace;
+        font-family: var(--font-family-mono);
         font-size: 0.98em;
-        color: #e6e6e6;
+        color: var(--gray-200);
     }
 
     pre code {
         display: block;
         padding: 0;
         background: none;
-        color: #e6e6e6;
+        color: var(--gray-200);
         border: none;
         box-shadow: none;
     }
@@ -215,7 +215,7 @@
 // Dark mode adjustments
 @media (prefers-color-scheme: dark) {
     .markdown-content pre code {
-        color: #e6e6e6;
+        color: var(--gray-200);
     }
 }
 
@@ -270,8 +270,8 @@ app-flow-assistant-panel .message__text {
 // Print styles
 @media print {
     .markdown-content {
-        color: #000;
-        background-color: #fff;
+        color: var(--black);
+        background-color: var(--white);
 
         a {
             color: #0066cc;
@@ -281,7 +281,7 @@ app-flow-assistant-panel .message__text {
         pre,
         code {
             background-color: #f1f1f1;
-            border: 1px solid #ddd;
+            border: 1px solid var(--gray-300);
         }
     }
 }

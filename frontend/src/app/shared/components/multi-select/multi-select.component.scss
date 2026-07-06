@@ -97,12 +97,12 @@
             }
 
             ::ng-deep app-checkbox input[type='checkbox']:checked {
-                background: #ffffff;
-                border-color: #ffffff;
+                background: var(--white);
+                border-color: var(--white);
             }
 
             ::ng-deep app-checkbox input[type='checkbox']:checked::after {
-                border-color: #1e1e1e;
+                border-color: var(--graphite-875);
             }
 
             // Suppress the purple selected-row border for white-checkbox mode

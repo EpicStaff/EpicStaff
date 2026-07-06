@@ -55,9 +55,9 @@ $transition-default: all 0.2s ease;
     padding: 4px 10px;
     line-height: 1.2;
     border-radius: 6px;
-    background-color: #2a2a2a;
-    color: #e6e6e6;
-    border: 1px solid #3a3a3a;
+    background-color: var(--graphite-780);
+    color: var(--gray-200);
+    border: 1px solid var(--graphite-600);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
     transition: all 0.15s ease;
     cursor: pointer;
@@ -71,8 +71,8 @@ $transition-default: all 0.2s ease;
 }
 
 ::ng-deep .ag-grid-staff .tag:hover {
-    background-color: #333;
-    border-color: #444;
+    background-color: var(--graphite-640);
+    border-color: var(--gray-700);
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
 }
@@ -85,12 +85,12 @@ $transition-default: all 0.2s ease;
     gap: 4px;
     margin: 5px 0;
     padding: 5px;
-    color: #f0f0f0; // Light text for visibility
+    color: var(--gray-100); // Light text for visibility
 
     .tool-item {
         display: flex;
         align-items: center;
-        background-color: #2a2a2a;
+        background-color: var(--graphite-780);
         border: 1px solid $border-color;
 
         border-radius: 4px;
@@ -101,10 +101,10 @@ $transition-default: all 0.2s ease;
         .tool-icon {
             margin-right: 6px;
             font-style: normal;
-            color: #f0f0f0; // Light icon color
+            color: var(--gray-100); // Light icon color
         }
         &:hover {
-            background-color: #3a3a3a;
+            background-color: var(--graphite-600);
         }
         .tool-name-text {
             white-space: nowrap;
@@ -112,7 +112,7 @@ $transition-default: all 0.2s ease;
             text-overflow: ellipsis;
             font-size: 13px;
             font-weight: 500;
-            color: #f0f0f0; // Light text color
+            color: var(--gray-100); // Light text color
         }
     }
 }
@@ -181,7 +181,7 @@ $transition-default: all 0.2s ease;
     }
 }
 ::ng-deep .ag-grid-staff .ag-cell.popup-open {
-    border: 1px solid #6562f5 !important; /* Example: a blue border */
+    border: 1px solid var(--accent-color) !important; /* Example: a blue border */
 }
 // Update the llm-item class with padding
 ::ng-deep .ag-grid-staff {
@@ -196,7 +196,7 @@ $transition-default: all 0.2s ease;
         align-items: center;
         margin: 0 !important; // Remove the margin since we now have padding on the cell
         padding: 8px 8px;
-        background-color: #2a2a2a;
+        background-color: var(--graphite-780);
         border-radius: 4px;
         cursor: default;
         transition:
@@ -206,7 +206,7 @@ $transition-default: all 0.2s ease;
         border: 1px solid #404040;
 
         &:hover {
-            background-color: #3a3a3a;
+            background-color: var(--graphite-600);
         }
 
         .chatgpt-logo {
@@ -235,7 +235,7 @@ $transition-default: all 0.2s ease;
                 max-width: 100%;
 
                 .custom-name {
-                    color: #aaa;
+                    color: var(--gray-400);
                     margin-left: 5px;
                     white-space: nowrap;
                     overflow: hidden;
@@ -250,7 +250,7 @@ $transition-default: all 0.2s ease;
         display: flex;
         align-items: flex-end;
         justify-content: flex-end;
-        color: #aaa;
+        color: var(--gray-400);
         font-style: italic;
         padding: 4px 8px;
         font-size: 0.8rem;

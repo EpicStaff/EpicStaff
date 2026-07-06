@@ -8,7 +8,7 @@
     height: 100%;
     overflow: auto;
     box-sizing: border-box;
-    color: #fff;
+    color: var(--white);
 
     .sticky-header {
         position: sticky;

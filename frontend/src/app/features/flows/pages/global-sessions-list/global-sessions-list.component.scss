@@ -87,13 +87,13 @@
             width: 36px;
             height: 20px;
             border-radius: 5px;
-            background: var(--color-divider-regular, #444);
+            background: var(--color-divider-regular, var(--gray-700));
             transition: background 0.2s;
             cursor: pointer;
             flex-shrink: 0;
 
             &.active {
-                background: var(--accent-color, #5e9eff);
+                background: var(--accent-color, var(--blue-400));
 
                 .toggle-thumb {
                     transform: translateX(16px);
@@ -108,7 +108,7 @@
             width: 16px;
             height: 16px;
             border-radius: 30%;
-            background: #fff;
+            background: var(--white);
             transition: transform 0.2s;
         }
 
@@ -121,7 +121,7 @@
 
         .delete-btn {
             background: #e0575b;
-            color: #fff;
+            color: var(--white);
             border: none;
             outline: none;
             padding: 6px 16px;
@@ -297,7 +297,7 @@
     .preview-open-btn {
         background: var(--accent-color);
         border: none;
-        color: #fff;
+        color: var(--white);
         width: 28px;
         height: 28px;
         padding: 0;
@@ -310,7 +310,7 @@
         transition: background 0.18s;
 
         &:hover {
-            background: var(--accent-color-hover, color-mix(in srgb, var(--accent-color) 80%, #000));
+            background: var(--accent-color-hover, color-mix(in srgb, var(--accent-color) 80%, var(--black)));
         }
     }
 

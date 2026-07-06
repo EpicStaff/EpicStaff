@@ -23,15 +23,15 @@
         cursor: pointer;
 
         &:hover {
-            border-color: var(--active-color, var(--accent-color, #685fff));
+            border-color: var(--active-color, var(--accent-color, var(--accent-color)));
         }
 
         &--open {
-            border-color: var(--active-color, var(--accent-color, #685fff));
+            border-color: var(--active-color, var(--accent-color, var(--accent-color)));
         }
 
         &--error {
-            border-color: #ef4444;
+            border-color: var(--red-500);
         }
 
         &--disabled {
@@ -122,7 +122,7 @@
         height: 28px;
         border-radius: 4px;
         border: none;
-        background: #2b2d30;
+        background: var(--graphite-750);
         color: var(--color-text-primary);
         cursor: pointer;
         transition:
@@ -131,8 +131,8 @@
         padding: 0;
 
         &:hover {
-            background: var(--active-color, var(--accent-color, #685fff));
-            color: #fff;
+            background: var(--active-color, var(--accent-color, var(--accent-color)));
+            color: var(--white);
         }
     }
 
@@ -177,7 +177,7 @@
         }
 
         &--today:not(&--selected) {
-            color: var(--active-color, var(--accent-color, #685fff));
+            color: var(--active-color, var(--accent-color, var(--accent-color)));
             font-weight: 500;
         }
 
@@ -198,7 +198,7 @@
     }
 
     &__error {
-        color: #ef4444;
+        color: var(--red-500);
         font-size: 12px;
         margin-top: 4px;
         line-height: 1.4;

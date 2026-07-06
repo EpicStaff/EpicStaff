@@ -76,7 +76,7 @@
         bottom: 0;
         left: 0;
         width: calc(100% / var(--option-count));
-        background: var(--accent-color, #685fff);
+        background: var(--accent-color, var(--accent-color));
         transition: transform 0.2s ease;
         pointer-events: none;
     }
@@ -96,7 +96,7 @@
         padding: 0;
 
         &--active {
-            color: #fff;
+            color: var(--white);
         }
 
         &:not(&--active):hover {

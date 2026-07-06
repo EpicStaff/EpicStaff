@@ -129,7 +129,7 @@
 
     .configure-btn {
         background: var(--accent-color);
-        color: #fff;
+        color: var(--white);
         border: none;
         border-radius: 6px;
         padding: 0.35rem 1.1rem;
@@ -175,7 +175,7 @@
         color: var(--color-text-secondary);
         transition: color 0.18s ease;
         &:hover {
-            color: #f44336;
+            color: var(--red-500);
         }
     }
 }

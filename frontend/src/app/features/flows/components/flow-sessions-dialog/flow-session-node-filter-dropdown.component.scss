@@ -10,8 +10,8 @@
     top: calc(100% + 4px);
     left: 0;
     z-index: 100;
-    background: var(--color-background-body, #23232a);
-    border: 1px solid var(--color-divider-regular, #333);
+    background: var(--color-background-body, var(--graphite-850));
+    border: 1px solid var(--color-divider-regular, var(--graphite-640));
     border-radius: 8px;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
     min-width: 220px;
@@ -22,10 +22,10 @@
     align-items: center;
     gap: 6px;
     padding: 8px 10px;
-    border-bottom: 1px solid var(--color-divider-regular, #333);
+    border-bottom: 1px solid var(--color-divider-regular, var(--graphite-640));
 
     .search-icon {
-        color: var(--color-text-secondary, #888);
+        color: var(--color-text-secondary, var(--gray-500));
         flex-shrink: 0;
     }
 
@@ -35,10 +35,10 @@
         outline: none;
         background: transparent;
         font-size: 13px;
-        color: var(--color-text-primary, #fff);
+        color: var(--color-text-primary, var(--white));
 
         &::placeholder {
-            color: var(--color-text-secondary, #aaa);
+            color: var(--color-text-secondary, var(--gray-400));
         }
     }
 
@@ -47,12 +47,12 @@
         border: none;
         cursor: pointer;
         padding: 0;
-        color: var(--color-text-secondary, #888);
+        color: var(--color-text-secondary, var(--gray-500));
         display: flex;
         align-items: center;
 
         &:hover {
-            color: var(--color-text-primary, #fff);
+            color: var(--color-text-primary, var(--white));
         }
     }
 }
@@ -74,7 +74,7 @@
         margin-bottom: 5px;
         cursor: pointer;
         font-size: 1em;
-        color: var(--color-text-primary, #fff);
+        color: var(--color-text-primary, var(--white));
         transition:
             background 0.15s,
             color 0.15s;
@@ -89,7 +89,7 @@
 
         &.no-results {
             cursor: default;
-            color: var(--color-text-secondary, #888);
+            color: var(--color-text-secondary, var(--gray-500));
             justify-content: center;
 
             &:hover {
@@ -113,10 +113,10 @@
     gap: 8px;
     padding: 4px;
     justify-content: space-between;
-    border: 1px solid var(--color-divider-regular, #333);
+    border: 1px solid var(--color-divider-regular, var(--graphite-640));
     border-radius: 6px;
-    background: var(--color-background-body, #23232a);
-    color: var(--color-text-primary, #fff);
+    background: var(--color-background-body, var(--graphite-850));
+    color: var(--color-text-primary, var(--white));
     font-size: 1em;
     cursor: pointer;
     outline: none;
@@ -127,7 +127,7 @@
     &:focus,
     &:hover {
         border-color: var(--accent-color);
-        background: #23232a;
+        background: var(--graphite-850);
     }
 
     .selected-label {
@@ -152,7 +152,7 @@
 }
 
 .checkmark {
-    color: var(--accent-color, #5e9eff);
+    color: var(--accent-color, var(--blue-400));
     font-size: 0.95em;
     margin-left: auto;
     font-weight: bold;
@@ -166,10 +166,10 @@
     align-items: center;
     gap: 8px;
     padding: 6px 14px 4px;
-    font-family: 'inter';
+    font-family: var(--font-family-base);
     font-size: 11px;
     font-weight: 400;
-    color: var(--color-text-secondary, #888);
+    color: var(--color-text-secondary, var(--gray-500));
     text-transform: uppercase;
     letter-spacing: 0.05em;
     cursor: default;
@@ -193,16 +193,16 @@
 
 .clear-filter-footer {
     padding: 8px 10px;
-    border-top: 1px solid var(--color-divider-regular, #333);
+    border-top: 1px solid var(--color-divider-regular, var(--graphite-640));
     display: flex;
     justify-content: flex-end;
 }
 
 .clear-filter-btn {
     background: none;
-    border: 1px solid var(--accent-color, #5e9eff);
+    border: 1px solid var(--accent-color, var(--blue-400));
     border-radius: 6px;
-    color: var(--accent-color, #5e9eff);
+    color: var(--accent-color, var(--blue-400));
     font-size: 12px;
     padding: 4px 12px;
     cursor: pointer;

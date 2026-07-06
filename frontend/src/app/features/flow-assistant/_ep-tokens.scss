@@ -27,7 +27,7 @@
     // chat-specific surface colours
     --ep-chat-bg-answer: var(--ep-color-surface-alt);
     --ep-chat-bg-question: var(--ep-color-accent);
-    --ep-chat-text-question: #ffffff;
+    --ep-chat-text-question: var(--white);
 
     // menu panel
     --ep-menu-panel-item-hover-bg: rgba(255, 255, 255, 0.06);
@@ -48,5 +48,5 @@
     --ep-button-secondary-hover-bg: rgba(154, 115, 175, 0.1);
 
     // typography
-    --ep-font-family: 'Inter', 'Inter var', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    --ep-font-family: var(--font-family-base);
 }
