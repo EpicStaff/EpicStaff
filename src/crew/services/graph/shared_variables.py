@@ -1,3 +1,4 @@
+
 """
 Shared Variables Module for cross-session coordination.
 
@@ -115,7 +116,6 @@ def _run_async(coro):
 
     if loop and loop.is_running():
         import concurrent.futures
-
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(asyncio.run, coro)
             return future.result(timeout=10)
@@ -221,9 +221,7 @@ class SharedVariableScope:
         await r.set(f"{var_id}:data", raw, ex=_DEFAULT_TTL)
         await r.sadd(f"{var_id}:sessions", self._session_id)
         await r.sadd(f"session:{self._session_id}:variables", var_id)
-        await r.set(
-            f"session:{self._session_id}:status", "active", nx=True, ex=_DEFAULT_TTL
-        )
+        await r.set(f"session:{self._session_id}:status", "active", nx=True, ex=_DEFAULT_TTL)
         self._cache[name] = value
 
     async def get(self, name: str) -> Any:
@@ -399,9 +397,7 @@ async def cleanup_session(
         await r.delete(f"session:{sid}:variables")
 
     except Exception as e:
-        logger.warning(
-            f"Error cleaning up shared variables for session {session_id}: {e}"
-        )
+        logger.warning(f"Error cleaning up shared variables for session {session_id}: {e}")
 
 
 # ---------------------------------------------------------------------------

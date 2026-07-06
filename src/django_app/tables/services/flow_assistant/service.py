@@ -22,11 +22,7 @@ from django.utils import timezone
 
 from utils.logger import logger
 
-from tables.exceptions import (
-    LLMConfigMissingError,
-    LLMConfigInvalidError,
-    ToolExecutionError,
-)
+from tables.exceptions import LLMConfigMissingError, LLMConfigInvalidError, ToolExecutionError
 from tables.models.flow_assistant_models import (
     FlowAssistant,
     FlowAssistantConversation,
@@ -212,9 +208,7 @@ class FlowAssistantService:
         last_message_at in a single atomic block. Returns the created row.
         """
         with transaction.atomic():
-            next_idx_result = conversation.message_rows.aggregate(
-                m=Max("message_index")
-            )
+            next_idx_result = conversation.message_rows.aggregate(m=Max("message_index"))
             next_idx = next_idx_result["m"]
             next_idx = 0 if next_idx is None else next_idx + 1
             row = FlowAssistantMessage.objects.create(

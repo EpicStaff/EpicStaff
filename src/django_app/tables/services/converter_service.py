@@ -581,13 +581,13 @@ class ConverterService(metaclass=SingletonMeta):
         python_code_tool: PythonCodeTool,
         graph_id: int | None = None,
         session_id: int | None = None,
-    ) -> PythonCodeToolData:
+    ) -> PythonCodeToolData:      
         storage_allowed_paths = None
         storage_org_prefix = None
         if python_code_tool.use_storage and graph_id is not None:
             storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
-            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
-
+            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)        
+        
         variables = python_code_tool.variables or []
         user_defaults = self._get_user_input_defaults(variables)
         python_code_data = self.convert_python_code_to_pydantic(

@@ -65,9 +65,7 @@ class LiteLLMClient(BaseLLMClient):
             raise UnsupportedLLMProviderError("(empty model name)")
 
         provider_name = (
-            (model.llm_provider.name or "").lower().strip()
-            if model.llm_provider
-            else ""
+            (model.llm_provider.name or "").lower().strip() if model.llm_provider else ""
         )
 
         if not provider_name or provider_name == "openai":
