@@ -4,6 +4,7 @@ import { ColorEvent } from 'ngx-color';
 import { ColorChromeModule } from 'ngx-color/chrome';
 
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { TokenPreviewComponent } from '../../components/token-preview/token-preview.component';
 import { THEME_TOKEN_GROUPS } from '../../data/theme-tokens';
 import { CustomTheme } from '../../models/theme.model';
 import { CustomThemeService } from '../../services/custom-theme.service';
@@ -14,7 +15,7 @@ const LIGHT_PREVIEW = ['#f8fafc', '#ffffff', '#685fff', '#1e293b'];
 @Component({
     selector: 'app-appearance-page',
     standalone: true,
-    imports: [NgStyle, AppSvgIconComponent, ColorChromeModule],
+    imports: [NgStyle, AppSvgIconComponent, ColorChromeModule, TokenPreviewComponent],
     templateUrl: './appearance-page.component.html',
     styleUrls: ['./appearance-page.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

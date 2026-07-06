@@ -1,0 +1,19 @@
+@if (token().samples; as samples) {
+    <div class="preview">
+        @for (sample of samples; track $index) {
+            <span
+                class="preview__sample preview__sample--{{ sample.kind }}"
+                [class.preview__sample--prop-background]="sample.prop === 'background'"
+                [class.preview__sample--prop-color]="sample.prop === 'color'"
+                [class.preview__sample--prop-border]="sample.prop === 'border'"
+                [class.preview__sample--prop-thumb]="sample.prop === 'thumb'"
+                [class.preview__sample--hover]="sample.hover"
+                [class.preview__sample--active]="sample.active"
+                [style.--preview-token]="'var(' + token().name + ')'"
+                >{{ sample.label }}</span
+            >
+        }
+    </div>
+} @else {
+    <p class="preview__description">{{ token().description }}</p>
+}

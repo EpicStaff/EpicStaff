@@ -1,0 +1,256 @@
+:host {
+    display: block;
+    min-width: 0;
+}
+
+.preview {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: nowrap;
+    overflow: hidden;
+
+    &__description {
+        margin: 0;
+        font-size: var(--font-size-xs);
+        font-style: italic;
+        color: var(--color-text-tertiary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    &__sample {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        max-height: 32px;
+        font-size: var(--font-size-xs);
+        line-height: var(--line-height-tight);
+        white-space: nowrap;
+        user-select: none;
+        cursor: default;
+        transition:
+            background 0.15s ease,
+            color 0.15s ease,
+            border-color 0.15s ease;
+    }
+
+    // ---------------------------------------------------------------
+    // Sample kinds (base look built from current theme tokens)
+    // ---------------------------------------------------------------
+    &__sample--button {
+        padding: 4px 10px;
+        border-radius: var(--radius-md);
+        background: var(--accent-color);
+        color: var(--color-text-primary);
+        cursor: pointer;
+    }
+
+    &__sample--ghost-button {
+        padding: 4px 10px;
+        border-radius: var(--radius-md);
+        background: transparent;
+        color: var(--color-text-secondary);
+        cursor: pointer;
+    }
+
+    &__sample--text {
+        padding: 3px 8px;
+        border-radius: var(--radius-sm);
+        background: var(--color-background-body);
+        color: var(--color-text-primary);
+    }
+
+    &__sample--input {
+        width: 84px;
+        padding: 4px 8px;
+        justify-content: flex-start;
+        border: 1px solid var(--color-input-border);
+        border-radius: var(--radius-md);
+        background: var(--color-input-background);
+        color: var(--color-input-text-placeholder);
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    &__sample--surface {
+        padding: 5px 10px;
+        border: 1px solid var(--color-divider-subtle);
+        border-radius: var(--radius-md);
+        background: var(--color-surface);
+        color: var(--color-text-secondary);
+    }
+
+    &__sample--card {
+        padding: 5px 10px;
+        border: 1px solid var(--color-components-card-border);
+        border-radius: var(--radius-lg);
+        background: var(--color-surface-card);
+        color: var(--color-text-secondary);
+    }
+
+    &__sample--border-box {
+        width: 40px;
+        height: 22px;
+        border: 2px solid var(--color-border);
+        border-radius: var(--radius-md);
+        background: transparent;
+    }
+
+    &__sample--divider {
+        width: 90px;
+        height: 20px;
+        flex-direction: column;
+        justify-content: space-between;
+        align-items: stretch;
+        background: linear-gradient(var(--preview-token), var(--preview-token)) center / 100% 1px no-repeat;
+
+        &::before,
+        &::after {
+            content: '';
+            height: 4px;
+            border-radius: var(--radius-full);
+            background: var(--transparent-white-8);
+        }
+    }
+
+    &__sample--badge {
+        padding: 3px 8px;
+        border-radius: var(--radius-full);
+        background: var(--transparent-white-4);
+        color: var(--color-text-primary);
+    }
+
+    &__sample--dot {
+        width: 10px;
+        height: 10px;
+        border-radius: var(--radius-full);
+        background: var(--color-text-tertiary);
+    }
+
+    &__sample--scrollbar {
+        position: relative;
+        width: 10px;
+        height: 30px;
+        border-radius: var(--radius-full);
+        background: var(--transparent-white-4);
+
+        &::after {
+            content: '';
+            position: absolute;
+            left: 2px;
+            right: 2px;
+            top: 3px;
+            height: 13px;
+            border-radius: var(--radius-full);
+            background: var(--color-scrollbar-thumb);
+            transition: background 0.15s ease;
+        }
+    }
+
+    &__sample--node {
+        padding: 5px 10px;
+        border: 1px solid var(--color-nodes-actionbar-border);
+        border-radius: var(--radius-lg);
+        background: var(--color-nodes-background);
+        color: var(--color-text-secondary);
+    }
+
+    &__sample--link {
+        padding: 3px 6px;
+        border-radius: var(--radius-sm);
+        background: transparent;
+        color: var(--accent-color);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        cursor: pointer;
+    }
+
+    &__sample--backdrop {
+        position: relative;
+        width: 48px;
+        height: 24px;
+        border: 1px solid var(--color-divider-subtle);
+        border-radius: var(--radius-md);
+        background: repeating-conic-gradient(var(--color-divider-strong) 0% 25%, transparent 0% 50%) 0 0 / 12px 12px;
+        overflow: hidden;
+
+        &::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: var(--preview-token);
+        }
+    }
+
+    &__sample--asterisk {
+        padding: 3px 8px;
+        border-radius: var(--radius-sm);
+        background: var(--color-background-body);
+        color: var(--color-text-secondary);
+
+        &::after {
+            content: ' *';
+            white-space: pre;
+            color: var(--preview-token);
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Token application: which property the token drives, and in
+    // which interaction state it becomes visible.
+    // ---------------------------------------------------------------
+    &__sample--prop-background {
+        &:not(.preview__sample--hover):not(.preview__sample--active) {
+            background: var(--preview-token);
+        }
+
+        &.preview__sample--hover:hover {
+            background: var(--preview-token);
+        }
+
+        &.preview__sample--active:active {
+            background: var(--preview-token);
+        }
+    }
+
+    &__sample--prop-color {
+        &:not(.preview__sample--hover):not(.preview__sample--active) {
+            color: var(--preview-token);
+        }
+
+        &.preview__sample--hover:hover {
+            color: var(--preview-token);
+        }
+
+        &.preview__sample--active:active {
+            color: var(--preview-token);
+        }
+    }
+
+    &__sample--prop-border {
+        &:not(.preview__sample--hover):not(.preview__sample--active) {
+            border-color: var(--preview-token);
+        }
+
+        &.preview__sample--hover:hover {
+            border-color: var(--preview-token);
+        }
+
+        &.preview__sample--active:active {
+            border-color: var(--preview-token);
+        }
+    }
+
+    &__sample--prop-thumb {
+        &:not(.preview__sample--hover)::after {
+            background: var(--preview-token);
+        }
+
+        &.preview__sample--hover:hover::after {
+            background: var(--preview-token);
+        }
+    }
+}

@@ -238,7 +238,6 @@
 .token-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 16px;
     padding: 10px 16px;
 
@@ -250,7 +249,16 @@
         display: flex;
         flex-direction: column;
         gap: 2px;
+        flex: 0 0 240px;
         min-width: 0;
+    }
+
+    &__preview {
+        flex: 1 1 auto;
+        display: flex;
+        justify-content: flex-end;
+        min-width: 0;
+        overflow: hidden;
     }
 
     &__label {

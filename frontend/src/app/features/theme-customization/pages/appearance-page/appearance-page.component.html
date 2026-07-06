@@ -143,6 +143,10 @@
                                     <span class="token-row__label">{{ token.label }}</span>
                                     <span class="token-row__name">{{ token.name }}</span>
                                 </div>
+                                <app-token-preview
+                                    class="token-row__preview"
+                                    [token]="token"
+                                />
                                 <div class="token-row__actions">
                                     @if (isOverridden(theme, token.name)) {
                                         <button
