@@ -112,7 +112,7 @@
             }
 
             .remove-icon-container {
-                background-color: rgba(128, 128, 128, 0.1);
+                background-color: var(--gray-alpha-10);
                 transition: transform 0.2s ease;
                 transform-origin: center;
 
@@ -123,7 +123,7 @@
                 }
 
                 &:hover {
-                    background-color: rgba(220, 53, 69, 0.2);
+                    background-color: var(--red-alpha-20);
                     transform: scale(1.05);
 
                     .close-icon {
@@ -132,7 +132,7 @@
                 }
 
                 &:active {
-                    background-color: rgba(220, 53, 69, 0.3);
+                    background-color: var(--red-alpha-30);
                     transform: scale(0.95);
 
                     .close-icon {

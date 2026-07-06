@@ -109,7 +109,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(27, 27, 27, 0.9);
+            background: var(--black-alpha-90);
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -168,7 +168,7 @@
 }
 
 .spinner {
-    border: 4px solid rgba(224, 224, 224, 0.3);
+    border: 4px solid var(--fog-alpha-30);
     border-top: 4px solid var(--gray-200);
     border-radius: 50%;
     width: 30px;
@@ -178,9 +178,9 @@
 
 .json-errors {
     margin-top: 8px;
-    border: 1px solid rgba(255, 85, 85, 0.4);
+    border: 1px solid var(--red-alpha-40);
     border-radius: var(--radius-md);
-    background-color: rgba(255, 85, 85, 0.06);
+    background-color: var(--red-alpha-6);
     overflow: hidden;
 
     .json-errors-header {

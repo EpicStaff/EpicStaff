@@ -208,7 +208,7 @@
     position: absolute;
     #{$position}: -32px;
     top: -35px;
-    background: rgba(20, 20, 20, 0.85);
+    background: var(--black-alpha-85);
     border: 1px solid var(--white-alpha-20);
     border-radius: 50%;
     width: 30px;

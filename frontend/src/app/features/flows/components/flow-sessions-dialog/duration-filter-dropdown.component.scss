@@ -61,12 +61,12 @@
     white-space: nowrap;
 
     &:hover {
-        background: rgba(94, 158, 255, 0.1);
+        background: var(--blue-alpha-10);
         color: var(--color-text-primary);
     }
 
     &--active {
-        background: rgba(94, 158, 255, 0.18);
+        background: var(--blue-alpha-18);
         border-color: var(--accent-color, var(--blue-400));
         color: var(--accent-color, var(--blue-400));
     }
@@ -89,12 +89,12 @@
     transition: all 0.15s;
 
     &:hover {
-        background: rgba(94, 158, 255, 0.1);
+        background: var(--blue-alpha-10);
         color: var(--color-text-primary);
     }
 
     &--active {
-        background: rgba(94, 158, 255, 0.18);
+        background: var(--blue-alpha-18);
         border-color: var(--accent-color, var(--blue-400));
         color: var(--accent-color, var(--blue-400));
     }

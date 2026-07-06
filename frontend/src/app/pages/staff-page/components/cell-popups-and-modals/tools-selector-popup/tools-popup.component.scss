@@ -11,8 +11,8 @@ $text-primary: var(--gray-50);
 $text-secondary: var(--gray-500);
 $text-tertiary: var(--gray-600);
 $border-color: var(--white-alpha-10);
-$tooltip-bg: rgba(0, 0, 0, 0.85);
-$shadow-color: rgba(0, 0, 0, 0.5);
+$tooltip-bg: var(--black-alpha-85);
+$shadow-color: var(--black-alpha-50);
 $status-green: #2aba6b; // unified status green (kept literal for rgba())
 $status-red: #f54242; // unified error red (kept literal for rgba())
 $transition-default: all 0.2s ease;

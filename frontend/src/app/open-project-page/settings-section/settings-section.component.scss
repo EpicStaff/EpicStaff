@@ -2,11 +2,11 @@
 
 $accent-color: #685fff; // brand accent (kept literal for rgba())
 $background-color: var(--graphite-950);
-$card-background: rgba(255, 255, 255, 0.05);
+$card-background: var(--white-alpha-5);
 $border-color: var(--graphite-780);
 $text-color: var(--gray-100);
 $muted-text-color: var(--gray-500);
-$purple-accent: rgba(104, 95, 255, 0.5);
+$purple-accent: var(--purple-alpha-50);
 
 .settings-section {
     color: $text-color;
@@ -149,7 +149,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                     min-width: 0;
                     max-width: 100%;
                     flex-shrink: 1;
-                    background: rgba(20, 20, 20, 0.4);
+                    background: var(--black-alpha-40);
                     border: 1px solid var(--white-alpha-10);
                     border-radius: var(--radius-lg);
                     overflow: hidden;
@@ -303,7 +303,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                         width: 100%;
                         padding: 0.6rem 1rem;
                         padding-right: 2rem;
-                        background: rgba(20, 20, 20, 0.4);
+                        background: var(--black-alpha-40);
                         border: 1px solid var(--white-alpha-10);
                         border-radius: var(--radius-lg);
                         color: $text-color;
@@ -313,13 +313,13 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                         transition: all 0.2s ease;
 
                         &.not-specified {
-                            border-color: rgba(255, 165, 0, 0.3); // Orange-ish border
+                            border-color: var(--amber-alpha-30); // Orange-ish border
                             color: $muted-text-color;
                             font-style: italic;
                         }
 
                         &:hover {
-                            background: rgba(30, 30, 30, 0.4);
+                            background: var(--black-alpha-40);
                             border-color: rgba($accent-color, 0.3);
                         }
 
@@ -354,7 +354,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                 input[type='number'] {
                     width: 120px;
                     padding: 0.6rem 1rem;
-                    background: rgba(20, 20, 20, 0.4);
+                    background: var(--black-alpha-40);
                     border: 1px solid var(--white-alpha-10);
                     border-radius: var(--radius-lg);
                     color: $text-color;
@@ -362,7 +362,7 @@ $purple-accent: rgba(104, 95, 255, 0.5);
                     transition: all 0.2s ease;
 
                     &:hover {
-                        background: rgba(30, 30, 30, 0.4);
+                        background: var(--black-alpha-40);
                         border-color: rgba($accent-color, 0.3);
                     }
 

@@ -15,7 +15,7 @@
     transition: border-color 0.2s ease;
 
     &:hover {
-        border-color: rgba(255, 255, 255, 0.16);
+        border-color: var(--white-alpha-15);
     }
 
     &__top {
@@ -68,8 +68,8 @@
 
         &--delete {
             &:hover {
-                background: rgba(255, 80, 80, 0.12);
-                border-color: rgba(255, 80, 80, 0.5);
+                background: var(--red-alpha-12);
+                border-color: var(--red-alpha-50);
                 color: #ff5050;
             }
         }

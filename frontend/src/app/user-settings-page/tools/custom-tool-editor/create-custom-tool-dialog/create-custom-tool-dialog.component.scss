@@ -239,8 +239,8 @@
         font-size: 12px;
         font-weight: 500;
         color: var(--red-400);
-        background: rgba(255, 85, 85, 0.1);
-        border: 1px solid rgba(255, 85, 85, 0.4);
+        background: var(--red-alpha-10);
+        border: 1px solid var(--red-alpha-40);
         border-radius: var(--radius-md);
         padding: 4px 10px;
         line-height: 1.2;

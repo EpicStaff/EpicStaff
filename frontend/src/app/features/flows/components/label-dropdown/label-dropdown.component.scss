@@ -318,8 +318,8 @@
 .label-error {
     margin: 0.1rem 0.5rem 0.3rem;
     padding: 0.35rem 0.6rem;
-    background: rgba(220, 91, 96, 0.12);
-    border: 1px solid rgba(220, 91, 96, 0.3);
+    background: var(--red-600-alpha-12);
+    border: 1px solid var(--red-600-alpha-30);
     border-radius: var(--radius-sm);
     color: var(--color-ks-status-failed);
     font-size: 0.8rem;

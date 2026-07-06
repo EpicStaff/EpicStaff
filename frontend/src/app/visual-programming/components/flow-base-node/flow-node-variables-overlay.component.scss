@@ -4,7 +4,7 @@
     bottom: calc(100% + 8px);
     min-width: 120px;
     width: 18rem;
-    background: rgba(30, 30, 30, 0.92);
+    background: var(--black-alpha-90);
     color: var(--color-text-primary);
     border-radius: var(--radius-lg);
     box-shadow: 0 2px 8px var(--black-alpha-18);
@@ -70,7 +70,7 @@
     right: -12rem;
     bottom: calc(100% + 8px);
     min-width: 100px;
-    background: rgba(30, 30, 30, 0.92);
+    background: var(--black-alpha-90);
     color: var(--color-text-primary);
     border-radius: var(--radius-lg);
     box-shadow: 0 2px 8px var(--black-alpha-18);

@@ -21,7 +21,7 @@
     }
 
     .error-message {
-        background-color: rgba(255, 77, 79, 0.1);
+        background-color: var(--red-alpha-10);
         color: var(--color-error, var(--red-500));
         padding: 0.75rem 1rem;
         margin: 1rem 1.5rem 0;

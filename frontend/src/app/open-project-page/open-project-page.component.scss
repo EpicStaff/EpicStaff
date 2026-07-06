@@ -4,7 +4,7 @@ $text-color: #ebebeb; // literal: consumed by rgba()
 $muted-text-color: var(--gray-400);
 $accent-color: #685fff; // brand accent (kept literal for rgba())
 $hover-color: rgba($accent-color, 0.15);
-$section-expanded-bg: rgba(255, 255, 255, 0.03);
+$section-expanded-bg: var(--white-alpha-3);
 $inactive-tab-bg: var(--graphite-780);
 
 .project-container {

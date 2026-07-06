@@ -30,9 +30,11 @@
     --purple-alpha-30: rgba(104, 95, 255, 0.3);
     --purple-alpha-35: rgba(104, 95, 255, 0.35);
     --purple-alpha-40: rgba(104, 95, 255, 0.4);
+    --purple-alpha-45: rgba(104, 95, 255, 0.45);
     --purple-alpha-50: rgba(104, 95, 255, 0.5);
     --purple-alpha-60: rgba(104, 95, 255, 0.6);
     --purple-alpha-70: rgba(104, 95, 255, 0.7);
+    --purple-alpha-75: rgba(104, 95, 255, 0.75);
     --purple-alpha-80: rgba(104, 95, 255, 0.8);
     --purple-alpha-85: rgba(104, 95, 255, 0.85);
     --purple-alpha-90: rgba(104, 95, 255, 0.9);
@@ -52,6 +54,7 @@
     --graphite-650: #3a3e48;
     --graphite-640: #333333;
     --graphite-600: #3a3a3a;
+    --graphite-alpha-50: rgba(43, 45, 48, 0.5);
 
     // Gray scale
     --white: #ffffff;
@@ -73,6 +76,7 @@
     // Steel — cool border/muted base (#c8ceda + alpha)
     --steel-alpha-8: #c8ceda14;
     --steel-alpha-14: #c8ceda24;
+    --steel-alpha-18: #c8ceda2e;
     --steel-alpha-30: #c8ceda4d;
 
     // Fog — light text base (#d9d9de + alpha)
@@ -84,10 +88,16 @@
     --fog-alpha-60: rgba(217, 217, 222, 0.6);
     --fog-alpha-50: rgba(217, 217, 222, 0.5);
     --fog-alpha-40: rgba(217, 217, 222, 0.4);
+    --fog-alpha-35: rgba(217, 217, 222, 0.35);
     --fog-alpha-30: rgba(217, 217, 222, 0.3);
+    --fog-alpha-28: rgba(217, 217, 222, 0.28);
+    --fog-alpha-25: rgba(217, 217, 222, 0.25);
+    --fog-alpha-22: rgba(217, 217, 222, 0.22);
     --fog-alpha-20: rgba(217, 217, 222, 0.2);
     --fog-alpha-16: rgba(217, 217, 222, 0.16);
+    --fog-alpha-14: rgba(217, 217, 222, 0.14);
     --fog-alpha-8: rgba(217, 217, 222, 0.08);
+    --fog-alpha-6: rgba(217, 217, 222, 0.06);
 
     // White / black washes
     --white-alpha-2: rgba(255, 255, 255, 0.02);
@@ -130,20 +140,37 @@
     --black-alpha-28: rgba(15, 15, 15, 0.28);
     --black-alpha-30: rgba(0, 0, 0, 0.3);
     --black-alpha-32: rgba(0, 0, 0, 0.32);
+    --black-alpha-35: rgba(0, 0, 0, 0.35);
     --black-alpha-40: rgba(0, 0, 0, 0.4);
     --black-alpha-50: rgba(0, 0, 0, 0.5);
     --black-alpha-55: rgba(0, 0, 0, 0.55);
     --black-alpha-60: rgba(0, 0, 0, 0.6);
+    --black-alpha-70: rgba(0, 0, 0, 0.7);
+    --black-alpha-80: rgba(0, 0, 0, 0.8);
     --black-alpha-85: rgba(0, 0, 0, 0.85);
+    --black-alpha-90: rgba(0, 0, 0, 0.9);
+    --black-alpha-95: rgba(0, 0, 0, 0.95);
 
     // Status / feedback
     --green-400: #4caf82;
     --green-500: #2aba6b;
     --green-alpha-8: rgba(42, 186, 107, 0.08);
+    --green-alpha-18: rgba(42, 186, 107, 0.18);
     --yellow-500: #ffcf00;
     --yellow-alpha-6: rgba(255, 207, 0, 0.06);
     --amber-400: #e0a83a;
     --amber-500: #f5a623;
+    --amber-alpha-6: rgba(245, 166, 35, 0.06);
+    --amber-alpha-8: rgba(245, 166, 35, 0.08);
+    --amber-alpha-10: rgba(245, 166, 35, 0.1);
+    --amber-alpha-12: rgba(245, 166, 35, 0.12);
+    --amber-alpha-15: rgba(245, 166, 35, 0.15);
+    --amber-alpha-18: rgba(245, 166, 35, 0.18);
+    --amber-alpha-20: rgba(245, 166, 35, 0.2);
+    --amber-alpha-30: rgba(245, 166, 35, 0.3);
+    --amber-alpha-40: rgba(245, 166, 35, 0.4);
+    --amber-alpha-60: rgba(245, 166, 35, 0.6);
+    --amber-alpha-70: rgba(245, 166, 35, 0.7);
     --orange-500: #ff8f3f;
     --orange-alpha-8: rgba(255, 143, 63, 0.08);
     --red-400: #ff6b6b;
@@ -151,18 +178,43 @@
     --red-550: #e63838; // danger hover
     --red-600: #dc5b60;
     --red-700: #b32b36;
+    --red-alpha-6: rgba(245, 66, 66, 0.06);
     --red-alpha-8: rgba(245, 66, 66, 0.08);
     --red-alpha-10: rgba(245, 66, 66, 0.1);
+    --red-alpha-12: rgba(245, 66, 66, 0.12);
     --red-alpha-15: rgba(245, 66, 66, 0.15);
+    --red-alpha-20: rgba(245, 66, 66, 0.2);
     --red-alpha-25: rgba(245, 66, 66, 0.25);
     --red-alpha-30: rgba(245, 66, 66, 0.3);
+    --red-alpha-35: rgba(245, 66, 66, 0.35);
+    --red-alpha-40: rgba(245, 66, 66, 0.4);
+    --red-alpha-50: rgba(245, 66, 66, 0.5);
+    --red-alpha-95: rgba(245, 66, 66, 0.95);
+    --red-400-alpha-5: rgba(255, 107, 107, 0.05);
+    --red-400-alpha-10: rgba(255, 107, 107, 0.1);
+    --red-400-alpha-15: rgba(255, 107, 107, 0.15);
+    --red-400-alpha-60: rgba(255, 107, 107, 0.6);
+    --red-400-alpha-80: rgba(255, 107, 107, 0.8);
+    --red-600-alpha-6: rgba(220, 91, 96, 0.06);
+    --red-600-alpha-12: rgba(220, 91, 96, 0.12);
+    --red-600-alpha-18: rgba(220, 91, 96, 0.18);
+    --red-600-alpha-30: rgba(220, 91, 96, 0.3);
     --sky-500: #48cbff;
     --sky-alpha-6: rgba(72, 203, 255, 0.06);
+    --sky-alpha-12: rgba(72, 203, 255, 0.12);
     --teal-500: #00bfa5;
+    --teal-rgb: 0, 191, 165;
     --teal-alpha-8: rgba(0, 191, 165, 0.08);
     --blue-400: #5e9eff;
     --blue-500: #5672cd;
     --blue-600: #3e63dd;
+    --blue-alpha-10: rgba(94, 158, 255, 0.1);
+    --blue-alpha-15: rgba(94, 158, 255, 0.15);
+    --blue-alpha-18: rgba(94, 158, 255, 0.18);
+    --mauve-alpha-10: rgba(154, 115, 175, 0.1); // unsaved-changes indicator
+    --mauve-alpha-20: rgba(154, 115, 175, 0.2);
+    --gray-alpha-10: rgba(128, 128, 128, 0.1);
+    --gray-alpha-18: rgba(136, 136, 136, 0.18);
 
     // ------------------------------------------------------------------
     // PRIMITIVES — border radius

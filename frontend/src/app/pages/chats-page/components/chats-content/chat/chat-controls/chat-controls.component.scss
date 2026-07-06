@@ -187,7 +187,7 @@
 
             &.end-btn {
                 &:hover {
-                    background-color: rgba(220, 53, 69, 0.2);
+                    background-color: var(--red-alpha-20);
                     color: var(--red-500);
                 }
             }

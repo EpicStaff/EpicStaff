@@ -19,7 +19,7 @@
         .filters {
             display: flex;
             gap: 8px;
-            background: rgba(20, 20, 20, 0.8);
+            background: var(--black-alpha-80);
             padding: 4px;
             border-radius: var(--radius-md);
             border: 1px solid var(--white-alpha-10);
@@ -39,7 +39,7 @@
                 }
 
                 &.active {
-                    background: rgba(154, 115, 175, 0.2);
+                    background: var(--mauve-alpha-20);
                     color: var(--gray-100);
                 }
             }

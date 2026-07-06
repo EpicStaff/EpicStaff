@@ -218,7 +218,7 @@
     &__formats-section-title {
         font-size: 14px;
         font-weight: 700;
-        color: rgba(172, 172, 172, 1);
+        color: var(--gray-400);
         text-transform: uppercase;
     }
 
@@ -334,7 +334,7 @@
         transition: background-color 0.15s ease;
 
         &:hover {
-            background-color: rgba(101, 98, 245, 0.1);
+            background-color: var(--purple-alpha-10);
         }
     }
 
@@ -514,7 +514,7 @@
         min-width: max-content;
 
         &:hover:not(&--selected) {
-            background-color: rgba(217, 217, 222, 0.04);
+            background-color: var(--white-alpha-4);
         }
 
         &--selected {

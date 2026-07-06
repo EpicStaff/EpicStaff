@@ -72,7 +72,7 @@
         }
 
         .cell-warning {
-            background-color: rgba(255, 59, 48, 0.15) !important;
+            background-color: var(--red-alpha-15) !important;
             border: 1px solid var(--red-500) !important;
         }
 

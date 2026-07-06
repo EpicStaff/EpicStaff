@@ -88,16 +88,16 @@
             font-size: 11px;
             padding: 2px 6px;
             border-radius: var(--radius-xl);
-            background: rgba(255, 107, 107, 0.15);
+            background: var(--red-400-alpha-15);
             color: #ffb3b3;
-            border: 1px solid rgba(255, 107, 107, 0.6);
+            border: 1px solid var(--red-400-alpha-60);
             white-space: nowrap;
         }
     }
 
     &.is-blocked-llm {
-        border-color: rgba(255, 107, 107, 0.8);
-        background-color: rgba(255, 107, 107, 0.05);
+        border-color: var(--red-400-alpha-80);
+        background-color: var(--red-400-alpha-5);
 
         .decision-table__header .title {
             color: #ffb3b3;

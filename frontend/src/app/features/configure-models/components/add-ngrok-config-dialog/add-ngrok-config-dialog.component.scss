@@ -12,7 +12,7 @@
     }
 
     &__error-message {
-        background-color: rgba(255, 77, 79, 0.1);
+        background-color: var(--red-alpha-10);
         color: var(--color-error, var(--red-500));
         padding: 0.75rem;
         border-radius: var(--radius-sm);

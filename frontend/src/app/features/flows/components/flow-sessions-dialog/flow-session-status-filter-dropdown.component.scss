@@ -85,10 +85,10 @@
     position: relative;
 }
 .dropdown-menu li.selected {
-    background: rgba(94, 158, 255, 0.1);
+    background: var(--blue-alpha-10);
 }
 .dropdown-menu li:hover {
-    background: rgba(94, 158, 255, 0.18);
+    background: var(--blue-alpha-18);
 }
 .dropdown-menu .status-icon {
     min-width: 18px;

@@ -5,7 +5,7 @@ $accent-blue: #685fff; // unified brand accent (kept literal for rgba())
 $border-color: var(--gray-700);
 $text-light: var(--gray-200);
 $text-secondary: var(--gray-400);
-$shadow-color: rgba(0, 0, 0, 0.2);
+$shadow-color: var(--black-alpha-20);
 $transition-default: all 0.2s ease;
 
 .wrapper {
@@ -15,7 +15,7 @@ $transition-default: all 0.2s ease;
     display: flex;
     flex-direction: column;
     border-radius: var(--radius-sm);
-    box-shadow: 1px 1px 10px rgba(3, 3, 5, 0.35);
+    box-shadow: 1px 1px 10px var(--black-alpha-35);
 }
 .hidden-grid {
     visibility: hidden;
@@ -268,8 +268,8 @@ $transition-default: all 0.2s ease;
 }
 
 ::ng-deep .ag-grid-staff .cell-required-invalid {
-    border: 1px solid rgba(255, 77, 79, 0.95) !important;
-    box-shadow: inset 0 0 0 1px rgba(255, 77, 79, 0.35);
+    border: 1px solid var(--red-alpha-95) !important;
+    box-shadow: inset 0 0 0 1px var(--red-alpha-35);
     border-radius: var(--radius-md);
 }
 

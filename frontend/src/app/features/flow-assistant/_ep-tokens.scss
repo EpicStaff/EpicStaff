@@ -39,13 +39,13 @@
     --ep-button-radius: 12px;
 
     // button variants
-    --ep-button-ghost-hover-bg: rgba(154, 115, 175, 0.1);
+    --ep-button-ghost-hover-bg: var(--mauve-alpha-10);
     --ep-button-primary-bg: var(--ep-color-accent);
     --ep-button-primary-text: var(--ep-color-accent-contrast);
     --ep-button-primary-hover-bg: color-mix(in srgb, var(--ep-color-accent) 85%, black);
     --ep-button-secondary-border: var(--color-divider-regular);
     --ep-button-secondary-text: var(--ep-color-text);
-    --ep-button-secondary-hover-bg: rgba(154, 115, 175, 0.1);
+    --ep-button-secondary-hover-bg: var(--mauve-alpha-10);
 
     // typography
     --ep-font-family: var(--font-family-base);

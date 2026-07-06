@@ -279,7 +279,7 @@
         outline: none;
 
         &::placeholder {
-            color: rgba(217, 217, 222, 0.35);
+            color: var(--fog-alpha-35);
         }
     }
 
@@ -414,7 +414,7 @@
 }
 
 .dt__row.cdk-drag-placeholder {
-    background-color: rgba(104, 95, 255, 0.07);
+    background-color: var(--purple-alpha-8);
     opacity: 1;
 
     td {

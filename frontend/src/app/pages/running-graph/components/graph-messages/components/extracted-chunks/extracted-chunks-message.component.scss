@@ -70,7 +70,7 @@
 }
 
 .chip {
-    background: rgba(92, 124, 250, 0.15);
+    background: var(--blue-alpha-15);
     color: #bec8ff;
     padding: 0.15rem 0.65rem;
     border-radius: var(--radius-full);

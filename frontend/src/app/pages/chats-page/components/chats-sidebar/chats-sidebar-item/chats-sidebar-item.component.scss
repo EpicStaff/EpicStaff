@@ -10,7 +10,7 @@
     position: relative;
 
     &:hover {
-        background-color: rgba(40, 40, 40, 0.8);
+        background-color: var(--black-alpha-80);
     }
 
     &.active {

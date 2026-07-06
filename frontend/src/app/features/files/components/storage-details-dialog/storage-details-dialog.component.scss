@@ -52,7 +52,7 @@
 
     &__section {
         padding: 24px 0;
-        border-bottom: 1px solid rgba(217, 217, 222, 0.14);
+        border-bottom: 1px solid var(--fog-alpha-14);
 
         &:first-child {
             padding-top: 0;
@@ -111,7 +111,7 @@
         gap: 12px;
         padding: 6px 8px;
         border-radius: var(--radius-sm);
-        border: 1px solid rgba(217, 217, 222, 0.22);
+        border: 1px solid var(--fog-alpha-22);
         background: var(--white-alpha-3);
     }
 

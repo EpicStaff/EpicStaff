@@ -135,7 +135,7 @@
         }
 
         &::-webkit-scrollbar-thumb {
-            background: var(--color-scrollbar-thumb, rgba(217, 217, 227, 0.16));
+            background: var(--color-scrollbar-thumb, var(--fog-alpha-16));
             border-radius: 0.1875rem;
         }
     }
@@ -225,7 +225,7 @@
 
     &__no-favorites {
         padding: 0.75rem 1rem;
-        background: rgba(43, 45, 48, 0.5);
+        background: var(--graphite-alpha-50);
         border-radius: var(--radius-sm);
 
         p {

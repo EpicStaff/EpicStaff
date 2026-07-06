@@ -11,7 +11,7 @@
     border-radius: var(--radius-sm);
     border: 1.5px solid var(--color-divider-subtle, var(--gray-700));
     background: var(--color-surface-card, var(--graphite-825));
-    color: rgba(230, 230, 230, 1);
+    color: var(--gray-200);
     cursor: pointer;
     transition:
         background 0.15s,
@@ -40,7 +40,7 @@
     }
 
     &__icon {
-        color: rgba(230, 230, 230, 1);
+        color: var(--gray-200);
         flex-shrink: 0;
     }
 

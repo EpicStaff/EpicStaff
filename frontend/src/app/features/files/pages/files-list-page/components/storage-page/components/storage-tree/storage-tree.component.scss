@@ -308,7 +308,7 @@
         background: linear-gradient(
             to right,
             transparent 0%,
-            rgba(39, 40, 54, 0.95) 35%,
+            var(--black-alpha-95) 35%,
             rgb(39, 40, 54) 55%,
             rgb(39, 40, 54) 100%
         );

@@ -180,7 +180,7 @@
                     }
 
                     &:hover {
-                        background-color: rgba(255, 82, 82, 0.1);
+                        background-color: var(--red-alpha-10);
 
                         i {
                             color: var(--red-500);
@@ -188,7 +188,7 @@
                     }
 
                     &:active {
-                        background-color: rgba(255, 82, 82, 0.2);
+                        background-color: var(--red-alpha-20);
                     }
                 }
 

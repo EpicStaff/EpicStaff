@@ -148,11 +148,11 @@
         }
 
         &.danger {
-            background: var(--color-status-error-subtle, rgba(239, 68, 68, 0.15));
+            background: var(--color-status-error-subtle, var(--red-alpha-15));
             color: var(--color-status-error, var(--red-500));
 
             &:hover {
-                background: var(--color-status-error-hover, rgba(239, 68, 68, 0.25));
+                background: var(--color-status-error-hover, var(--red-alpha-25));
                 color: var(--color-status-error, var(--red-500));
             }
         }

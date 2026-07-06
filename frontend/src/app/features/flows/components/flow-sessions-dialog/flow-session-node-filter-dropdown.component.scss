@@ -80,11 +80,11 @@
             color 0.15s;
 
         &:hover {
-            background: rgba(94, 158, 255, 0.18);
+            background: var(--blue-alpha-18);
         }
 
         &.selected {
-            background: rgba(94, 158, 255, 0.1);
+            background: var(--blue-alpha-10);
         }
 
         &.no-results {
@@ -209,6 +209,6 @@
     transition: background 0.15s;
 
     &:hover {
-        background: rgba(94, 158, 255, 0.1);
+        background: var(--blue-alpha-10);
     }
 }

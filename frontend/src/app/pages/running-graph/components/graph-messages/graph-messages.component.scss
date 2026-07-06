@@ -35,15 +35,15 @@
             transition: all 0.3s ease;
 
             &.reconnecting {
-                background-color: rgba(245, 158, 11, 0.1);
+                background-color: var(--amber-alpha-10);
                 color: #f59e0b;
-                border: 1px solid rgba(245, 158, 11, 0.2);
+                border: 1px solid var(--amber-alpha-20);
             }
 
             &.disconnected {
-                background-color: rgba(239, 68, 68, 0.1);
+                background-color: var(--red-alpha-10);
                 color: var(--red-500);
-                border: 1px solid rgba(239, 68, 68, 0.2);
+                border: 1px solid var(--red-alpha-20);
             }
 
             .status-icon {
@@ -92,8 +92,8 @@
                 &.subflow-level-1 {
                     padding-left: 2.5rem;
                     margin-left: 0.5rem;
-                    background-color: rgba(0, 191, 165, 0.015);
-                    border-left: 2px solid rgba(0, 191, 165, 0.2);
+                    background-color: rgba(var(--teal-rgb), 0.015);
+                    border-left: 2px solid rgba(var(--teal-rgb), 0.2);
                     border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
                 }
 
@@ -101,8 +101,8 @@
                 &.subflow-level-2 {
                     padding-left: 2.5rem;
                     margin-left: 1rem;
-                    background-color: rgba(0, 191, 165, 0.03);
-                    border-left: 2px solid rgba(0, 191, 165, 0.3);
+                    background-color: rgba(var(--teal-rgb), 0.03);
+                    border-left: 2px solid rgba(var(--teal-rgb), 0.3);
                     border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
                 }
 
@@ -110,8 +110,8 @@
                 &.subflow-level-3 {
                     padding-left: 2.5rem;
                     margin-left: 1.5rem;
-                    background-color: rgba(0, 191, 165, 0.045);
-                    border-left: 2px solid rgba(0, 191, 165, 0.4);
+                    background-color: rgba(var(--teal-rgb), 0.045);
+                    border-left: 2px solid rgba(var(--teal-rgb), 0.4);
                     border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
                 }
 
@@ -119,8 +119,8 @@
                 &.subflow-level-4 {
                     padding-left: 2.5rem;
                     margin-left: 2rem;
-                    background-color: rgba(0, 191, 165, 0.06);
-                    border-left: 2px solid rgba(0, 191, 165, 0.5);
+                    background-color: rgba(var(--teal-rgb), 0.06);
+                    border-left: 2px solid rgba(var(--teal-rgb), 0.5);
                     border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
                 }
             }
@@ -143,7 +143,7 @@
                     top: -0.5rem;
                     bottom: 0;
                     width: 2px;
-                    background-color: rgba(0, 191, 165, 0.3);
+                    background-color: rgba(var(--teal-rgb), 0.3);
                     transition: all 0.2s ease;
                 }
 
@@ -151,7 +151,7 @@
                 &.subflow-level-1 {
                     &::before {
                         left: 0.75rem;
-                        background-color: rgba(0, 191, 165, 0.25);
+                        background-color: rgba(var(--teal-rgb), 0.25);
                     }
                 }
 
@@ -159,7 +159,7 @@
                 &.subflow-level-2 {
                     &::before {
                         left: 1.25rem;
-                        background-color: rgba(0, 191, 165, 0.35);
+                        background-color: rgba(var(--teal-rgb), 0.35);
                     }
                 }
 
@@ -167,7 +167,7 @@
                 &.subflow-level-3 {
                     &::before {
                         left: 1.75rem;
-                        background-color: rgba(0, 191, 165, 0.45);
+                        background-color: rgba(var(--teal-rgb), 0.45);
                     }
                 }
 
@@ -175,7 +175,7 @@
                 &.subflow-level-4 {
                     &::before {
                         left: 2.25rem;
-                        background-color: rgba(0, 191, 165, 0.55);
+                        background-color: rgba(var(--teal-rgb), 0.55);
                     }
                 }
             }
@@ -194,8 +194,8 @@
                 &.subflow-level-1 {
                     margin-left: 0.5rem;
                     padding-left: 2rem;
-                    border-left: 2px solid rgba(0, 191, 165, 0.2);
-                    background-color: rgba(0, 191, 165, 0.015);
+                    border-left: 2px solid rgba(var(--teal-rgb), 0.2);
+                    background-color: rgba(var(--teal-rgb), 0.015);
 
                     &::before {
                         content: '';
@@ -205,7 +205,7 @@
                         transform: translateY(-50%);
                         width: 0.75rem;
                         height: 2px;
-                        background-color: rgba(0, 191, 165, 0.25);
+                        background-color: rgba(var(--teal-rgb), 0.25);
                     }
                 }
 
@@ -213,8 +213,8 @@
                 &.subflow-level-2 {
                     margin-left: 1rem;
                     padding-left: 2rem;
-                    border-left: 2px solid rgba(0, 191, 165, 0.3);
-                    background-color: rgba(0, 191, 165, 0.03);
+                    border-left: 2px solid rgba(var(--teal-rgb), 0.3);
+                    background-color: rgba(var(--teal-rgb), 0.03);
 
                     &::before {
                         content: '';
@@ -224,7 +224,7 @@
                         transform: translateY(-50%);
                         width: 0.75rem;
                         height: 2px;
-                        background-color: rgba(0, 191, 165, 0.35);
+                        background-color: rgba(var(--teal-rgb), 0.35);
                     }
                 }
 
@@ -232,8 +232,8 @@
                 &.subflow-level-3 {
                     margin-left: 1.5rem;
                     padding-left: 2rem;
-                    border-left: 2px solid rgba(0, 191, 165, 0.4);
-                    background-color: rgba(0, 191, 165, 0.045);
+                    border-left: 2px solid rgba(var(--teal-rgb), 0.4);
+                    background-color: rgba(var(--teal-rgb), 0.045);
 
                     &::before {
                         content: '';
@@ -243,7 +243,7 @@
                         transform: translateY(-50%);
                         width: 0.75rem;
                         height: 2px;
-                        background-color: rgba(0, 191, 165, 0.45);
+                        background-color: rgba(var(--teal-rgb), 0.45);
                     }
                 }
 
@@ -251,8 +251,8 @@
                 &.subflow-level-4 {
                     margin-left: 2rem;
                     padding-left: 2rem;
-                    border-left: 2px solid rgba(0, 191, 165, 0.5);
-                    background-color: rgba(0, 191, 165, 0.06);
+                    border-left: 2px solid rgba(var(--teal-rgb), 0.5);
+                    background-color: rgba(var(--teal-rgb), 0.06);
 
                     &::before {
                         content: '';
@@ -262,7 +262,7 @@
                         transform: translateY(-50%);
                         width: 0.75rem;
                         height: 2px;
-                        background-color: rgba(0, 191, 165, 0.55);
+                        background-color: rgba(var(--teal-rgb), 0.55);
                     }
                 }
             }
