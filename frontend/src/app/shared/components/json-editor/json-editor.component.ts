@@ -45,6 +45,7 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     @Input() public title: string = 'JSON Editor';
     @Input() public collapsible: boolean = false;
     @Input() public allowCopy: boolean = false;
+    @Input() public allowExpand: boolean = false;
     @Input() public jsonSchema?: object;
     @Input() public extraValidate?: (json: string) => { message: string; startOffset: number; endOffset: number }[];
     @Input() public editorOptions: MonacoEditor.IStandaloneEditorConstructionOptions = {
@@ -67,6 +68,7 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     @Output() public validationChange = new EventEmitter<boolean>();
     @Output() public errorsChange = new EventEmitter<JsonError[]>();
     @Output() public editorReady = new EventEmitter<MonacoEditor.IStandaloneCodeEditor>();
+    @Output() public expand = new EventEmitter<void>();
 
     public collapsed: boolean = true;
     public editorLoaded = false;
@@ -210,6 +212,10 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
         navigator.clipboard.writeText(this.jsonData).then(() => {
             this.toast.success('Copied to clipboard!');
         });
+    }
+
+    public onExpand(): void {
+        this.expand.emit();
     }
 
     public onResize(newHeight: number): void {

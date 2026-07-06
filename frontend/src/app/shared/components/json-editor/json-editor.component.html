@@ -36,6 +36,14 @@
                 (click)="onCopy()"
             />
         }
+        @if (allowExpand) {
+            <app-svg-icon
+                class="action-icon"
+                icon="editor-expand"
+                size="0.875rem"
+                (click)="onExpand()"
+            />
+        }
     </div>
 </div>
 

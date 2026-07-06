@@ -66,6 +66,7 @@
                             <div class="surface-row">
                                 <app-multi-select
                                     class="surface-row__select"
+                                    color="white"
                                     [grouped]="true"
                                     [label]="surfaceSummaryLabel()"
                                     searchPlaceholder="Search item..."
@@ -93,33 +94,134 @@
                             <app-input-map [activeColor]="activeColor"></app-input-map>
                         </div>
 
-                        <app-textarea
-                            label="Instructions"
-                            [required]="true"
-                            tooltipText="Instructions given to the agent describing what this task should accomplish."
-                            formControlName="instructions"
-                            placeholder="Enter task instructions..."
-                            [rows]="5"
-                        ></app-textarea>
+                        <app-custom-input
+                            label="Output Variable Path"
+                            tooltipText="Path where the Task node output will be stored in flow variables."
+                            formControlName="output_variable_path"
+                            placeholder="e.g. task_reply"
+                            [activeColor]="activeColor"
+                        ></app-custom-input>
+
+                        @if (mainView() === 'instructions') {
+                            <div class="output-schema-section">
+                                <button
+                                    type="button"
+                                    class="output-schema-toggle"
+                                    (click)="toggleOutputSchema()"
+                                >
+                                    <app-svg-icon
+                                        class="output-schema-toggle__chevron"
+                                        [class.output-schema-toggle__chevron--open]="outputSchemaExpanded()"
+                                        icon="chevron-down-filled"
+                                        size="8px"
+                                    />
+                                    <span>Output Schema</span>
+                                </button>
+                                @if (outputSchemaExpanded()) {
+                                    <app-json-editor
+                                        [jsonData]="outputSchemaText"
+                                        (jsonChange)="onSchemaEditorChange($event)"
+                                        (validationChange)="onSchemaValidChange($event)"
+                                        [showHeader]="true"
+                                        [allowCopy]="true"
+                                        [allowExpand]="true"
+                                        (expand)="toggleMainView()"
+                                        [editorHeight]="220"
+                                    ></app-json-editor>
+                                }
+                            </div>
+                        } @else {
+                            <div class="editor-block">
+                                <div class="editor-block__header">
+                                    <app-tooltip
+                                        class="editor-block__title"
+                                        label="Instructions"
+                                        [required]="true"
+                                        tooltipText="Instructions given to the agent describing what this task should accomplish."
+                                    ></app-tooltip>
+                                    <div class="editor-block__actions">
+                                        <app-svg-icon
+                                            class="editor-block__action"
+                                            icon="copy"
+                                            size="1rem"
+                                            title="Copy"
+                                            (click)="copyInstructions()"
+                                        />
+                                        <app-svg-icon
+                                            class="editor-block__action"
+                                            icon="editor-expand"
+                                            size="0.85rem"
+                                            title="Expand"
+                                            (click)="toggleMainView()"
+                                        />
+                                    </div>
+                                </div>
+                                <app-textarea
+                                    class="editor-block__textarea"
+                                    formControlName="instructions"
+                                    placeholder="Enter task instructions..."
+                                    [rows]="8"
+                                ></app-textarea>
+                            </div>
+                        }
                     </div>
 
-                    <div class="output-schema-panel">
-                        <div class="output-schema-panel__header">
-                            <app-svg-icon
-                                icon="brackets"
-                                size="1rem"
-                            />
-                            <span>Output Schema</span>
-                        </div>
-                        <div class="output-schema-panel__body">
+                    <div class="main-editor-pane">
+                        @if (mainView() === 'instructions') {
+                            <div class="main-editor-pane__header">
+                                <span class="main-editor-pane__title">
+                                    <app-svg-icon
+                                        class="main-editor-pane__title-icon"
+                                        icon="file-empty-state"
+                                        size="1.2rem"
+                                    />
+                                    Instructions
+                                </span>
+                                <div class="main-editor-pane__actions">
+                                    <button
+                                        type="button"
+                                        class="icon-button"
+                                        title="Copy"
+                                        (click)="copyInstructions()"
+                                    >
+                                        <app-svg-icon
+                                            icon="copy"
+                                            size="0.9rem"
+                                        />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="icon-button"
+                                        title="Collapse"
+                                        (click)="toggleMainView()"
+                                    >
+                                        <app-svg-icon
+                                            icon="editor-expand"
+                                            size="0.85rem"
+                                        />
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="main-editor-pane__body">
+                                <app-textarea
+                                    class="main-editor-pane__textarea"
+                                    formControlName="instructions"
+                                    placeholder="Enter task instructions..."
+                                    [rows]="20"
+                                ></app-textarea>
+                            </div>
+                        } @else {
                             <app-json-editor
                                 [jsonData]="outputSchemaText"
                                 (jsonChange)="onSchemaEditorChange($event)"
                                 (validationChange)="onSchemaValidChange($event)"
+                                [showHeader]="true"
+                                [allowCopy]="true"
+                                [allowExpand]="true"
+                                (expand)="toggleMainView()"
                                 [fullHeight]="true"
-                                [showHeader]="false"
                             ></app-json-editor>
-                        </div>
+                        }
                     </div>
                 </div>
             } @else {
@@ -183,6 +285,7 @@
                         <div class="surface-row">
                             <app-multi-select
                                 class="surface-row__select"
+                                color="white"
                                 [grouped]="true"
                                 [label]="surfaceSummaryLabel()"
                                 searchPlaceholder="Search item..."
@@ -209,6 +312,14 @@
                     <div class="input-map">
                         <app-input-map [activeColor]="activeColor"></app-input-map>
                     </div>
+
+                    <app-custom-input
+                        label="Output Variable Path"
+                        tooltipText="Path where the Task node output will be stored in flow variables."
+                        formControlName="output_variable_path"
+                        placeholder="e.g. task_reply"
+                        [activeColor]="activeColor"
+                    ></app-custom-input>
 
                     <app-textarea
                         label="Instructions"
@@ -239,7 +350,10 @@
                                 (jsonChange)="onSchemaEditorChange($event)"
                                 (validationChange)="onSchemaValidChange($event)"
                                 [editorHeight]="220"
-                                [showHeader]="false"
+                                [showHeader]="true"
+                                [allowCopy]="true"
+                                [allowExpand]="true"
+                                (expand)="expandPanel()"
                             ></app-json-editor>
                         }
                     </div>

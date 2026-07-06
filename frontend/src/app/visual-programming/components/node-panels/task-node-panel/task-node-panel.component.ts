@@ -12,6 +12,7 @@ import {
     SelectDropdownTriggerDirective,
     SelectItem,
     TextareaComponent,
+    TooltipComponent,
 } from '@shared/components';
 import { catchError, of } from 'rxjs';
 
@@ -19,6 +20,7 @@ import { AgentDefinition } from '../../../../features/agent-definitions/models/a
 import { Surface } from '../../../../features/agent-definitions/models/surface.model';
 import { AgentDefinitionsApiService } from '../../../../features/agent-definitions/services/agent-definitions-api.service';
 import { SurfacesApiService } from '../../../../features/agent-definitions/services/surfaces-api.service';
+import { ToastService } from '../../../../services/notifications';
 import { TaskNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { SidePanelService } from '../../../services/side-panel.service';
@@ -38,6 +40,7 @@ import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from 
         MultiSelectComponent,
         HelpTooltipComponent,
         AppSvgIconComponent,
+        TooltipComponent,
     ],
     templateUrl: './task-node-panel.component.html',
     styleUrls: ['./task-node-panel.component.scss'],
@@ -51,6 +54,8 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     public readonly agentDefinitionId = signal<number | null>(null);
     public readonly selectedSurfaceIds = signal<number[]>([]);
     public readonly outputSchemaExpanded = signal<boolean>(false);
+
+    public readonly mainView = signal<'instructions' | 'schema'>('instructions');
 
     outputSchemaText = '{}';
     outputSchemaError = '';
@@ -100,7 +105,8 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     constructor(
         private readonly sidePanelService: SidePanelService,
         private readonly agentDefinitionsApi: AgentDefinitionsApiService,
-        private readonly surfacesApi: SurfacesApiService
+        private readonly surfacesApi: SurfacesApiService,
+        private readonly toastService: ToastService
     ) {
         super();
         this.agentDefinitionsApi
@@ -121,7 +127,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     }
 
     get activeColor(): string {
-        return this.node().color || '#2aba6b';
+        return '#685fff';
     }
 
     get inputMapPairs(): FormArray {
@@ -146,6 +152,29 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         this.outputSchemaExpanded.update((value) => !value);
     }
 
+    toggleMainView(): void {
+        this.mainView.update((value) => (value === 'instructions' ? 'schema' : 'instructions'));
+    }
+
+    expandPanel(): void {
+        this.sidePanelService.requestExpand();
+    }
+
+    copyInstructions(): void {
+        this.copyToClipboard(this.form.get('instructions')?.value || '');
+    }
+
+    copySchema(): void {
+        this.copyToClipboard(this.outputSchemaText);
+    }
+
+    private copyToClipboard(text: string): void {
+        navigator.clipboard
+            .writeText(text)
+            .then(() => this.toastService.success('Copied to clipboard!', 3000, 'bottom-right'))
+            .catch(() => this.toastService.error('Failed to copy', 3000, 'top-right'));
+    }
+
     onSchemaEditorChange(json: string): void {
         this.outputSchemaText = json;
         this.sidePanelService.triggerAutosave();
@@ -162,10 +191,12 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         this.agentDefinitionId.set(data.agent_definition ?? null);
         this.selectedSurfaceIds.set(data.surface_list ?? []);
         this.outputSchemaExpanded.set(false);
+        this.mainView.set('instructions');
 
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             input_map: this.fb.array([]),
+            output_variable_path: [this.node().output_variable_path || ''],
             instructions: [data.instructions || '', Validators.required],
         });
 
@@ -185,8 +216,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
             ...this.node(),
             node_name: this.form.value.node_name,
             input_map: inputMapValue,
-            // No UI control in the current design for output_variable_path (generic base-model
-            // field) — preserved untouched, same treatment as `remember_output` below.
+            output_variable_path: this.form.value.output_variable_path || null,
             data: {
                 ...this.node().data,
                 name: this.form.value.node_name || 'Task Node',
