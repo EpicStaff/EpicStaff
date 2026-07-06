@@ -36,19 +36,15 @@ def set_output_variables(
         # Write dict of values to shared variable scope
         access_key = scope_match.group(1).strip("'\"")
         if not isinstance(output, dict):
-            raise ValueError(
-                f"Output for shared variable scope must be a dict, got {type(output)}"
-            )
+            raise ValueError(f"Output for shared variable scope must be a dict, got {type(output)}")
         scope = variables.shared[access_key]
-        init_defaults = output.pop("init_defaults", False)
+        init_defaults = output.pop('init_defaults', False)
         for var_name, var_value in output.items():
             if init_defaults:
                 existing = getattr(scope, var_name)
                 if existing is None:
                     setattr(scope, var_name, var_value)
-                    logger.info(
-                        f"Initialized shared variable: shared[{access_key}].{var_name}"
-                    )
+                    logger.info(f"Initialized shared variable: shared[{access_key}].{var_name}")
             else:
                 setattr(scope, var_name, var_value)
                 logger.info(f"Set shared variable: shared[{access_key}].{var_name}")
@@ -73,16 +69,14 @@ def set_output_variables(
 
         # Handle shared variable updates in return dict: {"shared": {access_key: {var: val}}}
         if "shared" in output and isinstance(output["shared"], dict):
-            shared_proxy = getattr(variables, "shared", None)
+            shared_proxy = getattr(variables, 'shared', None)
             if shared_proxy is not None:
                 for access_key, vars_dict in output["shared"].items():
                     if isinstance(vars_dict, dict):
                         scope = shared_proxy[access_key]
                         for var_name, var_value in vars_dict.items():
                             setattr(scope, var_name, var_value)
-                            logger.info(
-                                f"Set shared variable: shared[{access_key}].{var_name}"
-                            )
+                            logger.info(f"Set shared variable: shared[{access_key}].{var_name}")
                 # Remove 'shared' before updating to avoid overwriting proxy
                 output_copy = {k: v for k, v in output.items() if k != "shared"}
                 if output_copy:
