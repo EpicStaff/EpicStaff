@@ -269,7 +269,8 @@
         }
     }
 
-    .parameters-mode-switch {
+    .parameters-mode-switch,
+    .storage-mode-switch {
         display: flex;
         align-items: center;
         gap: 12px;
@@ -281,6 +282,11 @@
         app-toggle-switch {
             display: inline-flex;
         }
+    }
+
+    .storage-mode-switch {
+        justify-content: flex-end;
+        margin-top: 0.5rem;
     }
 
     .editor-card {

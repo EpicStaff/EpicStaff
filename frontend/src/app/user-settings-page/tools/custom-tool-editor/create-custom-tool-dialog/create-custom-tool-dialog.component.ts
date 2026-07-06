@@ -97,6 +97,7 @@ export class CreateCustomToolDialogComponent {
             [Validators.required]
         ),
         libraries: this.fb.control<string[]>(this.selectedTool?.python_code?.libraries ?? []),
+        useStorage: this.fb.control(this.selectedTool?.use_storage ?? false),
     });
 
     public readonly ActiveEditor = ActiveEditor;
@@ -372,6 +373,7 @@ export class CreateCustomToolDialogComponent {
                 libraries: original.python_code?.libraries ?? [],
                 global_kwargs: {},
             },
+            use_storage: original.use_storage ?? false,
         };
 
         this.isCopying.set(true);
@@ -461,12 +463,13 @@ export class CreateCustomToolDialogComponent {
     }
 
     private computeSnapshot(): string {
-        const { name, description, pythonCode, libraries } = this.form.getRawValue();
+        const { name, description, pythonCode, libraries, useStorage } = this.form.getRawValue();
         return JSON.stringify({
             name,
             description,
             pythonCode,
             libraries: [...libraries].sort(),
+            useStorage,
             variables: this.snapshotVariables(),
         });
     }

@@ -6,6 +6,7 @@ export interface CreateCustomToolFormValue {
     pythonCode: string;
     variablesJson: string;
     libraries: string[];
+    useStorage: boolean;
 }
 
 /**
@@ -28,5 +29,6 @@ export function toCreatePayload(form: CreateCustomToolFormValue): CreatePythonCo
             libraries: form.libraries,
             global_kwargs: {},
         },
+        use_storage: form.useStorage,
     };
 }
