@@ -57,6 +57,7 @@ class NodeTypeConfig:
     model_class: type  # Django model class, e.g. CrewNode
     serializer_class: type  # bulk serializer class, e.g. CrewNodeBulkSerializer
     saveable_factory: NodeSaveableFactory = field(default=None)
+    is_singleton: bool = False  # True for at-most-one-per-graph node types (Start/End)
 
     def __post_init__(self):
         if self.saveable_factory is None:
@@ -79,6 +80,12 @@ To add a new node type:
   2. Add one NodeTypeConfig line here.
   Everything else (service loop, serializer fields, deletions, temp_id
   scan) updates automatically.
+
+If the new node type is one-per-graph (like StartNode/EndNode), set
+is_singleton=True on its NodeTypeConfig — otherwise it silently falls out
+of both the collab snapshot dedup (graph_state_service.py,
+snapshot_normalize.py) and the bulk-save natural-key guard (service.py),
+which both derive their behavior from SINGLETON_LIST_KEYS below.
 """
 
 NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
@@ -117,12 +124,14 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         "start_node_ids",
         StartNode,
         StartNodeBulkSerializer,
+        is_singleton=True,
     ),
     NodeTypeConfig(
         "end_node_list",
         "end_node_ids",
         EndNode,
         EndNodeBulkSerializer,
+        is_singleton=True,
     ),
     NodeTypeConfig(
         "subgraph_node_list",
@@ -181,3 +190,7 @@ EDGE_DELETE_CONFIGS: list[EdgeDeleteConfig] = [
     EdgeDeleteConfig("edge_ids", Edge),
     EdgeDeleteConfig("conditional_edge_ids", ConditionalEdge),
 ]
+
+SINGLETON_LIST_KEYS: frozenset[str] = frozenset(
+    config.list_key for config in NODE_TYPE_REGISTRY if config.is_singleton
+)

@@ -165,6 +165,7 @@ class GraphBulkSaveService:
     ) -> NodeListValidationResult:
         """Validate all items in one node list."""
         result = NodeListValidationResult()
+        singleton_create_seen = False
 
         for index, item_data in enumerate(incoming_list):
             item_data = dict(item_data)
@@ -172,6 +173,16 @@ class GraphBulkSaveService:
             temp_id = str(item_data.pop("temp_id", None) or "")  # wire-only, strip now
 
             if item_id is None:
+                if config.is_singleton and (db_map or singleton_create_seen):
+                    result.errors.append(
+                        {
+                            "index": index,
+                            "errors": f"Only one {config.list_key} entry allowed per graph",
+                        }
+                    )
+                    continue
+                if config.is_singleton:
+                    singleton_create_seen = True
                 item_data.pop("id", None)
                 build = self._build_saveable(config, item_data, index, payload_temp_ids)
             else:
@@ -259,6 +270,12 @@ class GraphBulkSaveService:
         result = EdgeListValidationResult()
 
         db_map = {obj.id: obj for obj in model_class.objects.filter(graph=graph)}
+        existing_endpoint_pairs = set(
+            model_class.objects.filter(graph=graph).values_list(
+                "start_node_id", "end_node_id"
+            )
+        )
+        payload_endpoint_pairs_seen: set[tuple[int, int]] = set()
 
         for index, item_data in enumerate(incoming_list):
             item_data = dict(item_data)
@@ -283,6 +300,30 @@ class GraphBulkSaveService:
                 result.real_node_ids.add(end_parsed.ref.value)
 
             if item_id is None:
+                is_resolved_pair = (
+                    start_parsed.ref
+                    and end_parsed.ref
+                    and not start_parsed.ref.is_temp
+                    and not end_parsed.ref.is_temp
+                )
+                if is_resolved_pair:
+                    endpoint_pair = (start_parsed.ref.value, end_parsed.ref.value)
+                    if (
+                        endpoint_pair in existing_endpoint_pairs
+                        or endpoint_pair in payload_endpoint_pairs_seen
+                    ):
+                        result.errors.append(
+                            {
+                                "index": index,
+                                "errors": (
+                                    f"An edge between nodes {endpoint_pair[0]} and "
+                                    f"{endpoint_pair[1]} already exists in this graph"
+                                ),
+                            }
+                        )
+                        continue
+                    payload_endpoint_pairs_seen.add(endpoint_pair)
+
                 item_data.pop("id", None)
                 s = serializer_class(data=item_data)
                 if not s.is_valid():
@@ -335,6 +376,12 @@ class GraphBulkSaveService:
         result = EdgeListValidationResult()
 
         db_map = {obj.id: obj for obj in ConditionalEdge.objects.filter(graph=graph)}
+        existing_source_ids = set(
+            ConditionalEdge.objects.filter(graph=graph).values_list(
+                "source_node_id", flat=True
+            )
+        )
+        payload_source_ids_seen: set[int] = set()
 
         for index, item_data in enumerate(incoming_list):
             item_data = dict(item_data)
@@ -352,6 +399,25 @@ class GraphBulkSaveService:
                 result.real_node_ids.add(source_parsed.ref.value)
 
             if item_id is None:
+                is_resolved_source = source_parsed.ref and not source_parsed.ref.is_temp
+                if is_resolved_source:
+                    source_id = source_parsed.ref.value
+                    if (
+                        source_id in existing_source_ids
+                        or source_id in payload_source_ids_seen
+                    ):
+                        result.errors.append(
+                            {
+                                "index": index,
+                                "errors": (
+                                    f"A conditional edge from node {source_id} "
+                                    "already exists in this graph"
+                                ),
+                            }
+                        )
+                        continue
+                    payload_source_ids_seen.add(source_id)
+
                 item_data.pop("id", None)
                 s = ConditionalEdgeBulkSerializer(data=item_data)
                 if not s.is_valid():

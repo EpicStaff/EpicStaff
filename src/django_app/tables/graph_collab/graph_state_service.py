@@ -81,6 +81,7 @@ from tables.graph_collab.protocol import (
 )
 from tables.graph_collab.op_normalize import normalize_op_entry
 from tables.graph_collab.snapshot_normalize import inject_bulk_save_fields
+from tables.services.graph_bulk_save_service.registry import SINGLETON_LIST_KEYS
 from tables.services.redis_service import RedisService
 from utils.logger import logger
 
@@ -121,6 +122,40 @@ def _upsert_entry(entries: list[dict], new_entry: dict) -> None:
             entries[index] = new_entry
             return
     entries.append(new_entry)
+
+
+def _collapse_singleton_entry(
+    entries: list[dict], new_entry: dict, list_key: str
+) -> None:
+    """Collapse *entries* to exactly one entry for an at-most-one-per-graph
+    list (start_node_list / end_node_list — see SINGLETON_LIST_KEYS).
+
+    Unlike ``_upsert_entry``, this never appends a second entry: a Created op
+    carrying a temp_id that doesn't match the existing entry (reconnect,
+    late-join, FE regen) must still replace the singleton, not duplicate it.
+
+    If an existing entry carries a real ``id`` and *new_entry* has none, the
+    real ``id`` is copied onto *new_entry* (and any ``temp_id`` on *new_entry*
+    is dropped) — this keeps the op an UPDATE of the persisted row instead of
+    turning it into a duplicate create that would later hit the bulk-save
+    unique constraint.
+    """
+    existing_id = entries[0].get("id") if entries else None
+    new_id = new_entry.get("id")
+
+    if existing_id is not None and new_id is None:
+        new_entry["id"] = existing_id
+        new_entry.pop("temp_id", None)
+    elif existing_id is not None and new_id is not None and existing_id != new_id:
+        logger.warning(
+            "Singleton list {} has two entries with different real ids "
+            "({} vs {}) — keeping the new entry",
+            list_key,
+            existing_id,
+            new_id,
+        )
+
+    entries[:] = [new_entry]
 
 
 _EDGE_ENDPOINT_TEMP_FIELDS: dict[str, tuple[tuple[str, str], ...]] = {
@@ -562,6 +597,10 @@ class GraphLiveStateService:
           If the upserted entry carries a real integer id that is currently in
           the deleted accumulator (delete-then-readd scenario), that id is removed
           from the accumulator so a later flush does not delete the re-added node.
+          Exception: for SINGLETON_LIST_KEYS (start_node_list / end_node_list),
+          the list is always collapsed to exactly one entry instead of upserted
+          — a Created op with a mismatched temp_id replaces the singleton rather
+          than appending a second one (see _collapse_singleton_entry).
         - NodesDeletedMessage: remove each ref from its list_key; when a removed
           entry had a real integer id, append it to the snapshot's deleted
           accumulator under the corresponding <type>_node_ids key. For refs
@@ -606,7 +645,10 @@ class GraphLiveStateService:
                     return
                 entries: list[dict] = snapshot.setdefault(list_key, [])
                 new_entry = normalize_op_entry(list_key, message.node)
-                _upsert_entry(entries, new_entry)
+                if list_key in SINGLETON_LIST_KEYS:
+                    _collapse_singleton_entry(entries, new_entry, list_key)
+                else:
+                    _upsert_entry(entries, new_entry)
 
                 # if this node has a real id that was previously deleted,
                 # remove it from the accumulator — the node is alive again.

@@ -65,7 +65,10 @@ Payload-only — the retained Redis snapshot is never mutated here.
 
 import copy
 
-from tables.services.graph_bulk_save_service.registry import NODE_TYPE_REGISTRY
+from tables.services.graph_bulk_save_service.registry import (
+    NODE_TYPE_REGISTRY,
+    SINGLETON_LIST_KEYS,
+)
 from utils.logger import logger
 
 # All snapshot list keys that require ``graph`` injection.
@@ -177,6 +180,11 @@ def reconcile_against_db(payload: dict, graph) -> dict:
        ``surviving_node_ids`` — otherwise the flush fails validation with
        "routing references node IDs that do not exist" for a decision-table
        node still routing to a node that is already gone from the DB.
+    4. For each ``SINGLETON_LIST_KEYS`` list (``start_node_list`` /
+       ``end_node_list``), collapse more than one entry down to one,
+       preferring the entry with a real int ``id``. Self-heals snapshots
+       that accumulated a duplicate singleton before the op-time dedup in
+       ``graph_state_service.apply_op`` existed (see ``EST-3020``).
 
     Never silently drops without logging — every prune is summarised via
     ``logger.info`` so recovery from drift is auditable.
@@ -214,6 +222,8 @@ def reconcile_against_db(payload: dict, graph) -> dict:
                 if entry is None or entry.get("id") not in gone_ids
             ]
             pruned_nodes[config.list_key] = sorted(gone_ids)
+
+    collapsed_singletons = _collapse_singleton_lists(payload)
 
     pruned_edges: dict[str, list] = {}
     deleted: dict = payload.setdefault("deleted", {})
@@ -265,18 +275,50 @@ def reconcile_against_db(payload: dict, graph) -> dict:
 
     nulled_routing_refs = _null_dangling_routing_refs(payload, surviving_node_ids)
 
-    if pruned_nodes or pruned_edges or nulled_routing_refs:
+    if pruned_nodes or pruned_edges or nulled_routing_refs or collapsed_singletons:
         graph_id = getattr(graph, "id", graph)
         logger.info(
             "reconcile_against_db: pruned stale refs for graph {} — "
-            "nodes={}, edges={}, nulled_routing_refs={}",
+            "nodes={}, edges={}, nulled_routing_refs={}, collapsed_singletons={}",
             graph_id,
             pruned_nodes,
             pruned_edges,
             nulled_routing_refs,
+            collapsed_singletons,
         )
 
     return payload
+
+
+def _collapse_singleton_lists(payload: dict) -> dict[str, int]:
+    """Collapse each ``SINGLETON_LIST_KEYS`` list in *payload* to one entry.
+
+    Self-heals graphs that were already corrupted (duplicate start/end
+    entries) before the op-time dedup in ``graph_state_service.apply_op``
+    shipped. Prefers the entry carrying a real int ``id`` (the persisted
+    row); the rest are unpersisted duplicate creates, so they are simply
+    dropped — there is no DB row to reap into ``deleted``.
+
+    Mutates *payload* in place. Returns ``{list_key: dropped_count}`` for
+    lists that actually had more than one entry, for logging.
+    """
+    collapsed: dict[str, int] = {}
+    for list_key in SINGLETON_LIST_KEYS:
+        entries = payload.get(list_key) or []
+        if len(entries) <= 1:
+            continue
+
+        with_real_id = [
+            entry
+            for entry in entries
+            if entry is not None and isinstance(entry.get("id"), int)
+        ]
+        survivor = with_real_id[0] if with_real_id else entries[0]
+
+        collapsed[list_key] = len(entries) - 1
+        payload[list_key] = [survivor]
+
+    return collapsed
 
 
 def _enqueue_deletion(deleted: dict, delete_key: str, entry_id: int | None) -> None:
