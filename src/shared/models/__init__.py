@@ -3,6 +3,7 @@ from .agent_service import (
     SearchConfigEntry,
     CollectionSpec,
     AgentSpec,
+    AgentTaskSpec,
     S3FileSpec,
     AgentRequest,
     ToolResult,
@@ -53,6 +54,8 @@ from .graph_nodes import (
     ClassificationDecisionTableNodeData,
     AgentDefinitionData,
     TaskNodeData,
+    AgentNodeTaskData,
+    AgentNodeData,
 )
 from .surfaces import (
     ToolModeLiteral,
@@ -134,6 +137,7 @@ __all__ = [
     "SearchConfigEntry",
     "CollectionSpec",
     "AgentSpec",
+    "AgentTaskSpec",
     "S3FileSpec",
     "AgentRequest",
     "ToolResult",
@@ -181,6 +185,8 @@ __all__ = [
     "ClassificationDecisionTableNodeData",
     "AgentDefinitionData",
     "TaskNodeData",
+    "AgentNodeTaskData",
+    "AgentNodeData",
     # surfaces
     "ToolModeLiteral",
     "StorageAccessLiteral",

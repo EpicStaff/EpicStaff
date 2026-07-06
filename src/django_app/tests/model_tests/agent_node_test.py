@@ -29,6 +29,9 @@ from tables.serializers.model_serializers.node_serializers.basic_node_serializer
     AgentNodeSerializer,
 )
 from tables.services.agent_inline_surface_service import AgentInlineSurfaceService
+from tables.services.agent_node_payload_service import AgentNodePayloadService
+from tables.services.converter_service import ConverterService
+from tables.services.node_surface_service import NodeSurfaceService
 
 
 # ---------------------------------------------------------------------------
@@ -362,3 +365,70 @@ def test_bulk_save_creates_agent_node_with_tasks_and_inline_surface(
     agent_nodes = detail_response.data["agent_node_list"]
     assert len(agent_nodes) == 1
     assert {task["name"] for task in agent_nodes[0]["tasks"]} == {"task-a", "task-b"}
+
+
+# ---------------------------------------------------------------------------
+# 7. AgentNodePayloadService.build_agent_node_data
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_build_agent_node_data_orders_tasks_and_resolves_context_to_names(
+    agent_node, agent
+):
+    agent_node.agent_definition = agent
+    agent_node.save()
+
+    task_a = AgentNodeTask.objects.create(agent_node=agent_node, name="task-a", order=0)
+    task_b = AgentNodeTask.objects.create(
+        agent_node=agent_node, name="task-b", order=1, instructions="do b"
+    )
+    task_b.context_tasks.add(task_a)
+
+    AgentInlineSurfaceService.apply(
+        agent_node=agent_node,
+        data={"instructions": "be concise"},
+    )
+
+    service = AgentNodePayloadService(ConverterService())
+    data = service.build_agent_node_data(
+        agent_node, node_name="agent-node-1 #1", graph_id=None, session_id=None
+    )
+
+    assert data.node_name == "agent-node-1 #1"
+    assert data.agent_definition is not None
+    assert data.agent_definition.id == agent.id
+    assert [task.name for task in data.tasks] == ["task-a", "task-b"]
+    assert data.tasks[1].instructions == "do b"
+    assert data.tasks[1].context_tasks == ["task-a"]
+    assert data.tasks[0].context_tasks == []
+    assert data.surface.instructions == "be concise"
+
+
+@pytest.mark.django_db
+def test_build_agent_node_data_without_agent_definition_is_none(agent_node):
+    service = AgentNodePayloadService(ConverterService())
+    data = service.build_agent_node_data(
+        agent_node, node_name="agent-node-1 #1", graph_id=None, session_id=None
+    )
+
+    assert data.agent_definition is None
+    assert data.tasks == []
+
+
+# ---------------------------------------------------------------------------
+# 8. NodeSurfaceService.build_combined_surface uses the AgentInlineSurface serializer
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_build_combined_surface_uses_agent_inline_surface_serializer(agent_node):
+    AgentInlineSurfaceService.apply(
+        agent_node=agent_node,
+        data={"instructions": "answer briefly"},
+    )
+    agent_node.refresh_from_db()
+
+    combined = NodeSurfaceService.build_combined_surface(agent_node)
+
+    assert combined["instructions"] == "answer briefly"
