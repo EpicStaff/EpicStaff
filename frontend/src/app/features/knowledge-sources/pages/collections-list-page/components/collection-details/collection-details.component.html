@@ -3,7 +3,6 @@
         <div class="details__spinner">
             <app-spinner
                 [text]="'Loading collection data...'"
-                [accentColor]="'#6562f5'"
                 [isOverlay]="false"
             ></app-spinner>
         </div>
@@ -75,7 +74,6 @@
                     @if (loadingDocuments()) {
                         <app-spinner
                             [text]="'Loading collection documents...'"
-                            [accentColor]="'#6562f5'"
                             [isOverlay]="false"
                         ></app-spinner>
                     } @else {

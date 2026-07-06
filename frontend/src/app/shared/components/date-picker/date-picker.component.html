@@ -122,7 +122,7 @@
                             [class.date-picker__day--selected]="cell.isSelected"
                             [class.date-picker__day--past]="cell.isPast"
                             [style.background-color]="cell.isSelected ? resolvedActiveColor() : null"
-                            [style.color]="cell.isSelected ? '#fff' : null"
+                            [style.color]="cell.isSelected ? 'var(--white)' : null"
                             (click)="selectDay(cell)"
                         >
                             {{ cell.day }}

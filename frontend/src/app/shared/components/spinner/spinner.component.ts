@@ -74,10 +74,10 @@ export class SpinnerComponent {
     @Input() size: number = 48;
     @Input() borderWidth: number = 4;
     @Input() text: string = '';
-    @Input() accentColor: string = '#6562f5';
-    @Input() borderColor: string = 'rgba(101, 98, 245, 0.3)';
-    @Input() backgroundColor: string = '#171717';
-    @Input() textColor: string = '#aaa';
+    @Input() accentColor: string = 'var(--accent-color)';
+    @Input() borderColor: string = 'var(--purple-alpha-30)';
+    @Input() backgroundColor: string = 'var(--gray-900)';
+    @Input() textColor: string = 'var(--gray-400)';
     @Input() textSize: number = 16;
     @Input() isOverlay: boolean = true;
 }
