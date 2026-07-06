@@ -926,13 +926,18 @@ class ProcessRagIndexingView(APIView):
 
         rag_id = serializer.validated_data["rag_id"]
         rag_type = serializer.validated_data["rag_type"]
+        document_config_ids = serializer.validated_data["document_config_ids"]
 
         IndexingService.validate_and_prepare_indexing(rag_id=rag_id, rag_type=rag_type)
 
         producer.send(
             settings.KNOWLEDGE_INDEX_REQUEST_CHANNEL,
             Message(
-                payload=IndexRequest(rag_id=rag_id, rag_strategy=rag_type).model_dump()
+                payload=IndexRequest(
+                    rag_id=rag_id,
+                    rag_strategy=rag_type,
+                    document_ids=frozenset(document_config_ids),
+                ).model_dump()
             ),
         )
 
@@ -955,8 +960,9 @@ class CancelRagIndexingView(APIView):
 
         rag_id = serializer.validated_data["rag_id"]
         rag_type = serializer.validated_data["rag_type"]
+        document_ids = serializer.validated_data["document_config_ids"]
 
-        target_request = IndexRequest(rag_id=rag_id, rag_strategy=rag_type).model_dump()
+        target_request = IndexRequest(rag_id=rag_id, rag_strategy=rag_type, document_ids=document_ids).model_dump()
         producer.send(
             settings.KNOWLEDGE_CANCEL_CHANNEL,
             Message(payload=CancelRequest(target_request=target_request).model_dump()),

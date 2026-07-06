@@ -1,9 +1,8 @@
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from src.shared.enums.knowledge_new import DocumentStatusEnum, GraphSearchMethodEnum, RAGStrategy
 from src.shared.models.base import ValueObject
-
-from src.shared.enums.knowledge_new import GraphSearchMethodEnum, RAGStrategy
 
 __all__ = [
     "BaseSearchConfig",
@@ -79,6 +78,7 @@ class PrechunkResponse(ValueObject):
     """Preview chunks produced for a `PrechunkRequest`."""
 
     request: PrechunkRequest
+    status: DocumentStatusEnum
     chunks: list[PreviewChunk]
 
 
@@ -87,6 +87,11 @@ class IndexRequest(ValueObject):
 
     rag_id: int
     rag_strategy: RAGStrategy
+    document_ids: frozenset[int]
+
+    @field_serializer("document_ids")
+    def _serialize_document_ids(self, value: frozenset[int]) -> list[int]:
+        return list(value)
 
 
 class SearchRequest(ValueObject):

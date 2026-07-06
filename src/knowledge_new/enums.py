@@ -1,6 +1,6 @@
 from enum import StrEnum
 
-from src.shared.enums.knowledge_new import GraphSearchMethodEnum, RAGStrategy
+from src.shared.enums.knowledge_new import DocumentStatusEnum, GraphSearchMethodEnum, RAGStrategy
 
 __all__ = [
     "ChunkStrategyEnum",
@@ -21,16 +21,6 @@ class ChunkStrategyEnum(StrEnum):
     JSON = "json"
     MARKDOWN = "markdown"
     TOKEN = "token"
-
-
-class DocumentStatusEnum(StrEnum):
-    NEW = "new"
-    CHUNKING = "chunking"
-    CHUNKED = "chunked"
-    INDEXING = "indexing"
-    COMPLETED = "completed"
-    WARNING = "warning"
-    FAILED = "failed"
 
 
 class DocumentErrorCode(StrEnum):

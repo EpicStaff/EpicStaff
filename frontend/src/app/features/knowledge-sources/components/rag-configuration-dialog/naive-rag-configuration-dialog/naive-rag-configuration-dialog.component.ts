@@ -4,7 +4,6 @@ import { ButtonComponent } from '@shared/components';
 import { filter, switchMap, take } from 'rxjs/operators';
 
 import { getIndexingConfirmationData } from '../../../helpers/get-indexing-confirmation-data.util';
-import { NaiveRagService } from '../../../services/naive-rag.service';
 import { NaiveRagDocumentsStorageService } from '../../../services/naive-rag-documents-storage.service';
 import { NaiveRagPollingService } from '../../../services/naive-rag-polling.service';
 import { NaiveRagConfigurationComponent } from '../../naive-rag-configuration/naive-rag-configuration.component';
@@ -18,7 +17,6 @@ import { RagConfigurationDialogComponent } from '../rag-configuration-dialog.com
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent {
-    private naiveRagService = inject(NaiveRagService);
     private documentsStorageService = inject(NaiveRagDocumentsStorageService);
     private pollingService = inject(NaiveRagPollingService);
     private ragConfiguration = viewChild.required(NaiveRagConfigurationComponent);
@@ -60,7 +58,7 @@ export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent
             .pipe(
                 filter((result) => result === true),
                 switchMap(() =>
-                    this.naiveRagService.startIndexing({
+                    this.ragIndexingService.startIndexing({
                         rag_id: this.data.ragId,
                         rag_type: 'naive',
                         document_config_ids: configIds,

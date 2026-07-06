@@ -7,6 +7,7 @@ __all__ = [
     "FileTextExtractingError",
     "KnowledgeError",
     "NoPreviewChunksProducedError",
+    "RagNotFoundError",
     "RepositoryError",
     "UnsupportedError",
 ]
@@ -59,3 +60,7 @@ class DocumentNotFoundError(KnowledgeError):
 
 class ChunksNotIndexedError(KnowledgeError):
     default_message = "Document(id={document_id}) chunks not indexed for RAG(id={rag_id})."
+
+
+class RagNotFoundError(KnowledgeError):
+    default_message = "RAG(id={rag_id}) not found."

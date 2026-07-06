@@ -12,6 +12,7 @@ import { calcLimit } from '../helpers/calculate-chunks-fetch-limit.util';
 import { normalizeBulkUpdateErrors } from '../helpers/normalize-bulk-update-errors.util';
 import { transformToTableDocuments } from '../helpers/transform-to-table-document.util';
 import {
+    CancelNaiveNaiveRagChunkingResponse,
     DocumentChunkingState,
     DocumentWithChunksStatus,
     GetNaiveRagDocumentChunksResponse,
@@ -185,6 +186,11 @@ export class NaiveRagDocumentsStorageService implements StorageService {
             });
         });
         this.documentStatesSignal.set(docStateMap);
+    }
+
+    stopChunking(ragId: number, documentId: number): Observable<CancelNaiveNaiveRagChunkingResponse> {
+        this.updateDocState(documentId, (s) => ({ ...s, status: 'new' }));
+        return this.naiveRagService.stopChunkingByDocumentId(ragId, documentId);
     }
 
     runChunking(ragId: number, documentId: number): Observable<NaiveRagChunkingResponse> {

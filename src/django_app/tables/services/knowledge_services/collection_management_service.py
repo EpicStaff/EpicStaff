@@ -398,6 +398,7 @@ class CollectionManagementService:
             "document_configs_count": document_configs_count,
             "chunks_count": chunks_count,
             "embeddings_count": embeddings_count,
+            "indexing_document_config_ids": naive_rag.indexing_document_config_ids,
             "created_at": naive_rag.created_at,
             "updated_at": naive_rag.updated_at,
         }

@@ -1,13 +1,14 @@
 from datetime import datetime
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
 from enums import (
     ChunkStrategyEnum,
     DocumentErrorCode,
     DocumentStatusEnum,
     EmbedderProviderEnum,
+    IndexStatusEnum,
 )
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 from src.shared.models.base import Entity, ValueObject
 from src.shared.models.knowledge_new import (
     BaseSearchConfig,
@@ -23,7 +24,6 @@ from src.shared.models.knowledge_new import (
     SearchRequest,
     SearchResponse,
 )
-
 from utils import utcnow
 
 __all__ = [
@@ -40,10 +40,40 @@ __all__ = [
     "PrechunkRequest",
     "PrechunkResponse",
     "PreviewChunk",
+    "Rag",
     "SearchConfig",
     "SearchRequest",
     "SearchResponse",
 ]
+
+
+class Rag(Entity):
+    status: IndexStatusEnum
+    indexing_document_ids: set[int]
+
+    def finish_document(self, document_id: int):
+        self.indexing_document_ids.discard(document_id)
+
+    def finish(self, has_completed_document: bool, has_failed_document: bool):
+        if not has_completed_document:
+            self.status = IndexStatusEnum.FAILED
+        elif has_failed_document:
+            self.status = IndexStatusEnum.WARNING
+        else:
+            self.status = IndexStatusEnum.COMPLETED
+        self.indexing_document_ids.clear()
+
+    def mark_as_processing(self, document_ids: frozenset[int]):
+        self.status = IndexStatusEnum.PROCESSING
+        self.indexing_document_ids.update(document_ids)
+
+    def mark_as_cancelled(self):
+        self.status = IndexStatusEnum.CANCELLED
+        self.indexing_document_ids.clear()
+
+    def mark_as_failed(self):
+        self.status = IndexStatusEnum.FAILED
+        self.indexing_document_ids.clear()
 
 
 class ChunkingConfig(ValueObject):

@@ -50,6 +50,11 @@ class RagConfigurationSummarySerializer(serializers.Serializer):
     embeddings_count = serializers.IntegerField(
         required=False, help_text="Total number of embeddings created"
     )
+    indexing_document_config_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        help_text="IDs of document configs included in the current/last indexing run",
+    )
     message = serializers.CharField(
         required=False,
         allow_null=True,
