@@ -108,6 +108,20 @@ class TestExitWorktreeTool:
         assert "kept" in exit_result
         assert (sandbox_dir / ".worktrees" / "kept-wt").exists()
 
+    def test_exit_worktree_keep_true_with_dirty_tree(self, sandbox_dir, git_repo):
+        enter_worktree_main(repo_path="repo", name="dirty-kept-wt")
+        worktree_dir = sandbox_dir / ".worktrees" / "dirty-kept-wt"
+        (worktree_dir / "scratch.txt").write_text("uncommitted work")
+
+        exit_result = exit_worktree_main(
+            worktree_path=".worktrees/dirty-kept-wt", keep=True
+        )
+
+        assert "kept" in exit_result
+        assert "uncommitted changes were preserved" in exit_result
+        assert worktree_dir.exists()
+        assert (worktree_dir / "scratch.txt").exists()
+
     def test_exit_worktree_discards_uncommitted_changes_when_not_kept(
         self, sandbox_dir, git_repo
     ):

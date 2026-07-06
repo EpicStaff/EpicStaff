@@ -58,10 +58,12 @@ def _find_main_repo_root(worktree_path: Path):
 def main(worktree_path: str, keep: bool = False) -> str:
     """
     Remove a git worktree created by the Enter Worktree Tool, or preserve it
-    when keep=True. If a plain removal is refused (uncommitted changes) and
-    keep=False, retries with --force since keep=False is an explicit request
-    to discard the worktree. Never raises: all failures are returned as
-    readable error strings.
+    when keep=True. keep=True never removes the worktree, whether it is clean
+    or dirty — preserving uncommitted work is the safe outcome, and the
+    returned message says so explicitly when changes are present. If a plain
+    removal is refused (uncommitted changes) and keep=False, retries with
+    --force since keep=False is an explicit request to discard the worktree.
+    Never raises: all failures are returned as readable error strings.
     """
     try:
         if not worktree_path:
@@ -88,6 +90,14 @@ def main(worktree_path: str, keep: bool = False) -> str:
         keep = bool(keep)
 
         if keep:
+            returncode, stdout, stderr = _run_git(
+                ["status", "--porcelain"], cwd=worktree_savepath
+            )
+            if returncode == 0 and stdout.strip():
+                return (
+                    f"Worktree kept at {worktree_path} (not removed) — "
+                    "uncommitted changes were preserved."
+                )
             return f"Worktree kept at {worktree_path} (not removed)."
 
         main_root, error = _find_main_repo_root(worktree_savepath)

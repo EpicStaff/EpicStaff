@@ -119,7 +119,9 @@ class TestShellJobResultTool:
     def test_unknown_job_id_returns_error(self, sandbox_dir):
         job_result_main = load_tool_main("shell_job_result_tool").main
 
-        result = job_result_main(job_id="doesnotexist")
+        # Well-formed (32 lowercase hex chars, matching uuid4().hex) but no
+        # such job directory exists.
+        result = job_result_main(job_id="0" * 32)
 
         assert result.startswith("Error:")
         assert "no job found" in result
@@ -136,6 +138,34 @@ class TestShellJobResultTool:
         job_result_main = load_tool_main("shell_job_result_tool").main
 
         result = job_result_main(job_id="../../etc/passwd")
+
+        assert result.startswith("Error:")
+        assert "invalid job_id" in result
+
+    def test_job_id_wrong_length_rejected(self, sandbox_dir):
+        job_result_main = load_tool_main("shell_job_result_tool").main
+
+        result = job_result_main(job_id="abc123")
+
+        assert result.startswith("Error:")
+        assert "invalid job_id" in result
+
+    def test_job_id_uppercase_hex_rejected(self, sandbox_dir):
+        job_result_main = load_tool_main("shell_job_result_tool").main
+
+        # uuid4().hex is always lowercase — uppercase hex must not be accepted.
+        result = job_result_main(job_id="A" * 32)
+
+        assert result.startswith("Error:")
+        assert "invalid job_id" in result
+
+    def test_job_id_alphanumeric_but_non_hex_rejected(self, sandbox_dir):
+        job_result_main = load_tool_main("shell_job_result_tool").main
+
+        # 32 alphanumeric chars that are not valid hex (contains 'g', 'z')
+        # must be rejected now that validation is hex-specific, not just
+        # alnum.
+        result = job_result_main(job_id="g" * 16 + "z" * 16)
 
         assert result.startswith("Error:")
         assert "invalid job_id" in result
