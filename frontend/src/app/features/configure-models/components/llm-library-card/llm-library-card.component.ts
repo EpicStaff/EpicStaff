@@ -1,8 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
-
-import { LlmLibraryModel } from '../../interfaces/llm-library-model.interface';
+import { LlmLibraryModel } from '@shared/models';
 
 @Component({
     selector: 'app-llm-library-card',

@@ -1,0 +1,90 @@
+<div class="dialog">
+    <div class="dialog-header">
+        <div class="title-group">
+            <i class="ti ti-file-import"></i>
+            <h2 class="title">Import Preview</h2>
+        </div>
+        <button
+            type="button"
+            class="close-btn"
+            aria-label="Close"
+            (click)="cancel()"
+        >
+            <i class="ti ti-x"></i>
+        </button>
+    </div>
+
+    <div class="dialog-body">
+        <p class="lead">Review the configuration below. Confirming will replace all current CDT data.</p>
+
+        <div class="meta-grid">
+            <div class="meta-item">
+                <span class="meta-label">Node name</span>
+                <span class="meta-value">{{ data.node_name || '(empty)' }}</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Default LLM config</span>
+                <span class="meta-value">{{ data.default_llm_config ?? 'none' }}</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Pre-computation code</span>
+                <span class="meta-value">{{ preCodeSummary() }}</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Post-computation code</span>
+                <span class="meta-value">{{ postCodeSummary() }}</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Condition groups</span>
+                <span class="meta-value meta-value--count">{{ conditionGroupCount() }}</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Prompt configs</span>
+                <span class="meta-value meta-value--count">{{ promptCount() }}</span>
+            </div>
+        </div>
+
+        <div class="groups-section">
+            <span class="section-title">Condition groups to import</span>
+            @if (groupRows().length === 0) {
+                <p class="empty">No condition groups in this file.</p>
+            } @else {
+                <div class="groups-table-wrapper">
+                    <table class="groups-table">
+                        <thead>
+                            <tr>
+                                <th>Group name</th>
+                                <th>Route code</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (row of groupRows(); track $index) {
+                                <tr>
+                                    <td>{{ row.name }}</td>
+                                    <td>{{ row.routeCode }}</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="dialog-footer">
+        <button
+            type="button"
+            class="btn btn--ghost"
+            (click)="cancel()"
+        >
+            Cancel
+        </button>
+        <button
+            type="button"
+            class="btn btn--primary"
+            (click)="confirm()"
+        >
+            Confirm Import
+        </button>
+    </div>
+</div>

@@ -88,6 +88,16 @@
                             >
                                 Prompt library
                             </button>
+
+                            <span class="tabs-row__divider"></span>
+
+                            <app-action-dropdown-button
+                                label="Export"
+                                [items]="exportFormatItems"
+                                [panelWidth]="100"
+                                (mainClick)="exportAsJson()"
+                                (itemClick)="onExportItemSelected($event)"
+                            />
                         </div>
                     </div>
                 </div>
@@ -102,7 +112,7 @@
                             [storageNodeId]="gridStorageId()"
                             [prompts]="prompts()"
                             [defaultLlmId]="form.value.default_llm_config || null"
-                            [llmConfigs]="llmConfigOptions"
+                            [llmConfigs]="llmConfigOptions()"
                             [preInputMapKeys]="inputMapVariableNames()"
                             [domainKeys]="domainKeys()"
                             (conditionGroupsChange)="onConditionGroupsChange($event)"
@@ -263,7 +273,6 @@
                                                         >LLM Override <span class="required-star">*</span></label
                                                     >
                                                     <app-llm-model-selector
-                                                        [llmConfigs]="llmConfigs"
                                                         [ngModel]="getLlmIdAsNumber(prompt.llm_config)"
                                                         [ngModelOptions]="{ standalone: true }"
                                                         (modelSelected)="onPromptLlmChange(prompt.id, $event)"
