@@ -796,6 +796,22 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
                         "inline_surface__knowledge__graph_local_search_config",
                     ),
                 ),
+                Prefetch(
+                    "agent_node_list",
+                    queryset=AgentNode.objects.select_related(
+                        "inline_surface"
+                    ).prefetch_related(
+                        "surface_list",
+                        "tasks",
+                        "tasks__context_tasks",
+                        "inline_surface__python_tools",
+                        "inline_surface__mcp_tools",
+                        "inline_surface__storage_items",
+                        "inline_surface__knowledge__naive_search_config",
+                        "inline_surface__knowledge__graph_basic_search_config",
+                        "inline_surface__knowledge__graph_local_search_config",
+                    ),
+                ),
                 Prefetch("end_node", queryset=EndNode.objects.all()),
                 Prefetch(
                     "telegram_trigger_node_list",
@@ -1073,8 +1089,25 @@ class TaskNodeViewSet(
 class AgentNodeViewSet(
     IdempotentNodeCreateMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
 ):
-    queryset = AgentNode.objects.all()
+    queryset = AgentNode.objects.select_related("inline_surface").prefetch_related(
+        "surface_list",
+        "tasks",
+        "tasks__context_tasks",
+        "inline_surface__python_tools",
+        "inline_surface__mcp_tools",
+        "inline_surface__storage_items",
+        "inline_surface__knowledge__naive_search_config",
+        "inline_surface__knowledge__graph_basic_search_config",
+        "inline_surface__knowledge__graph_local_search_config",
+    )
     serializer_class = AgentNodeSerializer
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["organization"] = Organization.objects.get(
+            name=DEFAULT_ORGANIZATION_NAME
+        )
+        return context
 
 
 class AgentNodeTaskViewSet(viewsets.ModelViewSet):
@@ -1083,6 +1116,7 @@ class AgentNodeTaskViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["agent_node"]
 
+    @transaction.atomic
     def perform_create(self, serializer):
         instance = serializer.save()
 
@@ -1093,6 +1127,7 @@ class AgentNodeTaskViewSet(viewsets.ModelViewSet):
                 error.message_dict if hasattr(error, "message_dict") else error.messages
             )
 
+    @transaction.atomic
     def perform_update(self, serializer):
         instance = serializer.save()
 

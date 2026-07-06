@@ -22,6 +22,14 @@ from .surface_models import (
     InlineSurfaceNaiveSearchConfig,
     InlineSurfaceGraphBasicSearchConfig,
     InlineSurfaceGraphLocalSearchConfig,
+    AgentInlineSurface,
+    AgentInlineSurfacePythonTool,
+    AgentInlineSurfaceMcpTool,
+    AgentInlineSurfaceStorageItem,
+    AgentInlineSurfaceKnowledge,
+    AgentInlineSurfaceNaiveSearchConfig,
+    AgentInlineSurfaceGraphBasicSearchConfig,
+    AgentInlineSurfaceGraphLocalSearchConfig,
 )
 
 __all__ = [
@@ -46,4 +54,12 @@ __all__ = [
     "InlineSurfaceNaiveSearchConfig",
     "InlineSurfaceGraphBasicSearchConfig",
     "InlineSurfaceGraphLocalSearchConfig",
+    "AgentInlineSurface",
+    "AgentInlineSurfacePythonTool",
+    "AgentInlineSurfaceMcpTool",
+    "AgentInlineSurfaceStorageItem",
+    "AgentInlineSurfaceKnowledge",
+    "AgentInlineSurfaceNaiveSearchConfig",
+    "AgentInlineSurfaceGraphBasicSearchConfig",
+    "AgentInlineSurfaceGraphLocalSearchConfig",
 ]

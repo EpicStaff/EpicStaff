@@ -197,3 +197,41 @@ class SurfaceValidator:
 
         if errors:
             raise SurfaceValidationError(detail={"surface_list": errors})
+
+    @staticmethod
+    def validate_agent_node_surfaces(surfaces, agent_definition, organization):
+        """Validate surfaces attached to an AgentNode via `surface_list`.
+
+        A surface owned by an agent may only be attached to an agent node whose
+        `agent_definition` matches that owner. A node with `agent_definition=None`
+        may only attach shared surfaces (`owner_agent=None`).
+        """
+
+        ids = [s.pk for s in surfaces]
+        duplicates = SurfaceValidator._find_duplicate_ids(ids)
+
+        if duplicates:
+            raise SurfaceValidationError(
+                detail={"surface_list": f"Duplicate surface ids: {sorted(duplicates)}"}
+            )
+
+        errors = []
+
+        for surface in surfaces:
+            if surface.organization_id != organization.pk:
+                errors.append(
+                    f"Surface {surface.pk} does not belong to this organization."
+                )
+                continue
+
+            if surface.owner_agent_id is not None and (
+                agent_definition is None
+                or surface.owner_agent_id != agent_definition.pk
+            ):
+                errors.append(
+                    f"Surface {surface.pk} is owned by agent {surface.owner_agent_id} "
+                    f"and cannot be attached to this agent node."
+                )
+
+        if errors:
+            raise SurfaceValidationError(detail={"surface_list": errors})

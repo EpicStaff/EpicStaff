@@ -47,6 +47,14 @@ from .agent_models import (
     InlineSurfaceNaiveSearchConfig,
     InlineSurfaceGraphBasicSearchConfig,
     InlineSurfaceGraphLocalSearchConfig,
+    AgentInlineSurface,
+    AgentInlineSurfacePythonTool,
+    AgentInlineSurfaceMcpTool,
+    AgentInlineSurfaceStorageItem,
+    AgentInlineSurfaceKnowledge,
+    AgentInlineSurfaceNaiveSearchConfig,
+    AgentInlineSurfaceGraphBasicSearchConfig,
+    AgentInlineSurfaceGraphLocalSearchConfig,
 )
 from .flow_assistant_models import (
     FlowAssistant,
