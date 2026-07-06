@@ -1,0 +1,51 @@
+{
+  "title": "SpawnAgentToolArgs",
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "The task/instructions given to the spawned sub-agent. This is the sub-agent's only task -- it runs once and returns its output."
+    },
+    "role": {
+      "type": "string",
+      "description": "Optional role/persona for the spawned sub-agent, e.g. 'Research Analyst'. Defaults to 'Assistant'."
+    },
+    "goal": {
+      "type": "string",
+      "description": "Optional goal for the spawned sub-agent. Defaults to a goal derived from 'prompt'."
+    },
+    "backstory": {
+      "type": "string",
+      "description": "Optional backstory for the spawned sub-agent. Defaults to a short generic backstory."
+    },
+    "expected_output": {
+      "type": "string",
+      "description": "Optional description of the expected output format. Defaults to a generic description."
+    },
+    "llm_config_id": {
+      "type": "integer",
+      "description": "Optional LLM config ID to override the model used for this specific spawn. If omitted, falls back to the 'default_llm_config_id' set in the tool configuration."
+    },
+    "api_key": {
+      "type": "string",
+      "description": "EpicStaff API key used to authenticate the calls needed to spawn and run the sub-agent (sent as the X-Api-Key header). Set this in the tool configuration, not by the agent.",
+      "input_type": "user_input"
+    },
+    "api_base_url": {
+      "type": "string",
+      "description": "Base URL of the EpicStaff Django REST API, e.g. http://django_app:8000/api. Optional -- if unset, falls back to the DJANGO_API_URL environment variable, then to http://django_app:8000/api.",
+      "input_type": "user_input"
+    },
+    "default_llm_config_id": {
+      "type": "integer",
+      "description": "Default LLM config ID used to run the spawned sub-agent when the agent doesn't supply 'llm_config_id'. Set this in the tool configuration, not by the agent.",
+      "input_type": "user_input"
+    },
+    "poll_timeout_s": {
+      "type": "integer",
+      "description": "Maximum seconds to wait for the spawned sub-agent to finish before giving up. Optional, default 300.",
+      "input_type": "user_input"
+    }
+  },
+  "required": ["prompt", "api_key"]
+}
