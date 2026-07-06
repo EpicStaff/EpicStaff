@@ -39,10 +39,6 @@ class AnswerToLLMSerializer(serializers.Serializer):
     answer = serializers.CharField()
 
 
-class EnvironmentConfigSerializer(serializers.Serializer):
-    data = serializers.DictField(required=True)
-
-
 class InitRealtimeSerializer(serializers.Serializer):
     agent_id = serializers.IntegerField(required=True)
     config = serializers.DictField(required=False, default=dict)
