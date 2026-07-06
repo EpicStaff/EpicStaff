@@ -208,6 +208,33 @@ export class CreateCollectionDialogComponent {
         );
     }
 
+    stopIndexing() {
+        const strategy = this.strategy();
+        if (!strategy || !this.strategyComponent) return of(false);
+
+        return this.confirmation
+            .confirm({
+                title: 'Stop indexing',
+                message: `Do you want to stop indexing?`,
+                type: 'warning',
+                cancelText: 'Cancel',
+                confirmText: 'Stop indexing',
+            })
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                filter((result) => result === true),
+                switchMap(() =>
+                    strategy.stopIndexing().pipe(
+                        catchError(() => {
+                            this.toastService.error('Indexing stop failed');
+                            return of(false);
+                        })
+                    )
+                )
+            )
+            .subscribe();
+    }
+
     onClose() {
         this.strategy()?.dispose?.();
         this.dialogRef.close();

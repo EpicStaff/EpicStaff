@@ -43,12 +43,12 @@ export class CollectionRagsComponent {
         const ragConfig = ragConfigurations.find((i) => i.rag_type === type);
 
         if (type === 'naive') {
-            this.openRagConfigurationDialog(ragConfig!.rag_id, NaiveRagConfigurationDialog);
+            this.openRagConfigurationDialog(ragConfig!.rag_id, type, NaiveRagConfigurationDialog);
             return;
         }
 
         if (type === 'graph') {
-            this.openRagConfigurationDialog(ragConfig!.rag_id, GraphRagConfigurationDialog);
+            this.openRagConfigurationDialog(ragConfig!.rag_id, type, GraphRagConfigurationDialog);
             return;
         }
     }
@@ -76,13 +76,14 @@ export class CollectionRagsComponent {
 
     private openRagConfigurationDialog(
         ragId: number,
+        ragType: RagType,
         dialogComponent: ComponentType<RagConfigurationDialogComponent>
     ): void {
         const collectionId = this.collection().collection_id;
         const dialog = this.dialog.open(dialogComponent, {
             width: 'calc(100vw - 2rem)',
             height: 'calc(100vh - 2rem)',
-            data: { ragId, collectionId },
+            data: { ragId, ragType, collectionId },
             disableClose: true,
         });
 

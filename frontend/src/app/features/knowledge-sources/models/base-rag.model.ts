@@ -35,6 +35,11 @@ export interface StartIndexingDtoRequest {
     document_config_ids?: number[];
 }
 
+export interface StopIndexingDtoRequest {
+    rag_id: number;
+    rag_type: RagType;
+}
+
 export interface StartIndexingDtoResponse {
     detail: string;
     rag_id: number;
@@ -42,4 +47,10 @@ export interface StartIndexingDtoResponse {
     collection_id: number;
     accepted_config_ids: number[] | null;
     skipped_completed_config_ids: number[];
+}
+
+export interface StopIndexingDtoResponse {
+    detail: string;
+    rag_id: number;
+    rag_type: RagType;
 }
