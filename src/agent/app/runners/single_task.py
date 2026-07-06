@@ -36,7 +36,7 @@ class SingleTaskRunner(Runner):
     """
 
     run_type = RunType.SINGLE_TASK
-    emitter_mode = EmitterMode.BATCH
+    emitter_mode = EmitterMode.TOOL_EVENTS
     _prompt_builder = SingleTaskPromptBuilder()
 
     async def execute(self, request: AgentRequest, emitter: Emitter) -> None:

@@ -262,6 +262,147 @@ async def test_run_task_stops_mid_wait(redis_service_stub, task_node_data):
         await service.run_task(task_node_data, stop_event)
 
 
+@pytest.mark.asyncio
+async def test_run_task_forwards_live_events_to_on_event_in_order(
+    redis_service_stub, task_node_data, fake_stream_client
+):
+    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
+    collected: list[StreamEnvelope] = []
+
+    async def fake_agent():
+        request_envelope = await _read_one_request(
+            fake_stream_client, service.request_stream
+        )
+        await _publish_result(
+            fake_stream_client,
+            service.result_stream,
+            request_envelope.correlation_id,
+            {"id": "call_1", "name": "search", "arguments": "{}"},
+            event_type="agent.tool_call",
+        )
+        await _publish_result(
+            fake_stream_client,
+            service.result_stream,
+            request_envelope.correlation_id,
+            {"tool_call_id": "call_1", "content": "result"},
+            event_type="agent.tool_result",
+        )
+        await _publish_result(
+            fake_stream_client,
+            service.result_stream,
+            request_envelope.correlation_id,
+            {"final_text": "done", "stop_reason": "completed"},
+        )
+
+    responder = asyncio.create_task(fake_agent())
+    result = await service.run_task(
+        task_node_data, StopEvent(), on_event=collected.append
+    )
+    await responder
+
+    assert [envelope.type for envelope in collected] == [
+        "agent.tool_call",
+        "agent.tool_result",
+    ]
+    assert result["final_text"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_run_task_on_event_raising_logs_warning_and_still_returns_final(
+    redis_service_stub, task_node_data, fake_stream_client
+):
+    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
+
+    def bad_on_event(envelope):
+        raise RuntimeError("callback exploded")
+
+    async def fake_agent():
+        request_envelope = await _read_one_request(
+            fake_stream_client, service.request_stream
+        )
+        await _publish_result(
+            fake_stream_client,
+            service.result_stream,
+            request_envelope.correlation_id,
+            {"id": "call_1", "name": "search", "arguments": "{}"},
+            event_type="agent.tool_call",
+        )
+        await _publish_result(
+            fake_stream_client,
+            service.result_stream,
+            request_envelope.correlation_id,
+            {"final_text": "done", "stop_reason": "completed"},
+        )
+
+    responder = asyncio.create_task(fake_agent())
+    result = await service.run_task(task_node_data, StopEvent(), on_event=bad_on_event)
+    await responder
+
+    assert result["final_text"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_run_task_skips_unknown_event_type_with_matching_correlation(
+    redis_service_stub, task_node_data, fake_stream_client
+):
+    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
+
+    async def fake_agent():
+        request_envelope = await _read_one_request(
+            fake_stream_client, service.request_stream
+        )
+        await _publish_result(
+            fake_stream_client,
+            service.result_stream,
+            request_envelope.correlation_id,
+            {},
+            event_type="agent.heartbeat",
+        )
+        await _publish_result(
+            fake_stream_client,
+            service.result_stream,
+            request_envelope.correlation_id,
+            {"final_text": "done", "stop_reason": "completed"},
+        )
+
+    responder = asyncio.create_task(fake_agent())
+    result = await service.run_task(task_node_data, StopEvent())
+    await responder
+
+    assert result["final_text"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_run_task_live_events_fine_with_on_event_none(
+    redis_service_stub, task_node_data, fake_stream_client
+):
+    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
+
+    async def fake_agent():
+        request_envelope = await _read_one_request(
+            fake_stream_client, service.request_stream
+        )
+        await _publish_result(
+            fake_stream_client,
+            service.result_stream,
+            request_envelope.correlation_id,
+            {"id": "call_1", "name": "search", "arguments": "{}"},
+            event_type="agent.tool_call",
+        )
+        await _publish_result(
+            fake_stream_client,
+            service.result_stream,
+            request_envelope.correlation_id,
+            {"final_text": "done", "stop_reason": "completed"},
+        )
+
+    responder = asyncio.create_task(fake_agent())
+    result = await service.run_task(task_node_data, StopEvent())
+    await responder
+
+    assert result["final_text"] == "done"
+
+
 def test_build_request_blob_appends_surface_instructions(redis_service_stub, llm_data):
     service = AgentTaskService(redis_service=redis_service_stub)
     task_node_data = TaskNodeData(
