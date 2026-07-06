@@ -1,0 +1,21 @@
+{
+  "title": "SleepToolArgs",
+  "type": "object",
+  "properties": {
+    "seconds": {
+      "type": "number",
+      "description": "How long to pause, in seconds. Must be a positive number. Clamped to the configured 'max_seconds' cap if it exceeds it (the response states when this happens)."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Why the agent is pausing, e.g. 'waiting for rate-limit window to reset'. Required — shown in the tool result for observability."
+    },
+    "max_seconds": {
+      "type": "number",
+      "description": "Upper bound in seconds this tool instance is allowed to sleep for, regardless of what the agent requests. Set this in the tool configuration, not by the agent. Optional, default 300.",
+      "input_type": "user_input",
+      "default": 300
+    }
+  },
+  "required": ["seconds", "reason"]
+}
