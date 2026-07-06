@@ -8,7 +8,12 @@ Protocol (see src/agent/tests/test_contract.py):
 2. XADD a ``StreamEnvelope{type: "agent.run", correlation_id, payload:
    {"request_key"}}`` to ``agent.requests``.
 3. Await the matching result on ``agent.results``: ``agent.result`` payload
-   or ``agent.error`` payload, both keyed by ``correlation_id``.
+   or ``agent.error`` payload, both keyed by ``correlation_id``. Along the
+   way, live envelopes whose ``type`` is in ``LIVE_EVENT_TYPES`` (currently
+   ``agent.tool_call`` / ``agent.tool_result``) are forwarded to the caller's
+   ``on_event`` callback and otherwise skipped; envelopes of any other
+   unrecognized type sharing the correlation_id are silently skipped too
+   (old-crew compatibility).
 
 Consumption is a plain ``XREAD`` from a private pre-publish tail offset,
 NOT a consumer group — consumer groups compete-consume, so concurrent task
@@ -20,6 +25,7 @@ per-call subscribe pattern but with server-side blocking.
 import json
 import time
 import uuid
+from typing import Callable
 
 from loguru import logger
 
@@ -31,6 +37,9 @@ from src.shared.redis_streams import StreamEnvelope
 
 FAILURE_STOP_REASONS = frozenset({"llm_error", "timeout"})
 """Stop reasons that indicate a hard agent-loop failure; mirrors src/agent/app/constants.py."""
+
+LIVE_EVENT_TYPES = frozenset({"agent.tool_call", "agent.tool_result"})
+"""Envelope types forwarded live to ``on_event`` instead of ending the wait."""
 
 
 class AgentTaskError(Exception): ...
@@ -58,7 +67,12 @@ class AgentTaskService:
         self.poll_block_ms = poll_block_ms
         self.request_key_ttl_s = request_key_ttl_s
 
-    async def run_task(self, node_data: TaskNodeData, stop_event: StopEvent) -> dict:
+    async def run_task(
+        self,
+        node_data: TaskNodeData,
+        stop_event: StopEvent,
+        on_event: Callable[[StreamEnvelope], None] | None = None,
+    ) -> dict:
         client = self.redis_service.aioredis_client
         correlation_id = str(uuid.uuid4())
         request_key = f"agent:request:{correlation_id}"
@@ -84,6 +98,7 @@ class AgentTaskService:
                 last_id=last_id,
                 deadline=deadline,
                 stop_event=stop_event,
+                on_event=on_event,
             )
         finally:
             await client.delete(request_key)
@@ -111,6 +126,7 @@ class AgentTaskService:
         last_id: str,
         deadline: float,
         stop_event: StopEvent,
+        on_event: Callable[[StreamEnvelope], None] | None = None,
     ) -> dict:
         while True:
             stop_event.check_stop()
@@ -131,6 +147,18 @@ class AgentTaskService:
                     last_id = message_id
                     envelope = StreamEnvelope.from_fields(fields)
                     if envelope.correlation_id != correlation_id:
+                        continue
+
+                    if envelope.type in LIVE_EVENT_TYPES:
+                        if on_event is not None:
+                            try:
+                                on_event(envelope)
+                            except Exception:
+                                logger.warning(
+                                    "on_event callback failed correlation_id={} type={}",
+                                    correlation_id,
+                                    envelope.type,
+                                )
                         continue
 
                     if envelope.type == "agent.error":

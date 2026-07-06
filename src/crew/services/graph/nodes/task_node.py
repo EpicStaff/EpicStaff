@@ -66,7 +66,31 @@ class TaskNode(BaseNode):
             update={"instructions": rendered_instructions}
         )
 
-        result = await self.agent_task_service.run_task(task_node_data, self.stop_event)
+        step_id = 0
+
+        def _on_agent_event(envelope):
+            nonlocal step_id
+            step_id += 1
+            self.custom_session_message_writer.add_custom_message(
+                session_id=self.session_id,
+                node_name=self.node_name,
+                writer=writer,
+                execution_order=execution_order,
+                message_data={
+                    "message_type": "task_node_stream",
+                    "event": "tool_call"
+                    if envelope.type == "agent.tool_call"
+                    else "tool_result",
+                    "step_id": step_id,
+                    "is_final": False,
+                    "sse_visible": True,
+                    "data": envelope.payload,
+                },
+            )
+
+        result = await self.agent_task_service.run_task(
+            task_node_data, self.stop_event, on_event=_on_agent_event
+        )
 
         # TODO(remember_output): when task_node_data.remember_output is True,
         # store the final result in a per-agent Redis key so later tasks in

@@ -18,10 +18,14 @@ class EmitterMode(str, Enum):
     """Output transport strategy declared per ``Runner`` subclass.
 
     ``BATCH`` — buffer all events, publish a single result envelope on
-    ``on_final``.  This is the only mode built in this plan.
+    ``on_final``.
+    ``TOOL_EVENTS`` — buffer everything ``BATCH`` does, plus publish live
+    ``agent.tool_call`` / ``agent.tool_result`` envelopes as they happen
+    (``RedisStreamToolEventEmitter``).
     ``STREAM`` — publish LLM delta chunks in real time; reserved for the
     future ``ChatRunner`` and a ``RedisStreamDeltaEmitter`` implementation.
     """
 
     BATCH = "BATCH"
+    TOOL_EVENTS = "TOOL_EVENTS"
     STREAM = "STREAM"

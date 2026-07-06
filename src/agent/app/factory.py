@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from app.emitters.base import Emitter
 from app.emitters.redis_batch import RedisStreamBatchEmitter
+from app.emitters.redis_tool_events import RedisStreamToolEventEmitter
 from app.enums import EmitterMode, RunType
 from app.exceptions import UnknownRunTypeError
 from app.runners.base import Runner
@@ -87,5 +88,10 @@ class RunnerFactory:
     ) -> Emitter:
         if mode == EmitterMode.BATCH:
             return RedisStreamBatchEmitter(redis_client, result_stream, correlation_id)
+
+        if mode == EmitterMode.TOOL_EVENTS:
+            return RedisStreamToolEventEmitter(
+                redis_client, result_stream, correlation_id
+            )
 
         raise NotImplementedError(f"Emitter mode '{mode}' is not yet implemented")
