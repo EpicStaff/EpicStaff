@@ -1,0 +1,11 @@
+{
+  "title": "ShellJobResultToolArgs",
+  "type": "object",
+  "properties": {
+    "job_id": {
+      "type": "string",
+      "description": "Job id returned by the Shell Exec Tool when run_in_background was true."
+    }
+  },
+  "required": ["job_id"]
+}

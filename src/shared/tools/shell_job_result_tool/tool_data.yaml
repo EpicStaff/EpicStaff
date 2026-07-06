@@ -1,0 +1,7 @@
+tool-data:
+  name: "Shell Job Result Tool"
+  description: "Reads the current output and running/finished status of a background job started by the Shell Exec Tool. Each sandbox execution is a fresh process, so background job results must be retrieved via a separate call."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

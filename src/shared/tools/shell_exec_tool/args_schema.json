@@ -1,0 +1,21 @@
+{
+  "title": "ShellExecToolArgs",
+  "type": "object",
+  "properties": {
+    "command": {
+      "type": "string",
+      "description": "Shell command to execute. Runs via the system shell, with cwd at the sandbox working root."
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "description": "Foreground execution timeout in milliseconds. Ignored when run_in_background is true. Default 120000 (2 minutes), hard-capped at 600000 (10 minutes).",
+      "default": 120000
+    },
+    "run_in_background": {
+      "type": "boolean",
+      "description": "If true, start the command detached and return a job id immediately instead of waiting for it to finish. Retrieve output/status later with the Shell Job Result Tool.",
+      "default": false
+    }
+  },
+  "required": ["command"]
+}
