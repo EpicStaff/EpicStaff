@@ -1,0 +1,193 @@
+<div class="appearance">
+    <header class="appearance__header">
+        <h1 class="appearance__title">Appearance</h1>
+        <p class="appearance__description">
+            Choose a built-in theme or create a custom one and fine-tune every color token of the interface.
+        </p>
+    </header>
+
+    <section class="appearance__section">
+        <h2 class="appearance__section-title">Themes</h2>
+
+        <div class="appearance__theme-grid">
+            <button
+                type="button"
+                class="theme-card"
+                [class.theme-card--active]="selection() === 'dark'"
+                (click)="select('dark')"
+            >
+                <div class="theme-card__preview">
+                    @for (color of darkPreview; track $index) {
+                        <span
+                            class="theme-card__swatch"
+                            [style.background]="color"
+                        ></span>
+                    }
+                </div>
+                <span class="theme-card__name">Dark</span>
+            </button>
+
+            <button
+                type="button"
+                class="theme-card"
+                [class.theme-card--active]="selection() === 'light'"
+                (click)="select('light')"
+            >
+                <div class="theme-card__preview">
+                    @for (color of lightPreview; track $index) {
+                        <span
+                            class="theme-card__swatch"
+                            [style.background]="color"
+                        ></span>
+                    }
+                </div>
+                <span class="theme-card__name">Light</span>
+            </button>
+
+            @for (theme of themes(); track theme.id) {
+                <div
+                    class="theme-card theme-card--custom"
+                    role="button"
+                    tabindex="0"
+                    [class.theme-card--active]="selection() === theme.id"
+                    (click)="select(theme.id)"
+                    (keydown.enter)="select(theme.id)"
+                >
+                    <div class="theme-card__preview">
+                        @for (color of previewFor(theme); track $index) {
+                            <span
+                                class="theme-card__swatch"
+                                [style.background]="color"
+                            ></span>
+                        }
+                    </div>
+                    <span class="theme-card__name">{{ theme.name }}</span>
+                    <button
+                        type="button"
+                        class="theme-card__delete"
+                        aria-label="Delete theme"
+                        (click)="deleteTheme(theme, $event)"
+                    >
+                        <app-svg-icon
+                            icon="trash"
+                            size="14px"
+                        />
+                    </button>
+                </div>
+            }
+
+            <button
+                type="button"
+                class="theme-card theme-card--new"
+                (click)="createTheme()"
+            >
+                <app-svg-icon
+                    icon="plus"
+                    size="20px"
+                />
+                <span class="theme-card__name">New theme</span>
+            </button>
+        </div>
+
+        @if (!activeCustomTheme()) {
+            <p class="appearance__hint">Built-in themes can't be edited. Create your own theme to customize colors.</p>
+        }
+    </section>
+
+    @if (activeCustomTheme(); as theme) {
+        <section class="appearance__section editor">
+            <div class="editor__toolbar">
+                <input
+                    class="editor__name-input"
+                    type="text"
+                    aria-label="Theme name"
+                    [value]="theme.name"
+                    (change)="rename(theme.id, $event)"
+                />
+
+                <div class="editor__base-toggle">
+                    <button
+                        type="button"
+                        class="editor__base-option"
+                        [class.editor__base-option--active]="theme.base === 'dark'"
+                        (click)="setBase(theme.id, 'dark')"
+                    >
+                        Dark
+                    </button>
+                    <button
+                        type="button"
+                        class="editor__base-option"
+                        [class.editor__base-option--active]="theme.base === 'light'"
+                        (click)="setBase(theme.id, 'light')"
+                    >
+                        Light
+                    </button>
+                </div>
+
+                <button
+                    type="button"
+                    class="editor__reset-all"
+                    (click)="resetAll(theme.id)"
+                >
+                    Reset all
+                </button>
+            </div>
+
+            @for (group of groups; track group.title) {
+                <div class="editor__group">
+                    <h3 class="editor__group-title">{{ group.title }}</h3>
+                    <div class="editor__rows">
+                        @for (token of group.tokens; track token.name) {
+                            <div class="token-row">
+                                <div class="token-row__info">
+                                    <span class="token-row__label">{{ token.label }}</span>
+                                    <span class="token-row__name">{{ token.name }}</span>
+                                </div>
+                                <div class="token-row__actions">
+                                    @if (isOverridden(theme, token.name)) {
+                                        <button
+                                            type="button"
+                                            class="token-row__reset"
+                                            aria-label="Reset to base value"
+                                            (click)="resetToken(theme.id, token.name)"
+                                        >
+                                            <app-svg-icon
+                                                icon="refresh"
+                                                size="14px"
+                                            />
+                                        </button>
+                                    }
+                                    <button
+                                        type="button"
+                                        class="token-row__swatch"
+                                        aria-label="Pick color"
+                                        [class.token-row__swatch--open]="pickerToken() === token.name"
+                                        (click)="openPicker(token.name, $event)"
+                                    >
+                                        <span
+                                            class="token-row__swatch-fill"
+                                            [style.background]="effectiveValue(theme, token.name)"
+                                        ></span>
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </section>
+    }
+
+    @if (pickerToken()) {
+        <div
+            class="appearance__picker"
+            [ngStyle]="pickerStyle()"
+            (click)="$event.stopPropagation()"
+        >
+            <color-chrome
+                [color]="pickerColor()"
+                (onChange)="onColorChange($event)"
+            />
+        </div>
+    }
+</div>

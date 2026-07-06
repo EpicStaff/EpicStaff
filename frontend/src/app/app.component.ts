@@ -1,6 +1,7 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 
+import { CustomThemeService } from './features/theme-customization/services/custom-theme.service';
 import { ToastComponent } from './services/notifications/notification/toast.component';
 
 @Component({
@@ -15,4 +16,6 @@ import { ToastComponent } from './services/notifications/notification/toast.comp
     `,
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AppComponent {}
+export class AppComponent {
+    private readonly customThemeService = inject(CustomThemeService);
+}

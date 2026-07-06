@@ -301,6 +301,13 @@ export const routes: Routes = [
                                 (m) => m.ProfilePageComponent
                             ),
                     },
+                    {
+                        path: 'appearance',
+                        loadComponent: () =>
+                            import('./features/theme-customization/pages/appearance-page/appearance-page.component').then(
+                                (m) => m.AppearancePageComponent
+                            ),
+                    },
                 ],
             },
             {

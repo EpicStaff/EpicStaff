@@ -11,7 +11,6 @@ import {
     signal,
     ViewChild,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { ClickOutsideDirective } from '@shared/directives';
 
@@ -195,6 +194,13 @@ export class LeftSidebarComponent implements AfterViewInit {
         ];
 
         this.bottomNavItems = [];
+        this.bottomNavItems.push({
+            id: 'appearance',
+            routeLink: 'appearance',
+            icon: 'photo',
+            label: 'Appearance',
+            showTooltip: false,
+        });
         this.bottomNavItems.push({
             id: 'settings',
             icon: 'settings',
