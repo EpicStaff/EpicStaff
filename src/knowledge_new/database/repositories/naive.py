@@ -133,7 +133,7 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
                     overlap_start_index=c.overlap_start,
                     overlap_end_index=c.overlap_end,
                 )
-                for index, c in enumerate(chunks)
+                for index, c in enumerate(chunks, start=1)
             ]
         )
         await self._session.flush()
