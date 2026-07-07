@@ -555,6 +555,7 @@ class RunSession(APIView):
                 variables=variables,
                 username=username,
                 parent_session_id=serializer.validated_data.get("parent_session_id"),
+                token_budget=serializer.validated_data.get("token_budget"),
             )
             logger.info(f"Session {session_id} successfully started.")
         except Exception as e:

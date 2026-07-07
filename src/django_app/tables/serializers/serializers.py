@@ -24,6 +24,13 @@ class RunSessionSerializer(serializers.Serializer):
     # agent session that triggered it. Not exposed by any UI form — purely a
     # programmatic/tool-runtime input.
     parent_session_id = serializers.IntegerField(required=False, allow_null=True)
+    # EST-3285 4.2c: optional run-level token budget hard stop. Not exposed
+    # by any UI form. Threaded to crew via SessionData.initial_state's
+    # reserved "__token_budget__" key (see
+    # SessionManagerService.create_session_data) rather than a new typed
+    # SessionData field. Omitted/None (default) means "no limit" -- inert
+    # for every existing caller.
+    token_budget = serializers.IntegerField(required=False, allow_null=True, min_value=1)
 
     def validate(self, attrs):
         if not attrs.get("graph_id") and not attrs.get("graph_uuid"):

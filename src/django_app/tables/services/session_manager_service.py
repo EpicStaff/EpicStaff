@@ -117,6 +117,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         username: str | None = None,
         entrypoint: str | None = None,
         parent_session_id: int | None = None,
+        token_budget: int | None = None,
     ) -> Session:
         if variables is None:
             variables = dict()
@@ -146,6 +147,17 @@ class SessionManagerService(metaclass=SingletonMeta):
         graph_user = GraphOrganizationUser.objects.filter(
             organization_user__user__email=username, graph_id=graph_id
         ).first()
+        # EST-3285 4.2c: stash an optional per-run token budget in the
+        # already-existing status_data JSONField (no migration) purely as an
+        # audit trail of what was requested at session creation. NOTE: this
+        # key may be overwritten by later status_data updates (e.g. the
+        # "run" status published once crew picks up the session) -- it is
+        # not read back for enforcement. The value actually enforced by
+        # crew is passed straight through to create_session_data() below and
+        # threaded via SessionData.initial_state's reserved key, never as a
+        # new typed SessionData field.
+        status_data = {"token_budget": token_budget} if token_budget is not None else {}
+
         session = Session.objects.create(
             graph_id=graph_id,
             status=Session.SessionStatus.PENDING,
@@ -154,23 +166,32 @@ class SessionManagerService(metaclass=SingletonMeta):
             graph_user=graph_user,
             entrypoint=entrypoint,
             parent_session_id=parent_session_id,
+            status_data=status_data,
         )
         return session
 
     def create_session_data(
         self,
         session: Session,
+        token_budget: int | None = None,
     ) -> SessionData:
         self.subgraph_validator.validate(session.graph)
 
         unique_subgraphs: dict[int, SubGraphData] = {}
         graph_data = self._build_graph_data(session.graph, unique_subgraphs, session)
 
+        initial_state = dict(session.variables)
+        if token_budget is not None:
+            # See TOKEN_BUDGET_STATE_KEY in
+            # crew/services/graph/graph_session_manager_service.py -- popped
+            # back out before it becomes a live flow variable.
+            initial_state["__token_budget__"] = token_budget
+
         return SessionData(
             id=session.pk,
             graph=graph_data,
             unique_subgraph_list=list(unique_subgraphs.values()),
-            initial_state=session.variables,
+            initial_state=initial_state,
         )
 
     def run_session(
@@ -180,6 +201,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         username: str | None = None,
         entrypoint: str | None = None,
         parent_session_id: int | None = None,
+        token_budget: int | None = None,
     ) -> int:
         variables = self._get_actual_variables(variables)
         logger.info(f"'run_session' got variables: {variables=}")
@@ -193,9 +215,12 @@ class SessionManagerService(metaclass=SingletonMeta):
             username=username,
             entrypoint=entrypoint,
             parent_session_id=parent_session_id,
+            token_budget=token_budget,
         )
         try:
-            session_data: SessionData = self.create_session_data(session=session)
+            session_data: SessionData = self.create_session_data(
+                session=session, token_budget=token_budget
+            )
             # TODO: add ping or waiting for crew to accept connections
 
             session.graph_schema = session_data.graph.model_dump(mode="json")
