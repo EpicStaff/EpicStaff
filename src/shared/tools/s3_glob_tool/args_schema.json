@@ -1,0 +1,15 @@
+{
+  "title": "S3GlobArgs",
+  "type": "object",
+  "properties": {
+    "pattern": {
+      "type": "string",
+      "description": "fnmatch-style glob pattern to match against full org-relative paths, e.g. '*.py', 'src/**/*.json'. '*' and '**' both match across '/' path segments."
+    },
+    "path": {
+      "type": "string",
+      "description": "Root folder to search under. Defaults to \"\" (bucket root)."
+    }
+  },
+  "required": ["pattern"]
+}
