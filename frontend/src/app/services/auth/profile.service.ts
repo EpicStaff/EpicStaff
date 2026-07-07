@@ -41,11 +41,11 @@ export class ProfileService {
         const user = this.currentUser();
         if (!user) return '—';
         if (user.is_superadmin) return ROLE_LABELS[UserRole.SUPER_ADMIN];
-        const highestRole = user.memberships.reduce<UserRole | null>(
-            (best, m) => (best === null || m.role.id < best ? (m.role.id as UserRole) : best),
-            null
-        );
-        return highestRole !== null ? (ROLE_LABELS[highestRole] ?? '—') : '—';
+
+        const currentOrgId = this.activeOrgService.activeOrgId();
+        const currentMembership = user.memberships.find((m) => m.organization.id === currentOrgId);
+
+        return currentMembership ? currentMembership.role.name : '—';
     });
 
     /** Simple single fetch — use for refreshing profile data mid-session. */
