@@ -49,6 +49,45 @@ class EnvironmentConfigSerializer(serializers.Serializer):
     data = serializers.DictField(required=True)
 
 
+# --- EST-3285 4.8: human-in-the-loop (session-level, REST-polling design) ---
+# wait_for_decision_tool opens/polls/cancels a "decision" via these three
+# session-scoped endpoints; the existing AnswerToLLM flat-string contract
+# above is completely untouched.
+
+
+class OpenSessionDecisionSerializer(serializers.Serializer):
+    question = serializers.CharField(required=True, max_length=2000)
+    options = serializers.ListField(
+        child=serializers.CharField(max_length=200, allow_blank=False),
+        min_length=2,
+        max_length=4,
+        required=True,
+    )
+    allow_free_text = serializers.BooleanField(required=False, default=True)
+
+
+class AnswerSessionDecisionSerializer(serializers.Serializer):
+    decision_id = serializers.CharField(required=True)
+    option_index = serializers.IntegerField(
+        required=False, allow_null=True, default=None
+    )
+    free_text = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, default=None
+    )
+
+
+class CancelSessionDecisionSerializer(serializers.Serializer):
+    decision_id = serializers.CharField(required=True)
+
+
+class NotifyEmailSerializer(serializers.Serializer):
+    to = serializers.EmailField(required=True)
+    subject = serializers.CharField(
+        required=False, default="EpicStaff notification", max_length=200
+    )
+    message = serializers.CharField(required=True, max_length=1000)
+
+
 class InitRealtimeSerializer(serializers.Serializer):
     agent_id = serializers.IntegerField(required=True)
     config = serializers.DictField(required=False, default=dict)

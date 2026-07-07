@@ -75,6 +75,7 @@ from tables.models import (
     SessionWarningMessage,
     SessionStorageFile,
 )
+from tables.models.rbac_models import ApiKey
 from tables.serializers.model_serializers import (
     SessionSerializer,
     SessionLightSerializer,
@@ -83,15 +84,20 @@ from tables.serializers.model_serializers import (
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
 from tables.serializers.serializers import (
     AnswerToLLMSerializer,
+    AnswerSessionDecisionSerializer,
     BulkExportSerializer,
+    CancelSessionDecisionSerializer,
     EnvironmentConfigSerializer,
     InitRealtimeSerializer,
+    NotifyEmailSerializer,
+    OpenSessionDecisionSerializer,
     ProcessRagIndexingSerializer,
     RunSessionSerializer,
     RegisterTelegramTriggerSerializer,
     RunPythonCodeSerializer,
     SessionExportAllSerializer,
 )
+from tables.services.notification_email_sender import NotificationEmailSender
 
 from tables.serializers.quickstart_serializers import (
     QuickstartSerializer,
@@ -157,6 +163,7 @@ config_service = YamlConfigService()
 run_python_code_service = RunPythonCodeService()
 realtime_service = RealtimeService()
 quickstart_service = QuickstartService()
+notification_email_sender = NotificationEmailSender()
 
 
 @extend_schema_view(
@@ -719,6 +726,315 @@ class AnswerToLLM(APIView):
         )
 
         return Response(status=status.HTTP_202_ACCEPTED)
+
+
+def _check_session_ownership(request, session: "Session") -> str | None:
+    """Return a readable error string if the authenticated caller of
+    `request` may not act on `session`'s decision endpoints, else None.
+
+    Mirrors the org-ownership check added for `parent_session_id` on
+    `RunSession` (EST-3285 item 5.2): a session may only be acted on by
+    callers belonging to the SAME organization as the session's graph, when
+    that graph belongs to an organization at all. There is no per-request
+    org scoping anywhere else on session-level endpoints (AnswerToLLM,
+    StopSession, GET /sessions/<id>/) today, so this is the first place that
+    closes the "any valid API key can open/answer/cancel ANY session's
+    decision" vector for the new wait_for_decision_tool.
+
+    Note on `request.auth` vs `request.user`: `JwtOrApiKeyAuthentication`
+    resolves `request.user` to `AnonymousUser` for env-seeded "system" API
+    keys (`ApiKey.created_by is None`) -- and Django's `AnonymousUser.
+    is_authenticated` is ALWAYS False, by design, even though the key itself
+    is perfectly validly authenticated (`request.auth` is the real `ApiKey`
+    row). So "was this request authenticated at all" must be
+    `request.user.is_authenticated OR isinstance(request.auth, ApiKey)`, not
+    `request.user.is_authenticated` alone -- otherwise every env-seeded
+    system key would be wrongly treated as fully unauthenticated here.
+    """
+    user = getattr(request, "user", None)
+    auth = getattr(request, "auth", None)
+    authenticated_via_api_key = isinstance(auth, ApiKey)
+
+    if not authenticated_via_api_key and (
+        user is None or not getattr(user, "is_authenticated", False)
+    ):
+        return "Authentication required."
+
+    if authenticated_via_api_key and getattr(auth, "created_by_id", None) is None:
+        # Env-seeded system API key (no owning user) -- trusted internal caller.
+        return None
+
+    if getattr(user, "is_superadmin", False):
+        return None
+
+    graph_organization = GraphOrganization.objects.filter(
+        graph_id=session.graph_id
+    ).first()
+    if graph_organization is None:
+        return None
+
+    has_membership = OrganizationUser.objects.filter(
+        user=user, org_id=graph_organization.organization_id
+    ).exists()
+    if not has_membership:
+        return "You do not have access to this session's organization."
+    return None
+
+
+class OpenSessionDecisionView(APIView):
+    """EST-3285 4.8: opens a human-in-the-loop decision on ITS OWN session
+    (session_id comes from the URL, which for wait_for_decision_tool is
+    always the tool's own injected `session_id` global -- the agent never
+    supplies it). Sets Session.status = wait_for_user and a structured
+    `status_data.decision` block the tool polls GET /sessions/<id>/ for (see
+    `AnswerSessionDecisionView` for how it gets filled in), then publishes a
+    `wait_for_decision` GraphSessionMessage (see FE contract doc comment on
+    `AnswerSessionDecisionView` below) so the frontend can render the
+    decision UI. Does NOT touch AnswerToLLM/get_wait_for_user_callback at
+    all -- this is a completely separate, REST-polling-only pause path."""
+
+    @extend_schema(
+        summary="Open a human-in-the-loop decision on a session",
+        description=(
+            "Called by wait_for_decision_tool. Sets the session to "
+            "wait_for_user and stores a structured decision "
+            "(question/options/allow_free_text) in status_data.decision, "
+            "and publishes a 'wait_for_decision' GraphSessionMessage for the "
+            "frontend to render."
+        ),
+        request=OpenSessionDecisionSerializer,
+    )
+    def post(self, request, session_id, *args, **kwargs):
+        serializer = OpenSessionDecisionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            session = Session.objects.get(id=session_id)
+        except Session.DoesNotExist:
+            return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
+
+        ownership_error = _check_session_ownership(request, session)
+        if ownership_error:
+            return Response(ownership_error, status=status.HTTP_403_FORBIDDEN)
+
+        question = serializer.validated_data["question"]
+        options = serializer.validated_data["options"]
+        allow_free_text = serializer.validated_data["allow_free_text"]
+
+        decision_id = str(uuid.uuid4())
+        decision_payload = {
+            "decision_id": decision_id,
+            "question": question,
+            "options": options,
+            "allow_free_text": allow_free_text,
+            "answer": None,
+        }
+
+        session.status = Session.SessionStatus.WAIT_FOR_USER
+        session.status_data = {
+            **(session.status_data or {}),
+            "decision": decision_payload,
+        }
+        session.save()
+
+        created_at_dt = datetime.now(timezone.utc)
+        created_at_iso = created_at_dt.isoformat(timespec="milliseconds").replace(
+            "+00:00", "Z"
+        )
+
+        session_manager_service.register_message(
+            data={
+                "session_id": session_id,
+                "name": "wait_for_decision_tool",
+                "execution_order": 0,
+                "timestamp": created_at_iso,
+                "message_data": {
+                    "message_type": "wait_for_decision",
+                    "decision_id": decision_id,
+                    "question": question,
+                    "options": options,
+                    "allow_free_text": allow_free_text,
+                },
+                "uuid": str(uuid.uuid4()),
+            },
+            created_at_dt=created_at_dt,
+        )
+
+        return Response(
+            {"decision_id": decision_id, "status": session.status},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AnswerSessionDecisionView(APIView):
+    """EST-3285 4.8: resumes a session paused by `OpenSessionDecisionView`.
+
+    BINDING FE CONTRACT (for the follow-up FE decision-renderer unit):
+      - message_type: "wait_for_decision"
+      - message_data schema (all on the GraphSessionMessage published by
+        OpenSessionDecisionView above): {
+            "message_type": "wait_for_decision",
+            "decision_id": str,
+            "question": str,
+            "options": list[str],       # 2-4 entries
+            "allow_free_text": bool,
+        }
+      - resume endpoint: POST /api/sessions/<session_id>/decisions/answer/
+        body: {"decision_id": str, "option_index": int|null, "free_text": str|null}
+        (exactly one of option_index/free_text should be meaningful per the
+        UI's choice; option_index indexes into the original `options` array)
+      - FE plug-in point: the graph-messages per-message_type registry, the
+        same place the "findings" message_type is registered (see
+        frontend running-graph message stream / findings-message component
+        added in EST-3285 5.3) -- add a "wait_for_decision" entry there that
+        renders question/options (+ free-text input if allow_free_text) and
+        POSTs the answer to the endpoint above.
+    """
+
+    @extend_schema(
+        summary="Answer a pending human-in-the-loop decision",
+        description=(
+            "Persists the user's structured decision answer into "
+            "status_data.decision.answer and flips the session's status "
+            "back to 'run'. Distinct from POST /api/answer-to-llm/, which "
+            "remains the flat-string node-level human_input=True resume "
+            "path and is untouched by this endpoint."
+        ),
+        request=AnswerSessionDecisionSerializer,
+    )
+    def post(self, request, session_id, *args, **kwargs):
+        serializer = AnswerSessionDecisionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            session = Session.objects.get(id=session_id)
+        except Session.DoesNotExist:
+            return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
+
+        ownership_error = _check_session_ownership(request, session)
+        if ownership_error:
+            return Response(ownership_error, status=status.HTTP_403_FORBIDDEN)
+
+        if session.status != Session.SessionStatus.WAIT_FOR_USER:
+            return Response(
+                "Session is not waiting for a decision", status=status.HTTP_409_CONFLICT
+            )
+
+        decision_id = serializer.validated_data["decision_id"]
+        decision = (session.status_data or {}).get("decision")
+        if not decision or decision.get("decision_id") != decision_id:
+            return Response(
+                "No matching pending decision for this session",
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        option_index = serializer.validated_data.get("option_index")
+        free_text = serializer.validated_data.get("free_text")
+        options = decision.get("options") or []
+
+        if option_index is not None and not (0 <= option_index < len(options)):
+            return Response(
+                f"'option_index' must be between 0 and {len(options) - 1}",
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if option_index is None and not (decision.get("allow_free_text") and free_text):
+            return Response(
+                "Must supply either 'option_index' or 'free_text' "
+                "(free_text only accepted when allow_free_text was true).",
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        decision["answer"] = {"option_index": option_index, "free_text": free_text}
+        session.status_data = {**(session.status_data or {}), "decision": decision}
+        session.status = Session.SessionStatus.RUN
+        session.save()
+
+        return Response(status=status.HTTP_202_ACCEPTED)
+
+
+class CancelSessionDecisionView(APIView):
+    """EST-3285 4.8: called by wait_for_decision_tool's own bounded poll
+    timeout (NOT the session's global time_to_live/session_timeout_service,
+    which is untouched) so a session doesn't stay wedged in wait_for_user
+    forever if nobody ever answers. Idempotent: if the decision was already
+    answered/cancelled/superseded by the time this runs, it's a no-op 200
+    rather than an error, since the tool calls this defensively on its own
+    timeout and there is an inherent race with a late human answer."""
+
+    @extend_schema(
+        summary="Cancel a pending human-in-the-loop decision (timeout cleanup)",
+        request=CancelSessionDecisionSerializer,
+    )
+    def post(self, request, session_id, *args, **kwargs):
+        serializer = CancelSessionDecisionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            session = Session.objects.get(id=session_id)
+        except Session.DoesNotExist:
+            return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
+
+        ownership_error = _check_session_ownership(request, session)
+        if ownership_error:
+            return Response(ownership_error, status=status.HTTP_403_FORBIDDEN)
+
+        decision_id = serializer.validated_data["decision_id"]
+        decision = (session.status_data or {}).get("decision")
+
+        if (
+            session.status != Session.SessionStatus.WAIT_FOR_USER
+            or not decision
+            or decision.get("decision_id") != decision_id
+        ):
+            return Response(
+                {"cancelled": False, "status": session.status}, status=status.HTTP_200_OK
+            )
+
+        status_data = dict(session.status_data or {})
+        status_data.pop("decision", None)
+        session.status_data = status_data
+        session.status = Session.SessionStatus.RUN
+        session.save()
+
+        return Response(
+            {"cancelled": True, "status": session.status}, status=status.HTTP_200_OK
+        )
+
+
+class NotifyEmailView(APIView):
+    """EST-3285 4.8: sends a notification email via notification_tool
+    (channel='email'). Reuses NotificationEmailSender (Django's send_mail /
+    EMAIL_BACKEND -- the same transport PasswordResetEmailSender uses), NOT a
+    parallel SMTP client. Requires auth (same DEFAULT_PERMISSION_CLASSES /
+    DEFAULT_AUTHENTICATION_CLASSES as every other endpoint) so this can't be
+    used as an open mail relay."""
+
+    @extend_schema(
+        summary="Send a notification email",
+        request=NotifyEmailSerializer,
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = NotifyEmailSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        to_email = serializer.validated_data["to"]
+        subject = serializer.validated_data["subject"]
+        message = serializer.validated_data["message"]
+
+        sent, error = notification_email_sender.send(
+            to=to_email, subject=subject, message=message
+        )
+        if not sent:
+            return Response(
+                {"message": f"Failed to send notification email: {error}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return Response({"sent": True}, status=status.HTTP_200_OK)
 
 
 class CrewDeleteAPIView(APIView):
