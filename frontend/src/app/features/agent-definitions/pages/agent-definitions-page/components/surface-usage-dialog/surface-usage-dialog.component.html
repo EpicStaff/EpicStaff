@@ -1,9 +1,4 @@
 <div
-    class="usage-backdrop"
-    (click)="close.emit()"
-></div>
-
-<div
     class="usage-dialog"
     role="dialog"
     aria-label="Surface Usage"
@@ -14,7 +9,7 @@
             type="button"
             class="usage-dialog__close"
             aria-label="Close"
-            (click)="close.emit()"
+            (click)="close()"
         >
             <app-svg-icon
                 icon="x"
@@ -71,7 +66,7 @@
                 Agent <span class="usage-section__count">{{ agentCount() }}</span>
             </div>
             <ul class="usage-list">
-                @for (a of usage().agents; track a.agentId) {
+                @for (a of usage.agents; track a.agentId) {
                     <li class="usage-row">
                         <span class="usage-row__name">{{ a.agentName }}</span>
                         <span class="usage-row__place">{{ a.placeLabel }}</span>
@@ -79,7 +74,7 @@
                             type="button"
                             class="usage-row__open"
                             aria-label="Open agent"
-                            (click)="openAgent.emit(a.agentId)"
+                            (click)="openAgent(a.agentId)"
                         >
                             <app-svg-icon
                                 icon="arrow-up-right"
@@ -102,7 +97,7 @@
                 Flow <span class="usage-section__count">{{ flowCount() }}</span>
             </div>
             <ul class="usage-list">
-                @for (f of usage().flows; track f.id) {
+                @for (f of usage.flows; track f.id) {
                     <li class="usage-row">
                         <span class="usage-row__name">{{ f.name }}</span>
                         @if (f.active) {
@@ -137,7 +132,7 @@
                 Chat <span class="usage-section__count">{{ chatCount() }}</span>
             </div>
             <ul class="usage-list">
-                @for (c of usage().chats; track c.id) {
+                @for (c of usage.chats; track c.id) {
                     <li class="usage-row">
                         <span class="usage-row__name">{{ c.name }}</span>
                         <button
