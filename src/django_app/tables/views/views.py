@@ -747,15 +747,6 @@ class OpenSessionDecisionView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            session = Session.objects.get(id=session_id)
-        except Session.DoesNotExist:
-            return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
-
-        ownership_error = _check_session_ownership(request, session)
-        if ownership_error:
-            return Response(ownership_error, status=status.HTTP_403_FORBIDDEN)
-
         question = serializer.validated_data["question"]
         options = serializer.validated_data["options"]
         allow_free_text = serializer.validated_data["allow_free_text"]
@@ -769,12 +760,32 @@ class OpenSessionDecisionView(APIView):
             "answer": None,
         }
 
-        session.status = Session.SessionStatus.WAIT_FOR_USER
-        session.status_data = {
-            **(session.status_data or {}),
-            "decision": decision_payload,
-        }
-        session.save()
+        # Locked read-modify-write, mirroring AnswerSessionDecisionView: a
+        # stale/duplicate wait_for_decision_tool call must not resurrect a
+        # session that already finished (end/error/stop/expired) or that
+        # moved on for some other reason -- only a session actively `run`ning
+        # may be paused into wait_for_user.
+        with transaction.atomic():
+            try:
+                session = Session.objects.select_for_update().get(id=session_id)
+            except Session.DoesNotExist:
+                return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
+
+            ownership_error = _check_session_ownership(request, session)
+            if ownership_error:
+                return Response(ownership_error, status=status.HTTP_403_FORBIDDEN)
+
+            if session.status != Session.SessionStatus.RUN:
+                return Response(
+                    "Session is not running", status=status.HTTP_409_CONFLICT
+                )
+
+            session.status = Session.SessionStatus.WAIT_FOR_USER
+            session.status_data = {
+                **(session.status_data or {}),
+                "decision": decision_payload,
+            }
+            session.save()
 
         created_at_dt = datetime.now(timezone.utc)
         created_at_iso = created_at_dt.isoformat(timespec="milliseconds").replace(
@@ -921,7 +932,20 @@ class CancelSessionDecisionView(APIView):
     forever if nobody ever answers. Idempotent: if the decision was already
     answered/cancelled/superseded by the time this runs, it's a no-op 200
     rather than an error, since the tool calls this defensively on its own
-    timeout and there is an inherent race with a late human answer."""
+    timeout and there is an inherent race with a late human answer.
+
+    EST-3285 hardening: mirrors AnswerSessionDecisionView's locked
+    read-modify-write. wait_for_decision_tool's own timeout can fire the
+    same instant a user submits an answer; without select_for_update() this
+    view could read a stale pre-answer snapshot (still wait_for_user, no
+    answer recorded), pass its guards against that snapshot, and then
+    full-row `save()` over the since-committed answer -- popping
+    `status_data.decision` and silently discarding it. Locking the row and
+    re-checking `decision.get("answer") is not None` after acquiring the
+    lock closes that window: a decision that was answered (by this view's
+    own read or by a transaction that committed while this one waited on
+    the lock) is left untouched and this stays the documented no-op 200,
+    never an error."""
 
     @extend_schema(
         summary="Cancel a pending human-in-the-loop decision (timeout cleanup)",
@@ -932,32 +956,39 @@ class CancelSessionDecisionView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            session = Session.objects.get(id=session_id)
-        except Session.DoesNotExist:
-            return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
-
-        ownership_error = _check_session_ownership(request, session)
-        if ownership_error:
-            return Response(ownership_error, status=status.HTTP_403_FORBIDDEN)
-
         decision_id = serializer.validated_data["decision_id"]
-        decision = (session.status_data or {}).get("decision")
 
-        if (
-            session.status != Session.SessionStatus.WAIT_FOR_USER
-            or not decision
-            or decision.get("decision_id") != decision_id
-        ):
-            return Response(
-                {"cancelled": False, "status": session.status}, status=status.HTTP_200_OK
-            )
+        with transaction.atomic():
+            try:
+                session = Session.objects.select_for_update().get(id=session_id)
+            except Session.DoesNotExist:
+                return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
 
-        status_data = dict(session.status_data or {})
-        status_data.pop("decision", None)
-        session.status_data = status_data
-        session.status = Session.SessionStatus.RUN
-        session.save()
+            ownership_error = _check_session_ownership(request, session)
+            if ownership_error:
+                return Response(ownership_error, status=status.HTTP_403_FORBIDDEN)
+
+            decision = (session.status_data or {}).get("decision")
+
+            if (
+                session.status != Session.SessionStatus.WAIT_FOR_USER
+                or not decision
+                or decision.get("decision_id") != decision_id
+                or decision.get("answer") is not None
+            ):
+                # Already answered/cancelled/superseded (or a late human
+                # answer committed while this request waited on the row
+                # lock) -- no-op, don't touch status_data or status.
+                return Response(
+                    {"cancelled": False, "status": session.status},
+                    status=status.HTTP_200_OK,
+                )
+
+            status_data = dict(session.status_data or {})
+            status_data.pop("decision", None)
+            session.status_data = status_data
+            session.status = Session.SessionStatus.RUN
+            session.save()
 
         return Response(
             {"cancelled": True, "status": session.status}, status=status.HTTP_200_OK

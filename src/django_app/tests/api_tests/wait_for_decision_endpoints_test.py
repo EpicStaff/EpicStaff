@@ -224,6 +224,30 @@ class TestOpenSessionDecision:
         )
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
+    @pytest.mark.parametrize(
+        "terminal_status",
+        [Session.SessionStatus.END, Session.SessionStatus.ERROR],
+    )
+    def test_rejects_opening_on_a_terminal_session(
+        self, auth_client, redis_client_mock, session_in_default_org, terminal_status
+    ):
+        """A stale/duplicate wait_for_decision_tool call must not resurrect a
+        finished/crashed session (end/error/stop/expired) back into
+        wait_for_user."""
+        session_in_default_org.status = terminal_status
+        session_in_default_org.save()
+
+        response = auth_client.post(
+            _open_url(session_in_default_org.pk),
+            {"question": "Proceed?", "options": ["yes", "no"]},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_409_CONFLICT, response.content
+
+        session_in_default_org.refresh_from_db()
+        assert session_in_default_org.status == terminal_status
+        assert "decision" not in (session_in_default_org.status_data or {})
+
 
 @pytest.mark.django_db
 class TestAnswerSessionDecision:
@@ -456,5 +480,76 @@ class TestCancelSessionDecision:
         assert session_in_default_org.status == Session.SessionStatus.RUN
         assert session_in_default_org.status_data["decision"]["answer"] == {
             "option_index": 0,
+            "free_text": None,
+        }
+
+    def test_cancel_does_not_discard_a_recorded_answer(
+        self, auth_client, redis_client_mock, session_in_default_org
+    ):
+        """EST-3285 lost-update regression test: wait_for_decision_tool's
+        bounded poll timeout can fire cancel right after a user's answer
+        commits. Directly seed the post-answer session state (status=run,
+        decision.answer already set) that Cancel's stale unlocked read used
+        to be able to clobber, and confirm the locked re-check leaves it
+        untouched and returns the documented idempotent no-op 200."""
+        decision_id = self._open(auth_client, session_in_default_org)
+
+        session_in_default_org.refresh_from_db()
+        decision = dict(session_in_default_org.status_data["decision"])
+        decision["answer"] = {"option_index": 0, "free_text": None}
+        session_in_default_org.status_data = {
+            **session_in_default_org.status_data,
+            "decision": decision,
+        }
+        session_in_default_org.status = Session.SessionStatus.RUN
+        session_in_default_org.save()
+
+        response = auth_client.post(
+            _cancel_url(session_in_default_org.pk),
+            {"decision_id": decision_id},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_200_OK, response.content
+        assert response.data["cancelled"] is False
+
+        session_in_default_org.refresh_from_db()
+        assert session_in_default_org.status == Session.SessionStatus.RUN
+        assert session_in_default_org.status_data["decision"]["answer"] == {
+            "option_index": 0,
+            "free_text": None,
+        }
+
+    def test_cancel_does_not_discard_answer_recorded_while_still_wait_for_user(
+        self, auth_client, redis_client_mock, session_in_default_org
+    ):
+        """Defense-in-depth: even if status_data.decision.answer got set
+        while status somehow remained wait_for_user (the exact in-flight
+        shape a racing Answer transaction could leave mid-commit), Cancel's
+        own `decision.get("answer") is not None` guard must still refuse to
+        pop the decision -- the status check alone must not be the only
+        thing standing between this bug and a real user's answer."""
+        decision_id = self._open(auth_client, session_in_default_org)
+
+        session_in_default_org.refresh_from_db()
+        decision = dict(session_in_default_org.status_data["decision"])
+        decision["answer"] = {"option_index": 1, "free_text": None}
+        session_in_default_org.status_data = {
+            **session_in_default_org.status_data,
+            "decision": decision,
+        }
+        session_in_default_org.save()  # status stays WAIT_FOR_USER
+
+        response = auth_client.post(
+            _cancel_url(session_in_default_org.pk),
+            {"decision_id": decision_id},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_200_OK, response.content
+        assert response.data["cancelled"] is False
+
+        session_in_default_org.refresh_from_db()
+        assert session_in_default_org.status == Session.SessionStatus.WAIT_FOR_USER
+        assert session_in_default_org.status_data["decision"]["answer"] == {
+            "option_index": 1,
             "free_text": None,
         }
