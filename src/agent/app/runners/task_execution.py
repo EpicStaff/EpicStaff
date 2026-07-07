@@ -21,7 +21,7 @@ from app.output.enforcer import StructuredOutputEnforcer
 from app.output.schema import add_usage
 from app.runners.deps import RunnerDependencies
 from app.tools.registry import ToolRegistry
-from shared.models.agent_service import AgentSpec, LoopResult
+from shared.models.agent_service import AgentSpec, LoopResult, StopReason
 
 
 def _default_max_iter() -> int:
@@ -74,7 +74,7 @@ async def run_task_through_loop(
             final_text=json.dumps(parsed),
             tool_invocations=0,
             iterations=1,
-            stop_reason="schema_satisfied",
+            stop_reason=StopReason.SCHEMA_SATISFIED.value,
             token_usage=usage,
         )
 
@@ -93,7 +93,7 @@ async def run_task_through_loop(
             update={
                 "final_text": json.dumps(parsed),
                 "token_usage": add_usage(result.token_usage, usage),
-                "stop_reason": "schema_satisfied",
+                "stop_reason": StopReason.SCHEMA_SATISFIED.value,
             }
         )
 

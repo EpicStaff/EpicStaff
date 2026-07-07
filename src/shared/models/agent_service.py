@@ -58,6 +58,19 @@ class RunType(str, Enum):
     LIST_OF_TASKS = "LIST_OF_TASKS"
 
 
+class StopReason(str, Enum):
+    """Terminal reason for one AgentLoop run; travels on LoopResult.stop_reason to crew/FE."""
+
+    COMPLETED = "completed"  # agent returned a final answer, stopped calling tools
+    MAX_ITER_REACHED = "max_iter_reached"
+    SCHEMA_SATISFIED = "schema_satisfied"
+    LLM_ERROR = "llm_error"
+    TIMEOUT = "timeout"
+
+
+FAILURE_STOP_REASONS = frozenset({StopReason.LLM_ERROR, StopReason.TIMEOUT})
+
+
 class SearchConfigEntry(BaseModel):
     """One RAG strategy available within a source collection.
 

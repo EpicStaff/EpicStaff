@@ -72,7 +72,7 @@ CANNED_RESULT = LoopResult(
     final_text="Done.",
     tool_invocations=0,
     iterations=1,
-    stop_reason="no_tool_calls",
+    stop_reason="completed",
 )
 
 
@@ -119,7 +119,7 @@ class AnswerToolLoop(AgentLoop):
             final_text="plain text" if args is None else None,
             tool_invocations=1 if args is not None else 0,
             iterations=1,
-            stop_reason="no_tool_calls",
+            stop_reason="completed",
             token_usage=token_usage,
         )
 
@@ -143,7 +143,7 @@ class RaisingEnforcerLoop(AgentLoop):
                 final_text="something",
                 tool_invocations=0,
                 iterations=1,
-                stop_reason="no_tool_calls",
+                stop_reason="completed",
                 token_usage=TokenUsage(),
             )
         raise SchemaValidationError("schema failed")

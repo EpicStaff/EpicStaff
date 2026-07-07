@@ -212,7 +212,7 @@ def test_build_model_config_no_double_prefix():
 
 
 async def test_single_text_response_no_tools():
-    """Plain text response stops with no_tool_calls, appends one assistant message."""
+    """Plain text response stops with completed, appends one assistant message."""
     emitter = RecordingEmitter()
     context = make_context()
     tools = StubToolRegistry({})
@@ -223,7 +223,7 @@ async def test_single_text_response_no_tools():
 
     result = await loop.run(context, tools, emitter, stop)
 
-    assert result.stop_reason == "no_tool_calls"
+    assert result.stop_reason == "completed"
     assert result.final_text == "Hello world"
     assert result.tool_invocations == 0
     assert result.iterations == 1
@@ -253,7 +253,7 @@ async def test_tool_call_then_text_response():
 
     result = await loop.run(context, tools, emitter, stop)
 
-    assert result.stop_reason == "no_tool_calls"
+    assert result.stop_reason == "completed"
     assert result.final_text == "The time is 12:00"
     assert result.tool_invocations == 1
     assert result.iterations == 2
@@ -346,7 +346,7 @@ async def test_tool_raises_feeds_error_back_and_loop_continues():
 
     result = await loop.run(context, tools, emitter, stop)
 
-    assert result.stop_reason == "no_tool_calls"
+    assert result.stop_reason == "completed"
     assert result.tool_invocations == 1
 
     tool_result_events: list[ToolResult] = [
@@ -387,7 +387,7 @@ async def test_tool_json_parse_failure():
 
     result = await loop.run(context, tools, emitter, stop)
 
-    assert result.stop_reason == "no_tool_calls"
+    assert result.stop_reason == "completed"
 
     tool_result_events: list[ToolResult] = [
         payload
@@ -556,7 +556,7 @@ async def test_token_usage_aggregated_across_two_iterations():
 
     result = await loop.run(context, tools, emitter, stop)
 
-    assert result.stop_reason == "no_tool_calls"
+    assert result.stop_reason == "completed"
     assert result.token_usage.prompt_tokens == 12
     assert result.token_usage.completion_tokens == 5
     assert result.token_usage.total_tokens == 17
@@ -712,7 +712,7 @@ async def test_context_warning_get_model_info_raises_no_warning(monkeypatch):
 
     result = await loop.run(context, tools, emitter, stop)
 
-    assert result.stop_reason == "no_tool_calls"
+    assert result.stop_reason == "completed"
     assert emitter.warnings == []
 
     assert len(llm.received_configs) == 1

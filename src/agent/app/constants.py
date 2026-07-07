@@ -2,5 +2,6 @@
 Agent-service-local constants.
 """
 
-FAILURE_STOP_REASONS: frozenset[str] = frozenset({"llm_error", "timeout"})
-"""Stop reasons that indicate a hard loop failure (LLM error or wall-clock timeout)."""
+from shared.models.agent_service import FAILURE_STOP_REASONS, StopReason
+
+__all__ = ["FAILURE_STOP_REASONS", "StopReason"]

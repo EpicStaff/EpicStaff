@@ -15,6 +15,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from app.llm.client import LLMChunk
+from shared.models.agent_service import StopReason
 
 
 @dataclass(frozen=True)
@@ -69,11 +70,11 @@ class MaxIterAndNoToolCalls(StopPolicy):
         last_chunks: list[LLMChunk],
         last_tool_calls: list,
     ) -> StopDecision:
-        """Return a ``StopDecision`` with reason ``max_iter_reached`` or ``no_tool_calls``."""
+        """Return a ``StopDecision`` with reason ``max_iter_reached`` or ``completed``."""
         if iteration_index >= self._max_iter:
-            return StopDecision(True, "max_iter_reached")
+            return StopDecision(True, StopReason.MAX_ITER_REACHED.value)
 
         if not last_tool_calls:
-            return StopDecision(True, "no_tool_calls")
+            return StopDecision(True, StopReason.COMPLETED.value)
 
         return StopDecision(False)

@@ -28,7 +28,7 @@ from app.logging_utils import redact
 from app.loop.context import AgentContext
 from app.loop.stop_policy import StopPolicy
 from app.tools.registry import ToolRegistry
-from shared.models.agent_service import LoopResult, TokenUsage, ToolResult
+from shared.models.agent_service import LoopResult, StopReason, TokenUsage, ToolResult
 
 
 def _model_str(context: AgentContext) -> str:
@@ -165,7 +165,7 @@ class DefaultAgentLoop(AgentLoop):
                 state.iterations,
             )
             return LoopResult(
-                stop_reason="timeout",
+                stop_reason=StopReason.TIMEOUT.value,
                 final_text=state.final_text,
                 tool_invocations=state.tool_invocations,
                 iterations=state.iterations,
@@ -176,7 +176,7 @@ class DefaultAgentLoop(AgentLoop):
         except Exception as error:
             logger.exception("loop llm_error correlation_id={}", context.correlation_id)
             return LoopResult(
-                stop_reason="llm_error",
+                stop_reason=StopReason.LLM_ERROR.value,
                 final_text=state.final_text,
                 tool_invocations=state.tool_invocations,
                 iterations=state.iterations,

@@ -33,15 +33,13 @@ from services.graph.events import StopEvent
 from services.redis_service import RedisService
 from src.shared.models import AgentDefinitionData, AgentNodeData, TaskNodeData
 from src.shared.models.agent_service import (
+    FAILURE_STOP_REASONS,
     AgentRequest,
     AgentSpec,
     AgentTaskSpec,
     RunType,
 )
 from src.shared.redis_streams import StreamEnvelope
-
-FAILURE_STOP_REASONS = frozenset({"llm_error", "timeout"})
-"""Stop reasons that indicate a hard agent-loop failure; mirrors src/agent/app/constants.py."""
 
 LIVE_EVENT_TYPES = frozenset({"agent.tool_call", "agent.tool_result"})
 """Envelope types forwarded live to ``on_event`` instead of ending the wait."""

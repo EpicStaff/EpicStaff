@@ -139,7 +139,7 @@ def _runner(resolver=None, loop=None) -> ListOfTasksRunner:
     return ListOfTasksRunner(deps)
 
 
-def _result(text: str, stop_reason: str = "no_tool_calls", **overrides) -> LoopResult:
+def _result(text: str, stop_reason: str = "completed", **overrides) -> LoopResult:
     defaults = dict(
         final_text=text,
         tool_invocations=0,
@@ -236,7 +236,7 @@ async def test_per_task_output_schema_uses_enforcer():
                 final_text="plain text" if args is None else None,
                 tool_invocations=1 if args is not None else 0,
                 iterations=1,
-                stop_reason="no_tool_calls",
+                stop_reason="completed",
                 token_usage=usage,
             )
 

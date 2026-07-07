@@ -52,7 +52,7 @@ def _make_loop_result() -> LoopResult:
         final_text="done",
         tool_invocations=1,
         iterations=1,
-        stop_reason="no_tool_calls",
+        stop_reason="completed",
         token_usage=TokenUsage(),
     )
 

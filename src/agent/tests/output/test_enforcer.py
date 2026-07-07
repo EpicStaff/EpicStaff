@@ -77,7 +77,7 @@ class ScriptedLoop(AgentLoop):
             final_text=None,
             tool_invocations=1 if args is not None else 0,
             iterations=1,
-            stop_reason="no_tool_calls",
+            stop_reason="completed",
             token_usage=token_usage,
         )
 
