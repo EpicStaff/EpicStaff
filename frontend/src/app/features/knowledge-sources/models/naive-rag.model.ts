@@ -6,6 +6,7 @@ export interface CollectionDetailsNaiveRag {
     embedder_id: number;
     embedder_name: string;
     embeddings_count: number;
+    indexing_document_config_ids: number[];
     is_ready_for_indexing: boolean;
     message: string | null;
     rag_id: number;

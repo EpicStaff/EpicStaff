@@ -20,21 +20,21 @@
             >
                 Back
             </app-button>
-            <app-button
-                type="primary"
-                [rightIcon]="currentStepIndex() < 2 ? 'arrow-right' : ''"
-                [disabled]="nextDisabled()"
-                (click)="nextStep()"
-            >
-                {{ nextText() }}
-            </app-button>
-
-            @if (currentStepIndex() === 2) {
+            @if (currentStepIndex() === 2 && isIndexing()) {
                 <app-button
                     type="primary"
                     (click)="stopIndexing()"
                 >
                     Stop indexing
+                </app-button>
+            } @else {
+                <app-button
+                    type="primary"
+                    [rightIcon]="currentStepIndex() < 2 ? 'arrow-right' : ''"
+                    [disabled]="nextDisabled()"
+                    (click)="nextStep()"
+                >
+                    {{ nextText() }}
                 </app-button>
             }
 

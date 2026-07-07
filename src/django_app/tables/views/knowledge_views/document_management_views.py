@@ -25,6 +25,7 @@ from tables.swagger_schemas.knowledge_schemas.document_management_schemas import
     DOCUMENTS_UPLOAD_POST,
     DOCUMENTS_BULK_DELETE_POST,
     DOCUMENTS_DOWNLOAD_GET,
+    DOCUMENTS_PREVIEW_GET,
     DOCUMENTS_COPY_POST,
     COLLECTION_DOCUMENTS_LIST_GET,
 )
@@ -40,6 +41,7 @@ from tables.exceptions import (
 )
 from tables.utils.document_serving import (
     build_file_response,
+    build_preview_response,
     build_archive_response,
 )
 
@@ -191,6 +193,15 @@ class DocumentViewSet(
         instance = self.get_object()
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
+
+    @extend_schema(**DOCUMENTS_PREVIEW_GET)
+    @action(detail=True, methods=["get"], url_path="preview")
+    def preview(self, request, *args, **kwargs):
+        """Raw document content with ``Content-Disposition: inline`` so browsers
+        render supported formats (pdf, txt, md, json, html, csv) in place. DOCX
+        has no inline preview and is downloaded instead."""
+        document = self.get_object()
+        return build_preview_response(document)
 
     @extend_schema(**DOCUMENTS_DESTROY_DELETE)
     def destroy(self, request, *args, **kwargs):

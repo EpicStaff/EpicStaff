@@ -6,6 +6,7 @@ import { filter, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
 import { RagType } from '../../models/base-rag.model';
+import { KnowledgeSourcesPollingService } from '../../services/knowledge-sources-polling.service';
 import { RagIndexingService } from '../../services/rag-indexing.service';
 
 @Component({
@@ -18,11 +19,12 @@ export abstract class RagConfigurationDialogComponent {
     protected toast = inject(ToastService);
     protected confirmation = inject(ConfirmationDialogService);
     protected ragIndexingService = inject(RagIndexingService);
+    protected pollingService = inject(KnowledgeSourcesPollingService);
 
     protected abstract onClose(): void;
     protected abstract runIndexing(): void;
 
-    stopIndexing() {
+    stopIndexing(documentConfigIds?: number[]) {
         this.confirmation
             .confirm({
                 title: 'Stop indexing',
@@ -38,11 +40,15 @@ export abstract class RagConfigurationDialogComponent {
                     this.ragIndexingService.stopIndexing({
                         rag_id: this.data.ragId,
                         rag_type: this.data.ragType,
+                        document_config_ids: documentConfigIds,
                     })
                 )
             )
             .subscribe({
-                next: () => this.toast.success('Indexing stopped'),
+                next: () => {
+                    this.toast.success('Indexing stop triggered');
+                    this.pollingService.discardTrackedProcessingIds(documentConfigIds ?? []);
+                },
                 error: () => this.toast.error('Indexing stop failed'),
             });
     }

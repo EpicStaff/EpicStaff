@@ -22,6 +22,7 @@ import {
 
 import { CHUNK_STRATEGIES_SELECT_ITEMS, FILE_TYPES } from '../../../constants/constants';
 import { NaiveRagDocumentConfig, UpdateNaiveRagDocumentDtoRequest } from '../../../models/naive-rag-document.model';
+import { CollectionsStorageService } from '../../../services/collections-storage.service';
 import { NaiveRagDocumentsStorageService } from '../../../services/naive-rag-documents-storage.service';
 import { DocFieldChange, DocumentStatusFilter, TableDocument } from './configuration-table.interface';
 
@@ -45,12 +46,14 @@ export class ConfigurationTableComponent {
     chunkStrategySelectItems: SelectItem[] = CHUNK_STRATEGIES_SELECT_ITEMS;
 
     private documentsStorageService = inject(NaiveRagDocumentsStorageService);
+    private collectionsStorage = inject(CollectionsStorageService);
 
     searchTerm = input<string>('');
     showBulkRow = input<boolean>(false);
     statusFilter = input<DocumentStatusFilter>('all');
     ragId = input.required<number>();
     documents = this.documentsStorageService.documents;
+    processingConfigIds = this.collectionsStorage.processingConfigIds;
     selectedRagDocId = model<number | null>(null);
 
     docsCheckChange = output<number[]>();

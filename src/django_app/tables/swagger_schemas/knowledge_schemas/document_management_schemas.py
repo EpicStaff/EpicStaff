@@ -292,6 +292,35 @@ DOCUMENTS_DOWNLOAD_GET = dict(
     },
 )
 
+DOCUMENTS_PREVIEW_GET = dict(
+    summary="Preview a single document inline",
+    description=(
+        "Return the raw binary content of a single document for inline preview "
+        "(`Content-Disposition: inline`). The browser can render supported formats "
+        "(pdf, txt, md, json, html, csv) in place; docx has no native preview and "
+        "is downloaded instead. Use the download endpoint to force a file download."
+    ),
+    responses={
+        200: OpenApiResponse(
+            response=OpenApiTypes.BINARY,
+            description="Raw file content served inline.",
+        ),
+        401: UNAUTHORIZED_401_RESPONSE,
+        404: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Document not found.",
+            examples=[
+                OpenApiExample(
+                    name="Document not found",
+                    value={"detail": "No DocumentMetadata matches the given query."},
+                    response_only=True,
+                    status_codes=["404"],
+                )
+            ],
+        ),
+    },
+)
+
 DOCUMENTS_COPY_POST = dict(
     summary="Copy documents into a target collection",
     description=(

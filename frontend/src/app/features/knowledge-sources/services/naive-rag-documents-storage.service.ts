@@ -23,7 +23,6 @@ import {
     BulkDeleteNaiveRagDocumentDtoResponse,
     BulkUpdateNaiveRagDocumentDtoResponse,
     NaiveRagDocumentConfig,
-    NaiveRagDocumentStatus,
     UpdateNaiveRagDocumentDtoRequest,
     UpdateNaiveRagDocumentResponse,
 } from '../models/naive-rag-document.model';
@@ -161,31 +160,35 @@ export class NaiveRagDocumentsStorageService implements StorageService {
     public initDocumentStatesMap(documents: TableDocument[]): void {
         const docStateMap = new Map<number, DocumentChunkingState>();
         documents.forEach((doc) => {
-            let status: DocumentWithChunksStatus;
-
-            switch (doc.status) {
-                case 'new':
-                case 'chunking':
-                case 'chunked': // document-config status 'chunked' does not represent is chunks up-to-date
-                case 'completed':
-                    status = 'new';
-                    break;
-                default:
-                    status = 'chunking_failed';
-            }
-
-            docStateMap.set(doc.naive_rag_document_id, {
-                id: doc.naive_rag_document_id,
-                status: status,
-                chunkOverlap: doc.chunk_overlap,
-                chunkSize: doc.chunk_size,
-                chunkStrategy: doc.chunk_strategy,
-                total: 0,
-                removedCount: 0,
-                chunks: [],
-            });
+            docStateMap.set(doc.naive_rag_document_id, this.createDocumentState(doc));
         });
         this.documentStatesSignal.set(docStateMap);
+    }
+
+    private createDocumentState(doc: TableDocument): DocumentChunkingState {
+        let status: DocumentWithChunksStatus;
+
+        switch (doc.status) {
+            case 'new':
+            case 'chunking':
+            case 'chunked': // document-config status 'chunked' does not represent is chunks up-to-date
+            case 'completed':
+                status = 'new';
+                break;
+            default:
+                status = 'chunking_failed';
+        }
+
+        return {
+            id: doc.naive_rag_document_id,
+            status: status,
+            chunkOverlap: doc.chunk_overlap,
+            chunkSize: doc.chunk_size,
+            chunkStrategy: doc.chunk_strategy,
+            total: 0,
+            removedCount: 0,
+            chunks: [],
+        };
     }
 
     stopChunking(ragId: number, documentId: number): Observable<CancelNaiveNaiveRagChunkingResponse> {
@@ -267,17 +270,25 @@ export class NaiveRagDocumentsStorageService implements StorageService {
         );
     }
 
-    public setDocumentStatuses(docIds: number[], status: NaiveRagDocumentStatus): void {
-        const idSet = new Set(docIds);
-        this.documentsSignal.update((items) =>
-            items.map((i) => (idSet.has(i.naive_rag_document_id) ? { ...i, status } : i))
-        );
-    }
+    public updateDocumentsFromConfigs(configs: NaiveRagDocumentConfig[]): void {
+        const itemMap = new Map(this.documentsSignal().map((d) => [d.naive_rag_document_id, d]));
 
-    public updateDocumentFromConfig(config: NaiveRagDocumentConfig): void {
-        this.documentsSignal.update((items) =>
-            items.map((i) => (i.naive_rag_document_id === config.naive_rag_document_id ? { ...i, ...config } : i))
-        );
+        const documents = configs.map((config) => {
+            const item = itemMap.get(config.naive_rag_document_id);
+            return item ? { ...item, ...config } : { ...config, checked: false };
+        });
+        this.documentsSignal.set(documents);
+
+        this.documentStatesSignal.update((states) => {
+            const next = new Map<number, DocumentChunkingState>();
+            for (const doc of documents) {
+                next.set(
+                    doc.naive_rag_document_id,
+                    states.get(doc.naive_rag_document_id) ?? this.createDocumentState(doc)
+                );
+            }
+            return next;
+        });
     }
 
     public bulkEditDocConfigs(

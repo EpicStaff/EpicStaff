@@ -163,26 +163,28 @@
             </div>
         }
 
-        @if (btnAction === 'cancel') {
-            <app-button
-                class="chunks__action-btn"
-                type="secondary"
-                mod="small"
-                (click)="stopChunking()"
-                [disabled]="disabled"
-            >
-                {{ btnText }}
-            </app-button>
-        } @else {
-            <app-button
-                class="chunks__action-btn"
-                type="primary"
-                mod="small"
-                (click)="runChunking()"
-                [disabled]="disabled"
-            >
-                {{ btnText }}
-            </app-button>
-        }
+        <ng-content>
+            @if (btnAction === 'cancel') {
+                <app-button
+                    class="chunks__action-btn"
+                    type="secondary"
+                    mod="small"
+                    (click)="stopChunking()"
+                    [disabled]="disabled"
+                >
+                    {{ btnText }}
+                </app-button>
+            } @else {
+                <app-button
+                    class="chunks__action-btn"
+                    type="primary"
+                    mod="small"
+                    (click)="runChunking()"
+                    [disabled]="disabled"
+                >
+                    {{ btnText }}
+                </app-button>
+            }
+        </ng-content>
     </div>
 </ng-template>

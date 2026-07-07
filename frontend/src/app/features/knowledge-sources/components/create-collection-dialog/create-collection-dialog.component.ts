@@ -15,6 +15,7 @@ import { CreateCollectionStep } from '../../models/collection.model';
 import { DisplayedListDocument } from '../../models/document.model';
 import { RagConfiguration } from '../../models/rag-configuration';
 import { CollectionsStorageService } from '../../services/collections-storage.service';
+import { NaiveRagDocumentsStorageService } from '../../services/naive-rag-documents-storage.service';
 import { RagDeleteRegistryService } from '../../services/rag-delete-registry.service';
 import { StepSelectRagComponent } from './components/steps/step-select-rag/step-select-rag.component';
 import { StepUploadFilesComponent } from './components/steps/step-upload-files/step-upload-files.component';
@@ -51,6 +52,7 @@ export class CreateCollectionDialogComponent {
     private toastService = inject(ToastService);
     private confirmation = inject(ConfirmationDialogService);
     private ragDeleteRegistry = inject(RagDeleteRegistryService);
+    private naiveRagDocumentsStorage = inject(NaiveRagDocumentsStorageService);
 
     currentStepIndex = signal(0);
     selectedRagType = signal<RagType | null>(null);
@@ -63,6 +65,11 @@ export class CreateCollectionDialogComponent {
     collection = computed(
         () => this.collectionsStorageService.fullCollections().find((c) => c.collection_id === this.data.collection_id)!
     );
+
+    isIndexing = computed(() => {
+        const processing = this.collectionsStorageService.processingConfigIds();
+        return this.naiveRagDocumentsStorage.documents().some((d) => processing.has(d.naive_rag_document_id));
+    });
 
     canProceedSelectRag = computed(() => {
         const type = this.selectedRagType();

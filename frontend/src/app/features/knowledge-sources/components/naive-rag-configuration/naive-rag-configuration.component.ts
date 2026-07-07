@@ -29,6 +29,7 @@ import { IndexingDocumentInfo } from '../../helpers/get-indexing-confirmation-da
 import { UpdateNaiveRagDocumentDtoRequest } from '../../models/naive-rag-document.model';
 import { RagConfiguration } from '../../models/rag-configuration';
 import { ChunkDeepLinkService } from '../../services/chunk-deep-link.service';
+import { KnowledgeSourcesPollingService } from '../../services/knowledge-sources-polling.service';
 import { NaiveRagService } from '../../services/naive-rag.service';
 import { NaiveRagDocumentsStorageService } from '../../services/naive-rag-documents-storage.service';
 import { DocumentChunksSectionComponent } from '../document-chunks-section/document-chunks-section.component';
@@ -58,6 +59,7 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
     private toastService = inject(ToastService);
     private documentsStorageService = inject(NaiveRagDocumentsStorageService);
     private deepLinkService = inject(ChunkDeepLinkService);
+    private pollingService = inject(KnowledgeSourcesPollingService);
     private dialog = inject(Dialog);
 
     naiveRagId = input.required<number>();
@@ -100,6 +102,9 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
                     console.error(e);
                 },
             });
+
+        this.pollingService.startDocumentConfigsPolling(id);
+        this.destroyRef.onDestroy(() => this.pollingService.stopDocumentConfigsPolling());
 
         this.docFieldChange$
             .pipe(

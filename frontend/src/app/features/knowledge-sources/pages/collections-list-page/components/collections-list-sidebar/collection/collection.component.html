@@ -14,7 +14,7 @@
         }
     </div>
 
-    @if (collection().rag_configurations?.length) {
+    @if (collection().rag_configurations.length) {
         <div class="rag-configs">
             @for (config of collection().rag_configurations; track config.rag_id) {
                 <div
