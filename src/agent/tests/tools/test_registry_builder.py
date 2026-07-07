@@ -26,6 +26,7 @@ from shared.models.knowledge import (
 )
 from shared.models.tools import (
     ArgsSchema,
+    CodeResultData,
     McpToolData,
     PythonCodeData,
     PythonCodeToolData,
@@ -101,7 +102,9 @@ def _fake_gateway(return_value: str = "ok") -> McpToolGateway:
     return gateway
 
 
-def _python_tool_data(name: str = "my_tool") -> PythonCodeToolData:
+def _python_tool_data(
+    name: str = "my_tool", python_code_overrides: dict | None = None
+) -> PythonCodeToolData:
     return PythonCodeToolData(
         id=1,
         name=name,
@@ -112,6 +115,7 @@ def _python_tool_data(name: str = "my_tool") -> PythonCodeToolData:
             code="def run(): return 'ok'",
             entrypoint="run",
             libraries=[],
+            **(python_code_overrides or {}),
         ),
     )
 
@@ -145,6 +149,39 @@ async def test_python_code_tool_uses_clean_name():
 
     names = [spec.name for spec in registry.tool_specs()]
     assert "formatter" in names
+
+
+async def test_python_code_executor_forwards_storage_config_from_data():
+    sandbox = _fake_sandbox()
+    sandbox.submit = AsyncMock(
+        return_value=CodeResultData(
+            execution_id="exec-1",
+            result_data="ok",
+            stderr="",
+            stdout="",
+            returncode=0,
+        )
+    )
+
+    data = _python_tool_data(
+        "storage_tool",
+        python_code_overrides={
+            "use_storage": True,
+            "storage_allowed_paths": ["reports/"],
+            "storage_org_prefix": "org1",
+            "session_id": 42,
+        },
+    )
+    builder = ToolRegistryBuilder(sandbox)
+    registry = builder.add_python_code_tool(data).build()
+
+    await registry.execute("storage_tool", {})
+
+    task = sandbox.submit.call_args[0][0]
+    assert task.use_storage is True
+    assert task.storage_allowed_paths == ["reports/"]
+    assert task.storage_org_prefix == "org1"
+    assert task.session_id == 42
 
 
 async def test_mcp_tool_uses_clean_name():

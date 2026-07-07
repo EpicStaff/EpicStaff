@@ -188,18 +188,19 @@ async def test_storage_defaults_to_disabled():
     assert task.session_id is None
 
 
-async def test_storage_injected_by_caller():
+async def test_storage_config_read_from_tool_data():
     sandbox = MagicMock()
     sandbox.submit = AsyncMock(return_value=_make_success_result())
 
-    executor = PythonCodeToolExecutor(
-        sandbox,
-        _make_tool_data(),
-        use_storage=True,
-        storage_allowed_paths=["reports/"],
-        storage_org_prefix="org1",
-        session_id=42,
+    data = _make_tool_data(
+        python_code_overrides={
+            "use_storage": True,
+            "storage_allowed_paths": ["reports/"],
+            "storage_org_prefix": "org1",
+            "session_id": 42,
+        }
     )
+    executor = PythonCodeToolExecutor(sandbox, data)
     await executor({})
 
     task = sandbox.submit.call_args[0][0]

@@ -12,26 +12,13 @@ class PythonCodeToolExecutor:
     """Executes a Python-code tool via the sandbox service.
 
     Storage wiring (use_storage, storage_allowed_paths, storage_org_prefix,
-    session_id) is injected by the caller at construction time once S3 refs
-    are resolved — for now they default to disabled/None.
+    session_id) is carried on ``data.python_code``, populated Django-side
+    per graph/session.
     """
 
-    def __init__(
-        self,
-        sandbox: SandboxClient,
-        data: PythonCodeToolData,
-        *,
-        use_storage: bool = False,
-        storage_allowed_paths: list[str] | None = None,
-        storage_org_prefix: str | None = None,
-        session_id: int | None = None,
-    ) -> None:
+    def __init__(self, sandbox: SandboxClient, data: PythonCodeToolData) -> None:
         self._sandbox = sandbox
         self._data = data
-        self._use_storage = use_storage
-        self._storage_allowed_paths = storage_allowed_paths
-        self._storage_org_prefix = storage_org_prefix
-        self._session_id = session_id
 
     async def __call__(self, args: dict) -> ToolResult:
         python_code = self._data.python_code
@@ -43,10 +30,10 @@ class PythonCodeToolExecutor:
             execution_id=str(uuid.uuid4()),
             entrypoint=python_code.entrypoint,
             func_kwargs=args,
-            use_storage=self._use_storage,
-            storage_allowed_paths=self._storage_allowed_paths,
-            storage_org_prefix=self._storage_org_prefix,
-            session_id=self._session_id,
+            use_storage=python_code.use_storage,
+            storage_allowed_paths=python_code.storage_allowed_paths,
+            storage_org_prefix=python_code.storage_org_prefix,
+            session_id=python_code.session_id,
         )
 
         try:
