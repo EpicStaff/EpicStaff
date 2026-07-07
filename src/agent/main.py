@@ -18,6 +18,7 @@ from app.resources.resolver import AgentResolver
 from app.tools.mcp.client_factory import FastMCPClientFactory
 from app.tools.mcp.gateway import McpToolGateway
 from app.runners.deps import RunnerDependencies
+from app.runners.list_of_tasks import ListOfTasksRunner
 from app.runners.single_task import SingleTaskRunner
 from app.sandbox.client import SandboxClient
 from settings import load_settings
@@ -79,6 +80,7 @@ async def main() -> None:
     )
     factory = RunnerFactory(deps)
     factory.register(RunType.SINGLE_TASK, SingleTaskRunner)
+    factory.register(RunType.LIST_OF_TASKS, ListOfTasksRunner)
 
     handler = RequestHandler(
         loader=loader,

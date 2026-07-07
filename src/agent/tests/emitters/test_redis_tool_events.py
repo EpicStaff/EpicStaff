@@ -81,6 +81,21 @@ async def test_on_tool_call_publishes_live_envelope():
         "completion_tokens": 0,
         "total_tokens": 0,
     }
+    assert payload["task"] is None
+
+
+async def test_on_task_start_labels_subsequent_live_tool_events():
+    emitter, published = _make_emitter()
+    await emitter.on_task_start("task_a", 0)
+    await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
+    await emitter.on_tool_result(
+        ToolResult(tool_call_id="call_1", content="result", is_error=False)
+    )
+
+    call_payload = _decode_payload(published[0])
+    result_payload = _decode_payload(published[1])
+    assert call_payload["task"] == {"name": "task_a", "order": 0}
+    assert result_payload["task"] == {"name": "task_a", "order": 0}
 
 
 async def test_on_tool_call_still_buffers_event():

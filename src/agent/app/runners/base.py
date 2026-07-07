@@ -14,9 +14,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, ClassVar
 
+from loguru import logger
+
 from app.emitters.base import Emitter
 from app.enums import EmitterMode, RunType
-from shared.models.agent_service import AgentRequest
+from app.exceptions import AgentServiceError
+from shared.models.agent_service import AgentRequest, AgentSpec
 
 if TYPE_CHECKING:
     from app.runners.deps import RunnerDependencies
@@ -56,3 +59,22 @@ class Runner(ABC):
         ``emitter.on_final`` on success or ``emitter.on_error`` on failure.
         """
         ...
+
+    def _select_agent(self, request: AgentRequest) -> AgentSpec:
+        """Select the single agent to run for this request.
+
+        Both ``SingleTaskRunner`` and ``ListOfTasksRunner`` operate on
+        exactly one agent; if a request carries more than one, the first is
+        used and a warning is logged.
+        """
+        if not request.agents:
+            raise AgentServiceError("request has no agents")
+
+        if len(request.agents) > 1:
+            logger.warning(
+                "{} request carries {} agents; using the first",
+                request.run_type,
+                len(request.agents),
+            )
+
+        return request.agents[0]

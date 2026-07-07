@@ -76,3 +76,12 @@ class Emitter(ABC):
         are not left waiting.  Must not raise.
         """
         ...
+
+    async def on_task_start(self, task_name: str, task_order: int) -> None:
+        """Optional hook for multi-task runs (e.g. ``ListOfTasksRunner``).
+
+        Called before each task in a sequence begins.  Default is a no-op;
+        implementations that want to label live events with the current
+        task (e.g. ``RedisStreamToolEventEmitter``) may override it.
+        """
+        return None

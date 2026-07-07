@@ -50,6 +50,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
     ) -> None:
         super().__init__(client, result_stream, correlation_id)
         self._call_names: dict[str, str] = {}
+        self._current_task: dict | None = None
         self._prompt_tokens = 0
         self._completion_tokens = 0
         self._total_tokens = 0
@@ -90,6 +91,10 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
                 error,
             )
 
+    async def on_task_start(self, task_name: str, task_order: int) -> None:
+        """Record the currently running task so live tool events can carry it."""
+        self._current_task = {"name": task_name, "order": task_order}
+
     async def on_chunk(self, chunk: LLMChunk) -> None:
         """Accumulate cumulative token usage, then keep buffering as usual."""
         if chunk.usage:
@@ -122,6 +127,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
                 "arguments": arguments,
                 "truncated": truncated,
                 "token_usage": self._consume_token_usage_delta(),
+                "task": self._current_task,
             },
         )
 
@@ -139,6 +145,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
                 "is_error": result.is_error,
                 "truncated": truncated,
                 "token_usage": self._consume_token_usage_delta(),
+                "task": self._current_task,
             },
         )
 

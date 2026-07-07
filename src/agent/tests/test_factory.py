@@ -12,6 +12,7 @@ from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.emitters.redis_tool_events import RedisStreamToolEventEmitter
 from app.enums import EmitterMode
 from app.factory import RunnerFactory
+from app.runners.list_of_tasks import ListOfTasksRunner
 from app.runners.single_task import SingleTaskRunner
 from shared.models.agent_service import (
     AgentRequest,
@@ -42,6 +43,7 @@ def _request() -> AgentRequest:
 def _factory() -> RunnerFactory:
     factory = RunnerFactory(deps=MagicMock())
     factory.register(RunType.SINGLE_TASK, SingleTaskRunner)
+    factory.register(RunType.LIST_OF_TASKS, ListOfTasksRunner)
     return factory
 
 
@@ -52,6 +54,22 @@ def test_build_single_task_returns_runner_and_tool_event_emitter():
     )
 
     assert isinstance(runner, SingleTaskRunner)
+    assert isinstance(emitter, RedisStreamToolEventEmitter)
+
+
+def test_build_list_of_tasks_returns_list_of_tasks_runner():
+    factory = _factory()
+    request = AgentRequest(
+        correlation_id="test-corr",
+        run_type=RunType.LIST_OF_TASKS,
+        agents=[_agent_spec()],
+        payload={"tasks": [{"name": "t1", "instructions": "do it"}]},
+    )
+    runner, emitter = factory.build(
+        request, redis_client=MagicMock(), result_stream="agent.results"
+    )
+
+    assert isinstance(runner, ListOfTasksRunner)
     assert isinstance(emitter, RedisStreamToolEventEmitter)
 
 

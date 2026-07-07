@@ -261,3 +261,8 @@ crew-tests: export PYTHONPATH = $(CURDIR)
 
 crew-tests:
 	@cd src/crew && $(VENV_PY) -m pytest $(ARGS)
+
+agent-tests: export PYTHONPATH = $(CURDIR)
+
+agent-tests:
+	@cd src/agent && $(VENV_PY) -m pytest $(ARGS)
