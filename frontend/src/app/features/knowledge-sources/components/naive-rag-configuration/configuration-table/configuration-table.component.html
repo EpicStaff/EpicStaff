@@ -113,33 +113,44 @@
                     [class.table__row-wrapper--dark]="odd"
                     [class.table__row-wrapper--selected]="d.naive_rag_document_id === selectedRagDocId()"
                 >
-                    @switch (d.status) {
-                        @case ('completed') {
-                            <app-svg-icon
-                                icon="check"
-                                class="table__status-icon table__status-icon--completed"
-                                size="0.75rem"
-                            />
-                        }
-                        @case ('chunking') {
-                            <div class="table__status-icon table__status-spinner"></div>
-                        }
-                        @case ('indexing') {
-                            <div class="table__status-icon table__status-spinner"></div>
-                        }
-                        @case ('warning') {
-                            <app-svg-icon
-                                icon="warning"
-                                class="table__status-icon table__status-icon--warning"
-                                size="0.75rem"
-                            />
-                        }
-                        @case ('failed') {
-                            <app-svg-icon
-                                icon="close"
-                                class="table__status-icon table__status-icon--failed"
-                                size="0.75rem"
-                            />
+                    @if (processingConfigIds().has(d.naive_rag_document_id)) {
+                        <div class="table__status-icon table__status-spinner"></div>
+                    } @else {
+                        @switch (d.status) {
+                            @case ('completed') {
+                                <app-svg-icon
+                                    icon="check"
+                                    class="table__status-icon table__status-icon--completed"
+                                    size="0.75rem"
+                                />
+                            }
+                            @case ('chunked') {
+                                <app-svg-icon
+                                    icon="check"
+                                    class="table__status-icon table__status-icon--completed"
+                                    size="0.75rem"
+                                />
+                            }
+                            @case ('chunking') {
+                                <div class="table__status-icon table__status-spinner"></div>
+                            }
+                            @case ('indexing') {
+                                <div class="table__status-icon table__status-spinner"></div>
+                            }
+                            @case ('warning') {
+                                <app-svg-icon
+                                    icon="warning"
+                                    class="table__status-icon table__status-icon--warning"
+                                    size="0.75rem"
+                                />
+                            }
+                            @case ('failed') {
+                                <app-svg-icon
+                                    icon="close"
+                                    class="table__status-icon table__status-icon--failed"
+                                    size="0.75rem"
+                                />
+                            }
                         }
                     }
                     <li class="table__row">

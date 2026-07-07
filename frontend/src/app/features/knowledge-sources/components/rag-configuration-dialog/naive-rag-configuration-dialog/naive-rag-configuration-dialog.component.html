@@ -10,19 +10,22 @@
                 Close
             </app-button>
 
-            <app-button
-                type="primary"
-                [disabled]="indexingDisabled()"
-                (click)="runIndexing()"
-            >
-                Run indexing
-            </app-button>
-            <app-button
-                type="primary"
-                (click)="stopIndexing()"
-            >
-                Stop indexing
-            </app-button>
+            @if (isIndexing()) {
+                <app-button
+                    type="primary"
+                    (click)="stopIndexing(processingDocIds())"
+                >
+                    Stop indexing
+                </app-button>
+            } @else {
+                <app-button
+                    type="primary"
+                    [disabled]="indexingDisabled()"
+                    (click)="runIndexing()"
+                >
+                    Run indexing
+                </app-button>
+            }
         </div>
     </div>
 

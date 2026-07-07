@@ -9,6 +9,7 @@ import { CreateCollectionDialogComponent } from '../../components/create-collect
 import { NaiveRagConfigurationDialog } from '../../components/rag-configuration-dialog/naive-rag-configuration-dialog/naive-rag-configuration-dialog.component';
 import { ChunkDeepLinkService } from '../../services/chunk-deep-link.service';
 import { CollectionsStorageService } from '../../services/collections-storage.service';
+import { KnowledgeSourcesPollingService } from '../../services/knowledge-sources-polling.service';
 import { CollectionDetailsComponent } from './components/collection-details/collection-details.component';
 import { CollectionsListItemSidebarComponent } from './components/collections-list-sidebar/collections-list-sidebar.component';
 
@@ -23,6 +24,7 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
     private destroyRef = inject(DestroyRef);
     private dialog = inject(Dialog);
     private collectionsStorageService = inject(CollectionsStorageService);
+    private pollingService = inject(KnowledgeSourcesPollingService);
     private deepLinkService = inject(ChunkDeepLinkService);
     private toastService = inject(ToastService);
 
@@ -33,11 +35,11 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
     ngOnInit(): void {
         this.deepLinkService.initFromUrl();
         this.getCollections();
-        this.collectionsStorageService.startPolling(this.selectedCollectionId);
+        this.pollingService.startPagePolling(this.selectedCollectionId);
     }
 
     ngOnDestroy(): void {
-        this.collectionsStorageService.stopPolling();
+        this.pollingService.stopPagePolling();
     }
 
     getCollections(): void {
@@ -124,6 +126,8 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
     }
 
     private openCreateModal(collection_id: number): void {
+        this.selectedCollectionId.set(collection_id);
+
         const dialog = this.dialog.open(CreateCollectionDialogComponent, {
             width: 'calc(100vw - 2rem)',
             height: 'calc(100vh - 2rem)',

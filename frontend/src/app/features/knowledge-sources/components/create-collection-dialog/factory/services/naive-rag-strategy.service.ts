@@ -4,9 +4,10 @@ import { map, tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../../../services/notifications';
 import { CreateNaiveRag } from '../../../../models/naive-rag.model';
+import { CollectionsStorageService } from '../../../../services/collections-storage.service';
+import { KnowledgeSourcesPollingService } from '../../../../services/knowledge-sources-polling.service';
 import { NaiveRagService } from '../../../../services/naive-rag.service';
 import { NaiveRagDocumentsStorageService } from '../../../../services/naive-rag-documents-storage.service';
-import { NaiveRagPollingService } from '../../../../services/naive-rag-polling.service';
 import { RagIndexingService } from '../../../../services/rag-indexing.service';
 import { NaiveRagConfigurationComponent } from '../../../naive-rag-configuration/naive-rag-configuration.component';
 import { RagCreationStrategy } from '../interfaces/rag-creation-strategy.interface';
@@ -23,7 +24,8 @@ export class NaiveRagStrategy implements RagCreationStrategy {
         private naiveRagService: NaiveRagService,
         private ragIndexingService: RagIndexingService,
         private documentsStorageService: NaiveRagDocumentsStorageService,
-        private pollingService: NaiveRagPollingService,
+        private pollingService: KnowledgeSourcesPollingService,
+        private collectionsStorage: CollectionsStorageService,
         private toastService: ToastService
     ) {}
 
@@ -48,7 +50,7 @@ export class NaiveRagStrategy implements RagCreationStrategy {
             .pipe(
                 tap(() => {
                     this.toastService.success('Indexing started');
-                    this.pollingService.pollDocumentStatuses(naiveRagId, configIds);
+                    this.collectionsStorage.markConfigsAsProcessing(configIds);
                 }),
                 map(() => true)
             );
@@ -56,22 +58,29 @@ export class NaiveRagStrategy implements RagCreationStrategy {
 
     stopIndexing() {
         const naiveRagId = this.naiveRag.naive_rag_id;
+        const processing = this.collectionsStorage.processingConfigIds();
+        const configIds = this.documentsStorageService
+            .documents()
+            .map((d) => d.naive_rag_document_id)
+            .filter((id) => processing.has(id));
 
         return this.ragIndexingService
             .stopIndexing({
                 rag_id: naiveRagId,
                 rag_type: 'naive',
+                document_config_ids: configIds,
             })
             .pipe(
                 tap(() => {
                     this.toastService.success('Indexing stopped');
+                    this.pollingService.discardTrackedProcessingIds(configIds);
                 }),
                 map(() => true)
             );
     }
 
     dispose(): void {
-        this.pollingService.stopPolling();
+        this.pollingService.stopDocumentConfigsPolling();
     }
 
     getConfigurationComponent() {

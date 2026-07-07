@@ -1,11 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, inject, viewChild } from '@angular/core';
-import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent } from '@shared/components';
-import { filter, switchMap, take } from 'rxjs/operators';
+import { filter, switchMap } from 'rxjs/operators';
 
 import { getIndexingConfirmationData } from '../../../helpers/get-indexing-confirmation-data.util';
+import { CollectionsStorageService } from '../../../services/collections-storage.service';
 import { NaiveRagDocumentsStorageService } from '../../../services/naive-rag-documents-storage.service';
-import { NaiveRagPollingService } from '../../../services/naive-rag-polling.service';
 import { NaiveRagConfigurationComponent } from '../../naive-rag-configuration/naive-rag-configuration.component';
 import { RagConfigurationDialogComponent } from '../rag-configuration-dialog.component';
 
@@ -17,31 +17,20 @@ import { RagConfigurationDialogComponent } from '../rag-configuration-dialog.com
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent {
-    private documentsStorageService = inject(NaiveRagDocumentsStorageService);
-    private pollingService = inject(NaiveRagPollingService);
+    private collectionsStorage = inject(CollectionsStorageService);
+    private documentsStorage = inject(NaiveRagDocumentsStorageService);
     private ragConfiguration = viewChild.required(NaiveRagConfigurationComponent);
     indexingDisabled = computed(() => !this.ragConfiguration().filteredAndCheckedDocIds().length);
 
-    constructor() {
-        super();
+    processingDocIds = computed(() => {
+        const processing = this.collectionsStorage.processingConfigIds();
+        return this.documentsStorage
+            .documents()
+            .map((d) => d.naive_rag_document_id)
+            .filter((id) => processing.has(id));
+    });
 
-        this.destroyRef.onDestroy(() => this.pollingService.stopPolling());
-
-        toObservable(this.documentsStorageService.documents)
-            .pipe(
-                filter((docs) => docs.length > 0),
-                take(1),
-                takeUntilDestroyed(this.destroyRef)
-            )
-            .subscribe((docs) => {
-                const indexingIds = docs
-                    .filter((d) => d.status === 'chunking' || d.status === 'indexing')
-                    .map((d) => d.naive_rag_document_id);
-                if (indexingIds.length) {
-                    this.pollingService.pollDocumentStatuses(this.data.ragId, indexingIds);
-                }
-            });
-    }
+    isIndexing = computed(() => this.processingDocIds().length > 0);
 
     onClose(): void {
         this.dialogRef.close();
@@ -69,7 +58,7 @@ export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent
             .subscribe({
                 next: () => {
                     this.toast.success('Indexing started');
-                    this.pollingService.pollDocumentStatuses(this.data.ragId, configIds);
+                    this.collectionsStorage.markConfigsAsProcessing(configIds);
                 },
                 error: () => this.toast.error('Files re-indexing failed'),
             });
