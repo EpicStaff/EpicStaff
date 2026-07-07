@@ -37,12 +37,28 @@ class FakeS3Client:
     ``page_size`` forces list_objects_v2 to paginate in chunks of that size
     regardless of the caller-supplied MaxKeys, so tests can exercise
     multi-page walks/deletes deterministically.
+
+    Failure injection for ``delete_objects`` (both opt-in, default
+    behavior unchanged):
+
+    - ``fail_delete_objects_on_call``: 1-indexed call number on which
+      ``delete_objects`` raises a ``ClientError`` instead of returning a
+      response — simulates the whole batch call failing outright (no
+      per-key result available).
+    - ``delete_objects_error_keys``: a set of keys that, whenever present
+      in a ``delete_objects`` batch, are left undeleted and reported back
+      in ``response["Errors"]`` instead of ``response["Deleted"]`` —
+      simulates boto3's HTTP-200-with-per-key-failures shape. Any other
+      key in the same batch is still deleted and reported normally.
     """
 
     def __init__(self, page_size: int = 1000) -> None:
         self.objects: dict[str, dict] = {}
         self.page_size = page_size
         self.delete_objects_calls: list[list[str]] = []
+        self.fail_delete_objects_on_call: int | None = None
+        self.fail_delete_objects_error_code: str = "InternalError"
+        self.delete_objects_error_keys: set[str] = set()
 
     def put_object(self, Bucket, Key, Body, **kwargs):
         data = Body if isinstance(Body, bytes) else str(Body).encode("utf-8")
@@ -80,12 +96,30 @@ class FakeS3Client:
     def delete_objects(self, Bucket, Delete, **kwargs):
         keys = [ref["Key"] for ref in Delete.get("Objects", [])]
         self.delete_objects_calls.append(keys)
+        call_number = len(self.delete_objects_calls)
+
+        if (
+            self.fail_delete_objects_on_call is not None
+            and call_number == self.fail_delete_objects_on_call
+        ):
+            raise make_client_error(self.fail_delete_objects_error_code)
+
         deleted = []
+        errors = []
         for key in keys:
+            if key in self.delete_objects_error_keys:
+                errors.append(
+                    {"Key": key, "Code": "InternalError", "Message": "Simulated failure"}
+                )
+                continue
             if key in self.objects:
                 del self.objects[key]
-                deleted.append({"Key": key})
-        return {"Deleted": deleted}
+            deleted.append({"Key": key})
+
+        response: dict = {"Deleted": deleted}
+        if errors:
+            response["Errors"] = errors
+        return response
 
     def copy_object(self, Bucket, CopySource, Key, **kwargs):
         src_key = CopySource["Key"]

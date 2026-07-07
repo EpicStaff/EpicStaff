@@ -317,15 +317,38 @@ class EpicStaffStorage:
         ``.keep`` markers), using batched ``delete_objects`` calls
         (<=1000 keys/batch) instead of per-key ``delete_object``.
 
-        Records one ``{"op": "delete", "path": key}`` mutation per deleted
-        object — the django `StorageFile` index sync
-        (``storage_mutations_handler`` / ``StorageFileSync.on_delete``)
-        processes mutations one path at a time, so a single folder-level
-        mutation would leave every contained file as a ghost row.
+        Records one ``{"op": "delete", "path": key}`` mutation per object
+        that S3 actually confirms as deleted — the django `StorageFile`
+        index sync (``storage_mutations_handler`` /
+        ``StorageFileSync.on_delete``) processes mutations one path at a
+        time, so a single folder-level mutation would leave every
+        contained file as a ghost row.
+
+        Mutations are recorded batch-by-batch, right after each
+        ``delete_objects`` call returns, instead of only after every batch
+        has succeeded. This guarantees keys deleted by earlier batches
+        stay recorded even if a later batch fails outright or reports
+        per-key errors. A batch that comes back HTTP 200 with a per-key
+        ``response["Errors"]`` list (boto3's partial-failure shape) has
+        those specific keys excluded from the mutation list — S3 is
+        explicitly telling us they were not deleted.
+
+        If any keys end up unresolved this way (per-key ``Errors``, across
+        one or more batches), this method raises ``RuntimeError`` naming
+        the failed keys *after* recording every key that was confirmed
+        deleted. A batch call that raises outright still propagates
+        immediately via ``_handle_client_error`` (which always re-raises)
+        rather than continuing to later batches — but mutations for every
+        already-completed batch remain recorded.
 
         Raises:
             ValueError: ``path`` is empty/root ("", "/", ".").
             FileNotFoundError: nothing exists under the prefix.
+            RuntimeError: one or more keys failed to delete (partial
+                failure reported via ``response["Errors"]``) — the message
+                names/counts the failed keys. Keys that did delete
+                successfully (this batch or earlier ones) are still
+                recorded as mutations before this is raised.
         """
         relative = path.lstrip("/")
         normalized = posixpath.normpath(relative) if relative else ""
@@ -360,18 +383,34 @@ class EpicStaffStorage:
             raise FileNotFoundError(f"Not found in storage: {path}")
 
         batch_size = 1000
+        failed_keys: list[str] = []
         for i in range(0, len(keys), batch_size):
             batch = keys[i : i + batch_size]
             try:
-                client.delete_objects(  # type: ignore[attr-defined]
+                response = client.delete_objects(  # type: ignore[attr-defined]
                     Bucket=bucket,
                     Delete={"Objects": [{"Key": key} for key in batch]},
                 )
             except Exception as error:
                 self._handle_client_error(error, path)
+                raise  # unreachable, satisfies type checker
 
-        for key in keys:
-            _mutations.append({"op": "delete", "path": key})
+            error_keys = {err["Key"] for err in (response.get("Errors") or [])}
+            for key in batch:
+                if key in error_keys:
+                    failed_keys.append(key)
+                else:
+                    _mutations.append({"op": "delete", "path": key})
+
+        if failed_keys:
+            shown = ", ".join(failed_keys[:10])
+            remainder = (
+                f", and {len(failed_keys) - 10} more" if len(failed_keys) > 10 else ""
+            )
+            raise RuntimeError(
+                f"Failed to delete {len(failed_keys)} object(s) under '{path}': "
+                f"{shown}{remainder}"
+            )
 
     def mkdir(self, path: str) -> None:
         check_storage_permission("mkdir", path)
