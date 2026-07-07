@@ -286,18 +286,6 @@ def mock_redis_service_async():
 
 
 @pytest.fixture
-def yaml_config_service_patched_config_path(
-    tmp_path: Path,
-) -> Generator[MagicMock, None, None]:
-    tmp_path.mkdir(exist_ok=True)
-    config_path: Path = tmp_path / "config.yaml"
-    with patch.object(YamlConfigService, "_CONFIG_PATH", config_path):
-        yield config_path
-
-    shutil.rmtree(tmp_path)
-
-
-@pytest.fixture
 def session_factory(db):
     def create_session(**kwargs):
         return Session.objects.create(**kwargs)

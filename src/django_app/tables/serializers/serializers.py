@@ -52,10 +52,6 @@ class AnswerToLLMSerializer(serializers.Serializer):
     answer = serializers.CharField()
 
 
-class EnvironmentConfigSerializer(serializers.Serializer):
-    data = serializers.DictField(required=True)
-
-
 # --- EST-3285 4.8: human-in-the-loop (session-level, REST-polling design) ---
 # wait_for_decision_tool opens/polls/cancels a "decision" via these three
 # session-scoped endpoints; the existing AnswerToLLM flat-string contract

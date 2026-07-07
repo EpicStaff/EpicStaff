@@ -5,7 +5,6 @@ from tables.serializers.model_serializers.tag_serializers import (
     LLMModelTagSerializer,
 )
 from tables.models.llm_models import (
-    DefaultLLMConfig,
     LLMConfig,
     LLMModel,
     RealtimeModel,
@@ -17,12 +16,6 @@ from tables.models.tag_models import LLMConfigTag, LLMModelTag
 
 
 from ..utils.mixins import TagHandlingMixin
-
-
-class DefaultLLMConfigSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DefaultLLMConfig
-        fields = "__all__"
 
 
 class RealtimeModelSerializer(serializers.ModelSerializer):
