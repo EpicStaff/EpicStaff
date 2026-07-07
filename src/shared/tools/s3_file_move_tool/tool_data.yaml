@@ -1,6 +1,6 @@
 tool-data:
   name: "S3 File Move Tool"
-  description: "Move (rename) a file in S3 storage from one path to another."
+  description: "Move (rename or relocate) a file within S3 storage. Params: from_path, to_path (both required). Fails with a clear error if from_path does not exist. Use s3_file_copy_tool instead if you want to duplicate rather than relocate the file."
   args-schema: "args_schema.json"
   code-file: "main.py"
   entrypoint: "main"

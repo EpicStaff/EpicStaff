@@ -1,6 +1,6 @@
 tool-data:
   name: "S3 Folder List Tool"
-  description: "List files and subdirectories in an S3 folder path."
+  description: "List files and folders in S3 storage (ls semantics). Params: path (default \"\" - bucket root); recursive (default false) - set true to descend into every nested folder (like ls -R) instead of one level; long (default false) - include size and last-modified time for each entry. Output is capped at roughly 30,000 characters; if truncated, narrow path or drop recursive to see fewer entries."
   args-schema: "args_schema.json"
   code-file: "main.py"
   entrypoint: "main"

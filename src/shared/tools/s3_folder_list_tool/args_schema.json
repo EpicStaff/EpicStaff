@@ -2,10 +2,18 @@
   "title": "S3FolderListArgs",
   "type": "object",
   "properties": {
-    "folder_path": {
+    "path": {
       "type": "string",
-      "description": "S3 folder path to list contents of."
+      "description": "S3 folder path to list contents of. Defaults to \"\" (bucket root)."
+    },
+    "recursive": {
+      "type": "boolean",
+      "description": "Descend into every nested folder (like ls -R) instead of listing only one level. Defaults to false."
+    },
+    "long": {
+      "type": "boolean",
+      "description": "Include size and last-modified time for each entry (like ls -l). Defaults to false."
     }
   },
-  "required": ["folder_path"]
+  "required": []
 }
