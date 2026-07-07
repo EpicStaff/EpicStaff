@@ -1,6 +1,10 @@
 import { GraphDto } from '../../../features/flows/models/graph.model';
+import { GetClassificationDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { NodeType } from '../../core/enums/node-type';
+import { PromptConfig } from '../../core/models/classification-decision-table.model';
+import { ConditionGroup } from '../../core/models/decision-table.model';
 import { FlowModel } from '../../core/models/flow.model';
+import { ClassificationDecisionTableNodeModel } from '../../core/models/node.model';
 import { NodeDiffByType } from './types';
 
 export function patchFlowStateWithBackendIds(
@@ -175,4 +179,109 @@ function buildCreatedNodeIdMap(
     );
 
     return mapping;
+}
+
+export function patchCdtPromptBackendIds(flow: FlowModel, responseGraph: GraphDto): FlowModel {
+    const responseByBackendId = new Map<number, GetClassificationDecisionTableNodeRequest>();
+    for (const rn of responseGraph.classification_decision_table_node_list ?? []) {
+        responseByBackendId.set(rn.id, rn);
+    }
+
+    if (responseByBackendId.size === 0) return flow;
+
+    const patchedNodes = flow.nodes.map((node) => {
+        if (node.type !== NodeType.CLASSIFICATION_TABLE) return node;
+
+        const cdtNode = node as ClassificationDecisionTableNodeModel;
+        if (cdtNode.backendId == null) return node;
+
+        const responseNode = responseByBackendId.get(cdtNode.backendId);
+        if (!responseNode?.prompt_configs?.length) return node;
+
+        const backendIdByKey = new Map<string, number>();
+        for (const pc of responseNode.prompt_configs) {
+            backendIdByKey.set(pc.prompt_key, pc.id);
+        }
+
+        const currentPrompts = (cdtNode.data?.table?.prompts ?? {}) as Record<string, PromptConfig>;
+        let promptsChanged = false;
+        const updatedPrompts: Record<string, PromptConfig> = {};
+
+        for (const [key, cfg] of Object.entries(currentPrompts)) {
+            const typedCfg = cfg as PromptConfig;
+            const responseBackendId = backendIdByKey.get(key);
+            if (responseBackendId != null && typedCfg.backendId == null) {
+                updatedPrompts[key] = { ...typedCfg, backendId: responseBackendId };
+                promptsChanged = true;
+            } else {
+                updatedPrompts[key] = typedCfg;
+            }
+        }
+
+        if (!promptsChanged) return node;
+
+        return {
+            ...cdtNode,
+            data: {
+                ...cdtNode.data,
+                table: {
+                    ...cdtNode.data?.table,
+                    prompts: updatedPrompts,
+                },
+            },
+        };
+    });
+
+    return { ...flow, nodes: patchedNodes };
+}
+
+export function buildCdtSavedBaseline(flow: FlowModel, responseGraph: GraphDto): FlowModel {
+    const responseByBackendId = new Map<number, GetClassificationDecisionTableNodeRequest>();
+    for (const rn of responseGraph.classification_decision_table_node_list ?? []) {
+        responseByBackendId.set(rn.id, rn);
+    }
+
+    if (responseByBackendId.size === 0) return flow;
+
+    const patchedNodes = flow.nodes.map((node) => {
+        if (node.type !== NodeType.CLASSIFICATION_TABLE) return node;
+
+        const cdtNode = node as ClassificationDecisionTableNodeModel;
+        if (cdtNode.backendId == null) return node;
+
+        const responseNode = responseByBackendId.get(cdtNode.backendId);
+        if (!responseNode) return node;
+
+        const keyById = new Map<number, string>();
+        for (const pc of responseNode.prompt_configs ?? []) {
+            keyById.set(pc.id, pc.prompt_key);
+        }
+
+        const currentGroups: ConditionGroup[] = cdtNode.data?.table?.condition_groups ?? [];
+        let groupsChanged = false;
+        const updatedGroups = currentGroups.map((g) => {
+            const responseGroup = (responseNode.condition_groups ?? []).find((rg) => rg.group_name === g.group_name);
+            if (!responseGroup) return g;
+
+            const promptId = responseGroup.prompt != null ? (keyById.get(responseGroup.prompt) ?? null) : null;
+            if (promptId === (g.prompt_id ?? null)) return g;
+            groupsChanged = true;
+            return { ...g, prompt_id: promptId };
+        });
+
+        if (!groupsChanged) return node;
+
+        return {
+            ...cdtNode,
+            data: {
+                ...cdtNode.data,
+                table: {
+                    ...cdtNode.data?.table,
+                    condition_groups: updatedGroups,
+                },
+            },
+        };
+    });
+
+    return { ...flow, nodes: patchedNodes };
 }

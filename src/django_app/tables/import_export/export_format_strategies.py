@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from django.http import HttpResponse
 
 from tables.utils.helpers import generate_file_name
-from tables.import_export.tabular.base import TabularProjection
+from tables.import_export.export_tabular_projections.base import TabularProjection
 
 
 class ExportFormatStrategy(ABC):

@@ -3,19 +3,25 @@
         appMouseTracker
         (mousePosition)="updateMouseTrackerPosition($event)"
         (contextmenu)="onContextMenu($event)"
-        (click)="onCloseContextMenu()"
+        (click)="onFlowClick($event)"
+        (pointerdown)="onFlowPointerDown($event)"
+        (pointerup)="onFlowPointerUp($event)"
         fDraggable
+        [fMultiSelectTrigger]="multiSelectTrigger"
+        [fCanvasMoveTrigger]="canvasMoveTrigger"
         [vCellSize]="GRID_CELL_SIZE"
         [hCellSize]="GRID_CELL_SIZE"
         [fCellSizeWhileDragging]="false"
         class="visual-programming-flow"
         appShortcutListener
         (delete)="onDelete()"
+        (escape)="onEscapeKey()"
         (undo)="onUndo()"
         (redo)="onRedo()"
         (copy)="onCopy()"
         (paste)="onPaste()"
         (fLoaded)="onInitialized()"
+        (fSelectionChange)="onSelectionChange($event)"
         (fDragStarted)="onDragStarted($event)"
         (fDragEnded)="onDragEnded()"
         (fCreateConnection)="onConnectionAdded($event)"
@@ -103,6 +109,7 @@
                 <app-flow-base-node
                     [node]="node"
                     [showVariables]="flowSettings.showInputsOutputs()"
+                    [multiSelectActive]="multiSelectActive()"
                     [fMinimapClass]="getMinimapClassForNode(node)"
                     fNode
                     fDragHandle
@@ -227,7 +234,7 @@
             }
         </f-canvas>
 
-        <f-selection-area></f-selection-area>
+        <f-selection-area [fTrigger]="selectionAreaTrigger"></f-selection-area>
         <f-minimap [fMinSize]="1000"></f-minimap>
     </f-flow>
 
@@ -241,6 +248,17 @@
             >
                 Domain
             </button>
+
+            <app-flow-shortcuts-button
+                icon="multi-select"
+                label="S"
+                iconSize="14px"
+                [textEnd]="true"
+                [active]="multiSelectActive()"
+                matTooltip="Multi-select"
+                matTooltipPosition="right"
+                (clicked)="onToggleMultiSelect()"
+            ></app-flow-shortcuts-button>
 
             <div
                 #shortcutsAnchor
@@ -259,34 +277,46 @@
         ></app-nodes-search>
     </div>
 
-    <div class="top-right-actions">
-        @if (currentFlowId) {
-            <app-flow-files-button
-                [flowId]="currentFlowId"
-                [flowName]="flowName"
-            ></app-flow-files-button>
-        }
-        <button
-            #arrangeBtnRef
-            class="arrange-btn"
-            matTooltip="Auto arrange"
-            matTooltipPosition="below"
-            [disabled]="isArranging() || !(flowService.nodes().length >= 2 && hasUnarrangedChanges())"
-            (click)="onAutoArrange()"
-        >
-            <app-svg-icon
-                icon="auto-arrange"
-                size="38px"
-            ></app-svg-icon>
-        </button>
-        <button
-            class="arrange-btn settings-icon-btn"
-            (click)="openSettings()"
-            matTooltip="Flow settings"
-            matTooltipPosition="below"
-        >
-            <i class="ti ti-settings"></i>
-        </button>
+    <div class="top-right-controls">
+        <div class="top-right-actions">
+            <app-flow-export-import-button
+                [selectedCount]="selectedNodeCount()"
+                [allSelectedAreCdt]="allSelectedAreCdt()"
+                (exportSelectedJson)="onExportSelectedAsJson()"
+                (exportSelectedCsv)="onExportSelectedAsCsv()"
+                (exportJson)="onExportAllAsJson()"
+                (import)="onImportNodes()"
+            ></app-flow-export-import-button>
+            @if (currentFlowId) {
+                <app-flow-files-button
+                    [flowId]="currentFlowId"
+                    [flowName]="flowName"
+                ></app-flow-files-button>
+            }
+            <button
+                #arrangeBtnRef
+                class="arrange-btn"
+                title="Auto arrange"
+                matTooltip="Auto arrange"
+                matTooltipPosition="below"
+                [disabled]="isArranging() || !(flowService.nodes().length >= 2 && hasUnarrangedChanges())"
+                (click)="onAutoArrange()"
+            >
+                <app-svg-icon
+                    icon="auto-arrange"
+                    size="38px"
+                ></app-svg-icon>
+            </button>
+            <button
+                class="arrange-btn settings-icon-btn"
+                (click)="openSettings()"
+                title="Flow Settings"
+                matTooltip="Flow settings"
+                matTooltipPosition="below"
+            >
+                <i class="ti ti-settings"></i>
+            </button>
+        </div>
     </div>
     <app-flow-action-panel (undoRedoPerformed)="hasUnarrangedChanges.set(true)"></app-flow-action-panel>
 

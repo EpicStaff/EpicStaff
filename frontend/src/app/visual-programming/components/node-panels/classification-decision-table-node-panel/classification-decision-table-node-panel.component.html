@@ -88,6 +88,16 @@
                             >
                                 Prompt library
                             </button>
+
+                            <span class="tabs-row__divider"></span>
+
+                            <app-action-dropdown-button
+                                label="Export"
+                                [items]="exportFormatItems"
+                                [panelWidth]="100"
+                                (mainClick)="exportAsJson()"
+                                (itemClick)="onExportItemSelected($event)"
+                            />
                         </div>
                     </div>
                 </div>

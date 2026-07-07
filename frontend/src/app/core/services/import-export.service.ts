@@ -7,6 +7,24 @@ import { ImportResult } from '../models/import-result.model';
 
 export type ExportFormat = 'json' | 'csv';
 
+export interface PartialExportRequest {
+    start_node_list: number[];
+    crew_node_list: number[];
+    python_node_list: number[];
+    audio_transcription_node_list: number[];
+    file_extractor_node_list: number[];
+    end_node_list: number[];
+    subgraph_node_list: number[];
+    webhook_trigger_node_list: number[];
+    telegram_trigger_node_list: number[];
+    decision_table_node_list: number[];
+    classification_decision_table_node_list: number[];
+    graph_note_list: number[];
+    code_agent_node_list: number[];
+    schedule_trigger_node_list: number[];
+    edge_list: number[];
+}
+
 export interface ImportFlowRequestOptions {
     preserveUuids: boolean;
     replaceExisting: boolean;
@@ -35,6 +53,28 @@ export class ImportExportService {
 
     private get sessionsApiUrl(): string {
         return this.configService.apiUrl + 'sessions/';
+    }
+
+    private get cdtApiUrl(): string {
+        return this.configService.apiUrl + 'classification-decision-table-node/';
+    }
+
+    partialExport(graphId: number, body: PartialExportRequest): Observable<Blob> {
+        return this.http.post(`${this.apiUrl}${graphId}/partial-export/`, body, {
+            responseType: 'blob',
+        });
+    }
+
+    partialImport(graphId: number, file: File): Observable<unknown> {
+        const formData = new FormData();
+        formData.append('file', file);
+        return this.http.post(`${this.apiUrl}${graphId}/partial-import/`, formData);
+    }
+
+    cdtExport(nodeId: number, format: ExportFormat): Observable<Blob> {
+        return this.http.get(`${this.cdtApiUrl}${nodeId}/export/?export_format=${format}`, {
+            responseType: 'blob',
+        });
     }
 
     importFlow(file: File, settings: ImportFlowRequestOptions): Observable<ImportResult> {
