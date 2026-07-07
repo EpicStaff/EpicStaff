@@ -50,6 +50,17 @@
         }
     }
 
+    // Emphasis
+    strong,
+    b {
+        font-weight: 600;
+    }
+
+    em,
+    i {
+        font-style: italic;
+    }
+
     // Links
     a {
         color: #5672cd;
