@@ -5,6 +5,7 @@ import zipfile
 from django.http import HttpResponse
 
 from tables.models import DocumentMetadata
+from tables.constants.knowledge_constants import PREVIEW_CONTENT_TYPES
 
 
 def document_bytes(document: DocumentMetadata) -> bytes:
@@ -33,6 +34,18 @@ def build_file_response(document: DocumentMetadata) -> HttpResponse:
         mimetypes.guess_type(document.file_name)[0] or "application/octet-stream"
     )
     return file_response(document_bytes(document), content_type, document.file_name)
+
+
+def build_preview_response(document: DocumentMetadata) -> HttpResponse:
+    """Build an inline response for a single document"""
+    content_type = (
+        PREVIEW_CONTENT_TYPES.get(document.file_type)
+        or mimetypes.guess_type(document.file_name)[0]
+        or "application/octet-stream"
+    )
+    return file_response(
+        document_bytes(document), content_type, document.file_name, "inline"
+    )
 
 
 def build_archive_response(
