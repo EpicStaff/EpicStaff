@@ -438,6 +438,12 @@ class AgentViewSet(CopyActionMixin, ModelViewSet):
         "allow_code_execution",
     ]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.import_export_service = ViewSetImportExportService(
+            entity_type=EntityType.AGENT, export_prefix="agent", filename_attr="role"
+        )
+
     def get_serializer_class(self):
         if self.action in ["list", "retrieve"]:
             return AgentReadSerializer
@@ -506,6 +512,31 @@ class AgentViewSet(CopyActionMixin, ModelViewSet):
         )
         return Response(read_serializer.data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=["get"])
+    def export(self, request, pk: int):
+        return self.import_export_service.export_entity(self.get_object())
+
+    @extend_schema(
+        request={
+            "multipart/form-data": {
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string", "format": "binary"},
+                },
+                "required": ["file"],
+            }
+        }
+    )
+    @action(detail=False, methods=["post"], url_path="import")
+    def import_entity(self, request):
+        file_serializer = ImportRequestSerializer(data=request.data)
+        file_serializer.is_valid(raise_exception=True)
+
+        data = self.import_export_service.import_entity(
+            file_serializer.validated_data["file"]
+        )
+        return Response(data, status=status.HTTP_200_OK)
+
 
 class CrewReadWriteViewSet(CopyActionMixin, ModelViewSet):
     copy_service_class = CrewCopyService
@@ -526,6 +557,26 @@ class CrewReadWriteViewSet(CopyActionMixin, ModelViewSet):
         "planning",
         "planning_llm_config",
     ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.import_export_service = ViewSetImportExportService(
+            entity_type=EntityType.CREW, export_prefix="crew", filename_attr="name"
+        )
+
+    @action(detail=True, methods=["get"])
+    def export(self, request, pk: int):
+        return self.import_export_service.export_entity(self.get_object())
+
+    @action(detail=False, methods=["post"], url_path="import")
+    def import_entity(self, request):
+        file_serializer = ImportRequestSerializer(data=request.data)
+        file_serializer.is_valid(raise_exception=True)
+
+        data = self.import_export_service.import_entity(
+            file_serializer.validated_data["file"]
+        )
+        return Response(data, status=status.HTTP_200_OK)
 
 
 class TaskReadWriteViewSet(ModelViewSet):
