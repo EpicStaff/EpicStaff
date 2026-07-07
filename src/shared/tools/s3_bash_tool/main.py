@@ -220,6 +220,51 @@ def _parse_args(
 # =====================================================================
 
 
+def _glob_to_regex(pattern: str):
+    """Translate a shell-style glob to a compiled regex where ``*`` and ``?``
+    respect ``/`` as a path-segment boundary (unlike ``fnmatch``, which lets
+    ``*``/``?`` match across ``/``). This mirrors real shell globbing: a bare
+    ``*`` never descends into a subfolder. There is no ``**`` cross-boundary
+    escape hatch here — for recursive-anywhere matching use the dedicated
+    ``s3_glob_tool`` instead, which intentionally keeps the fnmatch-style
+    (boundary-crossing) convention.
+    """
+    import re
+
+    parts = []
+    i = 0
+    n = len(pattern)
+    while i < n:
+        c = pattern[i]
+        if c == "*":
+            parts.append("[^/]*")
+            i += 1
+        elif c == "?":
+            parts.append("[^/]")
+            i += 1
+        elif c == "[":
+            j = i + 1
+            if j < n and pattern[j] == "!":
+                j += 1
+            if j < n and pattern[j] == "]":
+                j += 1
+            while j < n and pattern[j] != "]":
+                j += 1
+            if j >= n:
+                parts.append(re.escape(c))
+                i += 1
+            else:
+                inner = pattern[i + 1 : j]
+                if inner.startswith("!"):
+                    inner = "^" + inner[1:]
+                parts.append(f"[{inner}]")
+                i = j + 1
+        else:
+            parts.append(re.escape(c))
+            i += 1
+    return re.compile("".join(parts))
+
+
 def _expand_path(token: str, storage: EpicStaffStorage) -> list[dict]:
     """Expand a single token to matching ``walk()`` entries (dicts with at
     least ``path``, plus ``size``/``modified`` when derived from a glob).
@@ -232,10 +277,9 @@ def _expand_path(token: str, storage: EpicStaffStorage) -> list[dict]:
     prefix = token[:first_meta]
     scope = prefix.rsplit("/", 1)[0] if "/" in prefix else ""
 
-    import fnmatch
-
+    regex = _glob_to_regex(token)
     entries = storage.walk(scope)
-    matched = [e for e in entries if fnmatch.fnmatchcase(e["path"], token)]
+    matched = [e for e in entries if regex.fullmatch(e["path"])]
     if not matched:
         raise ValueError(f"no matches for pattern '{token}'.")
     return sorted(matched, key=lambda e: e["path"])
@@ -996,12 +1040,18 @@ def main(command: str) -> str:
         return str(e)
 
     if redirect_op is not None:
+        # Real bash's `echo` always terminates its output with a newline,
+        # including when redirected to a file — `echo a >> f; echo b >> f`
+        # must land as "a\nb\n", not "ab". `cat`'s redirected output is the
+        # rendered content verbatim (no newline injected), matching real
+        # `cat > file` semantics.
+        payload = output + "\n" if cmd_name == "echo" else output
         try:
             if redirect_op == ">":
-                storage.write(redirect_target, output)
-                return f"Wrote {len(output)} character(s) to {redirect_target}."
-            storage.append_text(redirect_target, output)
-            return f"Appended {len(output)} character(s) to {redirect_target}."
+                storage.write(redirect_target, payload)
+                return f"Wrote {len(payload)} character(s) to {redirect_target}."
+            storage.append_text(redirect_target, payload)
+            return f"Appended {len(payload)} character(s) to {redirect_target}."
         except FileNotFoundError as e:
             return str(e)
         except PermissionError as e:

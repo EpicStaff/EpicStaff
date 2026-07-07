@@ -24,12 +24,18 @@ tool-data:
     stat path (show file size/content-type/modified, or folder entry
     count); du [-s] [path] (recursive size totals per top-level entry,
     -s shows only the grand total); diff [-u] a b (unified diff between two
-    files); echo TEXT [> file | >> file] (print text, or write/append it to
-    a file); test -e path / [ -e path ] (prints "true" or "false" for
+    files); echo TEXT [> file | >> file] (print text; when redirected to a
+    file, a trailing newline is appended after TEXT just like real bash
+    echo, so repeated "echo a >> f" / "echo b >> f" calls land as separate
+    lines - the plain returned value with no redirect has no added
+    newline); test -e path / [ -e path ] (prints "true" or "false" for
     whether the path exists). Path arguments to
     cat/rm/mv/cp/wc/stat/du/grep/head/tail/diff/ls containing * ? [ are
-    expanded as a glob against matching files; a glob that matches nothing
-    is an error. Only trailing "> file" / ">> file" redirection is
+    expanded as a glob against matching files, with shell semantics: * and
+    ? never cross a / boundary (e.g. "dir/*.txt" matches "dir/a.txt" but
+    not "dir/sub/b.txt"); there is no "**" recursive-across-folders glob
+    here - for that, use the dedicated s3_glob_tool. A glob that matches
+    nothing is an error. Only trailing "> file" / ">> file" redirection is
     supported, and only for echo and cat. Limits: no pipes, no variables,
     no subshells/backticks, no command chaining (&&, ||, ;), no input
     redirection (<), and exactly one command per call - for multi-step
