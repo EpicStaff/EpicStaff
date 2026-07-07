@@ -322,6 +322,66 @@ class TestAnswerSessionDecision:
         )
         assert response.status_code == status.HTTP_409_CONFLICT, response.content
 
+    def test_double_answer_same_decision_id_is_rejected_and_state_unchanged(
+        self, auth_client, redis_client_mock, session_in_default_org
+    ):
+        """A reload/SSE-reconnect can lose the FE's local 'answered' flag and
+        re-POST the same decision_id after a successful answer -- the second
+        POST must be rejected as a no-op, not re-write the answer or flip the
+        status again."""
+        decision_id = self._open(auth_client, session_in_default_org)
+
+        first_response = auth_client.post(
+            _answer_url(session_in_default_org.pk),
+            {"decision_id": decision_id, "option_index": 0, "free_text": None},
+            format="json",
+        )
+        assert first_response.status_code == status.HTTP_202_ACCEPTED, first_response.content
+
+        second_response = auth_client.post(
+            _answer_url(session_in_default_org.pk),
+            {"decision_id": decision_id, "option_index": 1, "free_text": None},
+            format="json",
+        )
+        assert second_response.status_code == status.HTTP_409_CONFLICT, second_response.content
+
+        session_in_default_org.refresh_from_db()
+        assert session_in_default_org.status == Session.SessionStatus.RUN
+        # The original answer must not be clobbered by the second (stale) POST.
+        assert session_in_default_org.status_data["decision"]["answer"] == {
+            "option_index": 0,
+            "free_text": None,
+        }
+
+    def test_stale_decision_id_after_new_decision_opened_is_rejected(
+        self, auth_client, redis_client_mock, session_in_default_org
+    ):
+        """A decision_id from a PREVIOUS (already superseded) decision must
+        not be accepted against the session's CURRENT pending decision."""
+        first_decision_id = self._open(auth_client, session_in_default_org)
+        auth_client.post(
+            _answer_url(session_in_default_org.pk),
+            {"decision_id": first_decision_id, "option_index": 0},
+            format="json",
+        )
+
+        second_decision_id = self._open(auth_client, session_in_default_org)
+        assert second_decision_id != first_decision_id
+
+        response = auth_client.post(
+            _answer_url(session_in_default_org.pk),
+            {"decision_id": first_decision_id, "option_index": 1},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_404_NOT_FOUND, response.content
+
+        session_in_default_org.refresh_from_db()
+        assert session_in_default_org.status == Session.SessionStatus.WAIT_FOR_USER
+        assert session_in_default_org.status_data["decision"]["decision_id"] == (
+            second_decision_id
+        )
+        assert session_in_default_org.status_data["decision"]["answer"] is None
+
     def test_cross_org_answer_is_rejected(
         self, auth_client, redis_client_mock, session_in_org_b, env_api_key
     ):

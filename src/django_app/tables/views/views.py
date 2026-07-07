@@ -908,48 +908,70 @@ class AnswerSessionDecisionView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            session = Session.objects.get(id=session_id)
-        except Session.DoesNotExist:
-            return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
+        # EST-3285 4.8 hardening: a reload/SSE-reconnect can lose the FE's
+        # local "answered" flag and re-POST the same decision_id, and two
+        # near-simultaneous requests (double-click, retry) could otherwise
+        # both read the row as still wait_for_user before either commits.
+        # select_for_update() plus the explicit `decision["answer"] is not
+        # None` re-check below close that TOCTOU window: only the first
+        # request to reach here for a given decision can ever mutate
+        # status_data/status, and every subsequent one (sequential or
+        # concurrent) is rejected as a no-op, mirroring AnswerToLLM's
+        # "not wait_for_user" 418/409 idempotent-rejection convention.
+        with transaction.atomic():
+            try:
+                session = Session.objects.select_for_update().get(id=session_id)
+            except Session.DoesNotExist:
+                return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
 
-        ownership_error = _check_session_ownership(request, session)
-        if ownership_error:
-            return Response(ownership_error, status=status.HTTP_403_FORBIDDEN)
+            ownership_error = _check_session_ownership(request, session)
+            if ownership_error:
+                return Response(ownership_error, status=status.HTTP_403_FORBIDDEN)
 
-        if session.status != Session.SessionStatus.WAIT_FOR_USER:
-            return Response(
-                "Session is not waiting for a decision", status=status.HTTP_409_CONFLICT
-            )
+            if session.status != Session.SessionStatus.WAIT_FOR_USER:
+                return Response(
+                    "Session is not waiting for a decision",
+                    status=status.HTTP_409_CONFLICT,
+                )
 
-        decision_id = serializer.validated_data["decision_id"]
-        decision = (session.status_data or {}).get("decision")
-        if not decision or decision.get("decision_id") != decision_id:
-            return Response(
-                "No matching pending decision for this session",
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            decision_id = serializer.validated_data["decision_id"]
+            decision = (session.status_data or {}).get("decision")
+            if not decision or decision.get("decision_id") != decision_id:
+                return Response(
+                    "No matching pending decision for this session",
+                    status=status.HTTP_404_NOT_FOUND,
+                )
 
-        option_index = serializer.validated_data.get("option_index")
-        free_text = serializer.validated_data.get("free_text")
-        options = decision.get("options") or []
+            if decision.get("answer") is not None:
+                # Already answered (e.g. a duplicate POST that raced in
+                # before the first one's status flip committed) -- reject
+                # without touching status_data or status again.
+                return Response(
+                    "Decision has already been answered", status=status.HTTP_409_CONFLICT
+                )
 
-        if option_index is not None and not (0 <= option_index < len(options)):
-            return Response(
-                f"'option_index' must be between 0 and {len(options) - 1}",
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if option_index is None and not (decision.get("allow_free_text") and free_text):
-            return Response(
-                "Must supply either 'option_index' or 'free_text' "
-                "(free_text only accepted when allow_free_text was true).",
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            option_index = serializer.validated_data.get("option_index")
+            free_text = serializer.validated_data.get("free_text")
+            options = decision.get("options") or []
 
-        decision["answer"] = {"option_index": option_index, "free_text": free_text}
-        session.status_data = {**(session.status_data or {}), "decision": decision}
-        session.status = Session.SessionStatus.RUN
-        session.save()
+            if option_index is not None and not (0 <= option_index < len(options)):
+                return Response(
+                    f"'option_index' must be between 0 and {len(options) - 1}",
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if option_index is None and not (
+                decision.get("allow_free_text") and free_text
+            ):
+                return Response(
+                    "Must supply either 'option_index' or 'free_text' "
+                    "(free_text only accepted when allow_free_text was true).",
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            decision["answer"] = {"option_index": option_index, "free_text": free_text}
+            session.status_data = {**(session.status_data or {}), "decision": decision}
+            session.status = Session.SessionStatus.RUN
+            session.save()
 
         return Response(status=status.HTTP_202_ACCEPTED)
 
