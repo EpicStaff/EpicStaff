@@ -6,6 +6,7 @@ export interface DetailCrumb {
     icon?: string;
     iconSize?: string;
     navAgentId?: number;
+    navAgentSurfacesId?: number;
 }
 
 @Component({
@@ -21,4 +22,5 @@ export class DetailHeaderComponent {
 
     readonly toggleSidebar = output<void>();
     readonly navAgent = output<number>();
+    readonly navAgentSurfaces = output<number>();
 }

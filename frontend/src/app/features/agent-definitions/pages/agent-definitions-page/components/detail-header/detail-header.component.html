@@ -29,6 +29,21 @@
                     }
                     {{ crumb.label }}
                 </button>
+            } @else if (crumb.navAgentSurfacesId != null) {
+                <button
+                    type="button"
+                    class="crumbs__item crumbs__item--link"
+                    (click)="navAgentSurfaces.emit(crumb.navAgentSurfacesId)"
+                >
+                    @if (crumb.icon) {
+                        <app-svg-icon
+                            class="crumbs__icon"
+                            [icon]="crumb.icon"
+                            [size]="crumb.iconSize || '14px'"
+                        />
+                    }
+                    {{ crumb.label }}
+                </button>
             } @else {
                 <span
                     class="crumbs__item"

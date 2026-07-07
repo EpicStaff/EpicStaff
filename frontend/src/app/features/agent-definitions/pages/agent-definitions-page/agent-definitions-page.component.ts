@@ -113,7 +113,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             return [
                 { label: 'AGENTS' },
                 { label: sv.ownerAgent.name, icon: 'agents-tab', navAgentId: sv.ownerAgent.id },
-                { label: 'Surfaces' },
+                { label: 'Surfaces', navAgentSurfacesId: sv.ownerAgent.id },
                 { label: sv.surface.name },
             ];
         }
