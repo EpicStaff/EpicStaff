@@ -125,6 +125,33 @@ class TestSpawnAgentTool:
         assert "/api/crews/201/" in deletes
         assert "/api/agents/101/" in deletes
 
+    def test_crew_node_output_variable_path_is_variables_prefixed(self, monkeypatch):
+        # Regression test (EST-3285): the transient CrewNode's
+        # output_variable_path must be "variables.result", not bare "result"
+        # -- crew.utils.set_output_variables.set_output_variables requires
+        # the first path segment to literally be "variables" and raises
+        # ValueError("... does not contain name 'variables'") otherwise,
+        # which was the exact error breaking spawned sub-sessions.
+        _configure(spawn_module)
+        deletes = []
+        seen_crew_node_payload = {}
+        seen_end_node_payload = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path == "/api/crewnodes/":
+                seen_crew_node_payload.update(json.loads(request.content))
+            if request.method == "POST" and request.url.path == "/api/endnodes/":
+                seen_end_node_payload.update(json.loads(request.content))
+            return _default_handler(deletes)(request)
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = spawn_main(prompt="hello")
+
+        assert not result.startswith("Error:")
+        assert seen_crew_node_payload["output_variable_path"] == "variables.result"
+        assert seen_end_node_payload["output_map"] == {"result": "variables.result"}
+
     def test_llm_config_override_is_passed_through(self, monkeypatch):
         _configure(spawn_module, default_llm_config_id=7)
         deletes = []

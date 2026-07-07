@@ -87,6 +87,15 @@ DEFAULT_ROLE = "Assistant"
 DEFAULT_BACKSTORY = "A focused, single-purpose assistant spawned to complete one specific task."
 DEFAULT_EXPECTED_OUTPUT = "A clear, complete answer to the given task."
 OUTPUT_VARIABLE_PATH = "result"
+# `CrewNode.output_variable_path` is fed straight into
+# `crew.utils.set_output_variables.set_output_variables`, which requires the
+# path's first segment to literally be "variables" (it raises
+# `ValueError: ... does not contain name 'variables'` otherwise) and then
+# writes into `state["variables"]` at the remaining segments. So the value
+# stored on the CrewNode row must be "variables.<name>", not just "<name>" --
+# see graph_builder.py / test_graph_builder.py for the same convention on a
+# known-good flow.
+CREW_NODE_OUTPUT_VARIABLE_PATH = f"variables.{OUTPUT_VARIABLE_PATH}"
 
 
 def _api_base_url() -> str:
@@ -356,7 +365,7 @@ def main(
                     {
                         "graph": graph_id,
                         "crew_id": created["crew_id"],
-                        "output_variable_path": OUTPUT_VARIABLE_PATH,
+                        "output_variable_path": CREW_NODE_OUTPUT_VARIABLE_PATH,
                     },
                     headers,
                     "spawned flow's crew node",

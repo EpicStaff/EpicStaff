@@ -82,6 +82,22 @@ def _headers(api_key: str) -> dict:
     return {"X-Api-Key": api_key, "Content-Type": "application/json"}
 
 
+def _coerce_graph_id(graph_id):
+    """Coerce a configured graph_id (which may arrive as a float, e.g. 4.0,
+    depending on how the config value was stored) to a plain int, so every
+    outgoing request (the `?graph=` list filter, the create payload's
+    `graph` field, and the ownership/cross-graph guard comparison) is
+    consistent with the integer `graph` field/PK Django expects. Returns
+    (int_graph_id, error|None); never raises."""
+    try:
+        return int(float(graph_id)), None
+    except (TypeError, ValueError):
+        return None, (
+            f"Error: 'graph_id' is configured as {graph_id!r}, which is not "
+            "a valid numeric graph id."
+        )
+
+
 def _maybe_jitter_start(start_date_time, apply_jitter: bool, jitter_max: int):
     """Return (possibly-offset start_date_time, applied_offset_seconds|None)."""
     if not apply_jitter or not start_date_time:
@@ -400,6 +416,9 @@ def main(
                 "Error: 'graph_id' is missing. Configure which saved flow this "
                 "tool manages schedules for before using the Schedule Manager Tool."
             )
+        graph_id, graph_id_error = _coerce_graph_id(graph_id)
+        if graph_id_error:
+            return graph_id_error
         if not api_key:
             return (
                 "Error: 'api_key' is missing. Configure an EpicStaff API key for "

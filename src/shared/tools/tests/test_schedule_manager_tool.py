@@ -79,6 +79,45 @@ class TestScheduleManagerToolCreate:
         assert "Error" not in result
         assert '"id": 55' in result
 
+    def test_create_coerces_float_graph_id_to_int(self, monkeypatch):
+        # Regression test (EST-3285): graph_id may be stored/read as a
+        # float-ish value ("4.0" string or 4.0 float); the outgoing create
+        # payload's `graph` field must be a plain int (Django rejects "4.0"
+        # with a ValidationError on the `graph` choice field).
+        _configure(schedule_module, graph_id="4.0")
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            import json as _json
+
+            payload = _json.loads(request.content)
+            assert payload["graph"] == 4
+            return httpx.Response(
+                201,
+                json={"id": 1, "graph": 4, "node_name": payload["node_name"], "schedule": payload["schedule"]},
+            )
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = schedule_main(
+            action="create",
+            run_mode="once",
+            start_date_time="2026-07-06T09:15:00",
+        )
+
+        assert "Error" not in result
+
+    def test_create_invalid_graph_id_returns_readable_error(self):
+        _configure(schedule_module, graph_id="not-a-number")
+
+        result = schedule_main(
+            action="create",
+            run_mode="once",
+            start_date_time="2026-07-06T09:15:00",
+        )
+
+        assert result.startswith("Error:")
+        assert "graph_id" in result
+
     def test_create_applies_jitter_on_round_boundary(self, monkeypatch):
         _configure(schedule_module)
         captured = {}
@@ -191,6 +230,23 @@ class TestScheduleManagerToolList:
 
         assert '"count_returned": 2' in result
         assert '"truncated": false' in result
+
+    def test_list_coerces_float_graph_id_to_int(self, monkeypatch):
+        # Regression test (EST-3285): graph_id may be stored/read as a float
+        # (e.g. 4.0) by the config layer; the tool must send an int in the
+        # `?graph=` query param, not "4.0", or Django rejects the filter.
+        _configure(schedule_module, graph_id=4.0)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.url.params["graph"] == "4"
+            return httpx.Response(200, json={"count": 0, "results": []})
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = schedule_main(action="list")
+
+        assert "Error" not in result
+        assert '"graph_id": 4' in result
 
     def test_list_truncates_large_result_set(self, monkeypatch):
         _configure(schedule_module)
