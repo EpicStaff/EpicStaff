@@ -1,5 +1,6 @@
 import asyncio
 import json
+import socket
 from collections.abc import AsyncIterable
 from typing import Any
 
@@ -26,6 +27,13 @@ class RedisService(metaclass=SingletonMeta):
             password=self.password,
             decode_responses=True,
             retry=self._retry,
+            socket_keepalive=True,
+            socket_keepalive_options={
+                socket.TCP_KEEPIDLE: 30,
+                socket.TCP_KEEPINTVL: 10,
+                socket.TCP_KEEPCNT: 3,
+            },
+            socket_connect_timeout=5,
         )
 
     async def async_publish(self, channel: str, message: object):
