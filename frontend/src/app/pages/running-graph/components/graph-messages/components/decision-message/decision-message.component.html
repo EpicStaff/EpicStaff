@@ -1,0 +1,81 @@
+<div
+    class="decision-container"
+    *ngIf="data as data"
+>
+    <div class="header">
+        <div class="icon-container">
+            <app-svg-icon
+                icon="help-circle"
+                size="1rem"
+            />
+        </div>
+        <div class="title">
+            <h3>{{ data.question }}</h3>
+        </div>
+    </div>
+
+    <div class="content">
+        <div class="options">
+            <button
+                type="button"
+                *ngFor="let option of data.options; let i = index"
+                class="option"
+                [class.selected]="selectedOptionIndex() === i"
+                [disabled]="isSubmitting() || isAnswered()"
+                (click)="selectOption(i)"
+            >
+                <span class="option-marker"></span>
+                <span class="option-text">{{ option }}</span>
+            </button>
+        </div>
+
+        <div
+            class="free-text"
+            *ngIf="data.allow_free_text"
+        >
+            <textarea
+                class="free-text-input"
+                rows="2"
+                placeholder="Add a free-text answer..."
+                [value]="freeText()"
+                [disabled]="isSubmitting() || isAnswered()"
+                (input)="onFreeTextChange($event)"
+            ></textarea>
+        </div>
+
+        <div
+            class="error-message"
+            *ngIf="errorMessage()"
+        >
+            {{ errorMessage() }}
+        </div>
+
+        <div
+            class="answered-state"
+            *ngIf="isAnswered()"
+        >
+            <app-svg-icon
+                icon="check"
+                size="1rem"
+            />
+            <span *ngIf="submittedOptionIndex() !== null"> Answered: {{ data.options[submittedOptionIndex()!] }} </span>
+            <span *ngIf="submittedOptionIndex() === null && submittedFreeText()">
+                Answered: {{ submittedFreeText() }}
+            </span>
+        </div>
+
+        <div
+            class="actions"
+            *ngIf="!isAnswered()"
+        >
+            <button
+                type="button"
+                class="submit-btn"
+                [disabled]="!canSubmit() || isSubmitting()"
+                (click)="submit()"
+            >
+                {{ isSubmitting() ? 'Submitting...' : 'Submit' }}
+            </button>
+        </div>
+    </div>
+</div>

@@ -75,6 +75,12 @@
                     @case ('findings') {
                         <app-findings-message [message]="entry.message"></app-findings-message>
                     }
+                    @case ('wait_for_decision') {
+                        <app-decision-message
+                            [message]="entry.message"
+                            [sessionId]="sessionId"
+                        ></app-decision-message>
+                    }
                     @case ('error') {
                         <app-error-message [message]="entry.message"></app-error-message>
                     }
@@ -263,6 +269,12 @@
                                                     <app-findings-message
                                                         [message]="nestedEntry.message"
                                                     ></app-findings-message>
+                                                }
+                                                @case ('wait_for_decision') {
+                                                    <app-decision-message
+                                                        [message]="nestedEntry.message"
+                                                        [sessionId]="sessionId"
+                                                    ></app-decision-message>
                                                 }
                                                 @case ('error') {
                                                     <app-error-message
