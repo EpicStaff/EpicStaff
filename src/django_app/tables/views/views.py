@@ -85,6 +85,7 @@ from tables.serializers.serializers import (
     SessionExportAllSerializer,
 )
 from tables.services.notification_email_sender import NotificationEmailSender
+from tables.throttles import NotifyEmailThrottle
 
 from tables.serializers.quickstart_serializers import (
     QuickstartSerializer,
@@ -1000,8 +1001,13 @@ class NotifyEmailView(APIView):
     (channel='email'). Reuses NotificationEmailSender (Django's send_mail /
     EMAIL_BACKEND -- the same transport PasswordResetEmailSender uses), NOT a
     parallel SMTP client. Requires auth (same DEFAULT_PERMISSION_CLASSES /
-    DEFAULT_AUTHENTICATION_CLASSES as every other endpoint) so this can't be
-    used as an open mail relay."""
+    DEFAULT_AUTHENTICATION_CLASSES as every other endpoint), but auth alone
+    does not prevent abuse: this is driven by notification_tool (LLM output),
+    so a prompt-injected agent or a leaked API key could otherwise send
+    unlimited mail to arbitrary external addresses from our domain.
+    NotifyEmailThrottle caps that per authenticated user."""
+
+    throttle_classes = [NotifyEmailThrottle]
 
     @extend_schema(
         summary="Send a notification email",
