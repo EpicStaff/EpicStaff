@@ -26,6 +26,27 @@ class StorageLineEditMismatchError(ValueError):
 MAX_LINE_READ_BYTES = 50 * 1024 * 1024
 
 
+def split_lines(content: str) -> list[str]:
+    """Split ``content`` into logical lines using wc-with-final-fragment
+    semantics: a trailing ``"\\n"`` terminates the preceding line (no
+    phantom empty line is produced after it), while content that does
+    *not* end in ``"\\n"`` still counts its final, unterminated fragment
+    as a line. An empty string has zero lines.
+
+    This is the single source of truth for line counting/addressing:
+    ``count_lines``, ``read_lines``, and ``insert_lines`` below, plus the
+    ``s3_file_count_lines_tool`` / ``s3_file_insert_tool`` /
+    ``s3_file_line_read_tool`` / ``s3_bash_tool`` (head/tail) callers, all
+    rely on this so identical content yields identical line numbers
+    everywhere.
+    """
+    if content == "":
+        return []
+    if content.endswith("\n"):
+        content = content[:-1]
+    return content.split("\n")
+
+
 __cache: dict[str, list[str] | None] = {}
 
 _mutations: list[dict] = []
@@ -498,7 +519,7 @@ class EpicStaffStorage:
             raise ValueError(f"line_number must be >= 1, got {line_number}.")
 
         content = self.read(path)
-        lines = content.split("\n")
+        lines = split_lines(content)
 
         if line_number > len(lines):
             raise ValueError(
@@ -520,7 +541,7 @@ class EpicStaffStorage:
             )
 
         content = self.read(path)
-        return len(content.split("\n"))
+        return len(split_lines(content))
 
     def edit_line(
         self, path: str, line_number: int, expected_text: str, new_text: str
@@ -552,6 +573,16 @@ class EpicStaffStorage:
         self.write(path, existing + content)
 
     def insert_lines(self, path: str, line_number: int, content: str) -> None:
+        """Insert ``content`` as one or more new lines before line
+        ``line_number`` (1-based; ``line_count + 1`` appends).
+
+        Uses :func:`split_lines` for both the existing file and the
+        inserted ``content`` so a trailing ``"\\n"`` never manufactures a
+        phantom blank line. Trailing-newline round-trip fidelity is
+        preserved independently of ``content``: the result ends in
+        ``"\\n"`` iff the *existing* file did (or didn't exist at all),
+        never because the inserted ``content`` happened to end in one.
+        """
         if line_number < 1:
             raise ValueError(f"line_number must be >= 1, got {line_number}")
 
@@ -560,11 +591,18 @@ class EpicStaffStorage:
         except FileNotFoundError:
             existing = ""
 
-        lines = existing.split("\n")
+        keep_trailing_newline = existing == "" or existing.endswith("\n")
+        lines = split_lines(existing)
         idx = min(line_number - 1, len(lines))
-        new_lines = content.split("\n")
+        # An empty `content` means "insert one blank line" rather than
+        # "insert nothing" — split_lines("") would otherwise collapse to [].
+        new_lines = split_lines(content) if content != "" else [""]
         merged = lines[:idx] + new_lines + lines[idx:]
-        self.write(path, "\n".join(merged))
+
+        result = "\n".join(merged)
+        if keep_trailing_newline:
+            result += "\n"
+        self.write(path, result)
 
     @contextmanager
     def as_local(self, path: str) -> Generator[str, None, None]:

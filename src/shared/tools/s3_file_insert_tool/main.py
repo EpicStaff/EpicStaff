@@ -1,5 +1,6 @@
 def main(file_path: str, line_number: int, content: str) -> str:
     from epicstaff_storage import EpicStaffStorage
+    from epicstaff_storage.storage import split_lines
 
     if line_number < 1:
         return f"line_number must be >= 1, got {line_number}."
@@ -8,7 +9,7 @@ def main(file_path: str, line_number: int, content: str) -> str:
     try:
         try:
             existing = storage.read(file_path)
-            line_count = len(existing.split("\n"))
+            line_count = len(split_lines(existing))
         except FileNotFoundError:
             line_count = 0
 

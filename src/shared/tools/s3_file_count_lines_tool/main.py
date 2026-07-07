@@ -1,6 +1,6 @@
 def main(file_path: str) -> str:
     from epicstaff_storage import EpicStaffStorage
-    from epicstaff_storage.storage import MAX_LINE_READ_BYTES
+    from epicstaff_storage.storage import MAX_LINE_READ_BYTES, split_lines
 
     storage = EpicStaffStorage()
     try:
@@ -20,7 +20,7 @@ def main(file_path: str) -> str:
     except RuntimeError as e:
         return str(e)
 
-    lines = content.count("\n")
+    lines = len(split_lines(content))
     words = len(content.split())
     size = info["size"]
 

@@ -1,6 +1,6 @@
 def main(file_path: str, offset: int = 1, limit: int = 2000) -> str:
     from epicstaff_storage import EpicStaffStorage
-    from epicstaff_storage.storage import MAX_LINE_READ_BYTES
+    from epicstaff_storage.storage import MAX_LINE_READ_BYTES, split_lines
 
     if offset < 1:
         return f"offset must be >= 1 (1-based line number), got {offset}."
@@ -28,7 +28,7 @@ def main(file_path: str, offset: int = 1, limit: int = 2000) -> str:
     except RuntimeError as e:
         return str(e)
 
-    lines = content.split("\n")
+    lines = split_lines(content)
     if offset > len(lines):
         return f"offset {offset} is out of range — {file_path} has {len(lines)} lines."
 

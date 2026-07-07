@@ -448,7 +448,14 @@ def _head_or_tail(args: list[str], storage: EpicStaffStorage, mode: str) -> str:
 
     path = _expand_single_path(positionals[0], storage)
     content, _ = _guarded_read(path, storage)
-    lines = content.split("\n")
+
+    from epicstaff_storage.storage import split_lines
+
+    # split_lines drops the phantom trailing empty line that a plain
+    # content.split("\n") would produce for a trailing-newline-terminated
+    # file — without it `tail -n 1` on "a\nb\n" would return "" instead of
+    # the real last line "b".
+    lines = split_lines(content)
     selected = lines[:n] if mode == "head" else lines[-n:]
     return "\n".join(selected)
 

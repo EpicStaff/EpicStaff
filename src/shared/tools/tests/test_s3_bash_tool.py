@@ -209,6 +209,27 @@ def test_head_invalid_n(patched_storage, fake_client):
     assert "integer" in result
 
 
+def test_tail_trailing_newline_returns_real_last_line(patched_storage, fake_client):
+    # Regression: "a\nb\n" is a 2-line file. A naive content.split("\n")
+    # produces a phantom trailing "" element, so `tail -n 1` would wrongly
+    # return "" instead of the real last line "b".
+    seed(fake_client, "a.txt", "a\nb\n")
+
+    result = tool.main(command="tail -n 1 a.txt")
+
+    assert result == "b"
+
+
+def test_head_trailing_newline_does_not_include_phantom_line(
+    patched_storage, fake_client
+):
+    seed(fake_client, "a.txt", "a\nb\n")
+
+    result = tool.main(command="head -n 2 a.txt")
+
+    assert result == "a\nb"
+
+
 # =====================================================================
 # wc
 # =====================================================================
