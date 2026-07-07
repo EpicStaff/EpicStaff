@@ -18,7 +18,7 @@
         <div class="options">
             <button
                 type="button"
-                *ngFor="let option of data.options; let i = index"
+                *ngFor="let option of data.options; let i = index; trackBy: trackByIndex"
                 class="option"
                 [class.selected]="selectedOptionIndex() === i"
                 [disabled]="isSubmitting() || isAnswered()"

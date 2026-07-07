@@ -1,4 +1,5 @@
 import { CommonModule } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, Input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
@@ -91,11 +92,25 @@ export class DecisionMessageComponent {
                     this.isAnswered.set(true);
                     this.isSubmitting.set(false);
                 },
-                error: (error) => {
+                error: (error: HttpErrorResponse) => {
                     console.error('Failed to submit decision answer:', error);
-                    this.errorMessage.set('Failed to submit your decision. Please try again.');
+
+                    if (error.status === 409) {
+                        this.submittedOptionIndex.set(optionIndex);
+                        this.submittedFreeText.set(freeText);
+                        this.isAnswered.set(true);
+                    } else if (error.status === 404) {
+                        this.errorMessage.set('This decision is no longer active.');
+                    } else {
+                        this.errorMessage.set('Failed to submit your decision. Please try again.');
+                    }
+
                     this.isSubmitting.set(false);
                 },
             });
+    }
+
+    trackByIndex(index: number): number {
+        return index;
     }
 }

@@ -4,7 +4,7 @@
     background: var(--color-nodes-background);
     padding: 1rem;
 
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-message-card);
 }
 
 .header {
