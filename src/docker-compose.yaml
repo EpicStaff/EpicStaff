@@ -280,6 +280,7 @@ services:
       - backend-network
     tty: true
     stdin_open: true
+    mem_limit: "2g"
     depends_on:
       redis:
         condition: service_healthy

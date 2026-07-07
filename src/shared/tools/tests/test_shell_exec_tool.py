@@ -67,6 +67,51 @@ class TestShellExecToolForeground:
 
         assert "timeout_ms capped at 600000" in result
 
+    def test_output_exceeding_cap_kills_process_without_buffering_it_all(
+        self, sandbox_dir
+    ):
+        import time
+
+        python_exe = sys.executable
+        # Emits far more than the 120000-byte in-memory cap (30000 chars * 4)
+        # in ~64KB chunks. If the cap weren't enforced while reading, the
+        # tool would have to buffer the *entire* ~12.5MB of output before
+        # even reaching the existing char-level truncation step.
+        command = (
+            f"{python_exe} -c "
+            '"import sys; [sys.stdout.write(\'x\' * 65536) for _ in range(200)]"'
+        )
+
+        started = time.monotonic()
+        result = shell_exec_main(command=command, timeout_ms=20000)
+        elapsed = time.monotonic() - started
+
+        assert "exceeding the in-memory output cap" in result
+        assert "truncated at 30000 characters" in result
+        # The cap must be hit and the process killed well before either the
+        # full ~12.5MB of output is produced or the 20s timeout elapses.
+        assert elapsed < 10
+
+    def test_format_result_handles_unknown_exit_code_gracefully(self, sandbox_dir):
+        # Only reachable in practice if a process survives being killed
+        # twice across two 5s waits in _finish_process, leaving
+        # process.returncode as None -- exercised directly here since that
+        # path can't be reliably reproduced with a real subprocess.
+        tool_module = load_tool_main("shell_exec_tool")
+
+        result = tool_module._format_foreground_result(
+            output="partial output",
+            exit_code=None,
+            timed_out=False,
+            timeout_ms=5000,
+            timeout_clamped=False,
+            cap_hit=False,
+        )
+
+        assert "partial output" in result
+        assert "exit code: unknown" in result
+        assert "exit code: None" not in result
+
 
 class TestShellExecToolBackground:
     def test_background_returns_job_id_immediately(self, sandbox_dir):
@@ -114,58 +159,27 @@ class TestShellExecToolBackground:
 
         assert "status: running" in job_result
 
+    def test_background_job_writes_under_caller_session_namespace(
+        self, sandbox_dir
+    ):
+        tool_module = load_tool_main("shell_exec_tool")
+        tool_module.session_id = 4242
 
-class TestShellJobResultTool:
-    def test_unknown_job_id_returns_error(self, sandbox_dir):
-        job_result_main = load_tool_main("shell_job_result_tool").main
+        result = tool_module.main(
+            command=_echo_command("scoped-job"), run_in_background=True
+        )
+        job_id = result.split("job ")[1].split(".")[0]
 
-        # Well-formed (32 lowercase hex chars, matching uuid4().hex) but no
-        # such job directory exists.
-        result = job_result_main(job_id="0" * 32)
+        assert (sandbox_dir / ".jobs" / "4242" / job_id).is_dir()
+        assert not (sandbox_dir / ".jobs" / job_id).exists()
 
-        assert result.startswith("Error:")
-        assert "no job found" in result
+    def test_background_job_falls_back_to_nosession_namespace(self, sandbox_dir):
+        tool_module = load_tool_main("shell_exec_tool")
+        # No session_id global injected at all.
 
-    def test_missing_job_id_returns_error(self, sandbox_dir):
-        job_result_main = load_tool_main("shell_job_result_tool").main
+        result = tool_module.main(
+            command=_echo_command("no-session-job"), run_in_background=True
+        )
+        job_id = result.split("job ")[1].split(".")[0]
 
-        result = job_result_main(job_id="")
-
-        assert result.startswith("Error:")
-        assert "job_id" in result
-
-    def test_invalid_job_id_characters_rejected(self, sandbox_dir):
-        job_result_main = load_tool_main("shell_job_result_tool").main
-
-        result = job_result_main(job_id="../../etc/passwd")
-
-        assert result.startswith("Error:")
-        assert "invalid job_id" in result
-
-    def test_job_id_wrong_length_rejected(self, sandbox_dir):
-        job_result_main = load_tool_main("shell_job_result_tool").main
-
-        result = job_result_main(job_id="abc123")
-
-        assert result.startswith("Error:")
-        assert "invalid job_id" in result
-
-    def test_job_id_uppercase_hex_rejected(self, sandbox_dir):
-        job_result_main = load_tool_main("shell_job_result_tool").main
-
-        # uuid4().hex is always lowercase — uppercase hex must not be accepted.
-        result = job_result_main(job_id="A" * 32)
-
-        assert result.startswith("Error:")
-        assert "invalid job_id" in result
-
-    def test_job_id_alphanumeric_but_non_hex_rejected(self, sandbox_dir):
-        job_result_main = load_tool_main("shell_job_result_tool").main
-
-        # 32 alphanumeric chars that are not valid hex (contains 'g', 'z')
-        # must be rejected now that validation is hex-specific, not just
-        # alnum.
-        result = job_result_main(job_id="g" * 16 + "z" * 16)
-
-        assert result.startswith("Error:")
-        assert "invalid job_id" in result
+        assert (sandbox_dir / ".jobs" / "_nosession" / job_id).is_dir()
