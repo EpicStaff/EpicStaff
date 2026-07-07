@@ -62,6 +62,36 @@ def test_ls_glob_expansion(patched_storage, fake_client):
     assert "dir/b.log" not in result
 
 
+def test_glob_star_does_not_cross_directory_boundary(patched_storage, fake_client):
+    seed(fake_client, "dir/a.txt", "x")
+    seed(fake_client, "dir/sub/b.txt", "y")
+
+    result = tool.main(command="ls dir/*.txt")
+
+    assert "dir/a.txt" in result
+    assert "dir/sub/b.txt" not in result
+
+
+def test_glob_top_level_star_does_not_match_nested(patched_storage, fake_client):
+    seed(fake_client, "a.txt", "x")
+    seed(fake_client, "dir/b.txt", "y")
+
+    result = tool.main(command="ls *.txt")
+
+    assert "a.txt" in result
+    assert "dir/b.txt" not in result
+
+
+def test_glob_question_mark_does_not_match_slash(patched_storage, fake_client):
+    seed(fake_client, "dir/file.txt", "x")
+    seed(fake_client, "dirXfile.txt", "y")
+
+    result = tool.main(command="ls dir?file.txt")
+
+    assert "dirXfile.txt" in result
+    assert "dir/file.txt" not in result
+
+
 # =====================================================================
 # cat
 # =====================================================================
@@ -674,7 +704,7 @@ def test_echo_redirect_creates_file(patched_storage, fake_client):
     result = tool.main(command="echo hi > out.txt")
 
     assert "Wrote" in result
-    assert fake_client.objects["out.txt"]["Body"] == b"hi"
+    assert fake_client.objects["out.txt"]["Body"] == b"hi\n"
 
 
 def test_echo_redirect_overwrites_existing_file(patched_storage, fake_client):
@@ -682,7 +712,7 @@ def test_echo_redirect_overwrites_existing_file(patched_storage, fake_client):
 
     tool.main(command="echo new > out.txt")
 
-    assert fake_client.objects["out.txt"]["Body"] == b"new"
+    assert fake_client.objects["out.txt"]["Body"] == b"new\n"
 
 
 def test_echo_redirect_append(patched_storage, fake_client):
@@ -691,7 +721,22 @@ def test_echo_redirect_append(patched_storage, fake_client):
     result = tool.main(command="echo def >> out.txt")
 
     assert "Appended" in result
-    assert fake_client.objects["out.txt"]["Body"] == b"abcdef"
+    assert fake_client.objects["out.txt"]["Body"] == b"abcdef\n"
+
+
+def test_echo_redirect_append_twice_lands_as_separate_lines(
+    patched_storage, fake_client
+):
+    tool.main(command="echo a >> out.txt")
+    tool.main(command="echo b >> out.txt")
+
+    assert fake_client.objects["out.txt"]["Body"] == b"a\nb\n"
+
+
+def test_echo_without_redirect_has_no_trailing_newline(patched_storage, fake_client):
+    result = tool.main(command="echo hi")
+
+    assert result == "hi"
 
 
 def test_cat_redirect_writes_rendered_output(patched_storage, fake_client):
