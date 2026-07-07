@@ -1,0 +1,7 @@
+tool-data:
+  name: "Fan-Out Tool"
+  description: "Runs saved EpicStaff flows in a fan-out pattern. 'parallel' mode runs one saved flow (graph_id) concurrently once per item in 'items' and waits for ALL of them to finish (barrier), returning results in input order. 'pipeline' mode runs an ordered chain of saved flows (graph_ids), feeding each stage's output as the next stage's input, and returns the final output. Requires 'api_key' plus 'graph_id' (parallel) or 'graph_ids' (pipeline) configuration fields to be set when configuring this tool for an agent."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
