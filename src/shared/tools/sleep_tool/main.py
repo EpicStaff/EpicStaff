@@ -44,6 +44,7 @@ def _coerce_positive_number(raw):
 def main(
     seconds: float | int | None = None,
     reason: str | None = None,
+    **kwargs,
 ) -> str:
     """
     Pause execution for `seconds` (clamped to this tool's configured

@@ -76,6 +76,29 @@ class TestNotificationToolEmail:
         assert result.startswith("Error:")
         assert "api_key" in result
 
+    def test_api_key_passed_as_stray_kwarg_is_absorbed_and_global_wins(self, monkeypatch):
+        """Regression test (EST-3285 smoke test): python_code.global_kwargs
+        folds user_input config (api_key) into func_kwargs, so main() may
+        also receive it as a kwarg. The global remains the source of
+        truth; the stray kwarg must be swallowed by **kwargs without a
+        TypeError."""
+        notify_module.api_key = "real-key"
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.headers["X-Api-Key"] == "real-key"
+            return httpx.Response(200, json={"sent": True})
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = notify_main(
+            message="Build done",
+            channel="email",
+            target="ops@example.com",
+            api_key="stray-kwarg-key",
+        )
+
+        assert result.startswith("Notification email sent to ops@example.com")
+
     def test_email_api_failure_returns_error(self, monkeypatch):
         notify_module.api_key = "test-key"
 

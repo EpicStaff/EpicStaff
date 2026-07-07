@@ -91,6 +91,24 @@ class TestWebSearchTool:
         assert "github.com" in result
         assert "spammy.com" not in result
 
+    def test_api_key_passed_as_stray_kwarg_is_absorbed_and_global_wins(self, monkeypatch):
+        """Regression test (EST-3285 smoke test): python_code.global_kwargs
+        folds user_input config (api_key) into func_kwargs, so main() may
+        also receive it as a kwarg. The global remains the source of
+        truth; the stray kwarg must be swallowed by **kwargs without a
+        TypeError."""
+        web_search_module.api_key = "real-serper-key"
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.headers["X-API-KEY"] == "real-serper-key"
+            return httpx.Response(200, json={"organic": _make_organic(1)})
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = web_search_main(query="python testing", api_key="stray-kwarg-key")
+
+        assert not result.startswith("Error")
+
     def test_missing_api_key_returns_error(self):
         result = web_search_main(query="python testing")
 

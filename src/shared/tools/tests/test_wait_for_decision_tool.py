@@ -168,6 +168,48 @@ class TestWaitForDecisionTool:
 
         assert result.startswith("Error:")
 
+    def test_stray_config_kwargs_are_absorbed_and_globals_win(self, monkeypatch):
+        """Regression test (EST-3285 smoke test): python_code.global_kwargs
+        folds user_input config (api_key/poll_timeout_s) into func_kwargs,
+        so main() may also receive them as kwargs even though main()'s real
+        signature has no such params. The globals remain the source of
+        truth (the mock handler asserts the real 'test-key' header below);
+        the stray kwargs must be swallowed by **kwargs without a TypeError."""
+        _configure(wfd_module)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.headers["X-Api-Key"] == "test-key"
+
+            if (
+                request.method == "POST"
+                and request.url.path == "/api/sessions/100/decisions/open/"
+            ):
+                return httpx.Response(201, json={"decision_id": "dec-1"})
+
+            if request.method == "GET" and request.url.path == "/api/sessions/100/":
+                return httpx.Response(
+                    200,
+                    json={
+                        "status_data": {
+                            "decision": {
+                                "decision_id": "dec-1",
+                                "answer": {"option_index": 0, "free_text": None},
+                            }
+                        }
+                    },
+                )
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = wfd_main(
+            question="Proceed?",
+            options=["yes", "no"],
+            api_key="stray-kwarg-key",
+        )
+
+        assert "selected option 0" in result
+
     def test_open_call_failure_returns_error(self, monkeypatch):
         _configure(wfd_module)
 

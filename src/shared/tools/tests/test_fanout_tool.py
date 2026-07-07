@@ -487,3 +487,43 @@ class TestFanoutToolCommon:
 
         assert result.startswith("Error:")
         assert "mode" in result
+
+    def test_stray_config_kwargs_are_absorbed_and_globals_win(self, monkeypatch):
+        """Regression test (EST-3285 smoke test): python_code.global_kwargs
+        folds user_input config (graph_id/api_key/poll_timeout_s/etc.) into
+        func_kwargs, so main() may also receive them as kwargs even though
+        main()'s real signature is only (mode, items, input). The globals
+        remain the source of truth; the stray kwargs must be swallowed by
+        **kwargs without a TypeError."""
+        _configure(fanout_module, api_key="real-key", graph_id=42)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.headers["X-Api-Key"] == "real-key"
+            if request.method == "POST" and request.url.path == "/api/run-session/":
+                payload = json.loads(request.content)
+                assert payload["graph_id"] == 42
+                return httpx.Response(201, json={"session_id": 5001})
+            if request.method == "GET" and request.url.path == "/api/sessions/5001/":
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": 5001,
+                        "graph": 42,
+                        "parent_session": None,
+                        "status": "end",
+                        "variables": {"result": "ok"},
+                    },
+                )
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = fanout_main(
+            mode="parallel",
+            items=[{"n": 1}],
+            graph_id=999,
+            api_key="stray-kwarg-key",
+        )
+        data = json.loads(result)
+
+        assert data["results"] == [{"result": "ok"}]

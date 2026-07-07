@@ -168,6 +168,7 @@ def main(
     message: str | None = None,
     channel: str | None = None,
     target: str | None = None,
+    **kwargs,
 ) -> str:
     """
     Send a short (<=200 char) notification via email or webhook. Never

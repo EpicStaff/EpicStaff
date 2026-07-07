@@ -81,6 +81,19 @@ class TestSleepToolClamping:
         mock_sleep.assert_called_once_with(10.0)
         assert not result.startswith("Error")
 
+    def test_max_seconds_passed_as_stray_kwarg_is_absorbed_and_global_wins(self, mock_sleep):
+        """Regression test (EST-3285 smoke test): python_code.global_kwargs
+        folds user_input config (max_seconds) into func_kwargs, so main()
+        may also receive it as a kwarg. The global remains the source of
+        truth; the stray kwarg must be swallowed by **kwargs without a
+        TypeError."""
+        sleep_module.max_seconds = 60
+
+        result = sleep_main(seconds=120, reason="stray kwarg test", max_seconds=999)
+
+        mock_sleep.assert_called_once_with(60.0)
+        assert "capped" in result.lower()
+
 
 class TestSleepToolErrorPaths:
     def test_missing_seconds_returns_error_string(self, mock_sleep):

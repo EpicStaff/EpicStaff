@@ -127,6 +127,7 @@ def main(
     question: str | None = None,
     options: list | None = None,
     allow_free_text: bool | None = True,
+    **kwargs,
 ) -> str:
     """
     Pause the flow and ask a human to pick one of 2-4 options (optionally

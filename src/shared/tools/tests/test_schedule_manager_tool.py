@@ -355,3 +355,21 @@ class TestScheduleManagerToolGeneral:
 
         assert result.startswith("Error:")
         assert "api_key" in result
+
+    def test_stray_config_kwargs_are_absorbed_and_globals_win(self, monkeypatch):
+        """Regression test (EST-3285 smoke test): python_code.global_kwargs
+        folds user_input config (graph_id/api_key) into func_kwargs, so
+        main() may also receive them as kwargs. The globals remain the
+        source of truth; the stray kwargs must be swallowed by **kwargs
+        without a TypeError."""
+        _configure(schedule_module, graph_id=7, api_key="real-key")
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.headers["X-Api-Key"] == "real-key"
+            return httpx.Response(200, json={"count": 0, "results": []})
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = schedule_main(action="list", graph_id=999, api_key="stray-kwarg-key")
+
+        assert "Error" not in result

@@ -287,6 +287,28 @@ class TestSpawnAgentTool:
         assert not result.startswith("Error:")
         assert seen_run_session_payload.get("parent_session_id") == 42
 
+    def test_stray_config_kwargs_are_absorbed_and_globals_win(self, monkeypatch):
+        """Regression test (EST-3285 smoke test): python_code.global_kwargs
+        folds user_input config (api_key/default_llm_config_id/etc.) into
+        func_kwargs, so main() may also receive them as kwargs even though
+        main()'s real signature has no such params. The globals remain the
+        source of truth (the mock handler asserts the real 'test-key' header
+        below); the stray kwargs must be swallowed by **kwargs without a
+        TypeError."""
+        _configure(spawn_module)
+        deletes = []
+        handler = _default_handler(deletes)
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = spawn_main(
+            prompt="Summarize the news",
+            api_key="stray-kwarg-key",
+            default_llm_config_id=999,
+        )
+
+        parsed = json.loads(result)
+        assert parsed["output"] == "42"
+
     def test_missing_session_id_logs_warning_but_is_non_fatal(self, monkeypatch):
         _configure(spawn_module)
         # No caller session_id -> recursion guard / parent linkage disabled,

@@ -421,7 +421,12 @@ def _run_pipeline(input_payload, api_key, base_url, headers, poll_timeout_s, cur
         return str(output)
 
 
-def main(mode: str | None = None, items: list | None = None, input: dict | None = None) -> str:
+def main(
+    mode: str | None = None,
+    items: list | None = None,
+    input: dict | None = None,
+    **kwargs,
+) -> str:
     """
     Fan out over saved flows in either 'parallel' (barrier) or 'pipeline'
     (sequential chaining) mode. Never raises: all failures are returned as

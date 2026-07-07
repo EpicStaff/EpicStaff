@@ -116,7 +116,7 @@ def _check_recursion(
     return None
 
 
-def main(input_variables: dict | None = None) -> str:
+def main(input_variables: dict | None = None, **kwargs) -> str:
     """
     Run a saved flow (graph) as a sub-flow and return its final output.
     Never raises: all failures are returned as readable error strings.

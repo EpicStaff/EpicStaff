@@ -382,6 +382,7 @@ def main(
     is_active: bool | None = None,
     apply_jitter: bool | None = None,
     jitter_seconds_max: int | None = None,
+    **kwargs,
 ) -> str:
     """
     Create/list/update/delete a scheduled (cron-style) trigger for the graph

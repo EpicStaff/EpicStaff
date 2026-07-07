@@ -71,6 +71,7 @@ def main(
     allowed_domains: list | None = None,
     blocked_domains: list | None = None,
     max_results: int = DEFAULT_MAX_RESULTS,
+    **kwargs,
 ) -> str:
     """
     Search the web via the Serper API. Never raises: all failures are

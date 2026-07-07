@@ -270,6 +270,44 @@ class TestSubflowTool:
         assert result == '{"result": "ok"}'
         assert any("session_id" in str(w) for w in warnings)
 
+    def test_stray_config_kwargs_are_absorbed_and_globals_win(self, monkeypatch):
+        """Regression test (EST-3285 smoke test): python_code.global_kwargs
+        folds user_input config (graph_id/api_key) into func_kwargs, so
+        main() may also receive them as kwargs even though main()'s real
+        signature only has 'input_variables'. The globals remain the source
+        of truth; the stray kwargs must be swallowed by **kwargs without a
+        TypeError."""
+        _configure(subflow_module, graph_id=42, api_key="real-key")
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.headers["X-Api-Key"] == "real-key"
+            if request.method == "POST" and request.url.path == "/api/run-session/":
+                import json as _json
+
+                payload = _json.loads(request.content)
+                assert payload["graph_id"] == 42
+                return httpx.Response(201, json={"session_id": 321})
+            if request.method == "GET" and request.url.path == "/api/sessions/321/":
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": 321,
+                        "graph": 42,
+                        "parent_session": None,
+                        "status": "end",
+                        "variables": {"result": "ok"},
+                    },
+                )
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = subflow_main(
+            input_variables={}, graph_id=999, api_key="stray-kwarg-key"
+        )
+
+        assert result == '{"result": "ok"}'
+
     def test_poll_timeout_returns_readable_error(self, monkeypatch):
         _configure(subflow_module, graph_id=42, poll_timeout_s=0)
 

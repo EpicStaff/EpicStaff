@@ -221,6 +221,7 @@ def main(
     backstory: str | None = None,
     expected_output: str | None = None,
     llm_config_id: int | None = None,
+    **kwargs,
 ) -> str:
     """
     Spawn an ad-hoc sub-agent, run it once on `prompt`, and return its output
