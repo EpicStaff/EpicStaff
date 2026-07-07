@@ -16,8 +16,8 @@ class NaivePrechunker(AbstractPrechunker):
         if document.status == DocumentStatusEnum.CHUNKED and not document.is_required_reindex():
             return PrechunkResponse(request=request, status=document.status, chunks=document.preview_chunks)
 
-        document.status = DocumentStatusEnum.CHUNKING
-        await self._update_document(request.rag_id, document)
+        # document.status = DocumentStatusEnum.CHUNKING
+        # await self._update_document(request.rag_id, document)
 
         extractor = build_file_text_extractor(document.extension)
         text = await extractor.extract(document.content)
@@ -29,7 +29,7 @@ class NaivePrechunker(AbstractPrechunker):
             raise NoPreviewChunksProducedError(document_id=document.id, rag_id=request.rag_id)
 
         document.preview_chunks = preview_chunks
-        document.status = DocumentStatusEnum.CHUNKED
+        # document.status = DocumentStatusEnum.CHUNKED
         await self._update_document(request.rag_id, document)
 
         return PrechunkResponse(request=request, status=document.status, chunks=document.preview_chunks)
