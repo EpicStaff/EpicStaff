@@ -4,7 +4,7 @@
   "properties": {
     "file_path": {
       "type": "string",
-      "description": "S3 file path to count lines in."
+      "description": "S3 file path to count lines, words, and bytes in."
     }
   },
   "required": ["file_path"]
