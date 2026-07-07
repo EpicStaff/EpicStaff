@@ -229,12 +229,4 @@
             }
         </div>
     </section>
-
-    @if (usageDialogOpen() && selectedSurfaceUsage(); as usage) {
-        <app-surface-usage-dialog
-            [usage]="usage"
-            (close)="onCloseUsage()"
-            (openAgent)="onUsageOpenAgent($event)"
-        />
-    }
 </div>

@@ -1,28 +1,17 @@
 :host {
-    display: contents;
-}
-
-.usage-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 1000;
-    background-color: rgba(0, 0, 0, 0.55);
+    display: block;
+    height: 100%;
+    width: 100%;
 }
 
 .usage-dialog {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 1001;
     display: flex;
     flex-direction: column;
-    width: min(960px, 92vw);
-    max-height: 86vh;
+    height: 100%;
+    width: 100%;
     background-color: var(--color-background-body);
     border: 1px solid var(--color-divider-subtle);
     border-radius: 12px;
-    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
     overflow: hidden;
 }
 
@@ -32,6 +21,7 @@
     justify-content: space-between;
     padding: 1.25rem 1.5rem;
     flex-shrink: 0;
+    border-bottom: 1px solid var(--color-divider-subtle);
 }
 
 .usage-dialog__title {
@@ -60,11 +50,14 @@
 }
 
 .usage-dialog__body {
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
-    padding: 0 1.5rem 1.5rem;
+    padding: 1.5rem;
     overflow-y: auto;
+    scrollbar-gutter: stable;
 }
 .usage-section__heading {
     display: flex;

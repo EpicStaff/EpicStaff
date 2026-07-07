@@ -54,6 +54,7 @@ import {
 import {
     SurfaceUsage,
     SurfaceUsageDialogComponent,
+    SurfaceUsageDialogData,
 } from './components/surface-usage-dialog/surface-usage-dialog.component';
 
 @Component({
@@ -68,7 +69,6 @@ import {
         StoragePreviewComponent,
         AgentDocPreviewComponent,
         DetailHeaderComponent,
-        SurfaceUsageDialogComponent,
         AppSvgIconComponent,
     ],
     templateUrl: './agent-definitions-page.component.html',
@@ -87,8 +87,6 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     private readonly explorer = viewChild(ExplorerComponent);
 
     protected readonly hasUnsavedChanges = signal<boolean>(false);
-
-    protected readonly usageDialogOpen = signal<boolean>(false);
 
     protected readonly selectedSurfaceUsage = computed<SurfaceUsage | null>(() => {
         const sv = this.store.selectedSurfaceView();
@@ -247,19 +245,24 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     onOpenUsage(): void {
-        this.usageDialogOpen.set(true);
-    }
-
-    onCloseUsage(): void {
-        this.usageDialogOpen.set(false);
-    }
-
-    onUsageOpenAgent(agentId: number): void {
-        this.usageDialogOpen.set(false);
-        this.guardUnsaved(() => {
-            this.storageFacade.selectedFile.set(null);
-            this.store.selectAgent(agentId);
-        });
+        const usage = this.selectedSurfaceUsage();
+        if (!usage) return;
+        this.dialog
+            .open<number | undefined, SurfaceUsageDialogData>(SurfaceUsageDialogComponent, {
+                width: 'calc(100vw - 2rem)',
+                height: 'calc(100vh - 2rem)',
+                maxWidth: '100vw',
+                panelClass: 'surface-usage-dialog-panel',
+                injector: this.injector,
+                data: { usage },
+            })
+            .closed.subscribe((agentId) => {
+                if (typeof agentId !== 'number') return;
+                this.guardUnsaved(() => {
+                    this.storageFacade.selectedFile.set(null);
+                    this.store.selectAgent(agentId);
+                });
+            });
     }
 
     onViewSummary(event: { place: SurfaceCategoryId; surfaceIds: number[] }): void {

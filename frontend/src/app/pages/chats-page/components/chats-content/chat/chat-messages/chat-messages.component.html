@@ -23,11 +23,11 @@
             >
                 <!-- Tool Call with Expandable Arguments -->
                 <div
-                    *ngIf="item.formatted?.tool"
+                    *ngIf="item.formatted.tool"
                     class="message-text tool-call"
                 >
                     <div class="tool-call-name">
-                        {{ item.formatted.tool?.name }}
+                        {{ item.formatted.tool.name }}
 
                         <!-- Loading animation - only shown if no matching function_call_output exists -->
                         <div
@@ -57,7 +57,7 @@
                             *ngIf="isArgumentsExpanded(item.id)"
                         >
                             <ngx-json-viewer
-                                [json]="getParsedJson(item.formatted.tool?.arguments)"
+                                [json]="getParsedJson(item.formatted.tool.arguments)"
                                 [expanded]="false"
                             ></ngx-json-viewer>
                         </div>
@@ -90,7 +90,7 @@
 
                 <!-- Regular User Message -->
                 <div
-                    *ngIf="item.role === 'user' && item.type === 'message' && !item.formatted?.tool"
+                    *ngIf="item.role === 'user' && item.type === 'message' && !item.formatted.tool"
                     class="message-text"
                 >
                     <span
@@ -105,15 +105,15 @@
 
                 <!-- Regular Assistant Message with Markdown -->
                 <div
-                    *ngIf="item.role === 'assistant' && item.type === 'message' && !item.formatted?.tool"
+                    *ngIf="item.role === 'assistant' && item.type === 'message' && !item.formatted.tool"
                     class="message-text markdown-content"
                 >
                     <markdown
-                        *ngIf="item.formatted?.transcript || item.formatted?.text"
+                        *ngIf="item.formatted.transcript || item.formatted.text"
                         [data]="getAssistantText(item)"
                         [inline]="false"
                     ></markdown>
-                    <span *ngIf="!item.formatted?.transcript && !item.formatted?.text"> (truncated) </span>
+                    <span *ngIf="!item.formatted.transcript && !item.formatted.text"> (truncated) </span>
                 </div>
             </div>
         </div>

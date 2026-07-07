@@ -6,7 +6,8 @@
     z-index: 10000 !important;
 }
 
-.cdk-overlay-pane.surface-summary-dialog-panel {
+.cdk-overlay-pane.surface-summary-dialog-panel,
+.cdk-overlay-pane.surface-usage-dialog-panel {
     max-width: 100vw;
 
     .cdk-dialog-container {
