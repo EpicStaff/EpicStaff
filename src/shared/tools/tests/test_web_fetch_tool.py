@@ -3,7 +3,8 @@ import pytest
 
 from conftest import load_tool_main
 
-web_fetch_main = load_tool_main("web_fetch_tool").main
+web_fetch_module = load_tool_main("web_fetch_tool")
+web_fetch_main = web_fetch_module.main
 
 HTML_PAGE = """
 <html>
@@ -137,3 +138,12 @@ class TestWebFetchTool:
 
         assert result.startswith("Error:")
         assert "scheme" in result
+
+    def test_ssrf_guard_returns_failure_tuple_for_malformed_url(self):
+        """`_ssrf_guard` must not raise on a URL httpx can't parse (e.g. an
+        invalid port) -- it should fail closed with the standard (False, msg)
+        tuple, same defensive pattern as notification_tool's `_ssrf_guard`."""
+        ok, err = web_fetch_module._ssrf_guard("http://example.com:abc/")
+
+        assert ok is False
+        assert err.startswith("Error: invalid URL")

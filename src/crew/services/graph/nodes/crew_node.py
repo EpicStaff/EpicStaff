@@ -61,6 +61,14 @@ class CrewNode(BaseNode):
             stream_config=self.stream_config,
         )
 
+        if "session_id" in input_:
+            logger.warning(
+                f"Crew {self.node_name}: input already defines 'session_id'="
+                f"{input_['session_id']!r} — overriding with the internal "
+                f"session id {self.session_id} because built-in tools (e.g. "
+                "subflow_tool) depend on the injected value."
+            )
+
         global_kwargs = {
             **input_,
             "state": {
@@ -72,7 +80,9 @@ class CrewNode(BaseNode):
             # a sub-flow run to its caller via Session.parent_session and to
             # walk the ancestor chain for a recursion guard. Additive only:
             # existing tools ignore unused globals, so this is a no-op for
-            # every tool that doesn't read "session_id".
+            # every tool that doesn't read "session_id". Always wins over a
+            # same-named flow input / tool static config (warned above) —
+            # internal tools depend on the injected value being authoritative.
             "session_id": self.session_id,
         }
 

@@ -19,7 +19,11 @@ def _ssrf_guard(url: str):
 
     import httpx
 
-    parsed = httpx.URL(url)
+    try:
+        parsed = httpx.URL(url)
+    except Exception as e:
+        return False, f"Error: invalid URL '{url}': {e}"
+
     if parsed.scheme not in ("http", "https"):
         return (
             False,
