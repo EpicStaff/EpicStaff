@@ -137,6 +137,12 @@ class SurfaceValidator:
 
     @staticmethod
     def validate_agent_default_surfaces(items, agent_definition, organization):
+        """Validate surfaces attached to an AgentDefinition via `default_surfaces`.
+
+        `agent_definition=None` is the create case (the instance doesn't exist
+        yet), so only shared surfaces (`owner_agent=None`) may be attached.
+        """
+
         errors = []
 
         for item in items:
@@ -148,13 +154,13 @@ class SurfaceValidator:
                 )
                 continue
 
-            if (
-                surface.owner_agent_id is not None
-                and surface.owner_agent_id != agent_definition.pk
+            if surface.owner_agent_id is not None and (
+                agent_definition is None
+                or surface.owner_agent_id != agent_definition.pk
             ):
                 errors.append(
-                    f"Surface {surface.pk} is owned by agent {surface.owner_agent_id}, "
-                    f"not agent {agent_definition.pk}."
+                    f"Surface {surface.pk} is owned by agent {surface.owner_agent_id} "
+                    f"and cannot be attached to this agent definition."
                 )
 
         if errors:

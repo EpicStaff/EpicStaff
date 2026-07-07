@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from django.db import IntegrityError
 from rest_framework import serializers
 
+from tables.exceptions import AgentDefinitionConflictError
 from tables.models.agent_models.agent_models import (
     AgentDefaultSurface,
     AgentDefinition,
@@ -90,7 +92,7 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
             organization = self.context.get("organization")
             agent_definition = self.instance
 
-            if organization is not None and agent_definition is not None:
+            if organization is not None:
                 SurfaceValidator.validate_agent_default_surfaces(
                     items=default_surfaces_data,
                     agent_definition=agent_definition,
@@ -101,7 +103,12 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         default_surfaces_data = validated_data.pop("default_surfaces", [])
-        instance = super().create(validated_data)
+
+        try:
+            instance = super().create(validated_data)
+        except IntegrityError as exc:
+            raise AgentDefinitionConflictError() from exc
+
         AgentDefinitionSurfaceService.set_default_surfaces(
             agent_definition=instance,
             items=default_surfaces_data,
@@ -110,7 +117,11 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         default_surfaces_data = validated_data.pop("default_surfaces", None)
-        instance = super().update(instance, validated_data)
+
+        try:
+            instance = super().update(instance, validated_data)
+        except IntegrityError as exc:
+            raise AgentDefinitionConflictError() from exc
 
         if default_surfaces_data is not None:
             AgentDefinitionSurfaceService.set_default_surfaces(
