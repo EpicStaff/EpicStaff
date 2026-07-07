@@ -108,7 +108,6 @@ from tables.import_export.export_format_strategies import (
 )
 from tables.import_export.tabular.session import SessionTabularProjection
 
-from tables.swagger_schemas.crews_schema import CREW_DELETE
 from tables.swagger_schemas.default_config_schemas import (
     DEFAULT_EMBEDDING_CONFIG_GET,
     DEFAULT_EMBEDDING_CONFIG_PUT,
@@ -685,39 +684,6 @@ class AnswerToLLM(APIView):
         )
 
         return Response(status=status.HTTP_202_ACCEPTED)
-
-
-class CrewDeleteAPIView(APIView):
-    @extend_schema(**CREW_DELETE)
-    def delete(self, request, id):
-        delete_sessions = request.query_params.get("delete_sessions", "false").lower()
-        if delete_sessions not in {"true", "false"}:
-            raise ValidationError(
-                {"error": "Invalid value for delete_sessions. Use 'true' or 'false'."}
-            )
-
-        delete_sessions = delete_sessions == "true"
-
-        crew = Crew.objects.filter(id=id).first()
-        if not crew:
-            raise NotFound({"error": "Crew not found"})
-
-        try:
-            with transaction.atomic():
-                if delete_sessions:
-                    Session.objects.filter(crew=crew).delete()
-                else:
-                    Session.objects.filter(crew=crew).update(crew=None)
-
-                crew.delete()
-
-            return Response(
-                {"message": "Crew deleted successfully"}, status=status.HTTP_200_OK
-            )
-        except Exception as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
 
 
 class DefaultLLMConfigAPIView(APIView):
