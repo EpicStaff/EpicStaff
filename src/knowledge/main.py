@@ -80,8 +80,7 @@ async def indexing(
         f"Subscribed to channel '{knowledge_indexing_channel}' for RAG indexing."
     )
 
-    pubsub = await redis_service.async_subscribe(knowledge_indexing_channel)
-    async for message in pubsub.listen():
+    async for message in redis_service.listen(knowledge_indexing_channel):
         if message["type"] == "message":
             try:
                 data = json.loads(message["data"])
@@ -245,8 +244,7 @@ async def chunking(
         f"Subscribed to channel '{knowledge_document_chunk_channel}' for preview chunking."
     )
 
-    pubsub = await redis_service.async_subscribe(knowledge_document_chunk_channel)
-    async for message in pubsub.listen():
+    async for message in redis_service.listen(knowledge_document_chunk_channel):
         if message["type"] == "message":
             try:
                 data = json.loads(message["data"])
@@ -324,7 +322,9 @@ async def execute_search(
 
 
 async def searching(
-    redis_service: RedisService, semaphore: asyncio.Semaphore, background_tasks: set
+    redis_service: RedisService,
+    semaphore: asyncio.Semaphore,
+    background_tasks: set,
 ):
     """
     Handles search queries from the Redis queue asynchronously.
@@ -335,8 +335,7 @@ async def searching(
         f"Subscribed to channel '{knowledge_search_get_channel}' for search queries."
     )
 
-    pubsub = await redis_service.async_subscribe(knowledge_search_get_channel)
-    async for message in pubsub.listen():
+    async for message in redis_service.listen(knowledge_search_get_channel):
         if message["type"] == "message":
             try:
                 parsed_data = json.loads(message["data"])
