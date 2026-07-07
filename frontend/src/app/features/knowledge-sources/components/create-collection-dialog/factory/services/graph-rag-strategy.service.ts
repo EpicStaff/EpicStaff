@@ -54,7 +54,7 @@ export class GraphRagStrategy implements RagCreationStrategy {
                 rag_type: 'graph',
             })
             .pipe(
-                tap(() => this.toastService.success('Indexing stopped')),
+                tap(() => this.toastService.success('Indexing stop triggered')),
                 map(() => true)
             );
     }
