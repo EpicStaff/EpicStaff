@@ -152,7 +152,7 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
                 NaiveRagPreviewChunk.naive_rag_document_config_id == document_id
             )
         )
-        for index, chunk in enumerate(chunks):
+        for index, chunk in enumerate(chunks, start=1):
             orm_chunk = NaiveRagChunk(
                 naive_rag_document_config_id=document_id,
                 text=chunk.text,
