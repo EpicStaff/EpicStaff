@@ -27,7 +27,7 @@
     },
     "api_base_url": {
       "type": "string",
-      "description": "Base URL of the EpicStaff Django REST API, e.g. http://django_app:8000/api. Optional -- if unset, falls back to the DJANGO_API_URL environment variable, then to http://django_app:8000/api.",
+      "description": "Base URL of the EpicStaff Django REST API, e.g. http://djangoapp:8000/api. Optional -- if unset, falls back to the DJANGO_API_URL environment variable, then to http://djangoapp:8000/api.",
       "input_type": "user_input"
     },
     "poll_timeout_s": {

@@ -76,7 +76,9 @@ services:
     volumes:
       - media_data:/app/src/django_app/media
     networks:
-      - backend-network
+      backend-network:
+        aliases:
+          - djangoapp
     depends_on:
       crewdb:
         condition: service_started

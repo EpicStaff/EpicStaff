@@ -75,7 +75,7 @@ except ImportError:  # pragma: no cover - sandbox venv without loguru installed
 
     logger = _NoOpLogger()
 
-DEFAULT_API_BASE_URL = "http://django_app:8000/api"
+DEFAULT_API_BASE_URL = "http://djangoapp:8000/api"
 DEFAULT_POLL_TIMEOUT_S = 300
 POLL_INTERVAL_S = 2.0
 HTTP_TIMEOUT_S = 15.0
