@@ -18,6 +18,7 @@ from services.agent_task_service import AgentTaskService
 from services.graph.nodes.agent_node import AgentNode
 from services.graph.nodes.code_agent_node import CodeAgentNode
 from services.graph.nodes.task_node import TaskNode
+from services.graph.remembered_outputs import RememberedOutputsStore
 from services.graph.nodes.webhook_trigger_node import WebhookTriggerNode
 from services.graph.nodes.telegram_trigger_node import TelegramTriggerNode
 from services.graph.nodes.schedule_trigger_node import ScheduleTriggerNode
@@ -79,6 +80,9 @@ class SessionGraphBuilder:
         self.crewai_output_channel = crewai_output_channel
         self.knowledge_search_service = knowledge_search_service
         self.agent_task_service = agent_task_service
+        self.remembered_outputs_store = RememberedOutputsStore(
+            redis_service=redis_service
+        )
 
         self._graph_builder = StateGraph(State)
         self._end_node_result: dict | None = {}
@@ -287,6 +291,7 @@ class SessionGraphBuilder:
                 stop_event=self.stop_event,
                 task_node_data=task_node_data,
                 agent_task_service=self.agent_task_service,
+                remembered_outputs_store=self.remembered_outputs_store,
             )
             self.add_node(task_node)
 

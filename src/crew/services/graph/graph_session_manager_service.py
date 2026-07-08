@@ -228,6 +228,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
             # Cleanup shared variables
             await cleanup_session(session_id, self.redis_service, status="completed")
+            await session_graph_builder.remembered_outputs_store.clear(session_id)
 
         except asyncio.CancelledError:
             # Status updated in _handle_session_timeout

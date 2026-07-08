@@ -7,6 +7,10 @@ from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
 from services.graph.nodes import BaseNode
 from services.graph.nodes.instruction_render import render_instructions
+from services.graph.remembered_outputs import (
+    RememberedOutputsStore,
+    format_remembered_outputs_preamble,
+)
 from src.shared.models import TaskNodeData
 
 
@@ -20,6 +24,7 @@ class TaskNode(BaseNode):
         stop_event: StopEvent,
         task_node_data: TaskNodeData,
         agent_task_service: AgentTaskService,
+        remembered_outputs_store: RememberedOutputsStore,
     ):
         super().__init__(
             session_id=session_id,
@@ -30,6 +35,7 @@ class TaskNode(BaseNode):
         )
         self.task_node_data = task_node_data
         self.agent_task_service = agent_task_service
+        self.remembered_outputs_store = remembered_outputs_store
 
     async def execute(
         self, state: State, writer: StreamWriter, execution_order: int, input_: Any
@@ -47,8 +53,10 @@ class TaskNode(BaseNode):
         rendered_instructions = render_instructions(
             self.task_node_data.instructions, input_
         )
+        remembered = await self.remembered_outputs_store.fetch_all(self.session_id)
+        preamble = format_remembered_outputs_preamble(remembered)
         task_node_data = self.task_node_data.model_copy(
-            update={"instructions": rendered_instructions}
+            update={"instructions": preamble + rendered_instructions}
         )
 
         step_id = 0
@@ -77,12 +85,14 @@ class TaskNode(BaseNode):
             task_node_data, self.stop_event, on_event=_on_agent_event
         )
 
-        # TODO(remember_output): when task_node_data.remember_output is True,
-        # store the final result in a per-agent Redis key so later tasks in
-        # the flow can consume it as additional context.
+        final_text = result.get("final_text")
+        if self.task_node_data.remember_output and final_text:
+            await self.remembered_outputs_store.store(
+                self.session_id, self.node_name, final_text
+            )
 
         return {
-            "message": result.get("final_text"),
+            "message": final_text,
             "token_usage": result.get("token_usage") or {},
             "stop_reason": result.get("stop_reason"),
             "iterations": result.get("iterations"),

@@ -19,6 +19,12 @@ def make_state(variables: dict) -> dict:
     }
 
 
+def make_remembered_outputs_store(fetch_all_return_value: list | None = None):
+    store = AsyncMock()
+    store.fetch_all.return_value = fetch_all_return_value or []
+    return store
+
+
 @pytest.fixture
 def llm_data() -> LLMData:
     return LLMData(provider="openai", config=LLMConfigData(model="gpt-4o"))
@@ -55,6 +61,7 @@ async def test_execute_returns_result_dict(task_node_data):
         stop_event=MagicMock(),
         task_node_data=task_node_data,
         agent_task_service=agent_task_service,
+        remembered_outputs_store=make_remembered_outputs_store(),
     )
 
     result = await node.execute(
@@ -102,6 +109,7 @@ async def test_execute_forwards_live_agent_events_as_task_node_stream(task_node_
         stop_event=MagicMock(),
         task_node_data=task_node_data,
         agent_task_service=agent_task_service,
+        remembered_outputs_store=make_remembered_outputs_store(),
     )
 
     writer = MagicMock()
@@ -138,6 +146,7 @@ async def test_execute_raises_when_agent_definition_missing():
         stop_event=MagicMock(),
         task_node_data=task_node_data,
         agent_task_service=AsyncMock(),
+        remembered_outputs_store=make_remembered_outputs_store(),
     )
 
     with pytest.raises(ValueError, match="agent_definition"):
@@ -158,6 +167,7 @@ async def test_execute_raises_when_llm_missing():
         stop_event=MagicMock(),
         task_node_data=task_node_data,
         agent_task_service=AsyncMock(),
+        remembered_outputs_store=make_remembered_outputs_store(),
     )
 
     with pytest.raises(ValueError, match="llm"):
@@ -177,6 +187,7 @@ async def test_execute_propagates_service_exception(task_node_data):
         stop_event=MagicMock(),
         task_node_data=task_node_data,
         agent_task_service=agent_task_service,
+        remembered_outputs_store=make_remembered_outputs_store(),
     )
 
     with pytest.raises(RuntimeError, match="agent unreachable"):
@@ -204,6 +215,7 @@ async def test_run_interpolates_instructions_from_input_map(llm_data):
         stop_event=MagicMock(),
         task_node_data=task_node_data,
         agent_task_service=agent_task_service,
+        remembered_outputs_store=make_remembered_outputs_store(),
     )
 
     state = make_state({"topic": "cats"})
@@ -233,6 +245,7 @@ async def test_run_leaves_unknown_placeholder_untouched(llm_data):
         stop_event=MagicMock(),
         task_node_data=task_node_data,
         agent_task_service=agent_task_service,
+        remembered_outputs_store=make_remembered_outputs_store(),
     )
 
     state = make_state({})
@@ -261,6 +274,7 @@ async def test_run_sends_json_example_instructions_verbatim(llm_data):
         stop_event=MagicMock(),
         task_node_data=task_node_data,
         agent_task_service=agent_task_service,
+        remembered_outputs_store=make_remembered_outputs_store(),
     )
 
     state = make_state({})
@@ -268,3 +282,123 @@ async def test_run_sends_json_example_instructions_verbatim(llm_data):
 
     called_data = agent_task_service.run_task.await_args.args[0]
     assert called_data.instructions == 'Return JSON like {"a": 1}'
+
+
+@pytest.mark.asyncio
+async def test_execute_stores_output_when_remember_output_true(llm_data):
+    task_node_data = TaskNodeData(
+        node_name="task_node_1",
+        agent_definition=AgentDefinitionData(
+            id=1, name="researcher", instructions="Research.", llm=llm_data
+        ),
+        instructions="Summarize.",
+        remember_output=True,
+    )
+    agent_task_service = AsyncMock()
+    agent_task_service.run_task.return_value = {"final_text": "The summary."}
+    remembered_outputs_store = make_remembered_outputs_store()
+
+    node = TaskNode(
+        session_id=1,
+        node_name="task_node_1",
+        stop_event=MagicMock(),
+        task_node_data=task_node_data,
+        agent_task_service=agent_task_service,
+        remembered_outputs_store=remembered_outputs_store,
+    )
+
+    await node.execute(
+        state=MagicMock(), writer=MagicMock(), execution_order=0, input_={}
+    )
+
+    remembered_outputs_store.store.assert_awaited_once_with(
+        1, "task_node_1", "The summary."
+    )
+
+
+@pytest.mark.asyncio
+async def test_execute_does_not_store_output_when_remember_output_false(llm_data):
+    task_node_data = TaskNodeData(
+        node_name="task_node_1",
+        agent_definition=AgentDefinitionData(
+            id=1, name="researcher", instructions="Research.", llm=llm_data
+        ),
+        instructions="Summarize.",
+        remember_output=False,
+    )
+    agent_task_service = AsyncMock()
+    agent_task_service.run_task.return_value = {"final_text": "The summary."}
+    remembered_outputs_store = make_remembered_outputs_store()
+
+    node = TaskNode(
+        session_id=1,
+        node_name="task_node_1",
+        stop_event=MagicMock(),
+        task_node_data=task_node_data,
+        agent_task_service=agent_task_service,
+        remembered_outputs_store=remembered_outputs_store,
+    )
+
+    await node.execute(
+        state=MagicMock(), writer=MagicMock(), execution_order=0, input_={}
+    )
+
+    remembered_outputs_store.store.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_does_not_store_when_final_text_empty(llm_data):
+    task_node_data = TaskNodeData(
+        node_name="task_node_1",
+        agent_definition=AgentDefinitionData(
+            id=1, name="researcher", instructions="Research.", llm=llm_data
+        ),
+        instructions="Summarize.",
+        remember_output=True,
+    )
+    agent_task_service = AsyncMock()
+    agent_task_service.run_task.return_value = {"final_text": ""}
+    remembered_outputs_store = make_remembered_outputs_store()
+
+    node = TaskNode(
+        session_id=1,
+        node_name="task_node_1",
+        stop_event=MagicMock(),
+        task_node_data=task_node_data,
+        agent_task_service=agent_task_service,
+        remembered_outputs_store=remembered_outputs_store,
+    )
+
+    await node.execute(
+        state=MagicMock(), writer=MagicMock(), execution_order=0, input_={}
+    )
+
+    remembered_outputs_store.store.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_prepends_remembered_outputs_to_instructions(task_node_data):
+    agent_task_service = AsyncMock()
+    agent_task_service.run_task.return_value = {"final_text": "done"}
+    remembered_outputs_store = make_remembered_outputs_store(
+        [("earlier_task", "earlier output")]
+    )
+
+    node = TaskNode(
+        session_id=1,
+        node_name="task_node_1",
+        stop_event=MagicMock(),
+        task_node_data=task_node_data,
+        agent_task_service=agent_task_service,
+        remembered_outputs_store=remembered_outputs_store,
+    )
+
+    await node.execute(
+        state=MagicMock(), writer=MagicMock(), execution_order=0, input_={}
+    )
+
+    called_data = agent_task_service.run_task.await_args.args[0]
+    assert called_data.instructions.startswith("===== PREVIOUS TASKS OUTPUTS =====")
+    assert "Task 'earlier_task':\nearlier output" in called_data.instructions
+    assert called_data.instructions.endswith(task_node_data.instructions)
+    assert task_node_data.instructions == "Summarize the findings."

@@ -953,7 +953,7 @@ class TaskNode(BaseNode):
     )
     remember_output = models.BooleanField(
         default=False,
-        help_text="If True, task output is memoized in session state and reused on re-runs within the same session.",
+        help_text="If True, this task's output is remembered for the current run and injected as context into subsequently executed task nodes in the same session.",
     )
     surface_list = models.ManyToManyField(
         "Surface",
