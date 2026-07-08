@@ -8,6 +8,7 @@
             <div class="dialog-header-right">
                 @if (isEditMode) {
                     <app-button
+                        *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
                         type="outline-primary"
                         mod="default"
                         [disabled]="isCopying()"
@@ -29,6 +30,7 @@
                     ></app-svg-icon>
                 </button>
                 <button
+                    *appHasPermission="[ResourceCode.Tools, isEditMode ? ActionCode.Update : ActionCode.Create]"
                     class="header-icon-btn header-icon-btn--confirm"
                     type="button"
                     [disabled]="isSaving()"
