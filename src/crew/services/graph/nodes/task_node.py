@@ -31,11 +31,14 @@ class TaskNode(BaseNode):
             node_name=node_name,
             stop_event=stop_event,
             input_map=task_node_data.input_map or None,
-            output_variable_path=None,
+            output_variable_path=task_node_data.output_variable_path,
         )
         self.task_node_data = task_node_data
         self.agent_task_service = agent_task_service
         self.remembered_outputs_store = remembered_outputs_store
+
+    def get_output_variable_value(self, output: Any) -> Any:
+        return output.get("message") if isinstance(output, dict) else output
 
     async def execute(
         self, state: State, writer: StreamWriter, execution_order: int, input_: Any

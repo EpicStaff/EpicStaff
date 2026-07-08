@@ -377,6 +377,7 @@ def test_build_agent_node_data_orders_tasks_and_resolves_context_to_names(
     agent_node, agent
 ):
     agent_node.agent_definition = agent
+    agent_node.output_variable_path = "variables.result"
     agent_node.save()
 
     task_a = AgentNodeTask.objects.create(agent_node=agent_node, name="task-a", order=0)
@@ -403,6 +404,7 @@ def test_build_agent_node_data_orders_tasks_and_resolves_context_to_names(
     assert data.tasks[1].context_tasks == ["task-a"]
     assert data.tasks[0].context_tasks == []
     assert data.surface.instructions == "be concise"
+    assert data.output_variable_path == "variables.result"
 
 
 @pytest.mark.django_db

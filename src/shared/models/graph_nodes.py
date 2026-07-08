@@ -157,6 +157,7 @@ class TaskNodeData(BaseModel):
     agent_definition: AgentDefinitionData | None = None
     instructions: str = ""
     input_map: dict[str, Any] = {}
+    output_variable_path: str | None = None
     output_schema: dict[str, Any] = {}
     remember_output: bool = False
     surface: CombinedSurfaceData = CombinedSurfaceData()
@@ -181,6 +182,7 @@ class AgentNodeData(BaseModel):
     node_name: str
     agent_definition: AgentDefinitionData | None = None
     input_map: dict[str, Any] = {}
+    output_variable_path: str | None = None
     surface: CombinedSurfaceData = CombinedSurfaceData()
     tools: list[BaseToolData] = []
     collections: list[CollectionSpec] = []

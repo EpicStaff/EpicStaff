@@ -236,6 +236,7 @@ def _task_node_session_data(mock_llm_data) -> SessionData:
                         llm=mock_llm_data,
                     ),
                     instructions="Summarize the findings.",
+                    output_variable_path="variables.result",
                 )
             ],
             edge_list=[EdgeData(start_key="__start__", end_key="task_node_1")],
@@ -300,6 +301,7 @@ def _agent_node_session_data(mock_llm_data) -> SessionData:
                             name="task_a", order=0, instructions="Write draft."
                         )
                     ],
+                    output_variable_path="variables.result",
                 )
             ],
             edge_list=[EdgeData(start_key="__start__", end_key="agent_node_1")],

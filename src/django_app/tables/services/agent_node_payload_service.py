@@ -32,6 +32,7 @@ class AgentNodePayloadService(BaseNodePayloadService):
                 agent_node.agent_definition
             ),
             input_map=agent_node.input_map or {},
+            output_variable_path=agent_node.output_variable_path,
             surface=combined_surface,
             tools=self._build_tool_pool(combined_surface, graph_id, session_id),
             collections=self._build_collection_pool(combined_surface),

@@ -217,6 +217,35 @@ async def test_execute_raises_when_llm_missing():
 
 
 @pytest.mark.asyncio
+async def test_run_stores_message_text_at_output_variable_path(llm_data):
+    agent_node_data = AgentNodeData(
+        node_name="agent_node_1",
+        agent_definition=AgentDefinitionData(
+            id=1, name="researcher", instructions="Research.", llm=llm_data
+        ),
+        tasks=[AgentNodeTaskData(name="task_a", order=0, instructions="Write.")],
+        output_variable_path="variables.result",
+    )
+    agent_task_service = AsyncMock()
+    agent_task_service.run_agent_node.return_value = {"final_text": "The summary."}
+
+    node = AgentNode(
+        session_id=1,
+        node_name="agent_node_1",
+        stop_event=MagicMock(),
+        agent_node_data=agent_node_data,
+        agent_task_service=agent_task_service,
+    )
+
+    assert node.output_variable_path == "variables.result"
+
+    state = make_state({})
+    await node.run(state=state, writer=MagicMock())
+
+    assert state["variables"].result == "The summary."
+
+
+@pytest.mark.asyncio
 async def test_execute_raises_when_tasks_empty(llm_data):
     agent_node_data = AgentNodeData(
         node_name="agent_node_1",

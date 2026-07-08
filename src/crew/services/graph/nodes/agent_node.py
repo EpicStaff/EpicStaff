@@ -26,10 +26,13 @@ class AgentNode(BaseNode):
             node_name=node_name,
             stop_event=stop_event,
             input_map=agent_node_data.input_map or None,
-            output_variable_path=None,
+            output_variable_path=agent_node_data.output_variable_path,
         )
         self.agent_node_data = agent_node_data
         self.agent_task_service = agent_task_service
+
+    def get_output_variable_value(self, output: Any) -> Any:
+        return output.get("message") if isinstance(output, dict) else output
 
     async def execute(
         self, state: State, writer: StreamWriter, execution_order: int, input_: Any

@@ -377,6 +377,36 @@ async def test_execute_does_not_store_when_final_text_empty(llm_data):
 
 
 @pytest.mark.asyncio
+async def test_run_stores_message_text_at_output_variable_path(llm_data):
+    task_node_data = TaskNodeData(
+        node_name="task_node_1",
+        agent_definition=AgentDefinitionData(
+            id=1, name="researcher", instructions="Research.", llm=llm_data
+        ),
+        instructions="Summarize.",
+        output_variable_path="variables.result",
+    )
+    agent_task_service = AsyncMock()
+    agent_task_service.run_task.return_value = {"final_text": "The summary."}
+
+    node = TaskNode(
+        session_id=1,
+        node_name="task_node_1",
+        stop_event=MagicMock(),
+        task_node_data=task_node_data,
+        agent_task_service=agent_task_service,
+        remembered_outputs_store=make_remembered_outputs_store(),
+    )
+
+    assert node.output_variable_path == "variables.result"
+
+    state = make_state({})
+    await node.run(state=state, writer=MagicMock())
+
+    assert state["variables"].result == "The summary."
+
+
+@pytest.mark.asyncio
 async def test_execute_prepends_remembered_outputs_to_instructions(task_node_data):
     agent_task_service = AsyncMock()
     agent_task_service.run_task.return_value = {"final_text": "done"}

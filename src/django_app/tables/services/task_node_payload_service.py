@@ -32,6 +32,7 @@ class TaskNodePayloadService(BaseNodePayloadService):
             ),
             instructions=task_node.instructions,
             input_map=task_node.input_map or {},
+            output_variable_path=task_node.output_variable_path,
             output_schema=task_node.output_schema or {},
             remember_output=task_node.remember_output,
             surface=combined_surface,
