@@ -111,12 +111,23 @@ class _RunState:
     completion_tokens: int = 0
     total_tokens: int = 0
     context_warned: bool = False
+    consecutive_failures: int = 0
 
     def token_usage(self) -> TokenUsage:
         return TokenUsage(
             prompt_tokens=self.prompt_tokens,
             completion_tokens=self.completion_tokens,
             total_tokens=self.total_tokens,
+        )
+
+    def add_usage(self, usage: dict) -> None:
+        self.prompt_tokens += int(usage.get("prompt_tokens", 0))
+        self.completion_tokens += int(usage.get("completion_tokens", 0))
+        self.total_tokens += int(
+            usage.get(
+                "total_tokens",
+                usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0),
+            )
         )
 
 
@@ -248,17 +259,7 @@ class DefaultAgentLoop(AgentLoop):
                     entry["args"] += fragment.arguments_delta
 
                 if chunk.usage:
-                    state.prompt_tokens += int(chunk.usage.get("prompt_tokens", 0))
-                    state.completion_tokens += int(
-                        chunk.usage.get("completion_tokens", 0)
-                    )
-                    state.total_tokens += int(
-                        chunk.usage.get(
-                            "total_tokens",
-                            chunk.usage.get("prompt_tokens", 0)
-                            + chunk.usage.get("completion_tokens", 0),
-                        )
-                    )
+                    state.add_usage(chunk.usage)
 
             # Only append the assistant message when there is content to record.
             # An iteration with neither text nor tool calls still counts toward
@@ -295,12 +296,55 @@ class DefaultAgentLoop(AgentLoop):
                 for call_id, entry in tool_buf.items()
             ]
 
-            for call_id, name, args_str in complete_calls:
+            max_tool_calls = context.agent.max_tool_calls
+            max_failures = context.agent.max_consecutive_failures
+            failure_limit_hit = False
+
+            for index, (call_id, name, args_str) in enumerate(complete_calls):
                 await emitter.on_tool_call(
                     {"id": call_id, "name": name, "arguments": args_str}
                 )
                 logger.debug("tool call id={} name={} args={}", call_id, name, args_str)
-                result = await self._execute_tool(tools, call_id, name, args_str)
+
+                if failure_limit_hit:
+                    result = ToolResult(
+                        tool_call_id=call_id,
+                        content="Tool call not executed: consecutive tool failure limit reached.",
+                        is_error=True,
+                    )
+
+                elif max_tool_calls is not None and index >= max_tool_calls:
+                    result = ToolResult(
+                        tool_call_id=call_id,
+                        content=(
+                            f"Tool call limit reached: at most {max_tool_calls} tool "
+                            "call(s) may be executed per turn; this call was not executed."
+                        ),
+                        is_error=True,
+                    )
+
+                else:
+                    result = await self._execute_tool(
+                        tools,
+                        call_id,
+                        name,
+                        args_str,
+                        timeout=context.agent.tool_timeout,
+                    )
+                    state.tool_invocations += 1
+
+                    if result.is_error:
+                        state.consecutive_failures += 1
+
+                    else:
+                        state.consecutive_failures = 0
+
+                    if (
+                        max_failures is not None
+                        and state.consecutive_failures >= max_failures
+                    ):
+                        failure_limit_hit = True
+
                 logger.debug(
                     "tool result id={} is_error={} content={!r}",
                     call_id,
@@ -311,9 +355,14 @@ class DefaultAgentLoop(AgentLoop):
                 context.append_message(
                     {"role": "tool", "tool_call_id": call_id, "content": result.content}
                 )
-                state.tool_invocations += 1
 
             state.iterations += 1
+
+            if failure_limit_hit:
+                assert max_failures is not None
+                return await self._finalize_after_failures(
+                    context, emitter, state, max_failures
+                )
 
             decision = stop.should_stop(state.iterations, chunks, complete_calls)
             logger.debug(
@@ -338,6 +387,7 @@ class DefaultAgentLoop(AgentLoop):
         call_id: str,
         name: str,
         args_str: str,
+        timeout: float | None = None,
     ) -> ToolResult:
         """Coalesce all tool-execution failure modes into ``ToolResult(is_error=True)``."""
         try:
@@ -351,7 +401,13 @@ class DefaultAgentLoop(AgentLoop):
             )
 
         try:
-            result = await tools.execute(name, args)
+            if timeout is None:
+                result = await tools.execute(name, args)
+
+            else:
+                result = await asyncio.wait_for(
+                    tools.execute(name, args), timeout=timeout
+                )
 
             if result.tool_call_id != call_id:
                 result = result.model_copy(update={"tool_call_id": call_id})
@@ -363,9 +419,78 @@ class DefaultAgentLoop(AgentLoop):
                 tool_call_id=call_id, content=f"Unknown tool: {name}", is_error=True
             )
 
+        except asyncio.TimeoutError:
+            return ToolResult(
+                tool_call_id=call_id,
+                content=f"Tool '{name}' timed out after {timeout}s",
+                is_error=True,
+            )
+
         except Exception as error:
             return ToolResult(
                 tool_call_id=call_id,
                 content=f"Tool '{name}' raised: {error}",
                 is_error=True,
             )
+
+    async def _finalize_after_failures(
+        self,
+        context: AgentContext,
+        emitter: Emitter,
+        state: _RunState,
+        limit: int,
+    ) -> LoopResult:
+        """Ask the model to summarize progress after hitting the consecutive-failure limit.
+
+        Runs one final streamed LLM call with no tools available so the model
+        cannot attempt further tool calls; the result is a graceful stop, not
+        a failure.
+        """
+        context.append_message(
+            {
+                "role": "user",
+                "content": (
+                    f"Tool execution has been stopped because {limit} consecutive "
+                    "tool calls failed. Do not attempt any further tool calls. "
+                    "Summarize what you tried, what failed and why, and give the "
+                    "best answer you can from the information gathered so far."
+                ),
+            }
+        )
+
+        model_config = _build_model_config(context)
+        model_config.pop("tool_choice", None)
+
+        text_buf = ""
+
+        async for chunk in self._llm.chat(
+            messages=context.messages,
+            tools=[],
+            model_config=model_config,
+            stream=True,
+            runtime_config={
+                "max_retry_limit": context.agent.max_retry_limit,
+                "max_rpm": context.agent.max_rpm,
+            },
+        ):
+            await emitter.on_chunk(chunk)
+
+            if chunk.delta_text:
+                text_buf += chunk.delta_text
+
+            if chunk.usage:
+                state.add_usage(chunk.usage)
+
+        if text_buf:
+            context.append_message({"role": "assistant", "content": text_buf})
+            state.final_text = text_buf
+
+        state.iterations += 1
+
+        return LoopResult(
+            final_text=state.final_text,
+            tool_invocations=state.tool_invocations,
+            iterations=state.iterations,
+            stop_reason=StopReason.MAX_CONSECUTIVE_FAILURES.value,
+            token_usage=state.token_usage(),
+        )

@@ -57,6 +57,9 @@ class BaseNodePayloadService:
             cache=agent_definition.cache,
             max_retry_limit=agent_definition.max_retry_limit,
             default_temperature=agent_definition.default_temperature,
+            max_tool_calls=agent_definition.max_tool_calls,
+            tool_timeout=agent_definition.tool_timeout,
+            max_consecutive_failures=agent_definition.max_consecutive_failures,
             llm=self.converter_service.convert_llm_config_to_pydantic(
                 agent_definition.llm_config
             ),

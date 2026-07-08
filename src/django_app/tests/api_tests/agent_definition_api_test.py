@@ -79,3 +79,33 @@ class TestAgentDefinitionConflict:
         body = response.json()
         assert response.status_code == 201
         assert body["name"] == "new-agent"
+
+
+@pytest.mark.django_db
+class TestAgentDefinitionRunLimitValidation:
+    def test_create_with_max_tool_calls_zero_returns_400(
+        self, client, default_organization
+    ):
+        url = reverse("agentdefinition-list")
+        response = client.post(
+            url,
+            {"name": "zero-agent", "instructions": "do things", "max_tool_calls": 0},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert "max_tool_calls" in response.json()["message"]
+
+    def test_create_with_max_tool_calls_null_returns_201(
+        self, client, default_organization
+    ):
+        url = reverse("agentdefinition-list")
+        response = client.post(
+            url,
+            {"name": "null-agent", "instructions": "do things", "max_tool_calls": None},
+            format="json",
+        )
+
+        body = response.json()
+        assert response.status_code == 201
+        assert body["max_tool_calls"] is None

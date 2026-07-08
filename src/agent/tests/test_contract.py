@@ -36,6 +36,9 @@ EXAMPLE_BLOB = {
             "cache": True,
             "max_retry_limit": 5,
             "default_temperature": 0.7,
+            "max_tool_calls": 15,
+            "tool_timeout": 300,
+            "max_consecutive_failures": 3,
             "tool_refs": ["python-code-tool:1", "mcp-tool:4"],
             "collection_refs": ["collection:7"],
             "s3_refs": [88],
@@ -132,6 +135,9 @@ def test_agent_request_validates_example_blob():
     assert request.agents[0].name == "researcher"
     assert request.agents[0].llm.provider == "openai"
     assert request.agents[0].llm.config.model == "gpt-4o"
+    assert request.agents[0].max_tool_calls == 15
+    assert request.agents[0].tool_timeout == 300
+    assert request.agents[0].max_consecutive_failures == 3
     assert request.agents[0].tool_refs == ["python-code-tool:1", "mcp-tool:4"]
     assert request.agents[0].collection_refs == ["collection:7"]
     assert request.agents[0].s3_refs == [88]

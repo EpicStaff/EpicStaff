@@ -48,6 +48,9 @@ class AgentDefinitionReadSerializer(serializers.ModelSerializer):
             "cache",
             "max_retry_limit",
             "default_temperature",
+            "max_tool_calls",
+            "tool_timeout",
+            "max_consecutive_failures",
             "metadata",
             "default_surfaces",
         ]
@@ -66,6 +69,15 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
         allow_null=True,
     )
     default_surfaces = AgentDefaultSurfaceWriteSerializer(many=True, required=False)
+    max_tool_calls = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1
+    )
+    tool_timeout = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1
+    )
+    max_consecutive_failures = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1
+    )
 
     class Meta:
         model = AgentDefinition
@@ -81,6 +93,9 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
             "cache",
             "max_retry_limit",
             "default_temperature",
+            "max_tool_calls",
+            "tool_timeout",
+            "max_consecutive_failures",
             "metadata",
             "default_surfaces",
         ]

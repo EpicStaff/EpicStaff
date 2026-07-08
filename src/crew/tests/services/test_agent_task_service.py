@@ -428,6 +428,54 @@ def test_build_request_blob_appends_surface_instructions(redis_service_stub, llm
     assert "Never reveal secrets." in instructions
 
 
+def test_build_request_blob_carries_tool_limit_fields(redis_service_stub, llm_data):
+    service = AgentTaskService(redis_service=redis_service_stub)
+    task_node_data = TaskNodeData(
+        node_name="task_node_1",
+        agent_definition=AgentDefinitionData(
+            id=1,
+            name="researcher",
+            instructions="Research the topic.",
+            llm=llm_data,
+            max_tool_calls=5,
+            tool_timeout=30,
+            max_consecutive_failures=2,
+        ),
+        instructions="Summarize the findings.",
+    )
+
+    blob = json.loads(service._build_request_blob(task_node_data))
+
+    agent_spec = blob["agents"][0]
+    assert agent_spec["max_tool_calls"] == 5
+    assert agent_spec["tool_timeout"] == 30
+    assert agent_spec["max_consecutive_failures"] == 2
+
+
+@pytest.mark.asyncio
+async def test_run_task_returns_result_on_max_consecutive_failures_stop_reason(
+    redis_service_stub, task_node_data, fake_stream_client
+):
+    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
+
+    async def fake_agent():
+        request_envelope = await _read_one_request(
+            fake_stream_client, service.request_stream
+        )
+        await _publish_result(
+            fake_stream_client,
+            service.result_stream,
+            request_envelope.correlation_id,
+            {"stop_reason": "max_consecutive_failures", "final_text": "summary"},
+        )
+
+    responder = asyncio.create_task(fake_agent())
+    result = await service.run_task(task_node_data, StopEvent())
+    await responder
+
+    assert result["final_text"] == "summary"
+
+
 def test_resolve_timeout_s_scales_with_task_count(redis_service_stub):
     service = AgentTaskService(
         redis_service=redis_service_stub, default_timeout_s=600.0, timeout_buffer_s=60.0

@@ -93,7 +93,11 @@ async def run_task_through_loop(
             update={
                 "final_text": json.dumps(parsed),
                 "token_usage": add_usage(result.token_usage, usage),
-                "stop_reason": StopReason.SCHEMA_SATISFIED.value,
+                "stop_reason": (
+                    result.stop_reason
+                    if result.stop_reason == StopReason.MAX_CONSECUTIVE_FAILURES.value
+                    else StopReason.SCHEMA_SATISFIED.value
+                ),
             }
         )
 

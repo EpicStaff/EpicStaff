@@ -143,6 +143,9 @@ class AgentDefinitionData(BaseModel):
     cache: bool | None = None
     max_retry_limit: int | None = None
     default_temperature: float | None = None
+    max_tool_calls: int | None = None
+    tool_timeout: int | None = None
+    max_consecutive_failures: int | None = None
     llm: LLMData | None = None
     fcm_llm: LLMData | None = None
 

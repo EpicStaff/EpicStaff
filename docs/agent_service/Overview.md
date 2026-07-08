@@ -45,8 +45,9 @@ both services):
   `payload: dict`.
 - **`AgentSpec`** — `id`, `name`, `instructions`, `llm`, `fcm_llm`, `max_iter`,
   `max_rpm`, `max_execution_time`, `max_retry_limit`, `default_temperature`,
-  `cache`, and ref lists `tool_refs` / `collection_refs` / `s3_refs` into the
-  pools. A node runs **one** agent.
+  `cache`, `max_tool_calls`, `tool_timeout`, `max_consecutive_failures`, and ref
+  lists `tool_refs` / `collection_refs` / `s3_refs` into the pools. A node runs
+  **one** agent.
 - **`AgentTaskSpec`** (LIST_OF_TASKS payload entry) — `name`, `instructions`,
   `output_schema: dict|None`, `context: [str]` (names of earlier tasks whose
   output is injected).
@@ -55,7 +56,9 @@ both services):
 - **`RunType`** — `SINGLE_TASK`, `LIST_OF_TASKS` (`CHAT`, `TEAM` reserved, not
   implemented).
 - **`StopReason`** — `completed`, `max_iter_reached`, `schema_satisfied`,
-  `llm_error`, `timeout`. `FAILURE_STOP_REASONS = {llm_error, timeout}`.
+  `llm_error`, `timeout`, `max_consecutive_failures`.
+  `FAILURE_STOP_REASONS = {llm_error, timeout}` — `max_consecutive_failures` is
+  a graceful stop, not a failure.
 
 Per-`run_type` `payload` shapes:
 - `SINGLE_TASK`: `{ "task_instructions": str (or "prompt"), "output_schema"?: dict }`
@@ -152,6 +155,25 @@ LLM call + executing any tool calls it requested (tool errors are fed back as
   one turn.
 - **Wall clock:** `agent.max_execution_time` enforced via `asyncio.wait_for` →
   `stop_reason="timeout"` (separate from `max_iter`).
+- **`max_tool_calls`:** caps how many tool calls are *executed* per iteration
+  (per streamed assistant turn). Calls beyond the cap are rejected with an
+  `is_error=True` result ("Tool call limit reached...") fed back to the model
+  so every requested call id still gets a tool message; the loop continues.
+  `None` means unlimited.
+- **`tool_timeout`:** per-tool-call timeout in seconds, enforced via
+  `asyncio.wait_for` around `ToolRegistry.execute`. A timeout produces an
+  `is_error=True` result ("... timed out after Ns") and counts as a failure
+  toward `max_consecutive_failures`. `None` means no timeout.
+- **`max_consecutive_failures`:** counts consecutive *executed* tool results
+  with `is_error=True`; resets to zero on any successful executed call.
+  Overflow-rejected calls (from `max_tool_calls`) and calls skipped after the
+  limit trips never count and never reset the counter. When the limit is hit,
+  any remaining calls in the same batch are skipped (not executed), and the
+  loop performs one graceful finalization: a single streamed LLM call with no
+  tools available (`tool_choice` stripped from `model_config`) asking the
+  model to summarize what it tried and why it failed. The result carries
+  `stop_reason="max_consecutive_failures"` and `error=None` — this is a
+  graceful stop, not a failure. `None` disables the check.
 - LLM exceptions/timeouts are folded into `LoopResult(stop_reason="llm_error"|
   "timeout", error=...)` and signalled up — the loop does not emit `on_error`.
 

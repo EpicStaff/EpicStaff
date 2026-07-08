@@ -42,6 +42,7 @@ class FakeLLMClient(LLMClient):
         self._responses = list(responses)
         self.chat_raises = chat_raises
         self.received_configs: list[dict] = []
+        self.received_tools: list[list] = []
 
     async def _iter_chunks(self, chunks: list[LLMChunk]) -> AsyncIterator[LLMChunk]:
         for chunk in chunks:
@@ -57,6 +58,7 @@ class FakeLLMClient(LLMClient):
         runtime_config: dict | None = None,
     ) -> AsyncIterator[LLMChunk]:
         self.received_configs.append(dict(model_config))
+        self.received_tools.append(list(tools))
 
         if self.chat_raises is not None:
             raise self.chat_raises
@@ -136,6 +138,9 @@ def _make_agent_spec(
     max_execution_time: float | None = None,
     max_retry_limit: int | None = None,
     max_rpm: int | None = None,
+    max_tool_calls: int | None = None,
+    tool_timeout: int | None = None,
+    max_consecutive_failures: int | None = None,
 ) -> AgentSpec:
     return AgentSpec(
         id=1,
@@ -145,13 +150,25 @@ def _make_agent_spec(
         max_execution_time=max_execution_time,
         max_retry_limit=max_retry_limit,
         max_rpm=max_rpm,
+        max_tool_calls=max_tool_calls,
+        tool_timeout=tool_timeout,
+        max_consecutive_failures=max_consecutive_failures,
     )
 
 
 def make_context(
-    max_execution_time: float | None = None, messages: list[dict] | None = None
+    max_execution_time: float | None = None,
+    messages: list[dict] | None = None,
+    max_tool_calls: int | None = None,
+    tool_timeout: int | None = None,
+    max_consecutive_failures: int | None = None,
 ) -> AgentContext:
-    agent = _make_agent_spec(max_execution_time=max_execution_time)
+    agent = _make_agent_spec(
+        max_execution_time=max_execution_time,
+        max_tool_calls=max_tool_calls,
+        tool_timeout=tool_timeout,
+        max_consecutive_failures=max_consecutive_failures,
+    )
     return AgentContext(
         agent=agent,
         attachments=[],
@@ -717,3 +734,342 @@ async def test_context_warning_get_model_info_raises_no_warning(monkeypatch):
 
     assert len(llm.received_configs) == 1
     assert "tool_choice" not in llm.received_configs[0]
+
+
+# ---------------------------------------------------------------------------
+# Tests: max_tool_calls
+# ---------------------------------------------------------------------------
+
+
+def _parallel_tool_call_chunks(*calls: tuple[str, str, str]) -> list[LLMChunk]:
+    """Build one assistant response containing several parallel tool calls."""
+    chunks = [
+        LLMChunk(
+            tool_call_fragment=ToolCallFragment(
+                id=call_id, name=name, arguments_delta=args
+            )
+        )
+        for call_id, name, args in calls
+    ]
+    chunks.append(LLMChunk(finish_reason="tool_calls"))
+    return chunks
+
+
+async def test_max_tool_calls_overflow_rejected_with_error_result():
+    """3 parallel calls, max_tool_calls=2: only first 2 executed, 3rd rejected."""
+    emitter = RecordingEmitter()
+    context = make_context(max_tool_calls=2)
+    tools = StubToolRegistry(
+        {
+            "tool_a": lambda args: "a",
+            "tool_b": lambda args: "b",
+            "tool_c": lambda args: "c",
+        }
+    )
+    stop = MaxIterAndNoToolCalls(max_iter=5)
+
+    llm = FakeLLMClient(
+        [
+            _parallel_tool_call_chunks(
+                ("c1", "tool_a", "{}"), ("c2", "tool_b", "{}"), ("c3", "tool_c", "{}")
+            ),
+            text_chunks("done"),
+        ]
+    )
+    loop = DefaultAgentLoop(llm)
+
+    result = await loop.run(context, tools, emitter, stop)
+
+    assert result.stop_reason == "completed"
+    assert result.tool_invocations == 2
+
+    tool_messages = {
+        m["tool_call_id"]: m["content"] for m in context.messages if m["role"] == "tool"
+    }
+    assert set(tool_messages) == {"c1", "c2", "c3"}
+    assert "Tool call limit reached" in tool_messages["c3"]
+
+
+async def test_max_tool_calls_none_unlimited():
+    """3 parallel calls, max_tool_calls=None: all executed."""
+    emitter = RecordingEmitter()
+    context = make_context(max_tool_calls=None)
+    tools = StubToolRegistry(
+        {
+            "tool_a": lambda args: "a",
+            "tool_b": lambda args: "b",
+            "tool_c": lambda args: "c",
+        }
+    )
+    stop = MaxIterAndNoToolCalls(max_iter=5)
+
+    llm = FakeLLMClient(
+        [
+            _parallel_tool_call_chunks(
+                ("c1", "tool_a", "{}"), ("c2", "tool_b", "{}"), ("c3", "tool_c", "{}")
+            ),
+            text_chunks("done"),
+        ]
+    )
+    loop = DefaultAgentLoop(llm)
+
+    result = await loop.run(context, tools, emitter, stop)
+
+    assert result.tool_invocations == 3
+
+
+async def test_overflow_rejection_does_not_count_toward_consecutive_failures():
+    """Rejected overflow calls are not failures and don't trip the failure limit."""
+    emitter = RecordingEmitter()
+    context = make_context(max_tool_calls=1, max_consecutive_failures=1)
+    tools = StubToolRegistry(
+        {
+            "tool_a": lambda args: "a",
+            "tool_b": lambda args: "b",
+        }
+    )
+    stop = MaxIterAndNoToolCalls(max_iter=5)
+
+    llm = FakeLLMClient(
+        [
+            _parallel_tool_call_chunks(("c1", "tool_a", "{}"), ("c2", "tool_b", "{}")),
+            text_chunks("done"),
+        ]
+    )
+    loop = DefaultAgentLoop(llm)
+
+    result = await loop.run(context, tools, emitter, stop)
+
+    assert result.stop_reason == "completed"
+    assert result.tool_invocations == 1
+
+
+# ---------------------------------------------------------------------------
+# Tests: tool_timeout
+# ---------------------------------------------------------------------------
+
+
+async def test_tool_timeout_feeds_error_result():
+    """Executor slower than timeout: is_error=True, 'timed out after' in content."""
+    context = make_context()
+    tools = ToolRegistry()
+
+    async def slow_executor(args: dict) -> ToolResult:
+        await asyncio.sleep(5)
+        return ToolResult(tool_call_id="", content="never", is_error=False)
+
+    tools.register(ToolSpec(name="slow", description="slow tool"), slow_executor)
+
+    llm = FakeLLMClient([])
+    loop = DefaultAgentLoop(llm)
+
+    result = await loop._execute_tool(tools, "c1", "slow", "{}", timeout=0.05)
+
+    assert result.is_error is True
+    assert "timed out after" in result.content
+
+
+async def test_tool_timeout_none_no_wrapping():
+    """timeout=None: normal tool executes and succeeds without wrapping."""
+    context = make_context()
+    tools = StubToolRegistry({"ping": lambda args: "pong"})
+
+    llm = FakeLLMClient([])
+    loop = DefaultAgentLoop(llm)
+
+    result = await loop._execute_tool(tools, "c1", "ping", "{}", timeout=None)
+
+    assert result.is_error is False
+    assert result.content == "pong"
+
+
+async def test_tool_timeout_counts_as_failure_toward_limit():
+    """Tool call exceeding tool_timeout counts as a failure toward max_consecutive_failures."""
+    emitter = RecordingEmitter()
+    context = make_context(tool_timeout=1, max_consecutive_failures=1)
+    tools = ToolRegistry()
+
+    async def slow_executor(args: dict) -> ToolResult:
+        await asyncio.sleep(2)
+        return ToolResult(tool_call_id="", content="never", is_error=False)
+
+    tools.register(ToolSpec(name="slow", description="slow tool"), slow_executor)
+    stop = MaxIterAndNoToolCalls(max_iter=5)
+
+    llm = FakeLLMClient(
+        [
+            tool_chunks("c1", "slow", "{}"),
+            text_chunks("summary after timeout"),
+        ]
+    )
+    loop = DefaultAgentLoop(llm)
+
+    result = await loop.run(context, tools, emitter, stop)
+
+    assert result.stop_reason == "max_consecutive_failures"
+
+
+# ---------------------------------------------------------------------------
+# Tests: max_consecutive_failures
+# ---------------------------------------------------------------------------
+
+
+async def test_consecutive_failures_stops_gracefully_with_summary():
+    """N consecutive failures trigger a no-tools finalization LLM call."""
+    emitter = RecordingEmitter()
+    context = make_context(max_consecutive_failures=2)
+
+    def bad_tool(args):
+        raise RuntimeError("boom")
+
+    tools = StubToolRegistry({"bad": bad_tool})
+    stop = MaxIterAndNoToolCalls(max_iter=10)
+
+    llm = FakeLLMClient(
+        [
+            tool_chunks("c1", "bad", "{}"),
+            tool_chunks("c2", "bad", "{}"),
+            text_chunks("I tried X; it failed because Y"),
+        ]
+    )
+    loop = DefaultAgentLoop(llm)
+
+    result = await loop.run(context, tools, emitter, stop)
+
+    assert result.stop_reason == "max_consecutive_failures"
+    assert result.final_text == "I tried X; it failed because Y"
+    assert result.error is None
+
+    user_messages = [m for m in context.messages if m["role"] == "user"]
+    assert any("consecutive" in m["content"] for m in user_messages)
+
+    assert llm.received_tools[-1] == []
+    assert "tool_choice" not in llm.received_configs[-1]
+
+    assistant_messages = [m for m in context.messages if m["role"] == "assistant"]
+    assert assistant_messages[-1]["content"] == "I tried X; it failed because Y"
+
+
+async def test_consecutive_failures_reset_on_success():
+    """A successful call resets the consecutive-failure counter."""
+    emitter = RecordingEmitter()
+    context = make_context(max_consecutive_failures=2)
+
+    calls = {"count": 0}
+
+    def flaky_tool(args):
+        calls["count"] += 1
+        if calls["count"] in (1, 3):
+            raise RuntimeError("boom")
+        return "ok"
+
+    tools = StubToolRegistry({"flaky": flaky_tool})
+    stop = MaxIterAndNoToolCalls(max_iter=10)
+
+    llm = FakeLLMClient(
+        [
+            tool_chunks("c1", "flaky", "{}"),
+            tool_chunks("c2", "flaky", "{}"),
+            tool_chunks("c3", "flaky", "{}"),
+            text_chunks("done"),
+        ]
+    )
+    loop = DefaultAgentLoop(llm)
+
+    result = await loop.run(context, tools, emitter, stop)
+
+    assert result.stop_reason == "completed"
+
+
+async def test_failure_limit_mid_batch_rejects_remaining_calls():
+    """Failure limit hit mid-batch: remaining calls in the same batch are skipped."""
+    emitter = RecordingEmitter()
+    context = make_context(max_consecutive_failures=1)
+
+    def bad_tool(args):
+        raise RuntimeError("boom")
+
+    second_call_spy = {"invoked": False}
+
+    def spy_tool(args):
+        second_call_spy["invoked"] = True
+        return "should not run"
+
+    tools = StubToolRegistry({"bad": bad_tool, "spy": spy_tool})
+    stop = MaxIterAndNoToolCalls(max_iter=10)
+
+    llm = FakeLLMClient(
+        [
+            _parallel_tool_call_chunks(("c1", "bad", "{}"), ("c2", "spy", "{}")),
+            text_chunks("summary"),
+        ]
+    )
+    loop = DefaultAgentLoop(llm)
+
+    result = await loop.run(context, tools, emitter, stop)
+
+    assert second_call_spy["invoked"] is False
+    tool_messages = {
+        m["tool_call_id"]: m["content"] for m in context.messages if m["role"] == "tool"
+    }
+    assert "not executed" in tool_messages["c2"]
+    assert result.stop_reason == "max_consecutive_failures"
+
+
+async def test_consecutive_failures_none_disabled():
+    """max_consecutive_failures=None: failure limit never trips, max_iter governs instead."""
+    emitter = RecordingEmitter()
+    context = make_context(max_consecutive_failures=None)
+
+    def bad_tool(args):
+        raise RuntimeError("boom")
+
+    tools = StubToolRegistry({"bad": bad_tool})
+    stop = MaxIterAndNoToolCalls(max_iter=2)
+
+    llm = FakeLLMClient(
+        [
+            tool_chunks("c1", "bad", "{}"),
+            tool_chunks("c2", "bad", "{}"),
+            text_chunks("never reached"),
+        ]
+    )
+    loop = DefaultAgentLoop(llm)
+
+    result = await loop.run(context, tools, emitter, stop)
+
+    assert result.stop_reason == "max_iter_reached"
+
+
+async def test_finalization_token_usage_accumulated():
+    """Usage chunks from the finalization LLM call are summed into the result."""
+    emitter = RecordingEmitter()
+    context = make_context(max_consecutive_failures=1)
+
+    def bad_tool(args):
+        raise RuntimeError("boom")
+
+    tools = StubToolRegistry({"bad": bad_tool})
+    stop = MaxIterAndNoToolCalls(max_iter=10)
+
+    finalize_chunks = [
+        *text_chunks("summary text"),
+        LLMChunk(
+            usage={"prompt_tokens": 10, "completion_tokens": 4, "total_tokens": 14}
+        ),
+    ]
+
+    llm = FakeLLMClient(
+        [
+            tool_chunks("c1", "bad", "{}"),
+            finalize_chunks,
+        ]
+    )
+    loop = DefaultAgentLoop(llm)
+
+    result = await loop.run(context, tools, emitter, stop)
+
+    assert result.stop_reason == "max_consecutive_failures"
+    assert result.token_usage.prompt_tokens == 10
+    assert result.token_usage.completion_tokens == 4
+    assert result.token_usage.total_tokens == 14

@@ -36,6 +36,21 @@ class DefaultAgentDefinitionConfig(models.Model):
         null=True,
         help_text="Default sampling temperature applied when neither the AgentDefinition nor its LLMConfig specify one.",
     )
+    max_tool_calls = models.IntegerField(
+        default=15,
+        null=True,
+        help_text="Default max tool calls executed per loop iteration when AgentDefinition.max_tool_calls is null. Null = unlimited.",
+    )
+    tool_timeout = models.IntegerField(
+        default=300,
+        null=True,
+        help_text="Default per-tool-call timeout in seconds when AgentDefinition.tool_timeout is null. Null = no timeout.",
+    )
+    max_consecutive_failures = models.IntegerField(
+        default=3,
+        null=True,
+        help_text="Default consecutive tool-failure limit when AgentDefinition.max_consecutive_failures is null. Null = disabled.",
+    )
 
     @classmethod
     def load(cls) -> "DefaultAgentDefinitionConfig":
@@ -122,6 +137,21 @@ class AgentDefinition(AbstractDefaultFillableModel):
         default=None,
         null=True,
         help_text="Sampling temperature applied when the LLMConfig leaves it unset. Null falls back to DefaultAgentDefinitionConfig.",
+    )
+    max_tool_calls = models.IntegerField(
+        default=None,
+        null=True,
+        help_text="Max tool calls executed per loop iteration. Null falls back to DefaultAgentDefinitionConfig.",
+    )
+    tool_timeout = models.IntegerField(
+        default=None,
+        null=True,
+        help_text="Per-tool-call timeout in seconds. Null falls back to DefaultAgentDefinitionConfig.",
+    )
+    max_consecutive_failures = models.IntegerField(
+        default=None,
+        null=True,
+        help_text="Consecutive failed tool calls before graceful stop. Null falls back to DefaultAgentDefinitionConfig.",
     )
 
     # Surface linkage (through AgentDefaultSurface)

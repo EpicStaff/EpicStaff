@@ -202,11 +202,17 @@ class TestBuildGraphDataTaskNode:
                 "cache": True,
                 "max_retry_limit": 3,
                 "default_temperature": 0.7,
+                "max_tool_calls": 10,
+                "tool_timeout": 120,
+                "max_consecutive_failures": 4,
             },
         )
         agent.max_iter = None
         agent.default_temperature = None
         agent.max_rpm = 5
+        agent.max_tool_calls = None
+        agent.tool_timeout = None
+        agent.max_consecutive_failures = None
         agent.save()
 
         SurfacePythonTool.objects.create(
@@ -230,8 +236,38 @@ class TestBuildGraphDataTaskNode:
         assert task_data.agent_definition.max_iter == 15
         assert task_data.agent_definition.max_rpm == 5
         assert task_data.agent_definition.default_temperature == 0.7
+        assert task_data.agent_definition.max_tool_calls == 10
+        assert task_data.agent_definition.tool_timeout == 120
+        assert task_data.agent_definition.max_consecutive_failures == 4
         tools_by_id = {t.python_tool: t.mode for t in task_data.surface.python_tools}
         assert tools_by_id[py_tool.pk] == "deny"
+
+    @pytest.mark.django_db
+    def test_agent_explicit_tool_limits_override_defaults(
+        self, graph, task_node, agent
+    ):
+        DefaultAgentDefinitionConfig.objects.update_or_create(
+            pk=1,
+            defaults={
+                "max_tool_calls": 10,
+                "tool_timeout": 120,
+                "max_consecutive_failures": 4,
+            },
+        )
+        agent.max_tool_calls = 7
+        agent.tool_timeout = 45
+        agent.max_consecutive_failures = 2
+        agent.save()
+        task_node.agent_definition = agent
+        task_node.save()
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        task_data = graph_data.task_node_list[0]
+        assert task_data.agent_definition.max_tool_calls == 7
+        assert task_data.agent_definition.tool_timeout == 45
+        assert task_data.agent_definition.max_consecutive_failures == 2
 
     def test_graph_data_without_task_node_list_defaults_to_empty(self):
         graph_data = GraphData(name="g", entrypoint="test", end_node=None)
