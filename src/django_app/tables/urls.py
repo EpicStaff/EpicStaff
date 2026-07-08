@@ -69,7 +69,6 @@ from tables.views.views import (
     RunSession,
     GetUpdates,
     StopSession,
-    CrewDeleteAPIView,
     QuickstartView,
     QuickstartApplyView,
     PythonNodeLastTestInputView,
@@ -255,7 +254,6 @@ urlpatterns = [
         name="cancel-session-decision",
     ),
     path("notify/email/", NotifyEmailView.as_view(), name="notify-email"),
-    path("crews/<int:id>/delete/", CrewDeleteAPIView.as_view(), name="delete-crew"),
     path(
         "run-python-code/",
         RunPythonCodeAPIView.as_view(),
