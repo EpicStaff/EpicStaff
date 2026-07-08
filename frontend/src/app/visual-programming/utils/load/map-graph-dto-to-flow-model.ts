@@ -40,6 +40,25 @@ function mapList<R, T extends NodeModel>(raws: R[] | undefined | null, mapFn: (r
     });
 }
 
+/**
+ * Reassigns colliding/missing nodeNumbers to the next free integers.
+ * BE-imported nodes keep their source graph's nodeNumber, which can duplicate
+ * existing ones — this guarantees a unique #N badge per node after load.
+ */
+function deduplicateNodeNumbers(nodes: NodeModel[]): NodeModel[] {
+    const seen = new Set<number>();
+    let next = Math.max(0, ...nodes.map((n) => n.nodeNumber ?? 0)) + 1;
+    return nodes.map((n) => {
+        if (n.nodeNumber == null || seen.has(n.nodeNumber)) {
+            const num = next++;
+            seen.add(num);
+            return { ...n, nodeNumber: num };
+        }
+        seen.add(n.nodeNumber);
+        return n;
+    });
+}
+
 export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
     // ── 1. Map each backend node list to UI node models ──────────────────
     const startNodes = mapList(graph.start_node_list, mapStartNodeToModel);
@@ -134,5 +153,5 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
         );
     }
 
-    return { nodes: allNodes, connections: allConnections };
+    return { nodes: deduplicateNodeNumbers(allNodes), connections: allConnections };
 }

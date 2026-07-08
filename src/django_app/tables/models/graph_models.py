@@ -754,7 +754,13 @@ class ClassificationConditionGroup(BaseGraphEntity, models.Model):
     group_name = models.CharField(max_length=255, blank=False)
     order = models.PositiveIntegerField(blank=False, default=0)
     expression = models.TextField(null=True, default=None, blank=True)
-    prompt_id = models.CharField(max_length=255, null=True, default=None, blank=True)
+    prompt = models.ForeignKey(
+        "ClassificationDecisionTablePrompt",
+        on_delete=models.SET_NULL,
+        null=True,
+        default=None,
+        related_name="condition_groups",
+    )
     manipulation = models.TextField(null=True, default=None, blank=True)
     continue_flag = models.BooleanField(default=False)
     next_node_id = models.BigIntegerField(null=True, default=None)

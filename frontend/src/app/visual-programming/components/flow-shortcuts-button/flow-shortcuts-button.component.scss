@@ -21,6 +21,15 @@
     background-color: #383838;
 }
 
+.flow-shortcuts-btn--active {
+    background-color: #2d2b45;
+    border-color: #685fff;
+}
+
+.flow-shortcuts-btn--active:hover {
+    background-color: #353260;
+}
+
 .flow-shortcuts-btn__icon {
     grid-column: 2;
     grid-row: 2;
@@ -44,4 +53,14 @@
     text-align: center;
     align-self: end;
     padding-bottom: 3px;
+}
+
+.flow-shortcuts-btn__text--end {
+    grid-column: 3;
+    text-align: right;
+    padding-right: 4px;
+}
+
+.flow-shortcuts-btn__icon {
+    color: var(--color-text-primary);
 }

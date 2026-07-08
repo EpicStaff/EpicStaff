@@ -18,7 +18,6 @@ import {
     DisplayedTelegramField,
     TelegramTriggerNodeField,
 } from '../../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
-import { WebhookStatus } from '../../../../pages/flows-page/components/flow-visual-programming/models/webhook.model';
 import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
@@ -28,6 +27,7 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 import { TelegramTriggerEditingDialogComponent } from '../../telegram-trigger-editing-dialog/telegram-trigger-editing-dialog.component';
 import { WEBHOOK_NAME_PATTERN } from '../webhook-trigger-node-panel/webhook-trigger-node-panel.component';
+import { WebhookStatus } from './webhook-status.model';
 
 @Component({
     selector: 'app-telegram-trigger-node-panel',

@@ -6,15 +6,6 @@ import uuid
 import base64
 from asgiref.sync import async_to_sync
 from tables.graph_collab.flush_service import flush_service, FlushStatus
-from tables.serializers.model_serializers.crew_serializers import (
-    ToolSerializer,
-)
-from tables.serializers.model_serializers.embedding_serializers import (
-    DefaultEmbeddingConfigSerializer,
-)
-from tables.serializers.model_serializers.llm_serializers import (
-    DefaultLLMConfigSerializer,
-)
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.models.graph_models import (
     TelegramTriggerNode,
@@ -25,8 +16,6 @@ from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.utils.telegram_fields import load_telegram_trigger_fields
 from tables.models import Tool
 from tables.models import Crew
-from tables.models.embedding_models import DefaultEmbeddingConfig
-from tables.models.llm_models import DefaultLLMConfig
 from tables.services.realtime_service import RealtimeService
 from tables.swagger_schemas.python_node_test_mode_schema import (
     LAST_TEST_INPUT_SWAGGER as _LAST_TEST_INPUT_SWAGGER,
@@ -55,7 +44,6 @@ from rest_framework import status
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework import filters
 
-from tables.services.config_service import YamlConfigService
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.converter_service import ConverterService
 from tables.services.redis_service import RedisService
@@ -86,7 +74,6 @@ from tables.serializers.storage_serializers import SessionOutputFileSerializer
 from tables.serializers.serializers import (
     AnswerToLLMSerializer,
     BulkExportSerializer,
-    EnvironmentConfigSerializer,
     InitRealtimeSerializer,
     ProcessRagIndexingSerializer,
     RunSessionSerializer,
@@ -108,17 +95,9 @@ from tables.import_export.export_format_strategies import (
     JsonExportFormatStrategy,
     CsvExportFormatStrategy,
 )
-from tables.import_export.tabular.session import SessionTabularProjection
+from tables.import_export.export_tabular_projections.session import SessionTabularProjection
 
-from tables.swagger_schemas.crews_schema import CREW_DELETE
 from tables.swagger_schemas.default_config_schemas import (
-    DEFAULT_EMBEDDING_CONFIG_GET,
-    DEFAULT_EMBEDDING_CONFIG_PUT,
-    DEFAULT_LLM_CONFIG_GET,
-    DEFAULT_LLM_CONFIG_PUT,
-    ENVIRONMENT_CONFIG_GET,
-    ENVIRONMENT_CONFIG_POST,
-    ENVIRONMENT_CONFIG_DELETE,
     QUICKSTART_GET,
     QUICKSTART_POST,
     QUICKSTART_APPLY_POST,
@@ -155,7 +134,6 @@ redis_service = RedisService()
 # TODO: fix. Do we need init converter_service here? Instance is not used.
 converter_service = ConverterService()
 session_manager_service = SessionManagerService()
-config_service = YamlConfigService()
 run_python_code_service = RunPythonCodeService()
 realtime_service = RealtimeService()
 quickstart_service = QuickstartService()
@@ -614,48 +592,6 @@ class StopSession(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class EnvironmentConfig(APIView):
-    @extend_schema(**ENVIRONMENT_CONFIG_GET)
-    def get(self, request, format=None):
-        config_dict: dict = config_service.get_all()
-        logger.info("Configuration retrieved successfully.")
-
-        return Response(status=status.HTTP_200_OK, data={"data": config_dict})
-
-    @extend_schema(**ENVIRONMENT_CONFIG_POST)
-    def post(self, request, *args, **kwargs):
-        serializer = EnvironmentConfigSerializer(data=request.data)
-        if not serializer.is_valid():
-            logger.error("Invalid configuration data provided.")
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        config_service.set_all(config_dict=serializer.validated_data["data"])
-        logger.info("Configuration updated successfully.")
-
-        updated_config = config_service.get_all()
-
-        return Response(data={"data": updated_config}, status=status.HTTP_201_CREATED)
-
-
-@extend_schema(**ENVIRONMENT_CONFIG_DELETE)
-@api_view(["DELETE"])
-def delete_environment_config(request, *args, **kwargs):
-    key: str | None = kwargs.get("key", None)
-
-    if key is None:
-        logger.error("No key provided in DELETE request.")
-        return Response("No key provided", status=status.HTTP_400_BAD_REQUEST)
-
-    deleted_key = config_service.delete(key=key)
-
-    if not deleted_key:
-        logger.warning(f"Key '{key}' not found.")
-        return Response("Key not found", status=status.HTTP_404_NOT_FOUND)
-
-    logger.info(f"Config key '{key}' deleted successfully.")
-    return Response("Config deleted successfully", status=status.HTTP_204_NO_CONTENT)
-
-
 class AnswerToLLM(APIView):
     @extend_schema(**ANSWER_TO_LLM)
     def post(self, request, *args, **kwargs):
@@ -713,94 +649,6 @@ class AnswerToLLM(APIView):
         )
 
         return Response(status=status.HTTP_202_ACCEPTED)
-
-
-class CrewDeleteAPIView(APIView):
-    @extend_schema(**CREW_DELETE)
-    def delete(self, request, id):
-        delete_sessions = request.query_params.get("delete_sessions", "false").lower()
-        if delete_sessions not in {"true", "false"}:
-            raise ValidationError(
-                {"error": "Invalid value for delete_sessions. Use 'true' or 'false'."}
-            )
-
-        delete_sessions = delete_sessions == "true"
-
-        crew = Crew.objects.filter(id=id).first()
-        if not crew:
-            raise NotFound({"error": "Crew not found"})
-
-        try:
-            with transaction.atomic():
-                if delete_sessions:
-                    Session.objects.filter(crew=crew).delete()
-                else:
-                    Session.objects.filter(crew=crew).update(crew=None)
-
-                crew.delete()
-
-            return Response(
-                {"message": "Crew deleted successfully"}, status=status.HTTP_200_OK
-            )
-        except Exception as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-
-class DefaultLLMConfigAPIView(APIView):
-    @extend_schema(**DEFAULT_LLM_CONFIG_GET)
-    def get(self, request, *args, **kwargs):
-        obj = DefaultLLMConfig.objects.first()
-        serializer = DefaultLLMConfigSerializer(obj, many=False)
-
-        return Response(serializer.data)
-
-    @extend_schema(**DEFAULT_LLM_CONFIG_PUT)
-    def put(self, request, *args, **kwargs):
-        try:
-            obj = DefaultLLMConfig.objects.get(pk=1)
-        except DefaultLLMConfig.DoesNotExist:
-            return Response(
-                {"error": "Object not found"}, status=status.HTTP_404_NOT_FOUND
-            )
-
-        serializer = DefaultLLMConfigSerializer(obj, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class DefaultEmbeddingConfigAPIView(APIView):
-    @extend_schema(**DEFAULT_EMBEDDING_CONFIG_GET)
-    def get(self, request, *args, **kwargs):
-        obj = DefaultEmbeddingConfig.objects.first()
-        serializer = DefaultEmbeddingConfigSerializer(obj, many=False)
-
-        return Response(serializer.data)
-
-    @extend_schema(**DEFAULT_EMBEDDING_CONFIG_PUT)
-    def put(self, request, *args, **kwargs):
-        try:
-            obj = DefaultEmbeddingConfig.objects.get(pk=1)
-        except DefaultEmbeddingConfig.DoesNotExist:
-            return Response(
-                {"error": "Object not found"}, status=status.HTTP_404_NOT_FOUND
-            )
-
-        serializer = DefaultEmbeddingConfigSerializer(obj, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class ToolListRetrieveUpdateGenericViewSet(
-    ListModelMixin, RetrieveModelMixin, UpdateModelMixin, GenericViewSet
-):
-    queryset = Tool.objects.prefetch_related("tool_fields")
-    serializer_class = ToolSerializer
 
 
 class RunPythonCodeAPIView(APIView):

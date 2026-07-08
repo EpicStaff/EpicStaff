@@ -14,7 +14,15 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent, SelectComponent, SelectItem } from '@shared/components';
+import {
+    AppSvgIconComponent,
+    EmbeddingModelConfigDialogComponent,
+    LlmModelConfigDialogComponent,
+    SelectComponent,
+    SelectItem,
+    TranscriptionModelConfigDialogComponent,
+    VoiceModelConfigDialogComponent,
+} from '@shared/components';
 import { ModelTypes } from '@shared/models';
 import {
     EmbeddingConfigStorageService,
@@ -25,10 +33,6 @@ import {
 import { Observable } from 'rxjs';
 
 import { DefaultLlmsCard } from '../../interfaces/default-llms-card.interface';
-import { EmbeddingModelConfigDialogComponent } from '../embedding-model-config-dialog/embedding-model-config-dialog.component';
-import { LlmModelConfigDialogComponent } from '../llm-model-config-dialog/llm-model-config-dialog.component';
-import { TranscriptionModelConfigDialogComponent } from '../transcription-model-config-dialog/transcription-model-config-dialog.component';
-import { VoiceModelConfigDialogComponent } from '../voice-config-model/voice-model-config-dialog.component';
 
 type DialogComponentType =
     | EmbeddingModelConfigDialogComponent

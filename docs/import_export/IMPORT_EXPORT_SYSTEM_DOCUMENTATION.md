@@ -83,16 +83,30 @@ To add a new node to the import/export system, follow these steps:
 
 1. **Create a NodeType**:
    - Add a new record to the `NodeType` enum in `enums.py`.
+   - Add the corresponding `EntityType` record to the `EntityType` enum in `enums.py` (node types and entity types share the same string values).
 
-2. **Create a Serializer**:
-   - Add a new serializer class in `serializers/graph.py` inheriting from `BaseNodeImportSerializer`.
+2. **Add to Dependency Order**:
+   - Add the new `EntityType` to `DEPENDENCY_ORDER` in `constants.py`.
 
-3. **Register the Serializer for the Node**:
-   - Add the new `NodeType` to `NODE_HANDLERS` in `strategies/node_handlers.py`.
-   - Add a `"relation"` key to retrieve this type of node from the graph instance.
-   - Create a separate `import_{node_name}_node` function if custom import logic is needed, and register it as an `"import_hook"` in `NODE_HANDLERS`.
+3. **Create a Serializer**:
+   - Add a new file in the `serializers/` directory, following the same pattern as other node serializers.
 
-**Note:** Most nodes do not require a separate import function. Use one only if the node depends on other entities in the system (e.g., `subgraph_node`).
+4. **Create a Strategy**:
+   - Add a new file in the `strategies/` directory.
+   - Define a strategy class inheriting from `EntityImportExportStrategy`.
+   - Set `entity_type` to the new `EntityType`.
+   - Set `serializer_class` to the new serializer.
+   - Override `create_entity()` if the node has custom import logic.
+
+5. **Register the Node Relation**:
+   - Add the new `NodeType` to `NODE_RELATIONS` in `strategies/node_handlers.py`, mapping it to the reverse-relation accessor name on the `Graph` model.
+   - `NODE_TYPE_TO_ENTITY_TYPE` is derived automatically from `NODE_RELATIONS` — no manual update needed.
+
+6. **Register the Strategy**:
+   - Open `tables/apps.py`.
+   - Import the new strategy module and register it with `entity_registry.register(MyNodeStrategy())`.
+
+**Note:** Most nodes do not require a custom `create_entity()` override. Add one only if the node depends on other entities tracked by the `IDMapper` (e.g., `subgraph_node`).
 
 ---
 

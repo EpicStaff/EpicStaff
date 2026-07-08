@@ -8,6 +8,7 @@ import { debounceTime } from 'rxjs/operators';
 import { expandCollapseAnimation } from '../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
+import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
@@ -43,6 +44,7 @@ import { LockableFieldComponent } from '../../lockable-field/lockable-field.comp
         NodeStorageSectionComponent,
         AppSvgIconComponent,
         LockableFieldComponent,
+        HelpTooltipComponent,
     ],
     animations: [expandCollapseAnimation],
     template: `
@@ -119,6 +121,10 @@ import { LockableFieldComponent } from '../../lockable-field/lockable-field.comp
                                             [style.accent-color]="activeColor"
                                         />
                                         <span>Execution status</span>
+                                        <app-help-tooltip
+                                            size="18px"
+                                            text="When enabled, this node's execution status updates (started, finished, errored) are streamed to EpicChat."
+                                        />
                                     </label>
                                 </div>
                             </div>

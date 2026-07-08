@@ -1,5 +1,14 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, forwardRef, Input, Output } from '@angular/core';
+import {
+    AfterViewInit,
+    Component,
+    ElementRef,
+    EventEmitter,
+    forwardRef,
+    Input,
+    Output,
+    ViewChild,
+} from '@angular/core';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
@@ -30,6 +39,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
             }
             <div class="input-wrapper">
                 <input
+                    #inputEl
                     [type]="effectiveType"
                     [id]="id"
                     [name]="name"
@@ -42,7 +52,6 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     [class.masked]="isMasked"
                     [class.error]="errorMessage"
                     [disabled]="disabled"
-                    [autofocus]="autofocus"
                     [style.--active-color]="activeColor"
                 />
                 @if (hasToggle) {
@@ -171,7 +180,9 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
         },
     ],
 })
-export class CustomInputComponent implements ControlValueAccessor {
+export class CustomInputComponent implements ControlValueAccessor, AfterViewInit {
+    @ViewChild('inputEl') inputEl!: ElementRef<HTMLInputElement>;
+
     @Input() label: string = '';
     @Input() placeholder: string = '';
     @Input() type: string = 'text';
@@ -268,5 +279,11 @@ export class CustomInputComponent implements ControlValueAccessor {
 
     setDisabledState(isDisabled: boolean): void {
         this._disabled = isDisabled;
+    }
+
+    ngAfterViewInit(): void {
+        if (this.autofocus) {
+            queueMicrotask(() => this.inputEl?.nativeElement.focus());
+        }
     }
 }

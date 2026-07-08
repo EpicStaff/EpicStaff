@@ -7,6 +7,7 @@ import urllib.request
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.http import HttpResponse
 from django.db.models import NOT_PROVIDED, IntegerField, Prefetch
 from django.db.models.functions import Cast
 from django_filters import rest_framework as filters
@@ -43,11 +44,6 @@ from tables.serializers.model_serializers.llm_serializers import (
 from tables.serializers.model_serializers.provider_serializers import (
     ProviderSerializer,
 )
-from tables.serializers.model_serializers.tag_serializers import (
-    AgentTagSerializer,
-    CrewTagSerializer,
-    GraphTagSerializer,
-)
 from tables.exceptions import (
     AgentSerializerError,
     BuiltInToolModificationError,
@@ -66,6 +62,7 @@ from tables.graph_versioning.serializers import (
 )
 
 from tables.import_export.enums import EntityType
+
 from tables.models import (
     Agent,
     AudioTranscriptionNode,
@@ -126,6 +123,9 @@ from drf_spectacular.types import OpenApiTypes
 from tables.swagger_schemas.knowledge_schemas.graph_bulk_save_schemas import (
     SAVE_FLOW_SWAGGER as _SAVE_FLOW_SWAGGER,
 )
+from tables.swagger_schemas.partial_import_schemas import (
+    PARTIAL_IMPORT_SWAGGER as PARTIAL_IMPORT_SWAGGER,
+)
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 from rest_framework.exceptions import PermissionDenied
 from django_filters.rest_framework import (
@@ -137,13 +137,10 @@ from django_filters.rest_framework import (
 from rest_framework import viewsets, mixins, status, filters as drf_filters
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from rest_framework.parsers import MultiPartParser, FormParser
 from django.db import transaction
 from django.db.models import Prefetch
 from tables.models.graph_models import (
-    ClassificationConditionGroup,
     ClassificationDecisionTableNode,
-    ClassificationDecisionTablePrompt,
     Condition,
     ConditionGroup,
     DecisionTableNode,
@@ -177,7 +174,6 @@ from tables.filters import (
     ProviderFilter,
 )
 from tables.utils.helpers import natural_sort_key
-from tables.models.tag_models import AgentTag, CrewTag, GraphTag
 from tables.models.label_models import Label
 from tables.models.vector_models import MemoryDatabase
 from tables.models.webhook_models import (
@@ -193,10 +189,12 @@ from tables.services.copy_services import (
     PythonCodeToolCopyService,
 )
 from tables.views.mixins import CopyActionMixin
+from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
+    validate_classification_condition_group_names,
+)
 from tables.serializers.model_serializers import (
     AgentReadSerializer,
     ClassificationDecisionTableNodeSerializer,
-    AgentTagSerializer,
     AgentWriteSerializer,
     AudioTranscriptionNodeSerializer,
     CodeAgentNodeSerializer,
@@ -221,7 +219,6 @@ from tables.serializers.model_serializers import (
     NgrokWebhookConfigModelSerializer,
     ProviderSerializer,
     PythonCodeResultSerializer,
-    PythonCodeSerializer,
     PythonCodeToolConfigSerializer,
     PythonCodeToolSerializer,
     PythonNodeSerializer,
@@ -232,8 +229,6 @@ from tables.serializers.model_serializers import (
     SubGraphNodeSerializer,
     TaskReadSerializer,
     TaskWriteSerializer,
-    TemplateAgentSerializer,
-    ToolConfigSerializer,
     VoiceSettingsSerializer,
     WebhookTriggerNodeSerializer,
     WebhookTriggerSerializer,
@@ -241,12 +236,25 @@ from tables.serializers.model_serializers import (
     TelegramTriggerNodeSerializer,
     TelegramTriggerNodeFieldSerializer,
 )
+
 from tables.serializers.serializers import (
     BulkExportSerializer,
+    GraphNodesPartialExportSerializer,
     ImportRequestSerializer,
 )
+from tables.import_export.registry import entity_registry
+from tables.import_export.services.partial_export_service import (
+    GraphPartialExportService,
+    NodeRef,
+    LIST_KEY_TO_ENTITY_TYPE,
+)
+from tables.import_export.services.partial_import_service import PartialImportService
+from tables.utils.helpers import generate_file_name
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.services.import_export_service import ViewSetImportExportService
+from tables.services.classification_decision_table_node_service import (
+    ClassificationDecisionTableNodeService,
+)
 from tables.import_export.services.import_service import ImportSettings
 from tables.services.redis_service import RedisService
 from tables.swagger_schemas.twilio_schemas import (
@@ -311,13 +319,6 @@ class BasePredefinedRestrictedViewSet(ModelViewSet):
             logger.error(e)
             raise PermissionDenied(e)
         instance.delete()
-
-
-class TemplateAgentReadWriteViewSet(ModelViewSet):
-    queryset = TemplateAgent.objects.all()
-    serializer_class = TemplateAgentSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = serializer_class.Meta.fields
 
 
 class LLMConfigReadWriteViewSet(ModelViewSet):
@@ -515,6 +516,17 @@ class AgentViewSet(CopyActionMixin, ModelViewSet):
     def export(self, request, pk: int):
         return self.import_export_service.export_entity(self.get_object())
 
+    @extend_schema(
+        request={
+            "multipart/form-data": {
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string", "format": "binary"},
+                },
+                "required": ["file"],
+            }
+        }
+    )
     @action(detail=False, methods=["post"], url_path="import")
     def import_entity(self, request):
         file_serializer = ImportRequestSerializer(data=request.data)
@@ -650,19 +662,6 @@ class TaskReadWriteViewSet(ModelViewSet):
         return Response(read_serializer.data, status=status.HTTP_200_OK)
 
 
-class ToolConfigViewSet(ModelViewSet):
-    queryset = ToolConfig.objects.select_related("tool").prefetch_related(
-        Prefetch(
-            "tool__tool_fields",
-            queryset=ToolConfigField.objects.all(),
-            to_attr="prefetched_config_fields",
-        )
-    )
-    serializer_class = ToolConfigSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["tool", "name"]
-
-
 class ContentHashPreconditionMixin:
     # """Passes content_hash from request data to the model instance before saving.
 
@@ -676,15 +675,6 @@ class ContentHashPreconditionMixin:
         if incoming_hash is not None:
             serializer.instance._expected_hash = incoming_hash
         super().perform_update(serializer)
-
-
-class PythonCodeViewSet(ContentHashPreconditionMixin, viewsets.ModelViewSet):
-    """
-    A viewset for viewing and editing PythonCode instances.
-    """
-
-    queryset = PythonCode.objects.all()
-    serializer_class = PythonCodeSerializer
 
 
 class PythonCodeToolViewSet(CopyActionMixin, viewsets.ModelViewSet):
@@ -734,6 +724,7 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
         self.import_export_service = ViewSetImportExportService(
             entity_type=EntityType.GRAPH, export_prefix="graph", filename_attr="name"
         )
+        self._partial_export_service = GraphPartialExportService(entity_registry)
 
     def get_queryset(self):
         qs = (
@@ -821,6 +812,36 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
 
         return self.import_export_service.bulk_export(entity_ids)
 
+    @extend_schema(request=GraphNodesPartialExportSerializer, responses={200: None})
+    @action(detail=True, methods=["post"], url_path="partial-export")
+    def partial_export(self, request, pk=None):
+        serializer = GraphNodesPartialExportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        graph = self.get_object()
+        node_refs = [
+            NodeRef(entity_type=entity_type, node_id=node_id)
+            for list_key, entity_type in LIST_KEY_TO_ENTITY_TYPE.items()
+            for node_id in serializer.validated_data.get(list_key, [])
+        ]
+
+        result = self._partial_export_service.export(
+            node_refs,
+            edge_ids=serializer.validated_data.get("edge_list", []),
+        )
+
+        if result.has_errors:
+            return Response(
+                {"errors": result.errors}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        filename = generate_file_name(f"nodes_{graph.name}", prefix="graph_nodes")
+        response = HttpResponse(
+            json.dumps(result.data, indent=4), content_type="application/json"
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
     @action(detail=False, methods=["post"], url_path="import")
     def import_entity(self, request):
         file_serializer = ImportRequestSerializer(data=request.data)
@@ -836,6 +857,25 @@ class GraphViewSet(CopyActionMixin, viewsets.ModelViewSet):
             ),
         )
         return Response(data, status=status.HTTP_200_OK)
+
+    @extend_schema(**PARTIAL_IMPORT_SWAGGER)
+    @action(detail=True, methods=["post"], url_path="partial-import")
+    def partial_import(self, request, pk=None):
+        file_serializer = ImportRequestSerializer(data=request.data)
+        file_serializer.is_valid(raise_exception=True)
+
+        try:
+            data = json.load(file_serializer.validated_data["file"])
+        except (json.JSONDecodeError, UnicodeDecodeError, Exception):
+            raise DRFValidationError(
+                {"detail": "File format is incorrect. Please upload a valid JSON file."}
+            )
+
+        graph = self.get_object()
+        partial_import_service = PartialImportService(entity_registry)
+        id_mapper = partial_import_service.import_data(data, graph)
+        summary = id_mapper.get_detailed_summary(entity_registry)
+        return Response(summary, status=status.HTTP_200_OK)
 
     def update(self, request, *args, **kwargs):
         response = super().update(request, *args, **kwargs)
@@ -1138,21 +1178,6 @@ class MemoryViewSet(
     filterset_class = MemoryFilter
 
 
-class CrewTagViewSet(viewsets.ModelViewSet):
-    queryset = CrewTag.objects.all()
-    serializer_class = CrewTagSerializer
-
-
-class AgentTagViewSet(viewsets.ModelViewSet):
-    queryset = AgentTag.objects.all()
-    serializer_class = AgentTagSerializer
-
-
-class GraphTagViewSet(viewsets.ModelViewSet):
-    queryset = GraphTag.objects.all()
-    serializer_class = GraphTagSerializer
-
-
 class RealtimeModelViewSet(viewsets.ModelViewSet):
     queryset = RealtimeModel.objects.all()
     serializer_class = RealtimeModelSerializer
@@ -1375,73 +1400,49 @@ class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph"]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._node_service = ClassificationDecisionTableNodeService()
+
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        node, _ = self._create_or_update_node(data=request.data)
+        node, _ = self._node_service.create_or_update(data=request.data)
         return Response(self.get_serializer(node).data, status=status.HTTP_201_CREATED)
 
     @transaction.atomic
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
-        node, _ = self._create_or_update_node(
+        node, _ = self._node_service.create_or_update(
             data=request.data, instance=instance, partial=partial
         )
         return Response(self.get_serializer(node).data, status=status.HTTP_200_OK)
 
-    def _create_or_update_node(self, data, instance=None, partial=False):
-        data = data.copy()
-        condition_groups_data = data.pop("condition_groups", None)
-        prompt_configs_data = data.pop("prompt_configs", None)
-
-        node_serializer = self.get_serializer(instance, data=data, partial=partial)
-        node_serializer.is_valid(raise_exception=True)
-        node = node_serializer.save()
-
-        if partial and condition_groups_data is None and prompt_configs_data is None:
-            return node, None
-
-        if instance:
-            ClassificationConditionGroup.objects.filter(
-                classification_decision_table_node=node
-            ).delete()
-
-        if condition_groups_data:
-            groups_to_create = []
-            for group_data in condition_groups_data:
-                gd = {
-                    k: v
-                    for k, v in group_data.items()
-                    if k not in ("id", "classification_decision_table_node")
-                }
-                groups_to_create.append(
-                    ClassificationConditionGroup(
-                        classification_decision_table_node=node, **gd
-                    )
-                )
-            ClassificationConditionGroup.objects.bulk_create(groups_to_create)
-
-        if prompt_configs_data is not None:
-            if instance:
-                ClassificationDecisionTablePrompt.objects.filter(cdt_node=node).delete()
-
-            ClassificationDecisionTablePrompt.objects.bulk_create(
-                [
-                    ClassificationDecisionTablePrompt(
-                        cdt_node=node,
-                        llm_config_id=prompt_data.get("llm_config"),
-                        **{
-                            k: v
-                            for k, v in prompt_data.items()
-                            if k not in ("id", "cdt_node", "llm_config")
-                        },
-                    )
-                    for prompt_data in prompt_configs_data
-                ]
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="export_format",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                enum=["json", "csv"],
+                description="Export format. Defaults to 'json'.",
+            )
+        ],
+        responses={200: OpenApiTypes.BINARY},
+    )
+    @action(detail=True, methods=["get"], url_path="export")
+    def export(self, request, pk=None):
+        export_format = request.query_params.get("export_format", "json")
+        result = self._node_service.export(pk=pk, export_format=export_format)
+        if result.errors is not None:
+            return Response(
+                {"errors": result.errors}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        return node, condition_groups_data
-
+        response = HttpResponse(result.content, content_type=result.content_type)
+        response["Content-Disposition"] = f'attachment; filename="{result.filename}"'
+        return response
 
 class McpToolViewSet(CopyActionMixin, viewsets.ModelViewSet):
     copy_service_class = McpToolCopyService

@@ -25,6 +25,8 @@ export class FlowShortcutsButtonComponent {
     label = input<string>(`${isMacPlatform() ? 'Cmd' : 'Ctrl'} + /`);
     icon = input<string>('shortcut');
     iconSize = input<string>('12px');
+    textEnd = input<boolean>(false);
+    active = input<boolean>(false);
 
     clicked = output<void>();
 }

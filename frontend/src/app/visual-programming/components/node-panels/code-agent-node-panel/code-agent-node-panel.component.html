@@ -63,11 +63,9 @@
                                 fieldId="llm_config"
                                 [nodeId]="node().id"
                             >
-                                <app-select
-                                    label="LLM Config"
+                                <app-llm-model-selector
+                                    [placeholder]="'LLM Config'"
                                     formControlName="llm_config"
-                                    [items]="llmConfigItems()"
-                                    placeholder="— None —"
                                 />
                             </app-lockable-field>
 
@@ -327,11 +325,9 @@
                         fieldId="llm_config"
                         [nodeId]="node().id"
                     >
-                        <app-select
-                            label="LLM Config"
+                        <app-llm-model-selector
+                            [placeholder]="'LLM Config'"
                             formControlName="llm_config"
-                            [items]="llmConfigItems()"
-                            placeholder="— None —"
                         />
                     </app-lockable-field>
 
