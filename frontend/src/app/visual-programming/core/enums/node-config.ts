@@ -23,7 +23,7 @@ export const NODE_ICONS: Record<NodeType, string> = {
 };
 
 export const NODE_COLORS: Record<NodeType, string> = {
-    [NodeType.AGENT]: '#8e5cd9',
+    [NodeType.AGENT]: '#685fff',
     [NodeType.TASK]: '#2aba6b',
     [NodeType.TOOL]: '#9f6a00',
     [NodeType.LLM]: '#e0575b',

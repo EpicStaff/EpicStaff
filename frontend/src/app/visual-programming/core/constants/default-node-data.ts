@@ -1,9 +1,17 @@
+import { AgentNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
 import { ScheduleTriggerNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
 import { TaskNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { NODE_COLORS } from '../enums/node-config';
 import { NodeType } from '../enums/node-type';
 
 export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
+    [NodeType.AGENT]: (): AgentNodeData => ({
+        name: 'Agent Node',
+        agent_definition: null,
+        surface_list: [],
+        inline_surface: null,
+        tasks: [],
+    }),
     [NodeType.EDGE]: () => ({
         source: null,
         then: null,

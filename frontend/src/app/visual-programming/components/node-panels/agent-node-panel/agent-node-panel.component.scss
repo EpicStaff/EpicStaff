@@ -1,0 +1,306 @@
+@use '../../../styles/node-panel-mixins.scss' as mixins;
+
+.panel-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.panel-content {
+    @include mixins.panel-content;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 20px 16px;
+}
+
+.form-container {
+    @include mixins.form-container;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.form-layout {
+    height: 100%;
+    min-height: 0;
+    width: 100%;
+
+    &.expanded {
+        display: flex;
+        gap: 1rem;
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+    }
+
+    &.collapsed {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        overflow: visible;
+    }
+}
+
+.form-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    flex: 0 0 480px;
+    max-width: 480px;
+    height: 100%;
+    overflow-y: auto;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+
+    &__label-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    &__label {
+        font-size: 0.875rem;
+        color: var(--color-text-primary);
+        margin: 0;
+
+        .required {
+            color: var(--color-required-asterisk, var(--accent-color));
+            margin-left: 2px;
+        }
+    }
+}
+
+.dropdown-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--color-input-background);
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 6px;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+
+    &:hover {
+        border-color: var(--accent-color);
+    }
+
+    &__label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+
+        &--placeholder {
+            color: var(--color-input-text-placeholder);
+        }
+    }
+}
+
+.surface-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+
+    &__select {
+        flex: 1;
+        min-width: 0;
+    }
+}
+
+::ng-deep .surface-row .multi-select__btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--color-input-background);
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 6px;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+}
+
+.view-summary-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0 0.75rem;
+    white-space: nowrap;
+    background: transparent;
+    border: 1px solid var(--accent-color);
+    border-radius: 6px;
+    color: var(--accent-color);
+    font-size: 0.75rem;
+    cursor: not-allowed;
+    opacity: 0.5;
+
+    &:disabled {
+        cursor: not-allowed;
+    }
+}
+
+.add-task-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    width: 100%;
+    height: 40px;
+    padding: 0 0.75rem;
+    background: transparent;
+    border: 1px dashed var(--transparent-white-8, rgba(217, 217, 222, 0.08));
+    border-radius: 10px;
+    color: var(--text-secondary-60, rgba(217, 217, 222, 0.6));
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+        border-color: rgba(217, 217, 222, 0.16);
+        color: var(--color-text-primary);
+    }
+}
+
+.task-error {
+    font-size: 0.75rem;
+    color: #ff6b6b;
+}
+
+.icon-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--color-text-secondary, #d9d9d999);
+    cursor: pointer;
+    transition:
+        background-color 0.15s ease,
+        color 0.15s ease;
+
+    &:hover {
+        background: var(--color-divider-subtle);
+        color: var(--color-text-primary);
+    }
+}
+
+.main-editor-pane {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    height: 100%;
+    min-height: 0;
+    min-width: 0;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--color-input-background, #1e1e1e);
+
+    &__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border-bottom: 1px solid var(--color-divider-subtle);
+        color: var(--color-text-primary);
+        font-size: 0.875rem;
+        flex-shrink: 0;
+    }
+
+    &__title-group {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-width: 0;
+    }
+
+    &__title {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        white-space: nowrap;
+    }
+
+    &__title-icon {
+        color: var(--accent-color);
+    }
+
+    &__subtitle {
+        font-size: 0.75rem;
+        color: var(--text-secondary-60);
+        white-space: nowrap;
+    }
+
+    &__actions {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    &__body {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--color-background-body, #212325);
+    }
+
+    app-json-editor {
+        flex: 1;
+        min-height: 0;
+        height: 100%;
+    }
+
+    &__textarea {
+        flex: 1;
+        min-height: 0;
+        height: 100%;
+        width: 100%;
+        padding: 0.75rem;
+        background: var(--color-background-body, #212325) !important;
+        border: none !important;
+        outline: none !important;
+        resize: none;
+        color: var(--color-text-primary, #d9d9de);
+        font-size: 0.875rem;
+        font-family: inherit;
+
+        &::placeholder {
+            color: var(--color-input-text-placeholder, rgba(217, 217, 222, 0.35));
+        }
+
+        &:focus,
+        &:focus-within {
+            border-color: transparent !important;
+            outline: none !important;
+        }
+    }
+
+    &__empty {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 1rem;
+        color: var(--text-secondary-60, rgba(217, 217, 222, 0.6));
+        font-size: 0.875rem;
+    }
+}

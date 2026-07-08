@@ -293,15 +293,6 @@
 }
 
 // Specific host node types
-:host(.type-agent) {
-    .port-position-top {
-        @include mixins.agent-port-top-indexes;
-    }
-
-    .port-position-bottom {
-        @include mixins.agent-port-bottom-indexes;
-    }
-}
 
 :host(.type-start) {
     width: 122px;

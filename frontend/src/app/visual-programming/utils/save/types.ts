@@ -1,5 +1,6 @@
 import { ConnectionModel } from '../../core/models/connection.model';
 import {
+    AgentNodeModel,
     AudioToTextNodeModel,
     ClassificationDecisionTableNodeModel,
     CodeAgentNodeModel,
@@ -29,6 +30,7 @@ export interface NodeDiffByType {
     crewNodes: NodeDiff<ProjectNodeModel>;
     pythonNodes: NodeDiff<PythonNodeModel>;
     taskNodes: NodeDiff<TaskNodeModel>;
+    agentNodes: NodeDiff<AgentNodeModel>;
     llmNodes: NodeDiff<LLMNodeModel>;
     fileExtractorNodes: NodeDiff<FileExtractorNodeModel>;
     audioToTextNodes: NodeDiff<AudioToTextNodeModel>;
