@@ -2,10 +2,14 @@ import hashlib
 import json
 from datetime import UTC, datetime
 
+from enums import DocumentErrorCode
+
 __all__ = [
     "ERROR_MESSAGE_MAX_LENGTH",
     "format_error_message",
     "hash_dict",
+    "http_status",
+    "error_details",
     "utcnow",
 ]
 
@@ -37,6 +41,21 @@ def extract_provider_message(exc: BaseException) -> str | None:
     return None
 
 
+def http_status(exc: BaseException) -> int | None:
+    """The HTTP status code carried by a provider exception, if any.
+
+    Different SDKs expose it under different attributes, so several are tried.
+    `bool` is skipped: it is an `int` subclass but never a real status code.
+    """
+    for attr in ("status_code", "http_status", "status", "code"):
+        value = getattr(exc, attr, None)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, int):
+            return value
+    return None
+
+
 def format_error_message(exc: BaseException) -> str:
     """The human-readable `message` from the exception's error body when available,
     else `"TypeName: text"`. Truncated to ERROR_MESSAGE_MAX_LENGTH (with ellipsis).
@@ -52,3 +71,14 @@ def format_error_message(exc: BaseException) -> str:
     )
     n = ERROR_MESSAGE_MAX_LENGTH
     return raw if len(raw) <= n else raw[: n - 1] + "…"
+
+
+def error_details(exc: BaseException) -> tuple[DocumentErrorCode, str]:
+    """The `(error_code, error_message)` to persist for a failed operation.
+
+    Domain errors carry their own `error_code`; any other exception is treated
+    as `UNKNOWN`. Replaces the old exception-type classifier: the code is read
+    straight off the error instead of being guessed after the fact.
+    """
+    error_code = getattr(exc, "error_code", DocumentErrorCode.UNKNOWN)
+    return error_code, format_error_message(exc)

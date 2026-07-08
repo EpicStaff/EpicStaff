@@ -4,7 +4,7 @@ from models import Document, PrechunkRequest, PrechunkResponse
 from orchestrators.prechunking.base import AbstractPrechunker
 from services.chunkers import build_chunker
 from services.file_text_extractors import build_file_text_extractor
-from services.indexing_error_classifier import IndexingErrorClassifier
+from utils import error_details
 
 
 class NaivePrechunker(AbstractPrechunker):
@@ -41,8 +41,7 @@ class NaivePrechunker(AbstractPrechunker):
     async def on_error(self, request: PrechunkRequest, exc: Exception):
         if (document := self.state.get("document")) is not None:
             document: Document
-            error_code, error_message = IndexingErrorClassifier.classify(exc)
-            document.mark_failed(error_code, error_message)
+            document.mark_failed(*error_details(exc))
             await self._update_document(request.rag_id, document)
 
     async def _get_document(self, rag_id: int, document_id: int) -> Document:

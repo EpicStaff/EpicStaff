@@ -30,6 +30,7 @@ class NaiveRagSerializer(serializers.ModelSerializer):
             "embedder_name",
             "rag_status",
             "collection_id",
+            "error_code",
             "error_message",
             "created_at",
             "updated_at",
@@ -79,6 +80,8 @@ class DocumentConfigSerializer(serializers.ModelSerializer):
             "total_embeddings",
             "created_at",
             "processed_at",
+            "error_code",
+            "error_message",
         ]
         read_only_fields = fields
 
@@ -196,6 +199,7 @@ class NaiveRagDetailSerializer(serializers.ModelSerializer):
             "total_documents",
             "configured_documents",
             "document_configs",
+            "error_code",
             "error_message",
             "created_at",
             "updated_at",

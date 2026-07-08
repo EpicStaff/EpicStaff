@@ -14,7 +14,7 @@ from orchestrators.indexing import AbstractIndexer
 from services.chunkers import build_chunker
 from services.embedders import AbstractEmbedder, build_embedder
 from services.file_text_extractors import build_file_text_extractor
-from services.indexing_error_classifier import IndexingErrorClassifier
+from utils import error_details
 
 
 class NaiveIndexer(AbstractIndexer):
@@ -74,8 +74,7 @@ class NaiveIndexer(AbstractIndexer):
                 raise
 
             except Exception as e:
-                error_code, error_message = IndexingErrorClassifier.classify(e)
-                document.mark_failed(error_code, error_message)
+                document.mark_failed(*error_details(e))
 
             else:
                 document.mark_completed()
@@ -91,10 +90,9 @@ class NaiveIndexer(AbstractIndexer):
             await self._update_rag(rag)
 
     async def on_error(self, request: IndexRequest, exc: Exception):
-        # TODO: update rag errors
         if (rag := self.state.get("rag")) is not None:
             rag = cast(Rag, rag)
-            rag.mark_as_failed()
+            rag.mark_as_failed(*error_details(exc))
             await self._update_rag(rag)
 
     async def _get_rag_under_uow(self, rag_id: int) -> Rag:

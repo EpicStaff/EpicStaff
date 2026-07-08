@@ -1,4 +1,5 @@
 from database.config import BaseModel
+from enums import DocumentErrorCode
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -99,6 +100,7 @@ class GraphRag(BaseModel):
     graph_rag_id = Column(Integer, primary_key=True, autoincrement=True)
     rag_status = Column(String(20), default="new")
     error_message = Column(Text, nullable=True)
+    error_code = Column(String(32), nullable=False, default=DocumentErrorCode.NONE)
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     indexed_at = Column(DateTime, nullable=True)

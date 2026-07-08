@@ -34,6 +34,8 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
                 id=orm_rag.naive_rag_id,
                 status=orm_rag.rag_status,
                 indexing_document_ids=set(orm_rag.indexing_document_config_ids),
+                error_code=orm_rag.error_code,
+                error_message=orm_rag.error_message,
             )
         return None
 
@@ -44,6 +46,8 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
             .values(
                 rag_status=rag.status,
                 indexing_document_config_ids=list(rag.indexing_document_ids),
+                error_code=rag.error_code,
+                error_message=rag.error_message,
             )
         )
 

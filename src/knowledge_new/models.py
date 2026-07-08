@@ -50,6 +50,8 @@ __all__ = [
 class Rag(Entity):
     status: IndexStatusEnum
     indexing_document_ids: set[int]
+    error_code: DocumentErrorCode = DocumentErrorCode.NONE
+    error_message: str | None = None
 
     def finish_document(self, document_id: int):
         self.indexing_document_ids.discard(document_id)
@@ -66,13 +68,17 @@ class Rag(Entity):
     def mark_as_processing(self, document_ids: frozenset[int]):
         self.status = IndexStatusEnum.PROCESSING
         self.indexing_document_ids.update(document_ids)
+        self.error_code = DocumentErrorCode.NONE
+        self.error_message = None
 
     def mark_as_cancelled(self):
         self.status = IndexStatusEnum.CANCELLED
         self.indexing_document_ids.clear()
 
-    def mark_as_failed(self):
+    def mark_as_failed(self, error_code: DocumentErrorCode, error_message: str):
         self.status = IndexStatusEnum.FAILED
+        self.error_code = error_code
+        self.error_message = error_message
         self.indexing_document_ids.clear()
 
 

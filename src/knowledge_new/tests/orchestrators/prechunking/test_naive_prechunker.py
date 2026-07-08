@@ -255,7 +255,7 @@ async def test_cancellation_restores_status_per_stage(
                 "extra": {"character": {"regex": r"\n\n"}},
             },
             NoPreviewChunksProducedError,
-            DocumentErrorCode.CHUNKING_FAILED,
+            DocumentErrorCode.NO_CHUNKS_PRODUCED,
         ),
     ],
     ids=["extraction_failure", "chunking_failure", "no_chunks_produced"],
@@ -282,5 +282,5 @@ async def test_error_marks_document_failed_per_stage(
 
     assert document.status == DocumentStatusEnum.FAILED
     assert document.error_code == expected_error_code
-    assert document.error_message  # populated via classify → format_error_message
+    assert document.error_message  # populated via error_details → format_error_message
     assert uow.naive_rag_repo.status_log == [DocumentStatusEnum.CHUNKING, DocumentStatusEnum.FAILED]

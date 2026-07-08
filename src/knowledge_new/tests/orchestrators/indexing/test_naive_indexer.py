@@ -437,7 +437,7 @@ async def test_cancellation_marks_rag_cancelled(
             DocumentErrorCode.CHUNKING_FAILED,
             [DocumentStatusEnum.CHUNKING, DocumentStatusEnum.FAILED],
         ),
-        # chunker yields nothing → NoPreviewChunksProducedError → UNKNOWN
+        # chunker yields nothing → NoPreviewChunksProducedError → NO_CHUNKS_PRODUCED
         (
             {
                 "name": "doc.txt",
@@ -451,7 +451,7 @@ async def test_cancellation_marks_rag_cancelled(
                 ),
             },
             None,
-            DocumentErrorCode.CHUNKING_FAILED,
+            DocumentErrorCode.NO_CHUNKS_PRODUCED,
             [DocumentStatusEnum.CHUNKING, DocumentStatusEnum.FAILED],
         ),
         # embedder fails on an already-chunked doc → EMBEDDING_FAILED
@@ -491,7 +491,7 @@ async def test_document_error_marks_document_failed_and_rag_failed(
 
     assert document.status == DocumentStatusEnum.FAILED
     assert document.error_code == expected_error_code
-    assert document.error_message  # populated via classify → format_error_message
+    assert document.error_message  # populated via error_details → format_error_message
     assert repo.doc_status_log == expected_doc_log
     # no document completed → rag ends FAILED
     assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.FAILED]
@@ -596,6 +596,9 @@ async def test_top_level_error_marks_rag_failed_and_reraises(
     assert repo.rag_status_log == [IndexStatusEnum.FAILED]
     assert repo.doc_status_log == []
     assert embedder.embedded == []
+    # the top-level ("unknown reason") failure is captured on the rag itself
+    assert rag.error_code == DocumentErrorCode.UNKNOWN
+    assert rag.error_message
 
 
 async def test_missing_rag_raises_and_does_not_mark_anything(monkeypatch):

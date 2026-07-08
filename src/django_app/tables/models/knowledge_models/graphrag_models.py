@@ -20,6 +20,16 @@ class GraphRag(models.Model):
         WARNING = "warning"
         FAILED = "failed"
 
+    class ErrorCode(models.TextChoices):
+        
+        CHUNKING_FAILED = "chunking_failed"
+        NO_CHUNKS_PRODUCED = "no_chunks_produced"
+        EMBEDDING_FAILED = "embedding_failed"
+        EMBEDDER_AUTH = "embedder_auth"
+        EMBEDDER_RATE_LIMIT = "embedder_rate_limit"
+        UNKNOWN = "unknown"
+        NONE = "none"
+
     graph_rag_id = models.AutoField(primary_key=True)
     base_rag_type = models.ForeignKey(
         BaseRagType,
@@ -61,6 +71,11 @@ class GraphRag(models.Model):
         default=GraphRagStatus.NEW,
     )
     error_message = models.TextField(null=True, blank=True)
+    error_code = models.CharField(
+        max_length=32,
+        choices=ErrorCode.choices,
+        default=ErrorCode.NONE,
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
