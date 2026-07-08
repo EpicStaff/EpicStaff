@@ -4,10 +4,7 @@
         [graphId]="graph.id"
         [isAssistantOpen]="flowAssistantService.isOpen()"
         [graph]="graph"
-        [isSaving]="isSaving()"
         [isRunning]="isRunning()"
-        [hasUnsavedChanges]="hasUnsavedChangesSignal()"
-        (save)="onHeaderSave()"
         (saveVersion)="onSaveVersion()"
         (viewVersionHistory)="onViewVersionHistory()"
         (viewSessions)="handleViewSessions()"
@@ -17,16 +14,6 @@
         (flowEdited)="onFlowEdited($event)"
         [editors]="collaborationEditors()"
     ></app-flow-header>
-
-    @if (savedByBanner()) {
-        <div class="saved-by-banner">
-            <i class="ti ti-device-floppy"></i>
-            Saved by {{ savedByBanner() }}
-            <button class="dismiss-btn" (click)="savedByBanner.set(null)">
-                <i class="ti ti-x"></i>
-            </button>
-        </div>
-    }
 
     <div class="body">
         @if (restoreWarnings().length > 0) {
@@ -47,9 +34,7 @@
             [currentFlowId]="graph.id"
             [flowName]="graph.name"
             [initialNodeId]="initialNodeId"
-            [isSaving]="isSaving()"
             [hasUnsavedChanges]="hasUnsavedChanges()"
-            (save)="onGraphSave($event)"
             (openShortcuts)="openShortcutsModal($event)"
             (requestReload)="refreshCurrentFlow()"
             (importComplete)="handlePartialImportComplete()"
@@ -93,12 +78,6 @@
                     (sessionSelected)="onSessionSelected($event)"
                 ></app-flow-messages-panel>
             }
-        }
-        @if (isSaving()) {
-            <div
-                class="saving-lock-overlay"
-                title="Saving… editing is locked until the save completes"
-            ></div>
         }
     </div>
     @if (flowAssistantService.isOpen()) {

@@ -1,6 +1,7 @@
 import { computed, Injectable, Signal, signal } from '@angular/core';
 import { Observable, Subject } from 'rxjs';
 
+import { FlowModel } from '../core/models/flow.model';
 import { NodeModel } from '../core/models/node.model';
 import { FlowService } from './flow.service';
 
@@ -10,7 +11,10 @@ import { FlowService } from './flow.service';
 export class SidePanelService {
     private readonly selectedNodeIdSignal = signal<string | null>(null);
     private readonly autosaveTriggerSignal = signal<boolean>(false);
-    private readonly fullSaveRequestSignal = signal<number>(0);
+    private readonly fullSaveRequestSignal = signal<{ seq: number; before: FlowModel | null }>({
+        seq: 0,
+        before: null,
+    });
 
     private readonly expandRequestSignal = signal<boolean>(false);
     public readonly expandRequest: Signal<boolean> = this.expandRequestSignal.asReadonly();
@@ -18,7 +22,9 @@ export class SidePanelService {
     private readonly saveNodeRequestSubject = new Subject<NodeModel>();
     public readonly saveNodeRequest$: Observable<NodeModel> = this.saveNodeRequestSubject.asObservable();
 
+    /** @deprecated fired only by the deprecated manual REST save path; no emitters remain. */
     private readonly graphSavedSubject = new Subject<void>();
+    /** @deprecated fired only by the deprecated manual REST save path; no emitters remain. */
     public readonly graphSaved$: Observable<void> = this.graphSavedSubject.asObservable();
 
     private readonly reloadRequestedSubject = new Subject<void>();
@@ -38,7 +44,8 @@ export class SidePanelService {
     });
 
     public readonly autosaveTrigger: Signal<boolean> = this.autosaveTriggerSignal.asReadonly();
-    public readonly fullSaveRequest: Signal<number> = this.fullSaveRequestSignal.asReadonly();
+    public readonly fullSaveRequest: Signal<{ seq: number; before: FlowModel | null }> =
+        this.fullSaveRequestSignal.asReadonly();
 
     public requestExpand(): void {
         this.expandRequestSignal.set(true);
@@ -94,6 +101,7 @@ export class SidePanelService {
         this.saveNodeRequestSubject.next(node);
     }
 
+    /** @deprecated called only by the deprecated manual REST save path (saveFlowState). */
     public notifyGraphSaved(): void {
         this.graphSavedSubject.next();
     }
@@ -110,7 +118,7 @@ export class SidePanelService {
         this.savingNodeIdSignal.set(null);
     }
 
-    public requestFullSave(): void {
-        this.fullSaveRequestSignal.update((v) => v + 1);
+    public requestFullSave(before: FlowModel): void {
+        this.fullSaveRequestSignal.update(({ seq }) => ({ seq: seq + 1, before }));
     }
 }

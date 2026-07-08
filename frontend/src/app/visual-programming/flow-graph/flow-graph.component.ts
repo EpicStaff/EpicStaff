@@ -101,7 +101,7 @@ import { NodeFactoryService } from '../services/node-factory.service';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
 import { createFlowConnection } from '../utils/connection.factory';
-import { FlowDiffResult } from '../utils/diff-flow-models.util';
+import { diffFlowModels, FlowDiffResult } from '../utils/diff-flow-models.util';
 import { normalizeFlowPorts } from '../utils/load';
 import { CursorState, GraphLiveCursorsComponent } from './graph-live-cursors/graph-live-cursors.component';
 
@@ -151,9 +151,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     @Input() currentFlowId: number | null = null;
     @Input() flowName: string = '';
     @Input() initialNodeId: string | null = null;
-    @Input() isSaving: boolean = false;
     @Input() hasUnsavedChanges: boolean = false;
+    /** @deprecated set only by the deprecated manual REST save path; no bindings remain. */
+    @Input() isSaving: boolean = false;
 
+    /** @deprecated emitted only by the deprecated emitSave(); no bindings remain. */
     @Output() save = new EventEmitter<FlowModel>();
     @Output() requestReload = new EventEmitter<void>();
     readonly openShortcuts = output<DOMRect>();
@@ -339,10 +341,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     constructor() {
         effect(() => {
-            const requestCount = this.sidePanelService.fullSaveRequest();
-            if (requestCount > this.lastSeenFullSaveRequest) {
-                this.lastSeenFullSaveRequest = requestCount;
-                this.emitSave();
+            const request = this.sidePanelService.fullSaveRequest();
+            if (request.seq > this.lastSeenFullSaveRequest) {
+                this.lastSeenFullSaveRequest = request.seq;
+                if (request.before) {
+                    this.broadcastFlowDiff(diffFlowModels(request.before, this.flowService.getFlowState()));
+                }
             }
         });
     }
@@ -435,9 +439,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
         if (changes['initialNodeId'] && changes['initialNodeId'].currentValue) {
             this.openNodePanel(changes['initialNodeId'].currentValue);
-        }
-        if (changes['isSaving'] && changes['isSaving'].currentValue === true) {
-            this.onCloseContextMenu();
         }
     }
 
@@ -953,6 +954,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }, 0);
     }
 
+    /** @deprecated Manual save removed in EST-3020 (WS autosave persists everything). Kept for potential rollback; no call sites. */
     public commitSidePanelToFlow(): void {
         const updatedNode = this.nodePanelShell?.captureCurrentNodeState();
         if (updatedNode) {
@@ -960,6 +962,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
     }
 
+    /** @deprecated Manual save removed in EST-3020 (WS autosave persists everything). Kept for potential rollback; no call sites. */
     public emitSave(): void {
         if (this.nodePanelShell?.hasPanelInstance()) {
             const updatedNode = this.nodePanelShell.captureCurrentNodeState();
@@ -1604,9 +1607,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onExportAllAsJson(): void {
-        const exportable = this.flowService
-            .nodes()
-            .filter((n) => n.type !== NodeType.START && n.type !== NodeType.END);
+        const exportable = this.flowService.nodes().filter((n) => n.type !== NodeType.START && n.type !== NodeType.END);
         if (exportable.length === 0) {
             this.toastService.warning('No nodes to export', 3000, 'bottom-right');
             return;
@@ -1838,10 +1839,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         return this.dialog.openDialogs.length > 0;
     }
 
-    // Editing is locked while a dialog is open OR a full graph save is in flight.
-    // (Saving lock fixes edits made mid-save being discarded when the response is applied.)
     private isEditingLocked(): boolean {
-        return this.isDialogOpen() || this.isSaving;
+        return this.isDialogOpen();
     }
 
     private updateStartNodeInitialState(newState: Record<string, unknown>): void {

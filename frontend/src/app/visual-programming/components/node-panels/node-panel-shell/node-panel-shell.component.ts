@@ -50,23 +50,6 @@ import { SidePanelService } from '../../../services/side-panel.service';
                         <span class="title">{{ nodeNameToDisplay() }}</span>
                     </div>
                     <div class="header-actions">
-                        @if (showSaveButton()) {
-                            <button
-                                class="save-btn"
-                                [class.save-btn--icon-only]="!isExpanded()"
-                                type="button"
-                                matTooltip="Save local node changes"
-                                matTooltipPosition="below"
-                                [disabled]="panelInstanceSig()?.form?.invalid || panelInstanceSig()?.isSaving?.()"
-                                (click)="onHeaderSaveClick()"
-                            >
-                                <app-svg-icon
-                                    icon="floppy"
-                                    size="1.25rem"
-                                ></app-svg-icon>
-                                <span class="btn-label">Save</span>
-                            </button>
-                        }
                         @if (shouldShowExpandButton()) {
                             <button
                                 class="expand-btn"
@@ -132,7 +115,12 @@ export class NodePanelShellComponent {
 
     public readonly shouldShowExpandButton = computed(() => {
         const node = this.node();
-        return node && node.type !== 'table' && node.type !== NodeType.SCHEDULE_TRIGGER && node.type !== 'classification-decision-table';
+        return (
+            node &&
+            node.type !== 'table' &&
+            node.type !== NodeType.SCHEDULE_TRIGGER &&
+            node.type !== 'classification-decision-table'
+        );
     });
 
     protected readonly outlet = viewChild(NgComponentOutlet);
@@ -156,6 +144,7 @@ export class NodePanelShellComponent {
         form?: { invalid: boolean };
         onSaveClick?: () => void;
     } | null>(null);
+    /** @deprecated the panel-header Save button was removed in EST-3020; no template usage remains. */
     protected readonly showSaveButton = computed(() => {
         const panel = this.panelInstanceSig();
         return (panel?.isDirty?.() ?? false) && !!panel?.onSaveClick;
@@ -237,6 +226,7 @@ export class NodePanelShellComponent {
         });
     }
 
+    /** @deprecated the panel-header Save button was removed in EST-3020; no template usage remains. */
     protected onHeaderSaveClick(): void {
         this.panelInstanceSig()?.onSaveClick?.();
     }
@@ -297,6 +287,7 @@ export class NodePanelShellComponent {
         }
     }
 
+    /** @deprecated used only by the deprecated flow-graph emitSave()/commitSidePanelToFlow(); no call sites. */
     public captureCurrentNodeState(): NodeModel | null {
         if (!this.panelInstance) {
             return null;
@@ -317,6 +308,7 @@ export class NodePanelShellComponent {
         }
     }
 
+    /** @deprecated used only by the deprecated flow-graph emitSave(); no call sites. */
     public hasPanelInstance(): boolean {
         return this.panelInstance !== null;
     }

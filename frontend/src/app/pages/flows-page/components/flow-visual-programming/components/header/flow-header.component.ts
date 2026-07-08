@@ -5,6 +5,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterModule } from '@angular/router';
+import { EditorInfo } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
 import { FlowRenameDialogComponent } from '../../../../../../features/flows/components/flow-rename-dialog/flow-rename-dialog.component';
 import { GraphDto } from '../../../../../../features/flows/models/graph.model';
@@ -13,9 +14,8 @@ import { GraphDto } from '../../../../../../features/flows/models/graph.model';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { Spinner2Component } from '../../../../../../shared/components/spinner-type2/spinner.component';
 import { CollapseOnOverflowDirective } from '../../../../../../shared/directives/collapse-on-overflow.directive';
-import { SaveDropdownComponent } from './save-dropdown/save-dropdown.component';
-import { EditorInfo } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 import { GraphPresenceIndicatorsComponent } from './presence-indicator/graph-presence-indicators.component';
+import { SaveDropdownComponent } from './save-dropdown/save-dropdown.component';
 
 @Component({
     selector: 'app-flow-header',
@@ -42,11 +42,10 @@ export class FlowHeaderComponent {
     @Input() isAssistantOpen = false;
     @Input() isEpicChatEnabled = false;
     @Input() graph?: GraphDto;
-    @Input() isSaving = false;
     @Input() isRunning = false;
+    /** @deprecated the unsaved-changes indicator was removed in EST-3020; no template usage remains. */
     @Input() hasUnsavedChanges = false;
     @Input() editors: EditorInfo[] = [];
-    @Output() save = new EventEmitter<void>();
     @Output() back = new EventEmitter<void>();
     @Output() viewSessions = new EventEmitter<void>();
     @Output() run = new EventEmitter<void>();
@@ -70,10 +69,6 @@ export class FlowHeaderComponent {
 
     closeSaveDropdown(): void {
         this.isSaveDropdownOpen.set(false);
-    }
-
-    onSave() {
-        this.save.emit();
     }
 
     onBack() {

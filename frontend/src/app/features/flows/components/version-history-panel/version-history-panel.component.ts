@@ -17,7 +17,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { IconButtonComponent } from '@shared/components';
-import { EMPTY, filter, Observable, of, switchMap } from 'rxjs';
+import { EMPTY, filter, switchMap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications/toast.service';
 import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog/confimation-dialog.service';
@@ -80,8 +80,6 @@ export class VersionHistoryPanelComponent implements OnInit {
         public data: {
             graphId: number;
             graphSaveVersion?: () => number | undefined;
-            hasUnsavedChanges?: () => boolean;
-            saveCurrentState?: () => Observable<void>;
         },
         public dialogRef: DialogRef<GraphRestoreResponse | undefined>,
         private router: Router,
@@ -256,16 +254,11 @@ export class VersionHistoryPanelComponent implements OnInit {
     }
 
     private restoreWithUnsavedCheck(version: GraphVersionDto): void {
-        const hasUnsaved = this.data.hasUnsavedChanges?.() ?? false;
-        const message = hasUnsaved
-            ? `You have unsaved changes. Restoring <strong>${version.name}</strong> will replace the current flow state. Save a backup of the current state first?`
-            : `Restoring <strong>${version.name}</strong> will replace the current flow state. Save a backup of the current state first?`;
-
         this.unsavedChangesDialogService
             .confirm({
                 title: 'Restore version',
-                message,
-                saveText: 'Save & Restore',
+                message: `Restoring <strong>${version.name}</strong> will replace the current flow state. Save a backup of the current state first?`,
+                saveText: 'Backup & Restore',
                 dontSaveText: 'Just restore',
                 cancelText: 'Cancel',
                 type: 'warning',
@@ -274,15 +267,10 @@ export class VersionHistoryPanelComponent implements OnInit {
             .pipe(
                 switchMap((result) => {
                     if (result === 'save') {
-                        const save$ = this.data.saveCurrentState?.() ?? of(void 0);
-                        return save$?.pipe(
-                            switchMap(() =>
-                                this.flowApiService.restoreGraphVersion(
-                                    version.id,
-                                    true,
-                                    this.data.graphSaveVersion?.()
-                                )
-                            )
+                        return this.flowApiService.restoreGraphVersion(
+                            version.id,
+                            true,
+                            this.data.graphSaveVersion?.()
                         );
                     }
                     if (result === 'dont-save') {

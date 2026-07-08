@@ -151,16 +151,8 @@
             }
         }
 
-        .sessions-button {
-            background-color: transparent;
-            color: var(--accent-color);
-            border: none;
-
-            &:hover {
-                background-color: rgba(154, 115, 175, 0.1);
-            }
-        }
-
+        .sessions-button,
+        .versions-button,
         .open-chat-button,
         .connect-chat-button,
         .get-curl-button {

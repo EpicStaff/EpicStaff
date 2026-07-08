@@ -23,20 +23,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { GetLlmConfigRequest } from '@shared/models';
 import { LlmConfigStorageService } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
-import {
-    catchError,
-    defaultIfEmpty,
-    EMPTY,
-    filter,
-    finalize,
-    forkJoin,
-    map,
-    Observable,
-    of,
-    switchMap,
-    take,
-    tap,
-} from 'rxjs';
+import { catchError, EMPTY, filter, finalize, forkJoin, map, Observable, of, switchMap, take, tap } from 'rxjs';
 import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
@@ -126,6 +113,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly destroyRef = inject(DestroyRef);
     private readonly wsService = inject(GraphCollaborationWsService);
     private readonly profileService = inject(ProfileService);
+    /** @deprecated used only by the deprecated manual-save path (saveCurrentState). */
     private readonly injector = inject(Injector);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
@@ -149,8 +137,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public readonly hasUnsavedChangesSignal = computed<boolean>(() => {
         return JSON.stringify(this.currentFlowState()) !== JSON.stringify(this.savedFlowState());
     });
+    /** @deprecated the "saved by" banner was removed in EST-3020; nothing sets or renders it. */
     public readonly savedByBanner = signal<string | null>(null);
 
+    /** @deprecated set only by the deprecated manual REST save path (saveFlowState). */
     public isSaving = signal(false);
     public isRunning = signal(false);
     public restoreWarnings = signal<RestoreWarning[]>([]);
@@ -238,12 +228,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
                 this.flowService.applyConnectionIdMap(tempIdMap, event.graph_id);
             }
-            const currentUserId = this.profileService.currentUserSignal()?.id;
-            if (event.saved_by.user_id !== currentUserId) {
-                const savedBy = event.saved_by.display_name ?? `User ${event.saved_by.user_id}`;
-                this.savedByBanner.set(savedBy);
-                this.savedFlowState.set(cloneFlowState(this.currentFlowState()));
-            }
+            this.savedFlowState.set(cloneFlowState(this.currentFlowState()));
         });
 
         this.wsService.saveFailed$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
@@ -542,10 +527,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             .subscribe();
     }
 
+    /** @deprecated Manual save removed in EST-3020 (WS autosave persists everything). Kept for potential rollback; no call sites. */
     public onHeaderSave(): void {
         this.flowGraphComponent?.emitSave();
     }
 
+    /** @deprecated Manual save removed in EST-3020 (WS autosave persists everything). Kept for potential rollback; no call sites. */
     public onGraphSave(flowState: FlowModel): void {
         if (!this.graph?.id || this.isSaving()) return;
 
@@ -580,6 +567,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         }
     }
 
+    /** @deprecated Manual REST save removed in EST-3020 (WS autosave persists everything). Kept for potential rollback; no call sites. */
     private saveFlowState(flowState: FlowModel, showSuccessToast: boolean, retried = false): Observable<void> {
         if (!this.graph?.id) return EMPTY;
 
@@ -660,14 +648,13 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         if (this.sidePanelService.savingNodeId() === node.id) return;
 
         this.sidePanelService.markNodeSaving(node.id);
-        this.saveNodeToBackend(node)
-            .pipe(
-                takeUntilDestroyed(this.destroyRef),
-                finalize(() => this.sidePanelService.clearNodeSaving())
-            )
-            .subscribe();
+        this.flowService.updateNode(node);
+        this.wsService.sendNodeUpdated(node, this.graph.id, this.flowService.nodes(), this.flowService.connections());
+        this.toastService.success('Node saved');
+        setTimeout(() => this.sidePanelService.clearNodeSaving());
     }
 
+    /** @deprecated Manual REST save removed in EST-3020 (WS autosave persists everything). Kept for potential rollback; no call sites. */
     private saveNodeToBackend(node: NodeModel, retried = false): Observable<void> {
         if (!this.graph?.id) return EMPTY;
 
@@ -734,6 +721,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         );
     }
 
+    /** @deprecated Manual REST save removed in EST-3020 (the run endpoint flushes the live snapshot itself). Kept for potential rollback; no call sites. */
     private saveGraphForRun(): Observable<void> {
         if (!this.hasUnsavedChanges()) return of(void 0);
         if (this.isSaving()) return EMPTY;
@@ -741,6 +729,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         return this.saveFlowState(this.currentFlowState(), false);
     }
 
+    /** @deprecated Manual REST save removed in EST-3020 (WS autosave persists everything). Kept for potential rollback; no call sites. */
     public saveCurrentState(): Observable<void> {
         if (!this.hasUnsavedChanges()) return of(void 0);
         return toObservable(this.isSaving, { injector: this.injector }).pipe(
@@ -755,11 +744,14 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
         this.isRunning.set(true);
 
-        const saveFirst$: Observable<void> = this.saveGraphForRun();
+        const startNode = this.currentFlowState().nodes.find((n) => n.type === NodeType.START);
+        const variables =
+            (startNode?.data as { initialState?: Record<string, unknown> } | undefined)?.initialState ??
+            this.graph.start_node_list[0]?.variables;
 
-        saveFirst$
+        this.runGraphService
+            .runGraph(this.graph.id, variables)
             .pipe(
-                switchMap(() => this.runGraphService.runGraph(this.graph.id, this.graph.start_node_list[0].variables)),
                 takeUntilDestroyed(this.destroyRef),
                 tap((response: { session_id?: number }) => {
                     this.currentSessionId = response.session_id?.toString() ?? null;
@@ -838,7 +830,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     @HostListener('window:beforeunload', ['$event'])
     public handleBeforeUnload(event: BeforeUnloadEvent): string | void {
-        if (this.hasUnsavedChanges()) {
+        if (this.wsService.connectionStatus() !== 'connected' && this.hasUnsavedChanges()) {
             event.preventDefault();
             return (event.returnValue = '');
         }
@@ -848,7 +840,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public handleCtrlS(event: KeyboardEvent): void {
         if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
             event.preventDefault();
-            this.onHeaderSave();
         }
     }
 
@@ -858,25 +849,25 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public canDeactivate(): boolean | Observable<boolean> {
         if (this.isDeactivating) return true;
+        if (this.wsService.connectionStatus() === 'connected') return true;
         if (!this.hasUnsavedChanges()) return true;
 
         this.isDeactivating = true;
         return this.unsavedChangesDialog
-            .confirmUnsavedChanges(() =>
-                this.saveFlowState(this.currentFlowState(), false).pipe(
-                    map(() => true),
-                    defaultIfEmpty(false),
-                    catchError(() => of(false))
-                )
-            )
+            .confirm({
+                title: 'Connection lost',
+                message:
+                    'Real-time sync is disconnected, so your latest changes could not be saved. ' +
+                    'Leaving now will discard them.',
+                saveText: 'Leave anyway',
+                cancelText: 'Stay',
+                type: 'warning',
+            })
             .pipe(
-                tap((result) => {
+                tap(() => {
                     this.isDeactivating = false;
-                    if (result === 'dont-save') {
-                        this.savedFlowState.set(cloneFlowState(this.currentFlowState()));
-                    }
                 }),
-                map((result) => result === 'save' || result === 'dont-save')
+                map((result) => result === 'save')
             );
     }
 
@@ -962,6 +953,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     public ngOnDestroy(): void {
+        this.cleanupCdtGridState(this.currentFlowState());
         this.flowUnsavedStateService.unregister();
         this.runSessionSSEService.stopStream();
         this.wsService.disconnect();
@@ -1188,8 +1180,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             data: {
                 graphId: this.graph.id,
                 graphSaveVersion: () => this.graphState()?.save_version,
-                hasUnsavedChanges: () => this.hasUnsavedChanges(),
-                saveCurrentState: () => this.saveCurrentState(),
             },
         });
 
@@ -1228,66 +1218,34 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public onSaveVersion(): void {
         if (!this.graph.id) return;
 
-        const openVersionDialog = () => {
-            const dialogRef = this.dialog.open<SaveVersionDialogResult>(SaveVersionDialogComponent, {
-                width: '560px',
-                data: {},
-            });
+        const dialogRef = this.dialog.open<SaveVersionDialogResult>(SaveVersionDialogComponent, {
+            width: '560px',
+            data: {},
+        });
 
-            dialogRef.closed
-                .pipe(
-                    takeUntilDestroyed(this.destroyRef),
-                    filter((result): result is SaveVersionDialogResult => !!result),
-                    switchMap((result) =>
-                        this.flowApiService
-                            .saveGraphVersion({
-                                graph_id: this.graph.id,
-                                name: result.name,
-                                description: result.description,
-                            })
-                            .pipe(
-                                tap(() => {
-                                    this.toastService.success(`Version '${result.name}' saved`);
-                                    this.warnIfCdtMissingLlmConfig(this.loadedFlowState());
-                                }),
-                                catchError(() => {
-                                    this.toastService.error('Failed to save version');
-                                    return EMPTY;
-                                })
-                            )
-                    )
-                )
-                .subscribe();
-        };
-
-        if (!this.hasUnsavedChanges()) {
-            openVersionDialog();
-            return;
-        }
-
-        this.unsavedChangesDialog
-            .confirm({
-                title: 'Your flow has unsaved changes',
-                message:
-                    'Your flow has unsaved changes. <strong>Save</strong> the flow first to include them in the version, or <strong>continue</strong> to version the last saved state.',
-                saveText: 'Save',
-                dontSaveText: 'Continue',
-                cancelText: 'Cancel',
-                type: 'warning',
-                showDontSave: true,
-            })
+        dialogRef.closed
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
-                switchMap((result) => {
-                    if (result === 'save') {
-                        return this.saveFlowState(this.currentFlowState(), false).pipe(map(() => void 0));
-                    }
-                    if (result === 'dont-save') {
-                        return of(void 0);
-                    }
-                    return EMPTY;
-                })
+                filter((result): result is SaveVersionDialogResult => !!result),
+                switchMap((result) =>
+                    this.flowApiService
+                        .saveGraphVersion({
+                            graph_id: this.graph.id,
+                            name: result.name,
+                            description: result.description,
+                        })
+                        .pipe(
+                            tap(() => {
+                                this.toastService.success(`Version '${result.name}' saved`);
+                                this.warnIfCdtMissingLlmConfig(this.loadedFlowState());
+                            }),
+                            catchError(() => {
+                                this.toastService.error('Failed to save version');
+                                return EMPTY;
+                            })
+                        )
+                )
             )
-            .subscribe(() => openVersionDialog());
+            .subscribe();
     }
 }

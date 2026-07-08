@@ -20,6 +20,7 @@ import {
 } from '../../../services/python-code-run.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import {
     createInputMapFromPairs,
@@ -29,7 +30,6 @@ import {
 } from '../node-panel-form.utils';
 import { PythonTerminalComponent, TerminalStatus } from './python-terminal/python-terminal.component';
 import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-log.model';
-import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 
 @Component({
     standalone: true,
@@ -62,7 +62,10 @@ import { LockableFieldComponent } from '../../lockable-field/lockable-field.comp
                     >
                         <!-- Form Fields (stable single instance) -->
                         <div class="form-fields">
-                            <app-lockable-field fieldId="node_name" [nodeId]="node().id">
+                            <app-lockable-field
+                                fieldId="node_name"
+                                [nodeId]="node().id"
+                            >
                                 <app-custom-input
                                     label="Node Name"
                                     tooltipText="The unique identifier used to reference this Python node. This name must be unique within the flow."
@@ -88,7 +91,10 @@ import { LockableFieldComponent } from '../../lockable-field/lockable-field.comp
                                 ></app-input-map>
                             </div>
 
-                            <app-lockable-field fieldId="output_variable_path" [nodeId]="node().id">
+                            <app-lockable-field
+                                fieldId="output_variable_path"
+                                [nodeId]="node().id"
+                            >
                                 <app-custom-input
                                     label="Output Variable Path"
                                     tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
@@ -98,7 +104,10 @@ import { LockableFieldComponent } from '../../lockable-field/lockable-field.comp
                                 ></app-custom-input>
                             </app-lockable-field>
 
-                            <app-lockable-field fieldId="libraries" [nodeId]="node().id">
+                            <app-lockable-field
+                                fieldId="libraries"
+                                [nodeId]="node().id"
+                            >
                                 <app-custom-input
                                     label="Libraries"
                                     tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
@@ -156,7 +165,10 @@ import { LockableFieldComponent } from '../../lockable-field/lockable-field.comp
                             }
 
                             <div class="code-editor-column">
-                                <app-lockable-field fieldId="python_code" [nodeId]="node().id">
+                                <app-lockable-field
+                                    fieldId="python_code"
+                                    [nodeId]="node().id"
+                                >
                                     <app-code-editor
                                         class="code-editor-section"
                                         [class.no-bottom-radius]="isOpenTestMode()"
@@ -508,7 +520,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             }
             this.wasSaving = saving;
         });
-        this.sidePanelService.graphSaved$.pipe(takeUntilDestroyed()).subscribe(() => this.resetDirtyAfterGraphSave());
     }
 
     private resetDirtyAfterSave(): void {
@@ -520,6 +531,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         this.formDirtyTick.update((v) => v + 1);
     }
 
+    /** @deprecated was triggered by SidePanelService.graphSaved$ (manual REST save path); no call sites. */
     private resetDirtyAfterGraphSave(): void {
         if (!this.form) return;
         this.initialPythonCode = this.pythonCode;

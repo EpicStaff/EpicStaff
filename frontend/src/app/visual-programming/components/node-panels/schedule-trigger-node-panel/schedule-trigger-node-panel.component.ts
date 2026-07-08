@@ -15,6 +15,7 @@ import { Subject, timer } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
+import { GraphCollaborationWsService } from '../../../../features/flows/services/graph-collaboration.ws.service';
 import {
     GetScheduleTriggerNodeRequest,
     ScheduleEndType,
@@ -83,6 +84,7 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
     private readonly flowsApiService = inject(FlowsApiService);
     private readonly flowService = inject(FlowService);
     private readonly sidePanelService = inject(SidePanelService);
+    private readonly wsService = inject(GraphCollaborationWsService);
 
     constructor() {
         super();
@@ -95,7 +97,7 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
                 ctrl.patchValue(nodeIsActive, { emitEvent: false });
             }
         });
-        this.sidePanelService.graphSaved$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+        this.wsService.graphSaved$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             const backendId = this.node().backendId;
             if (backendId == null) return;
             this.stopPolling$.next();
