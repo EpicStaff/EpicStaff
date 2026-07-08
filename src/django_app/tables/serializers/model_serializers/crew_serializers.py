@@ -62,21 +62,6 @@ class ToolConfigFieldSerializer(serializers.ModelSerializer):
         fields = ["name", "description", "data_type", "required"]
 
 
-class ToolSerializer(serializers.ModelSerializer):
-    tool_fields = ToolConfigFieldSerializer(many=True, read_only=True)
-
-    class Meta:
-        model = Tool
-        fields = ["id", "name", "name_alias", "description", "enabled", "tool_fields"]
-        read_only_fields = [
-            "id",
-            "name",
-            "name_alias",
-            "description",
-            "tool_fields",
-        ]
-
-
 class ToolConfigSerializer(serializers.ModelSerializer):
     def __init__(
         self, *args, tool_config_validator: ToolConfigValidator | None = None, **kwargs
@@ -456,16 +441,6 @@ class AgentWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
             realtime_agent.save()
 
         return instance
-
-
-class TemplateAgentSerializer(serializers.ModelSerializer):
-    configured_tools = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=ToolConfig.objects.all()
-    )
-
-    class Meta:
-        model = TemplateAgent
-        fields = "__all__"
 
 
 class TaskContextListField(serializers.Field):

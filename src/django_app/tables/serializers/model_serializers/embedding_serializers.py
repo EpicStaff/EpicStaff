@@ -4,7 +4,6 @@ from tables.models.tag_models import EmbeddingConfigTag, EmbeddingModelTag
 from tables.serializers.org_scoped_fields import OrgVisiblePrimaryKeyRelatedField
 from tables.serializers.utils.mixins import TagHandlingMixin
 from tables.models.embedding_models import (
-    DefaultEmbeddingConfig,
     EmbeddingConfig,
     EmbeddingModel,
 )
@@ -37,13 +36,3 @@ class EmbeddingConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
         model = EmbeddingConfig
         fields = "__all__"
         read_only_fields = ["org", "created_by"]
-
-
-class DefaultEmbeddingConfigSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DefaultEmbeddingConfig
-        fields = [
-            "model",
-            "task_type",
-            "api_key",
-        ]

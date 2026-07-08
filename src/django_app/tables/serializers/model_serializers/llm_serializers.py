@@ -5,7 +5,6 @@ from tables.serializers.model_serializers.tag_serializers import (
     LLMModelTagSerializer,
 )
 from tables.models.llm_models import (
-    DefaultLLMConfig,
     LLMConfig,
     LLMModel,
     RealtimeModel,
@@ -18,12 +17,6 @@ from tables.serializers.org_scoped_fields import OrgVisiblePrimaryKeyRelatedFiel
 
 
 from ..utils.mixins import TagHandlingMixin
-
-
-class DefaultLLMConfigSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DefaultLLMConfig
-        fields = "__all__"
 
 
 class RealtimeModelSerializer(serializers.ModelSerializer):

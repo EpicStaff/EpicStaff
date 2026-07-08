@@ -26,7 +26,6 @@ from tables.views.model_view_sets import (
     RealtimeTranscriptionConfigModelViewSet,
     RealtimeTranscriptionModelViewSet,
     TelegramTriggerNodeViewSet,
-    TemplateAgentReadWriteViewSet,
     LLMConfigReadWriteViewSet,
     ProviderReadWriteViewSet,
     LLMModelReadWriteViewSet,
@@ -35,15 +34,10 @@ from tables.views.model_view_sets import (
     AgentViewSet,
     CrewReadWriteViewSet,
     TaskReadWriteViewSet,
-    ToolConfigViewSet,
     PythonCodeToolViewSet,
-    PythonCodeViewSet,
     PythonCodeResultReadViewSet,
     GraphSessionMessageReadOnlyViewSet,
     MemoryViewSet,
-    CrewTagViewSet,
-    AgentTagViewSet,
-    GraphTagViewSet,
     RealtimeModelViewSet,
     RealtimeAgentViewSet,
     RealtimeAgentChatViewSet,
@@ -60,33 +54,22 @@ from tables.views.model_view_sets import (
 
 from tables.views.views import (
     AnswerToLLM,
-    EnvironmentConfig,
     InitRealtimeAPIView,
     RegisterTelegramTriggerApiView,
     ProcessRagIndexingView,
     RegisterWebhooksApiView,
     RunPythonCodeAPIView,
     TelegramTriggerNodeAvailableFieldsView,
-    ToolListRetrieveUpdateGenericViewSet,
     SessionViewSet,
     RunSession,
     GetUpdates,
     StopSession,
-    DefaultLLMConfigAPIView,
-    DefaultEmbeddingConfigAPIView,
-    DefaultAgentConfigAPIView,
-    DefaultCrewConfigAPIView,
-    # CollectionStatusAPIView,
     QuickstartView,
     QuickstartApplyView,
-    delete_environment_config,
     PythonNodeLastTestInputView,
 )
 
 from tables.views.default_config import (
-    DefaultConfigAPIView,
-    DefaultRealtimeAgentConfigAPIView,
-    DefaultToolConfigAPIView,
     DefaultModelsAPIView,
 )
 
@@ -139,7 +122,6 @@ from tables.views.user_management_views import (
 )
 
 router = DefaultRouter()
-router.register(r"template-agents", TemplateAgentReadWriteViewSet)
 router.register(r"providers", ProviderReadWriteViewSet)
 router.register(r"llm-models", LLMModelReadWriteViewSet)
 router.register(r"llm-configs", LLMConfigReadWriteViewSet)
@@ -148,9 +130,6 @@ router.register(r"embedding-configs", EmbeddingConfigReadWriteViewSet)
 router.register(r"agents", AgentViewSet)
 router.register(r"crews", CrewReadWriteViewSet)
 router.register(r"tasks", TaskReadWriteViewSet)
-router.register(r"tools", ToolListRetrieveUpdateGenericViewSet)
-router.register(r"tool-configs", ToolConfigViewSet)
-router.register(r"python-code", PythonCodeViewSet)
 router.register(r"python-code-tool", PythonCodeToolViewSet)
 router.register(r"python-code-result", PythonCodeResultReadViewSet)
 router.register(
@@ -176,9 +155,6 @@ router.register(r"conditionaledges", ConditionalEdgeViewSet)
 router.register(r"graph-session-messages", GraphSessionMessageReadOnlyViewSet)
 router.register(r"memory", MemoryViewSet)
 
-router.register(r"crew-tags", CrewTagViewSet)
-router.register(r"agent-tags", AgentTagViewSet)
-router.register(r"graph-tags", GraphTagViewSet)
 router.register(r"graph-light", GraphLightViewSet, basename="graphs-light")
 router.register(r"graph-versions", GraphVersionViewSet, basename="graph-versions")
 router.register(r"realtime-models", RealtimeModelViewSet)
@@ -257,16 +233,6 @@ urlpatterns = [
     ),
     path("sessions/<int:session_id>/stop/", StopSession.as_view(), name="stop-session"),
     path(
-        "environment/config/",
-        EnvironmentConfig.as_view(),
-        name="environment_config",
-    ),
-    path(
-        "environment/config/<str:key>/",
-        delete_environment_config,
-        name="delete_environment_config",
-    ),
-    path(
         "run-python-code/",
         RunPythonCodeAPIView.as_view(),
         name="run-python-code",
@@ -280,42 +246,6 @@ urlpatterns = [
         "init-realtime/",
         InitRealtimeAPIView.as_view(),
         name="init-realtime",
-    ),
-    # path(
-    #     "collection_statuses/",
-    #     CollectionStatusAPIView.as_view(),
-    #     name="collection_statuses/",
-    # ),
-    path("default-config/", DefaultConfigAPIView.as_view(), name="default_config"),
-    path(
-        "default-llm-config/",
-        DefaultLLMConfigAPIView.as_view(),
-        name="default_llm_config",
-    ),
-    path(
-        "default-embedding-config/",
-        DefaultEmbeddingConfigAPIView.as_view(),
-        name="default_embedding_config",
-    ),
-    path(
-        "default-agent-config/",
-        DefaultAgentConfigAPIView.as_view(),
-        name="default_agent_config",
-    ),
-    path(
-        "default-reailtime-config/",
-        DefaultRealtimeAgentConfigAPIView.as_view(),
-        name="default_reailtime_config",
-    ),
-    path(
-        "default-crew-config/",
-        DefaultCrewConfigAPIView.as_view(),
-        name="default_crew_config",
-    ),
-    path(
-        "default-tool-config/",
-        DefaultToolConfigAPIView.as_view(),
-        name="default_tool_config",
     ),
     path("default-models/", DefaultModelsAPIView.as_view(), name="default_models"),
     path("quickstart/apply/", QuickstartApplyView.as_view(), name="quickstart_apply"),
