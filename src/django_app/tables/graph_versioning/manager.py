@@ -385,7 +385,7 @@ class GraphVersioningManager:
         serializer.is_valid(raise_exception=True)
         graph = serializer.save(org_id=org_id)
 
-        GraphOrganization.objects.get_or_create(graph=graph, organization_id=org_id)
+        GraphOrganization.objects.get_or_create(graph=graph)
 
         node_mapper = self._graph_strategy.recreate_graph_children(
             graph,

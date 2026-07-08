@@ -34,7 +34,7 @@ class GraphCopyService(BaseCopyService):
             org_id=target_org_id,
         )
         new_graph.labels.set(graph.labels.all())
-        GraphOrganization.objects.create(graph=new_graph, organization_id=target_org_id)
+        GraphOrganization.objects.create(graph=new_graph)
 
         node_id_map: dict[int, int] = {}
         for _, (relation_name, handler) in NODE_COPY_HANDLERS.items():

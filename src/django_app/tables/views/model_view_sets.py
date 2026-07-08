@@ -927,7 +927,7 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
     def perform_create(self, serializer):
         org_id = self.get_active_org_id()
         created_graph = serializer.save(org_id=org_id, created_by=self.request.user)
-        GraphOrganization.objects.create(graph=created_graph, organization_id=org_id)
+        GraphOrganization.objects.create(graph=created_graph)
 
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
