@@ -61,7 +61,6 @@ export class LeftSidebarComponent implements AfterViewInit {
     public bottomNavItems: NavItem[];
     public isEpicChatEnabled: boolean;
     public apiBaseUrl: string;
-    public accessToken: string;
     public showLogoTooltip = false;
     public readonly epicChatThemeConfig = {
         semantic: {
@@ -133,7 +132,7 @@ export class LeftSidebarComponent implements AfterViewInit {
         public activeOrgService: ActiveOrgService,
         private configService: ConfigService,
         private configureModelsDialogService: ConfigureModelsDialogService,
-        private authService: AuthService
+        public authService: AuthService
     ) {
         this.isEpicChatEnabled = this.configService.isEpicChatEnabled;
         // COMMIT_COMMENTS: Derive apiBaseUrl from browser origin so the EpicChat widget's
@@ -144,7 +143,6 @@ export class LeftSidebarComponent implements AfterViewInit {
         // Bad approach to use window.location because ui and backend can be on different domains
         // fixed localhost vs 127.0.0.1 problem in widget code
         this.apiBaseUrl = environment.apiUrl;
-        this.accessToken = this.authService.getAccessToken() ?? '';
         this.topNavItems = [
             {
                 id: 'projects',

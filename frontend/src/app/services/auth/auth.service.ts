@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { inject, Injectable } from '@angular/core';
+import { inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import {
     AccessToken,
@@ -37,6 +37,9 @@ export class AuthService {
 
     private refreshInProgress$: Observable<string | null> | null = null;
     private statusCache$: Observable<FirstSetupStatus> | null = null;
+
+    private readonly accessTokenSignal = signal<string | null>(this.getCookie(this.accessKey));
+    public readonly accessToken = this.accessTokenSignal.asReadonly();
 
     private get baseUrl(): string {
         return `${this.configService.apiUrl}auth/`;
@@ -109,6 +112,7 @@ export class AuthService {
             .pipe(
                 tap((resp) => {
                     this.setCookie(this.accessKey, resp.access, this.getTokenExpiry(resp.access));
+                    this.accessTokenSignal.set(resp.access);
                 }),
                 map((resp) => resp.access),
                 catchError((err) => {
@@ -126,6 +130,7 @@ export class AuthService {
 
     removeTokenAndNavToLogin(): void {
         this.deleteCookie(this.accessKey);
+        this.accessTokenSignal.set(null);
         void this.router.navigate(['/login']);
     }
 
@@ -145,6 +150,7 @@ export class AuthService {
     storeAccessToken(accessToken: string, persist: boolean = true): void {
         const accessExpiry = persist ? this.getTokenExpiry(accessToken) : undefined;
         this.setCookie(this.accessKey, accessToken, accessExpiry);
+        this.accessTokenSignal.set(accessToken);
     }
 
     private setCookie(name: string, value: string, expires?: Date): void {

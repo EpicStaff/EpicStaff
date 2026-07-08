@@ -134,7 +134,7 @@
             chat-icon-path=""
             message-timeout="180000"
             [apiBaseUrl]="apiBaseUrl"
-            [accessToken]="accessToken"
+            [accessToken]="authService.accessToken() ?? ''"
             [organizationId]="activeOrgService.activeOrgId()?.toString() ?? ''"
             [attr.chat-left]="epicChatService.isDocked() ? epicChatService.dockLeftPx() + 'px' : '68px'"
             [attr.chat-bottom]="epicChatService.isDocked() ? '0px' : '10px'"
