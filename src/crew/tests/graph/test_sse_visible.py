@@ -1,3 +1,5 @@
+import inspect
+import re
 from unittest.mock import MagicMock
 
 import pytest
@@ -6,6 +8,7 @@ from dotdict import DotDict
 from models.graph_models import StartMessageData
 from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.events import StopEvent
+from services.graph.graph_session_manager_service import GraphSessionManagerService
 from services.graph.nodes import BaseNode
 
 
@@ -85,6 +88,16 @@ async def test_node_with_final_reply_false_suppresses_finish_message():
 
     assert len(finish_messages) == 1
     assert finish_messages[0].sse_visible is False
+
+
+def test_graph_end_message_dict_includes_sse_visible_true():
+    source = inspect.getsource(GraphSessionManagerService.run_session)
+    graph_end_block_match = re.search(
+        r'"message_type":\s*"graph_end".*?\}', source, re.DOTALL
+    )
+
+    assert graph_end_block_match is not None
+    assert '"sse_visible": True' in graph_end_block_match.group(0)
 
 
 @pytest.mark.asyncio
