@@ -1,7 +1,7 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
+import { UnsavedChangesRegistry } from 'src/app/core/services/unsaved-changes-registry.service';
 import { FlowsApiService } from 'src/app/features/flows/services/flows-api.service';
-import { FlowUnsavedStateService } from 'src/app/pages/flows-page/services/flow-unsaved-state.service';
 import { ConfigService } from 'src/app/services/config/config.service';
 import { environment } from 'src/environments/environment';
 
@@ -36,7 +36,7 @@ export class EpicChatService {
 
     constructor(
         private readonly router: Router,
-        private readonly flowUnsavedStateService: FlowUnsavedStateService,
+        private readonly unsavedChangesRegistry: UnsavedChangesRegistry,
         private readonly flowsApiService: FlowsApiService
     ) {}
 
@@ -104,7 +104,7 @@ export class EpicChatService {
                 return;
             }
             case EP_CHAT_EVENT_TYPES.APP_REFRESH_CACHE: {
-                this.flowUnsavedStateService.confirmAndRefreshFlow().subscribe();
+                this.unsavedChangesRegistry.confirmAndRefresh();
                 return;
             }
             case EP_CHAT_EVENT_TYPES.APP_TOGGLE_DOCK: {
