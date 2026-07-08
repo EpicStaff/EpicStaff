@@ -81,6 +81,7 @@ export type GraphStateMessage = {
     flow: GraphDto;
     restored_by?: EditorInfo;
     version_name?: string;
+    new_save_version?: number;
 };
 export type NodeCreatedMessage = {
     type: 'node_created';

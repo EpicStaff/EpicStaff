@@ -11,7 +11,9 @@ from tables.graph_collab.protocol import (
     EntryDeleteRef,
     GraphSaveFailedMessage,
     GraphSavedMessage,
+    GraphStateMessage,
     NodesDeletedMessage,
+    NodeUnlockedMessage,
     PresenceStateUpdatedMessage,
 )
 
@@ -95,6 +97,41 @@ class GraphEditNotifier:
             temp_id_map=temp_id_map,
         )
         GraphEditNotifier._send(graph_id, message)
+
+    @staticmethod
+    def notify_graph_restored(
+        graph_id: int,
+        flow: dict,
+        new_save_version: int,
+        version_name: str,
+        user,
+    ) -> None:
+        """Broadcast a full session reset after a version restore"""
+
+        message = GraphStateMessage(
+            flow=flow,
+            restored_by=build_editor_info(user),
+            new_save_version=new_save_version,
+            version_name=version_name,
+        )
+        GraphEditNotifier._send(graph_id, message.model_dump())
+
+    @staticmethod
+    def notify_nodes_unlocked(
+        graph_id: int,
+        released_pairs: list[tuple[str, str]],
+        user,
+    ) -> None:
+        """Broadcast a ``node_unlocked`` message for each released lock pair"""
+
+        if not released_pairs:
+            return
+        editor = build_editor_info(user)
+        for node_id, field in released_pairs:
+            message = NodeUnlockedMessage(
+                node_id=node_id, field=field, editor=editor
+            ).model_dump()
+            GraphEditNotifier._send(graph_id, message)
 
     @staticmethod
     def broadcast_nodes_deleted(

@@ -174,20 +174,10 @@ class LockStateMessage(BaseModel):
 
 
 class GraphStateMessage(BaseModel):
-    """Carries the authoritative server-side superset snapshot of the graph.
-
-    The snapshot shape is a superset of the GraphSerializer READ output: all
-    13 <type>_node_list arrays, edge_list, conditional_edge_list, plus injected
-    write-only FK fields (e.g. crew_id, schedule.end.type coerced to "never")
-    so that a later flush can pass the snapshot directly through
-    GraphBulkSaveInputSerializer. The FE late-join converter only uses the
-    nested read objects and ignores the injected extras.
-
-    Direction:
-    - Server → Client: connecting editor receives the current live snapshot
-      seeded from the DB (Block 3.5+). The old Client→Server seed path is
-      kept as a no-op fallback for old clients.
-    """
+    """Carries the authoritative server-side superset snapshot of the graph"""
 
     type: str = "graph_state"
     flow: dict  # superset snapshot
+    restored_by: EditorInfo | None = None
+    new_save_version: int | None = None
+    version_name: str | None = None

@@ -362,6 +362,14 @@ class GraphLiveStateService:
         self._revision.pop(graph_id, None)
         self._flushed_revision.pop(graph_id, None)
 
+    async def reset_from_db(self, graph_id: int) -> dict | None:
+        """Clear the live snapshot and immediately reseed it from the DB"""
+        await self.clear(graph_id)
+        seeded = await self.seed_from_db(graph_id)
+        if not seeded:
+            return None
+        return await self.get_snapshot(graph_id)
+
     async def record_resolved_temp_ids(
         self, graph_id: int, mapping: dict[str, int]
     ) -> None:

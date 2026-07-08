@@ -95,6 +95,32 @@ class GraphSaveVersionConflictError(CustomAPIExeption):
         super().__init__(detail=detail, code=self.default_code)
 
 
+class GraphRestoreFlushFailedError(CustomAPIExeption):
+    """Raised when a version restore must abort because the pre-restore flush
+    of the live collaborative snapshot persistently failed.
+
+    Aborting (instead of proceeding) avoids silently discarding editors'
+    unsaved live edits — the graph is left untouched so the client can retry.
+    """
+
+    status_code = 422
+    default_detail = (
+        "Could not save the latest live edits before restoring — restore aborted "
+        "to avoid losing them. Please try again."
+    )
+    default_code = "graph_restore_flush_failed"
+
+    def __init__(self, graph_id: int, failure_reason: str | None):
+        self.graph_id = graph_id
+        self.failure_reason = failure_reason
+        detail = {
+            "graph_id": graph_id,
+            "failure_reason": failure_reason,
+            "message": self.default_detail,
+        }
+        super().__init__(detail=detail, code=self.default_code)
+
+
 class SubGraphValidationError(CustomAPIExeption):
     status_code = 400
     default_detail = (

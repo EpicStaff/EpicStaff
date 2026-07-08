@@ -252,7 +252,13 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
         this.wsService.graphState$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
             const currentUserId = this.profileService.currentUserSignal()?.id;
-            if (msg.restored_by && msg.restored_by.user_id === currentUserId) return;
+            if (msg.restored_by && msg.restored_by.user_id === currentUserId) {
+                if (msg.new_save_version != null) {
+                    const newSaveVersion = msg.new_save_version;
+                    this.graphState.update((state) => (state ? { ...state, save_version: newSaveVersion } : state));
+                }
+                return;
+            }
 
             let flowModel = mapGraphDtoToFlowModel(msg.flow);
             flowModel = this.addStartNodeIfNeeded(flowModel, msg.flow.id);
@@ -271,6 +277,17 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 const versionName = msg.version_name ?? 'a previous version';
                 this.toastService.info(`Flow restored to ${versionName} by ${restoredBy}`);
             }
+
+            // Replace the full graphState (not just save_version) with the restored
+            // flow. The canvas was already rebuilt from msg.flow above via setFlow();
+            // if graphState kept the pre-restore GraphDto, loadedFlowState() and the
+            // diffing in saveFlowState() would compare the new canvas against the
+            // stale, pre-restore flow on the next save, producing spurious
+            // creations/deletions in the bulk-save payload.
+            this.graphState.set({
+                ...msg.flow,
+                save_version: msg.new_save_version ?? msg.flow.save_version,
+            });
         });
 
         this.wsService.nodeCreated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {

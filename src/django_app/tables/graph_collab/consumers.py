@@ -436,6 +436,9 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
     async def graph_saved(self, event):
         await self.send_json(event)
 
+    async def graph_state(self, event):
+        await self.send_json(event)
+
     async def save_failed(self, event):
         await self.send_json(event)
 

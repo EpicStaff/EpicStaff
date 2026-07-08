@@ -106,5 +106,14 @@ class NodeLockService:
             del self._store[graph_id]
         return released
 
+    def release_all(self, graph_id: int) -> list[tuple[str, str]]:
+        """Drop every lock for *graph_id*, regardless of holder"""
+        entries = self._store.pop(graph_id, None) or {}
+        return [
+            (node_id, field)
+            for node_id, field_locks in entries.items()
+            for field in field_locks
+        ]
+
 
 lock_service = NodeLockService()
