@@ -1,6 +1,7 @@
 import { computed, Injectable, signal } from '@angular/core';
 
 import { FlowModel } from '../core/models/flow.model';
+import { diffFlowModels, FlowDiffResult } from '../utils/diff-flow-models.util';
 import { FlowService } from './flow.service';
 
 @Injectable({
@@ -33,10 +34,10 @@ export class UndoRedoService {
         this.redoStack.set([]);
     }
 
-    public onUndo(): void {
+    public onUndo(): FlowDiffResult | null {
         if (!this.undoStack().length) {
             console.warn('Nothing to undo!');
-            return;
+            return null;
         }
 
         const currentState = this.snapshotCurrentState();
@@ -46,12 +47,13 @@ export class UndoRedoService {
         this.redoStack.update((s) => [...s, currentState]);
 
         this.applyFlowState(previousState);
+        return diffFlowModels(currentState, previousState);
     }
 
-    public onRedo(): void {
+    public onRedo(): FlowDiffResult | null {
         if (!this.redoStack().length) {
             console.warn('Nothing to redo!');
-            return;
+            return null;
         }
         const currentState = this.snapshotCurrentState();
         const stack = this.redoStack();
@@ -60,6 +62,7 @@ export class UndoRedoService {
         this.undoStack.update((s) => [...s, currentState]);
 
         this.applyFlowState(nextState);
+        return diffFlowModels(currentState, nextState);
     }
 
     public getUndoStack(): FlowModel[] {

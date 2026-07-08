@@ -100,6 +100,7 @@ import { NodeFactoryService } from '../services/node-factory.service';
 import { SidePanelService } from '../services/side-panel.service';
 import { UndoRedoService } from '../services/undo-redo.service';
 import { createFlowConnection } from '../utils/connection.factory';
+import { FlowDiffResult } from '../utils/diff-flow-models.util';
 import { normalizeFlowPorts } from '../utils/load';
 import { CursorState, GraphLiveCursorsComponent } from './graph-live-cursors/graph-live-cursors.component';
 
@@ -615,7 +616,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
 
         this.hasUnarrangedChanges.set(true);
-        this.undoRedoService.onUndo();
+        const diff = this.undoRedoService.onUndo();
+        if (diff) this.broadcastFlowDiff(diff);
     }
 
     public onRedo(): void {
@@ -624,7 +626,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
 
         this.hasUnarrangedChanges.set(true);
-        this.undoRedoService.onRedo();
+        const diff = this.undoRedoService.onRedo();
+        if (diff) this.broadcastFlowDiff(diff);
+    }
+
+    public onUndoRedoPerformed(diff: FlowDiffResult): void {
+        this.hasUnarrangedChanges.set(true);
+        this.broadcastFlowDiff(diff);
     }
 
     public onDelete(): void {
@@ -1506,6 +1514,53 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             if (!removedNodeIds.has(id)) {
                 this.broadcastDecisionRoutingUpdate(id);
             }
+        }
+    }
+
+    private broadcastFlowDiff(diff: FlowDiffResult): void {
+        if (this.currentFlowId == null) return;
+        const graphId = this.currentFlowId;
+        const allNodes = this.flowService.nodes();
+        const allConnections = this.flowService.connections();
+        const lookupNodes = [...allNodes, ...diff.deletedNodes];
+
+        const nodeRefs = diff.deletedNodes
+            .map((node) => this.buildNodeDeleteRef(node))
+            .filter((r): r is EntryDeleteRef => r !== null);
+        if (nodeRefs.length > 0) {
+            this.wsService.sendNodesDeleted(nodeRefs);
+        }
+
+        const connectionRefs = diff.deletedConnections
+            .filter((conn) => {
+                const sourceNode = lookupNodes.find((n) => n.id === conn.sourceNodeId);
+                return !this.isDecisionRoutingSource(sourceNode?.type);
+            })
+            .map((conn) => this.buildConnectionDeleteRef(conn, lookupNodes));
+        if (connectionRefs.length > 0) {
+            this.wsService.sendConnectionsDeleted(connectionRefs);
+        }
+
+        for (const node of diff.createdNodes) {
+            this.wsService.sendNodeCreated(node, graphId, allNodes, allConnections);
+        }
+
+        for (const node of diff.updatedNodes) {
+            this.wsService.sendNodeUpdated(node, graphId, allNodes, allConnections);
+        }
+
+        for (const conn of diff.createdConnections) {
+            const sourceNode = allNodes.find((n) => n.id === conn.sourceNodeId);
+            const targetNode = allNodes.find((n) => n.id === conn.targetNodeId);
+            if (!sourceNode || !targetNode) continue;
+            if (this.isDecisionRoutingSource(sourceNode.type)) continue;
+            this.wsService.sendConnectionCreated(
+                conn,
+                this.getConnectionListKey(conn, allNodes),
+                sourceNode,
+                targetNode,
+                graphId
+            );
         }
     }
 

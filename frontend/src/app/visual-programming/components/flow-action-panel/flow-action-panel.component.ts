@@ -4,6 +4,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { UndoRedoService } from '../../services/undo-redo.service';
+import { FlowDiffResult } from '../../utils/diff-flow-models.util';
 
 @Component({
     selector: 'app-flow-action-panel',
@@ -13,7 +14,7 @@ import { UndoRedoService } from '../../services/undo-redo.service';
     styleUrls: ['./flow-action-panel.component.scss'],
 })
 export class FlowActionPanelComponent {
-    readonly undoRedoPerformed = output<void>();
+    readonly undoRedoPerformed = output<FlowDiffResult>();
 
     readonly actionIcons = [
         { icon: 'arrow-back-up', tooltip: 'Undo', action: 'undo' },
@@ -33,14 +34,16 @@ export class FlowActionPanelComponent {
 
     handleAction(actionType: string): void {
         switch (actionType) {
-            case 'undo':
-                this.undoRedoService.onUndo();
-                this.undoRedoPerformed.emit();
+            case 'undo': {
+                const diff = this.undoRedoService.onUndo();
+                if (diff) this.undoRedoPerformed.emit(diff);
                 break;
-            case 'redo':
-                this.undoRedoService.onRedo();
-                this.undoRedoPerformed.emit();
+            }
+            case 'redo': {
+                const diff = this.undoRedoService.onRedo();
+                if (diff) this.undoRedoPerformed.emit(diff);
                 break;
+            }
             default:
                 console.warn('Action not implemented:', actionType);
                 break;
