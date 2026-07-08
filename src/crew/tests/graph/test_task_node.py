@@ -138,6 +138,103 @@ async def test_execute_forwards_live_agent_events_as_task_node_stream(task_node_
 
 
 @pytest.mark.asyncio
+async def test_execute_forwards_task_lifecycle_events_as_task_node_stream(
+    task_node_data,
+):
+    """SINGLE_TASK doesn't emit agent.task_start today, but the translation
+    from envelope type to stream event is generic, so feed one synthetically
+    to prove the mapping isn't tool-event-only."""
+    agent_task_service = AsyncMock()
+
+    async def fake_run_task(node_data, stop_event, on_event=None):
+        on_event(
+            StreamEnvelope(
+                type="agent.task_start",
+                correlation_id="corr-1",
+                payload={"task": {"name": "task_node_1", "order": 0}},
+            )
+        )
+        on_event(
+            StreamEnvelope(
+                type="agent.tool_call",
+                correlation_id="corr-1",
+                payload={"id": "call_1", "name": "search", "arguments": "{}"},
+            )
+        )
+        return {"final_text": "done"}
+
+    agent_task_service.run_task.side_effect = fake_run_task
+
+    node = TaskNode(
+        session_id=1,
+        node_name="task_node_1",
+        stop_event=MagicMock(),
+        task_node_data=task_node_data,
+        agent_task_service=agent_task_service,
+        remembered_outputs_store=make_remembered_outputs_store(),
+    )
+
+    writer = MagicMock()
+    state = make_state({})
+    await node.run(state=state, writer=writer)
+
+    stream_messages = [
+        call.args[0].message_data
+        for call in writer.call_args_list
+        if isinstance(call.args[0].message_data, dict)
+        and call.args[0].message_data.get("message_type") == "task_node_stream"
+    ]
+
+    assert len(stream_messages) == 2
+    assert stream_messages[0]["event"] == "task_start"
+    assert stream_messages[0]["step_id"] == 1
+    assert stream_messages[0]["data"]["task"] == {"name": "task_node_1", "order": 0}
+    assert stream_messages[1]["event"] == "tool_call"
+    assert stream_messages[1]["step_id"] == 2
+
+
+@pytest.mark.asyncio
+async def test_execute_drops_unknown_envelope_type_and_writes_no_message(
+    task_node_data,
+):
+    agent_task_service = AsyncMock()
+
+    async def fake_run_task(node_data, stop_event, on_event=None):
+        on_event(
+            StreamEnvelope(
+                type="agent.heartbeat",
+                correlation_id="corr-1",
+                payload={},
+            )
+        )
+        return {"final_text": "done"}
+
+    agent_task_service.run_task.side_effect = fake_run_task
+
+    node = TaskNode(
+        session_id=1,
+        node_name="task_node_1",
+        stop_event=MagicMock(),
+        task_node_data=task_node_data,
+        agent_task_service=agent_task_service,
+        remembered_outputs_store=make_remembered_outputs_store(),
+    )
+
+    writer = MagicMock()
+    state = make_state({})
+    await node.run(state=state, writer=writer)
+
+    stream_messages = [
+        call.args[0].message_data
+        for call in writer.call_args_list
+        if isinstance(call.args[0].message_data, dict)
+        and call.args[0].message_data.get("message_type") == "task_node_stream"
+    ]
+
+    assert stream_messages == []
+
+
+@pytest.mark.asyncio
 async def test_execute_raises_when_agent_definition_missing():
     task_node_data = TaskNodeData(node_name="task_node_1", agent_definition=None)
     node = TaskNode(

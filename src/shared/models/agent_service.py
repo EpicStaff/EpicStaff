@@ -223,6 +223,20 @@ class TokenUsage(BaseModel):
     total_tokens: int = 0
 
 
+class TaskRunSummary(BaseModel):
+    """Per-task outcome captured by ``ListOfTasksRunner`` for ``LIST_OF_TASKS`` runs."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    order: int
+    final_text: str | None = None
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
+    iterations: int = 0
+    tool_invocations: int = 0
+    stop_reason: str | None = None
+
+
 class LoopResult(BaseModel):
     """Summary returned by ``AgentLoop.run`` after the tool-use cycle ends.
 
@@ -239,3 +253,5 @@ class LoopResult(BaseModel):
     token_usage: TokenUsage = Field(default_factory=TokenUsage)
     error: str | None = None
     """Failure detail when stop_reason indicates a failure (llm_error/timeout); None on success."""
+    tasks: list[TaskRunSummary] | None = None
+    """Per-task summaries for ``LIST_OF_TASKS`` runs; ``None`` for ``SINGLE_TASK`` runs."""

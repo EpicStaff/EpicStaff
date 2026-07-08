@@ -84,6 +84,16 @@ async def test_on_tool_call_publishes_live_envelope():
     assert payload["task"] is None
 
 
+async def test_on_task_start_publishes_live_envelope():
+    emitter, published = _make_emitter()
+    await emitter.on_task_start("task_a", 0)
+
+    assert len(published) == 1
+    assert published[0]["type"] == "agent.task_start"
+    payload = _decode_payload(published[0])
+    assert payload["task"] == {"name": "task_a", "order": 0}
+
+
 async def test_on_task_start_labels_subsequent_live_tool_events():
     emitter, published = _make_emitter()
     await emitter.on_task_start("task_a", 0)
@@ -92,8 +102,8 @@ async def test_on_task_start_labels_subsequent_live_tool_events():
         ToolResult(tool_call_id="call_1", content="result", is_error=False)
     )
 
-    call_payload = _decode_payload(published[0])
-    result_payload = _decode_payload(published[1])
+    call_payload = _decode_payload(published[1])
+    result_payload = _decode_payload(published[2])
     assert call_payload["task"] == {"name": "task_a", "order": 0}
     assert result_payload["task"] == {"name": "task_a", "order": 0}
 
@@ -323,21 +333,130 @@ async def test_token_usage_delta_excludes_tokens_lost_to_failed_publish():
 
 
 # ---------------------------------------------------------------------------
+# on_task_finish
+# ---------------------------------------------------------------------------
+
+
+async def test_on_task_finish_publishes_full_payload_shape():
+    emitter, published = _make_emitter()
+    result = LoopResult(
+        final_text="task result text",
+        tool_invocations=1,
+        iterations=2,
+        stop_reason="completed",
+        token_usage=TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+    )
+    await emitter.on_task_finish("task_a", 0, result)
+
+    assert len(published) == 1
+    assert published[0]["type"] == "agent.task_finish"
+    payload = _decode_payload(published[0])
+    assert payload == {
+        "task": {"name": "task_a", "order": 0},
+        "message": "task result text",
+        "truncated": False,
+        "token_usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "total_tokens": 15,
+        },
+        "iterations": 2,
+        "tool_invocations": 1,
+        "stop_reason": "completed",
+    }
+
+
+async def test_on_task_finish_truncates_long_final_text():
+    emitter, published = _make_emitter()
+    long_text = "z" * 3000
+    result = LoopResult(
+        final_text=long_text,
+        tool_invocations=0,
+        iterations=1,
+        stop_reason="completed",
+        token_usage=TokenUsage(),
+    )
+    await emitter.on_task_finish("task_a", 0, result)
+
+    payload = _decode_payload(published[0])
+    assert len(payload["message"]) == 2000
+    assert payload["truncated"] is True
+
+
+async def test_on_task_finish_publish_failure_does_not_propagate():
+    client = MagicMock()
+
+    async def failing_publish(stream: str, fields: dict) -> None:
+        raise RuntimeError("redis unavailable")
+
+    client.publish = failing_publish
+
+    emitter = RedisStreamToolEventEmitter(
+        client=client,
+        result_stream="agent.results",
+        correlation_id="test-corr",
+    )
+
+    await emitter.on_task_finish("task_a", 0, _make_loop_result())
+
+
+async def test_on_task_finish_resets_current_task():
+    emitter, _ = _make_emitter()
+    await emitter.on_task_start("task_a", 0)
+    await emitter.on_task_finish("task_a", 0, _make_loop_result())
+
+    assert emitter._current_task is None
+
+
+async def test_on_task_finish_consumes_token_delta_at_task_boundary():
+    emitter, published = _make_emitter()
+    await emitter.on_chunk(
+        LLMChunk(
+            usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+        )
+    )
+    result = LoopResult(
+        final_text="task result",
+        tool_invocations=0,
+        iterations=1,
+        stop_reason="completed",
+        token_usage=TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+    )
+    await emitter.on_task_finish("task_a", 0, result)
+
+    await emitter.on_chunk(
+        LLMChunk(usage={"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5})
+    )
+    await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
+
+    tool_call_payload = _decode_payload(published[-1])
+    assert tool_call_payload["token_usage"] == {
+        "prompt_tokens": 3,
+        "completion_tokens": 2,
+        "total_tokens": 5,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Full sequence and terminal payload parity with batch
 # ---------------------------------------------------------------------------
 
 
 async def test_full_sequence_terminal_payload_unchanged_by_live_events():
     emitter, published = _make_emitter()
+    await emitter.on_task_start("task_a", 0)
     await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
     await emitter.on_tool_result(
         ToolResult(tool_call_id="call_1", content="result", is_error=False)
     )
+    await emitter.on_task_finish("task_a", 0, _make_loop_result())
     await emitter.on_final(_make_loop_result())
 
     assert [fields["type"] for fields in published] == [
+        "agent.task_start",
         "agent.tool_call",
         "agent.tool_result",
+        "agent.task_finish",
         "agent.result",
     ]
     final_payload = _decode_payload(published[-1])

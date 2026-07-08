@@ -9,6 +9,7 @@ from .agent_service import (
     ToolResult,
     ContextAttachment,
     LoopResult,
+    TaskRunSummary,
 )
 from .agents import (
     AgentData,
@@ -143,6 +144,7 @@ __all__ = [
     "ToolResult",
     "ContextAttachment",
     "LoopResult",
+    "TaskRunSummary",
     # agents
     "AgentData",
     "RealtimeAgentChatData",

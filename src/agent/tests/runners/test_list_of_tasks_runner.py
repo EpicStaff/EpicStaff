@@ -43,6 +43,7 @@ class FakeEmitter(Emitter):
         self.errors: list[Exception] = []
         self.warnings: list[str] = []
         self.task_starts: list[tuple[str, int]] = []
+        self.task_finishes: list[tuple[str, int, LoopResult]] = []
 
     async def on_start(self, request) -> None:
         self.started.append(request)
@@ -67,6 +68,11 @@ class FakeEmitter(Emitter):
 
     async def on_task_start(self, task_name: str, task_order: int) -> None:
         self.task_starts.append((task_name, task_order))
+
+    async def on_task_finish(
+        self, task_name: str, task_order: int, result: LoopResult
+    ) -> None:
+        self.task_finishes.append((task_name, task_order, result))
 
 
 class ScriptedLoop(AgentLoop):
@@ -314,6 +320,28 @@ async def test_aggregation_sums_usage_and_uses_last_final_text():
     assert final.token_usage.completion_tokens == 5
     assert final.token_usage.total_tokens == 12
 
+    assert final.tasks is not None
+    assert len(final.tasks) == 2
+
+    task_a_summary, task_b_summary = final.tasks
+    assert task_a_summary.name == "task_a"
+    assert task_a_summary.order == 0
+    assert task_a_summary.final_text == "A done"
+    assert task_a_summary.iterations == 2
+    assert task_a_summary.tool_invocations == 1
+    assert task_a_summary.token_usage.prompt_tokens == 2
+    assert task_a_summary.token_usage.completion_tokens == 1
+    assert task_a_summary.token_usage.total_tokens == 3
+
+    assert task_b_summary.name == "task_b"
+    assert task_b_summary.order == 1
+    assert task_b_summary.final_text == "B done"
+    assert task_b_summary.iterations == 3
+    assert task_b_summary.tool_invocations == 2
+    assert task_b_summary.token_usage.prompt_tokens == 5
+    assert task_b_summary.token_usage.completion_tokens == 4
+    assert task_b_summary.token_usage.total_tokens == 9
+
 
 async def test_on_start_called_exactly_once():
     emitter = FakeEmitter()
@@ -376,6 +404,73 @@ async def test_on_task_start_fired_once_per_task_with_correct_name_and_order():
     await runner.execute(request, emitter)
 
     assert emitter.task_starts == [("task_a", 0), ("task_b", 1), ("task_c", 2)]
+
+
+async def test_on_task_finish_fired_once_per_successful_task_with_own_result():
+    emitter = FakeEmitter()
+    usage_a = TokenUsage(prompt_tokens=2, completion_tokens=1, total_tokens=3)
+    usage_b = TokenUsage(prompt_tokens=5, completion_tokens=4, total_tokens=9)
+    loop = ScriptedLoop(
+        [
+            _result("A done", iterations=2, tool_invocations=1, token_usage=usage_a),
+            _result("B done", iterations=3, tool_invocations=2, token_usage=usage_b),
+        ]
+    )
+    runner = _runner(loop=loop)
+    request = _request(
+        [
+            {"name": "task_a", "instructions": "Do A"},
+            {"name": "task_b", "instructions": "Do B"},
+        ]
+    )
+
+    await runner.execute(request, emitter)
+
+    assert len(emitter.task_finishes) == 2
+
+    name_a, order_a, result_a = emitter.task_finishes[0]
+    assert (name_a, order_a) == ("task_a", 0)
+    assert result_a.final_text == "A done"
+    assert result_a.token_usage.total_tokens == 3
+
+    name_b, order_b, result_b = emitter.task_finishes[1]
+    assert (name_b, order_b) == ("task_b", 1)
+    assert result_b.final_text == "B done"
+    assert result_b.token_usage.total_tokens == 9
+
+
+async def test_on_task_finish_not_fired_for_task_after_mid_sequence_failure():
+    emitter = FakeEmitter()
+    failure_result = _result(
+        None, stop_reason="llm_error", error="rate limited", tool_invocations=0
+    )
+    loop = ScriptedLoop([failure_result, _result("B done")])
+    runner = _runner(loop=loop)
+    request = _request(
+        [
+            {"name": "task_a", "instructions": "Do A"},
+            {"name": "task_b", "instructions": "Do B"},
+        ]
+    )
+
+    await runner.execute(request, emitter)
+
+    assert emitter.task_finishes == []
+
+
+async def test_zero_tool_call_task_still_gets_task_start_and_task_finish_pair():
+    emitter = FakeEmitter()
+    loop = ScriptedLoop([_result("no tools needed", tool_invocations=0)])
+    runner = _runner(loop=loop)
+    request = _request([{"name": "task_a", "instructions": "Do A"}])
+
+    await runner.execute(request, emitter)
+
+    assert emitter.task_starts == [("task_a", 0)]
+    assert len(emitter.task_finishes) == 1
+    name, order, result = emitter.task_finishes[0]
+    assert (name, order) == ("task_a", 0)
+    assert result.final_text == "no tools needed"
 
 
 # ---------------------------------------------------------------------------

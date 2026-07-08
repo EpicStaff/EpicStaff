@@ -19,6 +19,7 @@ from shared.models.agent_service import (
     AgentRequest,
     AgentTaskSpec,
     LoopResult,
+    TaskRunSummary,
     TokenUsage,
 )
 
@@ -103,6 +104,7 @@ class ListOfTasksRunner(Runner):
             iterations = 0
             tool_invocations = 0
             last_result: LoopResult | None = None
+            task_summaries: list[TaskRunSummary] = []
 
             for task_order, task in enumerate(tasks):
                 await emitter.on_task_start(task.name, task_order)
@@ -153,6 +155,18 @@ class ListOfTasksRunner(Runner):
                 iterations += result.iterations
                 tool_invocations += result.tool_invocations
                 last_result = result
+                task_summaries.append(
+                    TaskRunSummary(
+                        name=task.name,
+                        order=task_order,
+                        final_text=result.final_text,
+                        token_usage=result.token_usage,
+                        iterations=result.iterations,
+                        tool_invocations=result.tool_invocations,
+                        stop_reason=result.stop_reason,
+                    )
+                )
+                await emitter.on_task_finish(task.name, task_order, result)
 
             assert last_result is not None  # _parse_tasks guarantees >=1 task
 
@@ -162,6 +176,7 @@ class ListOfTasksRunner(Runner):
                 iterations=iterations,
                 stop_reason=last_result.stop_reason,
                 token_usage=token_usage,
+                tasks=task_summaries,
             )
             logger.info(
                 "list_of_tasks done correlation_id={} stop_reason={} iterations={} tool_invocations={}",

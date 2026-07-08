@@ -10,10 +10,10 @@ Protocol (see src/agent/tests/test_contract.py):
 3. Await the matching result on ``agent.results``: ``agent.result`` payload
    or ``agent.error`` payload, both keyed by ``correlation_id``. Along the
    way, live envelopes whose ``type`` is in ``LIVE_EVENT_TYPES`` (currently
-   ``agent.tool_call`` / ``agent.tool_result``) are forwarded to the caller's
-   ``on_event`` callback and otherwise skipped; envelopes of any other
-   unrecognized type sharing the correlation_id are silently skipped too
-   (old-crew compatibility).
+   ``agent.tool_call`` / ``agent.tool_result`` / ``agent.task_start`` /
+   ``agent.task_finish``) are forwarded to the caller's ``on_event`` callback
+   and otherwise skipped; envelopes of any other unrecognized type sharing
+   the correlation_id are silently skipped too (old-crew compatibility).
 
 Consumption is a plain ``XREAD`` from a private pre-publish tail offset,
 NOT a consumer group — consumer groups compete-consume, so concurrent task
@@ -41,7 +41,9 @@ from src.shared.models.agent_service import (
 )
 from src.shared.redis_streams import StreamEnvelope
 
-LIVE_EVENT_TYPES = frozenset({"agent.tool_call", "agent.tool_result"})
+LIVE_EVENT_TYPES = frozenset(
+    {"agent.tool_call", "agent.tool_result", "agent.task_start", "agent.task_finish"}
+)
 """Envelope types forwarded live to ``on_event`` instead of ending the wait."""
 
 

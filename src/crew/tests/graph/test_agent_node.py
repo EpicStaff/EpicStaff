@@ -61,6 +61,17 @@ async def test_execute_returns_result_dict(agent_node_data):
         "stop_reason": "completed",
         "iterations": 3,
         "tool_invocations": 1,
+        "tasks": [
+            {
+                "name": "task_a",
+                "order": 0,
+                "final_text": "A done",
+                "token_usage": {"total_tokens": 10},
+                "iterations": 2,
+                "tool_invocations": 1,
+                "stop_reason": "completed",
+            }
+        ],
     }
 
     node = AgentNode(
@@ -81,10 +92,49 @@ async def test_execute_returns_result_dict(agent_node_data):
         "stop_reason": "completed",
         "iterations": 3,
         "tool_invocations": 1,
+        "tasks": [
+            {
+                "name": "task_a",
+                "order": 0,
+                "message": "A done",
+                "token_usage": {"total_tokens": 10},
+                "iterations": 2,
+                "tool_invocations": 1,
+            }
+        ],
     }
     agent_task_service.run_agent_node.assert_awaited_once_with(
         mock.ANY, node.stop_event, on_event=mock.ANY
     )
+
+
+@pytest.mark.asyncio
+async def test_execute_returns_empty_tasks_when_payload_lacks_tasks_key(
+    agent_node_data,
+):
+    """Old agent service without the 'tasks' key should degrade gracefully."""
+    agent_task_service = AsyncMock()
+    agent_task_service.run_agent_node.return_value = {
+        "final_text": "The summary.",
+        "token_usage": {"total_tokens": 42},
+        "stop_reason": "completed",
+        "iterations": 3,
+        "tool_invocations": 1,
+    }
+
+    node = AgentNode(
+        session_id=1,
+        node_name="agent_node_1",
+        stop_event=MagicMock(),
+        agent_node_data=agent_node_data,
+        agent_task_service=agent_task_service,
+    )
+
+    result = await node.execute(
+        state=MagicMock(), writer=MagicMock(), execution_order=0, input_={}
+    )
+
+    assert result["tasks"] == []
 
 
 @pytest.mark.asyncio
@@ -137,6 +187,13 @@ async def test_execute_forwards_live_agent_events_as_agent_node_stream(
     async def fake_run_agent_node(node_data, stop_event, on_event=None):
         on_event(
             StreamEnvelope(
+                type="agent.task_start",
+                correlation_id="corr-1",
+                payload={"task": {"name": "task_a", "order": 0}},
+            )
+        )
+        on_event(
+            StreamEnvelope(
                 type="agent.tool_call",
                 correlation_id="corr-1",
                 payload={"id": "call_1", "name": "search", "arguments": "{}"},
@@ -147,6 +204,13 @@ async def test_execute_forwards_live_agent_events_as_agent_node_stream(
                 type="agent.tool_result",
                 correlation_id="corr-1",
                 payload={"tool_call_id": "call_1", "content": "result"},
+            )
+        )
+        on_event(
+            StreamEnvelope(
+                type="agent.task_finish",
+                correlation_id="corr-1",
+                payload={"task": {"name": "task_a", "order": 0}, "message": "done"},
             )
         )
         return {"final_text": "done"}
@@ -172,11 +236,56 @@ async def test_execute_forwards_live_agent_events_as_agent_node_stream(
         and call.args[0].message_data.get("message_type") == "agent_node_stream"
     ]
 
-    assert len(stream_messages) == 2
-    assert stream_messages[0]["event"] == "tool_call"
-    assert stream_messages[0]["step_id"] == 1
-    assert stream_messages[1]["event"] == "tool_result"
-    assert stream_messages[1]["step_id"] == 2
+    assert len(stream_messages) == 4
+    assert [message["event"] for message in stream_messages] == [
+        "task_start",
+        "tool_call",
+        "tool_result",
+        "task_finish",
+    ]
+    assert [message["step_id"] for message in stream_messages] == [1, 2, 3, 4]
+    assert stream_messages[0]["data"]["task"] == {"name": "task_a", "order": 0}
+    assert stream_messages[3]["data"]["task"] == {"name": "task_a", "order": 0}
+
+
+@pytest.mark.asyncio
+async def test_execute_drops_unknown_envelope_type_and_writes_no_message(
+    agent_node_data,
+):
+    agent_task_service = AsyncMock()
+
+    async def fake_run_agent_node(node_data, stop_event, on_event=None):
+        on_event(
+            StreamEnvelope(
+                type="agent.heartbeat",
+                correlation_id="corr-1",
+                payload={},
+            )
+        )
+        return {"final_text": "done"}
+
+    agent_task_service.run_agent_node.side_effect = fake_run_agent_node
+
+    node = AgentNode(
+        session_id=1,
+        node_name="agent_node_1",
+        stop_event=MagicMock(),
+        agent_node_data=agent_node_data,
+        agent_task_service=agent_task_service,
+    )
+
+    writer = MagicMock()
+    state = make_state({})
+    await node.run(state=state, writer=writer)
+
+    stream_messages = [
+        call.args[0].message_data
+        for call in writer.call_args_list
+        if isinstance(call.args[0].message_data, dict)
+        and call.args[0].message_data.get("message_type") == "agent_node_stream"
+    ]
+
+    assert stream_messages == []
 
 
 @pytest.mark.asyncio

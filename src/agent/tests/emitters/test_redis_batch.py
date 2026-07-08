@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.emitters.redis_batch import RedisStreamBatchEmitter
-from shared.models.agent_service import LoopResult, TokenUsage
+from shared.models.agent_service import LoopResult, TaskRunSummary, TokenUsage
 from shared.redis_streams import StreamEnvelope
 
 
@@ -138,3 +138,83 @@ async def test_on_error_includes_warnings_after_on_warning():
 
     payload = _decode_payload(published[0])
     assert payload["warnings"] == ["context limit warning"]
+
+
+# ---------------------------------------------------------------------------
+# on_final serializes per-task summaries
+# ---------------------------------------------------------------------------
+
+
+async def test_on_final_tasks_is_none_for_single_task_result():
+    emitter, published = _make_emitter()
+    await emitter.on_final(_make_loop_result())
+
+    payload = _decode_payload(published[0])
+    assert payload["tasks"] is None
+
+
+async def test_on_final_serializes_populated_task_summaries():
+    emitter, published = _make_emitter()
+    result = LoopResult(
+        final_text="B done",
+        tool_invocations=3,
+        iterations=5,
+        stop_reason="completed",
+        token_usage=TokenUsage(prompt_tokens=7, completion_tokens=5, total_tokens=12),
+        tasks=[
+            TaskRunSummary(
+                name="task_a",
+                order=0,
+                final_text="A done",
+                token_usage=TokenUsage(
+                    prompt_tokens=2, completion_tokens=1, total_tokens=3
+                ),
+                iterations=2,
+                tool_invocations=1,
+                stop_reason="completed",
+            ),
+            TaskRunSummary(
+                name="task_b",
+                order=1,
+                final_text="B done",
+                token_usage=TokenUsage(
+                    prompt_tokens=5, completion_tokens=4, total_tokens=9
+                ),
+                iterations=3,
+                tool_invocations=2,
+                stop_reason="completed",
+            ),
+        ],
+    )
+
+    await emitter.on_final(result)
+
+    payload = _decode_payload(published[0])
+    assert payload["tasks"] == [
+        {
+            "name": "task_a",
+            "order": 0,
+            "final_text": "A done",
+            "token_usage": {
+                "prompt_tokens": 2,
+                "completion_tokens": 1,
+                "total_tokens": 3,
+            },
+            "iterations": 2,
+            "tool_invocations": 1,
+            "stop_reason": "completed",
+        },
+        {
+            "name": "task_b",
+            "order": 1,
+            "final_text": "B done",
+            "token_usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 4,
+                "total_tokens": 9,
+            },
+            "iterations": 3,
+            "tool_invocations": 2,
+            "stop_reason": "completed",
+        },
+    ]

@@ -10,7 +10,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.data_loader import DataLoader
-from shared.models.agent_service import AgentRequest, RunType
+from app.emitters.redis_batch import RedisStreamBatchEmitter
+from shared.models.agent_service import AgentRequest, LoopResult, RunType, TokenUsage
 
 
 # ---------------------------------------------------------------------------
@@ -216,3 +217,49 @@ async def test_data_loader_injects_correlation_id():
     assert request.correlation_id == "injected-corr-id"
     assert request.run_type == RunType.SINGLE_TASK
     assert request.agents[0].id == 12
+
+
+# ---------------------------------------------------------------------------
+# agent.result payload key set is pinned (crew <-> agent wire contract)
+# ---------------------------------------------------------------------------
+
+
+async def test_agent_result_payload_key_set_includes_tasks():
+    """Pin the exact key set published on 'agent.result' so crew's consumer
+    can rely on it; 'tasks' must be present alongside the pre-existing keys."""
+    published: list[dict] = []
+
+    fake_client = MagicMock()
+
+    async def capture_publish(stream: str, fields: dict) -> None:
+        published.append(fields)
+
+    fake_client.publish = capture_publish
+
+    emitter = RedisStreamBatchEmitter(
+        client=fake_client,
+        result_stream="agent.results",
+        correlation_id="corr-1",
+    )
+    result = LoopResult(
+        final_text="done",
+        tool_invocations=0,
+        iterations=1,
+        stop_reason="completed",
+        token_usage=TokenUsage(),
+    )
+
+    await emitter.on_final(result)
+
+    payload = json.loads(published[0]["payload"])
+    assert set(payload.keys()) == {
+        "final_text",
+        "tool_invocations",
+        "iterations",
+        "stop_reason",
+        "token_usage",
+        "error",
+        "events",
+        "warnings",
+        "tasks",
+    }

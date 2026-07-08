@@ -13,6 +13,13 @@ from services.graph.remembered_outputs import (
 )
 from src.shared.models import TaskNodeData
 
+STREAM_EVENT_BY_ENVELOPE_TYPE = {
+    "agent.tool_call": "tool_call",
+    "agent.tool_result": "tool_result",
+    "agent.task_start": "task_start",
+    "agent.task_finish": "task_finish",
+}
+
 
 class TaskNode(BaseNode):
     TYPE = "TASK"
@@ -66,6 +73,10 @@ class TaskNode(BaseNode):
 
         def _on_agent_event(envelope):
             nonlocal step_id
+            event = STREAM_EVENT_BY_ENVELOPE_TYPE.get(envelope.type)
+            if event is None:
+                return
+
             step_id += 1
             self.custom_session_message_writer.add_custom_message(
                 session_id=self.session_id,
@@ -74,9 +85,7 @@ class TaskNode(BaseNode):
                 execution_order=execution_order,
                 message_data={
                     "message_type": "task_node_stream",
-                    "event": "tool_call"
-                    if envelope.type == "agent.tool_call"
-                    else "tool_result",
+                    "event": event,
                     "step_id": step_id,
                     "is_final": False,
                     "sse_visible": True,

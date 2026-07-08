@@ -15,7 +15,7 @@ from loguru import logger
 
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.llm.client import LLMChunk
-from shared.models.agent_service import ToolResult
+from shared.models.agent_service import LoopResult, ToolResult
 from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
 LIVE_ARGUMENTS_MAX_CHARS = 2000
@@ -92,8 +92,32 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
             )
 
     async def on_task_start(self, task_name: str, task_order: int) -> None:
-        """Record the currently running task so live tool events can carry it."""
+        """Record the currently running task so live tool events can carry it,
+        and publish a live ``agent.task_start`` envelope."""
         self._current_task = {"name": task_name, "order": task_order}
+        await self._publish_live("agent.task_start", {"task": self._current_task})
+
+    async def on_task_finish(
+        self, task_name: str, task_order: int, result: LoopResult
+    ) -> None:
+        """Publish a live ``agent.task_finish`` envelope carrying the task's
+        own result, then clear the current-task label and reset the live
+        token-usage delta so it doesn't bleed into the next task."""
+        message, truncated = _truncate(result.final_text or "", LIVE_CONTENT_MAX_CHARS)
+        await self._publish_live(
+            "agent.task_finish",
+            {
+                "task": {"name": task_name, "order": task_order},
+                "message": message,
+                "truncated": truncated,
+                "token_usage": result.token_usage.model_dump(),
+                "iterations": result.iterations,
+                "tool_invocations": result.tool_invocations,
+                "stop_reason": result.stop_reason,
+            },
+        )
+        self._consume_token_usage_delta()
+        self._current_task = None
 
     async def on_chunk(self, chunk: LLMChunk) -> None:
         """Accumulate cumulative token usage, then keep buffering as usual."""

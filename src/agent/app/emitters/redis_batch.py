@@ -85,6 +85,11 @@ class RedisStreamBatchEmitter(Emitter):
                 "error": result.error,
                 "events": self._buffered_events,
                 "warnings": self._warnings,
+                "tasks": (
+                    [task.model_dump() for task in result.tasks]
+                    if result.tasks is not None
+                    else None
+                ),
             },
         )
         _corr_id = self._correlation_id

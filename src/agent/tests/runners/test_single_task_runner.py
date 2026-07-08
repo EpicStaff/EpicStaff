@@ -241,6 +241,7 @@ async def test_happy_path_single_agent():
 
     assert len(emitter.started) == 1
     assert emitter.finals == [CANNED_RESULT]
+    assert emitter.finals[0].tasks is None
     assert emitter.errors == []
 
     messages = fake_loop.received_messages[0]

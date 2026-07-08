@@ -315,6 +315,67 @@ async def test_run_task_forwards_live_events_to_on_event_in_order(
 
 
 @pytest.mark.asyncio
+async def test_run_task_forwards_task_lifecycle_events_to_on_event_in_order(
+    redis_service_stub, task_node_data, fake_stream_client
+):
+    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
+    collected: list[StreamEnvelope] = []
+
+    async def fake_agent():
+        request_envelope = await _read_one_request(
+            fake_stream_client, service.request_stream
+        )
+        await _publish_result(
+            fake_stream_client,
+            service.result_stream,
+            request_envelope.correlation_id,
+            {"task": {"name": "task_a", "order": 0}},
+            event_type="agent.task_start",
+        )
+        await _publish_result(
+            fake_stream_client,
+            service.result_stream,
+            request_envelope.correlation_id,
+            {"id": "call_1", "name": "search", "arguments": "{}"},
+            event_type="agent.tool_call",
+        )
+        await _publish_result(
+            fake_stream_client,
+            service.result_stream,
+            request_envelope.correlation_id,
+            {"tool_call_id": "call_1", "content": "result"},
+            event_type="agent.tool_result",
+        )
+        await _publish_result(
+            fake_stream_client,
+            service.result_stream,
+            request_envelope.correlation_id,
+            {"task": {"name": "task_a", "order": 0}, "message": "done"},
+            event_type="agent.task_finish",
+        )
+        await _publish_result(
+            fake_stream_client,
+            service.result_stream,
+            request_envelope.correlation_id,
+            {"final_text": "done", "stop_reason": "completed"},
+        )
+
+    responder = asyncio.create_task(fake_agent())
+    result = await service.run_task(
+        task_node_data, StopEvent(), on_event=collected.append
+    )
+    await responder
+
+    assert [envelope.type for envelope in collected] == [
+        "agent.task_start",
+        "agent.tool_call",
+        "agent.tool_result",
+        "agent.task_finish",
+    ]
+    assert result["final_text"] == "done"
+
+
+@pytest.mark.asyncio
 async def test_run_task_on_event_raising_logs_warning_and_still_returns_final(
     redis_service_stub, task_node_data, fake_stream_client
 ):

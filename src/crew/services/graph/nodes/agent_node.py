@@ -9,6 +9,13 @@ from services.graph.nodes import BaseNode
 from services.graph.nodes.instruction_render import render_instructions
 from src.shared.models import AgentNodeData
 
+STREAM_EVENT_BY_ENVELOPE_TYPE = {
+    "agent.tool_call": "tool_call",
+    "agent.tool_result": "tool_result",
+    "agent.task_start": "task_start",
+    "agent.task_finish": "task_finish",
+}
+
 
 class AgentNode(BaseNode):
     TYPE = "AGENT"
@@ -63,6 +70,10 @@ class AgentNode(BaseNode):
 
         def _on_agent_event(envelope):
             nonlocal step_id
+            event = STREAM_EVENT_BY_ENVELOPE_TYPE.get(envelope.type)
+            if event is None:
+                return
+
             step_id += 1
             self.custom_session_message_writer.add_custom_message(
                 session_id=self.session_id,
@@ -71,9 +82,7 @@ class AgentNode(BaseNode):
                 execution_order=execution_order,
                 message_data={
                     "message_type": "agent_node_stream",
-                    "event": "tool_call"
-                    if envelope.type == "agent.tool_call"
-                    else "tool_result",
+                    "event": event,
                     "step_id": step_id,
                     "is_final": False,
                     "sse_visible": True,
@@ -91,4 +100,15 @@ class AgentNode(BaseNode):
             "stop_reason": result.get("stop_reason"),
             "iterations": result.get("iterations"),
             "tool_invocations": result.get("tool_invocations"),
+            "tasks": [
+                {
+                    "name": task.get("name"),
+                    "order": task.get("order"),
+                    "message": task.get("final_text"),
+                    "token_usage": task.get("token_usage") or {},
+                    "iterations": task.get("iterations"),
+                    "tool_invocations": task.get("tool_invocations"),
+                }
+                for task in (result.get("tasks") or [])
+            ],
         }

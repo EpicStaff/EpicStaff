@@ -85,3 +85,11 @@ class Emitter(ABC):
         task (e.g. ``RedisStreamToolEventEmitter``) may override it.
         """
         return None
+
+    async def on_task_finish(
+        self, task_name: str, task_order: int, result: LoopResult
+    ) -> None:
+        """Optional hook for multi-task runs; called after each task completes
+        successfully. Default is a no-op.
+        """
+        return None
