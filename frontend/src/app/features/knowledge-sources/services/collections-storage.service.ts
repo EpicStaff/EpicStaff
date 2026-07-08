@@ -36,6 +36,20 @@ export class CollectionsStorageService implements StorageService {
         this.processingConfigIdsSignal.update((ids) => new Set([...ids, ...configIds]));
     }
 
+    // TODO update it when gra
+    // Optimistically sets the given rag's status to 'processing' in the fullCollections cache.
+    // Polling will overwrite on next tick.
+    markRagAsProcessing(ragId: number): void {
+        this.fullCollectionsSignal.update((collections) =>
+            collections.map((c) => ({
+                ...c,
+                rag_configurations: c.rag_configurations.map((r) =>
+                    r.rag_id === ragId ? { ...r, status: 'processing' } : r
+                ),
+            }))
+        );
+    }
+
     private rebuildProcessingConfigIds(): void {
         this.processingConfigIdsSignal.set(
             new Set(

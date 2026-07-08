@@ -113,9 +113,8 @@ export class GraphRagConfigurationComponent implements OnInit, AfterViewInit, Ra
         return { ...formValue, file_type };
     }
 
-    //TODO will be used for partial Graph RAG documents indexing
     getDocumentConfigIds(): number[] {
-        return [];
+        return this.documents().map((d) => d.graph_rag_document_id);
     }
 
     getIndexingDocuments(): IndexingDocumentInfo[] {
