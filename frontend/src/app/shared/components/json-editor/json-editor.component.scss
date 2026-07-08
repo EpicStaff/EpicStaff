@@ -58,6 +58,12 @@
                 }
             }
 
+            .editor-subtitle {
+                font-size: 12px;
+                color: var(--text-secondary-60);
+                white-space: nowrap;
+            }
+
             .validation-message {
                 margin-top: 2px;
                 display: block;

@@ -1,9 +1,11 @@
 import { BasePort } from '../../models/port.model';
 
-export const DEFAULT_PROJECT_NODE_PORTS: BasePort[] = [
+// Simple Agent node (NodeType.AGENT) — single In/Out ports, mirrors the
+// Task/Python node port layout.
+export const DEFAULT_AGENT_NODE_PORTS: BasePort[] = [
     {
         port_type: 'input',
-        role: 'project-in',
+        role: 'agent-in',
         multiple: true,
         label: 'In',
         allowedConnections: [
@@ -12,8 +14,8 @@ export const DEFAULT_PROJECT_NODE_PORTS: BasePort[] = [
             'edge-out',
             'start-start',
             'table-out',
-            'file-extractor-out',
             'llm-out-right',
+            'file-extractor-out',
             'subgraph-out',
             'audio-to-text-out',
             'webhook-trigger-out',
@@ -26,19 +28,19 @@ export const DEFAULT_PROJECT_NODE_PORTS: BasePort[] = [
             'agent-out',
         ],
         position: 'left',
-        color: '#5672cd',
+        color: '#685fff',
     },
     {
         port_type: 'output',
-        role: 'project-out',
+        role: 'agent-out',
         multiple: false,
         label: 'Out',
         allowedConnections: [
             'project-in',
             'python-in',
             'edge-in',
-            'llm-out-left',
             'table-in',
+            'llm-out-left',
             'file-extractor-in',
             'end-in',
             'subgraph-in',
@@ -48,7 +50,6 @@ export const DEFAULT_PROJECT_NODE_PORTS: BasePort[] = [
             'agent-in',
         ],
         position: 'right',
-        color: '#5672cd',
+        color: '#685fff',
     },
 ];
-// MERGE_COMMENT: merged line 41. check and remove comment

@@ -1,0 +1,213 @@
+<div class="att">
+    <div class="att__scroll">
+        <div class="att__inner">
+            <div class="att-row att-row--header">
+                <div class="att-cell att-cell--index"></div>
+                <div class="att-cell att-cell--name">Name<span class="required">*</span></div>
+                <div class="att-cell att-cell--instructions">Instructions<span class="required">*</span></div>
+                <div class="att-cell att-cell--schema">Output Schema</div>
+                <div class="att-cell att-cell--context">Task Context</div>
+                <div class="att-cell att-cell--delete">
+                    <button
+                        type="button"
+                        class="att-clear-all"
+                        title="Clear all tasks"
+                        (click)="clearAll()"
+                    >
+                        <app-svg-icon
+                            icon="trash"
+                            size="14px"
+                        />
+                    </button>
+                </div>
+            </div>
+
+            <div
+                class="att-body"
+                cdkDropList
+                [cdkDropListData]="tasks()"
+                (cdkDropListDropped)="onDrop($event)"
+            >
+                @for (task of tasks(); track trackByTempId($index, task); let i = $index) {
+                    <div
+                        class="att-row"
+                        [class.att-row--even]="i % 2 === 1"
+                        cdkDrag
+                    >
+                        <div class="att-cell att-cell--index">
+                            <span
+                                class="att-drag-handle"
+                                cdkDragHandle
+                            >
+                                <app-svg-icon
+                                    icon="drag-handle"
+                                    size="14px"
+                                />
+                            </span>
+                            <span class="att-row-number">{{ i + 1 }}</span>
+                        </div>
+
+                        <div class="att-cell att-cell--name">
+                            <input
+                                class="att-input"
+                                type="text"
+                                placeholder="Enter name..."
+                                [value]="task.name"
+                                (input)="onNameInput(i, $event)"
+                            />
+                        </div>
+
+                        <div
+                            class="att-cell att-cell--instructions"
+                            [class.att-cell--selected]="isCellSelected(i, 'instructions')"
+                        >
+                            <textarea
+                                class="att-textarea"
+                                placeholder="Describe what this task should do..."
+                                [value]="task.instructions"
+                                (input)="onInstructionsInput(i, $event)"
+                            ></textarea>
+                            <app-svg-icon
+                                class="att-expand-icon"
+                                icon="editor-expand"
+                                size="0.85rem"
+                                title="Expand"
+                                (click)="onExpandCell(i, 'instructions', $event)"
+                            />
+                        </div>
+
+                        <div
+                            class="att-cell att-cell--schema"
+                            [class.att-cell--selected]="isCellSelected(i, 'schema')"
+                        >
+                            <textarea
+                                class="att-textarea att-textarea--schema"
+                                [class.att-textarea--invalid]="invalidSchemaIds().has(task.tempId)"
+                                placeholder="Add schema..."
+                                [value]="getSchemaText(task)"
+                                (input)="onSchemaInput(task.tempId, $event)"
+                                (blur)="onSchemaBlur(i, task)"
+                            ></textarea>
+                            <app-svg-icon
+                                class="att-expand-icon"
+                                icon="editor-expand"
+                                size="0.85rem"
+                                title="Expand"
+                                (click)="onExpandCell(i, 'schema', $event)"
+                            />
+                        </div>
+
+                        <div
+                            class="att-cell att-cell--context"
+                            (click)="openContextPopup(i, $event)"
+                        >
+                            @if (getResolvedContext(task).length === 0) {
+                                <span class="att-context-placeholder">Add context...</span>
+                            } @else {
+                                <div class="att-context-chips">
+                                    @for (chip of getResolvedContext(task); track chip.tempId) {
+                                        <span class="att-context-chip">
+                                            <span class="att-context-chip__name">{{ chip.name || 'Untitled' }}</span>
+                                            <span class="att-context-chip__order">{{ chip.order }}</span>
+                                        </span>
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                        <div class="att-cell att-cell--delete">
+                            <button
+                                type="button"
+                                class="att-remove-btn"
+                                title="Remove task"
+                                (click)="removeTask(i)"
+                            >
+                                <app-svg-icon
+                                    icon="x"
+                                    size="12px"
+                                />
+                            </button>
+                        </div>
+                    </div>
+                }
+
+                @if (tasks().length === 0) {
+                    <div class="att-empty">No tasks yet — click "+ Add Task" below to create one.</div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<ng-template #contextPopupTemplate>
+    <div class="att-popup">
+        <div class="att-popup__header">
+            <app-svg-icon
+                icon="search"
+                size="14px"
+                class="att-popup__search-icon"
+            />
+            <input
+                type="text"
+                class="att-popup__search"
+                placeholder="Search tasks..."
+                [value]="contextSearch()"
+                (input)="onContextSearch($event)"
+            />
+        </div>
+
+        <div class="att-popup__list">
+            @for (candidate of contextCandidates(); track candidate.tempId) {
+                <div
+                    class="att-popup__item"
+                    [class.selected]="isContextSelected(candidate)"
+                    (click)="toggleContextSelection(candidate)"
+                >
+                    <span class="att-popup__order">{{ candidate.order }}</span>
+                    <span class="att-popup__name">{{ candidate.name || 'Untitled' }}</span>
+                    <span class="att-popup__checkbox-wrapper">
+                        <input
+                            type="checkbox"
+                            class="transparent-checkbox"
+                            [checked]="isContextSelected(candidate)"
+                            (click)="$event.stopPropagation()"
+                            (change)="toggleContextSelection(candidate)"
+                        />
+                        @if (isContextSelected(candidate)) {
+                            <span class="checkmark"></span>
+                        }
+                    </span>
+                </div>
+            }
+            @if (contextCandidates().length === 0) {
+                <div class="att-popup__empty">No earlier tasks available</div>
+            }
+        </div>
+
+        <div class="att-popup__footer">
+            <button
+                type="button"
+                class="att-btn att-btn--outline"
+                (click)="onContextClear()"
+            >
+                Clear
+            </button>
+            <div class="att-popup__footer-right">
+                <button
+                    type="button"
+                    class="att-btn att-btn--outline"
+                    (click)="onContextCancel()"
+                >
+                    Cancel
+                </button>
+                <button
+                    type="button"
+                    class="att-btn att-btn--primary"
+                    (click)="onContextSave()"
+                >
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</ng-template>

@@ -1,3 +1,4 @@
+import { AgentNode } from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
 import { GetAudioToTextNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/audio-to-text.model';
 import { GetClassificationDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { GetCodeAgentNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/code-agent-node.model';
@@ -51,6 +52,7 @@ export interface GraphDto extends GetGraphLightRequest {
     crew_node_list: CrewNode[];
     python_node_list: PythonNode[];
     task_node_list: TaskNode[];
+    agent_node_list?: AgentNode[];
     edge_list: Edge[];
     conditional_edge_list: ConditionalEdge[];
     llm_node_list: GetLLMNodeRequest[];

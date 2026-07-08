@@ -13,6 +13,12 @@
             {{ title }}
         </span>
         <span
+            class="editor-subtitle"
+            *ngIf="subtitle"
+        >
+            {{ subtitle }}
+        </span>
+        <span
             class="validation-message"
             *ngIf="!jsonIsValid"
         >

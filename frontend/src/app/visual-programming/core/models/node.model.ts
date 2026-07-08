@@ -1,8 +1,8 @@
 import { GetGraphLightRequest } from '../../../features/flows/models/graph.model';
 import { GetProjectRequest } from '../../../features/projects/models/project.model';
-import { GetAgentRequest } from '../../../features/staff/models/agent.model';
 import { CustomPythonCode } from '../../../features/tools/models/python-code.model';
 import { ToolConfig } from '../../../features/tools/models/tool-config.model';
+import { AgentNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
 import { CodeAgentNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/code-agent-node.model';
 import { CustomConditionalEdgeModelForNode } from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
 import { ScheduleTriggerNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
@@ -61,7 +61,7 @@ export interface TaskNodeModel extends BaseNodeModel {
 
 export interface AgentNodeModel extends BaseNodeModel {
     type: NodeType.AGENT;
-    data: GetAgentRequest;
+    data: AgentNodeData;
 }
 export interface ToolNodeModel extends BaseNodeModel {
     type: NodeType.TOOL;

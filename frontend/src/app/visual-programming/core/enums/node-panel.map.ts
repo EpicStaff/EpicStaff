@@ -1,5 +1,6 @@
 import { Type } from '@angular/core';
 
+import { AgentNodePanelComponent } from '../../components/node-panels/agent-node-panel/agent-node-panel.component';
 import { AudioToTextNodePanelComponent } from '../../components/node-panels/audio-to-text-node-panel/audio-to-text-node-panel.component';
 import { ClassificationDecisionTableNodePanelComponent } from '../../components/node-panels/classification-decision-table-node-panel/classification-decision-table-node-panel.component';
 import { CodeAgentNodePanelComponent } from '../../components/node-panels/code-agent-node-panel/code-agent-node-panel.component';
@@ -36,5 +37,6 @@ export const PANEL_COMPONENT_MAP: Record<string, Type<NodePanel<NodeModel>>> = {
     [NodeType.SCHEDULE_TRIGGER]: asNodePanelComponent(ScheduleTriggerNodePanelComponent),
     [NodeType.CODE_AGENT]: asNodePanelComponent(CodeAgentNodePanelComponent),
     [NodeType.TASK]: asNodePanelComponent(TaskNodePanelComponent),
+    [NodeType.AGENT]: asNodePanelComponent(AgentNodePanelComponent),
     // start: StartNodePanelComponent,
 };

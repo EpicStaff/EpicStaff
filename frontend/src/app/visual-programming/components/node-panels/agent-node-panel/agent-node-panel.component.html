@@ -1,0 +1,328 @@
+<div class="panel-container">
+    <div class="panel-content">
+        <form
+            [formGroup]="form"
+            class="form-container"
+        >
+            @if (isExpanded()) {
+                <div class="form-layout expanded">
+                    <div class="form-fields">
+                        <app-custom-input
+                            label="Node Name"
+                            [required]="true"
+                            tooltipText="The unique identifier used to reference this Agent node. This name must be unique within the flow."
+                            formControlName="node_name"
+                            placeholder="Enter node name"
+                            [activeColor]="activeColor"
+                            [errorMessage]="getNodeNameErrorMessage()"
+                        ></app-custom-input>
+
+                        <div class="field">
+                            <div class="field__label-row">
+                                <label class="field__label">Agent<span class="required">*</span></label>
+                                <app-help-tooltip
+                                    text="The agent definition that will execute this node's tasks."
+                                    position="right"
+                                    size="18px"
+                                />
+                            </div>
+                            <app-select-dropdown
+                                mode="list"
+                                selectionMode="single"
+                                searchPlaceholder="Search agent..."
+                                emptyText="No agents available"
+                                [items]="agentItems()"
+                                [selected]="selectedAgentValue()"
+                                (selectionChange)="onAgentSelectionChange($event)"
+                            >
+                                <button
+                                    type="button"
+                                    appSelectDropdownTrigger
+                                    class="dropdown-trigger"
+                                >
+                                    <span
+                                        class="dropdown-trigger__label"
+                                        [class.dropdown-trigger__label--placeholder]="!selectedAgentName()"
+                                    >
+                                        {{ selectedAgentName() || 'Select agent' }}
+                                    </span>
+                                    <app-svg-icon
+                                        icon="chevron-down-filled"
+                                        size="8px"
+                                    />
+                                </button>
+                            </app-select-dropdown>
+                        </div>
+
+                        <div class="field">
+                            <div class="field__label-row">
+                                <label class="field__label">Surface (Group of Permissions)</label>
+                                <app-help-tooltip
+                                    text="Assign one or more surfaces (permission groups) this node's agent can use while executing any of its tasks."
+                                    position="right"
+                                    size="18px"
+                                />
+                            </div>
+                            <div class="surface-row">
+                                <app-multi-select
+                                    class="surface-row__select"
+                                    color="white"
+                                    [grouped]="true"
+                                    [label]="surfaceSummaryLabel()"
+                                    searchPlaceholder="Search item..."
+                                    checkboxPosition="left"
+                                    [items]="surfaceMultiSelectItems()"
+                                    [selectedValues]="selectedSurfaceIds()"
+                                    (selectionChange)="onSurfacesChange($event)"
+                                ></app-multi-select>
+                                <button
+                                    type="button"
+                                    class="view-summary-btn"
+                                    disabled
+                                    title="Coming soon"
+                                >
+                                    <app-svg-icon
+                                        icon="sum"
+                                        size="10px"
+                                    />
+                                    View Summary
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="input-map">
+                            <app-input-map [activeColor]="activeColor"></app-input-map>
+                        </div>
+
+                        <app-custom-input
+                            label="Output Variable Path"
+                            tooltipText="Path where the Agent node output will be stored in flow variables."
+                            formControlName="output_variable_path"
+                            placeholder="Enter output variable path (leave empty for null)"
+                            [activeColor]="activeColor"
+                        ></app-custom-input>
+
+                        <div class="field task-section">
+                            <div class="field__label-row">
+                                <label class="field__label">Task<span class="required">*</span></label>
+                                <app-help-tooltip
+                                    text="Ordered tasks this agent will execute. Each task can reference the output of earlier tasks in the same node via Task Context."
+                                    position="right"
+                                    size="18px"
+                                />
+                            </div>
+
+                            <app-agent-tasks-table
+                                [tasks]="tasks()"
+                                [activeColor]="activeColor"
+                                [selectedCell]="isExpanded() ? effectiveRightPane() : null"
+                                (tasksChange)="onTasksChange($event)"
+                                (cellSelect)="onCellSelect($event)"
+                            ></app-agent-tasks-table>
+
+                            <button
+                                type="button"
+                                class="add-task-btn"
+                                (click)="addTask()"
+                            >
+                                <app-svg-icon
+                                    icon="plus"
+                                    size="14px"
+                                />
+                                Add Task
+                            </button>
+
+                            @if (getTasksErrorMessage()) {
+                                <div class="task-error">{{ getTasksErrorMessage() }}</div>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="main-editor-pane">
+                        @if (!selectedTask()) {
+                            <div class="main-editor-pane__empty">Add a task to edit its instructions</div>
+                        } @else if (effectiveRightPane()?.field === 'schema') {
+                            <app-json-editor
+                                [jsonData]="rightSchemaText()"
+                                (jsonChange)="onRightSchemaChange($event)"
+                                [showHeader]="true"
+                                [allowCopy]="true"
+                                [allowExpand]="false"
+                                [title]="'JSON Editor'"
+                                [subtitle]="'Output Schema — Task ' + selectedTaskNumber()"
+                                [fullHeight]="true"
+                            ></app-json-editor>
+                        } @else {
+                            <div class="main-editor-pane__header">
+                                <div class="main-editor-pane__title-group">
+                                    <span class="main-editor-pane__title">
+                                        <app-svg-icon
+                                            class="main-editor-pane__title-icon"
+                                            icon="file-empty-state"
+                                            size="1.2rem"
+                                        />
+                                        Instructions
+                                    </span>
+                                    <span class="main-editor-pane__subtitle">Task {{ selectedTaskNumber() }}</span>
+                                </div>
+                                <div class="main-editor-pane__actions">
+                                    <button
+                                        type="button"
+                                        class="icon-button"
+                                        title="Copy"
+                                        (click)="copyRightInstructions()"
+                                    >
+                                        <app-svg-icon
+                                            icon="copy"
+                                            size="0.9rem"
+                                        />
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="main-editor-pane__body">
+                                <textarea
+                                    class="main-editor-pane__textarea"
+                                    placeholder="Enter task instructions..."
+                                    [value]="rightInstructionsValue()"
+                                    (input)="onRightInstructionsInput($event)"
+                                ></textarea>
+                            </div>
+                        }
+                    </div>
+                </div>
+            } @else {
+                <div class="form-layout collapsed">
+                    <app-custom-input
+                        label="Node Name"
+                        [required]="true"
+                        tooltipText="The unique identifier used to reference this Agent node. This name must be unique within the flow."
+                        formControlName="node_name"
+                        placeholder="Enter node name"
+                        [activeColor]="activeColor"
+                        [errorMessage]="getNodeNameErrorMessage()"
+                    ></app-custom-input>
+
+                    <div class="field">
+                        <div class="field__label-row">
+                            <label class="field__label">Agent<span class="required">*</span></label>
+                            <app-help-tooltip
+                                text="The agent definition that will execute this node's tasks."
+                                position="right"
+                                size="18px"
+                            />
+                        </div>
+                        <app-select-dropdown
+                            mode="list"
+                            selectionMode="single"
+                            searchPlaceholder="Search agent..."
+                            emptyText="No agents available"
+                            [items]="agentItems()"
+                            [selected]="selectedAgentValue()"
+                            (selectionChange)="onAgentSelectionChange($event)"
+                        >
+                            <button
+                                type="button"
+                                appSelectDropdownTrigger
+                                class="dropdown-trigger"
+                            >
+                                <span
+                                    class="dropdown-trigger__label"
+                                    [class.dropdown-trigger__label--placeholder]="!selectedAgentName()"
+                                >
+                                    {{ selectedAgentName() || 'Select agent' }}
+                                </span>
+                                <app-svg-icon
+                                    icon="chevron-down-filled"
+                                    size="8px"
+                                />
+                            </button>
+                        </app-select-dropdown>
+                    </div>
+
+                    <div class="field">
+                        <div class="field__label-row">
+                            <label class="field__label">Surface (Group of Permissions)</label>
+                            <app-help-tooltip
+                                text="Assign one or more surfaces (permission groups) this node's agent can use while executing any of its tasks."
+                                position="right"
+                                size="18px"
+                            />
+                        </div>
+                        <div class="surface-row">
+                            <app-multi-select
+                                class="surface-row__select"
+                                color="white"
+                                [grouped]="true"
+                                [label]="surfaceSummaryLabel()"
+                                searchPlaceholder="Search item..."
+                                checkboxPosition="left"
+                                [items]="surfaceMultiSelectItems()"
+                                [selectedValues]="selectedSurfaceIds()"
+                                (selectionChange)="onSurfacesChange($event)"
+                            ></app-multi-select>
+                            <button
+                                type="button"
+                                class="view-summary-btn"
+                                disabled
+                                title="Coming soon"
+                            >
+                                <app-svg-icon
+                                    icon="sum"
+                                    size="10px"
+                                />
+                                View Summary
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="input-map">
+                        <app-input-map [activeColor]="activeColor"></app-input-map>
+                    </div>
+
+                    <app-custom-input
+                        label="Output Variable Path"
+                        tooltipText="Path where the Agent node output will be stored in flow variables."
+                        formControlName="output_variable_path"
+                        placeholder="Enter output variable path (leave empty for null)"
+                        [activeColor]="activeColor"
+                    ></app-custom-input>
+
+                    <div class="field task-section">
+                        <div class="field__label-row">
+                            <label class="field__label">Task<span class="required">*</span></label>
+                            <app-help-tooltip
+                                text="Ordered tasks this agent will execute. Each task can reference the output of earlier tasks in the same node via Task Context."
+                                position="right"
+                                size="18px"
+                            />
+                        </div>
+
+                        <app-agent-tasks-table
+                            [tasks]="tasks()"
+                            [activeColor]="activeColor"
+                            [selectedCell]="isExpanded() ? effectiveRightPane() : null"
+                            (tasksChange)="onTasksChange($event)"
+                            (cellSelect)="onCellSelect($event)"
+                        ></app-agent-tasks-table>
+
+                        <button
+                            type="button"
+                            class="add-task-btn"
+                            (click)="addTask()"
+                        >
+                            <app-svg-icon
+                                icon="plus"
+                                size="14px"
+                            />
+                            Add Task
+                        </button>
+
+                        @if (getTasksErrorMessage()) {
+                            <div class="task-error">{{ getTasksErrorMessage() }}</div>
+                        }
+                    </div>
+                </div>
+            }
+        </form>
+    </div>
+</div>

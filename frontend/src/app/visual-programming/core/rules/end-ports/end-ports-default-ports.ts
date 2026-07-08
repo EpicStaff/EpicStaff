@@ -22,6 +22,7 @@ export const DEFAULT_END_NODE_PORTS: BasePort[] = [
             'task-out',
             'decision-default',
             'decision-error',
+            'agent-out',
         ],
         position: 'left',
         color: '#d3d3d3',
