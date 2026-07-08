@@ -107,6 +107,7 @@ export class AgentDetailComponent implements OnInit {
     readonly duplicate = output<AgentDefinition>();
     readonly dirtyChange = output<boolean>();
     readonly bootDocChange = output<boolean>();
+    readonly openBootDoc = output<void>();
     readonly extractText = output<string>();
     readonly createSurface = output<{ body: CreateSurfaceRequest; place: SurfaceCategoryId }>();
     readonly addFromShared = output<number>();
@@ -321,6 +322,10 @@ export class AgentDetailComponent implements OnInit {
     removeBootDoc(): void {
         this.bootAsDoc.set(false);
         this.bootDocChange.emit(false);
+    }
+
+    onOpenBootDoc(): void {
+        this.openBootDoc.emit();
     }
 
     /** "Extract Text from PC": open the native file picker (no upload). */

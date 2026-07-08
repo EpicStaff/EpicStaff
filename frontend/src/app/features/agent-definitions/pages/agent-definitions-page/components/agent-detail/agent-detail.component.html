@@ -86,25 +86,29 @@
                         <label class="label">Boot Instructions</label>
 
                         @if (bootAsDoc()) {
-                            <div class="doc-chip">
+                            <button
+                                type="button"
+                                class="doc-chip"
+                                (click)="onOpenBootDoc()"
+                            >
                                 <app-svg-icon
                                     class="doc-chip__icon"
                                     icon="file"
                                     size="0.9rem"
                                 />
                                 <span class="doc-chip__name">{{ bootDocName }}</span>
-                                <button
-                                    type="button"
+                                <span
                                     class="doc-chip__remove"
+                                    role="button"
                                     aria-label="Remove document"
-                                    (click)="removeBootDoc()"
+                                    (click)="$event.stopPropagation(); removeBootDoc()"
                                 >
                                     <app-svg-icon
                                         icon="x"
                                         size="20px"
                                     />
-                                </button>
-                            </div>
+                                </span>
+                            </button>
                         } @else {
                             <textarea
                                 #instrTa
