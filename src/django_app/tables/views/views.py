@@ -964,7 +964,7 @@ class CancelRagIndexingView(APIView):
 
         target_request = IndexRequest(rag_id=rag_id, rag_strategy=rag_type, document_ids=document_ids).model_dump()
         producer.send(
-            settings.KNOWLEDGE_CANCEL_CHANNEL,
+            settings.KNOWLEDGE_CANCEL_REQUEST_CHANNEL,
             Message(payload=CancelRequest(target_request=target_request).model_dump()),
         )
 

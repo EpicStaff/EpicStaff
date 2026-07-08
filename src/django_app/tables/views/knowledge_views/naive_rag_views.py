@@ -621,7 +621,7 @@ class CancelNaiveRagDocumentChunkingView(APIView):
             document_id=config.document_id,
         ).model_dump()
         producer.send(
-            settings.KNOWLEDGE_CANCEL_CHANNEL,
+            settings.KNOWLEDGE_CANCEL_REQUEST_CHANNEL,
             Message(payload=CancelRequest(target_request=target_request).model_dump()),
         )
         logger.info(
