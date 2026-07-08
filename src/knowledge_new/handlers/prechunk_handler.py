@@ -1,6 +1,5 @@
 from database.unit_of_work import SQLAlchemyUnitOfWork
 from handlers.base import AbstractCancellableHandler
-from loguru import logger
 from models import PrechunkRequest, PrechunkResponse
 from orchestrators.prechunking import build_prechunker
 from settings import settings
@@ -13,7 +12,6 @@ class PrechunkHandler(AbstractCancellableHandler[PrechunkRequest, PrechunkRespon
     response_class = PrechunkResponse
 
     async def handle(self, request: PrechunkRequest) -> PrechunkResponse:
-        logger.info("Handling prechunk by request: {}", request)
         uow = SQLAlchemyUnitOfWork()
         orchestrator = build_prechunker(request.rag_strategy, uow)
         return await orchestrator.execute(request)

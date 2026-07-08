@@ -9,6 +9,7 @@ from errors import (
     RagNotFoundError,
     RepositoryError,
 )
+from loguru import logger
 from models import Document, IndexedChunk, IndexRequest, Rag
 from orchestrators.indexing import AbstractIndexer
 from services.chunkers import build_chunker
@@ -32,6 +33,7 @@ class NaiveIndexer(AbstractIndexer):
                 document.status == DocumentStatusEnum.COMPLETED
                 and not document.is_required_reindex()
             ):
+                logger.debug("Document {} already indexed in rag {}, skipping", document.id, rag.id)
                 rag.finish_document(document.id)
                 await self._update_rag(rag)
                 continue
@@ -76,9 +78,18 @@ class NaiveIndexer(AbstractIndexer):
             except Exception as e:
                 error_code, error_message = IndexingErrorClassifier.classify(e)
                 document.mark_failed(error_code, error_message)
+                logger.exception(
+                    "Failed to index document {} in rag {}: {}", document.id, rag.id, error_message
+                )
 
             else:
                 document.mark_completed()
+                logger.info(
+                    "Indexed document {} in rag {} ({} chunks)",
+                    document.id,
+                    rag.id,
+                    len(document.indexed_chunks),
+                )
 
             await self._finish_document(rag, document)
 
@@ -146,5 +157,11 @@ class NaiveIndexer(AbstractIndexer):
             )
             has_failed_document = await self.uow.naive_rag_repo.has_failed_document(rag_id=rag.id)
             rag.finish(has_completed_document, has_failed_document)
+            logger.info(
+                "Rag {} indexing finished: has_completed={}, has_failed={}",
+                rag.id,
+                has_completed_document,
+                has_failed_document,
+            )
             await self.uow.naive_rag_repo.update_rag(rag=rag)
             await self.uow.commit()

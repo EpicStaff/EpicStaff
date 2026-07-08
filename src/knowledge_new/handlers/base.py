@@ -51,12 +51,13 @@ class AbstractHandler[TRequest: BaseModel, TResponse: BaseModel](abc.ABC):
     async def _run(self, payload: Payload):
         try:
             request = self.request_class(**payload)
+            logger.info("{} received request {}", type(self).__name__, request)
             response = await self._invoke(request)
             if response is not None:
                 message = Message(payload=response.model_dump())
                 await self.producer.asend(self.producer_channel, message)
         except Exception as e:
-            logger.error("{} failed: {}", type(self).__name__, e)
+            logger.exception("{} failed: {}", type(self).__name__, e)
 
     async def _invoke(self, request: TRequest) -> TResponse | None:
         return await self.handle(request)
@@ -69,7 +70,8 @@ class AbstractCancellableHandler[TRequest: BaseModel, TResponse: BaseModel](
     async def _invoke(self, request: TRequest) -> TResponse | None:
         key = hash_dict(request.model_dump())
         if key in task_register:
-            task_register.cancel(key, "Superseded by a newer request.")
+            task_register.cancel(key)
+            logger.info("Superseded previous request {} by a newer one.", request)
         task_register.register(key, asyncio.current_task())
         try:
             return await self.handle(request)

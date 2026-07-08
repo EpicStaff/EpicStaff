@@ -1,5 +1,6 @@
 from enums import DocumentStatusEnum
 from errors import DocumentNotFoundError, NoPreviewChunksProducedError
+from loguru import logger
 from models import Document, PrechunkRequest, PrechunkResponse
 from orchestrators.prechunking.base import AbstractPrechunker
 from services.chunkers import build_chunker
@@ -14,7 +15,12 @@ class NaivePrechunker(AbstractPrechunker):
         self.state["last_status"] = document.status
 
         if document.status == DocumentStatusEnum.CHUNKED and not document.is_required_reindex():
-            return PrechunkResponse(request=request, status=document.status, chunks=document.preview_chunks)
+            logger.debug(
+                "Reusing cached chunks for document {} in rag {}", document.id, request.rag_id
+            )
+            return PrechunkResponse(
+                request=request, status=document.status, chunks=document.preview_chunks
+            )
 
         extractor = build_file_text_extractor(document.extension)
         text = await extractor.extract(document.content)
@@ -28,7 +34,15 @@ class NaivePrechunker(AbstractPrechunker):
         document.preview_chunks = preview_chunks
         await self._update_document(request.rag_id, document)
 
-        return PrechunkResponse(request=request, status=document.status, chunks=document.preview_chunks)
+        logger.info(
+            "Prechunked document {} in rag {} into {} chunks",
+            document.id,
+            request.rag_id,
+            len(preview_chunks),
+        )
+        return PrechunkResponse(
+            request=request, status=document.status, chunks=document.preview_chunks
+        )
 
     async def on_cancel(self, request: PrechunkRequest):
         if (document := self.state.get("document")) is not None:

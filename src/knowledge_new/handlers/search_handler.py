@@ -1,6 +1,5 @@
 from database.unit_of_work import SQLAlchemyUnitOfWork
 from handlers.base import AbstractCancellableHandler
-from loguru import logger
 from models import SearchRequest, SearchResponse
 from orchestrators.searching import build_search
 from settings import settings
@@ -13,7 +12,6 @@ class SearchHandler(AbstractCancellableHandler[SearchRequest, SearchResponse]):
     response_class = SearchResponse
 
     async def handle(self, request: SearchRequest) -> SearchResponse:
-        logger.info("Handling search by request: {}", request)
         uow = SQLAlchemyUnitOfWork()
         orchestrator = build_search(request.search_config.rag_strategy, uow)
         return await orchestrator.execute(request)

@@ -1,4 +1,5 @@
 from errors import EmbeddingConfigNotFoundError
+from loguru import logger
 from models import NaiveSearchConfig, SearchRequest, SearchResponse
 from orchestrators.searching.base import AbstractSearch
 from services.embedders import build_embedder
@@ -29,4 +30,5 @@ class NaiveSearch(AbstractSearch):
                 similarity_threshold=search_config.similarity_threshold,
             )
 
+        logger.info("Search in rag {} returned {} chunks", request.rag_id, len(chunks))
         return SearchResponse(request=request, chunks=chunks)
