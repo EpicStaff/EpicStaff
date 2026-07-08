@@ -10,7 +10,11 @@ from __future__ import annotations
 import pytest
 
 from app.emitters.base import Emitter
-from app.exceptions import AgentServiceError, SchemaValidationError
+from app.exceptions import (
+    AgentServiceError,
+    InvalidOutputSchemaError,
+    SchemaValidationError,
+)
 from app.llm.client import LLMChunk
 from app.loop.agent_loop import AgentLoop
 from app.loop.context import AgentContext
@@ -333,3 +337,38 @@ async def test_failure_stop_reason_with_no_error_message_uses_fallback():
         await enforcer.enforce(context, OBJECT_SCHEMA, FakeEmitter())
 
     assert "llm_error" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# Tests: invalid output_schema fails fast, no LLM calls, no retry
+# ---------------------------------------------------------------------------
+
+
+BARE_FIELD_MAP_SCHEMA = {"reasoning": {"type": "string", "description": "why"}}
+
+
+async def test_bare_field_map_schema_raises_before_any_llm_call():
+    """A bare field map has no top-level 'type' — enforce() must reject it
+    without ever calling the loop, since the schema is known upfront."""
+    loop = FailingLoop(stop_reason="llm_error", error="should never run")
+    enforcer = StructuredOutputEnforcer(loop, max_retries=2)
+    context = _make_context()
+
+    with pytest.raises(InvalidOutputSchemaError):
+        await enforcer.enforce(context, BARE_FIELD_MAP_SCHEMA, FakeEmitter())
+
+    assert loop.call_count == 0
+
+
+async def test_invalid_output_schema_is_not_retried():
+    """InvalidOutputSchemaError is raised once, not wrapped as SchemaValidationError
+    and not retried across max_retries attempts."""
+    loop = FailingLoop(stop_reason="llm_error", error="should never run")
+    enforcer = StructuredOutputEnforcer(loop, max_retries=3)
+    context = _make_context()
+
+    with pytest.raises(InvalidOutputSchemaError) as exc_info:
+        await enforcer.enforce(context, BARE_FIELD_MAP_SCHEMA, FakeEmitter())
+
+    assert not isinstance(exc_info.value, SchemaValidationError)
+    assert loop.call_count == 0

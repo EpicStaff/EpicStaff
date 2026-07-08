@@ -1,5 +1,6 @@
 from collections import Counter
 
+import jsonschema
 from django.db import transaction
 from rest_framework import serializers
 
@@ -34,6 +35,73 @@ from tables.serializers.utils.mixins import NestedPythonCodeMixin
 from tables.services.agent_inline_surface_service import AgentInlineSurfaceService
 from tables.services.inline_surface_service import InlineSurfaceService
 from tables.validators.surface_validator import SurfaceValidator
+
+# Top-level keywords a real JSON Schema might use even without "type" (e.g.
+# "$ref", "allOf"). Used only to tell a bare field map ("reasoning":
+# {"type": "string"}) apart from a legitimate-but-incomplete schema for the
+# purpose of a tailored error message.
+_JSON_SCHEMA_KEYWORDS = {
+    "type",
+    "$ref",
+    "$schema",
+    "allOf",
+    "anyOf",
+    "oneOf",
+    "not",
+    "enum",
+    "const",
+    "properties",
+    "items",
+    "additionalProperties",
+    "required",
+    "patternProperties",
+    "definitions",
+    "$defs",
+}
+
+
+def validate_output_schema(value):
+    """Shared `output_schema` validator for TaskNode and AgentNode task serializers.
+
+    Accepts `{}`/None (no enforcement) or a dict with a top-level "type" key
+    that passes jsonschema meta-validation. Rejects everything else with a
+    precise message, including a tailored hint when the value looks like a
+    bare field map instead of a full JSON Schema.
+    """
+    if value is None or value == {}:
+        return value
+
+    if not isinstance(value, dict):
+        raise serializers.ValidationError(
+            "output_schema must be {} or a full JSON Schema object, "
+            f"got {type(value).__name__}."
+        )
+
+    if "type" not in value:
+        is_bare_field_map = all(
+            isinstance(field_value, dict) for field_value in value.values()
+        ) and not (_JSON_SCHEMA_KEYWORDS & value.keys())
+
+        if is_bare_field_map:
+            raise serializers.ValidationError(
+                'output_schema must be {} or a full JSON Schema with a top-level "type", '
+                'e.g. {"type": "object", "properties": {...}, "required": [...]}. '
+                'Got a bare field map — wrap your fields under "properties".'
+            )
+
+        raise serializers.ValidationError(
+            'output_schema must be {} or a full JSON Schema with a top-level "type" key, '
+            'e.g. {"type": "object", "properties": {...}, "required": [...]}.'
+        )
+
+    try:
+        jsonschema.validators.validator_for(value).check_schema(value)
+    except jsonschema.exceptions.SchemaError as error:
+        raise serializers.ValidationError(
+            f"output_schema is not a valid JSON Schema: {error.message}"
+        ) from error
+
+    return value
 
 
 class CrewNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
@@ -102,6 +170,9 @@ class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
     class Meta:
         model = TaskNode
         fields = "__all__"
+
+    def validate_output_schema(self, value):
+        return validate_output_schema(value)
 
     def validate(self, attrs):
         organization = self.context.get("organization")
@@ -181,6 +252,9 @@ class AgentNodeTaskWriteSerializer(serializers.Serializer):
     context_task_ids = serializers.ListField(
         child=serializers.IntegerField(), required=False, default=list, write_only=True
     )
+
+    def validate_output_schema(self, value):
+        return validate_output_schema(value)
 
 
 class AgentNodeTaskReadSerializer(serializers.ModelSerializer):
@@ -400,6 +474,9 @@ class AgentNodeTaskSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+    def validate_output_schema(self, value):
+        return validate_output_schema(value)
 
     def validate(self, attrs):
         agent_node = attrs.get("agent_node") or (

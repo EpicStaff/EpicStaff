@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import jsonschema
 
+from app.exceptions import InvalidOutputSchemaError
 from shared.models.agent_service import TokenUsage
 
 
@@ -15,8 +16,21 @@ class ValidationOutcome:
 
 
 def as_object_schema(schema: dict) -> tuple[dict, bool]:
-    """Tool input schemas must be type:object. Wrap non-object schemas under 'result'."""
-    if isinstance(schema, dict) and schema.get("type") == "object":
+    """Tool input schemas must be type:object. Wrap non-object schemas under 'result'.
+
+    Raises ``InvalidOutputSchemaError`` if ``schema`` is not a dict or lacks a
+    top-level "type" key — e.g. a bare field map saved instead of a full JSON
+    Schema. Such shapes cannot be recognized as either an object schema or a
+    scalar/array schema to wrap, so there is nothing safe to enforce against.
+    """
+    if not isinstance(schema, dict) or "type" not in schema:
+        raise InvalidOutputSchemaError(
+            f'output_schema must be a JSON Schema with a top-level "type" key, '
+            f"got: {schema!r}. If this was built from a field list, wrap it as "
+            f'{{"type": "object", "properties": {{...}}, "required": [...]}}.'
+        )
+
+    if schema.get("type") == "object":
         return schema, False
 
     return {
@@ -33,6 +47,11 @@ def validate_output(obj, schema: dict) -> ValidationOutcome:
 
     except jsonschema.ValidationError as error:
         return ValidationOutcome(ok=False, error=error.message)
+
+    except jsonschema.exceptions.SchemaError as error:
+        raise InvalidOutputSchemaError(
+            f"output_schema is not a valid JSON Schema: {error.message}"
+        ) from error
 
 
 def add_usage(a: TokenUsage, b: TokenUsage) -> TokenUsage:

@@ -41,5 +41,15 @@ class SchemaValidationError(AgentServiceError):
     """Raised when output fails output_schema after all enforcement retries."""
 
 
+class InvalidOutputSchemaError(AgentServiceError):
+    """Raised when a task's output_schema is not a recognizable JSON Schema.
+
+    Covers non-dict values, dicts missing a top-level "type" key (e.g. a bare
+    field map saved instead of a full schema), and schemas that fail
+    jsonschema meta-validation. Not retried — the schema itself is broken, so
+    no amount of LLM retries will fix it.
+    """
+
+
 class McpToolError(AgentServiceError):
     """Raised when an MCP tool call or discovery fails."""

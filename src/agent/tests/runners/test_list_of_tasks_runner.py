@@ -12,7 +12,7 @@ import json
 import pytest
 
 from app.emitters.base import Emitter
-from app.exceptions import AgentServiceError
+from app.exceptions import AgentServiceError, InvalidOutputSchemaError
 from app.llm.client import LLMChunk
 from app.loop.agent_loop import AgentLoop
 from app.loop.context import AgentContext
@@ -267,6 +267,34 @@ async def test_per_task_output_schema_uses_enforcer():
     final = emitter.finals[0]
     assert json.loads(final.final_text) == {"x": "result"}
     assert final.stop_reason == "schema_satisfied"
+
+
+async def test_invalid_schema_on_second_task_fails_after_first_completes():
+    """task_a (no schema) completes and emits task_finish; task_b has a bare
+    field map schema and fails fast before its loop ever runs."""
+    bare_field_map_schema = {"reasoning": {"type": "string", "description": "why"}}
+    emitter = FakeEmitter()
+    loop = ScriptedLoop([_result("A done")])
+    runner = _runner(loop=loop)
+    request = _request(
+        [
+            {"name": "task_a", "instructions": "Do A"},
+            {
+                "name": "task_b",
+                "instructions": "Do B",
+                "output_schema": bare_field_map_schema,
+            },
+        ]
+    )
+
+    await runner.execute(request, emitter)
+
+    assert len(emitter.errors) == 1
+    assert isinstance(emitter.errors[0], InvalidOutputSchemaError)
+    assert emitter.finals == []
+    assert [name for name, _, _ in emitter.task_finishes] == ["task_a"]
+    # task_b's loop never ran — the invalid schema was rejected before any LLM call
+    assert loop.call_count == 1
 
 
 async def test_mid_sequence_failure_stops_run_and_never_runs_next_task():

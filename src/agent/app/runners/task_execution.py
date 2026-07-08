@@ -18,7 +18,7 @@ from app.exceptions import AgentServiceError
 from app.loop.context import AgentContext
 from app.loop.stop_policy import MaxIterAndNoToolCalls
 from app.output.enforcer import StructuredOutputEnforcer
-from app.output.schema import add_usage
+from app.output.schema import add_usage, as_object_schema
 from app.runners.deps import RunnerDependencies
 from app.tools.registry import ToolRegistry
 from shared.models.agent_service import AgentSpec, LoopResult, StopReason
@@ -49,6 +49,12 @@ async def run_task_through_loop(
 ) -> LoopResult:
     """Run ``context`` through ``deps.loop``, enforcing ``output_schema`` if given.
 
+    If ``output_schema`` is set, its shape is validated upfront via
+    ``as_object_schema`` before any LLM call — an unrecognizable schema
+    (non-dict, or missing a top-level "type") raises
+    ``InvalidOutputSchemaError`` immediately instead of burning loop
+    iterations first.
+
     Mirrors the original inline logic in ``SingleTaskRunner.execute``:
     - if there is an ``output_schema`` and no tools, skip the plain loop and
       go straight to the enforcer (which drives its own single-turn loop
@@ -66,6 +72,12 @@ async def run_task_through_loop(
     """
     max_iter = agent.max_iter or max_iter_fn()
     has_tools = bool(tools.tool_specs())
+
+    if output_schema:
+        # Fail fast on an unrecognizable schema before any LLM call — the
+        # plain loop below can run many iterations/tool calls before ever
+        # reaching the enforcer, so this check must happen first.
+        as_object_schema(output_schema)
 
     if output_schema and not has_tools:
         enforcer = StructuredOutputEnforcer(deps.loop, schema_max_retries_fn())

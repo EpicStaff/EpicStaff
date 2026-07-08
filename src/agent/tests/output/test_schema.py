@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+
+from app.exceptions import InvalidOutputSchemaError
 from app.output.schema import add_usage, as_object_schema, validate_output
 from shared.models.agent_service import TokenUsage
 
@@ -32,6 +35,26 @@ def test_as_object_schema_wraps_array_schema():
     result, wrapped = as_object_schema(schema)
     assert wrapped is True
     assert result["properties"]["result"] == schema
+
+
+def test_as_object_schema_raises_on_bare_field_map():
+    """A bare field map (no top-level 'type') is not a recognizable schema."""
+    schema = {"reasoning": {"type": "string", "description": "why"}}
+
+    with pytest.raises(InvalidOutputSchemaError):
+        as_object_schema(schema)
+
+
+def test_as_object_schema_raises_on_dict_without_type():
+    schema = {"properties": {"x": {"type": "string"}}}
+
+    with pytest.raises(InvalidOutputSchemaError):
+        as_object_schema(schema)
+
+
+def test_as_object_schema_raises_on_non_dict():
+    with pytest.raises(InvalidOutputSchemaError):
+        as_object_schema("not-a-schema")
 
 
 # ---------------------------------------------------------------------------
@@ -72,6 +95,15 @@ def test_validate_output_error_for_missing_required():
     outcome = validate_output({}, schema)
     assert outcome.ok is False
     assert outcome.error is not None
+
+
+def test_validate_output_raises_invalid_output_schema_error_for_meta_invalid_schema():
+    """A schema that fails jsonschema's own meta-validation surfaces as
+    InvalidOutputSchemaError instead of an anonymous SchemaError crash."""
+    schema = {"type": "object", "properties": "garbage"}
+
+    with pytest.raises(InvalidOutputSchemaError):
+        validate_output({"x": 1}, schema)
 
 
 # ---------------------------------------------------------------------------
