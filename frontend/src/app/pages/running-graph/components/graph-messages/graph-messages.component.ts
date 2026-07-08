@@ -36,7 +36,14 @@ import { AgentsService } from '../../../../features/staff/services/staff.service
 import { GetTaskRequest } from '../../../../features/tasks/models/task.model';
 import { TasksService } from '../../../../features/tasks/services/tasks.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { CodeAgentStreamMessageData, GraphMessage, MessageType } from '../../models/graph-session-message.model';
+import {
+    AgentNodeStreamMessageData,
+    CodeAgentStreamMessageData,
+    GraphMessage,
+    MessageData,
+    MessageType,
+    TaskNodeStreamMessageData,
+} from '../../models/graph-session-message.model';
 import { SessionStatusMessageData } from '../../models/update-session-status.model';
 import { AnswerToLLMService } from '../../services/answer-to-llm.service';
 import { RunSessionSSEService } from '../../services/graph-session-sse.service';
@@ -51,6 +58,7 @@ import { ExtractedChunksMessageComponent } from './components/extracted-chunks/e
 import { FinishMessageComponent } from './components/finish-message/finish-message.component';
 import { LlmMessageComponent } from './components/llm-message/llm-message.component';
 import { LoadingDotsComponent } from './components/loading-animation/loading-animation.component';
+import { NodeStreamMessageComponent } from './components/node-stream-message/node-stream-message.component';
 import { PythonMessageComponent } from './components/python-message/python-message.component';
 import { StartMessageComponent } from './components/start-message/start-message.component';
 import { SubgraphFinishMessageComponent } from './components/subgraph-finish-message/subgraph-finish-message.component';
@@ -86,11 +94,21 @@ const RENDERABLE_MESSAGE_TYPES: ReadonlySet<string> = new Set([
     MessageType.TASK,
     MessageType.FINISH,
     MessageType.CODE_AGENT_STREAM,
+    MessageType.TASK_NODE_STREAM,
+    MessageType.AGENT_NODE_STREAM,
     MessageType.SUBGRAPH_START,
     MessageType.SUBGRAPH_FINISH,
     MessageType.CONDITION_GROUP,
     MessageType.CONDITION_GROUP_MANIPULATION,
     MessageType.CLASSIFICATION_PROMPT,
+]);
+
+// Stream-style message types that emit many chunks per node run and get collapsed into
+// a single card per node name (see updateVisibleMessages / getMessageKey below).
+const STREAM_MESSAGE_TYPES: ReadonlySet<string> = new Set([
+    MessageType.CODE_AGENT_STREAM,
+    MessageType.TASK_NODE_STREAM,
+    MessageType.AGENT_NODE_STREAM,
 ]);
 
 interface MessageViewEntry {
@@ -105,6 +123,10 @@ interface MessageViewEntry {
     shouldShowTransition: boolean;
     rootKey: string | null;
     rootView: RootDrilldownView | null;
+    // For TASK_NODE_STREAM / AGENT_NODE_STREAM entries: true when this run's (or a later run's)
+    // `finish` or `error` message has already arrived, even if this stream message's own
+    // `is_final` was never set (see isNodeStreamCompleted()).
+    nodeCompleted: boolean;
 }
 
 interface RootDrilldownView {
@@ -150,6 +172,7 @@ const TERMINAL_STATUSES = new Set<GraphSessionStatus>([
         SubgraphStartMessageComponent,
         SubgraphFinishMessageComponent,
         CodeAgentStreamMessageComponent,
+        NodeStreamMessageComponent,
         AppSvgIconComponent,
     ],
     templateUrl: './graph-messages.component.html',
@@ -1271,46 +1294,90 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             shouldShowTransition: this.shouldShowTransition(message, index),
             rootKey,
             rootView: null,
+            nodeCompleted: this.isNodeStreamCompleted(message),
         };
     }
 
+    // TaskNode/AgentNode stream events don't reliably carry `is_final: true` — the backend
+    // contract is one `start`, 0..N stream events, then exactly one `finish` OR `error` message
+    // (same `name`). Derive completion from the presence of that finish/error message in the
+    // FULL message list (not the post-filter visible list — a `finish` with `sse_visible: false`
+    // is dropped from rendering but must still count as completion evidence). The backend stamps
+    // a single execution_order per node run, shared by that run's stream and finish messages, so
+    // equality means "same run". The `>=` comparison still keeps a later run's finish/error from
+    // being matched against an earlier run's stream messages, since the later run's
+    // execution_order is higher.
+    private isNodeStreamCompleted(message: GraphMessage): boolean {
+        const type = message.message_data?.message_type;
+        if (!type || !STREAM_MESSAGE_TYPES.has(type)) return false;
+        return this.messages.some((m) => {
+            const data = m.message_data;
+            return (
+                !!data &&
+                (data.message_type === MessageType.FINISH || data.message_type === MessageType.ERROR) &&
+                m.name === message.name &&
+                m.execution_order >= message.execution_order
+            );
+        });
+    }
+
     private updateVisibleMessages(): void {
-        // Build a set of message indices to show for code_agent_stream:
-        // One card per node name — prefer final, fall back to latest non-final.
-        const caShowIndex = new Map<string, number>(); // node_name -> message index to show
+        // Build a set of message indices to show for stream message types (code_agent_stream,
+        // task_node_stream, agent_node_stream): one card per node name+type — prefer final,
+        // fall back to latest non-final.
+        const streamShowIndex = new Map<string, number>(); // `${message_type}:${node_name}` -> message index to show
 
         for (const context of this.messageContexts) {
             if (context.path.length !== 0) continue;
             const msg = this.messages[context.index];
-            if (msg?.message_data?.message_type !== 'code_agent_stream') continue;
+            const type = msg?.message_data?.message_type;
+            if (!type || !STREAM_MESSAGE_TYPES.has(type)) continue;
 
-            const isFinal = (msg.message_data as CodeAgentStreamMessageData).is_final === true;
-            const existing = caShowIndex.get(msg.name);
+            const isFinal = this.isStreamMessageFinal(msg.message_data);
+            const groupKey = `${type}:${msg.name}`;
+            const existing = streamShowIndex.get(groupKey);
 
             if (isFinal) {
-                caShowIndex.set(msg.name, context.index);
+                streamShowIndex.set(groupKey, context.index);
             } else if (existing === undefined) {
-                caShowIndex.set(msg.name, context.index);
+                streamShowIndex.set(groupKey, context.index);
             } else {
                 const existingMsg = this.messages[existing];
-                if ((existingMsg?.message_data as CodeAgentStreamMessageData)?.is_final !== true) {
-                    caShowIndex.set(msg.name, context.index);
+                if (!this.isStreamMessageFinal(existingMsg?.message_data)) {
+                    streamShowIndex.set(groupKey, context.index);
                 }
             }
         }
 
-        const caShowSet = new Set(caShowIndex.values());
+        const streamShowSet = new Set(streamShowIndex.values());
 
         this.visibleMessageEntries = this.messageContexts
             .filter((context) => context.path.length === 0)
             .filter((context) => {
                 const msg = this.messages[context.index];
-                const type = msg?.message_data?.message_type;
+                const data = msg?.message_data;
+                const type = data?.message_type;
                 if (!type || !RENDERABLE_MESSAGE_TYPES.has(type)) return false;
-                if (type !== MessageType.CODE_AGENT_STREAM) return true;
-                return caShowSet.has(context.index);
+                if (this.isSseHidden(data)) return false;
+                if (!STREAM_MESSAGE_TYPES.has(type)) return true;
+                return streamShowSet.has(context.index);
             })
             .map((context) => this.buildMessageEntry(this.messages[context.index], context));
+    }
+
+    private isStreamMessageFinal(data: MessageData | undefined): boolean {
+        if (!data) return false;
+        return (
+            (data as CodeAgentStreamMessageData | TaskNodeStreamMessageData | AgentNodeStreamMessageData).is_final ===
+            true
+        );
+    }
+
+    // `sse_visible: false` on a message must hide it from the chat (most relevant on `finish`,
+    // but applies generally). Absent → treated as visible.
+    private isSseHidden(data: MessageData | undefined): boolean {
+        if (!data) return false;
+        return 'sse_visible' in data && data.sse_visible === false;
     }
 
     private updateDrilldownMessages(): void {
@@ -1423,9 +1490,14 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     }
 
     private getMessageKey(message: GraphMessage): string {
+        const type = message.message_data?.message_type;
         // Stable key for code_agent_stream: one component per node name
-        if (message.message_data?.message_type === 'code_agent_stream') {
+        if (type === 'code_agent_stream') {
             return `ca_stream_${message.name}`;
+        }
+        // Stable key for task_node_stream / agent_node_stream: one component per node name+type
+        if (type === MessageType.TASK_NODE_STREAM || type === MessageType.AGENT_NODE_STREAM) {
+            return `node_stream_${type}_${message.name}`;
         }
         return message.uuid ?? `${message.id}-${message.execution_order}-${message.created_at}`;
     }

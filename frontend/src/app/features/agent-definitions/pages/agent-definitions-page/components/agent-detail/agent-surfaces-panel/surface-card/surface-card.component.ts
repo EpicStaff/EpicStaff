@@ -133,10 +133,15 @@ export class SurfaceCardComponent {
 
     readonly activeTab = signal<SurfaceTabId>('tools');
     readonly instructions = signal<string>('');
+    private readonly instructionsFocused = signal<boolean>(false);
+    private lastSentInstructions: string | null = null;
 
     readonly menuOpen = signal<boolean>(false);
     private readonly instructionsTextarea = viewChild<ElementRef<HTMLTextAreaElement>>('instrTa');
-    private editedName = '';
+
+    readonly name = signal<string>('');
+    private readonly nameFocused = signal<boolean>(false);
+    private lastSentName: string | null = null;
 
     readonly moveTargets = computed(() => {
         if (!this.isShared() || !this.readOnly()) return [];
@@ -161,17 +166,24 @@ export class SurfaceCardComponent {
     }
 
     onNameInput(value: string): void {
-        this.editedName = value;
+        this.name.set(value);
+    }
+
+    onNameFocus(): void {
+        this.nameFocused.set(true);
     }
 
     commitRename(): void {
-        const name = this.editedName.trim();
+        this.nameFocused.set(false);
+        const name = this.name().trim();
         const current = this.surface()?.name ?? '';
-        if (!name || name === current) return;
         if (this.isCreating()) {
+            if (!name || name === current) return;
             this.createDraft.emit(this.buildCreateRequest(name));
             return;
         }
+        this.lastSentName = name;
+        if (!name || name === current) return;
         this.renameSurface.emit(name);
     }
 
@@ -248,6 +260,7 @@ export class SurfaceCardComponent {
         ...this.catalogs.mcpTools(),
     ]);
     readonly selectedToolKeys = signal<Set<string>>(new Set());
+    private lastSentToolKeys: string | null = null;
 
     readonly toolItems = computed<SelectDropdownListItem<string>[]>(() =>
         this.toolOptions().map((t) => ({ name: t.name, value: this.toolKey(t) }))
@@ -326,6 +339,7 @@ export class SurfaceCardComponent {
     }
 
     readonly fileRows = signal<SurfaceFileRow[]>([]);
+    private lastSentStorageItems: string | null = null;
     readonly collapsedFolderPaths = signal<Set<string>>(new Set());
     readonly permColumns = SURFACE_FILE_PERM_COLUMNS;
 
@@ -361,6 +375,7 @@ export class SurfaceCardComponent {
 
     readonly collectionOptions = this.catalogs.collections;
     readonly knowledgeItems = signal<SurfaceKnowledge[]>([]);
+    private lastSentKnowledge: string | null = null;
     readonly selectedCollectionIds = computed<ReadonlySet<number>>(
         () => new Set(this.knowledgeItems().map((k) => k.collection))
     );
@@ -376,32 +391,80 @@ export class SurfaceCardComponent {
         this.collectionOptions().filter((c) => this.selectedCollectionIds().has(c.id))
     );
 
+    private lastSurfaceId: number | null | undefined = undefined;
+
     constructor() {
         effect(() => {
             const s = this.surface();
-            this.instructions.set(s?.instructions ?? '');
+
+            // Switching to a different surface (or into/out of create mode) makes the
+            // "last sent" snapshots meaningless — they described a different object.
+            // Reset them so the new surface's fields load unconditionally below.
+            if (s?.id !== this.lastSurfaceId) {
+                this.lastSurfaceId = s?.id ?? null;
+                this.lastSentName = null;
+                this.lastSentInstructions = null;
+                this.lastSentToolKeys = null;
+                this.lastSentKnowledge = null;
+                this.lastSentStorageItems = null;
+            }
+
+            // Autosave PATCHes one field at a time but the backend always returns the
+            // full surface, so every autosave round-trip re-fires this effect for ALL
+            // fields. Only accept the server's value for a field once it matches what
+            // this card last sent (or nothing has been sent yet) — otherwise the field
+            // is either actively being edited (name/instructions, gated on focus) or
+            // has a newer local change in flight (tools/files/knowledge), and
+            // overwriting it here would wipe unsaved input out from under the user.
+            if (!this.nameFocused()) {
+                const incomingName = s?.name ?? '';
+                if (this.lastSentName == null || this.lastSentName === incomingName) {
+                    this.name.set(incomingName);
+                }
+            }
+
+            if (!this.instructionsFocused()) {
+                const incoming = s?.instructions ?? '';
+                if (this.lastSentInstructions == null || this.lastSentInstructions === incoming) {
+                    this.instructions.set(incoming);
+                }
+            }
+
             const toolKeys = new Set<string>([
                 ...(s?.python_tools ?? []).map((t) => `python:${t.python_tool}`),
                 ...(s?.mcp_tools ?? []).map((t) => `mcp:${t.mcp_tool}`),
             ]);
-            this.selectedToolKeys.set(toolKeys);
-            this.knowledgeItems.set(s?.knowledge ?? []);
-            this.fileRows.set(
-                (s?.storage_items ?? []).map((si) => {
-                    const meta = untracked(() => this.metaFor(si.storage_file));
-                    return {
-                        id: si.storage_file,
-                        name: meta?.name ?? `File #${si.storage_file}`,
-                        path: meta?.path ?? '',
-                        perms: {
-                            list: si.can_list,
-                            view: si.can_view,
-                            edit: si.can_edit,
-                            delete: si.can_delete,
-                        },
-                    };
-                })
-            );
+            if (this.lastSentToolKeys == null || this.lastSentToolKeys === serializeToolKeys(toolKeys)) {
+                this.selectedToolKeys.set(toolKeys);
+            }
+
+            const knowledge = s?.knowledge ?? [];
+            if (this.lastSentKnowledge == null || this.lastSentKnowledge === serializeKnowledge(knowledge)) {
+                this.knowledgeItems.set(knowledge);
+            }
+
+            const storageItems = s?.storage_items ?? [];
+            if (
+                this.lastSentStorageItems == null ||
+                this.lastSentStorageItems === serializeStorageItems(storageItems)
+            ) {
+                this.fileRows.set(
+                    storageItems.map((si) => {
+                        const meta = untracked(() => this.metaFor(si.storage_file));
+                        return {
+                            id: si.storage_file,
+                            name: meta?.name ?? `File #${si.storage_file}`,
+                            path: meta?.path ?? '',
+                            perms: {
+                                list: si.can_list,
+                                view: si.can_view,
+                                edit: si.can_edit,
+                                delete: si.can_delete,
+                            },
+                        };
+                    })
+                );
+            }
         });
 
         effect(() => {
@@ -494,9 +557,15 @@ export class SurfaceCardComponent {
         textarea.style.overflowY = full > maxPx ? 'auto' : 'hidden';
     }
 
+    onInstructionsFocus(): void {
+        this.instructionsFocused.set(true);
+    }
+
     onInstructionsBlur(): void {
+        this.instructionsFocused.set(false);
         if (this.isCreating()) return;
         const value = this.instructions();
+        this.lastSentInstructions = value;
         if (value === (this.surface()?.instructions ?? '')) return;
         this.surfaceChange.emit({ instructions: value });
     }
@@ -549,6 +618,7 @@ export class SurfaceCardComponent {
     }
 
     private emitToolsChange(): void {
+        this.lastSentToolKeys = serializeToolKeys(this.selectedToolKeys());
         if (this.isCreating()) return;
         this.surfaceChange.emit(this.buildToolsPayload());
     }
@@ -771,8 +841,10 @@ export class SurfaceCardComponent {
     }
 
     private emitStorageChange(): void {
+        const payload = this.buildStoragePayload();
+        this.lastSentStorageItems = serializeStorageItems(payload);
         if (this.isCreating()) return;
-        this.surfaceChange.emit({ storage_items: this.buildStoragePayload() });
+        this.surfaceChange.emit({ storage_items: payload });
     }
 
     onCollectionsChange(values: unknown[]): void {
@@ -847,8 +919,10 @@ export class SurfaceCardComponent {
     }
 
     private emitKnowledgeChange(): void {
+        const payload = this.buildKnowledgePayload();
+        this.lastSentKnowledge = serializeKnowledge(payload);
         if (this.isCreating()) return;
-        this.surfaceChange.emit({ knowledge: this.buildKnowledgePayload() });
+        this.surfaceChange.emit({ knowledge: payload });
     }
 
     toggleCollectionAdvanced(): void {
@@ -904,4 +978,20 @@ export class SurfaceCardComponent {
 
 function defaultFilePerms(): SurfaceFilePerms {
     return { list: 'allow', view: 'allow', edit: 'allow', delete: 'unset' };
+}
+
+function serializeToolKeys(keys: Set<string>): string {
+    return JSON.stringify([...keys].sort());
+}
+
+function serializeStorageItems(items: SurfaceStorageItem[]): string {
+    return JSON.stringify(
+        [...items]
+            .sort((a, b) => a.storage_file - b.storage_file)
+            .map((si) => [si.storage_file, si.can_list, si.can_view, si.can_edit, si.can_delete])
+    );
+}
+
+function serializeKnowledge(items: SurfaceKnowledge[]): string {
+    return JSON.stringify([...items].map((k) => k.collection).sort((a, b) => a - b));
 }

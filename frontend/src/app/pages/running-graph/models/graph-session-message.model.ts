@@ -34,14 +34,33 @@ export enum MessageType {
     CLASSIFICATION_PROMPT = 'classification_prompt',
     CONDITION_GROUP_MANIPULATION = 'condition_group_manipulation',
     CODE_AGENT_STREAM = 'code_agent_stream',
+    TASK_NODE_STREAM = 'task_node_stream',
+    AGENT_NODE_STREAM = 'agent_node_stream',
 }
 
-// Message data interfaces - these match the camelCase structure used in your code
+export type FinishStopReason = 'completed' | 'schema_satisfied' | 'max_iter_reached';
+
+export interface FinishOutputTokenUsage {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+}
+
+export interface FinishOutput {
+    message?: string;
+    stop_reason?: FinishStopReason;
+    iterations?: number;
+    tool_invocations?: number;
+    token_usage?: FinishOutputTokenUsage;
+    [key: string]: unknown;
+}
+
 export interface FinishMessageData {
-    output: Record<string, unknown>;
+    output: FinishOutput;
     state: Record<string, Record<string, unknown>>;
     message_type: MessageType.FINISH;
-    additional_data?: Record<string, unknown>;
+    additional_data?: Record<string, unknown> | null;
+    sse_visible?: boolean;
 }
 
 export interface StartMessageData {
@@ -214,6 +233,49 @@ export interface CodeAgentStreamMessageData {
     message_type: MessageType.CODE_AGENT_STREAM;
 }
 
+// TaskNode / AgentNode stream events (tool_call / tool_result) — same envelope shape,
+// only message_type differs. AgentNode events MAY additionally carry `data.task` to
+// indicate which sub-task the tool activity belongs to (absent for single-task agents).
+export interface NodeStreamTaskRef {
+    name: string;
+    order: number;
+}
+
+export interface NodeStreamToolCallData {
+    id: string;
+    name: string;
+    arguments: string;
+    truncated?: boolean;
+    token_usage?: Record<string, number>;
+    task?: NodeStreamTaskRef;
+}
+
+export interface NodeStreamToolResultData {
+    tool_call_id: string;
+    name: string;
+    content: string;
+    is_error?: boolean;
+    truncated?: boolean;
+    token_usage?: Record<string, number>;
+    task?: NodeStreamTaskRef;
+}
+
+interface NodeStreamMessageDataBase {
+    event: 'tool_call' | 'tool_result';
+    step_id: number;
+    is_final: boolean;
+    sse_visible?: boolean;
+    data: NodeStreamToolCallData | NodeStreamToolResultData;
+}
+
+export interface TaskNodeStreamMessageData extends NodeStreamMessageDataBase {
+    message_type: MessageType.TASK_NODE_STREAM;
+}
+
+export interface AgentNodeStreamMessageData extends NodeStreamMessageDataBase {
+    message_type: MessageType.AGENT_NODE_STREAM;
+}
+
 // Type union for all message data types
 export type MessageData =
     | FinishMessageData
@@ -233,4 +295,6 @@ export type MessageData =
     | ConditionGroupMessageData
     | ClassificationPromptMessageData
     | ConditionGroupManipulationMessageData
-    | CodeAgentStreamMessageData;
+    | CodeAgentStreamMessageData
+    | TaskNodeStreamMessageData
+    | AgentNodeStreamMessageData;

@@ -43,9 +43,10 @@
                 <input
                     type="text"
                     class="surface-card__name-input"
-                    [ngModel]="surface()?.name ?? ''"
+                    [ngModel]="name()"
                     (ngModelChange)="onNameInput($event)"
                     appEnterBlur
+                    (focus)="onNameFocus()"
                     (blur)="commitRename()"
                 />
             } @else {
@@ -210,6 +211,7 @@
                         [ngModel]="instructions()"
                         (ngModelChange)="instructions.set($event)"
                         appEnterBlur
+                        (focus)="onInstructionsFocus()"
                         (blur)="onInstructionsBlur()"
                     ></textarea>
                 }
