@@ -27,7 +27,10 @@
                 <h6 class="dialog__content-title">
                     Selected Files: <span class="dialog__content-title--count">(0)</span>
                 </h6>
-                <app-file-uploader (filesUploaded)="onFilesUpload($event)" />
+                <app-file-uploader
+                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+                    (filesUploaded)="onFilesUpload($event)"
+                />
             </div>
         } @else {
             <div class="dialog__files">

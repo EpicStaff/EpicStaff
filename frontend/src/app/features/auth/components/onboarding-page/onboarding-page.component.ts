@@ -30,12 +30,12 @@ import { OrganizationsStorageService } from '../../../role-base-access/services/
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class OnboardingPageComponent {
-    private router = inject(Router);
-    private authService = inject(AuthService);
-    private organizationsStorageService = inject(OrganizationsStorageService);
-    private currentUserService = inject(ProfileService);
-    private destroyRef = inject(DestroyRef);
-    private toast = inject(ToastService);
+    private readonly router = inject(Router);
+    private readonly authService = inject(AuthService);
+    private readonly organizationsStorageService = inject(OrganizationsStorageService);
+    private readonly currentUserService = inject(ProfileService);
+    private readonly destroyRef = inject(DestroyRef);
+    private readonly toast = inject(ToastService);
 
     step = signal<1 | 2>(1);
     orgNameControl = new FormControl('', {
@@ -64,17 +64,15 @@ export class OnboardingPageComponent {
                 next: () => this.step.set(2),
                 error: (err: HttpErrorResponse) => this.toast.error(err.error?.message),
             });
-
-        this.step.set(2);
     }
 
     onStartWorking(): void {
-        sessionStorage.removeItem('needs_onboarding');
+        this.authService.defaultOrgId.set(null);
         void this.router.navigate(['/projects']);
     }
 
     onSetupOrganizations(): void {
-        sessionStorage.removeItem('needs_onboarding');
+        this.authService.defaultOrgId.set(null);
         void this.router.navigate(['/workspace/organizations']);
     }
 }

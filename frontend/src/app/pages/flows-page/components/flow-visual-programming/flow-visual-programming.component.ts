@@ -100,7 +100,6 @@ import { FlowHeaderComponent } from './components/header/flow-header.component';
 import { ShortcutsModalComponent } from './components/shortcuts-modal/shortcuts-modal.component';
 import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
 
-//.
 @Component({
     selector: 'app-flow-visual-programming',
     standalone: true,
@@ -236,7 +235,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public ngOnInit(): void {
         this.unsavedChangesRegistry.register(this, {
-            onRefresh: this.refreshCurrentFlow,
+            onRefresh: this.refreshCurrentFlow.bind(this),
         });
     }
 

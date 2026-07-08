@@ -15,7 +15,7 @@
             </div>
         </div>
         <nav class="overview-tabs">
-            <ng-container *appHasPermission="[ResourceCode.Organizations, ActionCode.Read]">
+            @if (isSuperadmin) {
                 <a
                     routerLink="main"
                     routerLinkActive="active"
@@ -28,6 +28,8 @@
                     Main
                 </a>
                 <span class="tab-divider">/</span>
+            }
+            <ng-container *appHasPermission="[ResourceCode.Organizations, ActionCode.Read]">
                 <a
                     routerLink="organizations"
                     routerLinkActive="active"

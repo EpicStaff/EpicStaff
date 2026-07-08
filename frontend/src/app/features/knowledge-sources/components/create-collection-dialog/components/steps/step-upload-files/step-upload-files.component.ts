@@ -3,7 +3,9 @@ import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, input, 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { FileUploaderComponent, HelpTooltipComponent, ValidationErrorsComponent } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
 import { MATERIAL_FORMS } from '@shared/material-forms';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { EMPTY, filter } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
 
@@ -30,6 +32,7 @@ import { FilesListComponent } from './files-list/files-list.component';
         FilePreviewComponent,
         UpperCasePipe,
         ValidationErrorsComponent,
+        HasPermissionDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -119,4 +122,6 @@ export class StepUploadFilesComponent implements OnInit {
     }
 
     protected readonly FILE_TYPES = FILE_TYPES;
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }
