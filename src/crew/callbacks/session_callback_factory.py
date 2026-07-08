@@ -260,7 +260,7 @@ class CrewCallbackFactory:
         sse_visible is controlled by stream_config."""
         if not text or self.stream_writer is None:
             return
-        visible = self.stream_config.get(category, True)
+        visible = bool(self.stream_config.get(category, True))
         self._message_writer.add_custom_message(
             session_id=self.session_id,
             node_name=self.node_name,
