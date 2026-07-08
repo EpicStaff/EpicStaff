@@ -99,6 +99,20 @@
                             [allMessages]="messages"
                         ></app-code-agent-stream-message>
                     }
+                    @case ('task_node_stream') {
+                        <app-node-stream-message
+                            [message]="entry.message"
+                            [allMessages]="messages"
+                            [nodeCompleted]="entry.nodeCompleted"
+                        ></app-node-stream-message>
+                    }
+                    @case ('agent_node_stream') {
+                        <app-node-stream-message
+                            [message]="entry.message"
+                            [allMessages]="messages"
+                            [nodeCompleted]="entry.nodeCompleted"
+                        ></app-node-stream-message>
+                    }
                     @case ('subgraph_start') {
                         <ng-container *ngIf="entry.rootView as rootView">
                             <div
@@ -291,6 +305,20 @@
                                                         [message]="nestedEntry.message"
                                                         [allMessages]="messages"
                                                     ></app-code-agent-stream-message>
+                                                }
+                                                @case ('task_node_stream') {
+                                                    <app-node-stream-message
+                                                        [message]="nestedEntry.message"
+                                                        [allMessages]="messages"
+                                                        [nodeCompleted]="nestedEntry.nodeCompleted"
+                                                    ></app-node-stream-message>
+                                                }
+                                                @case ('agent_node_stream') {
+                                                    <app-node-stream-message
+                                                        [message]="nestedEntry.message"
+                                                        [allMessages]="messages"
+                                                        [nodeCompleted]="nestedEntry.nodeCompleted"
+                                                    ></app-node-stream-message>
                                                 }
                                                 @case ('subgraph_start') {
                                                     <app-subgraph-start-message
