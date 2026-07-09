@@ -1,8 +1,6 @@
 import io
 import mimetypes
-import zipfile
 from datetime import datetime, timezone
-from typing import Iterator
 
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.dataclasses import (
@@ -412,20 +410,6 @@ class InMemoryStorageBackend(AbstractStorageBackend):
             self._objects[dest_prefix + relative] = self._objects.pop(key)
 
     # --- Archives ---
-
-    def download_zip(self, paths: list[str]) -> Iterator[bytes]:
-        buffer = io.BytesIO()
-        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-            for path in paths:
-                if path.endswith("/"):
-                    for key in self.list_all_keys(path):
-                        file_bytes = self.download(key)
-                        archive.writestr(key.lstrip("/"), file_bytes)
-                else:
-                    file_bytes = self.download(path)
-                    archive.writestr(path.lstrip("/"), file_bytes)
-        buffer.seek(0)
-        yield buffer.read()
 
     def upload_archive(self, prefix: str, archive_file, archive_name: str) -> list[str]:
         self._check_archive_password(archive_file, archive_name)

@@ -273,36 +273,64 @@ class StorageManager:
     @check_permission
     def download_zip(
         self, user_name: str, org_id: int, paths: list[str]
+    ) -> tuple[str, Iterator[bytes]]:
+        """
+        Resolve the zip filename and archive entries eagerly (DB-first), then
+        return the resolved filename alongside a generator that streams the
+        archive bytes.
+
+        Naming rule:
+          - Single folder: zip named "<folder name>.zip"; entries are
+            relative to the folder (folder contents sit at the zip root, no
+            wrapper directory).
+          - Single file: zip named "<file name>.zip"; entry is the bare file
+            name.
+          - Multiple paths: zip named "download.zip"; entries keep their
+            full org-relative path.
+        """
+        single_path = len(paths) == 1
+        entries: list[tuple[str, str]] = []  # (storage_path, arcname)
+        resolved_row = None
+
+        for path in paths:
+            clean_path = path.rstrip("/")
+            row = StorageFile.objects.filter(
+                org_id=org_id, path__in=[clean_path, clean_path + "/"]
+            ).first()
+            if row is None:
+                raise FileNotFoundError(f"Path does not exist: {path}")
+
+            resolved_row = row
+
+            if row.item_type == "folder":
+                file_rows = StorageFile.objects.filter(
+                    org_id=org_id, path__startswith=row.path, item_type="file"
+                )
+                for file_row in file_rows:
+                    arcname = (
+                        file_row.path[len(row.path) :]
+                        if single_path
+                        else file_row.path.lstrip("/")
+                    )
+                    entries.append((file_row.path, arcname))
+            else:
+                arcname = row.name if single_path else row.path.lstrip("/")
+                entries.append((row.path, arcname))
+
+        zip_filename = f"{resolved_row.name}.zip" if single_path else "download.zip"
+        return zip_filename, self._stream_zip(org_id, entries)
+
+    def _stream_zip(
+        self, org_id: int, entries: list[tuple[str, str]]
     ) -> Iterator[bytes]:
-        """
-        Yield a zip archive of the given paths.
-        Zip entry names are relative (no org prefix) so callers don't see
-        internal storage structure inside the archive.
-        """
+        """Build a zip archive in memory from resolved (storage_path, arcname) entries."""
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-            for path in paths:
-                clean_path = path.rstrip("/")
-                row = StorageFile.objects.filter(
-                    org_id=org_id, path__in=[clean_path, clean_path + "/"]
-                ).first()
-                if row is None:
-                    raise FileNotFoundError(f"Path does not exist: {path}")
-
-                if row.item_type == "folder":
-                    file_rows = StorageFile.objects.filter(
-                        org_id=org_id, path__startswith=row.path, item_type="file"
-                    )
-                    for file_row in file_rows:
-                        file_bytes = self._backend.download(
-                            self._build_storage_key(org_id, file_row.path)
-                        )
-                        archive.writestr(file_row.path.lstrip("/"), file_bytes)
-                else:
-                    file_bytes = self._backend.download(
-                        self._build_storage_key(org_id, row.path)
-                    )
-                    archive.writestr(row.path.lstrip("/"), file_bytes)
+            for storage_path, arcname in entries:
+                file_bytes = self._backend.download(
+                    self._build_storage_key(org_id, storage_path)
+                )
+                archive.writestr(arcname, file_bytes)
         buffer.seek(0)
         yield buffer.read()
 

@@ -115,6 +115,33 @@ class TestUpload:
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
 
+class TestDownloadZip:
+    def test_download_zip_returns_filename_from_manager(
+        self, auth_client, mock_manager
+    ):
+        mock_manager.download_zip.return_value = ("folder.zip", [b"zip-bytes"])
+
+        resp = auth_client.post(
+            "/api/storage/download-zip/", {"paths": ["folder"]}, format="json"
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp["Content-Type"] == "application/zip"
+        assert resp["Content-Disposition"] == 'attachment; filename="folder.zip"'
+        assert resp.content == b"zip-bytes"
+
+    def test_download_zip_returns_error_for_missing_path(
+        self, auth_client, mock_manager
+    ):
+        mock_manager.download_zip.side_effect = FileNotFoundError("gone")
+
+        resp = auth_client.post(
+            "/api/storage/download-zip/", {"paths": ["ghost"]}, format="json"
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
 class TestRename:
     def test_rename_returns_success(self, auth_client, mock_manager):
         resp = auth_client.post(

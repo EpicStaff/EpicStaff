@@ -1,6 +1,4 @@
 import io
-import zipfile
-from typing import Iterator
 
 import boto3
 from botocore.exceptions import ClientError
@@ -395,21 +393,6 @@ class S3StorageBackend(AbstractStorageBackend):
             if error.response["Error"]["Code"] == "404":
                 return False
             raise
-
-    def download_zip(self, paths: list[str]) -> Iterator[bytes]:
-        buffer = io.BytesIO()
-        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-            for path in paths:
-                if path.endswith("/"):
-                    for key in self.list_all_keys(path):
-                        file_bytes = self.download(key)
-                        archive.writestr(key.lstrip("/"), file_bytes)
-                else:
-                    file_bytes = self.download(path)
-                    archive_name = path.lstrip("/")
-                    archive.writestr(archive_name, file_bytes)
-        buffer.seek(0)
-        yield buffer.read()
 
     def list_tree(
         self, prefix: str, max_depth: int | None = None, max_entries: int = 50_000

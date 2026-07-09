@@ -167,14 +167,16 @@ class StorageAPIView(ViewSet):
         paths = serializer.validated_data["paths"]
 
         try:
-            zip_chunks = self.manager.download_zip(user_name, org_id, paths)
+            zip_filename, zip_chunks = self.manager.download_zip(
+                user_name, org_id, paths
+            )
             response = HttpResponse(
                 b"".join(zip_chunks), content_type="application/zip"
             )
         except FileNotFoundError as e:
             raise ValidationError({"paths": str(e)})
 
-        response["Content-Disposition"] = 'attachment; filename="download.zip"'
+        response["Content-Disposition"] = f'attachment; filename="{zip_filename}"'
         return response
 
     @action(detail=False, methods=["post"], url_path="mkdir")

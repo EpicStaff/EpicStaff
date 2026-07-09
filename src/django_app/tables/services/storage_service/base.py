@@ -154,10 +154,6 @@ class AbstractStorageBackend(ABC):
         """Recursively list all file keys under prefix (excludes folder markers)."""
 
     @abstractmethod
-    def download_zip(self, paths: list[str]) -> Iterator[bytes]:
-        """Yield a streaming zip archive containing the given paths."""
-
-    @abstractmethod
     def upload_archive(self, prefix: str, archive_file, archive_name: str) -> list[str]:
         """Extract archive into prefix. Returns list of extracted paths."""
 

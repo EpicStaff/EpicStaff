@@ -128,12 +128,15 @@ class TestDownloadFlow:
 
 
 class TestDownloadZipFlow:
-    def test_zip_excludes_backend_only_stray_file(self, manager, org, org_user):
+    def test_zip_of_single_folder_has_folder_name_and_relative_entries(
+        self, manager, org, org_user
+    ):
         manager.mkdir("testuser", org.id, "folder")
         manager.upload("testuser", org.id, "folder/tracked.txt", BytesIO(b"tracked"))
         manager._backend.upload(f"org_{org.id}/folder/stray.txt", BytesIO(b"untracked"))
 
-        zip_bytes = b"".join(manager.download_zip("testuser", org.id, ["folder"]))
+        zip_filename, chunks = manager.download_zip("testuser", org.id, ["folder"])
+        zip_bytes = b"".join(chunks)
 
         import zipfile
         from io import BytesIO as IOBuf
@@ -141,12 +144,53 @@ class TestDownloadZipFlow:
         with zipfile.ZipFile(IOBuf(zip_bytes)) as archive:
             names = archive.namelist()
 
+        assert zip_filename == "folder.zip"
+        assert "tracked.txt" in names
+        assert "folder/tracked.txt" not in names
+        assert "stray.txt" not in names
+
+    def test_zip_of_single_file_has_file_name_and_bare_entry(
+        self, manager, org, org_user
+    ):
+        manager.upload("testuser", org.id, "report.txt", BytesIO(b"payload"))
+
+        zip_filename, chunks = manager.download_zip("testuser", org.id, ["report.txt"])
+        zip_bytes = b"".join(chunks)
+
+        import zipfile
+        from io import BytesIO as IOBuf
+
+        with zipfile.ZipFile(IOBuf(zip_bytes)) as archive:
+            names = archive.namelist()
+
+        assert zip_filename == "report.txt.zip"
+        assert names == ["report.txt"]
+
+    def test_zip_of_multiple_paths_keeps_full_paths_and_download_zip_name(
+        self, manager, org, org_user
+    ):
+        manager.mkdir("testuser", org.id, "folder")
+        manager.upload("testuser", org.id, "folder/tracked.txt", BytesIO(b"tracked"))
+        manager.upload("testuser", org.id, "report.txt", BytesIO(b"payload"))
+
+        zip_filename, chunks = manager.download_zip(
+            "testuser", org.id, ["folder", "report.txt"]
+        )
+        zip_bytes = b"".join(chunks)
+
+        import zipfile
+        from io import BytesIO as IOBuf
+
+        with zipfile.ZipFile(IOBuf(zip_bytes)) as archive:
+            names = archive.namelist()
+
+        assert zip_filename == "download.zip"
         assert "folder/tracked.txt" in names
-        assert "folder/stray.txt" not in names
+        assert "report.txt" in names
 
     def test_zip_raises_file_not_found_for_unknown_path(self, manager, org, org_user):
         with pytest.raises(FileNotFoundError):
-            list(manager.download_zip("testuser", org.id, ["unknown/path"]))
+            manager.download_zip("testuser", org.id, ["unknown/path"])
 
 
 class TestCrossOrgMoveFlow:
