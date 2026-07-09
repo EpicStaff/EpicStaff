@@ -9,6 +9,7 @@ import { SearchComponent } from '../../../shared/components/search/search.compon
 import { MATERIAL_FORMS } from '../../../shared/material-forms';
 import { VARIABLE_PREFIX } from '../../core/constants/telegram-field-variable-path-prefix';
 import { TELEGRAM_TRIGGER_FIELDS } from '../../core/constants/telegram-trigger-fields';
+import { LockableFieldComponent } from '../lockable-field/lockable-field.component';
 import { TelegramTriggerFieldsTableComponent } from './fields-table/fields-table.component';
 
 export interface TableItem extends DisplayedTelegramField {
@@ -24,6 +25,7 @@ export interface TableItem extends DisplayedTelegramField {
         SearchComponent,
         TelegramTriggerFieldsTableComponent,
         JsonEditorComponent,
+        LockableFieldComponent,
         MATERIAL_FORMS,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -31,7 +33,9 @@ export interface TableItem extends DisplayedTelegramField {
 export class TelegramTriggerEditingDialogComponent implements OnInit {
     private dialogRef = inject(DialogRef);
     private toastService = inject(ToastService);
-    selectedFields: DisplayedTelegramField[] = inject(DIALOG_DATA);
+    private readonly data: { selectedFields: DisplayedTelegramField[]; nodeId: string } = inject(DIALOG_DATA);
+    selectedFields: DisplayedTelegramField[] = this.data.selectedFields;
+    nodeId: string = this.data.nodeId;
 
     searchTerm = signal<string>('');
     tableItems = signal<TableItem[]>([]);

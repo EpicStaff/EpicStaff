@@ -208,7 +208,7 @@ export class TelegramTriggerNodePanelComponent
             height: 'calc(100vh - 2rem)',
             autoFocus: true,
             disableClose: true,
-            data: this.selectedFields(),
+            data: { selectedFields: this.selectedFields(), nodeId: this.node().id },
         });
 
         dialog.closed
