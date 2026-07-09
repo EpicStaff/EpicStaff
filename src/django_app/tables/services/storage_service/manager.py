@@ -6,6 +6,8 @@ import tarfile
 import zipfile
 from typing import Iterator
 
+from django.db.models import Case, IntegerField, Value, When
+from django.db.models.functions import Lower
 from rest_framework.exceptions import PermissionDenied
 
 from tables.services.storage_service.base import AbstractStorageBackend
@@ -120,7 +122,16 @@ class StorageManager:
         self, user_name: str, org_id: int, prefix: str = ""
     ) -> list[FileListItem]:
         norm = (prefix.rstrip("/") + "/") if prefix else ""
-        rows = list(StorageFile.objects.filter(org_id=org_id, parent_path=norm))
+        rows = list(
+            StorageFile.objects.filter(org_id=org_id, parent_path=norm).order_by(
+                Case(
+                    When(item_type="folder", then=Value(0)),
+                    default=Value(1),
+                    output_field=IntegerField(),
+                ),
+                Lower("name"),
+            )
+        )
 
         folder_paths = [row.path for row in rows if row.item_type == "folder"]
         non_empty: set[str] = set()
@@ -504,11 +515,14 @@ class StorageManager:
             count += 1
 
         def build(node_dict: dict) -> TreeNode:
-            children = (
-                None
-                if node_dict["children_map"] is None
-                else [build(child) for child in node_dict["children_map"].values()]
-            )
+            if node_dict["children_map"] is None:
+                children = None
+            else:
+                sorted_children = sorted(
+                    node_dict["children_map"].values(),
+                    key=lambda n: (n["type"] != "folder", n["name"].lower()),
+                )
+                children = [build(child) for child in sorted_children]
             return TreeNode(
                 id=node_dict["id"],
                 name=node_dict["name"],

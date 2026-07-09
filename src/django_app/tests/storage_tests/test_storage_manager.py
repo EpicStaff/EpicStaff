@@ -323,6 +323,65 @@ class TestListTreeManager:
         with pytest.raises(PermissionDenied):
             storage_manager.list_tree("nobody", org.id, "")
 
+    def test_list_tree_orders_children_folders_first_then_case_insensitive_alphabetical(
+        self, fake_backend, org, org_user
+    ):
+        StorageFile.objects.bulk_create(
+            [
+                StorageFile(
+                    org=org,
+                    path="root/",
+                    name="root",
+                    item_type="folder",
+                    parent_path="",
+                ),
+                StorageFile(
+                    org=org,
+                    path="root/alpha/",
+                    name="alpha",
+                    item_type="folder",
+                    parent_path="root/",
+                ),
+                StorageFile(
+                    org=org,
+                    path="root/Beta/",
+                    name="Beta",
+                    item_type="folder",
+                    parent_path="root/",
+                ),
+                StorageFile(
+                    org=org,
+                    path="root/b.txt",
+                    name="b.txt",
+                    item_type="file",
+                    parent_path="root/",
+                    size=1,
+                ),
+                StorageFile(
+                    org=org,
+                    path="root/Zeta.txt",
+                    name="Zeta.txt",
+                    item_type="file",
+                    parent_path="root/",
+                    size=1,
+                ),
+            ]
+        )
+        manager = StorageManager(fake_backend)
+        root, _ = manager.list_tree("testuser", org.id, "root")
+        assert [child.name for child in root.children] == [
+            "alpha",
+            "Beta",
+            "b.txt",
+            "Zeta.txt",
+        ]
+        assert [child.type for child in root.children] == [
+            "folder",
+            "folder",
+            "file",
+            "file",
+        ]
+
 
 @pytest.mark.django_db
 class TestListManager:
@@ -396,6 +455,48 @@ class TestListManager:
         items = db_manager.list_("testuser", org.id, "docs")
         assert len(items) == 1
         assert items[0].name == "inner.txt"
+
+    def test_list_orders_folders_first_then_case_insensitive_alphabetical(
+        self, fake_backend, org, org_user
+    ):
+        StorageFile.objects.bulk_create(
+            [
+                StorageFile(
+                    org=org,
+                    path="alpha/",
+                    name="alpha",
+                    item_type="folder",
+                    parent_path="",
+                ),
+                StorageFile(
+                    org=org,
+                    path="Beta/",
+                    name="Beta",
+                    item_type="folder",
+                    parent_path="",
+                ),
+                StorageFile(
+                    org=org,
+                    path="b.txt",
+                    name="b.txt",
+                    item_type="file",
+                    parent_path="",
+                    size=1,
+                ),
+                StorageFile(
+                    org=org,
+                    path="Zeta.txt",
+                    name="Zeta.txt",
+                    item_type="file",
+                    parent_path="",
+                    size=1,
+                ),
+            ]
+        )
+        manager = StorageManager(fake_backend)
+        items = manager.list_("testuser", org.id, "")
+        assert [i.name for i in items] == ["alpha", "Beta", "b.txt", "Zeta.txt"]
+        assert [i.type for i in items] == ["folder", "folder", "file", "file"]
 
 
 @pytest.mark.django_db
