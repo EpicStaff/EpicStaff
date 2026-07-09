@@ -240,6 +240,7 @@
                                 @switch (activeEditorTab()) {
                                     @case ('hooks') {
                                         <app-lockable-field
+                                            class="fill"
                                             fieldId="stream_handler_code"
                                             [nodeId]="node().id"
                                         >
@@ -253,6 +254,7 @@
                                     }
                                     @case ('schema') {
                                         <app-lockable-field
+                                            class="fill"
                                             fieldId="output_schema"
                                             [nodeId]="node().id"
                                         >

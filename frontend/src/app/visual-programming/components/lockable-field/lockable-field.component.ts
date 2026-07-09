@@ -37,6 +37,14 @@ import { getAvatarColor } from '../../core/helpers/avatar-colors';
                 display: block;
                 position: relative;
             }
+            :host(.fill) {
+                display: flex;
+                flex-direction: column;
+                flex: 1 1 auto;
+                align-self: stretch;
+                min-height: 0;
+                min-width: 0;
+            }
             :host.locked-by-other {
                 pointer-events: none;
                 outline: 2px solid var(--field-lock-color);

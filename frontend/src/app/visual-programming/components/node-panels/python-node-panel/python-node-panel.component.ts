@@ -166,6 +166,7 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
 
                             <div class="code-editor-column">
                                 <app-lockable-field
+                                    class="fill"
                                     fieldId="python_code"
                                     [nodeId]="node().id"
                                 >
