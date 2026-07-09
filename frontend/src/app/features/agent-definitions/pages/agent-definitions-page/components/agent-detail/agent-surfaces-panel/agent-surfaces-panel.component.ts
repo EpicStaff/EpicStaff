@@ -17,7 +17,7 @@ import {
     SelectDropdownListItem,
     SelectDropdownTriggerDirective,
 } from '@shared/components';
-import { EnterBlurDirective } from '@shared/directives';
+import { CollapseOnOverflowDirective, EnterBlurDirective } from '@shared/directives';
 
 import { AgentDefaultSurface } from '../../../../../models/agent-definition.model';
 import { CreateSurfaceRequest, PartialUpdateSurfaceRequest, Surface } from '../../../../../models/surface.model';
@@ -40,6 +40,7 @@ import { SurfaceCardComponent } from './surface-card/surface-card.component';
         DragDropModule,
         SelectDropdownComponent,
         SelectDropdownTriggerDirective,
+        CollapseOnOverflowDirective,
     ],
     templateUrl: './agent-surfaces-panel.component.html',
     styleUrls: ['./agent-surfaces-panel.component.scss'],

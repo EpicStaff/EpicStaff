@@ -42,13 +42,16 @@
                             <button
                                 type="button"
                                 class="surface-category__btn"
+                                [appCollapseOnOverflow]="true"
+                                collapseOnOverflowTarget=".surface-category__btn-label"
+                                collapseOnOverflowClass="surface-category__btn--icon-only"
                                 (click)="onViewSummary(category.id)"
                             >
                                 <app-svg-icon
                                     icon="sum"
                                     size="10px"
                                 />
-                                View Summary
+                                <span class="surface-category__btn-label">View Summary</span>
                             </button>
                         }
                         <app-select-dropdown
@@ -65,25 +68,31 @@
                                 type="button"
                                 appSelectDropdownTrigger
                                 class="surface-category__btn"
+                                [appCollapseOnOverflow]="true"
+                                collapseOnOverflowTarget=".surface-category__btn-label"
+                                collapseOnOverflowClass="surface-category__btn--icon-only"
                             >
                                 <app-svg-icon
                                     icon="external-link"
                                     size="12px"
                                 />
-                                Add From Shared
+                                <span class="surface-category__btn-label">Add From Shared</span>
                             </button>
                         </app-select-dropdown>
 
                         <button
                             type="button"
                             class="surface-category__btn"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".surface-category__btn-label"
+                            collapseOnOverflowClass="surface-category__btn--icon-only"
                             (click)="startCreateSurface(category.id)"
                         >
                             <app-svg-icon
                                 icon="plus"
                                 size="10px"
                             />
-                            Create Surface
+                            <span class="surface-category__btn-label">Create Surface</span>
                         </button>
                     </div>
                 </div>
