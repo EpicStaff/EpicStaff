@@ -4,5 +4,6 @@ export * from './drag-hover.directive';
 export * from './enter-blur.directive';
 export * from './has-permission.directive';
 export * from './hide-inline-subtitle-on-overflow.directive';
+export * from './resizable-sidebar.directive';
 export * from './search-shortcut.directive';
 export * from './server-errors.directive';
