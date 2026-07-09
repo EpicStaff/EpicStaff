@@ -39,7 +39,14 @@
                     size="12px"
                 />
             }
-            <span class="row__label">{{ n.label }}</span>
+            <span
+                class="row__label"
+                [matTooltip]="n.label"
+                matTooltipPosition="above"
+                matTooltipShowDelay="500"
+                matTooltipClass="tree-name-tooltip"
+                >{{ n.label }}</span
+            >
             @if (!hasChildren()) {
                 <span class="row__empty">Empty</span>
             }
@@ -65,7 +72,14 @@
                 icon="surfaces-tab"
                 size="12px"
             />
-            <span class="row__label row__label--surface">{{ n.label }}</span>
+            <span
+                class="row__label row__label--surface"
+                [matTooltip]="n.label"
+                matTooltipPosition="above"
+                matTooltipShowDelay="500"
+                matTooltipClass="tree-name-tooltip"
+                >{{ n.label }}</span
+            >
             @if (n.shared) {
                 <span class="row__shared">Shared</span>
             }
@@ -126,7 +140,14 @@
                 icon="folder"
                 size="0.95rem"
             />
-            <span class="row__label">{{ n.label }}</span>
+            <span
+                class="row__label"
+                [matTooltip]="n.label"
+                matTooltipPosition="above"
+                matTooltipShowDelay="500"
+                matTooltipClass="tree-name-tooltip"
+                >{{ n.label }}</span
+            >
             @if (showHoverMenu()) {
                 <div
                     class="row__hover-actions"
@@ -162,7 +183,14 @@
                 icon="file"
                 size="0.95rem"
             />
-            <span class="row__label">{{ n.label }}</span>
+            <span
+                class="row__label"
+                [matTooltip]="n.label"
+                matTooltipPosition="above"
+                matTooltipShowDelay="500"
+                matTooltipClass="tree-name-tooltip"
+                >{{ n.label }}</span
+            >
         </div>
     }
 }

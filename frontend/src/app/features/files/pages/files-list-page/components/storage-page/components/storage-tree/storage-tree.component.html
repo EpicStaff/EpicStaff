@@ -104,7 +104,10 @@
                 <div class="storage-tree__folder-meta">
                     <span
                         class="storage-tree__name storage-tree__name--folder-meta"
-                        [title]="node.name"
+                        [matTooltip]="node.name"
+                        matTooltipPosition="above"
+                        matTooltipShowDelay="500"
+                        matTooltipClass="tree-name-tooltip"
                     >
                         {{ node.name }}
                     </span>
@@ -113,7 +116,10 @@
             } @else {
                 <span
                     class="storage-tree__name"
-                    [title]="node.name"
+                    [matTooltip]="node.name"
+                    matTooltipPosition="above"
+                    matTooltipShowDelay="500"
+                    matTooltipClass="tree-name-tooltip"
                     >{{ node.name }}</span
                 >
             }

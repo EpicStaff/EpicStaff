@@ -12,6 +12,7 @@
     cursor: pointer;
     border-radius: 4px;
     user-select: none;
+    position: relative;
 
     &:hover {
         background-color: var(--color-ghost-btn-hover);
@@ -90,6 +91,16 @@
         }
     }
 
+    // 2.25rem clears the single 28px .row__hover-btn plus its 0.5rem right offset.
+    &--surface:hover &__label,
+    &--agent:hover &__label {
+        padding-right: 2.25rem;
+    }
+
+    &--surface:hover &__shared {
+        margin-right: 2.25rem;
+    }
+
     &__shared {
         flex-shrink: 0;
         font-size: 0.875rem;
@@ -108,7 +119,10 @@
         display: flex;
         align-items: center;
         justify-content: flex-end;
-        margin-left: auto;
+        position: absolute;
+        right: 0.5rem;
+        top: 50%;
+        transform: translateY(-50%);
         flex-shrink: 0;
         z-index: 2;
         visibility: hidden;

@@ -46,3 +46,12 @@ $compact-theme: mat.define-theme(
     white-space: pre-line;
     line-height: 1.45;
 }
+
+.tree-name-tooltip {
+    --mdc-plain-tooltip-container-max-width: 60vw;
+}
+
+.tree-name-tooltip .mdc-tooltip__surface {
+    max-width: 60vw;
+    white-space: nowrap;
+}
