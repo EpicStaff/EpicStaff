@@ -1739,15 +1739,6 @@ class GraphOrganizationViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet
     queryset = GraphOrganization.objects.all()
     serializer_class = GraphOrganizationSerializer
 
-    def perform_create(self, serializer):
-        # Enforce the invariant: a flow's persistent-state row is always owned
-        # by the flow's own org (never a different organization).
-        self._assert_parent_in_active_org(serializer)
-        serializer.save(organization_id=serializer.validated_data["graph"].org_id)
-
-    def perform_update(self, serializer):
-        serializer.save(organization_id=serializer.instance.graph.org_id)
-
 
 class GraphOrganizationUserViewSet(
     OrgScopedChildViewSetMixin, viewsets.ReadOnlyModelViewSet
