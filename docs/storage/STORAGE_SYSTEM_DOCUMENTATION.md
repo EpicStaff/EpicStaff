@@ -50,7 +50,6 @@ StorageManager                         SessionStorageFile queries
   │
   ▼
 AbstractStorageBackend
-  ├─ LocalStorageBackend (pathlib/shutil)
   └─ S3StorageBackend (boto3)
 
 Storage SDK (EpicStaffStorage)
@@ -60,7 +59,7 @@ Storage SDK (EpicStaffStorage)
 
 **StorageManager** is the central org-aware service. It wraps every backend operation with org isolation, permission checks, and DB sync. Views never call the backend directly.
 
-**AbstractStorageBackend** defines the interface. Two implementations exist: `LocalStorageBackend` for development/testing and `S3StorageBackend` for production (MinIO or any S3-compatible service).
+**AbstractStorageBackend** defines the interface. `S3StorageBackend` is the sole production implementation (MinIO or any S3-compatible service). Tests exercise the same interface against `InMemoryStorageBackend`, a fake that mirrors S3 semantics.
 
 **StorageFileSync** keeps the `StorageFile` DB table consistent with actual storage mutations. It is called by `StorageManager` after every mutating operation.
 
@@ -246,7 +245,6 @@ Permissions are checked via `_require_permission()` which validates `Organizatio
 | `tables/models/graph_models.py` | `StorageFile`, `GraphStorageFile`, `SessionStorageFile` models |
 | `tables/services/storage_service/manager.py` | `StorageManager` (org-aware wrapper) |
 | `tables/services/storage_service/base.py` | `AbstractStorageBackend` interface |
-| `tables/services/storage_service/local_backend.py` | Local filesystem backend |
 | `tables/services/storage_service/s3_backend.py` | S3/MinIO backend |
 | `tables/services/storage_service/db_sync.py` | `StorageFileSync` (DB sync layer) |
 | `tables/services/storage_service/dataclasses.py` | `FileListItem`, `FileInfo`, `FolderInfo`, etc. |
@@ -273,11 +271,9 @@ Storage infrastructure is defined in `src/docker-compose.yaml`.
 
 | Variable | Purpose |
 |----------|---------|
-| `STORAGE_BACKEND` | `s3` or `local` |
 | `STORAGE_ENDPOINT` | S3/MinIO endpoint URL |
 | `STORAGE_ACCESS_KEY` | S3 access key |
 | `STORAGE_SECRET_KEY` | S3 secret key |
 | `STORAGE_BUCKET_NAME` | Target bucket name |
-| `STORAGE_LOCAL_ROOT` | Root path for local backend |
 | `STORAGE_ORG_PREFIX` | Org prefix used by SDK (set per execution context) |
 | `STORAGE_ALLOWED_PATHS` | JSON array of allowed paths for SDK access |

@@ -176,6 +176,12 @@ class StorageManager:
 
     @check_permission
     def download(self, user_name: str, org_id: int, path: str) -> bytes:
+        clean_path = path.rstrip("/")
+        file_exists = StorageFile.objects.filter(
+            org_id=org_id, path=clean_path, item_type="file"
+        ).exists()
+        if not file_exists:
+            raise FileNotFoundError(f"File does not exist: {path}")
         return self._backend.download(self._build_storage_key(org_id, path))
 
     @check_permission
@@ -192,20 +198,30 @@ class StorageManager:
     def move(
         self, user_name: str, org_id: int, source_path: str, destination_path: str
     ) -> None:
-        self._backend.move(
+        actual_key = self._backend.move(
             self._build_storage_key(org_id, source_path),
             self._build_storage_key(org_id, destination_path),
         )
-        StorageFileSync.on_move(org_id, source_path, destination_path)
+        actual_path = self._strip_org_prefix(org_id, actual_key)
+        StorageFileSync.on_move(org_id, source_path, actual_path)
 
     @check_permission
     def rename(
         self, user_name: str, org_id: int, source_path: str, destination_path: str
     ) -> None:
+        destination_clean = destination_path.rstrip("/")
+        destination_exists = StorageFile.objects.filter(
+            org_id=org_id, path__in=[destination_clean, destination_clean + "/"]
+        ).exists()
+        if destination_exists:
+            raise FileExistsError(f"Destination already exists: {destination_path}")
+
         self._backend.rename(
             self._build_storage_key(org_id, source_path),
             self._build_storage_key(org_id, destination_path),
         )
+        # rename never dedupes — the guard above confirmed this exact path was
+        # free, so destination_path IS the actual path (unlike move).
         StorageFileSync.on_move(org_id, source_path, destination_path)
 
     @check_permission
@@ -266,16 +282,27 @@ class StorageManager:
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
             for path in paths:
-                storage_key = self._build_storage_key(org_id, path)
-                item_info = self._backend.info(storage_key)
-                if isinstance(item_info, FolderInfo):
-                    for key in self._backend.list_all_keys(storage_key):
-                        file_bytes = self._backend.download(key)
-                        archive_name = self._strip_org_prefix(org_id, key)
-                        archive.writestr(archive_name.lstrip("/"), file_bytes)
+                clean_path = path.rstrip("/")
+                row = StorageFile.objects.filter(
+                    org_id=org_id, path__in=[clean_path, clean_path + "/"]
+                ).first()
+                if row is None:
+                    raise FileNotFoundError(f"Path does not exist: {path}")
+
+                if row.item_type == "folder":
+                    file_rows = StorageFile.objects.filter(
+                        org_id=org_id, path__startswith=row.path, item_type="file"
+                    )
+                    for file_row in file_rows:
+                        file_bytes = self._backend.download(
+                            self._build_storage_key(org_id, file_row.path)
+                        )
+                        archive.writestr(file_row.path.lstrip("/"), file_bytes)
                 else:
-                    file_bytes = self._backend.download(storage_key)
-                    archive.writestr(path.lstrip("/"), file_bytes)
+                    file_bytes = self._backend.download(
+                        self._build_storage_key(org_id, row.path)
+                    )
+                    archive.writestr(row.path.lstrip("/"), file_bytes)
         buffer.seek(0)
         yield buffer.read()
 
@@ -514,9 +541,8 @@ class StorageManager:
             self._build_storage_key(src_org_id, src_path),
             self._build_storage_key(dst_org_id, dst_path),
         )
-        for key in actual_keys:
-            actual_dst_path = self._strip_org_prefix(dst_org_id, key)
-            StorageFileSync.on_copy_cross_org(dst_org_id, actual_dst_path)
+        actual_dst_paths = [self._strip_org_prefix(dst_org_id, k) for k in actual_keys]
+        StorageFileSync.on_copy(dst_org_id, actual_dst_paths)
 
     def move_cross_org(
         self,
@@ -537,8 +563,11 @@ class StorageManager:
         self._require_permission(
             user_name, dst_org_id, action=StorageAction.UPLOAD, path=dst_path
         )
-        self._backend.move(
+        actual_key = self._backend.move(
             self._build_storage_key(src_org_id, src_path),
             self._build_storage_key(dst_org_id, dst_path),
         )
-        StorageFileSync.on_move_cross_org(src_org_id, src_path, dst_org_id, dst_path)
+        actual_dst_path = self._strip_org_prefix(dst_org_id, actual_key)
+        StorageFileSync.on_move_cross_org(
+            src_org_id, src_path, dst_org_id, actual_dst_path
+        )

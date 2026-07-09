@@ -1,4 +1,5 @@
 import pytest
+from django.utils import timezone
 
 from tables.models import Organization, StorageFile
 from tables.services.storage_service.db_sync import StorageFileSync, _parent_of
@@ -132,11 +133,67 @@ class TestOnMove:
         assert row_a.parent_path == "new/"
         assert row_b.parent_path == "new/sub/"
 
+    def test_on_move_folder_into_existing_sibling_folder_does_not_collide(self, org):
+        """Moving 'docs' into an already-present 'archive/' folder must not
+        touch 'archive/' itself and must not raise an IntegrityError."""
+        StorageFile.objects.create(
+            org=org, path="archive/", name="archive", item_type="folder"
+        )
+        StorageFile.objects.create(
+            org=org, path="docs/", name="docs", item_type="folder", parent_path=""
+        )
+        StorageFile.objects.create(
+            org=org, path="docs/a.txt", name="a.txt", parent_path="docs/"
+        )
+
+        StorageFileSync.on_move(org.id, "docs", "archive/docs/")
+
+        assert StorageFile.objects.filter(org=org, path="archive/").exists()
+        assert StorageFile.objects.filter(
+            org=org, path="archive/docs/", item_type="folder"
+        ).exists()
+        assert StorageFile.objects.filter(org=org, path="archive/docs/a.txt").exists()
+        assert not StorageFile.objects.filter(org=org, path="docs/").exists()
+        assert not StorageFile.objects.filter(org=org, path="docs/a.txt").exists()
+
+    def test_on_move_folder_recomputes_name_for_deduped_destination(self, org):
+        StorageFile.objects.create(
+            org=org, path="docs/", name="docs", item_type="folder"
+        )
+        StorageFile.objects.create(
+            org=org, path="docs/a.txt", name="a.txt", parent_path="docs/"
+        )
+
+        StorageFileSync.on_move(org.id, "docs", "archive/docs (1)/")
+
+        row = StorageFile.objects.get(org=org, path="archive/docs (1)/")
+        assert row.name == "docs (1)"
+
+    def test_on_move_folder_branch_preserves_size_and_modified(self, org):
+        modified = timezone.now()
+        StorageFile.objects.create(
+            org=org, path="docs/", name="docs", item_type="folder"
+        )
+        StorageFile.objects.create(
+            org=org,
+            path="docs/a.txt",
+            name="a.txt",
+            parent_path="docs/",
+            size=42,
+            s3_modified=modified,
+        )
+
+        StorageFileSync.on_move(org.id, "docs", "archive/docs/")
+
+        row = StorageFile.objects.get(org=org, path="archive/docs/a.txt")
+        assert row.size == 42
+        assert row.s3_modified == modified
+
 
 class TestOnCopy:
     def test_on_copy_creates_all_paths(self, org):
         StorageFileSync.on_copy(org.id, ["copy/a.txt", "copy/b.txt"])
-        assert StorageFile.objects.filter(org=org).count() == 2
+        assert StorageFile.objects.filter(org=org).count() == 3
 
     def test_on_copy_ignores_duplicate_conflicts(self, org):
         StorageFile.objects.create(org=org, path="dup.txt", name="dup.txt")
@@ -149,9 +206,22 @@ class TestOnCopy:
         assert row.item_type == "file"
         assert row.parent_path == "dest/"
 
+    def test_on_copy_creates_folder_row_and_ancestors(self, org):
+        StorageFileSync.on_copy(org.id, ["dest/docs/", "dest/docs/a.txt"])
+        assert StorageFile.objects.filter(
+            org=org, path="dest/docs/", item_type="folder"
+        ).exists()
+        assert StorageFile.objects.filter(
+            org=org, path="dest/", item_type="folder"
+        ).exists()
+        assert StorageFile.objects.filter(
+            org=org, path="dest/docs/a.txt", item_type="file"
+        ).exists()
+        assert StorageFile.objects.filter(org=org).count() == 3
+
 
 class TestCrossOrg:
-    def test_on_move_cross_org_deletes_source_creates_dest(self, org, second_org):
+    def test_on_move_cross_org_file_deletes_source_creates_dest(self, org, second_org):
         StorageFile.objects.create(org=org, path="moved.txt")
         StorageFileSync.on_move_cross_org(
             org.id, "moved.txt", second_org.id, "landed.txt"
@@ -159,13 +229,45 @@ class TestCrossOrg:
         assert not StorageFile.objects.filter(org=org, path="moved.txt").exists()
         assert StorageFile.objects.filter(org=second_org, path="landed.txt").exists()
 
-    def test_on_copy_cross_org_creates_in_dest(self, second_org):
-        StorageFileSync.on_copy_cross_org(second_org.id, "copied.txt")
-        assert StorageFile.objects.filter(org=second_org, path="copied.txt").exists()
-
-    def test_on_copy_cross_org_is_idempotent(self, second_org):
-        StorageFileSync.on_copy_cross_org(second_org.id, "copied.txt")
-        StorageFileSync.on_copy_cross_org(second_org.id, "copied.txt")
-        assert (
-            StorageFile.objects.filter(org=second_org, path="copied.txt").count() == 1
+    def test_on_move_cross_org_file_preserves_size_and_modified(self, org, second_org):
+        modified = timezone.now()
+        StorageFile.objects.create(
+            org=org, path="moved.txt", size=99, s3_modified=modified
         )
+        StorageFileSync.on_move_cross_org(
+            org.id, "moved.txt", second_org.id, "landed.txt"
+        )
+        row = StorageFile.objects.get(org=second_org, path="landed.txt")
+        assert row.size == 99
+        assert row.s3_modified == modified
+
+    def test_on_move_cross_org_folder_translates_children_and_deletes_source(
+        self, org, second_org
+    ):
+        StorageFile.objects.create(
+            org=org, path="docs/", name="docs", item_type="folder"
+        )
+        StorageFile.objects.create(
+            org=org, path="docs/a.txt", name="a.txt", parent_path="docs/"
+        )
+        StorageFile.objects.create(
+            org=org, path="docs/sub/b.txt", name="b.txt", parent_path="docs/sub/"
+        )
+
+        StorageFileSync.on_move_cross_org(
+            org.id, "docs", second_org.id, "archive/docs/"
+        )
+
+        assert StorageFile.objects.filter(org=org, path__startswith="docs").count() == 0
+        assert StorageFile.objects.filter(
+            org=second_org, path="archive/docs/", item_type="folder"
+        ).exists()
+        assert StorageFile.objects.filter(
+            org=second_org, path="archive/docs/a.txt"
+        ).exists()
+        assert StorageFile.objects.filter(
+            org=second_org, path="archive/docs/sub/b.txt"
+        ).exists()
+        assert StorageFile.objects.filter(
+            org=second_org, path="archive/", item_type="folder"
+        ).exists()

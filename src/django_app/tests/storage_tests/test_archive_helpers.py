@@ -5,9 +5,9 @@ import pytest
 
 
 @pytest.fixture
-def backend(local_backend):
-    """Use local_backend to access inherited helper methods."""
-    return local_backend
+def backend(fake_backend):
+    """Use fake_backend to access inherited helper methods."""
+    return fake_backend
 
 
 class TestCheckArchivePassword:

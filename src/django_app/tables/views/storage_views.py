@@ -124,7 +124,7 @@ class StorageAPIView(ViewSet):
         try:
             file_bytes = self.manager.download(user_name, org_id, path)
         except FileNotFoundError:
-            raise ValidationError({"path": f"File does not exist: {path}"})
+            raise NotFound({"path": f"File does not exist: {path}"})
 
         filename = path.rstrip("/").split("/")[-1] if path else "file"
         response = HttpResponse(file_bytes, content_type="application/octet-stream")

@@ -91,11 +91,12 @@ class TestDelegation:
     def test_move_builds_both_org_keys_and_syncs(
         self, storage_manager, mock_backend, org, org_user, patch_sync
     ):
+        mock_backend.move.return_value = f"org_{org.id}/dest/a.txt"
         storage_manager.move("testuser", org.id, "a.txt", "dest")
         mock_backend.move.assert_called_once_with(
             f"org_{org.id}/a.txt", f"org_{org.id}/dest"
         )
-        patch_sync.on_move.assert_called_once_with(org.id, "a.txt", "dest")
+        patch_sync.on_move.assert_called_once_with(org.id, "a.txt", "dest/a.txt")
 
     def test_rename_delegates_and_syncs_via_on_move(
         self, storage_manager, mock_backend, org, org_user, patch_sync
@@ -105,6 +106,14 @@ class TestDelegation:
             f"org_{org.id}/old.txt", f"org_{org.id}/new.txt"
         )
         patch_sync.on_move.assert_called_once_with(org.id, "old.txt", "new.txt")
+
+    def test_rename_raises_file_exists_when_destination_row_exists(
+        self, storage_manager, mock_backend, org, org_user, patch_sync
+    ):
+        StorageFile.objects.create(org=org, path="new.txt", name="new.txt")
+        with pytest.raises(FileExistsError):
+            storage_manager.rename("testuser", org.id, "old.txt", "new.txt")
+        mock_backend.rename.assert_not_called()
 
     def test_copy_strips_org_prefix_from_returned_keys_and_syncs(
         self, storage_manager, mock_backend, org, org_user, patch_sync
@@ -230,7 +239,7 @@ class TestCrossOrg:
             "testuser", org.id, "src.txt", second_org.id, "dest.txt"
         )
         mock_backend.copy.assert_called_once()
-        patch_sync.on_copy_cross_org.assert_called_once()
+        patch_sync.on_copy.assert_called_once_with(second_org.id, ["dest.txt"])
 
     def test_copy_cross_org_raises_when_missing_source_membership(
         self, storage_manager, org, second_org, second_org_user
@@ -260,20 +269,23 @@ class TestCrossOrg:
         second_org_user,
         patch_sync,
     ):
+        mock_backend.move.return_value = f"org_{second_org.id}/dest.txt"
         storage_manager.move_cross_org(
             "testuser", org.id, "src.txt", second_org.id, "dest.txt"
         )
         mock_backend.move.assert_called_once_with(
             f"org_{org.id}/src.txt", f"org_{second_org.id}/dest.txt"
         )
-        patch_sync.on_move_cross_org.assert_called_once()
+        patch_sync.on_move_cross_org.assert_called_once_with(
+            org.id, "src.txt", second_org.id, "dest.txt"
+        )
 
 
 @pytest.mark.django_db
 class TestListTreeManager:
     @pytest.fixture
-    def db_manager(self, local_backend, org, org_user):
-        """Manager backed by a LocalStorageBackend (no mock) with DB rows seeded."""
+    def db_manager(self, fake_backend, org, org_user):
+        """Manager backed by an InMemoryStorageBackend (no mock) with DB rows seeded."""
         from tables.models import StorageFile
 
         StorageFile.objects.bulk_create(
@@ -297,7 +309,7 @@ class TestListTreeManager:
         )
         from tables.services.storage_service.manager import StorageManager
 
-        return StorageManager(local_backend)
+        return StorageManager(fake_backend)
 
     def test_list_tree_builds_tree_from_db_rows(self, db_manager, org, org_user):
         root, truncated = db_manager.list_tree("testuser", org.id, "reports")
@@ -315,7 +327,7 @@ class TestListTreeManager:
 @pytest.mark.django_db
 class TestListManager:
     @pytest.fixture
-    def db_manager(self, local_backend, org, org_user):
+    def db_manager(self, fake_backend, org, org_user):
         from tables.models import StorageFile
         from tables.services.storage_service.manager import StorageManager
         from django.utils import timezone
@@ -352,7 +364,7 @@ class TestListManager:
                 ),
             ]
         )
-        return StorageManager(local_backend)
+        return StorageManager(fake_backend)
 
     def test_list_root_returns_folder_and_file(self, db_manager, org, org_user):
         items = db_manager.list_("testuser", org.id, "")
@@ -389,7 +401,7 @@ class TestListManager:
 @pytest.mark.django_db
 class TestInfoManager:
     @pytest.fixture
-    def db_manager(self, local_backend, org, org_user):
+    def db_manager(self, fake_backend, org, org_user):
         from tables.models import StorageFile
         from tables.services.storage_service.manager import StorageManager
         from django.utils import timezone
@@ -417,7 +429,7 @@ class TestInfoManager:
                 ),
             ]
         )
-        return StorageManager(local_backend)
+        return StorageManager(fake_backend)
 
     def test_info_returns_file_info_for_file_path(self, db_manager, org, org_user):
         result = db_manager.info("testuser", org.id, "docs/note.txt")
@@ -534,7 +546,7 @@ class TestStorageIdExposure:
     """Verify that list_(), info(), list_tree() carry the DB row id through."""
 
     @pytest.fixture
-    def db_manager(self, local_backend, org, org_user):
+    def db_manager(self, fake_backend, org, org_user):
         from django.utils import timezone
 
         modified = timezone.now()
@@ -562,7 +574,7 @@ class TestStorageIdExposure:
         )
         from tables.services.storage_service.manager import StorageManager
 
-        return StorageManager(local_backend)
+        return StorageManager(fake_backend)
 
     def test_list_file_item_carries_row_id(self, db_manager, org, org_user):
         items = db_manager.list_("testuser", org.id, "docs")

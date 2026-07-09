@@ -118,12 +118,24 @@ class AbstractStorageBackend(ABC):
         """Create a folder."""
 
     @abstractmethod
-    def move(self, source_path: str, destination_path: str) -> None:
-        """Move / rename file or folder."""
+    def move(self, source_path: str, destination_path: str) -> str:
+        """
+        Move source into the destination folder (never overwrites destination_path
+        itself — source is placed as a child of it).
+
+        Returns the actual destination base created after name-dedup: the exact
+        new file key for a file, or the folder base path (ending in "/") for a
+        folder.
+        """
 
     @abstractmethod
     def rename(self, source_path: str, destination_path: str) -> None:
-        """Rename/move source to the exact destination path (never into it)."""
+        """
+        Rename/move source to the exact destination path (never into it).
+
+        Raises FileExistsError when a file or folder already exists at the
+        exact destination path.
+        """
 
     @abstractmethod
     def copy(self, source_path: str, destination_path: str) -> list[str]:

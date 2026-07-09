@@ -187,9 +187,10 @@ class S3StorageBackend(AbstractStorageBackend):
                 raise ValueError(f"Invalid storage path: {path!r}")
             raise
 
-    def move(self, source_path: str, destination_path: str) -> None:
-        self.copy(source_path, destination_path)
+    def move(self, source_path: str, destination_path: str) -> str:
+        actual_base, _ = self._copy_into(source_path, destination_path)
         self.delete(source_path)
+        return actual_base
 
     def rename(self, source_path: str, destination_path: str) -> None:
         full_source = self._full_path(source_path)
@@ -197,6 +198,11 @@ class S3StorageBackend(AbstractStorageBackend):
 
         if full_source.rstrip("/") == full_destination.rstrip("/"):
             raise ValueError("Source and destination are the same path.")
+
+        if self._key_exists(full_destination, is_folder=False) or self._key_exists(
+            full_destination, is_folder=True
+        ):
+            raise FileExistsError(f"Destination already exists: {destination_path}")
 
         # Single file
         if self.exists(source_path):
@@ -267,7 +273,17 @@ class S3StorageBackend(AbstractStorageBackend):
             if not self._key_exists(candidate, is_folder):
                 return candidate
 
-    def copy(self, source_path: str, destination_path: str) -> list[str]:
+    def _copy_into(
+        self, source_path: str, destination_path: str
+    ) -> tuple[str, list[str]]:
+        """
+        Copy source into the destination folder, deduping the destination name
+        against existing keys.
+
+        Returns (actual_destination_base, created_keys): for a file, both the
+        exact target key; for a folder, the deduped folder base (ending in
+        "/") and every file key created underneath it.
+        """
         full_source = self._full_path(source_path)
         full_destination = self._full_path(destination_path)
 
@@ -283,7 +299,7 @@ class S3StorageBackend(AbstractStorageBackend):
                 Bucket=self.bucket_name,
                 Key=target_key,
             )
-            return [target_key]
+            return target_key, [target_key]
 
         # Folder
         source_prefix = full_source if full_source.endswith("/") else full_source + "/"
@@ -307,7 +323,10 @@ class S3StorageBackend(AbstractStorageBackend):
         if not created_keys:
             raise FileNotFoundError(f"Source path does not exist: {source_path}")
 
-        return created_keys
+        return dest_base + "/", created_keys
+
+    def copy(self, source_path: str, destination_path: str) -> list[str]:
+        return self._copy_into(source_path, destination_path)[1]
 
     def info(self, path: str) -> FileInfo | FolderInfo:
         clean_path = path.rstrip("/")

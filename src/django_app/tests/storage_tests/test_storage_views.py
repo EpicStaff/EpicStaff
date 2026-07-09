@@ -85,7 +85,7 @@ class TestDownload:
 
         resp = auth_client.get("/api/storage/download/", {"path": "ghost.txt"})
 
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.status_code == status.HTTP_404_NOT_FOUND
 
 
 class TestUpload:
@@ -498,28 +498,25 @@ class TestSandboxMutationFeedsListing:
     def test_on_upload_then_list_returns_file(self, auth_client):
         from tables.models import Organization
         from tables.services.storage_service.db_sync import StorageFileSync
-        from tables.services.storage_service.local_backend import LocalStorageBackend
         from tables.services.storage_service.manager import StorageManager
+        from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
         from unittest.mock import patch
 
-        # Use a real local backend with a real manager (no mock_manager fixture here).
-        import tempfile
+        # Use a real in-memory backend with a real manager (no mock_manager fixture here).
+        backend = InMemoryStorageBackend(organization_prefix="")
+        manager = StorageManager(backend)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            backend = LocalStorageBackend(root=tmpdir, organization_prefix="")
-            manager = StorageManager(backend)
+        with patch(
+            "tables.views.storage_views.get_storage_manager",
+            return_value=manager,
+        ):
+            # Trigger _resolve_context to create the default org.
+            resp = auth_client.get("/api/storage/list/", {"path": ""})
+            org = Organization.objects.get(name="Default Organization")
 
-            with patch(
-                "tables.views.storage_views.get_storage_manager",
-                return_value=manager,
-            ):
-                # Trigger _resolve_context to create the default org.
-                resp = auth_client.get("/api/storage/list/", {"path": ""})
-                org = Organization.objects.get(name="Default Organization")
+            StorageFileSync.on_upload(org.id, "gen/out.txt")
 
-                StorageFileSync.on_upload(org.id, "gen/out.txt")
-
-                resp = auth_client.get("/api/storage/list/", {"path": "gen"})
-                assert resp.status_code == 200
-                names = [item["name"] for item in resp.data["items"]]
-                assert "out.txt" in names
+            resp = auth_client.get("/api/storage/list/", {"path": "gen"})
+            assert resp.status_code == 200
+            names = [item["name"] for item in resp.data["items"]]
+            assert "out.txt" in names
