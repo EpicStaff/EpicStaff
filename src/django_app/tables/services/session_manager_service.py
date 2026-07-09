@@ -254,13 +254,15 @@ class SessionManagerService(metaclass=SingletonMeta):
     ) -> dict | None:
         """
         Function returns variables ether from previous session which ended successfully
-        (with status: 'end') if 'persistent_variables' field in graph_obj is True and there
+        (with status: 'end') if 'enable_persistent_variables' field in graph_obj is True and there
         is at least one session.
         OR
         Returns an emtpy dict
         """
 
-        use_prev_vars = Graph.objects.filter(pk=graph_id, persistent_variables=True)
+        use_prev_vars = Graph.objects.filter(
+            pk=graph_id, enable_persistent_variables=True
+        )
         m1 = "This run will be using variables from the last flow ended with status: 'end'"
         m2 = "This run will be using new variables"
         logger.info(f"{m1 if use_prev_vars else m2}")

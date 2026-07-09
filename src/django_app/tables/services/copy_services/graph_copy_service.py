@@ -30,7 +30,7 @@ class GraphCopyService(BaseCopyService):
             description=graph.description,
             metadata=graph.metadata,
             time_to_live=graph.time_to_live,
-            persistent_variables=graph.persistent_variables,
+            enable_persistent_variables=graph.enable_persistent_variables,
             org_id=target_org_id,
         )
         new_graph.labels.set(graph.labels.all())
