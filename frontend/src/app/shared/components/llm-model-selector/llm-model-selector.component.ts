@@ -1,3 +1,4 @@
+import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
@@ -26,7 +27,7 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
 @Component({
     selector: 'app-llm-model-selector',
     standalone: true,
-    imports: [CommonModule, FormsModule, AppSvgIconComponent, LlmModelItemComponent],
+    imports: [CommonModule, FormsModule, OverlayModule, AppSvgIconComponent, LlmModelItemComponent],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -37,6 +38,8 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
     template: `
         <div class="llm-selector-container">
             <div
+                #trigger="cdkOverlayOrigin"
+                cdkOverlayOrigin
                 class="selected-model"
                 [class.placeholder]="!selectedConfig"
                 [class.loading]="loading"
@@ -93,51 +96,58 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
                 </div>
             </div>
 
-            <!-- Dropdown Menu -->
-            <div
-                class="dropdown-menu"
-                [class.dropdown-top]="dropdownPosition === 'top'"
-                *ngIf="isDropdownOpen"
+            <!-- Dropdown Menu (rendered in an overlay so no parent overflow clips it) -->
+            <ng-template
+                cdkConnectedOverlay
+                [cdkConnectedOverlayOrigin]="trigger"
+                [cdkConnectedOverlayOpen]="isDropdownOpen"
+                [cdkConnectedOverlayWidth]="triggerWidth"
+                [cdkConnectedOverlayPositions]="overlayPositions"
+                [cdkConnectedOverlayFlexibleDimensions]="true"
+                (overlayOutsideClick)="onOverlayOutsideClick($event)"
+                (detach)="closeDropdown()"
             >
-                <!-- Search Input -->
-                <div class="search-container">
-                    <input
-                        type="text"
-                        [(ngModel)]="searchTerm"
-                        placeholder="Search models..."
-                        (click)="$event.stopPropagation()"
-                        (input)="filterConfigs()"
-                    />
-                </div>
-
-                <!-- Models List -->
-                <div class="models-list">
-                    @if (selectedConfig && !searchTerm) {
-                        <div
-                            class="deselect-option"
-                            (click)="deselectConfig()"
-                        >
-                            <i class="ti ti-x"></i>
-                            <span>Clear</span>
-                        </div>
-                    }
-                    <div
-                        *ngIf="filteredConfigs.length === 0"
-                        class="no-results"
-                    >
-                        No matching models found
+                <div class="dropdown-menu">
+                    <!-- Search Input -->
+                    <div class="search-container">
+                        <input
+                            type="text"
+                            [(ngModel)]="searchTerm"
+                            placeholder="Search models..."
+                            (click)="$event.stopPropagation()"
+                            (input)="filterConfigs()"
+                        />
                     </div>
 
-                    @for (config of filteredConfigs; track config.id) {
-                        <app-llm-model-item
-                            [config]="config"
-                            [isSelected]="selectedConfigId === config.id"
-                            (selected)="selectConfig($event)"
+                    <!-- Models List -->
+                    <div class="models-list">
+                        @if (selectedConfig && !searchTerm) {
+                            <div
+                                class="deselect-option"
+                                (click)="deselectConfig()"
+                            >
+                                <i class="ti ti-x"></i>
+                                <span>Clear</span>
+                            </div>
+                        }
+                        <div
+                            *ngIf="filteredConfigs.length === 0"
+                            class="no-results"
                         >
-                        </app-llm-model-item>
-                    }
+                            No matching models found
+                        </div>
+
+                        @for (config of filteredConfigs; track config.id) {
+                            <app-llm-model-item
+                                [config]="config"
+                                [isSelected]="selectedConfigId === config.id"
+                                (selected)="selectConfig($event)"
+                            >
+                            </app-llm-model-item>
+                        }
+                    </div>
                 </div>
-            </div>
+            </ng-template>
         </div>
     `,
     styles: [
@@ -242,30 +252,15 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
             }
 
             .dropdown-menu {
-                position: absolute;
-                top: calc(100% + 4px);
-                left: 0;
                 width: 100%;
                 background-color: var(--color-modals-background);
                 border: 1px solid var(--color-divider-subtle);
                 border-radius: 6px;
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-                z-index: 1000;
                 max-height: 300px;
                 display: flex;
                 flex-direction: column;
                 overflow: hidden;
-            }
-
-            .dropdown-menu.dropdown-top {
-                top: auto;
-                bottom: calc(100% + 4px);
-                flex-direction: column-reverse;
-            }
-
-            .dropdown-menu.dropdown-top .search-container {
-                border-bottom: none;
-                border-top: 1px solid var(--color-divider-subtle);
             }
 
             .search-container {
@@ -338,8 +333,14 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, OnChanges, 
     public selectedConfigId: number | null = null;
     public selectedConfig: FullLLMConfig | null = null;
     public filteredConfigs: FullLLMConfig[] = [];
-    public dropdownPosition: 'bottom' | 'top' = 'top';
+    public triggerWidth = 0;
     private dropdownId: string;
+
+    // Prefer opening below the trigger; flip above when there isn't room.
+    readonly overlayPositions: ConnectedPosition[] = [
+        { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+        { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
+    ];
 
     // ControlValueAccessor implementation
     private onChange: (value: number | null) => void = () => {};
@@ -376,7 +377,6 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, OnChanges, 
     }
 
     ngOnDestroy(): void {
-        document.removeEventListener('click', this.closeDropdownOnClickOutside);
         if (this.isDropdownOpen) {
             this.dropdownManager.closeDropdown(this.dropdownId);
             this.isDropdownOpen = false;
@@ -396,34 +396,27 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, OnChanges, 
     }
 
     private openDropdown(): void {
+        const container = this.elementRef.nativeElement.querySelector<HTMLElement>('.llm-selector-container');
+        this.triggerWidth = container?.getBoundingClientRect().width ?? 0;
+
         this.isDropdownOpen = true;
         this.filterConfigs();
-        this.checkDropdownPosition();
 
         // Notify dropdown manager that this dropdown is now active
         this.dropdownManager.openDropdown(this.dropdownId);
 
-        // Add a one-time click listener to close when clicking outside
-        setTimeout(() => {
-            document.addEventListener('click', this.closeDropdownOnClickOutside);
-        }, 100);
-
         this.cdr.markForCheck();
     }
 
-    closeDropdownOnClickOutside = (event: MouseEvent): void => {
-        const target = event.target as HTMLElement;
-        const selectorEl = this.elementRef.nativeElement.querySelector('.llm-selector-container');
-
-        if (selectorEl && !selectorEl.contains(target)) {
-            this.closeDropdown();
-            document.removeEventListener('click', this.closeDropdownOnClickOutside);
-        }
-    };
+    onOverlayOutsideClick(event: MouseEvent): void {
+        const container = this.elementRef.nativeElement.querySelector('.llm-selector-container');
+        if (container && container.contains(event.target as Node)) return;
+        this.closeDropdown();
+    }
 
     closeDropdown(): void {
+        if (!this.isDropdownOpen) return;
         this.isDropdownOpen = false;
-        document.removeEventListener('click', this.closeDropdownOnClickOutside);
 
         // Notify dropdown manager that this dropdown is now closed
         this.dropdownManager.closeDropdown(this.dropdownId);
@@ -467,7 +460,6 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, OnChanges, 
         this.onTouched();
         this.modelSelected.emit(config.id);
         this.closeDropdown();
-        document.removeEventListener('click', this.closeDropdownOnClickOutside);
     }
 
     getProviderIcon(config: FullLLMConfig): string {
@@ -509,28 +501,5 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, OnChanges, 
 
             this.cdr.markForCheck();
         }
-    }
-
-    // Check available space and position dropdown accordingly
-    private checkDropdownPosition(): void {
-        setTimeout(() => {
-            const container = this.elementRef.nativeElement.querySelector<HTMLElement>('.llm-selector-container');
-            if (!container) return;
-
-            const rect = container.getBoundingClientRect();
-            const viewportHeight = window.innerHeight;
-            const dropdownHeight = 300; // max-height from CSS
-            const spaceBelow = viewportHeight - rect.bottom;
-            const spaceAbove = rect.top;
-
-            // If there's not enough space below but enough space above, position on top
-            if (spaceBelow < dropdownHeight && spaceAbove > dropdownHeight) {
-                this.dropdownPosition = 'top';
-            } else {
-                this.dropdownPosition = 'bottom';
-            }
-
-            this.cdr.markForCheck();
-        }, 0);
     }
 }

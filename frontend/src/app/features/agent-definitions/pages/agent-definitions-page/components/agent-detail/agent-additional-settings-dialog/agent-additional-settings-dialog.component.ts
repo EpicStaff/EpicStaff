@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { IconButtonComponent, TabButtonComponent } from '@shared/components';
-import { FullLLMConfig, FullLLMConfigService } from '@shared/services';
+import { FullLLMConfigService } from '@shared/services';
 
 import {
     AdvancedTabComponent,
@@ -62,7 +62,7 @@ export class AgentAdditionalSettingsDialogComponent implements OnInit {
 
     readonly activeTab = signal<TabId>(TabId.GENERAL);
     readonly loadingLLMs = signal<boolean>(true);
-    readonly combinedLLMs = signal<FullLLMConfig[]>([]);
+    readonly combinedLLMs = this.fullLlmConfigService.fullConfigs;
 
     readonly tabs: Tab[] = [
         { id: TabId.GENERAL, label: 'General' },
@@ -97,10 +97,7 @@ export class AgentAdditionalSettingsDialogComponent implements OnInit {
             .getFullLLMConfigs()
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: (configs) => {
-                    this.combinedLLMs.set(configs);
-                    this.loadingLLMs.set(false);
-                },
+                next: () => this.loadingLLMs.set(false),
                 error: () => this.loadingLLMs.set(false),
             });
     }

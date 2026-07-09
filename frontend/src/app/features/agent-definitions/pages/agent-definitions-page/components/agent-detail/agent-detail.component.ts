@@ -18,7 +18,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogService, LlmModelSelectorComponent } from '@shared/components';
 import { EnterBlurDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
-import { FullLLMConfig, FullLLMConfigService } from '@shared/services';
+import { FullLLMConfigService } from '@shared/services';
 
 import { ToastService } from '../../../../../../services/notifications/toast.service';
 import { StorageItem } from '../../../../../files/models/storage.models';
@@ -133,7 +133,7 @@ export class AgentDetailComponent implements OnInit {
         llm_config: [null as number | null],
     });
 
-    readonly llmConfigs = signal<FullLLMConfig[]>([]);
+    readonly llmConfigs = this.fullLlmConfigService.fullConfigs;
     readonly llmLoading = signal<boolean>(true);
 
     readonly bootAsDoc = signal<boolean>(false);
@@ -199,10 +199,7 @@ export class AgentDetailComponent implements OnInit {
             .getFullLLMConfigs()
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: (configs) => {
-                    this.llmConfigs.set(configs);
-                    this.llmLoading.set(false);
-                },
+                next: () => this.llmLoading.set(false),
                 error: () => this.llmLoading.set(false),
             });
 
