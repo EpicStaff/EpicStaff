@@ -22,7 +22,6 @@ from tables.models.crew_models import (
     DefaultAgentConfig,
     DefaultCrewConfig,
 )
-from tables.services.config_service import YamlConfigService
 from tables.services.redis_service import RedisService
 from tables.services.session_manager_service import SessionManagerService
 from tables.models import (
@@ -297,18 +296,6 @@ def mock_redis_service_async():
         mock.async_publish = AsyncMock()
         mock.listen_to_channel = AsyncMock(return_value=None)
         yield mock
-
-
-@pytest.fixture
-def yaml_config_service_patched_config_path(
-    tmp_path: Path,
-) -> Generator[MagicMock, None, None]:
-    tmp_path.mkdir(exist_ok=True)
-    config_path: Path = tmp_path / "config.yaml"
-    with patch.object(YamlConfigService, "_CONFIG_PATH", config_path):
-        yield config_path
-
-    shutil.rmtree(tmp_path)
 
 
 @pytest.fixture

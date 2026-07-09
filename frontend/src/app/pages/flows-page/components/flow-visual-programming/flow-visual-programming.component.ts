@@ -41,6 +41,7 @@ import {
 import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
+import { UnsavedChangesRegistry } from '../../../../core/services/unsaved-changes-registry.service';
 import { EpicChatService } from '../../../../features/epic-chat/epic-chat.service';
 import { FlowAssistantPanelComponent } from '../../../../features/flow-assistant/components/flow-assistant-panel/flow-assistant-panel.component';
 import { FlowAssistantService } from '../../../../features/flow-assistant/flow-assistant.service';
@@ -95,12 +96,10 @@ import {
     patchCdtPromptBackendIds,
     patchFlowStateWithBackendIds,
 } from '../../../../visual-programming/utils/save';
-import { FlowUnsavedStateService } from '../../services/flow-unsaved-state.service';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
 import { ShortcutsModalComponent } from './components/shortcuts-modal/shortcuts-modal.component';
 import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
 
-//.
 @Component({
     selector: 'app-flow-visual-programming',
     standalone: true,
@@ -160,6 +159,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly routeParamMap;
     private readonly routeQueryParamMap;
     private isDeactivating = false;
+    private lastFetchedGraphId: number | null = null;
 
     @ViewChild(FlowGraphComponent)
     private flowGraphComponent?: FlowGraphComponent;
@@ -182,14 +182,14 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         private readonly configService: ConfigService,
         private readonly elementRef: ElementRef,
         private readonly epicChatService: EpicChatService,
-        private readonly flowUnsavedStateService: FlowUnsavedStateService,
         private readonly unsavedChangesDialog: UnsavedChangesDialogService,
         private readonly undoRedoService: UndoRedoService,
         private readonly createGraphWarningService: CreateGraphWarningsService,
         private readonly runSessionSSEService: RunSessionSSEService,
         private readonly permissionsService: PermissionsService,
         private readonly sidePanelService: SidePanelService,
-        private readonly llmConfigStorageService: LlmConfigStorageService
+        private readonly llmConfigStorageService: LlmConfigStorageService,
+        private readonly unsavedChangesRegistry: UnsavedChangesRegistry
     ) {
         this.isEpicChatEnabled = this.configService.isEpicChatEnabled;
         this.routeParamMap = toSignal(this.route.paramMap, { initialValue: this.route.snapshot.paramMap });
@@ -204,6 +204,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         effect(() => {
             const graphId = Number(this.routeParamMap().get('id'));
             if (!isFinite(graphId)) return;
+            if (graphId === this.lastFetchedGraphId) return;
+            this.lastFetchedGraphId = graphId;
             this.undoRedoService.setUndoStack([]);
             this.undoRedoService.setRedoStack([]);
             const warnings = this.createGraphWarningService.readPending();
@@ -218,11 +220,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.sidePanelService.reloadRequested$
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.refreshCurrentFlow());
-        this.wsService.graphSaved$
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((event) => {
-                const currentId = this.profileService.currentUserSignal()?.id;
-                if (event.saved_by.user_id === currentId) return;
+        this.wsService.graphSaved$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
+            const currentId = this.profileService.currentUserSignal()?.id;
+            if (event.saved_by.user_id === currentId) return;
 
             const savedBy = event.saved_by.display_name ?? `User ${event.saved_by.user_id}`;
             this.toastService.info(`Graph was saved by ${savedBy}`, 4000, 'bottom-right');
@@ -234,7 +234,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     public ngOnInit(): void {
-        this.flowUnsavedStateService.register(this);
+        this.unsavedChangesRegistry.register(this, {
+            onRefresh: this.refreshCurrentFlow.bind(this),
+        });
     }
 
     public refreshCurrentFlow(): void {
@@ -777,7 +779,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     public ngOnDestroy(): void {
-        this.flowUnsavedStateService.unregister();
+        this.unsavedChangesRegistry.unregister(this);
         this.runSessionSSEService.stopStream();
         this.wsService.disconnect();
     }

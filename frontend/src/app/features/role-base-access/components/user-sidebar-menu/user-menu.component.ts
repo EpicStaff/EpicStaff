@@ -5,8 +5,9 @@ import { AppSvgIconComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, FullMembership, GetMeResponse, ResourceCode } from '@shared/models';
 import { EMPTY } from 'rxjs';
-import { catchError, finalize } from 'rxjs/operators';
+import { catchError, finalize, switchMap } from 'rxjs/operators';
 
+import { UnsavedChangesRegistry } from '../../../../core/services/unsaved-changes-registry.service';
 import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { AuthService } from '../../../../services/auth/auth.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
@@ -25,6 +26,7 @@ export class UserMenuComponent {
     private authService = inject(AuthService);
     private router = inject(Router);
     private toast = inject(ToastService);
+    private unsavedChangesRegistry = inject(UnsavedChangesRegistry);
     protected currentUserService = inject(ProfileService);
     protected activeOrgService = inject(ActiveOrgService);
 
@@ -38,9 +40,17 @@ export class UserMenuComponent {
     onOrgClick(orgId: number): void {
         if (orgId === this.activeOrgService.activeOrgId() || this.switching()) return;
         this.switching.set(true);
-        this.currentUserService
-            .switchOrg(orgId)
+
+        // Ask the currently-active page about unsaved changes BEFORE switching org.
+        // Otherwise, the org switch happens first and "Save & Leave" would run
+        // against the new org context — leading to 404 on the previous resource.
+        this.unsavedChangesRegistry
+            .canLeave()
             .pipe(
+                switchMap((allowed) => {
+                    if (!allowed) return EMPTY;
+                    return this.currentUserService.switchOrg(orgId);
+                }),
                 finalize(() => this.switching.set(false)),
                 catchError((err) => {
                     this.toast.error(err.error.message);
@@ -49,16 +59,27 @@ export class UserMenuComponent {
             )
             .subscribe(() => {
                 this.isUserMenuOpen.set(false);
-                const currentUrl = this.router.url;
+                const targetUrl = this.getUrlForOrgSwitch(this.router.url);
                 // Navigate to an intermediate route without touching the browser URL,
-                // then back to the original URL. This destroys and re-creates the
+                // then back to the target URL. This destroys and re-creates the
                 // current page component, triggering ngOnInit with the new org context.
                 // Using '/profile' as the intermediate because '/' has a redirect guard
                 // that bounces back to the current page, preventing component teardown.
                 void this.router.navigateByUrl('/profile', { skipLocationChange: true }).then(() => {
-                    void this.router.navigateByUrl(currentUrl);
+                    void this.router.navigateByUrl(targetUrl);
                 });
             });
+    }
+
+    /**
+     * Detail routes with resource IDs are not safe to keep across an org switch —
+     * the resource not exist in the new org. Map them to their list page.
+     */
+    private getUrlForOrgSwitch(currentUrl: string): string {
+        if (/^\/projects\/(?!my|templates)[^/?]+/.test(currentUrl)) return '/projects/my';
+        if (/^\/flows\/(?!my|templates)[^/?]+/.test(currentUrl)) return '/flows/my';
+        if (/^\/graph\//.test(currentUrl)) return '/sessions';
+        return currentUrl;
     }
 
     onWorkspaceClick(): void {

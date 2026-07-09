@@ -26,6 +26,7 @@ import { EMPTY, filter, forkJoin, from, Observable, of, Subscription } from 'rxj
 import { catchError, concatMap, finalize, map, switchMap, tap, toArray } from 'rxjs/operators';
 
 import { CanComponentDeactivate } from '../core/guards/unsaved-changes.guard';
+import { UnsavedChangesRegistry } from '../core/services/unsaved-changes-registry.service';
 import { GetProjectRequest } from '../features/projects/models/project.model';
 import { ProjectsStorageService } from '../features/projects/services/projects-storage.service';
 import { CreateAgentRequest } from '../features/staff/models/agent.model';
@@ -165,10 +166,13 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         private dialog: Dialog,
         private agentsService: AgentsService,
         private unsavedChangesDialog: UnsavedChangesDialogService,
+        private unsavedChangesRegistry: UnsavedChangesRegistry,
         private destroyRef: DestroyRef
     ) {}
 
     ngOnInit() {
+        this.unsavedChangesRegistry.register(this);
+
         if (this.inputProjectId) {
             this.projectId = String(this.inputProjectId);
             this.loadData();
@@ -420,6 +424,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
     }
 
     ngOnDestroy() {
+        this.unsavedChangesRegistry.unregister(this);
         this.projectStateService.setProject(null);
         this.subscription.unsubscribe();
     }

@@ -45,11 +45,6 @@ from tables.serializers.model_serializers.llm_serializers import (
 from tables.serializers.model_serializers.provider_serializers import (
     ProviderSerializer,
 )
-from tables.serializers.model_serializers.tag_serializers import (
-    AgentTagSerializer,
-    CrewTagSerializer,
-    GraphTagSerializer,
-)
 from tables.exceptions import (
     AgentSerializerError,
     BuiltInToolModificationError,
@@ -178,7 +173,6 @@ from tables.filters import (
     ProviderFilter,
 )
 from tables.utils.helpers import natural_sort_key
-from tables.models.tag_models import AgentTag, CrewTag, GraphTag
 from tables.models.label_models import Label
 from tables.models.vector_models import MemoryDatabase
 from tables.models.webhook_models import (
@@ -204,13 +198,13 @@ from tables.views.mixins import (
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.permissions import HasOrgPermission, IsSuperadmin
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
+from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
     validate_classification_condition_group_names,
 )
 from tables.serializers.model_serializers import (
     AgentReadSerializer,
     ClassificationDecisionTableNodeSerializer,
-    AgentTagSerializer,
     AgentWriteSerializer,
     AudioTranscriptionNodeSerializer,
     CodeAgentNodeSerializer,
@@ -235,7 +229,6 @@ from tables.serializers.model_serializers import (
     NgrokWebhookConfigModelSerializer,
     ProviderSerializer,
     PythonCodeResultSerializer,
-    PythonCodeSerializer,
     PythonCodeToolConfigSerializer,
     PythonCodeToolSerializer,
     PythonNodeSerializer,
@@ -246,8 +239,6 @@ from tables.serializers.model_serializers import (
     SubGraphNodeSerializer,
     TaskReadSerializer,
     TaskWriteSerializer,
-    TemplateAgentSerializer,
-    ToolConfigSerializer,
     VoiceSettingsSerializer,
     WebhookTriggerNodeSerializer,
     WebhookTriggerSerializer,
@@ -336,13 +327,6 @@ class BasePredefinedRestrictedViewSet(ModelViewSet):
             logger.error(e)
             raise PermissionDenied(e)
         instance.delete()
-
-
-class TemplateAgentReadWriteViewSet(ModelViewSet):
-    queryset = TemplateAgent.objects.all()
-    serializer_class = TemplateAgentSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = serializer_class.Meta.fields
 
 
 class LLMConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
@@ -735,19 +719,6 @@ class TaskReadWriteViewSet(OrgScopedChildViewSetMixin, ModelViewSet):
         return Response(read_serializer.data, status=status.HTTP_200_OK)
 
 
-class ToolConfigViewSet(ModelViewSet):
-    queryset = ToolConfig.objects.select_related("tool").prefetch_related(
-        Prefetch(
-            "tool__tool_fields",
-            queryset=ToolConfigField.objects.all(),
-            to_attr="prefetched_config_fields",
-        )
-    )
-    serializer_class = ToolConfigSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["tool", "name"]
-
-
 class ContentHashPreconditionMixin:
     # """Passes content_hash from request data to the model instance before saving.
 
@@ -761,36 +732,6 @@ class ContentHashPreconditionMixin:
         if incoming_hash is not None:
             serializer.instance._expected_hash = incoming_hash
         super().perform_update(serializer)
-
-
-class PythonCodeViewSet(
-    OrgScopedQuerysetMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
-):
-    """
-    A viewset for viewing and editing PythonCode instances.
-
-    PythonCode has no org column of its own; it is scoped transitively through
-    every parent that references it — python/conditional/webhook-trigger nodes
-    (via their graph's org) and python-code tools (built-in are global, custom
-    are org-owned). A standalone PythonCode not yet attached to any parent is
-    not visible here until it is linked.
-    """
-
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.TOOLS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
-    scope_distinct = True  # the OR spans reverse joins that can duplicate rows
-    queryset = PythonCode.objects.all()
-    serializer_class = PythonCodeSerializer
-
-    def get_org_scope_q(self, org_id: int) -> Q:
-        return (
-            Q(pythonnode__graph__org_id=org_id)
-            | Q(conditionaledge__graph__org_id=org_id)
-            | Q(webhooktriggernode__graph__org_id=org_id)
-            | Q(pythoncodetool__built_in=True)
-            | Q(pythoncodetool__org_id=org_id)
-        )
 
 
 class PythonCodeToolViewSet(
@@ -849,7 +790,9 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
         "copy": Permission.CREATE,
         "export": Permission.EXPORT,
         "bulk_export": Permission.EXPORT,
+        "partial_export": Permission.EXPORT,
         "import_entity": Permission.CREATE,
+        "partial_import": Permission.UPDATE,
         "save_flow": Permission.UPDATE,
     }
     copy_service_class = GraphCopyService
@@ -1012,8 +955,17 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
             )
 
         graph = self.get_object()
+        org_id = self.get_active_org_id()
+        effective_permissions = PermissionResolver().resolve(
+            user=request.user, org_id=org_id
+        )
         partial_import_service = PartialImportService(entity_registry)
-        id_mapper = partial_import_service.import_data(data, graph)
+        id_mapper = partial_import_service.import_data(
+            export_data=data,
+            graph=graph,
+            org_id=org_id,
+            effective_permissions=effective_permissions,
+        )
         summary = id_mapper.get_detailed_summary(entity_registry)
         return Response(summary, status=status.HTTP_200_OK)
 
@@ -1371,21 +1323,6 @@ class MemoryViewSet(
     serializer_class = MemorySerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = MemoryFilter
-
-
-class CrewTagViewSet(viewsets.ModelViewSet):
-    queryset = CrewTag.objects.all()
-    serializer_class = CrewTagSerializer
-
-
-class AgentTagViewSet(viewsets.ModelViewSet):
-    queryset = AgentTag.objects.all()
-    serializer_class = AgentTagSerializer
-
-
-class GraphTagViewSet(viewsets.ModelViewSet):
-    queryset = GraphTag.objects.all()
-    serializer_class = GraphTagSerializer
 
 
 class RealtimeModelViewSet(OrgScopedHybridViewSetMixin, viewsets.ModelViewSet):

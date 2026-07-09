@@ -24,6 +24,7 @@ import { ActionCode, ResourceCode } from '@shared/models';
 import { EMPTY, filter, throwError } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, finalize, switchMap } from 'rxjs/operators';
 
+import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { FILE_TYPES } from '../../../../constants/constants';
@@ -69,6 +70,7 @@ export class CollectionDetailsComponent implements OnInit, OnChanges {
     private documentsStorageService = inject(DocumentsStorageService);
     private fileListService = inject(FileListService);
     private toastService = inject(ToastService);
+    private permissionsService = inject(PermissionsService);
 
     private lastInitializedCollectionId: number | null = null;
 
@@ -183,6 +185,7 @@ export class CollectionDetailsComponent implements OnInit, OnChanges {
     }
 
     onFilesDropped(files: FileList) {
+        if (!this.permissionsService.can(ResourceCode.KnowledgeSources, ActionCode.Update)) return;
         const collectionId = this.fullCollection()?.collection_id;
         if (!collectionId) return;
         // 1: filter duplicates by file name

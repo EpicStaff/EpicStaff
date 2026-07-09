@@ -9,8 +9,10 @@ import {
     CustomInputComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { switchMap } from 'rxjs';
 
 import { AuthService } from '../../../../services/auth/auth.service';
+import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
 import { OrganizationsStorageService } from '../../../role-base-access/services/admin/organizations-storage.service';
 
@@ -28,11 +30,12 @@ import { OrganizationsStorageService } from '../../../role-base-access/services/
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class OnboardingPageComponent {
-    private router = inject(Router);
-    private authService = inject(AuthService);
-    private organizationsStorageService = inject(OrganizationsStorageService);
-    private destroyRef = inject(DestroyRef);
-    private toast = inject(ToastService);
+    private readonly router = inject(Router);
+    private readonly authService = inject(AuthService);
+    private readonly organizationsStorageService = inject(OrganizationsStorageService);
+    private readonly currentUserService = inject(ProfileService);
+    private readonly destroyRef = inject(DestroyRef);
+    private readonly toast = inject(ToastService);
 
     step = signal<1 | 2>(1);
     orgNameControl = new FormControl('', {
@@ -52,22 +55,24 @@ export class OnboardingPageComponent {
         const dto = { name: this.orgNameControl.getRawValue() };
         this.organizationsStorageService
             .updateOrganization(id, dto)
-            .pipe(takeUntilDestroyed(this.destroyRef))
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                // Update user memberships after org name was changed
+                switchMap(() => this.currentUserService.getCurrentUser())
+            )
             .subscribe({
                 next: () => this.step.set(2),
                 error: (err: HttpErrorResponse) => this.toast.error(err.error?.message),
             });
-
-        this.step.set(2);
     }
 
     onStartWorking(): void {
-        sessionStorage.removeItem('needs_onboarding');
+        this.authService.defaultOrgId.set(null);
         void this.router.navigate(['/projects']);
     }
 
     onSetupOrganizations(): void {
-        sessionStorage.removeItem('needs_onboarding');
+        this.authService.defaultOrgId.set(null);
         void this.router.navigate(['/workspace/organizations']);
     }
 }
