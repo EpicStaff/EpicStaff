@@ -7,11 +7,15 @@
     />
 }
 
-<label class="switch">
+<label
+    class="switch"
+    [class.switch--disabled]="disabled"
+>
     <input
         type="checkbox"
         [checked]="checked"
-        (click)="$event.preventDefault(); onToggle()"
+        [disabled]="disabled"
+        (click)="$event.preventDefault(); !disabled && onToggle()"
     />
     <span class="slider"></span>
 </label>
