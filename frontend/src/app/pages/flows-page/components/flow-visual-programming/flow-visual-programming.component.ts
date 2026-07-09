@@ -23,7 +23,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { GetLlmConfigRequest } from '@shared/models';
 import { LlmConfigStorageService } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
-import { catchError, EMPTY, filter, finalize, forkJoin, map, Observable, of, switchMap, take, tap } from 'rxjs';
+import { catchError, EMPTY, filter, finalize, forkJoin, map, Observable, of, switchMap, take, tap, timer } from 'rxjs';
 import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
@@ -744,14 +744,16 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
         this.isRunning.set(true);
 
+        const committedOpenPanel = this.flowGraphComponent?.commitOpenPanelToFlow() ?? false;
+
         const startNode = this.currentFlowState().nodes.find((n) => n.type === NodeType.START);
         const variables =
             (startNode?.data as { initialState?: Record<string, unknown> } | undefined)?.initialState ??
             this.graph.start_node_list[0]?.variables;
 
-        this.runGraphService
-            .runGraph(this.graph.id, variables)
+        timer(committedOpenPanel ? 300 : 0)
             .pipe(
+                switchMap(() => this.runGraphService.runGraph(this.graph.id, variables)),
                 takeUntilDestroyed(this.destroyRef),
                 tap((response: { session_id?: number }) => {
                     this.currentSessionId = response.session_id?.toString() ?? null;

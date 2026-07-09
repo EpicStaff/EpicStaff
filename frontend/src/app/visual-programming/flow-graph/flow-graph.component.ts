@@ -2107,4 +2107,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             });
         });
     }
+
+    public commitOpenPanelToFlow(): boolean {
+        const updatedNode = this.nodePanelShell?.captureCurrentNodeState();
+        if (!updatedNode) return false;
+        if (!this.flowService.nodes().some((n) => n.id === updatedNode.id)) return false;
+        this.onNodePanelAutosaved(updatedNode);
+        return true;
+    }
 }

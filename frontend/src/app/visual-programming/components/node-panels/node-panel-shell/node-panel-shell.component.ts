@@ -287,7 +287,6 @@ export class NodePanelShellComponent {
         }
     }
 
-    /** @deprecated used only by the deprecated flow-graph emitSave()/commitSidePanelToFlow(); no call sites. */
     public captureCurrentNodeState(): NodeModel | null {
         if (!this.panelInstance) {
             return null;
