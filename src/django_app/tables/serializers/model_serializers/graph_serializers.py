@@ -116,7 +116,6 @@ class GraphOrganizationSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "graph",
-            "organization",
             "persistent_variables",
             "user_variables",
         ]
@@ -253,7 +252,7 @@ class GraphSerializer(serializers.ModelSerializer):
             "start_node_list",
             "end_node_list",
             "time_to_live",
-            "persistent_variables",
+            "enable_persistent_variables",
             "epicchat_enabled",
             "telegram_trigger_node_list",
             "schedule_trigger_node_list",
