@@ -17,6 +17,8 @@ from src.shared.models import (
     BaseKnowledgeSearchMessageResponse,
     KnowledgeChunkResponse,
 )
+
+from services.background_event_loop import background_loop
 from settings import UnitOfWork
 
 
@@ -182,7 +184,7 @@ class GraphRAGStrategy(BaseRAGStrategy):
             config: GraphRagConfig instance
         """
         # GraphRAG's build_index is async
-        asyncio.run(build_index(config))
+        background_loop.run(build_index(config))
 
     # ==================== Search ====================
 
