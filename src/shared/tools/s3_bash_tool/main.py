@@ -1,8 +1,15 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    # Import-time only, for static type checkers. Runtime code never hits
+    # this branch — every function below spells the annotation as the
+    # string "EpicStaffStorage" so it is never evaluated eagerly. This
+    # module must NOT use `from __future__ import annotations`: the sandbox
+    # (`src/sandbox/dynamic_venv_executor_chain.py` ExecuteCodeHandler.wrap_code)
+    # prepends its own `import sys` / `import json` / try-block header before
+    # this file's body when assembling the executed `code.py`, and a
+    # `from __future__` import is only legal as the first statement in a
+    # module — prepending anything ahead of it is a SyntaxError at exec time.
     from epicstaff_storage import EpicStaffStorage
 
 # =====================================================================
@@ -265,7 +272,7 @@ def _glob_to_regex(pattern: str):
     return re.compile("".join(parts))
 
 
-def _expand_path(token: str, storage: EpicStaffStorage) -> list[dict]:
+def _expand_path(token: str, storage: "EpicStaffStorage") -> list[dict]:
     """Expand a single token to matching ``walk()`` entries (dicts with at
     least ``path``, plus ``size``/``modified`` when derived from a glob).
     Tokens without glob metacharacters pass through unchanged.
@@ -285,14 +292,14 @@ def _expand_path(token: str, storage: EpicStaffStorage) -> list[dict]:
     return sorted(matched, key=lambda e: e["path"])
 
 
-def _expand_paths_only(tokens: list[str], storage: EpicStaffStorage) -> list[str]:
+def _expand_paths_only(tokens: list[str], storage: "EpicStaffStorage") -> list[str]:
     paths: list[str] = []
     for tok in tokens:
         paths.extend(e["path"] for e in _expand_path(tok, storage))
     return paths
 
 
-def _expand_single_path(token: str, storage: EpicStaffStorage) -> str:
+def _expand_single_path(token: str, storage: "EpicStaffStorage") -> str:
     entries = _expand_path(token, storage)
     if len(entries) > 1:
         raise ValueError(
@@ -307,7 +314,7 @@ def _expand_single_path(token: str, storage: EpicStaffStorage) -> str:
 # =====================================================================
 
 
-def _is_folder(path: str, storage: EpicStaffStorage) -> bool:
+def _is_folder(path: str, storage: "EpicStaffStorage") -> bool:
     if path == "" or path.endswith("/"):
         return True
     try:
@@ -317,7 +324,7 @@ def _is_folder(path: str, storage: EpicStaffStorage) -> bool:
         return storage.exists(path)
 
 
-def _guarded_read(path: str, storage: EpicStaffStorage) -> tuple[str, int]:
+def _guarded_read(path: str, storage: "EpicStaffStorage") -> tuple[str, int]:
     """Read a file's text content, enforcing the folder-vs-file guard and the
     storage read-size limit. Returns ``(content, size_in_bytes)``.
     """
@@ -379,7 +386,7 @@ def _format_ls_recursive(entry: dict, long: bool) -> str:
     return f"{size:>12}  {modified:<26}  {entry['path']}"
 
 
-def _cmd_ls(args: list[str], storage: EpicStaffStorage) -> str:
+def _cmd_ls(args: list[str], storage: "EpicStaffStorage") -> str:
     values, positionals = _parse_args(args, {"-l": "bool", "-R": "bool"})
     if len(positionals) > 1:
         raise ValueError("ls: usage: ls [-l] [-R] [path]")
@@ -411,7 +418,7 @@ def _cmd_ls(args: list[str], storage: EpicStaffStorage) -> str:
     return "\n".join(lines)
 
 
-def _cmd_cat(args: list[str], storage: EpicStaffStorage) -> str:
+def _cmd_cat(args: list[str], storage: "EpicStaffStorage") -> str:
     values, positionals = _parse_args(args, {"-n": "bool"})
     if not positionals:
         raise ValueError("cat: missing file operand.")
@@ -433,7 +440,7 @@ def _cmd_cat(args: list[str], storage: EpicStaffStorage) -> str:
     return "\n".join(parts)
 
 
-def _head_or_tail(args: list[str], storage: EpicStaffStorage, mode: str) -> str:
+def _head_or_tail(args: list[str], storage: "EpicStaffStorage", mode: str) -> str:
     values, positionals = _parse_args(args, {"-n": "value"})
     if len(positionals) != 1:
         raise ValueError(f"{mode}: usage: {mode} [-n N] <file>")
@@ -460,15 +467,15 @@ def _head_or_tail(args: list[str], storage: EpicStaffStorage, mode: str) -> str:
     return "\n".join(selected)
 
 
-def _cmd_head(args: list[str], storage: EpicStaffStorage) -> str:
+def _cmd_head(args: list[str], storage: "EpicStaffStorage") -> str:
     return _head_or_tail(args, storage, "head")
 
 
-def _cmd_tail(args: list[str], storage: EpicStaffStorage) -> str:
+def _cmd_tail(args: list[str], storage: "EpicStaffStorage") -> str:
     return _head_or_tail(args, storage, "tail")
 
 
-def _cmd_wc(args: list[str], storage: EpicStaffStorage) -> str:
+def _cmd_wc(args: list[str], storage: "EpicStaffStorage") -> str:
     values, positionals = _parse_args(args, {"-l": "bool", "-w": "bool", "-c": "bool"})
     if not positionals:
         raise ValueError("wc: missing file operand.")
@@ -507,7 +514,7 @@ def _cmd_wc(args: list[str], storage: EpicStaffStorage) -> str:
     return "\n".join(out)
 
 
-def _cmd_grep(args: list[str], storage: EpicStaffStorage) -> str:
+def _cmd_grep(args: list[str], storage: "EpicStaffStorage") -> str:
     values, positionals = _parse_args(
         args, {"-r": "bool", "-i": "bool", "-n": "bool", "-l": "bool"}
     )
@@ -617,7 +624,7 @@ def _cmd_grep(args: list[str], storage: EpicStaffStorage) -> str:
     return text + skip_note
 
 
-def _cmd_find(args: list[str], storage: EpicStaffStorage) -> str:
+def _cmd_find(args: list[str], storage: "EpicStaffStorage") -> str:
     values, positionals = _parse_args(args, {"-name": "value", "-type": "value"})
     if len(positionals) > 1:
         raise ValueError("find: usage: find [path] [-name PATTERN] [-type f|d]")
@@ -668,7 +675,7 @@ def _cmd_find(args: list[str], storage: EpicStaffStorage) -> str:
     return "\n".join(sorted(results))
 
 
-def _cmd_mkdir(args: list[str], storage: EpicStaffStorage) -> str:
+def _cmd_mkdir(args: list[str], storage: "EpicStaffStorage") -> str:
     values, positionals = _parse_args(args, {"-p": "bool"})
     if not positionals:
         raise ValueError("mkdir: missing operand.")
@@ -693,7 +700,9 @@ def _cmd_mkdir(args: list[str], storage: EpicStaffStorage) -> str:
     return "\n".join(results)
 
 
-def _rm_one(path: str, storage: EpicStaffStorage, recursive: bool, force: bool) -> str:
+def _rm_one(
+    path: str, storage: "EpicStaffStorage", recursive: bool, force: bool
+) -> str:
     normalized = path.strip("/")
     if normalized in ("", "."):
         return f"rm: refusing to remove root path '{path}'."
@@ -724,7 +733,7 @@ def _rm_one(path: str, storage: EpicStaffStorage, recursive: bool, force: bool) 
     return f"rm: cannot remove '{path}': not found."
 
 
-def _cmd_rm(args: list[str], storage: EpicStaffStorage) -> str:
+def _cmd_rm(args: list[str], storage: "EpicStaffStorage") -> str:
     values, positionals = _parse_args(args, {"-r": "bool", "-f": "bool"})
     if not positionals:
         raise ValueError("rm: missing operand.")
@@ -747,7 +756,7 @@ def _cmd_rm(args: list[str], storage: EpicStaffStorage) -> str:
     return "\n".join(results) if results else "Nothing to remove."
 
 
-def _cmd_cp(args: list[str], storage: EpicStaffStorage) -> str:
+def _cmd_cp(args: list[str], storage: "EpicStaffStorage") -> str:
     values, positionals = _parse_args(args, {"-r": "bool"})
     if len(positionals) < 2:
         raise ValueError("cp: usage: cp [-r] src... dst")
@@ -793,7 +802,7 @@ def _cmd_cp(args: list[str], storage: EpicStaffStorage) -> str:
     return f"Copied {len(sources)} file(s) to {dst}."
 
 
-def _cmd_mv(args: list[str], storage: EpicStaffStorage) -> str:
+def _cmd_mv(args: list[str], storage: "EpicStaffStorage") -> str:
     _values, positionals = _parse_args(args, {})
     if len(positionals) != 2:
         raise ValueError("mv: usage: mv src dst")
@@ -827,7 +836,7 @@ def _cmd_mv(args: list[str], storage: EpicStaffStorage) -> str:
     return f"Moved {src} to {dst_final}."
 
 
-def _cmd_touch(args: list[str], storage: EpicStaffStorage) -> str:
+def _cmd_touch(args: list[str], storage: "EpicStaffStorage") -> str:
     _values, positionals = _parse_args(args, {})
     if not positionals:
         raise ValueError("touch: missing operand.")
@@ -853,7 +862,7 @@ def _cmd_touch(args: list[str], storage: EpicStaffStorage) -> str:
     return "\n".join(results)
 
 
-def _cmd_stat(args: list[str], storage: EpicStaffStorage) -> str:
+def _cmd_stat(args: list[str], storage: "EpicStaffStorage") -> str:
     _values, positionals = _parse_args(args, {})
     if len(positionals) != 1:
         raise ValueError("stat: usage: stat <path>")
@@ -876,7 +885,7 @@ def _cmd_stat(args: list[str], storage: EpicStaffStorage) -> str:
     )
 
 
-def _cmd_du(args: list[str], storage: EpicStaffStorage) -> str:
+def _cmd_du(args: list[str], storage: "EpicStaffStorage") -> str:
     values, positionals = _parse_args(args, {"-s": "bool"})
     if len(positionals) > 1:
         raise ValueError("du: usage: du [-s] [path]")
@@ -910,7 +919,7 @@ def _cmd_du(args: list[str], storage: EpicStaffStorage) -> str:
     return "\n".join(lines)
 
 
-def _cmd_diff(args: list[str], storage: EpicStaffStorage) -> str:
+def _cmd_diff(args: list[str], storage: "EpicStaffStorage") -> str:
     _values, positionals = _parse_args(args, {"-u": "bool"})
     if len(positionals) != 2:
         raise ValueError("diff: usage: diff [-u] a b")
@@ -935,11 +944,11 @@ def _cmd_diff(args: list[str], storage: EpicStaffStorage) -> str:
     return "".join(diff_lines)
 
 
-def _cmd_echo(args: list[str], _storage: EpicStaffStorage) -> str:
+def _cmd_echo(args: list[str], _storage: "EpicStaffStorage") -> str:
     return " ".join(args)
 
 
-def _cmd_test(args: list[str], storage: EpicStaffStorage) -> str:
+def _cmd_test(args: list[str], storage: "EpicStaffStorage") -> str:
     if len(args) != 2 or args[0] != "-e":
         raise ValueError("test: usage: test -e <path>  (or: [ -e <path> ])")
 
@@ -952,7 +961,7 @@ def _cmd_test(args: list[str], storage: EpicStaffStorage) -> str:
     return "true" if exists else "false"
 
 
-def _cmd_bracket(args: list[str], storage: EpicStaffStorage) -> str:
+def _cmd_bracket(args: list[str], storage: "EpicStaffStorage") -> str:
     if not args or args[-1] != "]":
         raise ValueError("test: missing closing ']' — usage: [ -e <path> ]")
     return _cmd_test(args[:-1], storage)
