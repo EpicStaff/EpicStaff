@@ -7,6 +7,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from loguru import logger
 
+from services.background_event_loop import background_loop
 from services.collection_processor_service import CollectionProcessorService
 from services.redis_service import RedisService
 from services.chunking_job_registry import chunking_job_registry
@@ -433,6 +434,7 @@ async def main():
                 f"Waiting for {len(background_tasks)} background tasks to complete..."
             )
             await asyncio.gather(*background_tasks, return_exceptions=True)
+        background_loop.stop()
         executor.shutdown(wait=True)
 
 
