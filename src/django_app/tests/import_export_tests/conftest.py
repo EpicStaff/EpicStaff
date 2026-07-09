@@ -80,7 +80,6 @@ def rich_seeded_db(
         name="custom_tool1",
         description="description",
         python_code=code,
-        args_schema={"arg1": "a", "arg2": "b"},
         org=default_org,
     )
 
