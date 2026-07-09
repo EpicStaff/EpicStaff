@@ -4,7 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { FileUploaderComponent, HelpTooltipComponent, ValidationErrorsComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { MATERIAL_FORMS } from '@shared/material-forms';
+import { notWhitespaceValidator } from '@shared/form-validators';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { EMPTY, filter } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
@@ -25,7 +25,6 @@ import { FilesListComponent } from './files-list/files-list.component';
     styleUrls: ['./step-upload-files.component.scss'],
     imports: [
         HelpTooltipComponent,
-        MATERIAL_FORMS,
         ReactiveFormsModule,
         FileUploaderComponent,
         FilesListComponent,
@@ -43,7 +42,11 @@ export class StepUploadFilesComponent implements OnInit {
     private fileListService = inject(FileListService);
     private readonly toastService = inject(ToastService);
 
-    collectionName: FormControl = new FormControl('', [Validators.required, Validators.maxLength(255)]);
+    collectionName: FormControl = new FormControl('', [
+        Validators.required,
+        notWhitespaceValidator(),
+        Validators.maxLength(255),
+    ]);
     collection = input.required<CreateCollectionDtoResponse>();
     documents = model<DisplayedListDocument[]>([]);
 

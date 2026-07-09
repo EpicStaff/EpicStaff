@@ -20,9 +20,9 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { EMPTY, filter, forkJoin, from, Observable, of, Subscription } from 'rxjs';
+import { EMPTY, filter, forkJoin, from, Observable, of, Subscription, throwError } from 'rxjs';
 import { catchError, concatMap, finalize, map, switchMap, tap, toArray } from 'rxjs/operators';
 
 import { CanComponentDeactivate } from '../core/guards/unsaved-changes.guard';
@@ -163,6 +163,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         private permissionsService: PermissionsService,
         private toastService: ToastService,
         private route: ActivatedRoute,
+        private router: Router,
         private dialog: Dialog,
         private agentsService: AgentsService,
         private unsavedChangesDialog: UnsavedChangesDialogService,
@@ -271,6 +272,12 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                             agents: this.fullAgentService.getFullAgentsByProject(+this.projectId),
                         }).pipe(map(({ tasks, agents }) => ({ project, tasks, agents })));
                     }),
+                    catchError((err) => {
+                        this.toastService.error(err.error?.detail || 'Failed to load project data');
+                        this.isLoading.set(false);
+                        void this.router.navigate(['/projects/my']);
+                        return throwError(() => err);
+                    }),
                     finalize(() => {
                         // Ensure minimum loading time of 500ms
                         const loadTime = Date.now() - loadStartTime;
@@ -296,14 +303,8 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                         this.baselineAgentsById = new Map(
                             (agents ?? []).map((a: any) => [Number(a.id), structuredClone(a)])
                         );
-
-                        this.cdr.markForCheck();
                     },
-                    error: () => {
-                        this.toastService.error('Failed to load project data');
-                        this.isLoading.set(false);
-                        this.cdr.markForCheck();
-                    },
+                    complete: () => this.cdr.markForCheck(),
                 })
         );
     }

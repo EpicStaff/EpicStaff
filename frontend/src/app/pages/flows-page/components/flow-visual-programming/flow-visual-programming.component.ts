@@ -361,8 +361,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     this.applyLoadedGraphState(graph, flows, showRefreshToast);
                     this.wsService.connect(graph.id);
                 }),
-                catchError(() => {
-                    this.toastService.error('Failed to load graph');
+                catchError((e) => {
+                    this.toastService.error(e.error?.detail || 'Failed to load graph');
+                    void this.router.navigate(['/flows/my']);
                     return EMPTY;
                 }),
                 finalize(() => this.cdr.markForCheck())
