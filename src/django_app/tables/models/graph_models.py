@@ -457,7 +457,7 @@ class Condition(ContentHashMixin, models.Model):
 # GraphOrganizationUser below now hold per-flow persistent variables scoped to
 # those RBAC entities.
 #
-# - GraphOrganization(graph, organization)          -> org-level persistent vars
+# - GraphOrganization(graph)                         -> org-level persistent vars
 #   .user_variables                                 -> seed template for new
 #                                                      GraphOrganizationUser rows
 # - GraphOrganizationUser(graph, organization_user) -> per-membership persistent

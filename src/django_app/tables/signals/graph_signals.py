@@ -4,7 +4,6 @@ from loguru import logger
 from tables.models import (
     GraphOrganization,
     GraphOrganizationUser,
-    OrganizationUser,
 )
 
 
@@ -85,7 +84,7 @@ def update_organization_objects(sender, instance, created, **kwargs):
     current_variables = instance.user_variables
     graph_users = GraphOrganizationUser.objects.filter(
         graph=instance.graph,
-        organization_user__org=instance.organization,
+        organization_user__org_id=instance.graph.org_id,
     )
 
     for graph_user in graph_users:
@@ -105,8 +104,7 @@ def delete_related_graph_organization_users(sender, instance, **kwargs):
     Delete all GraphOrganizationUser rows for this (graph, org) when the
     GraphOrganization is deleted.
     """
-    memberships = OrganizationUser.objects.filter(org=instance.organization)
-
     GraphOrganizationUser.objects.filter(
-        graph=instance.graph, organization_user__in=memberships
+        graph=instance.graph,
+        organization_user__org_id=instance.graph.org_id,
     ).delete()
