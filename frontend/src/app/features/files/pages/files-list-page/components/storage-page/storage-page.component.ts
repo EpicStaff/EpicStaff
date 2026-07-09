@@ -1,9 +1,19 @@
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, viewChild } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    ElementRef,
+    inject,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
+import { DragDropAreaComponent, SpinnerComponent } from '@shared/components';
+import { ResizableSidebarDirective } from '@shared/directives';
+import { SidebarWidthService } from '@shared/services';
 
-import { DragDropAreaComponent } from '../../../../../../shared/components/drag-drop-area/drag-drop-area.component';
-import { SpinnerComponent } from '../../../../../../shared/components/spinner/spinner.component';
 import { StorageItem } from '../../../../models/storage.models';
 import { FilesSearchService } from '../../../../services/files-search.service';
 import { StorageContextActionEvent, StorageTreeFacade } from '../../../../services/storage-tree-facade.service';
@@ -11,9 +21,17 @@ import { filterStorageItems } from '../../../../utils/storage-file.utils';
 import { StoragePreviewComponent } from './components/storage-preview/storage-preview.component';
 import { StorageTreeComponent } from './components/storage-tree/storage-tree.component';
 
+const SIDEBAR_STORAGE_KEY = 'files';
+
 @Component({
     selector: 'app-storage-page',
-    imports: [StorageTreeComponent, StoragePreviewComponent, SpinnerComponent, DragDropAreaComponent],
+    imports: [
+        StorageTreeComponent,
+        StoragePreviewComponent,
+        SpinnerComponent,
+        DragDropAreaComponent,
+        ResizableSidebarDirective,
+    ],
     templateUrl: './storage-page.component.html',
     styleUrls: ['./storage-page.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -21,16 +39,23 @@ import { StorageTreeComponent } from './components/storage-tree/storage-tree.com
 })
 export class StoragePageComponent {
     private readonly storageTree = viewChild(StorageTreeComponent);
+    private readonly sidebarEl = viewChild<ElementRef<HTMLElement>>('sidebarEl');
 
     private destroyRef = inject(DestroyRef);
     private filesSearchService = inject(FilesSearchService);
     private route = inject(ActivatedRoute);
+    private readonly sidebarWidthService = inject(SidebarWidthService);
 
     readonly facade = inject(StorageTreeFacade);
 
     private pendingDeepLinkPath: string | null = null;
 
     readonly showSidebar = signal<boolean>(true);
+
+    protected readonly sidebarStorageKey = SIDEBAR_STORAGE_KEY;
+    protected readonly sidebarWidth = this.sidebarWidthService.getWidth(SIDEBAR_STORAGE_KEY);
+
+    protected readonly sidebarTargetElement = computed(() => this.sidebarEl()?.nativeElement);
 
     readonly filteredTreeData = computed(() =>
         filterStorageItems(this.facade.treeData(), this.filesSearchService.searchTerm())

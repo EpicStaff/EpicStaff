@@ -1,6 +1,16 @@
-import { ChangeDetectionStrategy, Component, inject, output, signal, viewChild } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    ElementRef,
+    HostBinding,
+    inject,
+    output,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
-import { DragHoverDirective } from '@shared/directives';
+import { DragHoverDirective, ResizableSidebarDirective } from '@shared/directives';
+import { SidebarWidthService } from '@shared/services';
 
 import { StorageItem } from '../../../../../files/models/storage.models';
 import { StorageDragService } from '../../../../../files/services/storage-drag.service';
@@ -15,6 +25,8 @@ import { ExplorerMenuItem, ExplorerMenuPosition } from './explorer-context-menu/
 import { SectionHeaderComponent } from './section-header/section-header.component';
 import { StorageSectionComponent } from './storage-section/storage-section.component';
 import { SurfacesSectionComponent } from './surfaces-section/surfaces-section.component';
+
+const SIDEBAR_STORAGE_KEY = 'agents';
 import {
     ExplorerTreeAttachSurfaceEvent,
     ExplorerTreeMenuEvent,
@@ -34,6 +46,7 @@ import { TreeSearchComponent } from './tree-search/tree-search.component';
         StorageSectionComponent,
         ExplorerContextMenuComponent,
         DragHoverDirective,
+        ResizableSidebarDirective,
     ],
     templateUrl: './explorer.component.html',
     styleUrls: ['./explorer.component.scss'],
@@ -43,8 +56,22 @@ export class ExplorerComponent {
     protected readonly store: AgentsPageStore = inject(AgentsPageStore);
     private readonly storageDrag = inject(StorageDragService);
     private readonly surfaceDrag = inject(SurfaceDragService);
+    private readonly el = inject(ElementRef<HTMLElement>);
+    private readonly sidebarWidthService = inject(SidebarWidthService);
     private readonly orderedSectionIds: ExplorerSectionId[] = ['agents', 'surfaces', 'storage'];
     private readonly optionalOrder: ExplorerSectionId[] = ['surfaces', 'storage'];
+
+    protected readonly sidebarStorageKey = SIDEBAR_STORAGE_KEY;
+    protected readonly sidebarWidth = this.sidebarWidthService.getWidth(SIDEBAR_STORAGE_KEY);
+
+    @HostBinding('style.width.px')
+    get hostWidth(): number {
+        return this.sidebarWidth();
+    }
+
+    protected get hostElement(): HTMLElement {
+        return this.el.nativeElement;
+    }
 
     readonly storageSection = viewChild(StorageSectionComponent);
 
