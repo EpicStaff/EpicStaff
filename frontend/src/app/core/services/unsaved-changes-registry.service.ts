@@ -47,12 +47,13 @@ export class UnsavedChangesRegistry {
      */
     confirmAndRefresh(): void {
         const entry = this.entry;
-        if (!entry?.onRefresh) {
-            window.location.reload();
-            return;
-        }
         this.canLeave().subscribe((allowed) => {
-            if (allowed) entry.onRefresh!();
+            if (!allowed) return;
+            if (entry?.onRefresh) {
+                entry.onRefresh();
+            } else {
+                window.location.reload();
+            }
         });
     }
 }

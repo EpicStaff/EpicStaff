@@ -207,6 +207,8 @@ export const routes: Routes = [
                             import('./pages/running-graph/pages/running-graph-page/running-graph-page.component').then(
                                 (m) => m.RunningGraphComponent
                             ),
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Flows, ActionCode.Read] },
                     },
                     {
                         path: 'knowledge-sources',
@@ -261,6 +263,8 @@ export const routes: Routes = [
                             import('./features/flows/pages/global-sessions-list/global-sessions-list.component').then(
                                 (m) => m.GlobalSessionsListComponent
                             ),
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Flows, ActionCode.Read] },
                     },
                     {
                         path: 'workspace',
@@ -290,7 +294,7 @@ export const routes: Routes = [
                                         (m) => m.OrganizationsTabComponent
                                     ),
                                 canActivate: [permissionGuard],
-                                data: { permission: ['organizations', 'read'] },
+                                data: { permission: [ResourceCode.Organizations, ActionCode.Read] },
                             },
                             {
                                 path: 'users',
@@ -299,7 +303,7 @@ export const routes: Routes = [
                                         (m) => m.UsersTabComponent
                                     ),
                                 canActivate: [permissionGuard],
-                                data: { permission: ['users', 'read'] },
+                                data: { permission: [ResourceCode.Users, ActionCode.Read] },
                             },
                             {
                                 path: 'roles',
@@ -308,14 +312,7 @@ export const routes: Routes = [
                                         (m) => m.RolesTabComponent
                                     ),
                                 canActivate: [permissionGuard],
-                                data: { permission: ['roles', 'read'] },
-                            },
-                            {
-                                path: 'roles',
-                                loadComponent: () =>
-                                    import('./features/role-base-access/pages/overview-page/roles-tab/roles-tab.component').then(
-                                        (m) => m.RolesTabComponent
-                                    ),
+                                data: { permission: [ResourceCode.Roles, ActionCode.Read] },
                             },
                         ],
                     },
