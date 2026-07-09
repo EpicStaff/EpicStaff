@@ -44,11 +44,6 @@ from tables.serializers.model_serializers.llm_serializers import (
 from tables.serializers.model_serializers.provider_serializers import (
     ProviderSerializer,
 )
-from tables.serializers.model_serializers.tag_serializers import (
-    AgentTagSerializer,
-    CrewTagSerializer,
-    GraphTagSerializer,
-)
 from tables.exceptions import (
     AgentSerializerError,
     BuiltInToolModificationError,
@@ -179,7 +174,6 @@ from tables.filters import (
     ProviderFilter,
 )
 from tables.utils.helpers import natural_sort_key
-from tables.models.tag_models import AgentTag, CrewTag, GraphTag
 from tables.models.label_models import Label
 from tables.models.vector_models import MemoryDatabase
 from tables.models.webhook_models import (
@@ -201,7 +195,6 @@ from tables.serializers.model_serializers.node_serializers.flow_control_serializ
 from tables.serializers.model_serializers import (
     AgentReadSerializer,
     ClassificationDecisionTableNodeSerializer,
-    AgentTagSerializer,
     AgentWriteSerializer,
     AudioTranscriptionNodeSerializer,
     CodeAgentNodeSerializer,
@@ -226,7 +219,6 @@ from tables.serializers.model_serializers import (
     NgrokWebhookConfigModelSerializer,
     ProviderSerializer,
     PythonCodeResultSerializer,
-    PythonCodeSerializer,
     PythonCodeToolConfigSerializer,
     PythonCodeToolSerializer,
     PythonNodeSerializer,
@@ -237,8 +229,6 @@ from tables.serializers.model_serializers import (
     SubGraphNodeSerializer,
     TaskReadSerializer,
     TaskWriteSerializer,
-    TemplateAgentSerializer,
-    ToolConfigSerializer,
     VoiceSettingsSerializer,
     WebhookTriggerNodeSerializer,
     WebhookTriggerSerializer,
@@ -329,13 +319,6 @@ class BasePredefinedRestrictedViewSet(ModelViewSet):
             logger.error(e)
             raise PermissionDenied(e)
         instance.delete()
-
-
-class TemplateAgentReadWriteViewSet(ModelViewSet):
-    queryset = TemplateAgent.objects.all()
-    serializer_class = TemplateAgentSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = serializer_class.Meta.fields
 
 
 class LLMConfigReadWriteViewSet(ModelViewSet):
@@ -679,19 +662,6 @@ class TaskReadWriteViewSet(ModelViewSet):
         return Response(read_serializer.data, status=status.HTTP_200_OK)
 
 
-class ToolConfigViewSet(ModelViewSet):
-    queryset = ToolConfig.objects.select_related("tool").prefetch_related(
-        Prefetch(
-            "tool__tool_fields",
-            queryset=ToolConfigField.objects.all(),
-            to_attr="prefetched_config_fields",
-        )
-    )
-    serializer_class = ToolConfigSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["tool", "name"]
-
-
 class ContentHashPreconditionMixin:
     # """Passes content_hash from request data to the model instance before saving.
 
@@ -705,15 +675,6 @@ class ContentHashPreconditionMixin:
         if incoming_hash is not None:
             serializer.instance._expected_hash = incoming_hash
         super().perform_update(serializer)
-
-
-class PythonCodeViewSet(ContentHashPreconditionMixin, viewsets.ModelViewSet):
-    """
-    A viewset for viewing and editing PythonCode instances.
-    """
-
-    queryset = PythonCode.objects.all()
-    serializer_class = PythonCodeSerializer
 
 
 class PythonCodeToolViewSet(CopyActionMixin, viewsets.ModelViewSet):
@@ -1203,21 +1164,6 @@ class MemoryViewSet(
     serializer_class = MemorySerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = MemoryFilter
-
-
-class CrewTagViewSet(viewsets.ModelViewSet):
-    queryset = CrewTag.objects.all()
-    serializer_class = CrewTagSerializer
-
-
-class AgentTagViewSet(viewsets.ModelViewSet):
-    queryset = AgentTag.objects.all()
-    serializer_class = AgentTagSerializer
-
-
-class GraphTagViewSet(viewsets.ModelViewSet):
-    queryset = GraphTag.objects.all()
-    serializer_class = GraphTagSerializer
 
 
 class RealtimeModelViewSet(viewsets.ModelViewSet):

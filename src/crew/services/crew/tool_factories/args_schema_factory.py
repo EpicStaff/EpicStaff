@@ -62,8 +62,11 @@ class ArgsSchemaFactory:
 
             default = cls._get_default(var.default_value, var.required)
             description = cls._compose_description(var.description, var)
+            py_type = var.python_type
+            if default is None and not var.required:
+                py_type = Optional[py_type]
             fields[var.name] = (
-                var.python_type,
+                py_type,
                 Field(default=default, description=description),
             )
         return fields

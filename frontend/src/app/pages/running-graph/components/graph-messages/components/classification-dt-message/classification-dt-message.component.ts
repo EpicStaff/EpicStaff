@@ -441,10 +441,7 @@ export class ClassificationDtMessageComponent {
         if (data.changed_variables && Object.keys(data.changed_variables).length > 0) {
             return data.changed_variables;
         }
-        const variables = data.state?.['variables'] as
-            | Record<string, unknown>
-            | undefined;
-        return variables ?? data.state;
+        return (data.state?.['variables'] as Record<string, unknown>) ?? data.state;
     }
 
     conditionResultClass(): string {

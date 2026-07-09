@@ -3,7 +3,6 @@ from rest_framework import serializers
 from tables.models.tag_models import EmbeddingConfigTag, EmbeddingModelTag
 from tables.serializers.utils.mixins import TagHandlingMixin
 from tables.models.embedding_models import (
-    DefaultEmbeddingConfig,
     EmbeddingConfig,
     EmbeddingModel,
 )
@@ -30,13 +29,3 @@ class EmbeddingConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
     class Meta:
         model = EmbeddingConfig
         fields = "__all__"
-
-
-class DefaultEmbeddingConfigSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DefaultEmbeddingConfig
-        fields = [
-            "model",
-            "task_type",
-            "api_key",
-        ]
