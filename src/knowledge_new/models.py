@@ -132,12 +132,10 @@ class Document(Entity):
         self.failed_at = None
 
 
-class EmbeddingConfig(BaseModel):
+class EmbeddingConfig(ValueObject):
     """Configuration for an embedding provider client."""
 
     provider: EmbedderProviderEnum
     api_key: str = Field(exclude=True)
     model: str
     extra: dict = Field(default_factory=dict)
-
-    model_config = ConfigDict(frozen=True)
