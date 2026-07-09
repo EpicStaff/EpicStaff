@@ -14,12 +14,6 @@ packages = [
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
-crewai-tools = "0.33.0"
-pandas = "2.2.3"
-ollama = "0.4.7"
-langchain-anthropic = "0.2.4"
-langchain-groq = "0.2.4"
-langchain-community = "0.3.16"
 langgraph = "^0.5.4"
 pyyaml = "6.0.2"
 python-dotenv = "1.1.0"
