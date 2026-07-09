@@ -12,6 +12,7 @@ import {
     Tab,
     TabId,
 } from '../../../../../../../shared/components/create-agent-form-dialog/tabs';
+import { AGENT_TOOL_DEFAULTS } from '../../../../../models/agent-definition.model';
 
 export interface AgentAdditionalSettingsData {
     fcm_llm_config: number | null;
@@ -20,6 +21,9 @@ export interface AgentAdditionalSettingsData {
     max_execution_time: number | null;
     max_retry_limit: number | null;
     cache: boolean | null;
+    max_tool_calls: number | null;
+    tool_timeout: number | null;
+    max_consecutive_failures: number | null;
 }
 
 export interface AgentAdditionalSettingsResult {
@@ -29,6 +33,9 @@ export interface AgentAdditionalSettingsResult {
     max_execution_time: number;
     max_retry_limit: number;
     cache: boolean;
+    max_tool_calls: number;
+    tool_timeout: number;
+    max_consecutive_failures: number;
 }
 
 @Component({
@@ -69,7 +76,20 @@ export class AgentAdditionalSettingsDialogComponent implements OnInit {
         max_rpm: [this.data.max_rpm ?? 10, [Validators.min(1), Validators.max(30)]],
         max_execution_time: [this.data.max_execution_time ?? 60, [Validators.min(1), Validators.max(600)]],
         max_retry_limit: [this.data.max_retry_limit ?? 3, [Validators.min(1), Validators.max(10)]],
-        cache: [this.data.cache ?? false],
+        max_tool_calls: [
+            this.data.max_tool_calls ?? AGENT_TOOL_DEFAULTS.max_tool_calls,
+            [Validators.min(1), Validators.max(100)],
+        ],
+        tool_timeout: [
+            this.data.tool_timeout ?? AGENT_TOOL_DEFAULTS.tool_timeout,
+            [Validators.min(1), Validators.max(600)],
+        ],
+        max_consecutive_failures: [
+            this.data.max_consecutive_failures ?? AGENT_TOOL_DEFAULTS.max_consecutive_failures,
+            [Validators.min(1), Validators.max(20)],
+        ],
+        // Cache is not implemented on the backend runtime yet — shown but disabled.
+        cache: [{ value: this.data.cache ?? false, disabled: true }],
     });
 
     ngOnInit(): void {

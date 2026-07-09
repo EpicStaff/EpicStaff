@@ -63,6 +63,9 @@ export class AgentDefinitionsApiService {
             cache: source.cache,
             max_retry_limit: source.max_retry_limit,
             default_temperature: source.default_temperature,
+            max_tool_calls: source.max_tool_calls,
+            tool_timeout: source.tool_timeout,
+            max_consecutive_failures: source.max_consecutive_failures,
         };
         return this.create(body);
     }

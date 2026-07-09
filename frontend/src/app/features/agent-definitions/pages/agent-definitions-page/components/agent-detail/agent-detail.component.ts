@@ -53,6 +53,9 @@ export interface AgentSavePayload {
     cache?: boolean;
     max_retry_limit?: number;
     default_temperature?: number;
+    max_tool_calls?: number | null;
+    tool_timeout?: number | null;
+    max_consecutive_failures?: number | null;
 }
 
 export type AgentSectionId = 'basics' | 'surfaces';
@@ -248,6 +251,9 @@ export class AgentDetailComponent implements OnInit {
             cache: a?.cache,
             max_retry_limit: a?.max_retry_limit,
             default_temperature: a?.default_temperature,
+            max_tool_calls: a?.max_tool_calls,
+            tool_timeout: a?.tool_timeout,
+            max_consecutive_failures: a?.max_consecutive_failures,
         });
     }
 
@@ -289,6 +295,9 @@ export class AgentDetailComponent implements OnInit {
             max_execution_time: a.max_execution_time,
             max_retry_limit: a.max_retry_limit,
             cache: a.cache,
+            max_tool_calls: a.max_tool_calls,
+            tool_timeout: a.tool_timeout,
+            max_consecutive_failures: a.max_consecutive_failures,
         };
         this.dialog
             .open<AgentAdditionalSettingsResult | undefined>(AgentAdditionalSettingsDialogComponent, { data })
@@ -310,6 +319,9 @@ export class AgentDetailComponent implements OnInit {
                     cache: result.cache,
                     max_retry_limit: result.max_retry_limit,
                     default_temperature: a.default_temperature,
+                    max_tool_calls: result.max_tool_calls,
+                    tool_timeout: result.tool_timeout,
+                    max_consecutive_failures: result.max_consecutive_failures,
                 });
             });
     }

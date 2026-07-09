@@ -1,5 +1,14 @@
 export type AgentSurfacePlace = 'all' | 'flow' | 'chat';
 
+// UI fallbacks shown when the agent's value is null (backend null = inherit
+// DefaultAgentDefinitionConfig; these mirror those org-wide defaults). Saving a
+// value writes a number, i.e. it overrides the inherited default for this agent.
+export const AGENT_TOOL_DEFAULTS = {
+    max_tool_calls: 15,
+    tool_timeout: 300,
+    max_consecutive_failures: 3,
+} as const;
+
 export interface AgentDefaultSurface {
     surface: number;
     place: AgentSurfacePlace;
@@ -28,6 +37,9 @@ export interface AgentDefinition {
     cache: boolean;
     max_retry_limit: number;
     default_temperature: number;
+    max_tool_calls: number | null;
+    tool_timeout: number | null;
+    max_consecutive_failures: number | null;
 }
 
 export interface CreateAgentDefinitionRequest {
@@ -44,6 +56,9 @@ export interface CreateAgentDefinitionRequest {
     cache?: boolean;
     max_retry_limit?: number;
     default_temperature?: number;
+    max_tool_calls?: number | null;
+    tool_timeout?: number | null;
+    max_consecutive_failures?: number | null;
 }
 
 export type UpdateAgentDefinitionRequest = CreateAgentDefinitionRequest;

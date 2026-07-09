@@ -9,7 +9,7 @@
             <app-toggle-switch
                 formControlName="cache"
                 label="Cache"
-                tooltipText="Enable caching to store and reuse previous responses for better performance and cost efficiency."
+                [tooltipText]="cacheTooltip()"
             />
         </div>
 

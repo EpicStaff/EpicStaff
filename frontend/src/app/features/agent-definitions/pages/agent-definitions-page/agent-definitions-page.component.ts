@@ -234,6 +234,9 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
                 cache: payload.cache,
                 max_retry_limit: payload.max_retry_limit,
                 default_temperature: payload.default_temperature,
+                max_tool_calls: payload.max_tool_calls,
+                tool_timeout: payload.tool_timeout,
+                max_consecutive_failures: payload.max_consecutive_failures,
             });
         }
         this.hasUnsavedChanges.set(false);

@@ -50,4 +50,46 @@
             [decimals]="0"
         />
     </div>
+
+    @if (form().contains('max_tool_calls')) {
+        <div class="form-group">
+            <app-slider-with-stepper
+                formControlName="max_tool_calls"
+                label="Maximum Tool Calls"
+                tooltipText="The maximum number of tool calls the agent may execute per loop iteration."
+                [min]="1"
+                [max]="100"
+                [step]="1"
+                [decimals]="0"
+            />
+        </div>
+    }
+
+    @if (form().contains('tool_timeout')) {
+        <div class="form-group">
+            <app-slider-with-stepper
+                formControlName="tool_timeout"
+                label="Tool Timeout (seconds)"
+                tooltipText="The maximum time in seconds a single tool call may run before timing out."
+                [min]="1"
+                [max]="600"
+                [step]="1"
+                [decimals]="0"
+            />
+        </div>
+    }
+
+    @if (form().contains('max_consecutive_failures')) {
+        <div class="form-group">
+            <app-slider-with-stepper
+                formControlName="max_consecutive_failures"
+                label="Maximum Consecutive Failures"
+                tooltipText="The number of consecutive tool failures allowed before the agent stops."
+                [min]="1"
+                [max]="20"
+                [step]="1"
+                [decimals]="0"
+            />
+        </div>
+    }
 </div>
