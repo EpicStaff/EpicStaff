@@ -15,7 +15,6 @@ dependencies = [
     "python-dotenv (>=1.0.1)",
     "loguru (>=0.7.3,<0.8.0)",
     "redis (==5.2.1)",
-    "pyngrok (==7.4.1)",
     "uvloop (==0.22.1) ; sys_platform != \"win32\"",
     "httpx (>=0.28.1,<0.29.0)",
     "websockets (>=16.0,<17.0)"
@@ -23,6 +22,7 @@ dependencies = [
 
 [tool.poetry.group.dev.dependencies]
 soundfile = ">=0.13.1,<0.14.0"
+pyngrok = "7.4.1"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

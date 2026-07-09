@@ -2,8 +2,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 logger.debug(f"Entered {__file__}")
-from rich.console import Console
-from rich.syntax import Syntax
 from pydantic import BaseModel, Field
 from langchain.tools import tool
 from pygments.lexer import RegexLexer
@@ -64,11 +62,11 @@ class BSharpCodeTool(BaseTool):
         if not code:
             return "Error: No code provided for highlighting. Please provide BSharp code as the 'code' parameter."
 
-        console = Console()
-        syntax = Syntax(
-            code, lexer=BSharpLexer(), theme="github-dark", line_numbers=True
-        )
-        console.print(syntax)
+        # Tokenize with the custom Pygments lexer to preserve the logged
+        # information that syntax highlighting used to convey (no rich
+        # console rendering/box formatting).
+        tokens = list(BSharpLexer().get_tokens(code))
+        logger.info(f"BSharp code ({len(tokens)} tokens):\n{code}")
         return code
 
 
