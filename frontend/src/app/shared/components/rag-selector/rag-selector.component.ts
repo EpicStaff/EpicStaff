@@ -19,54 +19,64 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
-export interface KnowledgeSelectorRagConfig {
+export type RagSelectorStatus = 'new' | 'processing' | 'completed' | 'warning' | 'failed';
+
+export interface RagSelectorItem {
+    rag_id: number;
+    rag_type: string;
+    rag_status: string;
+}
+
+export interface RagSelectorValue {
+    rag_id: number;
     rag_type: string;
 }
 
-export interface KnowledgeSelectorCollection {
-    collection_id: number;
-    collection_name: string;
-    document_count: number;
-    rag_configurations: KnowledgeSelectorRagConfig[];
+interface RagStatusDisplay {
+    text: string;
+    icon: string;
+    color: string;
 }
 
-const RAG_TYPE_LABELS: Record<string, string> = {
-    naive: 'Naive RAG',
-    graph: 'Graph RAG',
-    hybrid: 'Hybrid RAG',
+const RAG_STATUS_DISPLAY: Record<RagSelectorStatus, RagStatusDisplay> = {
+    new: { text: 'Indexing', icon: 'processing', color: 'var(--color-ks-status-blue)' },
+    processing: { text: 'Indexing', icon: 'processing', color: 'var(--color-ks-status-blue)' },
+    completed: { text: 'Ready', icon: 'check', color: 'var(--color-ks-status-completed)' },
+    warning: { text: 'Warning', icon: 'warning', color: 'var(--color-ks-status-warning)' },
+    failed: { text: 'Failed', icon: 'x', color: 'var(--color-ks-status-failed)' },
 };
 
 @Component({
-    selector: 'app-knowledge-selector',
+    selector: 'app-rag-selector',
     imports: [OverlayModule, TooltipComponent, AppSvgIconComponent],
-    templateUrl: './knowledge-selector.component.html',
-    styleUrls: ['./knowledge-selector.component.scss'],
+    templateUrl: './rag-selector.component.html',
+    styleUrls: ['./rag-selector.component.scss'],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
-            useExisting: KnowledgeSelectorComponent,
+            useExisting: RagSelectorComponent,
             multi: true,
         },
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class KnowledgeSelectorComponent implements ControlValueAccessor {
-    collections = input<KnowledgeSelectorCollection[]>([]);
+export class RagSelectorComponent implements ControlValueAccessor {
+    rags = input<RagSelectorItem[]>([]);
     label = input<string>('');
     tooltipText = input<string>('');
-    placeholder = input<string>('Select knowledge source');
+    placeholder = input<string>('Select RAG');
     loading = input<boolean>(false);
     invalid = input<boolean>(false);
     required = input<boolean>(false);
 
-    readonly value = signal<number | null>(null);
+    readonly value = signal<RagSelectorValue | null>(null);
     readonly open = signal(false);
     readonly disabled = signal(false);
 
-    readonly selectedCollection = computed<KnowledgeSelectorCollection | null>(() => {
-        const id = this.value();
-        if (id === null) return null;
-        return this.collections().find((c) => c.collection_id === id) ?? null;
+    readonly selectedRag = computed<RagSelectorItem | null>(() => {
+        const current = this.value();
+        if (!current) return null;
+        return this.rags().find((r) => r.rag_id === current.rag_id) ?? null;
     });
 
     @ViewChild('triggerBtn') triggerBtn!: ElementRef<HTMLButtonElement>;
@@ -79,11 +89,15 @@ export class KnowledgeSelectorComponent implements ControlValueAccessor {
     private vcr = inject(ViewContainerRef);
     private destroyRef = inject(DestroyRef);
 
-    private onChange: (value: number | null) => void = () => {};
+    private onChange: (value: RagSelectorValue | null) => void = () => {};
     private onTouched: () => void = () => {};
 
-    formatRagConfigurations(configs: KnowledgeSelectorRagConfig[]): string {
-        return configs.map((c) => RAG_TYPE_LABELS[c.rag_type] ?? c.rag_type).join(' / ');
+    getRagTypeName(ragType: string): string {
+        return ragType ? ragType.charAt(0).toUpperCase() + ragType.slice(1) : ragType;
+    }
+
+    getStatusDisplay(status: string): RagStatusDisplay | null {
+        return RAG_STATUS_DISPLAY[status as RagSelectorStatus] ?? null;
     }
 
     toggle(): void {
@@ -138,19 +152,20 @@ export class KnowledgeSelectorComponent implements ControlValueAccessor {
         this.open.set(false);
     }
 
-    select(id: number | null): void {
+    select(rag: RagSelectorItem | null): void {
         if (this.disabled()) return;
-        this.value.set(id);
-        this.onChange(id);
+        const next: RagSelectorValue | null = rag ? { rag_id: rag.rag_id, rag_type: rag.rag_type } : null;
+        this.value.set(next);
+        this.onChange(next);
         this.onTouched();
         this.close();
     }
 
-    writeValue(value: number | null): void {
+    writeValue(value: RagSelectorValue | null): void {
         this.value.set(value ?? null);
     }
 
-    registerOnChange(fn: (value: number | null) => void): void {
+    registerOnChange(fn: (value: RagSelectorValue | null) => void): void {
         this.onChange = fn;
     }
 

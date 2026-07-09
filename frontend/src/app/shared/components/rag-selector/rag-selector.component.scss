@@ -76,7 +76,7 @@
         border: 2px solid #44474f;
         border-top: 2px solid #b0b8c1;
         border-radius: 50%;
-        animation: knowledge-selector-spin 1s linear infinite;
+        animation: rag-selector-spin 1s linear infinite;
         flex-shrink: 0;
     }
 }
@@ -138,18 +138,13 @@
         }
     }
 
-    &__meta {
+    &__status {
         flex-shrink: 0;
         display: inline-flex;
         align-items: center;
         gap: 4px;
         font-size: 0.8125rem;
-        color: var(--text-secondary-60);
         white-space: nowrap;
-
-        &--muted {
-            color: var(--color-ks-transparent-text-20);
-        }
     }
 
     &__empty {
@@ -159,7 +154,7 @@
     }
 }
 
-@keyframes knowledge-selector-spin {
+@keyframes rag-selector-spin {
     0% {
         transform: rotate(0deg);
     }

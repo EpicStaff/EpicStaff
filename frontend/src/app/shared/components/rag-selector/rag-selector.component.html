@@ -13,7 +13,7 @@
         class="selector__btn"
         [class.selector__btn--invalid]="invalid()"
         [class.selector__btn--open]="open()"
-        [class.selector__btn--placeholder]="!selectedCollection()"
+        [class.selector__btn--placeholder]="!selectedRag()"
         [disabled]="disabled()"
         (click)="toggle()"
     >
@@ -23,9 +23,9 @@
         } @else {
             <span
                 class="selector__text"
-                [class.selector__text--placeholder]="!selectedCollection()"
+                [class.selector__text--placeholder]="!selectedRag()"
             >
-                {{ selectedCollection()?.collection_name ?? placeholder() }}
+                {{ selectedRag() ? getRagTypeName(selectedRag()!.rag_type) : placeholder() }}
             </span>
         }
 
@@ -55,36 +55,35 @@
             [class.dropdown__option--selected]="value() === null"
             (click)="select(null)"
         >
-            <span class="dropdown__name dropdown__name--accent">No collection</span>
+            <span class="dropdown__name dropdown__name--accent">No RAG</span>
         </button>
 
-        @for (collection of collections(); track collection.collection_id) {
+        @for (rag of rags(); track rag.rag_id) {
             <button
                 type="button"
                 class="dropdown__option"
-                [class.dropdown__option--selected]="collection.collection_id === value()"
-                (click)="select(collection.collection_id)"
+                [class.dropdown__option--selected]="rag.rag_id === value()?.rag_id"
+                (click)="select(rag)"
             >
-                <span class="dropdown__name">{{ collection.collection_name }}</span>
+                <span class="dropdown__name">{{ getRagTypeName(rag.rag_type) }}</span>
 
-                @if (collection.rag_configurations.length) {
-                    <span class="dropdown__meta">
-                        {{ formatRagConfigurations(collection.rag_configurations) }}
-                    </span>
-                } @else {
-                    <span class="dropdown__meta dropdown__meta--muted">
+                @if (getStatusDisplay(rag.rag_status); as status) {
+                    <span
+                        class="dropdown__status"
+                        [style.color]="status.color"
+                    >
                         <app-svg-icon
-                            icon="not-allowed"
+                            [icon]="status.icon"
                             size="12px"
                         />
-                        {{ collection.document_count ? 'No RAG initialized' : 'Empty' }}
+                        <span>{{ status.text }}</span>
                     </span>
                 }
             </button>
         }
 
-        @if (!collections().length) {
-            <div class="dropdown__empty">No knowledge sources available</div>
+        @if (!rags().length) {
+            <div class="dropdown__empty">No RAGs available</div>
         }
     </div>
 </ng-template>
