@@ -59,7 +59,6 @@ def _python_tool(org, *, built_in=False, name="tool"):
     return PythonCodeTool.objects.create(
         name=name,
         description="",
-        args_schema={},
         python_code=code,
         built_in=built_in,
         org=org,
