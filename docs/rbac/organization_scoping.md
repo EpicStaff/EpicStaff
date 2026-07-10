@@ -77,6 +77,10 @@ Their access rules:
   one (`Invalid pk … - object does not exist.`, HTTP 400).
 - **`GET /api/quickstart/`** — returns `last_config` (the org's most recent quickstart config) scoped
   to the active org; one org never sees another org's quickstart config.
+- **`ngrok_webhook_config` on webhook triggers** — `NgrokWebhookConfig` is global platform infra (no
+  `org` column). Only superadmins may assign it when creating/updating a webhook trigger (directly or
+  via a webhook-trigger node); the field is dropped from non-superadmin input, so a normal user cannot
+  bind a trigger to an arbitrary ngrok config by id. (Making ngrok per-org is tracked as tech debt.)
 
 ## Example
 

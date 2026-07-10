@@ -187,6 +187,34 @@ def test_ngrok_config_read_allowed_for_superadmin(client_super):
     assert client_super.get("/api/ngrok-config/").status_code == 200
 
 
+# ---- webhook-triggers: ngrok_webhook_config is superadmin-assigned only ----
+
+
+@pytest.mark.django_db
+def test_webhook_trigger_ngrok_not_settable_by_member(client_member):
+    cfg = NgrokWebhookConfig.objects.create(name="n", auth_token="t")
+    resp = client_member.post(
+        "/api/webhook-triggers/",
+        {"path": "memberhook", "ngrok_webhook_config": cfg.id},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data
+    # the ngrok reference is dropped for non-superadmins (platform infra)
+    assert resp.data["ngrok_webhook_config"] is None
+
+
+@pytest.mark.django_db
+def test_webhook_trigger_ngrok_settable_by_superadmin(client_super):
+    cfg = NgrokWebhookConfig.objects.create(name="n", auth_token="t")
+    resp = client_super.post(
+        "/api/webhook-triggers/",
+        {"path": "superhook", "ngrok_webhook_config": cfg.id},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data
+    assert resp.data["ngrok_webhook_config"] == cfg.id
+
+
 # ---- run-python-code: org-visibility scope + TOOLS.UPDATE gate ----
 
 
