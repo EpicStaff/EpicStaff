@@ -33,7 +33,10 @@ from tables.models.graph_models import (
 )
 from tables.models.label_models import Label
 from tables.serializers.base_serializer import BaseGraphEntityMixin
-from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
+from tables.serializers.org_scoped_fields import (
+    OrgScopedPrimaryKeyRelatedField,
+    OrgScopedUniqueValidator,
+)
 
 
 class GraphNoteSerializer(BaseGraphEntityMixin, serializers.ModelSerializer):
@@ -233,6 +236,14 @@ class GraphSerializer(serializers.ModelSerializer):
     )
     graph_note_list = GraphNoteSerializer(many=True, read_only=True)
     save_version = serializers.IntegerField(required=True)
+    name = serializers.CharField(
+        validators=[
+            OrgScopedUniqueValidator(
+                queryset=Graph.objects.all(),
+                message="A flow with this name already exists.",
+            )
+        ]
+    )
 
     class Meta:
         model = Graph

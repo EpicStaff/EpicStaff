@@ -11,7 +11,11 @@ from tables.models.python_models import (
     PythonCodeToolConfig,
 )
 from tables.serializers.base_serializer import ContentHashWritableMixin
-from tables.serializers.org_scoped_fields import OrgVisiblePrimaryKeyRelatedField
+from tables.serializers.org_scoped_fields import (
+    OrgVisiblePrimaryKeyRelatedField,
+    OrgScopedUniqueValidator,
+    OrgScopedUniqueTogetherValidator,
+)
 from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
@@ -55,6 +59,15 @@ class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer
 class PythonCodeToolSerializer(serializers.ModelSerializer):
     python_code = PythonCodeSerializer()
     built_in = serializers.ReadOnlyField()
+    # Per-org unique name → clean 400 instead of a DB IntegrityError (500).
+    name = serializers.CharField(
+        validators=[
+            OrgScopedUniqueValidator(
+                queryset=PythonCodeTool.objects.all(),
+                message="A tool with this name already exists.",
+            )
+        ]
+    )
 
     class Meta:
         model = PythonCodeTool
@@ -117,6 +130,14 @@ class PythonCodeToolConfigSerializer(serializers.ModelSerializer):
         model = PythonCodeToolConfig
         fields = "__all__"
         read_only_fields = ["org", "created_by"]
+        # Per-org unique (tool, name) → clean 400 instead of a DB IntegrityError.
+        validators = [
+            OrgScopedUniqueTogetherValidator(
+                queryset=PythonCodeToolConfig.objects.all(),
+                fields=["tool", "name"],
+                message="A config with this name already exists for this tool.",
+            )
+        ]
 
     def validate(self, data: dict):
         name = data.get("name")
