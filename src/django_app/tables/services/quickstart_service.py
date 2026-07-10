@@ -110,14 +110,16 @@ class QuickstartService(metaclass=SingletonMeta):
     def get_supported_providers(self):
         return self.PROVIDER_CONFIGS.keys()
 
-    def get_last_quickstart(self) -> dict | None:
+    def get_last_quickstart(self, org_id: int) -> dict | None:
         """
-        Returns the active quickstart config — identified by the predefined 'quickstart'
-        tag on LLMConfig. The tag is moved to the newest config on every quickstart run.
-        Returns None if no quickstart has been run.
+        Returns the active quickstart config for the given organization —
+        identified by the predefined 'quickstart' tag on LLMConfig. The tag is
+        moved to the newest config on every quickstart run. Scoped to org_id so
+        one org never sees another org's quickstart config (or its api key).
+        Returns None if no quickstart has been run in this org.
         """
         llm = LLMConfig.objects.filter(
-            tags__name=self.QUICKSTART_TAG, tags__predefined=True
+            tags__name=self.QUICKSTART_TAG, tags__predefined=True, org_id=org_id
         ).first()
         if not llm:
             return None
@@ -125,13 +127,13 @@ class QuickstartService(metaclass=SingletonMeta):
             "config_name": llm.custom_name,
             "llm_config": llm,
             "embedding_config": EmbeddingConfig.objects.filter(
-                tags__name=self.QUICKSTART_TAG, tags__predefined=True
+                tags__name=self.QUICKSTART_TAG, tags__predefined=True, org_id=org_id
             ).first(),
             "realtime_config": RealtimeConfig.objects.filter(
-                tags__name=self.QUICKSTART_TAG, tags__predefined=True
+                tags__name=self.QUICKSTART_TAG, tags__predefined=True, org_id=org_id
             ).first(),
             "realtime_transcription_config": RealtimeTranscriptionConfig.objects.filter(
-                tags__name=self.QUICKSTART_TAG, tags__predefined=True
+                tags__name=self.QUICKSTART_TAG, tags__predefined=True, org_id=org_id
             ).first(),
         }
 

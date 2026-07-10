@@ -59,6 +59,25 @@ This rule is applied uniformly wherever such references appear, including (non-e
   exactly like a missing one; cross-org file `move` / `copy` is superadmin-only. See
   `storage/STORAGE_API_REFERENCE.md`.
 
+## Execution & platform endpoints
+
+Some endpoints expose execution artifacts or platform-wide infrastructure that has no org column.
+Their access rules:
+
+- **`GET /api/python-code-result/{execution_id}/`** — superadmin only (results hold another org's
+  stdout / `result_data`). The list endpoint `GET /api/python-code-result/` is removed (405).
+- **`/api/realtime-session-items/`** — superadmin only, read-only (items hold conversation payloads
+  including base64 audio, keyed by an opaque connection key with no org column).
+- **`/api/ngrok-config/`** — superadmin only for read and write (holds the ngrok `auth_token`, a
+  platform secret).
+- **`/api/voice-settings/`** — superadmin only (holds the platform Twilio credentials).
+- **`POST /api/run-python-code/`** — requires `TOOLS` · `UPDATE`, and the `python_code_id` must be
+  visible to the active org (referenced by an org-owned tool — built-in tools are global — or by a
+  node/edge in one of the org's graphs). A code id outside the active org is rejected like a missing
+  one (`Invalid pk … - object does not exist.`, HTTP 400).
+- **`GET /api/quickstart/`** — returns `last_config` (the org's most recent quickstart config) scoped
+  to the active org; one org never sees another org's quickstart config.
+
 ## Example
 
 Active org **A**; org **B** owns `LLMConfig id 42`.

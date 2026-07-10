@@ -774,12 +774,11 @@ class PythonCodeToolConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     filterset_fields = ["tool", "name"]
 
 
-class PythonCodeResultReadViewSet(ReadOnlyModelViewSet):
-    # TODO(EST-2423): org-scope python execution results.
+class PythonCodeResultReadViewSet(mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    # Superadmin-only
+    permission_classes = [IsAuthenticated, IsSuperadmin]
     queryset = PythonCodeResult.objects.all()
     serializer_class = PythonCodeResultSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["execution_id", "returncode"]
 
 
 class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet):
@@ -1398,9 +1397,10 @@ class RealtimeTranscriptionConfigModelViewSet(
 
 
 class RealtimeSessionItemViewSet(viewsets.ReadOnlyModelViewSet):
-    # TODO(EST-2423 deferred): org-scope realtime session items. Keyed by an
-    # opaque connection_key with no org/agent FK; needs a denormalized org to
-    # scope. Authenticated-only for now.
+    # Realtime session items hold conversation payloads (incl. base64 audio)
+    # keyed by an opaque connection_key with no org FK, so they can leak another
+    # org's data. Restricted to superadmin (read-only).
+    permission_classes = [IsAuthenticated, IsSuperadmin]
     queryset = RealtimeSessionItem.objects.all()
     serializer_class = RealtimeSessionItemSerializer
 
@@ -1778,9 +1778,11 @@ class GraphNoteViewSet(
     serializer_class = GraphNoteSerializer
 
 
-class NgrokWebhookConfigViewSet(SuperadminWriteMixin, ModelViewSet):
-    # Global infrastructure config (ngrok tunnel/auth): readable by any
-    # authenticated user, writable only by superadmins.
+class NgrokWebhookConfigViewSet(ModelViewSet):
+    # Global infrastructure config holding the ngrok auth token (a secret).
+    # Superadmin-only for both read and write so the token is never exposed to
+    # ordinary org users.
+    permission_classes = [IsAuthenticated, IsSuperadmin]
     queryset = NgrokWebhookConfig.objects.all()
     serializer_class = NgrokWebhookConfigModelSerializer
 
