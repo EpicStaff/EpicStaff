@@ -186,6 +186,7 @@ export class TimePickerComponent implements ControlValueAccessor {
         const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);
         this.overlayRef.attach(portal);
         this.isOpen.set(true);
+        this.timeInputEl?.nativeElement.focus();
     }
 
     close(): void {
