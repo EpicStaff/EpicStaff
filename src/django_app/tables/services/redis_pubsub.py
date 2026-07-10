@@ -338,7 +338,7 @@ class RedisPubSub:
                 message_data = data.get("message_data", {})
 
                 if not message_data:
-                    return total_usage
+                    continue
 
                 token_usage = None
 
