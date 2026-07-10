@@ -15,6 +15,7 @@ from loguru import logger
 
 from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.llm.client import LLMChunk
+from app.usage import TokenUsageAccumulator
 from shared.models.agent_service import LoopResult, ToolResult
 from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
@@ -51,33 +52,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
         super().__init__(client, result_stream, correlation_id)
         self._call_names: dict[str, str] = {}
         self._current_task: dict | None = None
-        self._prompt_tokens = 0
-        self._completion_tokens = 0
-        self._total_tokens = 0
-        self._cached_prompt_tokens = 0
-        self._emitted_prompt_tokens = 0
-        self._emitted_completion_tokens = 0
-        self._emitted_total_tokens = 0
-        self._emitted_cached_prompt_tokens = 0
-
-    def _consume_token_usage_delta(self) -> dict:
-        """Return tokens accumulated since the last live envelope, then
-        advance the emitted snapshot regardless of what the caller does with
-        the delta (including a failed publish) so tokens are never
-        double-counted on the next live event."""
-        delta = {
-            "prompt_tokens": self._prompt_tokens - self._emitted_prompt_tokens,
-            "completion_tokens": self._completion_tokens
-            - self._emitted_completion_tokens,
-            "total_tokens": self._total_tokens - self._emitted_total_tokens,
-            "cached_prompt_tokens": self._cached_prompt_tokens
-            - self._emitted_cached_prompt_tokens,
-        }
-        self._emitted_prompt_tokens = self._prompt_tokens
-        self._emitted_completion_tokens = self._completion_tokens
-        self._emitted_total_tokens = self._total_tokens
-        self._emitted_cached_prompt_tokens = self._cached_prompt_tokens
-        return delta
+        self._usage = TokenUsageAccumulator()
 
     async def _publish_live(self, event_type: str, payload: dict) -> None:
         envelope = StreamEnvelope(
@@ -121,24 +96,13 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
                 "stop_reason": result.stop_reason,
             },
         )
-        self._consume_token_usage_delta()
+        self._usage.consume_delta()
         self._current_task = None
 
     async def on_chunk(self, chunk: LLMChunk) -> None:
         """Accumulate cumulative token usage, then keep buffering as usual."""
         if chunk.usage:
-            self._prompt_tokens += int(chunk.usage.get("prompt_tokens", 0))
-            self._completion_tokens += int(chunk.usage.get("completion_tokens", 0))
-            self._total_tokens += int(
-                chunk.usage.get(
-                    "total_tokens",
-                    chunk.usage.get("prompt_tokens", 0)
-                    + chunk.usage.get("completion_tokens", 0),
-                )
-            )
-            self._cached_prompt_tokens += int(
-                chunk.usage.get("cached_prompt_tokens", 0)
-            )
+            self._usage.add(chunk.usage)
 
         await super().on_chunk(chunk)
 
@@ -158,7 +122,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
                 "name": name,
                 "arguments": arguments,
                 "truncated": truncated,
-                "token_usage": self._consume_token_usage_delta(),
+                "token_usage": self._usage.consume_delta(),
                 "task": self._current_task,
             },
         )
@@ -176,7 +140,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
                 "content": content,
                 "is_error": result.is_error,
                 "truncated": truncated,
-                "token_usage": self._consume_token_usage_delta(),
+                "token_usage": self._usage.consume_delta(),
                 "task": self._current_task,
             },
         )

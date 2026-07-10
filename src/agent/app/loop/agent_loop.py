@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import litellm
 from loguru import logger
@@ -28,7 +28,8 @@ from app.logging_utils import redact
 from app.loop.context import AgentContext
 from app.loop.stop_policy import StopPolicy
 from app.tools.registry import ToolRegistry
-from shared.models.agent_service import LoopResult, StopReason, TokenUsage, ToolResult
+from app.usage import TokenUsageAccumulator
+from shared.models.agent_service import LoopResult, StopReason, ToolResult
 
 
 def _model_str(context: AgentContext) -> str:
@@ -107,31 +108,9 @@ class _RunState:
     iterations: int = 0
     tool_invocations: int = 0
     final_text: str | None = None
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
-    total_tokens: int = 0
-    cached_prompt_tokens: int = 0
+    usage: TokenUsageAccumulator = field(default_factory=TokenUsageAccumulator)
     context_warned: bool = False
     consecutive_failures: int = 0
-
-    def token_usage(self) -> TokenUsage:
-        return TokenUsage(
-            prompt_tokens=self.prompt_tokens,
-            completion_tokens=self.completion_tokens,
-            total_tokens=self.total_tokens,
-            cached_prompt_tokens=self.cached_prompt_tokens,
-        )
-
-    def add_usage(self, usage: dict) -> None:
-        self.prompt_tokens += int(usage.get("prompt_tokens", 0))
-        self.completion_tokens += int(usage.get("completion_tokens", 0))
-        self.total_tokens += int(
-            usage.get(
-                "total_tokens",
-                usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0),
-            )
-        )
-        self.cached_prompt_tokens += int(usage.get("cached_prompt_tokens", 0))
 
 
 class DefaultAgentLoop(AgentLoop):
@@ -183,7 +162,7 @@ class DefaultAgentLoop(AgentLoop):
                 final_text=state.final_text,
                 tool_invocations=state.tool_invocations,
                 iterations=state.iterations,
-                token_usage=state.token_usage(),
+                token_usage=state.usage.to_token_usage(),
                 error=f"execution exceeded {time_limit}s",
             )
 
@@ -194,7 +173,7 @@ class DefaultAgentLoop(AgentLoop):
                 final_text=state.final_text,
                 tool_invocations=state.tool_invocations,
                 iterations=state.iterations,
-                token_usage=state.token_usage(),
+                token_usage=state.usage.to_token_usage(),
                 error=str(error),
             )
 
@@ -262,7 +241,7 @@ class DefaultAgentLoop(AgentLoop):
                     entry["args"] += fragment.arguments_delta
 
                 if chunk.usage:
-                    state.add_usage(chunk.usage)
+                    state.usage.add(chunk.usage)
 
             # Only append the assistant message when there is content to record.
             # An iteration with neither text nor tool calls still counts toward
@@ -381,7 +360,7 @@ class DefaultAgentLoop(AgentLoop):
                     tool_invocations=state.tool_invocations,
                     iterations=state.iterations,
                     stop_reason=decision.reason,
-                    token_usage=state.token_usage(),
+                    token_usage=state.usage.to_token_usage(),
                 )
 
     async def _execute_tool(
@@ -482,7 +461,7 @@ class DefaultAgentLoop(AgentLoop):
                 text_buf += chunk.delta_text
 
             if chunk.usage:
-                state.add_usage(chunk.usage)
+                state.usage.add(chunk.usage)
 
         if text_buf:
             context.append_message({"role": "assistant", "content": text_buf})
@@ -495,5 +474,5 @@ class DefaultAgentLoop(AgentLoop):
             tool_invocations=state.tool_invocations,
             iterations=state.iterations,
             stop_reason=StopReason.MAX_CONSECUTIVE_FAILURES.value,
-            token_usage=state.token_usage(),
+            token_usage=state.usage.to_token_usage(),
         )

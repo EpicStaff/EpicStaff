@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from tables.models import GraphSessionMessage
 from tables.services.redis_pubsub import RedisPubSub
 
@@ -28,6 +30,7 @@ def test_calculate_subgraph_token_usage_sums_cached_prompt_tokens():
                 "completion_tokens": 40,
                 "successful_requests": 1,
                 "cached_prompt_tokens": 20,
+                "total_cost_usd": 0.0012,
             }
         ),
         _message_with_token_usage(
@@ -37,19 +40,23 @@ def test_calculate_subgraph_token_usage_sums_cached_prompt_tokens():
                 "completion_tokens": 20,
                 "successful_requests": 1,
                 "cached_prompt_tokens": 10,
+                "total_cost_usd": 0.0008,
             }
         ),
     ]
 
     total_usage = RedisPubSub._calculate_subgraph_token_usage(messages)
 
-    assert total_usage == {
-        "total_tokens": 150,
-        "prompt_tokens": 90,
-        "completion_tokens": 60,
-        "successful_requests": 2,
-        "cached_prompt_tokens": 30,
-    }
+    assert total_usage == pytest.approx(
+        {
+            "total_tokens": 150,
+            "prompt_tokens": 90,
+            "completion_tokens": 60,
+            "successful_requests": 2,
+            "cached_prompt_tokens": 30,
+            "total_cost_usd": 0.002,
+        }
+    )
 
 
 def test_calculate_subgraph_token_usage_defaults_missing_cached_prompt_tokens_to_zero():
@@ -66,6 +73,7 @@ def test_calculate_subgraph_token_usage_defaults_missing_cached_prompt_tokens_to
 
     assert total_usage["cached_prompt_tokens"] == 0
     assert total_usage["total_tokens"] == 100
+    assert total_usage["total_cost_usd"] == 0
 
 
 def test_calculate_total_token_usage_skips_empty_message_data_without_aborting():
@@ -79,6 +87,7 @@ def test_calculate_total_token_usage_skips_empty_message_data_without_aborting()
                     "completion_tokens": 40,
                     "successful_requests": 1,
                     "cached_prompt_tokens": 20,
+                    "total_cost_usd": 0.0015,
                 }
             }
         },
@@ -91,6 +100,7 @@ def test_calculate_total_token_usage_skips_empty_message_data_without_aborting()
                     "completion_tokens": 20,
                     "successful_requests": 1,
                     "cached_prompt_tokens": 10,
+                    "total_cost_usd": 0.0005,
                 }
             }
         },
@@ -101,10 +111,38 @@ def test_calculate_total_token_usage_skips_empty_message_data_without_aborting()
 
     total_usage = redis_pubsub._calculate_total_token_usage(session_id)
 
-    assert total_usage == {
-        "total_tokens": 150,
-        "prompt_tokens": 90,
-        "completion_tokens": 60,
-        "successful_requests": 2,
-        "cached_prompt_tokens": 30,
+    assert total_usage == pytest.approx(
+        {
+            "total_tokens": 150,
+            "prompt_tokens": 90,
+            "completion_tokens": 60,
+            "successful_requests": 2,
+            "cached_prompt_tokens": 30,
+            "total_cost_usd": 0.002,
+        }
+    )
+
+
+def test_calculate_total_token_usage_defaults_missing_total_cost_usd_to_zero():
+    session_id = "session-2"
+    keyed_payloads = {
+        f"graph:message:{session_id}:1": {
+            "message_data": {
+                "token_usage": {
+                    "total_tokens": 100,
+                    "prompt_tokens": 60,
+                    "completion_tokens": 40,
+                    "successful_requests": 1,
+                    "cached_prompt_tokens": 20,
+                }
+            }
+        },
     }
+
+    redis_pubsub = RedisPubSub()
+    redis_pubsub.redis_client = _StubRedisClient(keyed_payloads)
+
+    total_usage = redis_pubsub._calculate_total_token_usage(session_id)
+
+    assert total_usage["total_cost_usd"] == 0
+    assert total_usage["total_tokens"] == 100

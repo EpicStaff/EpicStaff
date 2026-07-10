@@ -330,6 +330,7 @@ class RedisPubSub:
             "completion_tokens": 0,
             "successful_requests": 0,
             "cached_prompt_tokens": 0,
+            "total_cost_usd": 0.0,
         }
 
         for key in cached_keys:
@@ -359,6 +360,9 @@ class RedisPubSub:
                     )
                     total_usage["cached_prompt_tokens"] += token_usage.get(
                         "cached_prompt_tokens", 0
+                    )
+                    total_usage["total_cost_usd"] += token_usage.get(
+                        "total_cost_usd", 0
                     )
 
             except Exception as e:
@@ -695,7 +699,7 @@ class RedisPubSub:
 
         Returns:
             Dict with total_tokens, prompt_tokens, completion_tokens,
-            successful_requests, cached_prompt_tokens.
+            successful_requests, cached_prompt_tokens, total_cost_usd.
         """
         total_usage = {
             "total_tokens": 0,
@@ -703,6 +707,7 @@ class RedisPubSub:
             "completion_tokens": 0,
             "successful_requests": 0,
             "cached_prompt_tokens": 0,
+            "total_cost_usd": 0.0,
         }
 
         for msg in messages:
@@ -727,6 +732,7 @@ class RedisPubSub:
                 total_usage["cached_prompt_tokens"] += token_usage.get(
                     "cached_prompt_tokens", 0
                 )
+                total_usage["total_cost_usd"] += token_usage.get("total_cost_usd", 0)
 
         return total_usage
 

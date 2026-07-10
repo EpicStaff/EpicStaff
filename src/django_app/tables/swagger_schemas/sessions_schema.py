@@ -302,6 +302,7 @@ SESSION_LIST_GET = dict(
                                     "completion_tokens": 0,
                                     "successful_requests": 0,
                                     "cached_prompt_tokens": 0,
+                                    "total_cost_usd": 0.0,
                                 },
                                 "graph": 0,
                                 "parent_session": None,

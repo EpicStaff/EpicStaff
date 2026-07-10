@@ -12,6 +12,8 @@ import asyncio
 import inspect
 from typing import AsyncIterator, Callable
 
+import pytest
+
 from app.emitters.base import Emitter
 from app.llm.client import LLMChunk, LLMClient, ToolCallFragment
 from app.loop.agent_loop import DefaultAgentLoop
@@ -554,7 +556,7 @@ def test_context_starts_with_empty_messages():
 
 async def test_token_usage_aggregated_across_two_iterations():
     """Usage chunks from two iterations are summed: prompt=12, completion=5, total=17,
-    cached_prompt_tokens=6."""
+    cached_prompt_tokens=6, total_cost_usd=0.003."""
     emitter = RecordingEmitter()
     context = make_context()
     tools = StubToolRegistry({"get_time": lambda args: "12:00"})
@@ -568,6 +570,7 @@ async def test_token_usage_aggregated_across_two_iterations():
                 "completion_tokens": 3,
                 "total_tokens": 8,
                 "cached_prompt_tokens": 2,
+                "total_cost_usd": 0.001,
             }
         ),
     ]
@@ -579,6 +582,7 @@ async def test_token_usage_aggregated_across_two_iterations():
                 "completion_tokens": 2,
                 "total_tokens": 9,
                 "cached_prompt_tokens": 4,
+                "total_cost_usd": 0.002,
             }
         ),
     ]
@@ -593,6 +597,7 @@ async def test_token_usage_aggregated_across_two_iterations():
     assert result.token_usage.completion_tokens == 5
     assert result.token_usage.total_tokens == 17
     assert result.token_usage.cached_prompt_tokens == 6
+    assert result.token_usage.total_cost_usd == pytest.approx(0.003)
 
 
 async def test_token_usage_defaults_to_zero_when_no_usage_chunks():
@@ -611,6 +616,7 @@ async def test_token_usage_defaults_to_zero_when_no_usage_chunks():
     assert result.token_usage.completion_tokens == 0
     assert result.token_usage.total_tokens == 0
     assert result.token_usage.cached_prompt_tokens == 0
+    assert result.token_usage.total_cost_usd == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -1072,7 +1078,12 @@ async def test_finalization_token_usage_accumulated():
     finalize_chunks = [
         *text_chunks("summary text"),
         LLMChunk(
-            usage={"prompt_tokens": 10, "completion_tokens": 4, "total_tokens": 14}
+            usage={
+                "prompt_tokens": 10,
+                "completion_tokens": 4,
+                "total_tokens": 14,
+                "total_cost_usd": 0.0025,
+            }
         ),
     ]
 
@@ -1090,3 +1101,4 @@ async def test_finalization_token_usage_accumulated():
     assert result.token_usage.prompt_tokens == 10
     assert result.token_usage.completion_tokens == 4
     assert result.token_usage.total_tokens == 14
+    assert result.token_usage.total_cost_usd == pytest.approx(0.0025)

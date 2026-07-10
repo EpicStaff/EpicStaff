@@ -555,3 +555,69 @@ async def test_cached_prompt_tokens_defaults_to_zero_without_details():
     usage_chunks = [c for c in result if c.usage is not None]
     assert len(usage_chunks) == 1
     assert usage_chunks[0].usage["cached_prompt_tokens"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Tests — total_cost_usd
+# ---------------------------------------------------------------------------
+
+
+async def test_usage_cost_computed_from_mocked_price_map():
+    """cost_per_token is called with the REAL model string (never the Router's
+    synthetic hash name) and correct token kwargs; total_cost_usd sums the
+    two returned costs."""
+    chunks_in = [
+        _chunk(
+            finish_reason="stop",
+            usage={
+                "prompt_tokens": 100,
+                "completion_tokens": 20,
+                "cache_read_input_tokens": 15,
+            },
+        ),
+    ]
+    router = make_router(chunks_in)
+    pool = make_pool_with_router(router)
+
+    with patch("app.llm.litellm_client.litellm.cost_per_token") as cost_per_token:
+        cost_per_token.return_value = (0.001, 0.002)
+
+        client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
+        result = await collect(client, MESSAGES, [], MODEL_CONFIG)
+
+    usage_chunks = [c for c in result if c.usage is not None]
+    assert len(usage_chunks) == 1
+    assert usage_chunks[0].usage["total_cost_usd"] == pytest.approx(0.003)
+
+    cost_per_token.assert_called_once_with(
+        model="gpt-4o",
+        prompt_tokens=100,
+        completion_tokens=20,
+        cache_read_input_tokens=15,
+    )
+
+
+async def test_usage_cost_defaults_to_zero_when_price_lookup_raises():
+    """Unmapped/self-hosted models raise inside litellm; swallowed to 0.0 and
+    the stream still completes."""
+    chunks_in = [
+        _chunk(content="hi"),
+        _chunk(
+            finish_reason="stop", usage={"prompt_tokens": 5, "completion_tokens": 3}
+        ),
+    ]
+    router = make_router(chunks_in)
+    pool = make_pool_with_router(router)
+
+    with patch("app.llm.litellm_client.litellm.cost_per_token") as cost_per_token:
+        cost_per_token.side_effect = ValueError("unmapped model")
+
+        client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
+        result = await collect(client, MESSAGES, [], MODEL_CONFIG)
+
+    usage_chunks = [c for c in result if c.usage is not None]
+    assert len(usage_chunks) == 1
+    assert usage_chunks[0].usage["total_cost_usd"] == 0.0
+
+    text_chunks = [c for c in result if c.delta_text]
+    assert text_chunks[0].delta_text == "hi"

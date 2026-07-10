@@ -229,6 +229,13 @@ class TokenUsage(BaseModel):
     ``total_tokens``.
     """
 
+    total_cost_usd: float = 0.0
+    """Best-effort USD cost derived from litellm's built-in price map.
+
+    ``0.0`` for unmapped or self-hosted models. Display-only — never a source
+    of truth for billing and never folded into ``total_tokens``.
+    """
+
 
 class TaskRunSummary(BaseModel):
     """Per-task outcome captured by ``ListOfTasksRunner`` for ``LIST_OF_TASKS`` runs."""

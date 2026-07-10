@@ -81,6 +81,7 @@ async def test_on_tool_call_publishes_live_envelope():
         "completion_tokens": 0,
         "total_tokens": 0,
         "cached_prompt_tokens": 0,
+        "total_cost_usd": 0.0,
     }
     assert payload["task"] is None
 
@@ -225,6 +226,7 @@ async def test_on_chunk_without_usage_leaves_totals_zero():
         "completion_tokens": 0,
         "total_tokens": 0,
         "cached_prompt_tokens": 0,
+        "total_cost_usd": 0.0,
     }
 
 
@@ -243,6 +245,7 @@ async def test_token_usage_on_tool_call_is_delta_since_last_live_event():
         "completion_tokens": 5,
         "total_tokens": 15,
         "cached_prompt_tokens": 0,
+        "total_cost_usd": 0.0,
     }
 
     await emitter.on_chunk(
@@ -258,6 +261,7 @@ async def test_token_usage_on_tool_call_is_delta_since_last_live_event():
         "completion_tokens": 8,
         "total_tokens": 28,
         "cached_prompt_tokens": 0,
+        "total_cost_usd": 0.0,
     }
 
 
@@ -270,6 +274,7 @@ async def test_token_usage_on_tool_call_includes_cached_prompt_tokens_delta():
                 "completion_tokens": 5,
                 "total_tokens": 15,
                 "cached_prompt_tokens": 4,
+                "total_cost_usd": 0.0,
             }
         )
     )
@@ -281,6 +286,7 @@ async def test_token_usage_on_tool_call_includes_cached_prompt_tokens_delta():
         "completion_tokens": 5,
         "total_tokens": 15,
         "cached_prompt_tokens": 4,
+        "total_cost_usd": 0.0,
     }
 
     await emitter.on_chunk(
@@ -290,6 +296,7 @@ async def test_token_usage_on_tool_call_includes_cached_prompt_tokens_delta():
                 "completion_tokens": 8,
                 "total_tokens": 28,
                 "cached_prompt_tokens": 6,
+                "total_cost_usd": 0.0,
             }
         )
     )
@@ -303,6 +310,7 @@ async def test_token_usage_on_tool_call_includes_cached_prompt_tokens_delta():
         "completion_tokens": 8,
         "total_tokens": 28,
         "cached_prompt_tokens": 6,
+        "total_cost_usd": 0.0,
     }
 
 
@@ -324,6 +332,7 @@ async def test_token_usage_on_tool_result_immediately_after_tool_call_is_zero():
         "completion_tokens": 5,
         "total_tokens": 15,
         "cached_prompt_tokens": 0,
+        "total_cost_usd": 0.0,
     }
 
     tool_result_payload = _decode_payload(published[1])
@@ -332,6 +341,7 @@ async def test_token_usage_on_tool_result_immediately_after_tool_call_is_zero():
         "completion_tokens": 0,
         "total_tokens": 0,
         "cached_prompt_tokens": 0,
+        "total_cost_usd": 0.0,
     }
 
 
@@ -381,7 +391,54 @@ async def test_token_usage_delta_excludes_tokens_lost_to_failed_publish():
         "completion_tokens": 8,
         "total_tokens": 28,
         "cached_prompt_tokens": 0,
+        "total_cost_usd": 0.0,
     }
+
+
+async def test_token_usage_delta_carries_nonzero_cost_across_two_live_events():
+    """total_cost_usd deltas accumulate the same way as token counts."""
+    emitter, published = _make_emitter()
+    await emitter.on_chunk(
+        LLMChunk(
+            usage={
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15,
+                "total_cost_usd": 0.001,
+            }
+        )
+    )
+    await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
+
+    first_payload = _decode_payload(published[0])
+    first_usage = first_payload["token_usage"]
+    assert first_usage["total_cost_usd"] == pytest.approx(0.001)
+    assert first_usage["prompt_tokens"] == 10
+    assert first_usage["completion_tokens"] == 5
+    assert first_usage["total_tokens"] == 15
+    assert first_usage["cached_prompt_tokens"] == 0
+
+    await emitter.on_chunk(
+        LLMChunk(
+            usage={
+                "prompt_tokens": 20,
+                "completion_tokens": 8,
+                "total_tokens": 28,
+                "total_cost_usd": 0.0025,
+            }
+        )
+    )
+    await emitter.on_tool_result(
+        ToolResult(tool_call_id="call_1", content="result", is_error=False)
+    )
+
+    second_payload = _decode_payload(published[1])
+    second_usage = second_payload["token_usage"]
+    assert second_usage["total_cost_usd"] == pytest.approx(0.0025)
+    assert second_usage["prompt_tokens"] == 20
+    assert second_usage["completion_tokens"] == 8
+    assert second_usage["total_tokens"] == 28
+    assert second_usage["cached_prompt_tokens"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -412,6 +469,7 @@ async def test_on_task_finish_publishes_full_payload_shape():
             "completion_tokens": 5,
             "total_tokens": 15,
             "cached_prompt_tokens": 0,
+            "total_cost_usd": 0.0,
         },
         "iterations": 2,
         "tool_invocations": 1,
@@ -488,6 +546,7 @@ async def test_on_task_finish_consumes_token_delta_at_task_boundary():
         "completion_tokens": 2,
         "total_tokens": 5,
         "cached_prompt_tokens": 0,
+        "total_cost_usd": 0.0,
     }
 
 

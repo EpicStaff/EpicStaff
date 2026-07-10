@@ -14,6 +14,7 @@ from __future__ import annotations
 import uuid
 from typing import AsyncIterator
 
+import litellm
 from loguru import logger
 
 from app.llm.client import LLMChunk, LLMClient, ToolCallFragment
@@ -69,6 +70,28 @@ def _usage_dict(usage) -> dict:
         "total_tokens": total,
         "cached_prompt_tokens": _cached_prompt_tokens(data),
     }
+
+
+def _usage_cost_usd(model: str, usage: dict) -> float:
+    """Best-effort USD cost for a normalized usage dict via litellm's price map.
+
+    ``model`` must be the real ``provider/model`` string, NOT the Router's
+    synthetic hash model name — litellm's price map only recognizes real
+    model identifiers. Unmapped or self-hosted models raise inside litellm;
+    swallowed to 0.0 since cost is a display-only value, never billing truth.
+    """
+    try:
+        prompt_cost, completion_cost = litellm.cost_per_token(
+            model=model,
+            prompt_tokens=usage["prompt_tokens"],
+            completion_tokens=usage["completion_tokens"],
+            cache_read_input_tokens=usage["cached_prompt_tokens"],
+        )
+        return prompt_cost + completion_cost
+
+    except Exception as error:
+        logger.debug("cost lookup failed model={} error={}", model, error)
+        return 0.0
 
 
 def _kwargs_for_acompletion(model_config: dict) -> dict:
@@ -183,6 +206,9 @@ class LiteLLMClient(LLMClient):
 
             if usage:
                 usage_data = _usage_dict(usage)
+                usage_data["total_cost_usd"] = _usage_cost_usd(
+                    model_config["model"], usage_data
+                )
                 logger.debug("litellm usage={}", usage_data)
                 yield LLMChunk(usage=usage_data)
 

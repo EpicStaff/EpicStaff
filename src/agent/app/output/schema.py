@@ -60,4 +60,5 @@ def add_usage(a: TokenUsage, b: TokenUsage) -> TokenUsage:
         completion_tokens=a.completion_tokens + b.completion_tokens,
         total_tokens=a.total_tokens + b.total_tokens,
         cached_prompt_tokens=a.cached_prompt_tokens + b.cached_prompt_tokens,
+        total_cost_usd=a.total_cost_usd + b.total_cost_usd,
     )
