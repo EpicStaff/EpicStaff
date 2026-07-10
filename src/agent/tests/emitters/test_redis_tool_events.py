@@ -80,6 +80,7 @@ async def test_on_tool_call_publishes_live_envelope():
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "total_tokens": 0,
+        "cached_prompt_tokens": 0,
     }
     assert payload["task"] is None
 
@@ -223,6 +224,7 @@ async def test_on_chunk_without_usage_leaves_totals_zero():
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "total_tokens": 0,
+        "cached_prompt_tokens": 0,
     }
 
 
@@ -240,6 +242,7 @@ async def test_token_usage_on_tool_call_is_delta_since_last_live_event():
         "prompt_tokens": 10,
         "completion_tokens": 5,
         "total_tokens": 15,
+        "cached_prompt_tokens": 0,
     }
 
     await emitter.on_chunk(
@@ -254,6 +257,52 @@ async def test_token_usage_on_tool_call_is_delta_since_last_live_event():
         "prompt_tokens": 20,
         "completion_tokens": 8,
         "total_tokens": 28,
+        "cached_prompt_tokens": 0,
+    }
+
+
+async def test_token_usage_on_tool_call_includes_cached_prompt_tokens_delta():
+    emitter, published = _make_emitter()
+    await emitter.on_chunk(
+        LLMChunk(
+            usage={
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15,
+                "cached_prompt_tokens": 4,
+            }
+        )
+    )
+    await emitter.on_tool_call({"id": "call_1", "name": "search", "arguments": "{}"})
+
+    first_payload = _decode_payload(published[0])
+    assert first_payload["token_usage"] == {
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "total_tokens": 15,
+        "cached_prompt_tokens": 4,
+    }
+
+    await emitter.on_chunk(
+        LLMChunk(
+            usage={
+                "prompt_tokens": 20,
+                "completion_tokens": 8,
+                "total_tokens": 28,
+                "cached_prompt_tokens": 6,
+            }
+        )
+    )
+    await emitter.on_tool_result(
+        ToolResult(tool_call_id="call_1", content="result", is_error=False)
+    )
+
+    second_payload = _decode_payload(published[1])
+    assert second_payload["token_usage"] == {
+        "prompt_tokens": 20,
+        "completion_tokens": 8,
+        "total_tokens": 28,
+        "cached_prompt_tokens": 6,
     }
 
 
@@ -274,6 +323,7 @@ async def test_token_usage_on_tool_result_immediately_after_tool_call_is_zero():
         "prompt_tokens": 10,
         "completion_tokens": 5,
         "total_tokens": 15,
+        "cached_prompt_tokens": 0,
     }
 
     tool_result_payload = _decode_payload(published[1])
@@ -281,6 +331,7 @@ async def test_token_usage_on_tool_result_immediately_after_tool_call_is_zero():
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "total_tokens": 0,
+        "cached_prompt_tokens": 0,
     }
 
 
@@ -329,6 +380,7 @@ async def test_token_usage_delta_excludes_tokens_lost_to_failed_publish():
         "prompt_tokens": 20,
         "completion_tokens": 8,
         "total_tokens": 28,
+        "cached_prompt_tokens": 0,
     }
 
 
@@ -359,6 +411,7 @@ async def test_on_task_finish_publishes_full_payload_shape():
             "prompt_tokens": 10,
             "completion_tokens": 5,
             "total_tokens": 15,
+            "cached_prompt_tokens": 0,
         },
         "iterations": 2,
         "tool_invocations": 1,
@@ -434,6 +487,7 @@ async def test_on_task_finish_consumes_token_delta_at_task_boundary():
         "prompt_tokens": 3,
         "completion_tokens": 2,
         "total_tokens": 5,
+        "cached_prompt_tokens": 0,
     }
 
 

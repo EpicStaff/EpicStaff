@@ -110,6 +110,7 @@ class _RunState:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    cached_prompt_tokens: int = 0
     context_warned: bool = False
     consecutive_failures: int = 0
 
@@ -118,6 +119,7 @@ class _RunState:
             prompt_tokens=self.prompt_tokens,
             completion_tokens=self.completion_tokens,
             total_tokens=self.total_tokens,
+            cached_prompt_tokens=self.cached_prompt_tokens,
         )
 
     def add_usage(self, usage: dict) -> None:
@@ -129,6 +131,7 @@ class _RunState:
                 usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0),
             )
         )
+        self.cached_prompt_tokens += int(usage.get("cached_prompt_tokens", 0))
 
 
 class DefaultAgentLoop(AgentLoop):

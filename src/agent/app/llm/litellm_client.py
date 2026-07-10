@@ -26,6 +26,31 @@ _STRIPPED_MODEL_CONFIG_KEYS = frozenset(
 )
 
 
+def _cached_prompt_tokens(data: dict) -> int:
+    """Extract prompt-cache READ tokens from a normalized usage dict.
+
+    OpenAI-style: nested under ``prompt_tokens_details.cached_tokens``, which
+    may still be an object (dict/SimpleNamespace/pydantic model) depending on
+    how the caller normalized ``usage``. Anthropic-style responses expose a
+    top-level ``cache_read_input_tokens`` fallback instead.
+    """
+    details = data.get("prompt_tokens_details")
+
+    if details is not None and not isinstance(details, dict):
+        details = (
+            details.model_dump() if hasattr(details, "model_dump") else vars(details)
+        )
+
+    if details:
+        cached = details.get("cached_tokens")
+
+        if cached:
+            return int(cached)
+
+    # Anthropic-style top-level fallback when details are absent.
+    return int(data.get("cache_read_input_tokens") or 0)
+
+
 def _usage_dict(usage) -> dict:
     """Normalize a litellm Usage object / SimpleNamespace / dict to plain token counts."""
     if isinstance(usage, dict):
@@ -42,6 +67,7 @@ def _usage_dict(usage) -> dict:
         "prompt_tokens": prompt,
         "completion_tokens": completion,
         "total_tokens": total,
+        "cached_prompt_tokens": _cached_prompt_tokens(data),
     }
 
 

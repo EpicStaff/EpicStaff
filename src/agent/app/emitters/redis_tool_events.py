@@ -54,9 +54,11 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
         self._prompt_tokens = 0
         self._completion_tokens = 0
         self._total_tokens = 0
+        self._cached_prompt_tokens = 0
         self._emitted_prompt_tokens = 0
         self._emitted_completion_tokens = 0
         self._emitted_total_tokens = 0
+        self._emitted_cached_prompt_tokens = 0
 
     def _consume_token_usage_delta(self) -> dict:
         """Return tokens accumulated since the last live envelope, then
@@ -68,10 +70,13 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
             "completion_tokens": self._completion_tokens
             - self._emitted_completion_tokens,
             "total_tokens": self._total_tokens - self._emitted_total_tokens,
+            "cached_prompt_tokens": self._cached_prompt_tokens
+            - self._emitted_cached_prompt_tokens,
         }
         self._emitted_prompt_tokens = self._prompt_tokens
         self._emitted_completion_tokens = self._completion_tokens
         self._emitted_total_tokens = self._total_tokens
+        self._emitted_cached_prompt_tokens = self._cached_prompt_tokens
         return delta
 
     async def _publish_live(self, event_type: str, payload: dict) -> None:
@@ -130,6 +135,9 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
                     chunk.usage.get("prompt_tokens", 0)
                     + chunk.usage.get("completion_tokens", 0),
                 )
+            )
+            self._cached_prompt_tokens += int(
+                chunk.usage.get("cached_prompt_tokens", 0)
             )
 
         await super().on_chunk(chunk)

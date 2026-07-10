@@ -553,7 +553,8 @@ def test_context_starts_with_empty_messages():
 
 
 async def test_token_usage_aggregated_across_two_iterations():
-    """Usage chunks from two iterations are summed: prompt=12, completion=5, total=17."""
+    """Usage chunks from two iterations are summed: prompt=12, completion=5, total=17,
+    cached_prompt_tokens=6."""
     emitter = RecordingEmitter()
     context = make_context()
     tools = StubToolRegistry({"get_time": lambda args: "12:00"})
@@ -561,11 +562,25 @@ async def test_token_usage_aggregated_across_two_iterations():
 
     iter1_chunks = [
         *tool_chunks("call_1", "get_time", "{}"),
-        LLMChunk(usage={"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}),
+        LLMChunk(
+            usage={
+                "prompt_tokens": 5,
+                "completion_tokens": 3,
+                "total_tokens": 8,
+                "cached_prompt_tokens": 2,
+            }
+        ),
     ]
     iter2_chunks = [
         *text_chunks("The time is 12:00"),
-        LLMChunk(usage={"prompt_tokens": 7, "completion_tokens": 2, "total_tokens": 9}),
+        LLMChunk(
+            usage={
+                "prompt_tokens": 7,
+                "completion_tokens": 2,
+                "total_tokens": 9,
+                "cached_prompt_tokens": 4,
+            }
+        ),
     ]
 
     llm = FakeLLMClient([iter1_chunks, iter2_chunks])
@@ -577,6 +592,7 @@ async def test_token_usage_aggregated_across_two_iterations():
     assert result.token_usage.prompt_tokens == 12
     assert result.token_usage.completion_tokens == 5
     assert result.token_usage.total_tokens == 17
+    assert result.token_usage.cached_prompt_tokens == 6
 
 
 async def test_token_usage_defaults_to_zero_when_no_usage_chunks():
@@ -594,6 +610,7 @@ async def test_token_usage_defaults_to_zero_when_no_usage_chunks():
     assert result.token_usage.prompt_tokens == 0
     assert result.token_usage.completion_tokens == 0
     assert result.token_usage.total_tokens == 0
+    assert result.token_usage.cached_prompt_tokens == 0
 
 
 # ---------------------------------------------------------------------------

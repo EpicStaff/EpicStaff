@@ -167,7 +167,10 @@ async def test_on_final_serializes_populated_task_summaries():
                 order=0,
                 final_text="A done",
                 token_usage=TokenUsage(
-                    prompt_tokens=2, completion_tokens=1, total_tokens=3
+                    prompt_tokens=2,
+                    completion_tokens=1,
+                    total_tokens=3,
+                    cached_prompt_tokens=1,
                 ),
                 iterations=2,
                 tool_invocations=1,
@@ -178,7 +181,10 @@ async def test_on_final_serializes_populated_task_summaries():
                 order=1,
                 final_text="B done",
                 token_usage=TokenUsage(
-                    prompt_tokens=5, completion_tokens=4, total_tokens=9
+                    prompt_tokens=5,
+                    completion_tokens=4,
+                    total_tokens=9,
+                    cached_prompt_tokens=2,
                 ),
                 iterations=3,
                 tool_invocations=2,
@@ -199,6 +205,7 @@ async def test_on_final_serializes_populated_task_summaries():
                 "prompt_tokens": 2,
                 "completion_tokens": 1,
                 "total_tokens": 3,
+                "cached_prompt_tokens": 1,
             },
             "iterations": 2,
             "tool_invocations": 1,
@@ -212,6 +219,7 @@ async def test_on_final_serializes_populated_task_summaries():
                 "prompt_tokens": 5,
                 "completion_tokens": 4,
                 "total_tokens": 9,
+                "cached_prompt_tokens": 2,
             },
             "iterations": 3,
             "tool_invocations": 2,

@@ -112,18 +112,26 @@ def test_validate_output_raises_invalid_output_schema_error_for_meta_invalid_sch
 
 
 def test_add_usage_sums_all_fields():
-    a = TokenUsage(prompt_tokens=5, completion_tokens=3, total_tokens=8)
-    b = TokenUsage(prompt_tokens=7, completion_tokens=2, total_tokens=9)
+    a = TokenUsage(
+        prompt_tokens=5, completion_tokens=3, total_tokens=8, cached_prompt_tokens=2
+    )
+    b = TokenUsage(
+        prompt_tokens=7, completion_tokens=2, total_tokens=9, cached_prompt_tokens=1
+    )
     result = add_usage(a, b)
     assert result.prompt_tokens == 12
     assert result.completion_tokens == 5
     assert result.total_tokens == 17
+    assert result.cached_prompt_tokens == 3
 
 
 def test_add_usage_with_zero():
-    a = TokenUsage(prompt_tokens=10, completion_tokens=4, total_tokens=14)
+    a = TokenUsage(
+        prompt_tokens=10, completion_tokens=4, total_tokens=14, cached_prompt_tokens=6
+    )
     b = TokenUsage()
     result = add_usage(a, b)
     assert result.prompt_tokens == 10
     assert result.completion_tokens == 4
     assert result.total_tokens == 14
+    assert result.cached_prompt_tokens == 6

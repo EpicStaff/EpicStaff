@@ -221,6 +221,13 @@ class TokenUsage(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    cached_prompt_tokens: int = 0
+    """Prompt-cache READ tokens served from the provider's cache.
+
+    LiteLLM folds cache reads INTO ``prompt_tokens``, so this is a subset of
+    ``prompt_tokens`` and purely informational — it must NEVER be added into
+    ``total_tokens``.
+    """
 
 
 class TaskRunSummary(BaseModel):
