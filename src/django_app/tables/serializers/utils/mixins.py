@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.db.models import Model
 from django.db import transaction
 
+from tables.models.base_models import BaseGlobalNode
 from tables.models.webhook_models import WebhookTrigger
 from tables.models.python_models import PythonCode
 from tables.models import Agent, PythonCodeTool, ToolConfig, McpTool
@@ -9,6 +10,22 @@ from tables.serializers.org_scoped_fields import (
     org_visible_queryset,
     resolve_active_org_id,
 )
+
+
+def assert_node_ref_in_graph(node_id, graph, field: str) -> None:
+    """A node id referenced from within a graph (edge endpoints, decision-table
+    next/error/condition next nodes) must belong to that SAME graph — which also
+    guarantees the same organization. A cross-graph, cross-org, or non-existent
+    id is rejected identically ("Invalid pk … does not exist"), so existence
+    never leaks. ``graph`` may be a Graph instance or None (skips when unknown).
+    """
+    if node_id is None or graph is None:
+        return
+    node = BaseGlobalNode.find_globally(node_id)
+    if node is None or getattr(node, "graph_id", None) != getattr(graph, "id", None):
+        raise serializers.ValidationError(
+            {field: f'Invalid pk "{node_id}" - object does not exist.'}
+        )
 
 
 class NestedAgentExportMixin:

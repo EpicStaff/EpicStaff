@@ -45,7 +45,17 @@ This rule is applied uniformly wherever such references appear, including (non-e
 - **Agent** — `llm_config`, `fcm_llm_config`, `knowledge_collection`, `rag`, `tool_ids`, and the
   nested realtime-agent's `realtime_config` / `realtime_transcription_config`.
 - **Task** — `agent`, `crew`, `tool_ids`.
-- **Crew** — `manager_llm_config`, `memory_llm_config`, `embedding_config`, `agents`.
+- **Crew** — `manager_llm_config`, `memory_llm_config`, `planning_llm_config`, `embedding_config`, `agents`.
+- **Task** — context tasks must belong to the task's own crew (⇒ same org).
+- **Graph** — `label_ids`.
+- **Every graph-child node's `graph` FK** (crew/python/file-extractor/audio/code-agent/subgraph/edge/
+  conditional-edge/start/end/decision-table/webhook-trigger/telegram-trigger/schedule-trigger/note) is
+  scoped, so a node cannot be created under, or repointed (on update) to, another org's graph.
+- **Node-id references must live in the same graph** (⇒ same org): `Edge.start_node_id`/`end_node_id`,
+  `DecisionTableNode.default_next_node_id`/`next_error_node_id`, and each decision-table condition
+  group's `next_node_id`.
+- **init-realtime** (`POST /api/init-realtime/`) requires `AGENTS.READ` and an `agent_id` in the active
+  org.
 - **Configs → model** (hybrid targets — shared built-ins allowed, other orgs' custom rows rejected):
   `LLMConfig.model`, `EmbeddingConfig.model`, `RealtimeConfig.realtime_model`,
   `RealtimeTranscriptionConfig.realtime_transcription_model`.

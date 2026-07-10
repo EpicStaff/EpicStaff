@@ -14,6 +14,7 @@ from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.utils.telegram_fields import load_telegram_trigger_fields
 from tables.models import Tool
 from tables.models import Crew
+from tables.models import Agent
 from tables.services.realtime_service import RealtimeService
 from tables.swagger_schemas.python_node_test_mode_schema import (
     LAST_TEST_INPUT_SWAGGER as _LAST_TEST_INPUT_SWAGGER,
@@ -717,6 +718,8 @@ class RunPythonCodeAPIView(APIView):
 
 
 class InitRealtimeAPIView(APIView):
+    _org_context = OrgContextService()
+
     @extend_schema(**INIT_REALTIME_POST)
     def post(self, request):
         logger.info("Received POST request to start a new session.")
@@ -732,6 +735,23 @@ class InitRealtimeAPIView(APIView):
 
         agent_id = serializer.validated_data["agent_id"]
         config = serializer.validated_data.get("config", {})
+
+        # Org isolation: starting a realtime session is a read/use of an agent,
+        # so require AGENTS.READ and reject an agent_id outside the active org
+        # (rejected like a missing id — existence never leaks).
+        org_id = self._org_context.resolve(
+            request=request, view_kwargs=getattr(self, "kwargs", {})
+        )
+        assert_org_permission(
+            user=request.user,
+            org_id=org_id,
+            resource_type=ResourceType.AGENTS,
+            action=Permission.READ,
+        )
+        if not Agent.objects.filter(id=agent_id, org_id=org_id).exists():
+            raise ValidationError(
+                {"agent_id": f'Invalid pk "{agent_id}" - object does not exist.'}
+            )
 
         try:
             connection_key = realtime_service.init_realtime(

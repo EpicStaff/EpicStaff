@@ -25,12 +25,16 @@ from tables.serializers.org_scoped_fields import (
     OrgScopedPrimaryKeyRelatedField,
     resolve_active_org_id,
 )
-from tables.serializers.utils.mixins import NestedPythonCodeMixin
+from tables.serializers.utils.mixins import (
+    NestedPythonCodeMixin,
+    assert_node_ref_in_graph,
+)
 
 
 class CrewNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
     crew = CrewSerializer(read_only=True)
     crew_id = serializers.IntegerField(write_only=True)
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta:
         model = CrewNode
@@ -66,6 +70,7 @@ class PythonNodeSerializer(
     ContentHashWritableMixin, NestedPythonCodeMixin, serializers.ModelSerializer
 ):
     python_code = PythonCodeSerializer()
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta:
         model = PythonNode
@@ -75,6 +80,8 @@ class PythonNodeSerializer(
 class FileExtractorNodeSerializer(
     ContentHashWritableMixin, serializers.ModelSerializer
 ):
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
+
     class Meta:
         model = FileExtractorNode
         fields = "__all__"
@@ -83,6 +90,8 @@ class FileExtractorNodeSerializer(
 class AudioTranscriptionNodeSerializer(
     ContentHashWritableMixin, serializers.ModelSerializer
 ):
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
+
     class Meta:
         model = AudioTranscriptionNode
         fields = "__all__"
@@ -93,6 +102,7 @@ class CodeAgentNodeSerializer(serializers.ModelSerializer):
     llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(), required=False, allow_null=True
     )
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta:
         model = CodeAgentNode
@@ -100,9 +110,18 @@ class CodeAgentNodeSerializer(serializers.ModelSerializer):
 
 
 class EdgeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
+
     class Meta(BaseGraphEntityMixin.Meta):
         model = Edge
         fields = "__all__"
+
+    def validate(self, attrs):
+        graph = attrs.get("graph") or getattr(self.instance, "graph", None)
+        for field in ("start_node_id", "end_node_id"):
+            node_id = attrs.get(field, getattr(self.instance, field, None))
+            assert_node_ref_in_graph(node_id, graph, field)
+        return attrs
 
 
 class SubGraphNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
@@ -110,6 +129,7 @@ class SubGraphNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializ
     subgraph = OrgScopedPrimaryKeyRelatedField(
         queryset=Graph.objects.all(), required=False, allow_null=True
     )
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta(BaseGraphEntityMixin.Meta):
         model = SubGraphNode
