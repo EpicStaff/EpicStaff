@@ -198,6 +198,7 @@ from tables.views.mixins import (
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.permissions import HasOrgPermission, IsSuperadmin
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
+from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
     validate_classification_condition_group_names,
 )
@@ -773,12 +774,11 @@ class PythonCodeToolConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     filterset_fields = ["tool", "name"]
 
 
-class PythonCodeResultReadViewSet(ReadOnlyModelViewSet):
-    # TODO(EST-2423): org-scope python execution results.
+class PythonCodeResultReadViewSet(mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    # Superadmin-only
+    permission_classes = [IsAuthenticated, IsSuperadmin]
     queryset = PythonCodeResult.objects.all()
     serializer_class = PythonCodeResultSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["execution_id", "returncode"]
 
 
 class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet):
@@ -789,7 +789,9 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
         "copy": Permission.CREATE,
         "export": Permission.EXPORT,
         "bulk_export": Permission.EXPORT,
+        "partial_export": Permission.EXPORT,
         "import_entity": Permission.CREATE,
+        "partial_import": Permission.UPDATE,
         "save_flow": Permission.UPDATE,
     }
     copy_service_class = GraphCopyService
@@ -952,8 +954,17 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
             )
 
         graph = self.get_object()
+        org_id = self.get_active_org_id()
+        effective_permissions = PermissionResolver().resolve(
+            user=request.user, org_id=org_id
+        )
         partial_import_service = PartialImportService(entity_registry)
-        id_mapper = partial_import_service.import_data(data, graph)
+        id_mapper = partial_import_service.import_data(
+            export_data=data,
+            graph=graph,
+            org_id=org_id,
+            effective_permissions=effective_permissions,
+        )
         summary = id_mapper.get_detailed_summary(entity_registry)
         return Response(summary, status=status.HTTP_200_OK)
 
@@ -1386,9 +1397,10 @@ class RealtimeTranscriptionConfigModelViewSet(
 
 
 class RealtimeSessionItemViewSet(viewsets.ReadOnlyModelViewSet):
-    # TODO(EST-2423 deferred): org-scope realtime session items. Keyed by an
-    # opaque connection_key with no org/agent FK; needs a denormalized org to
-    # scope. Authenticated-only for now.
+    # Realtime session items hold conversation payloads (incl. base64 audio)
+    # keyed by an opaque connection_key with no org FK, so they can leak another
+    # org's data. Restricted to superadmin (read-only).
+    permission_classes = [IsAuthenticated, IsSuperadmin]
     queryset = RealtimeSessionItem.objects.all()
     serializer_class = RealtimeSessionItemSerializer
 
@@ -1766,9 +1778,11 @@ class GraphNoteViewSet(
     serializer_class = GraphNoteSerializer
 
 
-class NgrokWebhookConfigViewSet(SuperadminWriteMixin, ModelViewSet):
-    # Global infrastructure config (ngrok tunnel/auth): readable by any
-    # authenticated user, writable only by superadmins.
+class NgrokWebhookConfigViewSet(ModelViewSet):
+    # Global infrastructure config holding the ngrok auth token (a secret).
+    # Superadmin-only for both read and write so the token is never exposed to
+    # ordinary org users.
+    permission_classes = [IsAuthenticated, IsSuperadmin]
     queryset = NgrokWebhookConfig.objects.all()
     serializer_class = NgrokWebhookConfigModelSerializer
 

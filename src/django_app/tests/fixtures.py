@@ -22,7 +22,6 @@ from tables.models.crew_models import (
     DefaultAgentConfig,
     DefaultCrewConfig,
 )
-from tables.services.config_service import YamlConfigService
 from tables.services.redis_service import RedisService
 from tables.services.session_manager_service import SessionManagerService
 from tables.models import (

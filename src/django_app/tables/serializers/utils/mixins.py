@@ -305,6 +305,20 @@ class WebhookCreationMixin:
         path = data.get("path")
         ngrok_conf = data.get("ngrok_webhook_config")
 
+        # ngrok_webhook_config is global platform infrastructure managed by
+        # superadmins (the /api/ngrok-config/ endpoint is superadmin-only). Non-
+        # superadmins may not assign it via a webhook-trigger node either — drop
+        # it so a caller can't bind an arbitrary config by id.
+        #
+        # TODO: TECH DEBT (per-org ngrok): NgrokWebhookConfig has no `org` column, so
+        # this is a superadmin gate rather than org scoping. To make webhook
+        # tunnels per-organization, add an `org` FK to NgrokWebhookConfig, scope
+        # it, and replace this gate with OrgScopedPrimaryKeyRelatedField.
+        request = self.context.get("request")
+        is_superadmin = getattr(getattr(request, "user", None), "is_superadmin", False)
+        if not is_superadmin:
+            ngrok_conf = None
+
         return WebhookTrigger.objects.get_or_create(
             path=path, ngrok_webhook_config=ngrok_conf
         )
