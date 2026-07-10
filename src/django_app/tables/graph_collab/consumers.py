@@ -30,6 +30,7 @@ from tables.graph_collab.protocol import (
     LockStateMessage,
     NodeLockedMessage,
     NodeUnlockedMessage,
+    OpRejectedMessage,
     PresenceStateMessage,
     UserJoinedMessage,
     UserLeftMessage,
@@ -384,7 +385,20 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
 
         # Apply state-mutating ops to the live snapshot before relaying.
         if message.type in _STATE_OP_TYPES:
-            await graph_state_service.apply_op(self.graph_id, message)
+            result = await graph_state_service.apply_op(self.graph_id, message)
+            if result is not None and not result.relay:
+                node = getattr(message, "node", None) or {}
+                await self.send_json(
+                    OpRejectedMessage(
+                        op_type=message.type,
+                        op_id=getattr(message, "op_id", None),
+                        list_key=getattr(message, "list_key", ""),
+                        node_ref={"id": node.get("id"), "temp_id": node.get("temp_id")},
+                        reason=result.reason or "rejected",
+                        details=result.details,
+                    ).model_dump()
+                )
+                return
 
         event = message.model_dump()
         event["sender_channel"] = self.channel_name

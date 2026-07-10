@@ -1,75 +1,12 @@
-"""
-Per-graph live snapshot service.
-
-Keeps an authoritative **superset** JSON blob in Redis so late-joining editors
-receive the current unsaved state, not the last DB-saved version, and so that
-a future flush (Block 4) can send the snapshot directly through
-GraphBulkSaveInputSerializer without additional transformation.
-
-Snapshot shape (Django/superset form)
-======================================
-{
-    "save_version": <int>,          # graph.save_version at seed time
-
-    # All 13 node type lists (GraphSerializer READ shape + injected write ids):
-    "crew_node_list":                 [...],
-    "python_node_list":               [...],
-    "file_extractor_node_list":       [...],
-    "audio_transcription_node_list":  [...],
-    "start_node_list":                [...],
-    "end_node_list":                  [...],
-    "subgraph_node_list":             [...],
-    "decision_table_node_list":       [...],
-    "graph_note_list":                [...],
-    "webhook_trigger_node_list":      [...],
-    "telegram_trigger_node_list":     [...],
-    "schedule_trigger_node_list":     [...],
-    "code_agent_node_list":           [...],
-    "classification_decision_table_node_list": [...],
-
-    # Edge lists:
-    "edge_list":             [...],
-    "conditional_edge_list": [...],
-
-    # Deleted-entities accumulator (shape expected by DeletedEntitiesSerializer):
-    "deleted": {
-        "edge_ids":                       [],
-        "conditional_edge_ids":           [],
-        "crew_node_ids":                  [],
-        "python_node_ids":                [],
-        "file_extractor_node_ids":        [],
-        "audio_transcription_node_ids":   [],
-        "start_node_ids":                 [],
-        "end_node_ids":                   [],
-        "subgraph_node_ids":              [],
-        "decision_table_node_ids":        [],
-        "graph_note_ids":                 [],
-        "webhook_trigger_node_ids":       [],
-        "telegram_trigger_node_ids":      [],
-        "schedule_trigger_node_ids":      [],
-        "code_agent_node_ids":            [],
-        "classification_decision_table_node_ids": [],
-    },
-}
-
-Each node entry is the GraphSerializer READ output for that node plus any
-injected write-only FK fields (see snapshot_normalize.inject_bulk_save_fields).
-New nodes not yet persisted carry a "temp_id" string instead of a real "id".
-
-Key:   graph:live:{graph_id}
-Value: JSON-encoded superset snapshot
-TTL:   GRAPH_LIVE_STATE_TTL_SECONDS (safety net; real cleanup is last-leave clear)
-
-Concurrent apply_op calls for the same graph are serialised with a per-graph
-asyncio.Lock so read-modify-write cycles never lose updates in the single worker.
-"""
-
 import asyncio
 import json
+from dataclasses import dataclass
+from enum import Enum
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
 
+from tables.graph_collab.entry_merge import deep_merge
 from tables.graph_collab.protocol import (
     ConnectionCreatedMessage,
     ConnectionDeletedMessage,
@@ -79,11 +16,32 @@ from tables.graph_collab.protocol import (
     NodeUpdatedMessage,
     NodesDeletedMessage,
 )
-from tables.graph_collab.op_normalize import normalize_op_entry
+from tables.graph_collab.op_normalize import (
+    normalize_op_entry,
+    normalize_partial_op_entry,
+)
 from tables.graph_collab.snapshot_normalize import inject_bulk_save_fields
 from tables.services.graph_bulk_save_service.registry import SINGLETON_LIST_KEYS
 from tables.services.redis_service import RedisService
 from utils.logger import logger
+
+
+class OpStatus(str, Enum):
+    APPLIED = "applied"
+    REJECTED = "rejected"
+
+
+@dataclass(frozen=True)
+class OpResult:
+    """Outcome of a single apply_op call."""
+
+    status: OpStatus
+    reason: str | None = None
+    relay: bool = True
+    details: dict | None = None
+
+
+APPLIED_OK = OpResult(OpStatus.APPLIED)
 
 
 def _redis_key(graph_id: int) -> str:
@@ -590,7 +548,123 @@ class GraphLiveStateService:
                 new_save_version,
             )
 
-    async def apply_op(self, graph_id: int, message) -> None:
+    def _apply_node_upsert(
+        self, snapshot: dict, deleted: dict, message, graph_id: int
+    ) -> OpResult | None:
+        """Handle NodeCreatedMessage and legacy NodeUpdatedMessage (changed_fields
+        is None) — wholesale-replace upsert semantics, unchanged from
+        pre-EST-3020 behavior: normalize_op_entry, singleton collapse or
+        _upsert_entry (append-on-miss kept), deleted-accumulator resurrect kept.
+
+        Returns None for an unknown list_key (mirrors the old bare `return` —
+        apply_op's caller treats a None result as "relay, but nothing changed").
+        # TODO(EST-3020): collapse legacy update branch after FE migrates to changed_fields
+        """
+        list_key = message.list_key
+        if list_key not in _KNOWN_LIST_KEYS:
+            logger.warning(
+                "Ignoring op with unknown list_key {} on graph {}",
+                list_key,
+                graph_id,
+            )
+            return None
+
+        entries: list[dict] = snapshot.setdefault(list_key, [])
+        new_entry = normalize_op_entry(list_key, message.node)
+        if list_key in SINGLETON_LIST_KEYS:
+            _collapse_singleton_entry(entries, new_entry, list_key)
+        else:
+            _upsert_entry(entries, new_entry)
+
+        # if this node has a real id that was previously deleted,
+        # remove it from the accumulator — the node is alive again.
+        entry_id = new_entry.get("id")
+        if entry_id is not None:
+            delete_key = _LIST_KEY_TO_DELETE_KEY.get(list_key)
+            if delete_key:
+                accumulator: list = deleted.get(delete_key, [])
+                if entry_id in accumulator:
+                    accumulator.remove(entry_id)
+
+        return APPLIED_OK
+
+    async def _apply_node_merge(
+        self, snapshot: dict, deleted: dict, message, graph_id: int
+    ) -> OpResult:
+        """Merge-only handling for a NodeUpdatedMessage carrying changed_fields
+        (EST-3020). Never creates a new entry and never resurrects a deleted
+        node — a miss is always a rejection, not a fallback to upsert.
+
+        See module-level OpResult for the reject reasons this can return.
+        """
+        list_key = message.list_key
+        if list_key not in _KNOWN_LIST_KEYS:
+            logger.warning(
+                "Rejecting merge op with unknown list_key {} on graph {}",
+                list_key,
+                graph_id,
+            )
+            return OpResult(OpStatus.REJECTED, "unknown_list_key", relay=False)
+
+        changed_fields = set(message.changed_fields)
+        allowed_keys = changed_fields | {"id", "temp_id"}
+        node = message.node
+        filtered: dict = {}
+        for key in allowed_keys:
+            if key in node:
+                filtered[key] = node[key]
+            elif key in changed_fields:
+                logger.debug(
+                    "_apply_node_merge: changed field {} absent from node "
+                    "payload on graph {} — ignoring",
+                    key,
+                    graph_id,
+                )
+
+        if filtered.get("id") is None and filtered.get("temp_id") is None:
+            return OpResult(OpStatus.REJECTED, "missing_identity", relay=False)
+
+        overlay = normalize_partial_op_entry(list_key, filtered)
+        entries: list[dict] = snapshot.setdefault(list_key, [])
+
+        target_index: int | None = None
+        if list_key in SINGLETON_LIST_KEYS:
+            if entries:
+                target_index = 0
+                if entries[0].get("id") is not None:
+                    # Never attach a mismatched temp_id to an already-persisted
+                    # singleton row.
+                    overlay.pop("temp_id", None)
+        else:
+            ref_id = overlay.get("id")
+            ref_temp_id = overlay.get("temp_id")
+            for index, existing in enumerate(entries):
+                if _match_entry(existing, ref_id, ref_temp_id):
+                    target_index = index
+                    if existing.get("id") is not None:
+                        # Never attach a stale temp_id to an already-persisted
+                        # entry — a row must never carry both id and temp_id.
+                        overlay.pop("temp_id", None)
+                    break
+
+            if target_index is None and ref_temp_id is not None:
+                resolved = await self.get_resolved_temp_ids(graph_id)
+                real_id = resolved.get(str(ref_temp_id))
+                if real_id is not None:
+                    for index, existing in enumerate(entries):
+                        if _match_entry(existing, real_id, None):
+                            target_index = index
+                            overlay.pop("temp_id", None)
+                            overlay["id"] = real_id
+                            break
+
+        if target_index is None:
+            return OpResult(OpStatus.REJECTED, "target_not_found", relay=False)
+
+        entries[target_index] = deep_merge(entries[target_index], overlay)
+        return APPLIED_OK
+
+    async def apply_op(self, graph_id: int, message) -> OpResult | None:
         """Mutate the stored superset snapshot according to *message*.
 
         If no snapshot exists yet (race between seed and op), the op is dropped
@@ -598,36 +672,6 @@ class GraphLiveStateService:
 
         All mutation for a given graph_id is serialised with an asyncio.Lock to
         prevent lost-update races in the single async worker.
-
-        Op semantics:
-        - NodeCreatedMessage / NodeUpdatedMessage: upsert by id (when both are
-          non-null ints) or temp_id (string) in the list named by message.list_key.
-          If the upserted entry carries a real integer id that is currently in
-          the deleted accumulator (delete-then-readd scenario), that id is removed
-          from the accumulator so a later flush does not delete the re-added node.
-          Exception: for SINGLETON_LIST_KEYS (start_node_list / end_node_list),
-          the list is always collapsed to exactly one entry instead of upserted
-          — a Created op with a mismatched temp_id replaces the singleton rather
-          than appending a second one (see _collapse_singleton_entry).
-        - NodesDeletedMessage: remove each ref from its list_key; when a removed
-          entry had a real integer id, append it to the snapshot's deleted
-          accumulator under the corresponding <type>_node_ids key. For refs
-          with a real integer id, also cascades: drops edge_list /
-          conditional_edge_list entries pointing at the deleted node
-          (accumulating their real ids for deletion too) and nulls out any
-          decision-table routing ref (default_next_node_id,
-          next_error_node_id, condition_groups[].next_node_id) pointing at it.
-          Temp-only node refs are skipped for cascading — they were never
-          persisted, so they cannot have persisted edges or routing refs.
-        - ConnectionCreatedMessage: upsert into edge_list or conditional_edge_list
-          (determined by message.list_key).
-        - ConnectionDeletedMessage: remove single entry from message.list_key.
-        - ConnectionsDeletedMessage: remove each ref from its list_key.
-        - ConnectionWaypointsUpdatedMessage: mutate the edge entry's metadata
-          (or waypoints field directly).
-
-        Unknown list_key values are rejected with a warning and treated as a
-        no-op — they must not mutate the snapshot.
         """
         # TODO implement a Strategy pattern instead of long if-else
         async with self._get_lock(graph_id):
@@ -638,35 +682,26 @@ class GraphLiveStateService:
                     graph_id,
                     getattr(message, "type", "?"),
                 )
-                return
+                is_merge_only = (
+                    isinstance(message, NodeUpdatedMessage)
+                    and message.changed_fields is not None
+                )
+                return OpResult(
+                    OpStatus.REJECTED, "no_snapshot", relay=not is_merge_only
+                )
 
             deleted: dict = snapshot.setdefault("deleted", _make_empty_deleted())
 
-            if isinstance(message, NodeCreatedMessage | NodeUpdatedMessage):
-                list_key = message.list_key
-                if list_key not in _KNOWN_LIST_KEYS:
-                    logger.warning(
-                        "Ignoring op with unknown list_key {} on graph {}",
-                        list_key,
-                        graph_id,
-                    )
-                    return
-                entries: list[dict] = snapshot.setdefault(list_key, [])
-                new_entry = normalize_op_entry(list_key, message.node)
-                if list_key in SINGLETON_LIST_KEYS:
-                    _collapse_singleton_entry(entries, new_entry, list_key)
-                else:
-                    _upsert_entry(entries, new_entry)
+            if isinstance(message, NodeCreatedMessage) or (
+                isinstance(message, NodeUpdatedMessage)
+                and message.changed_fields is None
+            ):
+                result = self._apply_node_upsert(snapshot, deleted, message, graph_id)
 
-                # if this node has a real id that was previously deleted,
-                # remove it from the accumulator — the node is alive again.
-                entry_id = new_entry.get("id")
-                if entry_id is not None:
-                    delete_key = _LIST_KEY_TO_DELETE_KEY.get(list_key)
-                    if delete_key:
-                        accumulator: list = deleted.get(delete_key, [])
-                        if entry_id in accumulator:
-                            accumulator.remove(entry_id)
+            elif isinstance(message, NodeUpdatedMessage):
+                result = await self._apply_node_merge(
+                    snapshot, deleted, message, graph_id
+                )
 
             elif isinstance(message, NodesDeletedMessage):
                 for ref in message.refs:
@@ -698,6 +733,8 @@ class GraphLiveStateService:
                     if isinstance(ref.id, int):
                         _cascade_deleted_node_refs(snapshot, deleted, ref.id)
 
+                result = APPLIED_OK
+
             elif isinstance(message, ConnectionCreatedMessage):
                 list_key = message.list_key
                 if list_key not in _KNOWN_LIST_KEYS:
@@ -724,6 +761,8 @@ class GraphLiveStateService:
                         if connection_id in accumulator:
                             accumulator.remove(connection_id)
 
+                result = APPLIED_OK
+
             elif isinstance(message, ConnectionDeletedMessage):
                 list_key = message.list_key
                 if list_key not in _KNOWN_LIST_KEYS:
@@ -747,6 +786,8 @@ class GraphLiveStateService:
                         surviving.append(entry)
                 snapshot[list_key] = surviving
 
+                result = APPLIED_OK
+
             elif isinstance(message, ConnectionsDeletedMessage):
                 for ref in message.refs:
                     list_key = ref.list_key
@@ -768,6 +809,8 @@ class GraphLiveStateService:
                         else:
                             surviving.append(entry)
                     snapshot[list_key] = surviving
+
+                result = APPLIED_OK
 
             elif isinstance(message, ConnectionWaypointsUpdatedMessage):
                 list_key = message.list_key
@@ -792,27 +835,20 @@ class GraphLiveStateService:
                         entry["waypoints"] = message.waypoints
                         break
 
-            await self.seed(graph_id, snapshot)
-            self._revision[graph_id] = self._revision.get(graph_id, 0) + 1
+                result = APPLIED_OK
+
+            else:
+                result = APPLIED_OK
+
+            if result is not None and result.status is OpStatus.APPLIED:
+                await self.seed(graph_id, snapshot)
+                self._revision[graph_id] = self._revision.get(graph_id, 0) + 1
+
+            return result
 
 
 def _cascade_deleted_node_refs(snapshot: dict, deleted: dict, node_id: int) -> None:
-    """Drop edges and null decision-table routing refs pointing at *node_id*.
-
-    Called for every deleted node ref that carries a real integer id — a
-    temp-only node was never persisted, so it cannot have persisted edges or
-    routing refs pointing at it.  Mutates *snapshot* and *deleted* in place:
-
-    - Edges: any ``edge_list`` / ``conditional_edge_list`` entry whose
-      endpoint ref equals *node_id* is dropped from the snapshot; if the
-      dropped entry carries a real ``id``, that id is appended to the
-      matching ``deleted`` accumulator (deduped — a prior
-      ``connections_deleted`` op may already have queued it).
-    - Routing: any ``decision_table_node_list`` /
-      ``classification_decision_table_node_list`` entry's
-      ``default_next_node_id`` / ``next_error_node_id`` / per-group
-      ``next_node_id`` pointing at *node_id* is nulled out in place.
-    """
+    """Drop edges and null decision-table routing refs pointing at *node_id*"""
     cascaded_edge_ids: dict[str, list] = {}
 
     for list_key, ref_fields in _EDGE_NODE_REF_FIELDS.items():

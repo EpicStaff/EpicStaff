@@ -56,6 +56,20 @@ class ErrorMessage(BaseModel):
     message: str
 
 
+class OpRejectedMessage(BaseModel):
+    """Sent to the sender only (never relayed to peers) when a state-mutating
+    op could not be applied to the live snapshot"""
+
+    type: str = "op_rejected"
+    op_type: str
+    op_id: str | None = None
+    list_key: str
+    node_ref: dict
+    # One of: "target_not_found", "no_snapshot", "unknown_list_key", "missing_identity".
+    reason: str
+    details: dict | None = None
+
+
 class NodeCreatedMessage(BaseModel):
     type: str = "node_created"
     node: dict
@@ -72,6 +86,26 @@ class NodeUpdatedMessage(BaseModel):
     # list_key identifies which <type>_node_list to look up when mutating the snapshot.
     list_key: str
     editor: EditorInfo
+    changed_fields: list[str] | None = None
+    # Client-generated correlation id, echoed back on OpRejectedMessage so the
+    # sender can match the rejection to the op it sent.
+    op_id: str | None = None
+
+    @model_validator(mode="after")
+    def _changed_fields_require_identity(self) -> "NodeUpdatedMessage":
+        if self.changed_fields is None:
+            return self
+        if not self.changed_fields:
+            raise ValueError(
+                "changed_fields must be non-empty when provided (use None for "
+                "legacy full-payload semantics)"
+            )
+        if self.node.get("id") is None and self.node.get("temp_id") is None:
+            raise ValueError(
+                "A partial NodeUpdatedMessage (changed_fields set) requires "
+                "'node' to carry an 'id' or 'temp_id'"
+            )
+        return self
 
 
 class EntryDeleteRef(BaseModel):
