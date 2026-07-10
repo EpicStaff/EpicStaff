@@ -501,6 +501,7 @@ def test_build_request_blob_carries_tool_limit_fields(redis_service_stub, llm_da
             max_tool_calls=5,
             tool_timeout=30,
             max_consecutive_failures=2,
+            schema_max_retries=4,
         ),
         instructions="Summarize the findings.",
     )
@@ -511,6 +512,7 @@ def test_build_request_blob_carries_tool_limit_fields(redis_service_stub, llm_da
     assert agent_spec["max_tool_calls"] == 5
     assert agent_spec["tool_timeout"] == 30
     assert agent_spec["max_consecutive_failures"] == 2
+    assert agent_spec["schema_max_retries"] == 4
 
 
 @pytest.mark.asyncio

@@ -127,6 +127,8 @@ class AgentSpec(BaseModel):
     llm: LLMData
     fcm_llm: LLMData | None = None
     max_iter: int | None = None
+    schema_max_retries: int | None = None
+    """Structured-output enforcer retry attempts (``range(n + 1)`` tries); ``None`` uses the env default."""
     max_rpm: int | None = None
     max_execution_time: float | None = None
     """Wall-clock budget in seconds honored by ``DefaultAgentLoop``; ``None`` means no limit."""

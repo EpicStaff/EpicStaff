@@ -109,3 +109,77 @@ class TestAgentDefinitionRunLimitValidation:
         body = response.json()
         assert response.status_code == 201
         assert body["max_tool_calls"] is None
+
+
+@pytest.mark.django_db
+class TestAgentDefinitionSchemaMaxRetriesValidation:
+    def test_create_with_schema_max_retries_negative_returns_400(
+        self, client, default_organization
+    ):
+        url = reverse("agentdefinition-list")
+        response = client.post(
+            url,
+            {
+                "name": "negative-agent",
+                "instructions": "do things",
+                "schema_max_retries": -1,
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert "schema_max_retries" in response.json()["message"]
+
+    def test_create_with_schema_max_retries_zero_returns_201(
+        self, client, default_organization
+    ):
+        url = reverse("agentdefinition-list")
+        response = client.post(
+            url,
+            {
+                "name": "zero-retries-agent",
+                "instructions": "do things",
+                "schema_max_retries": 0,
+            },
+            format="json",
+        )
+
+        body = response.json()
+        assert response.status_code == 201
+        assert body["schema_max_retries"] == 0
+
+    def test_create_with_schema_max_retries_positive_returns_201(
+        self, client, default_organization
+    ):
+        url = reverse("agentdefinition-list")
+        response = client.post(
+            url,
+            {
+                "name": "positive-retries-agent",
+                "instructions": "do things",
+                "schema_max_retries": 3,
+            },
+            format="json",
+        )
+
+        body = response.json()
+        assert response.status_code == 201
+        assert body["schema_max_retries"] == 3
+
+    def test_create_with_schema_max_retries_null_returns_201(
+        self, client, default_organization
+    ):
+        url = reverse("agentdefinition-list")
+        response = client.post(
+            url,
+            {
+                "name": "null-retries-agent",
+                "instructions": "do things",
+                "schema_max_retries": None,
+            },
+            format="json",
+        )
+
+        body = response.json()
+        assert response.status_code == 201
+        assert body["schema_max_retries"] is None

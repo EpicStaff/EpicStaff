@@ -72,15 +72,21 @@ async def run_task_through_loop(
     """
     max_iter = agent.max_iter or max_iter_fn()
     has_tools = bool(tools.tool_specs())
+    schema_retries: int | None = None
 
     if output_schema:
         # Fail fast on an unrecognizable schema before any LLM call — the
         # plain loop below can run many iterations/tool calls before ever
         # reaching the enforcer, so this check must happen first.
         as_object_schema(output_schema)
+        schema_retries = (
+            agent.schema_max_retries
+            if agent.schema_max_retries is not None
+            else schema_max_retries_fn()
+        )
 
     if output_schema and not has_tools:
-        enforcer = StructuredOutputEnforcer(deps.loop, schema_max_retries_fn())
+        enforcer = StructuredOutputEnforcer(deps.loop, schema_retries)
         parsed, usage = await enforcer.enforce(context, output_schema, emitter)
         return LoopResult(
             final_text=json.dumps(parsed),
@@ -99,7 +105,7 @@ async def run_task_through_loop(
         )
 
     if output_schema:
-        enforcer = StructuredOutputEnforcer(deps.loop, schema_max_retries_fn())
+        enforcer = StructuredOutputEnforcer(deps.loop, schema_retries)
         parsed, usage = await enforcer.enforce(context, output_schema, emitter)
         result = result.model_copy(
             update={

@@ -32,6 +32,7 @@ EXAMPLE_BLOB = {
             },
             "fcm_llm": None,
             "max_iter": 15,
+            "schema_max_retries": 2,
             "max_rpm": 60,
             "max_execution_time": 120,
             "cache": True,
@@ -138,6 +139,7 @@ def test_agent_request_validates_example_blob():
     assert request.agents[0].llm.config.model == "gpt-4o"
     assert request.agents[0].max_tool_calls == 15
     assert request.agents[0].tool_timeout == 300
+    assert request.agents[0].schema_max_retries == 2
     assert request.agents[0].max_consecutive_failures == 3
     assert request.agents[0].tool_refs == ["python-code-tool:1", "mcp-tool:4"]
     assert request.agents[0].collection_refs == ["collection:7"]

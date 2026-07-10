@@ -146,6 +146,7 @@ class AgentDefinitionData(BaseModel):
     max_tool_calls: int | None = None
     tool_timeout: int | None = None
     max_consecutive_failures: int | None = None
+    schema_max_retries: int | None = None
     llm: LLMData | None = None
     fcm_llm: LLMData | None = None
 

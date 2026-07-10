@@ -51,6 +51,11 @@ class DefaultAgentDefinitionConfig(models.Model):
         null=True,
         help_text="Default consecutive tool-failure limit when AgentDefinition.max_consecutive_failures is null. Null = disabled.",
     )
+    schema_max_retries = models.IntegerField(
+        default=None,
+        null=True,
+        help_text="Default max schema-enforcement retries when AgentDefinition.schema_max_retries is null.",
+    )
 
     @classmethod
     def load(cls) -> "DefaultAgentDefinitionConfig":
@@ -152,6 +157,11 @@ class AgentDefinition(AbstractDefaultFillableModel):
         default=None,
         null=True,
         help_text="Consecutive failed tool calls before graceful stop. Null falls back to DefaultAgentDefinitionConfig.",
+    )
+    schema_max_retries = models.IntegerField(
+        default=None,
+        null=True,
+        help_text="Max retries when enforcing structured-output schema validation. Null falls back to DefaultAgentDefinitionConfig.",
     )
 
     # Surface linkage (through AgentDefaultSurface)

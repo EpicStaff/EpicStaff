@@ -8,7 +8,7 @@ runner's orchestration logic is tested in isolation from I/O.
 from __future__ import annotations
 
 import json
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -200,13 +200,14 @@ class RaisingResolver:
 # ---------------------------------------------------------------------------
 
 
-def _agent_spec() -> AgentSpec:
+def _agent_spec(schema_max_retries: int | None = None) -> AgentSpec:
     return AgentSpec(
         id=12,
         name="researcher",
         instructions="You research topics thoroughly.",
         llm=LLMData(provider="openai", config=LLMConfigData(model="gpt-4o")),
         max_iter=5,
+        schema_max_retries=schema_max_retries,
     )
 
 
@@ -481,3 +482,68 @@ async def test_with_tools_and_schema_timeout_skips_enforcer():
     assert "execution exceeded 60s" in str(emitter.errors[0])
     assert emitter.finals == []
     assert loop.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# Tests: agent.schema_max_retries overrides / falls back to settings
+# ---------------------------------------------------------------------------
+
+
+async def test_agent_schema_max_retries_zero_overrides_settings_default():
+    """agent.schema_max_retries=0 → enforcer built with 0, settings fn not used."""
+    emitter = FakeEmitter()
+    schema = {
+        "type": "object",
+        "properties": {"x": {"type": "string"}},
+        "required": ["x"],
+    }
+    usage = TokenUsage(prompt_tokens=3, completion_tokens=1, total_tokens=4)
+    answer_loop = AnswerToolLoop([({"x": "result"}, usage)])
+    runner = _runner(loop=answer_loop)
+    agent = _agent_spec(schema_max_retries=0)
+    request = _request(
+        {"task_instructions": "Do X", "output_schema": schema}, agents=[agent]
+    )
+
+    with (
+        patch("app.runners.single_task._schema_max_retries") as settings_fn,
+        patch("app.runners.task_execution.StructuredOutputEnforcer") as enforcer_class,
+    ):
+        enforcer_class.return_value.enforce = AsyncMock(
+            return_value=({"x": "result"}, usage)
+        )
+        await runner.execute(request, emitter)
+
+    settings_fn.assert_not_called()
+    enforcer_class.assert_called_once_with(runner._deps.loop, 0)
+
+
+async def test_agent_schema_max_retries_none_falls_back_to_settings():
+    """agent.schema_max_retries=None → settings fn value used for enforcer retries."""
+    emitter = FakeEmitter()
+    schema = {
+        "type": "object",
+        "properties": {"x": {"type": "string"}},
+        "required": ["x"],
+    }
+    usage = TokenUsage(prompt_tokens=3, completion_tokens=1, total_tokens=4)
+    answer_loop = AnswerToolLoop([({"x": "result"}, usage)])
+    runner = _runner(loop=answer_loop)
+    agent = _agent_spec(schema_max_retries=None)
+    request = _request(
+        {"task_instructions": "Do X", "output_schema": schema}, agents=[agent]
+    )
+
+    with (
+        patch(
+            "app.runners.single_task._schema_max_retries", return_value=7
+        ) as settings_fn,
+        patch("app.runners.task_execution.StructuredOutputEnforcer") as enforcer_class,
+    ):
+        enforcer_class.return_value.enforce = AsyncMock(
+            return_value=({"x": "result"}, usage)
+        )
+        await runner.execute(request, emitter)
+
+    settings_fn.assert_called_once()
+    enforcer_class.assert_called_once_with(runner._deps.loop, 7)

@@ -205,6 +205,7 @@ class TestBuildGraphDataTaskNode:
                 "max_tool_calls": 10,
                 "tool_timeout": 120,
                 "max_consecutive_failures": 4,
+                "schema_max_retries": 2,
             },
         )
         agent.max_iter = None
@@ -213,6 +214,7 @@ class TestBuildGraphDataTaskNode:
         agent.max_tool_calls = None
         agent.tool_timeout = None
         agent.max_consecutive_failures = None
+        agent.schema_max_retries = None
         agent.save()
 
         SurfacePythonTool.objects.create(
@@ -239,6 +241,7 @@ class TestBuildGraphDataTaskNode:
         assert task_data.agent_definition.max_tool_calls == 10
         assert task_data.agent_definition.tool_timeout == 120
         assert task_data.agent_definition.max_consecutive_failures == 4
+        assert task_data.agent_definition.schema_max_retries == 2
         tools_by_id = {t.python_tool: t.mode for t in task_data.surface.python_tools}
         assert tools_by_id[py_tool.pk] == "deny"
 
@@ -252,11 +255,13 @@ class TestBuildGraphDataTaskNode:
                 "max_tool_calls": 10,
                 "tool_timeout": 120,
                 "max_consecutive_failures": 4,
+                "schema_max_retries": 5,
             },
         )
         agent.max_tool_calls = 7
         agent.tool_timeout = 45
         agent.max_consecutive_failures = 2
+        agent.schema_max_retries = 0
         agent.save()
         task_node.agent_definition = agent
         task_node.save()
@@ -268,6 +273,7 @@ class TestBuildGraphDataTaskNode:
         assert task_data.agent_definition.max_tool_calls == 7
         assert task_data.agent_definition.tool_timeout == 45
         assert task_data.agent_definition.max_consecutive_failures == 2
+        assert task_data.agent_definition.schema_max_retries == 0
 
     def test_graph_data_without_task_node_list_defaults_to_empty(self):
         graph_data = GraphData(name="g", entrypoint="test", end_node=None)

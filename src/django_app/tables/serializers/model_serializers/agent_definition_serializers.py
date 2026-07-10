@@ -51,6 +51,7 @@ class AgentDefinitionReadSerializer(serializers.ModelSerializer):
             "max_tool_calls",
             "tool_timeout",
             "max_consecutive_failures",
+            "schema_max_retries",
             "metadata",
             "default_surfaces",
         ]
@@ -78,6 +79,9 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
     max_consecutive_failures = serializers.IntegerField(
         required=False, allow_null=True, min_value=1
     )
+    schema_max_retries = serializers.IntegerField(
+        required=False, allow_null=True, min_value=0
+    )
 
     class Meta:
         model = AgentDefinition
@@ -96,6 +100,7 @@ class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
             "max_tool_calls",
             "tool_timeout",
             "max_consecutive_failures",
+            "schema_max_retries",
             "metadata",
             "default_surfaces",
         ]

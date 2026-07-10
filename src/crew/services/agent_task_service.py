@@ -223,6 +223,7 @@ class AgentTaskService:
             llm=agent_definition.llm,
             fcm_llm=agent_definition.fcm_llm,
             max_iter=agent_definition.max_iter,
+            schema_max_retries=agent_definition.schema_max_retries,
             max_rpm=agent_definition.max_rpm,
             max_execution_time=agent_definition.max_execution_time,
             cache=agent_definition.cache,
