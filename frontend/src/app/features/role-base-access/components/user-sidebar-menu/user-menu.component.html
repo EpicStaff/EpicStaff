@@ -33,18 +33,19 @@
     <!-- Navigation section -->
     <div class="section-label">Navigation</div>
     <div class="nav-list">
-        <button
-            *appHasPermission="[ResourceCode.Users, ActionCode.Read]"
-            class="nav-item"
-            (click)="onWorkspaceClick()"
-        >
-            <app-svg-icon
-                size="20px"
-                icon="workspace"
-                class="nav-icon"
-            />
-            <span class="nav-label">Workspace</span>
-        </button>
+        @if (canVisitWorkspace()) {
+            <button
+                class="nav-item"
+                (click)="onWorkspaceClick()"
+            >
+                <app-svg-icon
+                    size="20px"
+                    icon="workspace"
+                    class="nav-icon"
+                />
+                <span class="nav-label">Workspace</span>
+            </button>
+        }
 
         <button
             class="nav-item"

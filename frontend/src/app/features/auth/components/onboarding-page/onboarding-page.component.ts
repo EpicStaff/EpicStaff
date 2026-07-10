@@ -9,6 +9,7 @@ import {
     CustomInputComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { notWhitespaceValidator } from '@shared/form-validators';
 import { switchMap } from 'rxjs';
 
 import { AuthService } from '../../../../services/auth/auth.service';
@@ -40,7 +41,7 @@ export class OnboardingPageComponent {
     step = signal<1 | 2>(1);
     orgNameControl = new FormControl('', {
         nonNullable: true,
-        validators: [Validators.required, Validators.minLength(3), Validators.maxLength(50)],
+        validators: [Validators.required, notWhitespaceValidator(), Validators.minLength(3), Validators.maxLength(50)],
     });
 
     onContinue(): void {
