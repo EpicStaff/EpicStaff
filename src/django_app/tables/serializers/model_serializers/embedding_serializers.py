@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from tables.models.tag_models import EmbeddingConfigTag, EmbeddingModelTag
 from tables.serializers.utils.mixins import TagHandlingMixin
+from tables.serializers.utils.secret_fields import SecretCharField
 from tables.models.embedding_models import (
     EmbeddingConfig,
     EmbeddingModel,
@@ -23,6 +24,7 @@ class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
 
 
 class EmbeddingConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
+    api_key = SecretCharField(mask_style="tail")
     tags = EmbeddingConfigTagSerializer(many=True, required=False)
     tag_model = EmbeddingConfigTag
 

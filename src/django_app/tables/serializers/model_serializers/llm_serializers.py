@@ -1,3 +1,4 @@
+from tables.serializers.utils.secret_fields import SecretCharField
 from rest_framework import serializers
 
 from tables.serializers.model_serializers.tag_serializers import (
@@ -25,6 +26,7 @@ class RealtimeModelSerializer(serializers.ModelSerializer):
 
 
 class RealtimeConfigSerializer(serializers.ModelSerializer):
+    api_key = SecretCharField(mask_style="tail")
     provider_name = serializers.CharField(
         source="realtime_model.provider.name", read_only=True
     )
@@ -41,12 +43,15 @@ class RealtimeTranscriptionModelSerializer(serializers.ModelSerializer):
 
 
 class RealtimeTranscriptionConfigSerializer(serializers.ModelSerializer):
+    api_key = SecretCharField(mask_style="tail")
+
     class Meta:
         model = RealtimeTranscriptionConfig
         fields = "__all__"
 
 
 class LLMConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
+    api_key = SecretCharField(mask_style="tail")
     tags = LLMConfigTagSerializer(many=True, required=False)
     tag_model = LLMConfigTag
 
