@@ -45,7 +45,17 @@ This rule is applied uniformly wherever such references appear, including (non-e
 - **Agent** — `llm_config`, `fcm_llm_config`, `knowledge_collection`, `rag`, `tool_ids`, and the
   nested realtime-agent's `realtime_config` / `realtime_transcription_config`.
 - **Task** — `agent`, `crew`, `tool_ids`.
-- **Crew** — `manager_llm_config`, `memory_llm_config`, `embedding_config`, `agents`.
+- **Crew** — `manager_llm_config`, `memory_llm_config`, `planning_llm_config`, `embedding_config`, `agents`.
+- **Task** — context tasks must belong to the task's own crew (⇒ same org).
+- **Graph** — `label_ids`.
+- **Every graph-child node's `graph` FK** (crew/python/file-extractor/audio/code-agent/subgraph/edge/
+  conditional-edge/start/end/decision-table/webhook-trigger/telegram-trigger/schedule-trigger/note) is
+  scoped, so a node cannot be created under, or repointed (on update) to, another org's graph.
+- **Node-id references must live in the same graph** (⇒ same org): `Edge.start_node_id`/`end_node_id`,
+  `DecisionTableNode.default_next_node_id`/`next_error_node_id`, and each decision-table condition
+  group's `next_node_id`.
+- **init-realtime** (`POST /api/init-realtime/`) requires `AGENTS.READ` and an `agent_id` in the active
+  org.
 - **Configs → model** (hybrid targets — shared built-ins allowed, other orgs' custom rows rejected):
   `LLMConfig.model`, `EmbeddingConfig.model`, `RealtimeConfig.realtime_model`,
   `RealtimeTranscriptionConfig.realtime_transcription_model`.
@@ -58,6 +68,29 @@ This rule is applied uniformly wherever such references appear, including (non-e
   the `FILES` permission). `add-to-graph` / `graph-files` reject a graph id outside the active org
   exactly like a missing one; cross-org file `move` / `copy` is superadmin-only. See
   `storage/STORAGE_API_REFERENCE.md`.
+
+## Execution & platform endpoints
+
+Some endpoints expose execution artifacts or platform-wide infrastructure that has no org column.
+Their access rules:
+
+- **`GET /api/python-code-result/{execution_id}/`** — superadmin only (results hold another org's
+  stdout / `result_data`). The list endpoint `GET /api/python-code-result/` is removed (405).
+- **`/api/realtime-session-items/`** — superadmin only, read-only (items hold conversation payloads
+  including base64 audio, keyed by an opaque connection key with no org column).
+- **`/api/ngrok-config/`** — superadmin only for read and write (holds the ngrok `auth_token`, a
+  platform secret).
+- **`/api/voice-settings/`** — superadmin only (holds the platform Twilio credentials).
+- **`POST /api/run-python-code/`** — requires `TOOLS` · `UPDATE`, and the `python_code_id` must be
+  visible to the active org (referenced by an org-owned tool — built-in tools are global — or by a
+  node/edge in one of the org's graphs). A code id outside the active org is rejected like a missing
+  one (`Invalid pk … - object does not exist.`, HTTP 400).
+- **`GET /api/quickstart/`** — returns `last_config` (the org's most recent quickstart config) scoped
+  to the active org; one org never sees another org's quickstart config.
+- **`ngrok_webhook_config` on webhook triggers** — `NgrokWebhookConfig` is global platform infra (no
+  `org` column). Only superadmins may assign it when creating/updating a webhook trigger (directly or
+  via a webhook-trigger node); the field is dropped from non-superadmin input, so a normal user cannot
+  bind a trigger to an arbitrary ngrok config by id. (Making ngrok per-org is tracked as tech debt.)
 
 ## Example
 

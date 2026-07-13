@@ -20,6 +20,7 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
+import { notWhitespaceValidator } from '@shared/form-validators';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { EMPTY, filter, throwError } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, finalize, switchMap } from 'rxjs/operators';
@@ -63,7 +64,11 @@ export class CollectionDetailsComponent implements OnInit, OnChanges {
     loadingDocuments = signal<boolean>(false);
     fullCollection = signal<CreateCollectionDtoResponse | null>(null);
     documents = signal<DisplayedListDocument[]>([]);
-    collectionName: FormControl = new FormControl('', [Validators.required, Validators.maxLength(255)]);
+    collectionName: FormControl = new FormControl('', [
+        Validators.required,
+        notWhitespaceValidator(),
+        Validators.maxLength(255),
+    ]);
 
     private confirmationDialogService = inject(ConfirmationDialogService);
     private collectionsStorageService = inject(CollectionsStorageService);

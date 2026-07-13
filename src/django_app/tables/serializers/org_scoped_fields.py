@@ -1,6 +1,7 @@
 from django.db.models import Q
 from loguru import logger
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 
 from tables.services.rbac.org_context_service import OrgContextService
 
@@ -123,3 +124,92 @@ class OrgVisiblePrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
             return queryset.none()
         q = org_visible_q(queryset.model, resolve_active_org_id(request))
         return queryset.filter(q) if q is not None else queryset
+
+
+class OrgScopedUniqueValidator(UniqueValidator):
+    """A ``UniqueValidator`` scoped to the caller's active organization.
+
+    Restores the clean 400 that a global ``unique=True`` field gave automatically,
+    for names whose uniqueness moved to a per-org ``UniqueConstraint(org, <field>)``.
+    DRF does not auto-validate table-level constraints, so without this a duplicate
+    surfaces as a DB IntegrityError (500); this reproduces the old behaviour with a
+    single existence query, scoped to the active org.
+
+    Attach to a field's ``validators`` on any per-org-unique field::
+
+        name = serializers.CharField(
+            validators=[OrgScopedUniqueValidator(
+                queryset=Graph.objects.all(),
+                message="A flow with this name already exists.",
+            )]
+        )
+
+    If the request (and thus the active org) is absent from the serializer context
+    the check is skipped and the DB constraint remains the backstop.
+    """
+
+    requires_context = True
+
+    def __call__(self, value, serializer_field):
+        request = serializer_field.context.get("request")
+        if request is None:
+            return
+        org_id = resolve_active_org_id(request)
+        field_name = serializer_field.source_attrs[-1]
+        instance = getattr(serializer_field.parent, "instance", None)
+        queryset = self.queryset.filter(org_id=org_id, **{field_name: value})
+        if instance is not None:
+            queryset = queryset.exclude(pk=instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError(self.message, code="unique")
+
+
+class OrgScopedUniqueTogetherValidator:
+    """Serializer-level unique-together validator scoped to the active org.
+
+    For a per-org ``UniqueConstraint(org, *fields)`` (or ``unique_together``
+    including ``org``) where ``org`` is stamped server-side — DRF cannot add its
+    automatic ``UniqueTogetherValidator`` because ``org`` is not a writable field,
+    so a duplicate would otherwise surface as a DB IntegrityError (500). Attach on
+    the serializer ``Meta.validators``::
+
+        class Meta:
+            validators = [OrgScopedUniqueTogetherValidator(
+                queryset=PythonCodeToolConfig.objects.all(),
+                fields=["tool", "name"],
+                message="A config with this name already exists for this tool.",
+            )]
+
+    ``fields`` are serializer field names (their model ``source`` is used for the
+    lookup). Skipped when the request/active org or the full field set is absent.
+    """
+
+    message = "The fields must make a unique set."
+    requires_context = True
+
+    def __init__(self, queryset, fields, message=None):
+        self.queryset = queryset
+        self.fields = list(fields)
+        self.message = message or self.message
+
+    def __call__(self, attrs, serializer):
+        request = serializer.context.get("request")
+        if request is None:
+            return
+        instance = getattr(serializer, "instance", None)
+        filter_kwargs = {"org_id": resolve_active_org_id(request)}
+        for field_name in self.fields:
+            if field_name in attrs:
+                value = attrs[field_name]
+            elif instance is not None:
+                value = getattr(instance, field_name, None)
+            else:
+                # partial data without the full set — can't check; DB is backstop
+                return
+            source = serializer.fields[field_name].source
+            filter_kwargs[source] = value
+        queryset = self.queryset.filter(**filter_kwargs)
+        if instance is not None:
+            queryset = queryset.exclude(pk=instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError(self.message, code="unique")

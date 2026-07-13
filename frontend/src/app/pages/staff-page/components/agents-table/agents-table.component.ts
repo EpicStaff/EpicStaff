@@ -33,7 +33,7 @@ import {
     RowDragEndEvent,
     SuppressKeyboardEventParams,
     TabToNextCellParams,
-    themeQuartz
+    themeQuartz,
 } from 'ag-grid-community';
 import { catchError, concatMap, EMPTY, finalize, from, map, Observable, of, switchMap, tap, toArray } from 'rxjs';
 
@@ -147,7 +147,7 @@ export class AgentsTableComponent {
         private toastService: ToastService,
         private confirmationDialogService: ConfirmationDialogService,
         public dialog: Dialog
-    ) { }
+    ) {}
 
     ngOnInit(): void {
         this.loadStartTime = Date.now();
@@ -165,11 +165,12 @@ export class AgentsTableComponent {
                 }
 
                 this.ensureSingleSpareEmptyRow();
-
-                this.cdr.markForCheck();
             },
             error: (err) => {
                 console.error('Error fetching agents:', err);
+            },
+            complete: () => {
+                this.isLoading.set(false);
                 this.cdr.markForCheck();
             },
         });
@@ -598,9 +599,6 @@ export class AgentsTableComponent {
 
         onCellEditingStopped: (e) => this.onCellEditingStopped(e),
 
-        onFirstDataRendered: () => {
-            this.isLoading.set(false);
-        },
         getRowId: (params) => {
             const id = params.data?.id;
             if (typeof id === 'string' && id.startsWith('temp_')) return id;

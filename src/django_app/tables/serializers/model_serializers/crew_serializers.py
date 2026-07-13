@@ -504,7 +504,7 @@ class TaskContextListField(serializers.Field):
             )
 
         # context tasks existing
-        context_tasks = Task.objects.filter(id__in=context_ids)
+        context_tasks = Task.objects.filter(id__in=context_ids, crew_id=crew_id)
         if context_tasks.count() != len(context_ids):
             existing_ids = set(context_tasks.values_list("id", flat=True))
             missing_ids = set(context_ids) - existing_ids
@@ -685,6 +685,11 @@ class CrewSerializer(serializers.ModelSerializer):
         allow_null=True,
     )
     memory_llm_config = OrgScopedPrimaryKeyRelatedField(
+        queryset=LLMConfig.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+    planning_llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(),
         required=False,
         allow_null=True,

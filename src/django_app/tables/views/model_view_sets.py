@@ -202,6 +202,7 @@ from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
     validate_classification_condition_group_names,
 )
+from tables.serializers.utils.mixins import assert_node_ref_in_graph
 from tables.serializers.model_serializers import (
     AgentReadSerializer,
     ClassificationDecisionTableNodeSerializer,
@@ -774,12 +775,11 @@ class PythonCodeToolConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     filterset_fields = ["tool", "name"]
 
 
-class PythonCodeResultReadViewSet(ReadOnlyModelViewSet):
-    # TODO(EST-2423): org-scope python execution results.
+class PythonCodeResultReadViewSet(mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    # Superadmin-only
+    permission_classes = [IsAuthenticated, IsSuperadmin]
     queryset = PythonCodeResult.objects.all()
     serializer_class = PythonCodeResultSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["execution_id", "returncode"]
 
 
 class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet):
@@ -1398,9 +1398,10 @@ class RealtimeTranscriptionConfigModelViewSet(
 
 
 class RealtimeSessionItemViewSet(viewsets.ReadOnlyModelViewSet):
-    # TODO(EST-2423 deferred): org-scope realtime session items. Keyed by an
-    # opaque connection_key with no org/agent FK; needs a denormalized org to
-    # scope. Authenticated-only for now.
+    # Realtime session items hold conversation payloads (incl. base64 audio)
+    # keyed by an opaque connection_key with no org FK, so they can leak another
+    # org's data. Restricted to superadmin (read-only).
+    permission_classes = [IsAuthenticated, IsSuperadmin]
     queryset = RealtimeSessionItem.objects.all()
     serializer_class = RealtimeSessionItemSerializer
 
@@ -1539,6 +1540,18 @@ class DecisionTableNodeModelViewSet(
         node_serializer = self.get_serializer(instance, data=data, partial=partial)
         node_serializer.is_valid(raise_exception=True)
         node = node_serializer.save()
+
+        # Org isolation: each condition group's next_node_id must reference a node
+        # in this decision table's own graph (⇒ same org). Condition groups are
+        # created here rather than by the serializer (they're popped from `data`
+        # before validation), so the same same-graph check the serializer applies
+        # to default_next_node_id / next_error_node_id is enforced here too. A
+        # cross-graph, cross-org, or non-existent id is rejected identically
+        # ("Invalid pk ..."), so existence never leaks
+        for group in condition_groups_data or []:
+            assert_node_ref_in_graph(
+                group.get("next_node_id"), node.graph, "condition_groups.next_node_id"
+            )
 
         # If PATCH and no condition_groups provided, skip nested updates
         if partial and condition_groups_data is None:
@@ -1717,8 +1730,9 @@ class WebhookTriggerNodeViewSet(
             raise
 
 
+# TODO: deprecate view/EP
 class WebhookTriggerViewSet(OrgScopedQuerysetMixin, viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, HasOrgPermission]
+    permission_classes = [IsAuthenticated, IsSuperadmin]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
     scope_distinct = True  # reverse join via trigger nodes can duplicate rows
@@ -1773,9 +1787,11 @@ class GraphNoteViewSet(
     serializer_class = GraphNoteSerializer
 
 
-class NgrokWebhookConfigViewSet(SuperadminWriteMixin, ModelViewSet):
-    # Global infrastructure config (ngrok tunnel/auth): readable by any
-    # authenticated user, writable only by superadmins.
+class NgrokWebhookConfigViewSet(ModelViewSet):
+    # Global infrastructure config holding the ngrok auth token (a secret).
+    # Superadmin-only for both read and write so the token is never exposed to
+    # ordinary org users.
+    permission_classes = [IsAuthenticated, IsSuperadmin]
     queryset = NgrokWebhookConfig.objects.all()
     serializer_class = NgrokWebhookConfigModelSerializer
 

@@ -329,7 +329,13 @@ export class StoragePageComponent {
                             error: () => this.toastService.error('Failed to download folder'),
                         });
                 } else {
-                    this.storageApiService.download(event.item.path);
+                    this.storageApiService
+                        .downloadBlob(event.item.path)
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe({
+                            next: (blob) => this.downloadBlobFile(blob, event.item.name),
+                            error: () => this.toastService.error(`Failed to download "${event.item.name}"`),
+                        });
                 }
                 break;
             case 'delete':

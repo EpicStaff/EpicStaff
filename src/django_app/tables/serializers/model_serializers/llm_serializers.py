@@ -13,7 +13,10 @@ from tables.models.llm_models import (
     RealtimeTranscriptionConfig,
 )
 from tables.models.tag_models import LLMConfigTag, LLMModelTag
-from tables.serializers.org_scoped_fields import OrgVisiblePrimaryKeyRelatedField
+from tables.serializers.org_scoped_fields import (
+    OrgVisiblePrimaryKeyRelatedField,
+    OrgScopedUniqueValidator,
+)
 
 
 from ..utils.mixins import TagHandlingMixin
@@ -66,6 +69,14 @@ class LLMConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
     # Org isolation (hybrid): built-in models OR the caller's active-org custom ones.
     model = OrgVisiblePrimaryKeyRelatedField(
         queryset=LLMModel.objects.all(), required=False, allow_null=True
+    )
+    custom_name = serializers.CharField(
+        validators=[
+            OrgScopedUniqueValidator(
+                queryset=LLMConfig.objects.all(),
+                message="An LLM config with this name already exists.",
+            )
+        ]
     )
 
     class Meta:

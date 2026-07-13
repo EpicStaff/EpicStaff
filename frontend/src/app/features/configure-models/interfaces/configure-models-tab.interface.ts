@@ -4,4 +4,5 @@ export interface ConfigureModelsTab {
     id: ConfigureModelsTabId;
     label: string;
     iconClass: string;
+    isPermitted: boolean;
 }

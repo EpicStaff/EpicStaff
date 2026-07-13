@@ -14,6 +14,7 @@ from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.utils.telegram_fields import load_telegram_trigger_fields
 from tables.models import Tool
 from tables.models import Crew
+from tables.models import Agent
 from tables.services.realtime_service import RealtimeService
 from tables.swagger_schemas.python_node_test_mode_schema import (
     LAST_TEST_INPUT_SWAGGER as _LAST_TEST_INPUT_SWAGGER,
@@ -27,7 +28,7 @@ from drf_spectacular.utils import (
     OpenApiResponse,
 )
 from django.db import transaction
-from django.db.models import Count, Exists, OuterRef
+from django.db.models import Count, Exists, OuterRef, Q
 from django.conf import settings
 
 
@@ -56,6 +57,7 @@ from tables.models import (
     # DocumentMetadata,
     OrganizationUser,
     Graph,
+    PythonCode,
     SessionWarningMessage,
     SessionStorageFile,
 )
@@ -625,6 +627,8 @@ class AnswerToLLM(APIView):
 
 
 class RunPythonCodeAPIView(APIView):
+    _org_context = OrgContextService()
+
     @extend_schema(**RUN_PYTHON_CODE_POST)
     def post(self, request):
         serializer = RunPythonCodeSerializer(data=request.data)
@@ -632,11 +636,53 @@ class RunPythonCodeAPIView(APIView):
         python_code = serializer.validated_data["python_code"]
         variables = serializer.validated_data["variables"]
 
+        # Executing arbitrary code is a contributor-level action, gated on
+        # TOOLS.UPDATE. The code must also be visible to the active org, so a
+        # caller cannot run another org's code by passing its id (rejected like
+        # a non-existent pk — existence never leaks).
+        org_id = self._org_context.resolve(
+            request=request, view_kwargs=getattr(self, "kwargs", {})
+        )
+        assert_org_permission(
+            user=request.user,
+            org_id=org_id,
+            resource_type=ResourceType.FLOWS,
+            action=Permission.UPDATE,
+        )
+        if not PythonCode.objects.filter(
+            self._python_code_visible_q(org_id), pk=python_code.pk
+        ).exists():
+            raise ValidationError(
+                {
+                    "python_code_id": [
+                        f'Invalid pk "{python_code.pk}" - object does not exist.'
+                    ]
+                }
+            )
+
         execution_id = run_python_code_service.run_code(python_code.id, variables)
         return Response({"execution_id": execution_id}, status=status.HTTP_200_OK)
 
+    @staticmethod
+    def _python_code_visible_q(org_id: int) -> Q:
+        """A PythonCode is visible to an org if it is referenced by an org-owned
+        tool (built-in tools are global) or by a node/edge in one of the org's
+        graphs. Used to scope run-python-code so a caller cannot execute another
+        org's stored code by id."""
+        return (
+            Q(pythoncodetool__built_in=True)
+            | Q(pythoncodetool__org_id=org_id)
+            | Q(pythonnode__graph__org_id=org_id)
+            | Q(conditionaledge__graph__org_id=org_id)
+            | Q(webhooktriggernode__graph__org_id=org_id)
+            | Q(cdt_pre_nodes__graph__org_id=org_id)
+            | Q(cdt_post_nodes__graph__org_id=org_id)
+        )
+
 
 class InitRealtimeAPIView(APIView):
+    _org_context = OrgContextService()
+
     @extend_schema(**INIT_REALTIME_POST)
     def post(self, request):
         logger.info("Received POST request to start a new session.")
@@ -652,6 +698,23 @@ class InitRealtimeAPIView(APIView):
 
         agent_id = serializer.validated_data["agent_id"]
         config = serializer.validated_data.get("config", {})
+
+        # Org isolation: starting a realtime session is a read/use of an agent,
+        # so require AGENTS.READ and reject an agent_id outside the active org
+        # (rejected like a missing id — existence never leaks).
+        org_id = self._org_context.resolve(
+            request=request, view_kwargs=getattr(self, "kwargs", {})
+        )
+        assert_org_permission(
+            user=request.user,
+            org_id=org_id,
+            resource_type=ResourceType.AGENTS,
+            action=Permission.READ,
+        )
+        if not Agent.objects.filter(id=agent_id, org_id=org_id).exists():
+            raise ValidationError(
+                {"agent_id": f'Invalid pk "{agent_id}" - object does not exist.'}
+            )
 
         try:
             connection_key = realtime_service.init_realtime(
@@ -682,9 +745,12 @@ class QuickstartView(APIView):
 
     @extend_schema(**QUICKSTART_GET)
     def get(self, request):
+        org_id = self._org_context.resolve(
+            request=request, view_kwargs=getattr(self, "kwargs", {})
+        )
         try:
             supported_providers = list(quickstart_service.get_supported_providers())
-            last_config = quickstart_service.get_last_quickstart()
+            last_config = quickstart_service.get_last_quickstart(org_id)
             is_synced = (
                 quickstart_service.is_synced(last_config) if last_config else False
             )
@@ -763,10 +829,14 @@ class QuickstartApplyView(APIView):
 
     # TODO: refactor to set default models per org based on user permissions
     permission_classes = [IsAuthenticated, IsSuperadmin]
+    _org_context = OrgContextService()
 
     @extend_schema(**QUICKSTART_APPLY_POST)
     def post(self, request):
-        last = quickstart_service.get_last_quickstart()
+        org_id = self._org_context.resolve(
+            request=request, view_kwargs=getattr(self, "kwargs", {})
+        )
+        last = quickstart_service.get_last_quickstart(org_id)
         if not last:
             return Response(
                 {"detail": "No quickstart config found. Run POST /quickstart/ first."},

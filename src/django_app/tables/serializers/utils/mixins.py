@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.db.models import Model
 from django.db import transaction
 
+from tables.models.base_models import BaseGlobalNode
 from tables.models.webhook_models import WebhookTrigger
 from tables.models.python_models import PythonCode
 from tables.models import Agent, PythonCodeTool, ToolConfig, McpTool
@@ -9,6 +10,22 @@ from tables.serializers.org_scoped_fields import (
     org_visible_queryset,
     resolve_active_org_id,
 )
+
+
+def assert_node_ref_in_graph(node_id, graph, field: str) -> None:
+    """A node id referenced from within a graph (edge endpoints, decision-table
+    next/error/condition next nodes) must belong to that SAME graph — which also
+    guarantees the same organization. A cross-graph, cross-org, or non-existent
+    id is rejected identically ("Invalid pk … does not exist"), so existence
+    never leaks. ``graph`` may be a Graph instance or None (skips when unknown).
+    """
+    if node_id is None or graph is None:
+        return
+    node = BaseGlobalNode.find_globally(node_id)
+    if node is None or getattr(node, "graph_id", None) != getattr(graph, "id", None):
+        raise serializers.ValidationError(
+            {field: f'Invalid pk "{node_id}" - object does not exist.'}
+        )
 
 
 class NestedAgentExportMixin:
@@ -304,6 +321,20 @@ class WebhookCreationMixin:
     def _get_or_create_webhook_trigger(self, data):
         path = data.get("path")
         ngrok_conf = data.get("ngrok_webhook_config")
+
+        # ngrok_webhook_config is global platform infrastructure managed by
+        # superadmins (the /api/ngrok-config/ endpoint is superadmin-only). Non-
+        # superadmins may not assign it via a webhook-trigger node either — drop
+        # it so a caller can't bind an arbitrary config by id.
+        #
+        # TODO: TECH DEBT (per-org ngrok): NgrokWebhookConfig has no `org` column, so
+        # this is a superadmin gate rather than org scoping. To make webhook
+        # tunnels per-organization, add an `org` FK to NgrokWebhookConfig, scope
+        # it, and replace this gate with OrgScopedPrimaryKeyRelatedField.
+        request = self.context.get("request")
+        is_superadmin = getattr(getattr(request, "user", None), "is_superadmin", False)
+        if not is_superadmin:
+            ngrok_conf = None
 
         return WebhookTrigger.objects.get_or_create(
             path=path, ngrok_webhook_config=ngrok_conf

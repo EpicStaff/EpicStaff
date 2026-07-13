@@ -6,7 +6,6 @@ from tables.models.python_models import (
     PythonCode,
     PythonCodeTool,
     PythonCodeToolConfig,
-    PythonCodeToolConfigField,
 )
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole
@@ -57,7 +56,6 @@ def _make_tool(*, org=None, built_in=False, name="tool"):
     return PythonCodeTool.objects.create(
         name=name,
         description="",
-        args_schema={},
         python_code=code,
         built_in=built_in,
         org=org,
@@ -119,7 +117,6 @@ def test_pythoncodetool_create_lands_as_custom(client_a, org_a):
         {
             "name": "custom-tool",
             "description": "d",
-            "args_schema": {},
             "python_code": {"code": "x", "entrypoint": "main", "libraries": []},
         },
         format="json",
@@ -154,55 +151,6 @@ def test_pythoncodetoolconfig_create_lands_in_active_org(client_a, org_a):
     )
     assert resp.status_code == 201, resp.data
     assert PythonCodeToolConfig.objects.get(id=resp.data["id"]).org_id == org_a.id
-
-
-# ---- PythonCodeToolConfigField (transitive via tool) ----
-
-
-@pytest.mark.django_db
-def test_field_of_builtin_tool_visible_to_every_org(client_a):
-    builtin = _make_tool(built_in=True, org=None, name="bt")
-    PythonCodeToolConfigField.objects.create(tool=builtin, name="api_key")
-    names = {
-        f["name"]
-        for f in _results(client_a.get("/api/python-code-tool-config-fields/"))
-    }
-    assert "api_key" in names
-
-
-@pytest.mark.django_db
-def test_field_of_other_orgs_custom_tool_hidden(client_a, org_a, org_b):
-    mine = _make_tool(built_in=False, org=org_a, name="mine")
-    theirs = _make_tool(built_in=False, org=org_b, name="theirs")
-    PythonCodeToolConfigField.objects.create(tool=mine, name="mine_field")
-    PythonCodeToolConfigField.objects.create(tool=theirs, name="their_field")
-    names = {
-        f["name"]
-        for f in _results(client_a.get("/api/python-code-tool-config-fields/"))
-    }
-    assert "mine_field" in names and "their_field" not in names
-
-
-@pytest.mark.django_db
-def test_cannot_add_field_to_builtin_tool(client_a):
-    builtin = _make_tool(built_in=True, org=None, name="bt")
-    resp = client_a.post(
-        "/api/python-code-tool-config-fields/",
-        {"tool": builtin.id, "name": "x", "data_type": "string"},
-        format="json",
-    )
-    assert resp.status_code == 404  # may only add fields to your own org's tools
-
-
-@pytest.mark.django_db
-def test_can_add_field_to_own_tool(client_a, org_a):
-    mine = _make_tool(built_in=False, org=org_a, name="mine")
-    resp = client_a.post(
-        "/api/python-code-tool-config-fields/",
-        {"tool": mine.id, "name": "x", "data_type": "string"},
-        format="json",
-    )
-    assert resp.status_code == 201, resp.data
 
 
 # ---- PythonCode (child via referencing parents) ----

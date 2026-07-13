@@ -2,7 +2,6 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, input, model, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, FullMembership, GetMeResponse, ResourceCode } from '@shared/models';
 import { EMPTY } from 'rxjs';
 import { catchError, finalize, switchMap } from 'rxjs/operators';
@@ -10,6 +9,7 @@ import { catchError, finalize, switchMap } from 'rxjs/operators';
 import { UnsavedChangesRegistry } from '../../../../core/services/unsaved-changes-registry.service';
 import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { AuthService } from '../../../../services/auth/auth.service';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
 import { OrgAvatarComponent } from '../org-avatar/org-avatar.component';
@@ -17,7 +17,7 @@ import { UserAvatarComponent } from '../user-avatar/user-avatar.component';
 
 @Component({
     selector: 'app-user-menu',
-    imports: [CommonModule, AppSvgIconComponent, UserAvatarComponent, OrgAvatarComponent, HasPermissionDirective],
+    imports: [CommonModule, AppSvgIconComponent, UserAvatarComponent, OrgAvatarComponent],
     templateUrl: './user-menu.component.html',
     styleUrls: ['./user-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -28,14 +28,23 @@ export class UserMenuComponent {
     private toast = inject(ToastService);
     private unsavedChangesRegistry = inject(UnsavedChangesRegistry);
     protected currentUserService = inject(ProfileService);
+    protected permissionService = inject(PermissionsService);
     protected activeOrgService = inject(ActiveOrgService);
 
     user = input.required<GetMeResponse>();
+
+    switching = signal(false);
     systemRole = this.currentUserService.systemRole;
-    organizations = computed<FullMembership[]>(() => this.user().memberships);
 
     isUserMenuOpen = model<boolean>(false);
-    switching = signal(false);
+
+    organizations = computed<FullMembership[]>(() => this.user().memberships);
+    canVisitWorkspace = computed(
+        () =>
+            this.permissionService.can(ResourceCode.Organizations, ActionCode.Read) ||
+            this.permissionService.can(ResourceCode.Users, ActionCode.Read) ||
+            this.permissionService.can(ResourceCode.Roles, ActionCode.Read)
+    );
 
     onOrgClick(orgId: number): void {
         if (orgId === this.activeOrgService.activeOrgId() || this.switching()) return;
@@ -60,14 +69,7 @@ export class UserMenuComponent {
             .subscribe(() => {
                 this.isUserMenuOpen.set(false);
                 const targetUrl = this.getUrlForOrgSwitch(this.router.url);
-                // Navigate to an intermediate route without touching the browser URL,
-                // then back to the target URL. This destroys and re-creates the
-                // current page component, triggering ngOnInit with the new org context.
-                // Using '/profile' as the intermediate because '/' has a redirect guard
-                // that bounces back to the current page, preventing component teardown.
-                void this.router.navigateByUrl('/profile', { skipLocationChange: true }).then(() => {
-                    void this.router.navigateByUrl(targetUrl);
-                });
+                void this.router.navigateByUrl(targetUrl);
             });
     }
 

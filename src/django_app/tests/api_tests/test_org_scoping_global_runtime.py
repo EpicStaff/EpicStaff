@@ -1,11 +1,19 @@
 """Plan 5 — global singletons (superadmin write-lockdown), VoiceSettings/Twilio
 (superadmin), and reachable runtime models (RealtimeAgentChat)."""
 
+from unittest.mock import patch
+
 import pytest
 from rest_framework.test import APIClient
 
 from tables.models import Agent
-from tables.models.realtime_models import RealtimeAgent, RealtimeAgentChat
+from tables.models.python_models import PythonCode, PythonCodeResult, PythonCodeTool
+from tables.models.realtime_models import (
+    RealtimeAgent,
+    RealtimeAgentChat,
+    RealtimeSessionItem,
+)
+from tables.models.webhook_models import NgrokWebhookConfig
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 
@@ -118,3 +126,150 @@ def test_realtime_agent_chat_cross_org_404(client_member, org_b):
 def test_realtime_agent_chat_own_org_visible(client_member, org_a):
     chat = _chat(org_a)
     assert client_member.get(f"/api/realtime-agent-chats/{chat.id}/").status_code == 200
+
+
+def _viewer(django_user_model, org, email):
+    role = Role.objects.get(name=BuiltInRole.VIEWER, is_built_in=True, org__isnull=True)
+    user = django_user_model.objects.create_user(email=email, password="StrongPass123!")
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    return user
+
+
+# ---- python-code-result: list removed, detail superadmin-only ----
+
+
+@pytest.mark.django_db
+def test_python_code_result_list_removed(client_super):
+    # retrieve-only viewset: the router registers no collection route, so the
+    # list URL no longer exists (404) even for a superadmin.
+    assert client_super.get("/api/python-code-result/").status_code == 404
+
+
+@pytest.mark.django_db
+def test_python_code_result_detail_denied_for_member(client_member):
+    PythonCodeResult.objects.create(execution_id="exec-1", stdout="secret output")
+    assert client_member.get("/api/python-code-result/exec-1/").status_code == 403
+
+
+@pytest.mark.django_db
+def test_python_code_result_detail_allowed_for_superadmin(client_super):
+    PythonCodeResult.objects.create(execution_id="exec-1", stdout="ok")
+    assert client_super.get("/api/python-code-result/exec-1/").status_code == 200
+
+
+# ---- realtime-session-items: superadmin-only (holds base64 audio) ----
+
+
+@pytest.mark.django_db
+def test_realtime_session_items_denied_for_member(client_member):
+    RealtimeSessionItem.objects.create(connection_key="k", data={"audio": "b64"})
+    assert client_member.get("/api/realtime-session-items/").status_code == 403
+
+
+@pytest.mark.django_db
+def test_realtime_session_items_allowed_for_superadmin(client_super):
+    RealtimeSessionItem.objects.create(connection_key="k", data={"audio": "b64"})
+    assert client_super.get("/api/realtime-session-items/").status_code == 200
+
+
+# ---- ngrok-config: superadmin-only read (holds the ngrok auth token) ----
+
+
+@pytest.mark.django_db
+def test_ngrok_config_read_denied_for_member(client_member):
+    NgrokWebhookConfig.objects.create(name="n", auth_token="secret-token")
+    assert client_member.get("/api/ngrok-config/").status_code == 403
+
+
+@pytest.mark.django_db
+def test_ngrok_config_read_allowed_for_superadmin(client_super):
+    NgrokWebhookConfig.objects.create(name="n", auth_token="secret-token")
+    assert client_super.get("/api/ngrok-config/").status_code == 200
+
+
+# ---- webhook-triggers: ngrok_webhook_config is superadmin-assigned only ----
+
+
+@pytest.mark.django_db
+def test_webhook_trigger_ngrok_not_settable_by_member(client_member):
+    cfg = NgrokWebhookConfig.objects.create(name="n", auth_token="t")
+    resp = client_member.post(
+        "/api/webhook-triggers/",
+        {"path": "memberhook", "ngrok_webhook_config": cfg.id},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data
+    # the ngrok reference is dropped for non-superadmins (platform infra)
+    assert resp.data["ngrok_webhook_config"] is None
+
+
+@pytest.mark.django_db
+def test_webhook_trigger_ngrok_settable_by_superadmin(client_super):
+    cfg = NgrokWebhookConfig.objects.create(name="n", auth_token="t")
+    resp = client_super.post(
+        "/api/webhook-triggers/",
+        {"path": "superhook", "ngrok_webhook_config": cfg.id},
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data
+    assert resp.data["ngrok_webhook_config"] == cfg.id
+
+
+# ---- run-python-code: org-visibility scope + TOOLS.UPDATE gate ----
+
+
+def _code_in_org(org):
+    """A PythonCode made visible to `org` via an org-owned custom tool."""
+    code = PythonCode.objects.create(code="x", entrypoint="main")
+    PythonCodeTool.objects.create(
+        name=f"tool-{org.id}",
+        description="",
+        python_code=code,
+        built_in=False,
+        org=org,
+    )
+    return code
+
+
+@pytest.mark.django_db
+def test_run_python_code_cross_org_rejected(client_member, org_b):
+    # Code visible only to org_b; an org_a member must not be able to run it.
+    code = _code_in_org(org_b)
+    resp = client_member.post(
+        "/api/run-python-code/",
+        {"python_code_id": code.id, "variables": {}},
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "does not exist" in str(resp.data)
+
+
+@pytest.mark.django_db
+def test_run_python_code_denied_without_tools_update(django_user_model, org_a):
+    # Viewer has TOOLS read only -> blocked before any execution.
+    viewer = _viewer(django_user_model, org_a, "viewer@example.com")
+    client = _client(viewer, org_a)
+    code = _code_in_org(org_a)
+    resp = client.post(
+        "/api/run-python-code/",
+        {"python_code_id": code.id, "variables": {}},
+        format="json",
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.django_db
+def test_run_python_code_allowed_for_member_own_org(client_member, org_a):
+    code = _code_in_org(org_a)
+    with patch(
+        "tables.views.views.run_python_code_service.run_code",
+        return_value="exec-123",
+    ) as run_code:
+        resp = client_member.post(
+            "/api/run-python-code/",
+            {"python_code_id": code.id, "variables": {}},
+            format="json",
+        )
+    assert resp.status_code == 200, resp.data
+    assert resp.data["execution_id"] == "exec-123"
+    run_code.assert_called_once()

@@ -32,9 +32,15 @@ from tables.models.graph_models import (
 )
 from tables.models.label_models import Label
 from tables.serializers.base_serializer import BaseGraphEntityMixin
+from tables.serializers.org_scoped_fields import (
+    OrgScopedPrimaryKeyRelatedField,
+    OrgScopedUniqueValidator,
+)
 
 
 class GraphNoteSerializer(BaseGraphEntityMixin, serializers.ModelSerializer):
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
+
     class Meta(BaseGraphEntityMixin.Meta):
         model = GraphNote
         fields = "__all__"
@@ -186,11 +192,19 @@ class GraphSerializer(serializers.ModelSerializer):
     schedule_trigger_node_list = ScheduleTriggerNodeSerializer(
         many=True, read_only=True
     )
-    label_ids = serializers.PrimaryKeyRelatedField(
+    label_ids = OrgScopedPrimaryKeyRelatedField(
         many=True, source="labels", queryset=Label.objects.all(), required=False
     )
     graph_note_list = GraphNoteSerializer(many=True, read_only=True)
     save_version = serializers.IntegerField(required=True)
+    name = serializers.CharField(
+        validators=[
+            OrgScopedUniqueValidator(
+                queryset=Graph.objects.all(),
+                message="A flow with this name already exists.",
+            )
+        ]
+    )
 
     class Meta:
         model = Graph
