@@ -109,6 +109,35 @@ class PersistentVariablesService:
         merged = self.deep_merge(graph_org.persistent_variables or {}, payload)
         return RunVariablesResult(variables=merged, graph_user=graph_user)
 
+    def persist_session_results(self, session, final_variables) -> None:
+        """Write tracked org values back at session END. Log-and-continue on error."""
+        graph = session.graph
+        if not graph.enable_persistent_variables:
+            return
+        if not final_variables:
+            return
+        try:
+            start_node = StartNode.objects.filter(graph=graph).first()
+            org_paths = self._org_paths(start_node.variables if start_node else {})
+            if not org_paths:
+                return
+            graph_org, _ = GraphOrganization.objects.get_or_create(graph=graph)
+            stored = graph_org.persistent_variables or {}
+            changed = False
+            for path in org_paths:
+                value = self.get_by_path(final_variables, path)
+                if value is _MISSING:
+                    continue
+                existing = self.get_by_path(stored, path)
+                if existing is _MISSING or existing != value:
+                    self._set_by_path(stored, path, value)
+                    changed = True
+            if changed:
+                graph_org.persistent_variables = stored
+                graph_org.save(update_fields=["persistent_variables"])
+        except Exception as e:  # noqa: BLE001 — session termination must not fail here
+            logger.error(f"Error persisting session results for graph {graph.id}: {e}")
+
     def _resolve_graph_user(self, graph, user):
         """The runner's per-flow row, get_or_create'd from their membership.
 

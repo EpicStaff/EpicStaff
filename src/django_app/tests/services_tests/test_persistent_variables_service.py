@@ -1,6 +1,10 @@
 import pytest
 
-from tables.models.graph_models import Graph, GraphOrganization  # noqa: E402
+from tables.models.graph_models import (  # noqa: E402
+    Graph,
+    GraphOrganization,
+    StartNode,  # noqa: E402
+)
 from tables.services.persistent_variables_service import (
     _MISSING,
     PersistentVariablesService,
@@ -95,3 +99,68 @@ def test_build_run_variables_member_gets_graph_user(default_org, regular_user):
     assert result.graph_user is not None
     assert result.graph_user.graph_id == graph.id
     assert result.graph_user.organization_user.user_id == regular_user.id
+
+
+def _graph_with_start(default_org, *, flag, org_paths, defaults, org_stored=None):
+    graph = Graph.objects.create(
+        name="persist", org=default_org, enable_persistent_variables=flag
+    )
+    StartNode.objects.create(
+        graph=graph,
+        variables={
+            "variables": defaults,
+            "persistent_variables": {"organization": org_paths, "user": []},
+        },
+    )
+    GraphOrganization.objects.create(graph=graph, persistent_variables=org_stored or {})
+    return graph
+
+
+class _FakeSession:
+    def __init__(self, graph):
+        self.graph = graph
+
+
+@pytest.mark.django_db
+def test_persist_writes_back_declared_paths(default_org):
+    graph = _graph_with_start(
+        default_org, flag=True, org_paths=["counter"], defaults={"counter": 0}
+    )
+    svc.persist_session_results(_FakeSession(graph), {"counter": 42, "noise": 1})
+    go = GraphOrganization.objects.get(graph=graph)
+    assert go.persistent_variables == {"counter": 42}
+
+
+@pytest.mark.django_db
+def test_persist_repopulates_emptied_storage(default_org):
+    # storage is empty but the path is declared -> the session repopulates it,
+    # because iteration is driven by the config, not by existing keys.
+    graph = _graph_with_start(
+        default_org,
+        flag=True,
+        org_paths=["counter"],
+        defaults={"counter": 0},
+        org_stored={},
+    )
+    svc.persist_session_results(_FakeSession(graph), {"counter": 7})
+    assert GraphOrganization.objects.get(graph=graph).persistent_variables == {
+        "counter": 7
+    }
+
+
+@pytest.mark.django_db
+def test_persist_noop_when_flag_off(default_org):
+    graph = _graph_with_start(
+        default_org, flag=False, org_paths=["counter"], defaults={"counter": 0}
+    )
+    svc.persist_session_results(_FakeSession(graph), {"counter": 99})
+    assert GraphOrganization.objects.get(graph=graph).persistent_variables == {}
+
+
+@pytest.mark.django_db
+def test_persist_swallows_errors(default_org):
+    graph = _graph_with_start(
+        default_org, flag=True, org_paths=["counter"], defaults={"counter": 0}
+    )
+    # passing a non-dict must not raise (session end must never fail here)
+    svc.persist_session_results(_FakeSession(graph), None)
