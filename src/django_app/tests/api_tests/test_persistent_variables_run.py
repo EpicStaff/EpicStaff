@@ -79,3 +79,71 @@ def test_run_forbidden_for_non_member(default_org):
         reverse("run-session"), {"graph_id": graph.id, "variables": {}}, format="json"
     )
     assert resp.status_code == status.HTTP_403_FORBIDDEN, resp.content
+
+
+@pytest.mark.django_db
+def test_domain_save_seeds_storage_and_flips_flag(org_client, default_org):
+    graph = Graph.objects.create(name="domain", org=default_org)
+    GraphOrganization.objects.create(graph=graph)
+    sn = StartNode.objects.create(graph=graph, variables={"variables": {"counter": 0}})
+
+    url = reverse("startnode-detail", args=[sn.id])
+    resp = org_client.patch(
+        url,
+        {
+            "variables": {
+                "variables": {"counter": 0},
+                "persistent_variables": {"organization": ["counter"], "user": []},
+            }
+        },
+        format="json",
+    )
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    graph.refresh_from_db()
+    assert graph.enable_persistent_variables is True
+    assert GraphOrganization.objects.get(graph=graph).persistent_variables == {
+        "counter": 0
+    }
+
+
+@pytest.mark.django_db
+def test_domain_save_null_default_is_valid(org_client, default_org):
+    graph = Graph.objects.create(name="domain-null", org=default_org)
+    GraphOrganization.objects.create(graph=graph)
+    sn = StartNode.objects.create(
+        graph=graph, variables={"variables": {"context": None}}
+    )
+    url = reverse("startnode-detail", args=[sn.id])
+    resp = org_client.patch(
+        url,
+        {
+            "variables": {
+                "variables": {"context": None},
+                "persistent_variables": {"organization": ["context"], "user": []},
+            }
+        },
+        format="json",
+    )
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert GraphOrganization.objects.get(graph=graph).persistent_variables == {
+        "context": None
+    }
+
+
+@pytest.mark.django_db
+def test_domain_save_rejects_undeclared_path(org_client, default_org):
+    graph = Graph.objects.create(name="domain-bad", org=default_org)
+    GraphOrganization.objects.create(graph=graph)
+    sn = StartNode.objects.create(graph=graph, variables={"variables": {"counter": 0}})
+    url = reverse("startnode-detail", args=[sn.id])
+    resp = org_client.patch(
+        url,
+        {
+            "variables": {
+                "variables": {"counter": 0},
+                "persistent_variables": {"organization": ["ghost"], "user": []},
+            }
+        },
+        format="json",
+    )
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.content
