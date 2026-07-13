@@ -5,7 +5,7 @@ from tables.models.mcp_models import McpTool
 
 
 class McpToolSerializer(serializers.ModelSerializer):
-    auth = SecretCharField(mask_style="placeholder")
+    auth = SecretCharField()
 
     class Meta:
         model = McpTool

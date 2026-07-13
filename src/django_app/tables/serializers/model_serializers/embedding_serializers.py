@@ -24,7 +24,7 @@ class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
 
 
 class EmbeddingConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
-    api_key = SecretCharField(mask_style="tail")
+    api_key = SecretCharField()
     tags = EmbeddingConfigTagSerializer(many=True, required=False)
     tag_model = EmbeddingConfigTag
 

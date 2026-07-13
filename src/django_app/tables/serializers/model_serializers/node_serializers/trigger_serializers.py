@@ -109,7 +109,7 @@ class TelegramTriggerNodeFieldSerializer(
 class TelegramTriggerNodeSerializer(
     ContentHashWritableMixin, WebhookCreationMixin, serializers.ModelSerializer
 ):
-    telegram_bot_api_key = SecretCharField(mask_style="tail")
+    telegram_bot_api_key = SecretCharField()
     webhook_trigger = WebhookTriggerNestedSerializer(required=False, allow_null=True)
     fields = TelegramTriggerNodeFieldSerializer(many=True)
 

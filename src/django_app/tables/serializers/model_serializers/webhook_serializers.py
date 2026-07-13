@@ -10,7 +10,7 @@ from tables.models.webhook_models import (
 
 
 class NgrokWebhookConfigModelSerializer(serializers.ModelSerializer):
-    auth_token = SecretCharField(mask_style="placeholder")
+    auth_token = SecretCharField()
     webhook_full_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -48,7 +48,7 @@ class WebhookTriggerSerializer(serializers.ModelSerializer):
 
 
 class VoiceSettingsSerializer(serializers.ModelSerializer):
-    twilio_auth_token = SecretCharField(mask_style="placeholder")
+    twilio_auth_token = SecretCharField()
     voice_stream_url = serializers.SerializerMethodField(read_only=True)
 
     class Meta:

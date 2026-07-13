@@ -26,7 +26,7 @@ class RealtimeModelSerializer(serializers.ModelSerializer):
 
 
 class RealtimeConfigSerializer(serializers.ModelSerializer):
-    api_key = SecretCharField(mask_style="tail")
+    api_key = SecretCharField()
     provider_name = serializers.CharField(
         source="realtime_model.provider.name", read_only=True
     )
@@ -43,7 +43,7 @@ class RealtimeTranscriptionModelSerializer(serializers.ModelSerializer):
 
 
 class RealtimeTranscriptionConfigSerializer(serializers.ModelSerializer):
-    api_key = SecretCharField(mask_style="tail")
+    api_key = SecretCharField()
 
     class Meta:
         model = RealtimeTranscriptionConfig
@@ -51,7 +51,7 @@ class RealtimeTranscriptionConfigSerializer(serializers.ModelSerializer):
 
 
 class LLMConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
-    api_key = SecretCharField(mask_style="tail")
+    api_key = SecretCharField()
     tags = LLMConfigTagSerializer(many=True, required=False)
     tag_model = LLMConfigTag
 
