@@ -202,6 +202,7 @@ from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
     validate_classification_condition_group_names,
 )
+from tables.serializers.utils.mixins import assert_node_ref_in_graph
 from tables.serializers.model_serializers import (
     AgentReadSerializer,
     ClassificationDecisionTableNodeSerializer,
@@ -1539,6 +1540,18 @@ class DecisionTableNodeModelViewSet(
         node_serializer = self.get_serializer(instance, data=data, partial=partial)
         node_serializer.is_valid(raise_exception=True)
         node = node_serializer.save()
+
+        # Org isolation: each condition group's next_node_id must reference a node
+        # in this decision table's own graph (⇒ same org). Condition groups are
+        # created here rather than by the serializer (they're popped from `data`
+        # before validation), so the same same-graph check the serializer applies
+        # to default_next_node_id / next_error_node_id is enforced here too. A
+        # cross-graph, cross-org, or non-existent id is rejected identically
+        # ("Invalid pk ..."), so existence never leaks
+        for group in condition_groups_data or []:
+            assert_node_ref_in_graph(
+                group.get("next_node_id"), node.graph, "condition_groups.next_node_id"
+            )
 
         # If PATCH and no condition_groups provided, skip nested updates
         if partial and condition_groups_data is None:

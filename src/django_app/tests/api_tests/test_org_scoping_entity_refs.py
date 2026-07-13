@@ -8,7 +8,13 @@ import pytest
 from rest_framework.test import APIClient
 
 from tables.models import Agent, Crew, Graph
-from tables.models.graph_models import CrewNode, DecisionTableNode, Edge, StartNode
+from tables.models.graph_models import (
+    ConditionGroup,
+    CrewNode,
+    DecisionTableNode,
+    Edge,
+    StartNode,
+)
 from tables.models.label_models import Label
 from tables.models.llm_models import LLMConfig
 from tables.models.rbac_models import Organization, OrganizationUser, Role
@@ -153,6 +159,83 @@ def test_decision_table_next_node_cross_graph_rejected(client_a, org_a, org_b):
     )
     assert resp.status_code == 400
     assert "default_next_node_id" in str(resp.data)
+
+
+@pytest.mark.django_db
+def test_decision_table_condition_group_next_node_cross_graph_rejected(
+    client_a, org_a, org_b
+):
+    graph_a = _graph(org_a, "a")
+    graph_b = _graph(org_b, "b")
+    foreign = StartNode.objects.create(graph=graph_b, variables={})
+    resp = client_a.post(
+        "/api/decision-table-node/",
+        {
+            "graph": graph_a.id,
+            "node_name": "dt1",
+            "condition_groups": [
+                {
+                    "group_name": "grp1",
+                    "group_type": "simple",
+                    "next_node_id": foreign.id,  # node in another graph/org
+                }
+            ],
+        },
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "next_node_id" in str(resp.data)
+    # No leak: the rejected request must not have created the node.
+    assert not DecisionTableNode.objects.filter(node_name="dt1").exists()
+
+
+@pytest.mark.django_db
+def test_decision_table_condition_group_next_node_patch_cross_graph_rejected(
+    client_a, org_a, org_b
+):
+    graph_a = _graph(org_a, "a")
+    graph_b = _graph(org_b, "b")
+    foreign = StartNode.objects.create(graph=graph_b, variables={})
+    dt = DecisionTableNode.objects.create(graph=graph_a, node_name="dt1")
+    resp = client_a.patch(
+        f"/api/decision-table-node/{dt.id}/",
+        {
+            "condition_groups": [
+                {
+                    "group_name": "grp1",
+                    "group_type": "simple",
+                    "next_node_id": foreign.id,  # node in another graph/org
+                }
+            ]
+        },
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "next_node_id" in str(resp.data)
+    # No leak: the rejected patch must not have created the cross-org group.
+    assert not ConditionGroup.objects.filter(decision_table_node=dt).exists()
+
+
+@pytest.mark.django_db
+def test_decision_table_condition_group_next_node_same_graph_ok(client_a, org_a):
+    graph_a = _graph(org_a, "a")
+    target = StartNode.objects.create(graph=graph_a, variables={})
+    resp = client_a.post(
+        "/api/decision-table-node/",
+        {
+            "graph": graph_a.id,
+            "node_name": "dt1",
+            "condition_groups": [
+                {
+                    "group_name": "grp1",
+                    "group_type": "simple",
+                    "next_node_id": target.id,  # node in the same graph
+                }
+            ],
+        },
+        format="json",
+    )
+    assert resp.status_code == 201, resp.data
 
 
 # ---- C: init-realtime agent ----
