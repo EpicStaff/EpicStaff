@@ -18,7 +18,10 @@
         "build": {
           "builder": "@angular/build:application",
           "options": {
-            "outputPath": "dist/frontend-crewai",
+            "outputPath": {
+              "base": "dist/frontend-crewai",
+              "media": "fonts"
+            },
             "index": "src/index.html",
             "browser": "src/main.ts",
             "polyfills": ["zone.js"],
