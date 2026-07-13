@@ -1,5 +1,7 @@
 from copy import deepcopy
 
+from django.db.models import Q
+
 from tables.models import (
     Agent,
     RealtimeAgent,
@@ -67,12 +69,13 @@ class AgentStrategy(EntityImportExportStrategy):
         return self.serializer_class(instance).data
 
     def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> Agent:
+        org_id = kwargs.get("org_id")
         llm_config, fcm_llm_config = self._get_llm_configs(data, id_mapper)
         python_tools, mcp_tools = self._get_tools(data, id_mapper)
         realtime_data = data.pop("realtime_agent", None)
         naive_search_config_data = data.pop("naive_search_config", None)
 
-        agent = self._create_agent(data)
+        agent = self._create_agent(data, org_id)
         self._assign_tools(agent, python_tools, mcp_tools)
         self._create_realtime_agent(agent, realtime_data, id_mapper)
         self._create_naive_search_config(agent, naive_search_config_data)
@@ -83,7 +86,9 @@ class AgentStrategy(EntityImportExportStrategy):
 
         return agent
 
-    def find_existing(self, data: dict, id_mapper: IDMapper) -> Agent:
+    def find_existing(
+        self, data: dict, id_mapper: IDMapper, org_id: int = None
+    ) -> Agent:
         """Shallow search of existing agent"""
         data_copy = deepcopy(data)
         data_copy.pop("id", None)
@@ -98,6 +103,7 @@ class AgentStrategy(EntityImportExportStrategy):
 
         potential_candidates = (
             Agent.objects.filter(**filters, **null_filters)
+            .filter(self.get_org_scope_q(org_id))
             .select_related("llm_config", "fcm_llm_config")
             .prefetch_related("python_code_tools", "mcp_tools")
         ).all()
@@ -159,6 +165,11 @@ class AgentStrategy(EntityImportExportStrategy):
 
         return existing
 
+    def get_org_scope_q(self, org_id: int) -> Q:
+        if org_id is None:
+            return Q()
+        return Q(org_id=org_id)
+
     def _get_llm_configs(self, data: dict, id_mapper: IDMapper):
         old_llm_config_id = data.pop("llm_config", None)
         old_fcm_llm_config_id = data.pop("fcm_llm_config", None)
@@ -195,10 +206,10 @@ class AgentStrategy(EntityImportExportStrategy):
 
         return python_tools, mcp_tools
 
-    def _create_agent(self, data: dict) -> Agent:
+    def _create_agent(self, data: dict, org_id) -> Agent:
         serializer = self.serializer_class(data=data)
         serializer.is_valid(raise_exception=True)
-        return serializer.save()
+        return serializer.save(org_id=org_id)
 
     def _assign_tools(self, agent: Agent, python_tools: list, mcp_tools: list):
         AgentPythonCodeTools.objects.bulk_create(

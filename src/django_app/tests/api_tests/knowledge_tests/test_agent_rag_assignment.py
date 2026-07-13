@@ -246,13 +246,14 @@ class TestAgentUpdateRag:
     """Tests for updating agent RAG assignments."""
 
     @pytest.fixture
-    def agent_with_rag(self, source_collection, completed_naive_rag):
+    def agent_with_rag(self, source_collection, completed_naive_rag, default_org):
         """Create an agent with RAG assignment."""
         agent = Agent.objects.create(
             role="Research Agent",
             goal="Research",
             backstory="Researcher",
             knowledge_collection=source_collection,
+            org=default_org,
         )
         # Assign RAG using service
         from tables.services.rag_assignment_service import RagAssignmentService
@@ -300,13 +301,16 @@ class TestAgentSearchConfigUpdate:
     """Tests for updating agent search configurations."""
 
     @pytest.fixture
-    def agent_with_search_config(self, source_collection, completed_naive_rag):
+    def agent_with_search_config(
+        self, source_collection, completed_naive_rag, default_org
+    ):
         """Create agent with RAG and search config."""
         agent = Agent.objects.create(
             role="Research Agent",
             goal="Research",
             backstory="Researcher",
             knowledge_collection=source_collection,
+            org=default_org,
         )
         from tables.services.rag_assignment_service import (
             RagAssignmentService,
@@ -377,11 +381,17 @@ class TestAgentSearchConfigUpdate:
         assert response_data["search_configs"]["naive"]["search_limit"] == 20
         assert response_data["search_configs"]["naive"]["similarity_threshold"] == 0.88
 
-    def test_update_search_config_without_rag_assigned(self, auth_client, llm_config):
+    def test_update_search_config_without_rag_assigned(
+        self, auth_client, llm_config, default_org
+    ):
         """Test updating search config for agent without RAG (should work)."""
         # Create agent without RAG
         agent = Agent.objects.create(
-            role="Agent", goal="Goal", backstory="Story", llm_config=llm_config
+            role="Agent",
+            goal="Goal",
+            backstory="Story",
+            llm_config=llm_config,
+            org=default_org,
         )
 
         url = reverse("agent-detail", args=[agent.id])
@@ -511,7 +521,7 @@ class TestGetAgentWithRag:
     """Tests for GET /agents/{id}/ with RAG information."""
 
     def test_get_agent_with_rag_returns_rag_info(
-        self, auth_client, source_collection, completed_naive_rag
+        self, auth_client, source_collection, completed_naive_rag, default_org
     ):
         """Test getting agent returns RAG information."""
         agent = Agent.objects.create(
@@ -519,6 +529,7 @@ class TestGetAgentWithRag:
             goal="Goal",
             backstory="Story",
             knowledge_collection=source_collection,
+            org=default_org,
         )
         from tables.services.rag_assignment_service import RagAssignmentService
 
@@ -538,9 +549,11 @@ class TestGetAgentWithRag:
         assert data["rag"]["rag_id"] == completed_naive_rag.naive_rag_id
         assert data["rag"]["rag_status"] == NaiveRag.NaiveRagStatus.COMPLETED
 
-    def test_get_agent_without_rag_returns_null(self, auth_client):
+    def test_get_agent_without_rag_returns_null(self, auth_client, default_org):
         """Test getting agent without RAG returns null."""
-        agent = Agent.objects.create(role="Agent", goal="Goal", backstory="Story")
+        agent = Agent.objects.create(
+            role="Agent", goal="Goal", backstory="Story", org=default_org
+        )
 
         url = reverse("agent-detail", args=[agent.id])
         response = auth_client.get(url)

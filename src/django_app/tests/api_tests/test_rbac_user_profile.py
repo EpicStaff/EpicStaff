@@ -642,8 +642,12 @@ class TestRemovedEndpoints:
 
 
 @pytest.mark.django_db
-def test_profile_no_header_returns_null_active_org(auth_client, regular_user):
-    response = auth_client.get("/api/profile/")
+def test_profile_no_header_returns_null_active_org(
+    api_client, regular_user, jwt_tokens
+):
+    # Auth only, deliberately no X-Organization-Id (auth_client sets a sticky one).
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {jwt_tokens['access']}")
+    response = api_client.get("/api/profile/")
     assert response.status_code == 200
     body = response.json()
     assert body["active_organization_id"] is None
@@ -665,11 +669,14 @@ def test_profile_valid_header_returns_active_permissions(
 
 
 @pytest.mark.django_db
-def test_profile_invalid_header_soft_fails(auth_client, regular_user, db):
+def test_profile_invalid_header_soft_fails(api_client, regular_user, jwt_tokens, db):
     from tables.models.rbac_models import Organization
 
+    # Auth only, then pass an org the caller is not a member of as a per-request
+    # header (auth_client's sticky default would otherwise override it).
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {jwt_tokens['access']}")
     other = Organization.objects.create(name="Other Inc (profile tests)")
-    response = auth_client.get("/api/profile/", HTTP_X_ORGANIZATION_ID=str(other.id))
+    response = api_client.get("/api/profile/", HTTP_X_ORGANIZATION_ID=str(other.id))
     # NOT 403 — profile is the FE boot endpoint.
     assert response.status_code == 200
     body = response.json()
@@ -688,3 +695,70 @@ def test_profile_superadmin_with_any_org(
     assert body["active_organization_id"] == default_org.id
     assert body["active_permissions"]["is_superadmin"] is True
     assert body["active_permissions"]["permissions"] == "*"
+
+
+# ===========================================================================
+# TestProfileSuperadminMemberships — superadmin sees every active org
+# ===========================================================================
+
+
+@pytest.mark.django_db
+class TestProfileSuperadminMemberships:
+    URL = "/api/profile/"
+
+    def test_superadmin_sees_all_active_orgs_with_superadmin_role(
+        self, superadmin_client, superadmin_user, db
+    ):
+        org_a = Organization.objects.create(name="ZZ Org")
+        org_b = Organization.objects.create(name="AA Org")
+        resp = superadmin_client.get(self.URL)
+        assert resp.status_code == status.HTTP_200_OK
+        memberships = resp.json()["memberships"]
+        org_ids = {m["organization"]["id"] for m in memberships}
+        assert {org_a.id, org_b.id} <= org_ids
+        assert all(m["role"]["name"] == BuiltInRole.SUPERADMIN for m in memberships)
+
+    def test_superadmin_membership_entry_shape(self, superadmin_client, db):
+        org = Organization.objects.create(name="Shape Co")
+        entry = next(
+            m
+            for m in superadmin_client.get(self.URL).json()["memberships"]
+            if m["organization"]["id"] == org.id
+        )
+        assert entry["organization"] == {
+            "id": org.id,
+            "name": "Shape Co",
+            "is_active": True,
+        }
+        assert entry["role"]["name"] == BuiltInRole.SUPERADMIN
+        assert entry["id"] is None
+        assert entry["joined_at"] is None
+
+    def test_newly_created_org_appears_for_superadmin(self, superadmin_client, db):
+        before = superadmin_client.get(self.URL).json()["memberships"]
+        new_org = Organization.objects.create(name="Fresh Org")
+        after = superadmin_client.get(self.URL).json()["memberships"]
+        after_ids = {m["organization"]["id"] for m in after}
+        assert new_org.id in after_ids
+        assert len(after) == len(before) + 1
+
+    def test_superadmin_inactive_org_excluded(self, superadmin_client, db):
+        active = Organization.objects.create(name="Active Co")
+        inactive = Organization.objects.create(name="Inactive Co", is_active=False)
+        org_ids = {
+            m["organization"]["id"]
+            for m in superadmin_client.get(self.URL).json()["memberships"]
+        }
+        assert active.id in org_ids
+        assert inactive.id not in org_ids
+
+    def test_non_superadmin_only_sees_own_orgs(
+        self, authed_client, member_acme, org_acme, db
+    ):
+        # An unrelated org the member does NOT belong to must not appear.
+        Organization.objects.create(name="Someone Elses Org")
+        org_ids = {
+            m["organization"]["id"]
+            for m in authed_client(member_acme).get(self.URL).json()["memberships"]
+        }
+        assert org_ids == {org_acme.id}

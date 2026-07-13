@@ -33,6 +33,7 @@ export class RolesTabComponent implements OnInit {
 
     readonly searchTerm = signal('');
     readonly isLoading = signal(false);
+    readonly roles = this.rolesService.roles;
 
     ngOnInit(): void {
         this.isLoading.set(true);
@@ -70,7 +71,7 @@ export class RolesTabComponent implements OnInit {
     });
 
     onViewRole(row: TableRow): void {
-        const role = this.rolesService.roles().find((r) => r.id === row['id']);
+        const role = this.roles().find((r) => r.id === row['id']);
         if (!role) return;
         this.dialog.open(RoleInfoDialogComponent, {
             width: 'calc(100vw - 2rem)',

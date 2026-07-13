@@ -33,6 +33,8 @@ two-step password change.
 
 Memberships are filtered to active organizations only and sorted by `joined_at` ascending.
 
+For a **superadmin**, `memberships[]` lists **every active organization**, each with the built-in `Superadmin` role, so the org switcher can reach any org. Entries carry `id: null` and `joined_at: null` (there is no stored membership row), and are ordered by organization name.
+
 ### 2. Changing display name
 
 `PATCH /api/profile/` with `{"display_name": "Alice Doe"}`. Response is the full updated profile — re-render directly.
@@ -105,6 +107,8 @@ Submitted password values are redacted (`"value": "***"`) in error responses.
 | `memberships[].joined_at` | `memberships[].joined_at` | unchanged |
 | — | `memberships[].id` | new — the `OrganizationUser` row id |
 
+For a superadmin the same `memberships[]` block lists every active organization with the `Superadmin` role (`id` and `joined_at` are `null`).
+
 `POST /api/auth/password-change/` is gone. Replace with the two-step flow described in §5 above.
 
 ---
@@ -135,6 +139,8 @@ Submitted password values are redacted (`"value": "***"`) in error responses.
   ]
 }
 ```
+
+For a superadmin, `memberships[]` lists every active organization with the `Superadmin` role; each such entry has `id: null` and `joined_at: null`.
 
 ### PATCH `/api/profile/`
 

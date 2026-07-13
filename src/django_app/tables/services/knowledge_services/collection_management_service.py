@@ -39,7 +39,10 @@ class CollectionManagementService:
     @staticmethod
     @transaction.atomic
     def create_collection(
-        collection_name: str = None, user_id: str = None, collection_origin: str = None
+        collection_name: str = None,
+        user_id: str = None,
+        collection_origin: str = None,
+        org_id: int = None,
     ) -> SourceCollection:
         """
         Create a new empty collection.
@@ -48,6 +51,7 @@ class CollectionManagementService:
             collection_name: Name for collection (auto-generated if None)
             user_id: User ID (defaults to "dummy_user")
             collection_origin: Origin of collection (defaults to USER)
+            org_id: Owning organization id (required — collection.org is NOT NULL)
 
         Returns:
             SourceCollection: Created collection
@@ -57,6 +61,7 @@ class CollectionManagementService:
             user_id=user_id or "dummy_user",
             collection_origin=collection_origin
             or SourceCollection.SourceCollectionOrigin.USER,
+            org_id=org_id,
         )
 
         logger.info(
@@ -235,6 +240,7 @@ class CollectionManagementService:
     def copy_collection(
         source_collection_id: int,
         new_collection_name: str = None,
+        org_id: int = None,
     ) -> SourceCollection:
         """
         Copy a collection without duplicating binary content.
@@ -259,7 +265,8 @@ class CollectionManagementService:
         # Create new collection (name auto-deduplicated by model.save())
         new_collection = SourceCollection.objects.create(
             collection_name=new_collection_name
-            or f"{source_collection.collection_name} (Copy)"
+            or f"{source_collection.collection_name} (Copy)",
+            org_id=org_id,
         )
 
         # Get source documents with content

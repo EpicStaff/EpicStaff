@@ -14,6 +14,7 @@ from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.utils.telegram_fields import load_telegram_trigger_fields
 from tables.models import Tool
 from tables.models import Crew
+from tables.models import Agent
 from tables.services.realtime_service import RealtimeService
 from tables.swagger_schemas.python_node_test_mode_schema import (
     LAST_TEST_INPUT_SWAGGER as _LAST_TEST_INPUT_SWAGGER,
@@ -27,7 +28,7 @@ from drf_spectacular.utils import (
     OpenApiResponse,
 )
 from django.db import transaction
-from django.db.models import Count, Exists, OuterRef
+from django.db.models import Count, Exists, OuterRef, Q
 from django.conf import settings
 
 
@@ -60,6 +61,7 @@ from tables.models import (
     GraphOrganizationUser,
     OrganizationUser,
     Graph,
+    PythonCode,
     SessionWarningMessage,
     SessionStorageFile,
 )
@@ -89,11 +91,29 @@ from tables.serializers.default_config_serializers import DefaultModelsSerialize
 from tables.filters import SessionFilter  # CollectionFilter,
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.import_export.enums import EntityType
+from rest_framework.permissions import IsAuthenticated
+from tables.views.mixins import (
+    OrgScopedChildViewSetMixin,
+    OrgScopedServiceViewSetMixin,
+)
+from tables.models.knowledge_models import NaiveRag, GraphRag
+from tables.services.rbac.permissions import (
+    HasOrgPermission,
+    IsSuperadmin,
+    IsSuperadminOrReadOnly,
+)
+from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
+from tables.services.rbac.session_access import assert_session_org_access
+from tables.services.rbac.permission_assert import assert_org_permission
+from tables.services.rbac.org_context_service import OrgContextService
+from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.import_export.export_format_strategies import (
     JsonExportFormatStrategy,
     CsvExportFormatStrategy,
 )
-from tables.import_export.export_tabular_projections.session import SessionTabularProjection
+from tables.import_export.export_tabular_projections.session import (
+    SessionTabularProjection,
+)
 
 from tables.swagger_schemas.default_config_schemas import (
     QUICKSTART_GET,
@@ -142,6 +162,7 @@ quickstart_service = QuickstartService()
     destroy=extend_schema(**SESSION_DESTROY_DELETE),
 )
 class SessionViewSet(
+    OrgScopedChildViewSetMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.DestroyModelMixin,
@@ -152,8 +173,24 @@ class SessionViewSet(
 
     Supports listing, retrieving, deleting sessions,
     bulk deletion, and reporting aggregated status counts.
+
+    Sessions are executions of a flow, so they are scoped as children of the
+    graph (FLOWS): view/status -> READ, export -> EXPORT, delete -> DELETE.
     """
 
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "export": Permission.EXPORT,
+        "bulk_export": Permission.EXPORT,
+        "export_all": Permission.EXPORT,
+        "statuses": Permission.READ,
+        "bulk_delete": Permission.DELETE,
+        "get_session_warnings": Permission.READ,
+        "output_files": Permission.READ,
+    }
+    org_filter_path = "graph__org_id"
     serializer_class = SessionSerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
 
@@ -190,7 +227,9 @@ class SessionViewSet(
         return SessionSerializer
 
     def get_queryset(self):
-        qs = Session.objects.select_related("graph")
+        qs = Session.objects.select_related("graph").filter(
+            graph__org_id=self.get_active_org_id()
+        )
         detailed = self.request.query_params.get("detailed", "true").lower()
 
         if detailed == "false":
@@ -247,9 +286,9 @@ class SessionViewSet(
         serializer.is_valid(raise_exception=True)
         entity_ids = serializer.validated_data["ids"]
 
-        existing_ids = Session.objects.filter(id__in=entity_ids).values_list(
-            "id", flat=True
-        )
+        existing_ids = Session.objects.filter(
+            id__in=entity_ids, graph__org_id=self.get_active_org_id()
+        ).values_list("id", flat=True)
         if len(existing_ids) != len(entity_ids):
             return Response(
                 {"message": "Some entity IDs do not exist"},
@@ -278,13 +317,16 @@ class SessionViewSet(
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        active_org_id = self.get_active_org_id()
         if (
             "graph_id" in data
-            and not Graph.objects.filter(id=data["graph_id"]).exists()
+            and not Graph.objects.filter(
+                id=data["graph_id"], org_id=active_org_id
+            ).exists()
         ):
             raise NotFound(f"Graph {data['graph_id']} not found")
 
-        qs = Session.objects.filter(parent_session_id=None)
+        qs = Session.objects.filter(parent_session_id=None, graph__org_id=active_org_id)
 
         if "graph_id" in data:
             qs = qs.filter(graph_id=data["graph_id"])
@@ -351,7 +393,9 @@ class SessionViewSet(
             )
 
         with transaction.atomic():
-            session_list = Session.objects.filter(id__in=ids)
+            session_list = Session.objects.filter(
+                id__in=ids, graph__org_id=self.get_active_org_id()
+            )
             deleted_count = session_list.count()
             for session in session_list:
                 session.delete()
@@ -412,7 +456,6 @@ class RunSession(APIView):
         files_dict = {}
         graph_id = serializer.validated_data.get("graph_id")
         graph_uuid = serializer.validated_data.get("graph_uuid")
-        username = serializer.validated_data.get("username")
         graph_organization_user = None
         warning_messages = []
 
@@ -429,41 +472,30 @@ class RunSession(APIView):
 
         graph_id = graph.id
 
-        graph_organization = GraphOrganization.objects.filter(
-            graph__id=graph_id
-        ).first()
-
-        if graph_organization:
-            if not username and graph_organization.user_variables:
-                warning_messages.append(SessionWarningType.USER_VARS_WITH_NO_USER.value)
-
-        if username and not graph_organization:
-            return Response(
-                {"message": "No GraphOrganization exists for this flow."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if username and graph_organization:
-            # NOTE (RBAC Story 0): the old graph-domain OrganizationUser was keyed by
-            # a free-form `name` string. RBAC replaces it with (User x Org x Role);
-            # the `username` request param is now interpreted as the User's email.
-            # TODO (RBAC Story 2+): drop `username` from the payload entirely and
-            # derive the membership from `request.user` + X-Organization-Id header.
+        # Resolve the running user's membership in the flow's organization.
+        # Superadmin may run any flow without a membership row.
+        is_superadmin = getattr(request.user, "is_superadmin", False)
+        membership = None
+        if not is_superadmin:
             membership = OrganizationUser.objects.filter(
-                user__email=username, org=graph_organization.organization
+                user=request.user, org_id=graph.org_id, org__is_active=True
             ).first()
-
-            if not membership:
+            if membership is None:
                 return Response(
-                    {
-                        "message": (
-                            f"Provided user does not exist or does not belong to "
-                            f"organization {graph_organization.organization.name}"
-                        )
-                    },
-                    status=status.HTTP_404_NOT_FOUND,
+                    {"message": "You cannot run a flow outside your organization."},
+                    status=status.HTTP_403_FORBIDDEN,
                 )
+        # TODO: refactor in scope of persistant variables story
+        graph_organization = GraphOrganization.objects.filter(graph=graph).first()
 
+        if (
+            graph_organization
+            and graph_organization.user_variables
+            and membership is None
+        ):
+            warning_messages.append(SessionWarningType.USER_VARS_WITH_NO_USER.value)
+
+        if membership is not None and graph_organization is not None:
             graph_organization_user, _ = GraphOrganizationUser.objects.get_or_create(
                 organization_user=membership,
                 graph=graph,
@@ -491,7 +523,7 @@ class RunSession(APIView):
         try:
             # Publish session to: crew, maanger
             session_id = session_manager_service.run_session(
-                graph_id=graph_id, variables=variables, username=username
+                graph_id=graph_id, variables=variables, user=request.user
             )
             logger.info(f"Session {session_id} successfully started.")
         except Exception as e:
@@ -527,15 +559,13 @@ class GetUpdates(APIView):
         if session_id is None:
             return Response("Session id not found", status=status.HTTP_404_NOT_FOUND)
 
-        try:
-            session_status = session_manager_service.get_session_status(
-                session_id=session_id
-            )
-        except Session.DoesNotExist:
+        session = Session.objects.select_related("graph").filter(pk=session_id).first()
+        if session is None:
             return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
+        assert_session_org_access(request.user, session)
 
         return Response(
-            data={"status": session_status},
+            data={"status": session.status},
             status=status.HTTP_200_OK,
         )
 
@@ -546,6 +576,12 @@ class StopSession(APIView):
         session_id = kwargs.get("session_id", None)
         if session_id is None:
             return Response("Session id is missing", status=status.HTTP_404_NOT_FOUND)
+
+        session = Session.objects.select_related("graph").filter(pk=session_id).first()
+        if session is None:
+            return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
+        assert_session_org_access(request.user, session)
+
         try:
             required_listeners = 2  # manager and crew
             received_n = session_manager_service.stop_session(session_id=session_id)
@@ -580,6 +616,10 @@ class AnswerToLLM(APIView):
             session = Session.objects.get(id=session_id)
         except Session.DoesNotExist:
             return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
+
+        # Org isolation: only a member of the session's (graph) org may answer it
+        # — same gate as stop/get-updates (FLOWS READ; superadmin bypass).
+        assert_session_org_access(request.user, session, Permission.READ)
 
         logger.info(
             f"{session.status} == {Session.SessionStatus.WAIT_FOR_USER} : {session.status == Session.SessionStatus.WAIT_FOR_USER}"
@@ -624,6 +664,8 @@ class AnswerToLLM(APIView):
 
 
 class RunPythonCodeAPIView(APIView):
+    _org_context = OrgContextService()
+
     @extend_schema(**RUN_PYTHON_CODE_POST)
     def post(self, request):
         serializer = RunPythonCodeSerializer(data=request.data)
@@ -631,11 +673,53 @@ class RunPythonCodeAPIView(APIView):
         python_code = serializer.validated_data["python_code"]
         variables = serializer.validated_data["variables"]
 
+        # Executing arbitrary code is a contributor-level action, gated on
+        # TOOLS.UPDATE. The code must also be visible to the active org, so a
+        # caller cannot run another org's code by passing its id (rejected like
+        # a non-existent pk — existence never leaks).
+        org_id = self._org_context.resolve(
+            request=request, view_kwargs=getattr(self, "kwargs", {})
+        )
+        assert_org_permission(
+            user=request.user,
+            org_id=org_id,
+            resource_type=ResourceType.FLOWS,
+            action=Permission.UPDATE,
+        )
+        if not PythonCode.objects.filter(
+            self._python_code_visible_q(org_id), pk=python_code.pk
+        ).exists():
+            raise ValidationError(
+                {
+                    "python_code_id": [
+                        f'Invalid pk "{python_code.pk}" - object does not exist.'
+                    ]
+                }
+            )
+
         execution_id = run_python_code_service.run_code(python_code.id, variables)
         return Response({"execution_id": execution_id}, status=status.HTTP_200_OK)
 
+    @staticmethod
+    def _python_code_visible_q(org_id: int) -> Q:
+        """A PythonCode is visible to an org if it is referenced by an org-owned
+        tool (built-in tools are global) or by a node/edge in one of the org's
+        graphs. Used to scope run-python-code so a caller cannot execute another
+        org's stored code by id."""
+        return (
+            Q(pythoncodetool__built_in=True)
+            | Q(pythoncodetool__org_id=org_id)
+            | Q(pythonnode__graph__org_id=org_id)
+            | Q(conditionaledge__graph__org_id=org_id)
+            | Q(webhooktriggernode__graph__org_id=org_id)
+            | Q(cdt_pre_nodes__graph__org_id=org_id)
+            | Q(cdt_post_nodes__graph__org_id=org_id)
+        )
+
 
 class InitRealtimeAPIView(APIView):
+    _org_context = OrgContextService()
+
     @extend_schema(**INIT_REALTIME_POST)
     def post(self, request):
         logger.info("Received POST request to start a new session.")
@@ -651,6 +735,23 @@ class InitRealtimeAPIView(APIView):
 
         agent_id = serializer.validated_data["agent_id"]
         config = serializer.validated_data.get("config", {})
+
+        # Org isolation: starting a realtime session is a read/use of an agent,
+        # so require AGENTS.READ and reject an agent_id outside the active org
+        # (rejected like a missing id — existence never leaks).
+        org_id = self._org_context.resolve(
+            request=request, view_kwargs=getattr(self, "kwargs", {})
+        )
+        assert_org_permission(
+            user=request.user,
+            org_id=org_id,
+            resource_type=ResourceType.AGENTS,
+            action=Permission.READ,
+        )
+        if not Agent.objects.filter(id=agent_id, org_id=org_id).exists():
+            raise ValidationError(
+                {"agent_id": f'Invalid pk "{agent_id}" - object does not exist.'}
+            )
 
         try:
             connection_key = realtime_service.init_realtime(
@@ -674,11 +775,19 @@ class QuickstartView(APIView):
     API endpoint for managing quickstart configurations
     """
 
+    permission_classes = [IsAuthenticated]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_required_action = Permission.CREATE
+    _org_context = OrgContextService()
+
     @extend_schema(**QUICKSTART_GET)
     def get(self, request):
+        org_id = self._org_context.resolve(
+            request=request, view_kwargs=getattr(self, "kwargs", {})
+        )
         try:
             supported_providers = list(quickstart_service.get_supported_providers())
-            last_config = quickstart_service.get_last_quickstart()
+            last_config = quickstart_service.get_last_quickstart(org_id)
             is_synced = (
                 quickstart_service.is_synced(last_config) if last_config else False
             )
@@ -705,8 +814,17 @@ class QuickstartView(APIView):
         if serializer.is_valid():
             provider = serializer.validated_data["provider"]
             api_key = serializer.validated_data["api_key"]
+            org_id = self._org_context.resolve(
+                request=request, view_kwargs=getattr(self, "kwargs", {})
+            )
+            assert_org_permission(
+                user=request.user,
+                org_id=org_id,
+                resource_type=self.rbac_resource_type,
+                action=self.rbac_required_action,
+            )
 
-            result = quickstart_service.quickstart(provider, api_key)
+            result = quickstart_service.quickstart(provider, api_key, org_id=org_id)
 
             if result.get("success", False):
                 config_name = result["config_name"]
@@ -741,11 +859,21 @@ class QuickstartApplyView(APIView):
     """
     Applies a quickstart config to DefaultModels.
     If config_name is omitted, the most recently created quickstart config is used.
+
+    Writes the global DefaultModels singleton (install-wide defaults shared by
+    every organization), so it is restricted to superadmins.
     """
+
+    # TODO: refactor to set default models per org based on user permissions
+    permission_classes = [IsAuthenticated, IsSuperadmin]
+    _org_context = OrgContextService()
 
     @extend_schema(**QUICKSTART_APPLY_POST)
     def post(self, request):
-        last = quickstart_service.get_last_quickstart()
+        org_id = self._org_context.resolve(
+            request=request, view_kwargs=getattr(self, "kwargs", {})
+        )
+        last = quickstart_service.get_last_quickstart(org_id)
         if not last:
             return Response(
                 {"detail": "No quickstart config found. Run POST /quickstart/ first."},
@@ -756,11 +884,14 @@ class QuickstartApplyView(APIView):
         return Response(DefaultModelsSerializer(dm).data, status=status.HTTP_200_OK)
 
 
-class ProcessRagIndexingView(APIView):
+class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
     """
     View for triggering RAG indexing (chunking + embedding).
     All business logic is handled by IndexingService.
     """
+
+    _RAG_MODELS = {"naive": NaiveRag, "graph": GraphRag}
+    _RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
 
     @extend_schema(**PROCESS_RAG_INDEXING_POST)
     def post(self, request):
@@ -770,6 +901,21 @@ class ProcessRagIndexingView(APIView):
 
         rag_id = serializer.validated_data["rag_id"]
         rag_type = serializer.validated_data["rag_type"]
+
+        # The rag must live in the active org (404), and indexing mutates it.
+        model = self._RAG_MODELS.get(rag_type)
+        if model is None:
+            return Response(
+                {"error": f"Unknown rag_type '{rag_type}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.KNOWLEDGE_SOURCES,
+            Permission.UPDATE,
+        )
 
         try:
             indexing_data = IndexingService.validate_and_prepare_indexing(

@@ -26,6 +26,8 @@ import {
     InputNumberComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { Observable, of, timer } from 'rxjs';
 import { catchError, map, switchMap } from 'rxjs/operators';
 
@@ -50,6 +52,7 @@ interface DialogData {
         InputNumberComponent,
         ButtonComponent,
         IconButtonComponent,
+        HasPermissionDirective,
     ],
     templateUrl: './mcp-tool-dialog.component.html',
     styleUrls: ['./mcp-tool-dialog.component.scss'],
@@ -243,4 +246,7 @@ export class McpToolDialogComponent implements OnInit {
         }
         return null;
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

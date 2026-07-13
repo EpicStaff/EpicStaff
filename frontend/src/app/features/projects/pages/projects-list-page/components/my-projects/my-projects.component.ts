@@ -2,6 +2,8 @@ import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { Router } from '@angular/router';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { ConfirmationDialogService } from '../../../../../../shared/components/cofirm-dialog/confimation-dialog.service';
 import { LoadingSpinnerComponent } from '../../../../../../shared/components/loading-spinner/loading-spinner.component';
@@ -34,7 +36,10 @@ import { AddProjectCardComponent } from './add-project-card/add-project-card.com
                     </button>
                 } @else {
                     <div class="grid">
-                        <app-add-project-card (createClick)="onCreateProject()"></app-add-project-card>
+                        <app-add-project-card
+                            *appHasPermission="[ResourceCode.Projects, ActionCode.Create]"
+                            (createClick)="onCreateProject()"
+                        ></app-add-project-card>
 
                         @if (filteredProjects().length === 0) {
                             <div class="empty-message">
@@ -90,7 +95,7 @@ import { AddProjectCardComponent } from './add-project-card/add-project-card.com
             }
         `,
     ],
-    imports: [ProjectCardComponent, AddProjectCardComponent, LoadingSpinnerComponent],
+    imports: [ProjectCardComponent, AddProjectCardComponent, LoadingSpinnerComponent, HasPermissionDirective],
 })
 export class MyProjectsComponent implements OnInit {
     private readonly router = inject(Router);
@@ -185,4 +190,7 @@ export class MyProjectsComponent implements OnInit {
         // Logic to open a dialog or navigate to a creation page
         this.router.navigate(['/projects', 'new']);
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }
