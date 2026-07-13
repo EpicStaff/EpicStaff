@@ -1,9 +1,10 @@
 from tables.import_export.utils import ensure_unique_identifier
 from tables.models import Graph
-from tables.models.graph_models import ConditionalEdge, Edge, GraphOrganization
+from tables.models.graph_models import ConditionalEdge, Edge, StartNode
 from tables.services.copy_services.base_copy_service import BaseCopyService
 from tables.services.copy_services.helpers import copy_python_code
 from tables.services.copy_services.node_copy_handlers import NODE_COPY_HANDLERS
+from tables.services.persistent_variables_service import PersistentVariablesService
 
 
 class GraphCopyService(BaseCopyService):
@@ -34,7 +35,10 @@ class GraphCopyService(BaseCopyService):
             org_id=target_org_id,
         )
         new_graph.labels.set(graph.labels.all())
-        GraphOrganization.objects.create(graph=new_graph)
+        source_start = StartNode.objects.filter(graph=graph).first()
+        PersistentVariablesService().seed_for_copy(
+            new_graph, source_start.variables if source_start else {}
+        )
 
         node_id_map: dict[int, int] = {}
         for _, (relation_name, handler) in NODE_COPY_HANDLERS.items():
