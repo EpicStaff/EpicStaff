@@ -15,7 +15,6 @@ import { Subject, timer } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
-import { GraphCollaborationWsService } from '../../../../features/flows/services/graph-collaboration.ws.service';
 import {
     GetScheduleTriggerNodeRequest,
     ScheduleEndType,
@@ -37,7 +36,6 @@ import { TimezoneSelectorComponent } from '../../../../shared/components/timezon
 import { ScheduleTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { FlowService } from '../../../services/flow.service';
-import { SidePanelService } from '../../../services/side-panel.service';
 import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 
 const panelFadeSlide = trigger('panelFadeSlide', [
@@ -83,8 +81,6 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
     private readonly cdr = inject(ChangeDetectorRef);
     private readonly flowsApiService = inject(FlowsApiService);
     private readonly flowService = inject(FlowService);
-    private readonly sidePanelService = inject(SidePanelService);
-    private readonly wsService = inject(GraphCollaborationWsService);
 
     constructor() {
         super();
