@@ -22,12 +22,13 @@ class SecretCharField(serializers.CharField):
         super().__init__(*args, **kwargs)
 
     def to_representation(self, value):
-        if value in (None, ""):
+        if value is None or value == "":
             return value
-        s = str(value)
-        if len(s) <= 8:
-            return f"********"
-        return f"{'*'*(len(s)-4)}{s[-self.visible_tail :]}"
+        s = value if isinstance(value, str) else str(value)
+        n = len(s)
+        if n <= 8:
+            return "********"
+        return "*" * (n - 4) + s[-self.visible_tail :]
 
     def to_internal_value(self, data):
         if isinstance(data, str) and data.startswith("*****"):
