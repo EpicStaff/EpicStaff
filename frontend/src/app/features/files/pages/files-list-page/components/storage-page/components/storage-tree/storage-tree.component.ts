@@ -1,6 +1,8 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, ElementRef, input, output, signal, ViewChild } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { AppSvgIconComponent } from '../../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { StorageItem } from '../../../../../../models/storage.models';
@@ -8,7 +10,7 @@ import { getFileExtension } from '../../../../../../utils/storage-file.utils';
 
 @Component({
     selector: 'app-storage-tree',
-    imports: [NgTemplateOutlet, AppSvgIconComponent, MatTooltipModule],
+    imports: [NgTemplateOutlet, AppSvgIconComponent, MatTooltipModule, HasPermissionDirective],
     templateUrl: './storage-tree.component.html',
     styleUrls: ['./storage-tree.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -484,4 +486,7 @@ export class StorageTreeComponent {
         }
         return flat;
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

@@ -35,6 +35,7 @@ class Session(models.Model):
     variables = models.JSONField(default=dict)
     created_at = models.DateTimeField(default=timezone.now)
     graph_schema = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+    # TODO: rbac refactor
     graph_user = models.ForeignKey(
         GraphOrganizationUser, on_delete=models.SET_NULL, default=None, null=True
     )

@@ -14,6 +14,8 @@ import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { RouterModule } from '@angular/router';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { computeUniqueName } from '@shared/utils';
 import { Subject } from 'rxjs';
 import { map, switchMap, takeUntil } from 'rxjs/operators';
@@ -46,6 +48,7 @@ import { EditTitleDialogComponent } from './edit-name-dialog/edit-title-dialog.c
         SaveWithIndicatorComponent,
         UnsavedIndicatorComponent,
         MatTooltipModule,
+        HasPermissionDirective,
     ],
     templateUrl: './header.component.html',
     styleUrl: './header.component.scss',
@@ -234,4 +237,7 @@ export class HeaderComponent implements OnInit, OnDestroy {
     public onSaveClick(): void {
         this.save.emit();
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

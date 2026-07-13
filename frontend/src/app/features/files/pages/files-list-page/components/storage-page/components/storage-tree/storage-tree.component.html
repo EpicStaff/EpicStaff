@@ -262,6 +262,7 @@
         [style.top.px]="contextMenuPosition().y"
     >
         <button
+            *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
             class="storage-tree__context-menu-item"
             (click)="onContextMenuAction('add-to-flow')"
         >
@@ -274,18 +275,21 @@
             Download
         </button>
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Update]"
             class="storage-tree__context-menu-item"
             (click)="onContextMenuAction('copy')"
         >
             Copy to...
         </button>
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Update]"
             class="storage-tree__context-menu-item"
             (click)="onContextMenuAction('duplicate-here')"
         >
             Duplicate here
         </button>
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Update]"
             class="storage-tree__context-menu-item"
             (click)="onContextMenuAction('rename')"
         >
@@ -299,6 +303,7 @@
         </button>
         <div class="storage-tree__context-menu-divider"></div>
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Delete]"
             class="storage-tree__context-menu-item"
             (click)="onContextMenuAction('delete')"
         >

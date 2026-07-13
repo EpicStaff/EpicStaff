@@ -18,7 +18,10 @@
         "build": {
           "builder": "@angular/build:application",
           "options": {
-            "outputPath": "dist/frontend-crewai",
+            "outputPath": {
+              "base": "dist/frontend-crewai",
+              "media": "fonts"
+            },
             "index": "src/index.html",
             "browser": "src/main.ts",
             "polyfills": ["zone.js"],
@@ -52,6 +55,7 @@
             ],
             "styles": [
               "@angular/material/prebuilt-themes/cyan-orange.css",
+              "node_modules/@tabler/icons-webfont/dist/tabler-icons.min.css",
               "src/styles.scss"
             ],
             "scripts": [],
@@ -96,15 +100,14 @@
                   "type": "anyComponentStyle",
                   "maximumWarning": "15kB",
                   "maximumError": "30kB"
-                },
-                {
-                  "type": "bundle",
-                  "name": "css-inline-fonts:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap",
-                  "maximumWarning": "15kB",
-                  "maximumError": "30kB"
                 }
               ],
               "outputHashing": "all",
+              "optimization": {
+                "scripts": true,
+                "styles": true,
+                "fonts": false
+              },
               "fileReplacements": [
                 {
                   "replace": "src/environments/environment.ts",
@@ -144,6 +147,7 @@
             ],
             "styles": [
               "@angular/material/prebuilt-themes/cyan-orange.css",
+              "node_modules/@tabler/icons-webfont/dist/tabler-icons.min.css",
               "src/styles.scss"
             ],
             "scripts": []

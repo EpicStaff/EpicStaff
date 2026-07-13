@@ -3,6 +3,8 @@ import { ChangeDetectionStrategy, Component, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { Subject, Subscription } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 
@@ -30,6 +32,7 @@ import { ProjectsStorageService } from '../../services/projects-storage.service'
         AppSvgIconComponent,
         HideInlineSubtitleOnOverflowDirective,
         MatTooltipModule,
+        HasPermissionDirective,
     ],
 })
 export class ProjectsListPageComponent implements OnDestroy {
@@ -95,4 +98,7 @@ export class ProjectsListPageComponent implements OnDestroy {
             }
         });
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

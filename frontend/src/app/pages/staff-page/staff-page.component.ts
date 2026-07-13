@@ -1,10 +1,14 @@
 import { Dialog } from '@angular/cdk/dialog'; // Import from CDK instead of Material
-import { Component, HostListener, ViewChild } from '@angular/core';
+import { Component, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { Observable, of } from 'rxjs';
 import { catchError, finalize, map, tap } from 'rxjs/operators';
 
 import { CanComponentDeactivate } from '../../core/guards/unsaved-changes.guard';
+import { UnsavedChangesRegistry } from '../../core/services/unsaved-changes-registry.service';
 import { FullAgent, FullAgentService } from '../../features/staff/services/full-agent.service';
+import { PermissionsService } from '../../services/auth/permissions.service';
 import { ToastService } from '../../services/notifications/toast.service';
 import { ButtonComponent } from '../../shared/components/buttons/button/button.component';
 import { CreateAgentFormComponent } from '../../shared/components/create-agent-form-dialog/create-agent-form-dialog.component';
@@ -24,20 +28,31 @@ import { AgentsTableComponent } from './components/agents-table/agents-table.com
         SaveWithIndicatorComponent,
         UnsavedIndicatorComponent,
         HideInlineSubtitleOnOverflowDirective,
+        HasPermissionDirective,
     ],
     templateUrl: './staff-page.component.html',
     styleUrls: ['./staff-page.component.scss'],
 })
-export class StaffPageComponent implements CanComponentDeactivate {
+export class StaffPageComponent implements CanComponentDeactivate, OnInit, OnDestroy {
     public newlyCreatedAgent: FullAgent | null = null;
     public isLoadingAgent = false;
 
     constructor(
         private dialog: Dialog,
         private fullAgentService: FullAgentService,
+        private permissionsService: PermissionsService,
         private unsavedChangesDialog: UnsavedChangesDialogService,
-        private toastService: ToastService
+        private toastService: ToastService,
+        private unsavedChangesRegistry: UnsavedChangesRegistry
     ) {}
+
+    ngOnInit(): void {
+        this.unsavedChangesRegistry.register(this);
+    }
+
+    ngOnDestroy(): void {
+        this.unsavedChangesRegistry.unregister(this);
+    }
 
     @ViewChild(AgentsTableComponent) private agentsTable?: AgentsTableComponent;
 
@@ -92,7 +107,10 @@ export class StaffPageComponent implements CanComponentDeactivate {
         if (!this.agentsTable) return of(true);
         if (!this.hasUnsavedChanges) return of(true);
 
-        if (!this.agentsTable.validateBeforeSave()) return of(false);
+        if (!this.agentsTable.validateBeforeSave()) {
+            this.toastService.warning('Please fill in all required fields.');
+            return of(false);
+        }
         this.isSaving = true;
 
         return this.agentsTable.flushPending().pipe(
@@ -109,6 +127,7 @@ export class StaffPageComponent implements CanComponentDeactivate {
     }
 
     public canDeactivate(): boolean | Observable<boolean> {
+        if (!this.permissionsService.can(ResourceCode.Agents, ActionCode.Update)) return true;
         if (!this.hasUnsavedChanges) return true;
 
         return this.unsavedChangesDialog
@@ -149,4 +168,7 @@ export class StaffPageComponent implements CanComponentDeactivate {
         event.preventDefault();
         event.returnValue = '';
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

@@ -52,6 +52,7 @@ class GraphVersioningService:
             deps_validation["available"],
             graph_name=graph_name,
             version_name=version.name,
+            org_id=source_graph.org_id,
         )
 
         # Copy labels from source graph

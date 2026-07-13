@@ -6,6 +6,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 
+from tables.services.rbac.permissions import IsSuperadminOrReadOnly
+
 from tables.serializers.default_config_serializers import (
     DefaultModelsSerializer,
 )
@@ -16,8 +18,13 @@ from tables.swagger_schemas.default_config_schemas import (
 
 
 class BaseDefaultConfigAPIView(APIView):
-    """A Base model for all default config api views."""
+    """A Base model for all default config api views.
 
+    These are global install-wide default singletons: any authenticated user
+    may read them; only a superadmin may modify them (write-lockdown).
+    """
+
+    permission_classes = [IsSuperadminOrReadOnly]
     model = None
     serializer = None
 

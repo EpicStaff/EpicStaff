@@ -12,6 +12,8 @@ import {
     signal,
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ProjectMenuItemComponent } from './project-menu-item/project-menu-item.component';
@@ -19,7 +21,7 @@ import { ProjectMenuItemComponent } from './project-menu-item/project-menu-item.
 @Component({
     selector: 'app-project-menu',
     standalone: true,
-    imports: [NgIf, NgClass, ProjectMenuItemComponent, AppSvgIconComponent, MatTooltipModule],
+    imports: [NgIf, NgClass, ProjectMenuItemComponent, AppSvgIconComponent, HasPermissionDirective, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './project-menu.component.html',
     styleUrls: ['./project-menu.component.scss'],
@@ -111,4 +113,7 @@ export class ProjectMenuComponent implements OnDestroy {
     ngOnDestroy(): void {
         this.cancelCloseTimeout();
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

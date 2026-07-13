@@ -33,6 +33,7 @@
     [visible]="!isSaving && contextMenuVisible()"
     [left]="menuLeft"
     [top]="menuTop"
+    [permissionResource]="ResourceCode.Agents"
     (delete)="handleDelete()"
     (copy)="handleCopy()"
     (pasteBelow)="handlePasteBelow()"
