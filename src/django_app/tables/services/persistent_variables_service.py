@@ -138,6 +138,49 @@ class PersistentVariablesService:
         except Exception as e:  # noqa: BLE001 — session termination must not fail here
             logger.error(f"Error persisting session results for graph {graph.id}: {e}")
 
+    def sync_from_start_node(self, graph, old_variables, new_variables) -> None:
+        """Mirror the declared org paths into storage; derive the flag (not gated)."""
+        graph_org, _ = GraphOrganization.objects.get_or_create(graph=graph)
+        old_paths = set(self._org_paths(old_variables))
+        new_paths = set(self._org_paths(new_variables))
+        defaults = self._actual(new_variables)
+        stored = graph_org.persistent_variables or {}
+
+        # Seed a path when it is newly declared, or declared-but-unstored.
+        # Preserve the remembered value of a path that stays declared.
+        for path in new_paths:
+            if path in old_paths and self.get_by_path(stored, path) is not _MISSING:
+                continue
+            value = self.get_by_path(defaults, path)
+            if value is not _MISSING:
+                self._set_by_path(stored, path, value)
+        for path in old_paths - new_paths:
+            self._drop_path(stored, path)
+
+        graph_org.persistent_variables = stored
+        graph_org.save(update_fields=["persistent_variables"])
+
+        enabled = bool(new_paths)
+        if graph.enable_persistent_variables != enabled:
+            graph.enable_persistent_variables = enabled
+            graph.save(update_fields=["enable_persistent_variables"])
+
+    def validate_start_node_variables(self, variables) -> None:
+        """Every declared persistent path must exist under the Domain variables."""
+        if not variables:
+            return
+        actual = self._actual(variables)
+        persistent = variables.get(DOMAIN_PERSISTENT_KEY, {}) or {}
+        paths = (persistent.get(DOMAIN_ORGANIZATION_KEY) or []) + (
+            persistent.get(DOMAIN_USER_KEY) or []
+        )
+        for path in paths:
+            if self.get_by_path(actual, path) is _MISSING:
+                raise serializers.ValidationError(
+                    f"Path {path} in {DOMAIN_PERSISTENT_KEY} does not exist "
+                    f"in {DOMAIN_VARIABLES_KEY}."
+                )
+
     def _resolve_graph_user(self, graph, user):
         """The runner's per-flow row, get_or_create'd from their membership.
 

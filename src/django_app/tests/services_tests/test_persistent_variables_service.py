@@ -1,9 +1,10 @@
 import pytest
+from rest_framework import serializers
 
-from tables.models.graph_models import (  # noqa: E402
+from tables.models.graph_models import (
     Graph,
     GraphOrganization,
-    StartNode,  # noqa: E402
+    StartNode,
 )
 from tables.services.persistent_variables_service import (
     _MISSING,
@@ -164,3 +165,69 @@ def test_persist_swallows_errors(default_org):
     )
     # passing a non-dict must not raise (session end must never fail here)
     svc.persist_session_results(_FakeSession(graph), None)
+
+
+def _domain(org_paths, defaults):
+    return {
+        "variables": defaults,
+        "persistent_variables": {"organization": org_paths, "user": []},
+    }
+
+
+@pytest.mark.django_db
+def test_sync_seeds_newly_declared_path_and_sets_flag(default_org):
+    graph = Graph.objects.create(name="sync1", org=default_org)
+    GraphOrganization.objects.create(graph=graph)
+    svc.sync_from_start_node(graph, {}, _domain(["counter"], {"counter": 0}))
+    graph.refresh_from_db()
+    assert graph.enable_persistent_variables is True
+    assert GraphOrganization.objects.get(graph=graph).persistent_variables == {
+        "counter": 0
+    }
+
+
+@pytest.mark.django_db
+def test_sync_preserves_remembered_value_of_still_declared_path(default_org):
+    graph = Graph.objects.create(
+        name="sync2", org=default_org, enable_persistent_variables=True
+    )
+    GraphOrganization.objects.create(graph=graph, persistent_variables={"counter": 5})
+    # value-only Domain edit (default changed 0 -> 100), path still declared
+    svc.sync_from_start_node(
+        graph,
+        _domain(["counter"], {"counter": 0}),
+        _domain(["counter"], {"counter": 100}),
+    )
+    assert GraphOrganization.objects.get(graph=graph).persistent_variables == {
+        "counter": 5
+    }
+
+
+@pytest.mark.django_db
+def test_sync_drops_removed_path_and_clears_flag(default_org):
+    graph = Graph.objects.create(
+        name="sync3", org=default_org, enable_persistent_variables=True
+    )
+    GraphOrganization.objects.create(graph=graph, persistent_variables={"counter": 5})
+    svc.sync_from_start_node(
+        graph, _domain(["counter"], {"counter": 0}), _domain([], {"counter": 0})
+    )
+    graph.refresh_from_db()
+    assert graph.enable_persistent_variables is False
+    assert GraphOrganization.objects.get(graph=graph).persistent_variables == {}
+
+
+def test_validate_accepts_null_default():
+    svc.validate_start_node_variables(
+        _domain(["context"], {"context": None})
+    )  # no raise
+
+
+def test_validate_rejects_missing_path():
+    with pytest.raises(serializers.ValidationError):
+        svc.validate_start_node_variables(_domain(["gone"], {"counter": 0}))
+
+
+def test_validate_tolerates_absent_variables_key():
+    svc.validate_start_node_variables(None)  # no raise
+    svc.validate_start_node_variables({})  # no raise
