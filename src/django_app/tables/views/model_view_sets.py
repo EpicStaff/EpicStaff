@@ -1722,8 +1722,9 @@ class WebhookTriggerNodeViewSet(
             raise
 
 
+# TODO: deprecate view/EP
 class WebhookTriggerViewSet(OrgScopedQuerysetMixin, viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, HasOrgPermission]
+    permission_classes = [IsAuthenticated, IsSuperadmin]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
     scope_distinct = True  # reverse join via trigger nodes can duplicate rows
