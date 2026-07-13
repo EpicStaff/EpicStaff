@@ -1,84 +1,44 @@
+from dataclasses import dataclass, field
+
+from loguru import logger
+from rest_framework import serializers
+
 from tables.constants.variables_constants import (
     DOMAIN_ORGANIZATION_KEY,
     DOMAIN_PERSISTENT_KEY,
     DOMAIN_USER_KEY,
     DOMAIN_VARIABLES_KEY,
 )
-from tables.models.graph_models import GraphOrganization
+from tables.models.graph_models import (
+    GraphOrganization,
+    GraphOrganizationUser,
+    StartNode,
+)
+from tables.models.rbac_models import OrganizationUser
+
+# Sentinel distinguishing "key absent" from "value is explicitly None".
+_MISSING = object()
 
 
-# TODO: refactor, persistant variables story
+@dataclass
+class RunVariablesResult:
+    variables: dict
+    graph_user: GraphOrganizationUser | None = None
+    warnings: list = field(default_factory=list)
+
+
 class PersistentVariablesService:
-    def extract(self, variables: dict, domain_key: str) -> dict:
-        """Extract persistent variable values from StartNode variables for a given domain."""
-        paths = variables.get(DOMAIN_PERSISTENT_KEY, {}).get(domain_key, [])
-        if not paths:
-            return {}
-        result = {}
-        actual = variables.get(DOMAIN_VARIABLES_KEY, {})
-        for path in paths:
-            value = self.get_by_path(actual, path)
-            if value is None:
-                continue
-            self._set_by_path(result, path, value)
-        return result
+    """Owns all organization-level persistent-variables behavior (EST-3056)."""
 
-    def sync_graph_organization(
-        self,
-        graph_organization: GraphOrganization,
-        old_variables: dict,
-        new_variables: dict,
-    ) -> None:
-        """Update GraphOrganization's persistent values if tracked paths have changed."""
-        if self._should_update(
-            old_variables,
-            new_variables,
-            graph_organization.persistent_variables or {},
-            DOMAIN_ORGANIZATION_KEY,
-        ):
-            graph_organization.persistent_variables = self.extract(
-                new_variables, DOMAIN_ORGANIZATION_KEY
-            )
-
-        if self._should_update(
-            old_variables,
-            new_variables,
-            graph_organization.user_variables or {},
-            DOMAIN_USER_KEY,
-        ):
-            graph_organization.user_variables = self.extract(
-                new_variables, DOMAIN_USER_KEY
-            )
-
-        graph_organization.save()
-
-    def _should_update(
-        self, old_vars: dict, new_vars: dict, existing_persistent: dict, domain_key: str
-    ) -> bool:
-        """
-        Check if we should update persistent storage:
-        1. If tracked paths changed
-        2. If persistent storage is empty but we have paths to track
-        """
-        old_paths = set(old_vars.get(DOMAIN_PERSISTENT_KEY, {}).get(domain_key, []))
-        new_paths = set(new_vars.get(DOMAIN_PERSISTENT_KEY, {}).get(domain_key, []))
-
-        if old_paths != new_paths:
-            return True
-        if new_paths and not existing_persistent:
-            return True
-
-        return False
-
+    # ---------------- path utils ----------------
     def get_by_path(self, source: dict, path: str):
-        """Get value from nested dict by dot-path. Returns None if path not found."""
+        """Return the value at a dot-path, or `_MISSING` if any key is absent."""
         current = source
-        try:
-            for key in path.split("."):
-                current = current[key]
-            return current
-        except (KeyError, TypeError):
-            return None
+        for key in path.split("."):
+            if not isinstance(current, dict) or key not in current:
+                return _MISSING
+            current = current[key]
+        return current
 
     def _set_by_path(self, target: dict, path: str, value) -> None:
         current = target
@@ -86,3 +46,58 @@ class PersistentVariablesService:
         for key in keys[:-1]:
             current = current.setdefault(key, {})
         current[keys[-1]] = value
+
+    def _drop_path(self, target: dict, path: str) -> None:
+        keys = path.split(".")
+        stack = []
+        current = target
+        for key in keys[:-1]:
+            if not isinstance(current, dict) or key not in current:
+                return
+            stack.append((current, key))
+            current = current[key]
+        if isinstance(current, dict):
+            current.pop(keys[-1], None)
+        # prune now-empty parent dicts
+        for parent, key in reversed(stack):
+            if isinstance(parent.get(key), dict) and not parent[key]:
+                parent.pop(key, None)
+
+    def deep_merge(self, base: dict, updates: dict) -> dict:
+        """Merge `updates` over `base`, recursing into nested dicts. Pure."""
+        result = dict(base or {})
+        for key, value in (updates or {}).items():
+            if (
+                key in result
+                and isinstance(result[key], dict)
+                and isinstance(value, dict)
+            ):
+                result[key] = self.deep_merge(result[key], value)
+            else:
+                result[key] = value
+        return result
+
+    # ---------------- config helpers ----------------
+    def _org_paths(self, variables: dict) -> list:
+        return (
+            (variables or {})
+            .get(DOMAIN_PERSISTENT_KEY, {})
+            .get(DOMAIN_ORGANIZATION_KEY, [])
+        ) or []
+
+    def _actual(self, variables: dict) -> dict:
+        return (variables or {}).get(DOMAIN_VARIABLES_KEY, {}) or {}
+
+    def extract(self, variables: dict, domain_key: str) -> dict:
+        """Extract the values for a domain's declared paths from the Domain defaults."""
+        paths = (
+            (variables or {}).get(DOMAIN_PERSISTENT_KEY, {}).get(domain_key, [])
+        ) or []
+        actual = self._actual(variables)
+        result: dict = {}
+        for path in paths:
+            value = self.get_by_path(actual, path)
+            if value is _MISSING:
+                continue
+            self._set_by_path(result, path, value)
+        return result
