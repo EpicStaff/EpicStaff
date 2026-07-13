@@ -28,9 +28,8 @@ class RunVariablesResult:
 
 
 class PersistentVariablesService:
-    """Owns all organization-level persistent-variables behavior (EST-3056)."""
+    """Owns all organization-level persistent-variables behavior."""
 
-    # ---------------- path utils ----------------
     def get_by_path(self, source: dict, path: str):
         """Return the value at a dot-path, or `_MISSING` if any key is absent."""
         current = source
@@ -77,7 +76,6 @@ class PersistentVariablesService:
                 result[key] = value
         return result
 
-    # ---------------- config helpers ----------------
     def _org_paths(self, variables: dict) -> list:
         return (
             (variables or {})
@@ -101,3 +99,31 @@ class PersistentVariablesService:
                 continue
             self._set_by_path(result, path, value)
         return result
+
+    def build_run_variables(self, graph, user, payload) -> RunVariablesResult:
+        payload = payload or {}
+        graph_user = self._resolve_graph_user(graph, user)
+        if not graph.enable_persistent_variables:
+            return RunVariablesResult(variables=payload, graph_user=graph_user)
+        graph_org, _ = GraphOrganization.objects.get_or_create(graph=graph)
+        merged = self.deep_merge(graph_org.persistent_variables or {}, payload)
+        return RunVariablesResult(variables=merged, graph_user=graph_user)
+
+    def _resolve_graph_user(self, graph, user):
+        """The runner's per-flow row, get_or_create'd from their membership.
+
+        None for anonymous/trigger runs and for superadmin (no membership row).
+        No user-level variables flow through it in org-only scope; the row
+        exists so `Session.graph_user` is a correct FK.
+        """
+        if user is None or getattr(user, "is_superadmin", False):
+            return None
+        membership = OrganizationUser.objects.filter(
+            user=user, org_id=graph.org_id, org__is_active=True
+        ).first()
+        if membership is None:
+            return None
+        graph_user, _ = GraphOrganizationUser.objects.get_or_create(
+            graph=graph, organization_user=membership
+        )
+        return graph_user
