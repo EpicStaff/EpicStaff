@@ -231,3 +231,21 @@ def test_validate_rejects_missing_path():
 def test_validate_tolerates_absent_variables_key():
     svc.validate_start_node_variables(None)  # no raise
     svc.validate_start_node_variables({})  # no raise
+
+
+@pytest.mark.django_db
+def test_seed_for_copy_extracts_org_values_and_sets_flag(default_org):
+    graph = Graph.objects.create(name="copy-target", org=default_org)
+    go = svc.seed_for_copy(graph, _domain(["counter"], {"counter": 3}))
+    graph.refresh_from_db()
+    assert go.persistent_variables == {"counter": 3}
+    assert graph.enable_persistent_variables is True
+
+
+@pytest.mark.django_db
+def test_seed_for_copy_empty_when_no_paths(default_org):
+    graph = Graph.objects.create(name="copy-empty", org=default_org)
+    go = svc.seed_for_copy(graph, _domain([], {"counter": 3}))
+    graph.refresh_from_db()
+    assert go.persistent_variables == {}
+    assert graph.enable_persistent_variables is False

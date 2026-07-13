@@ -199,3 +199,19 @@ class PersistentVariablesService:
             graph=graph, organization_user=membership
         )
         return graph_user
+
+    def seed_for_copy(self, new_graph, start_node_variables) -> GraphOrganization:
+        """Create/seed a GraphOrganization for a copied or versioned graph (D4)."""
+        start_node_variables = start_node_variables or {}
+        persistent = self.extract(start_node_variables, DOMAIN_ORGANIZATION_KEY)
+        graph_org, created = GraphOrganization.objects.get_or_create(
+            graph=new_graph, defaults={"persistent_variables": persistent}
+        )
+        if not created:
+            graph_org.persistent_variables = persistent
+            graph_org.save(update_fields=["persistent_variables"])
+        enabled = bool(self._org_paths(start_node_variables))
+        if new_graph.enable_persistent_variables != enabled:
+            new_graph.enable_persistent_variables = enabled
+            new_graph.save(update_fields=["enable_persistent_variables"])
+        return graph_org
