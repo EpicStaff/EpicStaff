@@ -933,7 +933,7 @@ class TaskNode(BaseNode):
         help_text="Graph this task node belongs to.",
     )
     agent_definition = models.ForeignKey(
-        "AgentDefinition",
+        "agents.AgentDefinition",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -956,7 +956,7 @@ class TaskNode(BaseNode):
         help_text="If True, this task's output is remembered for the current run and injected as context into subsequently executed task nodes in the same session.",
     )
     surface_list = models.ManyToManyField(
-        "Surface",
+        "agents.Surface",
         blank=True,
         related_name="task_nodes",
         help_text="Surfaces attached to this task node.",
@@ -973,7 +973,7 @@ class AgentNode(BaseNode):
         help_text="Graph this agent node belongs to.",
     )
     agent_definition = models.ForeignKey(
-        "AgentDefinition",
+        "agents.AgentDefinition",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -982,7 +982,7 @@ class AgentNode(BaseNode):
         help_text="AgentDefinition that executes this node's tasks. Null allowed — runtime surfaces a missing-agent error.",
     )
     surface_list = models.ManyToManyField(
-        "Surface",
+        "agents.Surface",
         blank=True,
         related_name="agent_nodes",
         help_text="Surfaces attached to this agent node.",

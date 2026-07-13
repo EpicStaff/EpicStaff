@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from tables.models.graph_models import AgentNode
 from tables.services.base_node_payload_service import BaseNodePayloadService
-from tables.services.node_surface_service import NodeSurfaceService
+from agents.services.node_surface_service import NodeSurfaceService
 from src.shared.models import AgentNodeData, AgentNodeTaskData, CombinedSurfaceData
 
 

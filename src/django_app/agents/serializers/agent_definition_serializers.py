@@ -3,16 +3,16 @@ from __future__ import annotations
 from django.db import IntegrityError
 from rest_framework import serializers
 
-from tables.exceptions import AgentDefinitionConflictError
-from tables.models.agent_models.agent_models import (
+from agents.exceptions import AgentDefinitionConflictError
+from agents.models.agent_models import (
     AgentDefaultSurface,
     AgentDefinition,
     SurfacePlace,
 )
-from tables.models.agent_models.surface_models import Surface
+from agents.models.surface_models import Surface
 from tables.models.llm_models import LLMConfig
-from tables.services.surface_service import AgentDefinitionSurfaceService
-from tables.validators.surface_validator import SurfaceValidator
+from agents.services.surface_service import AgentDefinitionSurfaceService
+from agents.validators.surface_validator import SurfaceValidator
 
 
 class AgentDefaultSurfaceReadSerializer(serializers.ModelSerializer):

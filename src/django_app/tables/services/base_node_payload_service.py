@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from loguru import logger
 
-from tables.models.agent_models import AgentDefinition
+from agents.models import AgentDefinition
 from tables.models.graph_models import StorageFile
 from tables.models.knowledge_models.collection_models import SourceCollection
 from tables.models.knowledge_models.graphrag_models import GraphRag

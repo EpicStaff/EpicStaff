@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from tables.exceptions import SurfaceValidationError
+from agents.exceptions import SurfaceValidationError
 from tables.models.knowledge_models.collection_models import BaseRagType
 
 

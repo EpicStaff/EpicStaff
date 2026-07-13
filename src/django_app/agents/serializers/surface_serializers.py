@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from tables.models.agent_models.surface_models import (
+from agents.models.surface_models import (
     Surface,
     SurfaceGraphBasicSearchConfig,
     SurfaceGraphLocalSearchConfig,
@@ -18,8 +18,8 @@ from tables.models.knowledge_models.collection_models import SourceCollection
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool
 from tables.models.graph_models import StorageFile
-from tables.services.surface_service import SurfaceService
-from tables.validators.surface_validator import SurfaceValidator
+from agents.services.surface_service import SurfaceService
+from agents.validators.surface_validator import SurfaceValidator
 
 
 class SurfacePythonToolReadSerializer(serializers.ModelSerializer):
@@ -191,7 +191,7 @@ class SurfaceWriteSerializer(serializers.Serializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from tables.models.agent_models.agent_models import AgentDefinition
+        from agents.models.agent_models import AgentDefinition
 
         self.fields["owner_agent"] = serializers.PrimaryKeyRelatedField(
             queryset=AgentDefinition.objects.all(),

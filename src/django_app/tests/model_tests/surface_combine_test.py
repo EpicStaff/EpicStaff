@@ -10,8 +10,8 @@ from __future__ import annotations
 import pytest
 from rest_framework.test import APIClient
 
-from tables.exceptions import SurfaceValidationError
-from tables.models.agent_models.surface_models import (
+from agents.exceptions import SurfaceValidationError
+from agents.models.surface_models import (
     Surface,
     SurfaceKnowledge,
     SurfaceNaiveSearchConfig,
@@ -27,7 +27,7 @@ from tables.models.knowledge_models.collection_models import (
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.rbac_models import Organization
-from tables.services.surface_combine_service import SurfaceCombineService
+from agents.services.surface_combine_service import SurfaceCombineService
 
 
 # ---------------------------------------------------------------------------

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from django.db import transaction
 
-from tables.models.agent_models.surface_models import InlineSurface
-from tables.services.surface_content_service import (
+from agents.models.surface_models import InlineSurface
+from agents.services.surface_content_service import (
     INLINE_SURFACE_CONTENT,
     SurfaceContentService,
 )

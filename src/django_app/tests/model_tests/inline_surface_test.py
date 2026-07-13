@@ -20,7 +20,7 @@ import pytest
 from django.db import IntegrityError
 from rest_framework.test import APIClient
 
-from tables.models.agent_models import (
+from agents.models import (
     InlineSurface,
     InlineSurfaceKnowledge,
     InlineSurfaceMcpTool,
@@ -37,13 +37,13 @@ from tables.models.knowledge_models.collection_models import (
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.rbac_models import Organization
-from tables.serializers.model_serializers.inline_surface_serializers import (
+from agents.serializers.inline_surface_serializers import (
     InlineSurfaceReadSerializer,
 )
-from tables.serializers.model_serializers.surface_serializers import (
+from agents.serializers.surface_serializers import (
     SurfaceReadSerializer,
 )
-from tables.services.surface_combine_service import SurfaceCombineService
+from agents.services.surface_combine_service import SurfaceCombineService
 
 
 # ---------------------------------------------------------------------------
@@ -731,7 +731,7 @@ def test_surface_combine_service_accepts_inline_read_serializer_output(
     )
     InlineSurfaceNaiveSearchConfig.objects.create(surface_knowledge=knowledge)
 
-    from tables.models.agent_models import Surface
+    from agents.models import Surface
 
     catalog_surface = Surface.objects.create(
         organization=default_org,

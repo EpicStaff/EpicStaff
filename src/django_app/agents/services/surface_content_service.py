@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from django.db import models
 
-from tables.models.agent_models.surface_models import (
+from agents.models.surface_models import (
     AgentInlineSurfaceGraphBasicSearchConfig,
     AgentInlineSurfaceGraphLocalSearchConfig,
     AgentInlineSurfaceKnowledge,

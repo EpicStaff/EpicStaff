@@ -13,17 +13,17 @@ from decimal import Decimal
 
 import pytest
 
-from tables.exceptions import SurfaceValidationError
+from agents.exceptions import SurfaceValidationError
 from tables.models import EmbeddingConfig, EmbeddingModel
-from tables.models.agent_models import (
+from agents.models import (
     AgentDefinition,
     Surface,
     SurfaceGraphBasicSearchConfig,
     SurfaceGraphLocalSearchConfig,
     SurfaceMcpTool,
 )
-from tables.models.agent_models.agent_models import DefaultAgentDefinitionConfig
-from tables.models.agent_models.surface_models import (
+from agents.models.agent_models import DefaultAgentDefinitionConfig
+from agents.models.surface_models import (
     InlineSurface,
     InlineSurfaceStorageItem,
     SurfaceNaiveSearchConfig,
@@ -42,7 +42,7 @@ from tables.models.knowledge_models.naive_rag_models import NaiveRag
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.rbac_models import Organization
-from tables.services.node_surface_service import NodeSurfaceService
+from agents.services.node_surface_service import NodeSurfaceService
 from tables.services.session_manager_service import SessionManagerService
 from src.shared.models import (
     AgentRequest,

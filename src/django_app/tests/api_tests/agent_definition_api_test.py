@@ -3,7 +3,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
-from tables.models.agent_models import AgentDefinition
+from agents.models import AgentDefinition
 from tables.models.rbac_models import Organization
 
 

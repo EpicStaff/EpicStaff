@@ -15,14 +15,14 @@ Covers:
 import pytest
 from rest_framework.test import APIClient
 
-from tables.exceptions import SurfaceValidationError
-from tables.models.agent_models import (
+from agents.exceptions import SurfaceValidationError
+from agents.models import (
     AgentDefaultSurface,
     AgentDefinition,
     Surface,
     SurfacePlace,
 )
-from tables.models.agent_models.surface_models import (
+from agents.models.surface_models import (
     StorageAccess,
     SurfaceKnowledge,
     SurfaceMcpTool,
@@ -39,7 +39,7 @@ from tables.models.knowledge_models.collection_models import (
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.rbac_models import Organization
-from tables.serializers.model_serializers.surface_serializers import (
+from agents.serializers.surface_serializers import (
     SurfaceWriteSerializer,
 )
 
@@ -709,7 +709,7 @@ def test_serializer_create_with_graph_local_config(org, graph_collection):
 
 @pytest.mark.django_db
 def test_round_trip_get_returns_nested_python_tools(org, py_tool_a, py_tool_b):
-    from tables.serializers.model_serializers.surface_serializers import (
+    from agents.serializers.surface_serializers import (
         SurfaceReadSerializer,
     )
 
@@ -732,7 +732,7 @@ def test_round_trip_get_returns_nested_python_tools(org, py_tool_a, py_tool_b):
 
 @pytest.mark.django_db
 def test_round_trip_get_returns_nested_mcp_tools(org, mcp_tool_a):
-    from tables.serializers.model_serializers.surface_serializers import (
+    from agents.serializers.surface_serializers import (
         SurfaceReadSerializer,
     )
 
@@ -750,7 +750,7 @@ def test_round_trip_get_returns_nested_mcp_tools(org, mcp_tool_a):
 
 @pytest.mark.django_db
 def test_round_trip_get_returns_storage_items(org, storage_file_a):
-    from tables.serializers.model_serializers.surface_serializers import (
+    from agents.serializers.surface_serializers import (
         SurfaceReadSerializer,
     )
 
@@ -777,7 +777,7 @@ def test_round_trip_get_returns_storage_items(org, storage_file_a):
 
 @pytest.mark.django_db
 def test_round_trip_get_returns_knowledge_with_naive_config(org, naive_collection):
-    from tables.serializers.model_serializers.surface_serializers import (
+    from agents.serializers.surface_serializers import (
         SurfaceReadSerializer,
     )
 
@@ -799,7 +799,7 @@ def test_round_trip_get_returns_knowledge_with_naive_config(org, naive_collectio
 
 @pytest.mark.django_db
 def test_round_trip_read_includes_timestamps_and_id(org):
-    from tables.serializers.model_serializers.surface_serializers import (
+    from agents.serializers.surface_serializers import (
         SurfaceReadSerializer,
     )
 
@@ -971,7 +971,7 @@ def test_reject_agent_default_surface_from_other_agent(
     org, agent, agent_b, shared_surface
 ):
     """Surface owned by agent_b cannot be set as default for agent."""
-    from tables.validators.surface_validator import SurfaceValidator
+    from agents.validators.surface_validator import SurfaceValidator
 
     agent_b_surface = Surface.objects.create(
         organization=org,
@@ -994,7 +994,7 @@ def test_agent_default_surface_shared_surface_passes_validation(
     org, agent, shared_surface
 ):
     """Shared surface (owner_agent=None) is valid for any agent's defaults."""
-    from tables.validators.surface_validator import SurfaceValidator
+    from agents.validators.surface_validator import SurfaceValidator
 
     # Must not raise
     SurfaceValidator.validate_agent_default_surfaces(
@@ -1076,7 +1076,7 @@ def test_agent_metadata_defaults_to_empty_dict(org):
 
 @pytest.mark.django_db
 def test_agent_write_serializer_accepts_arbitrary_metadata(org):
-    from tables.serializers.model_serializers.agent_definition_serializers import (
+    from agents.serializers.agent_definition_serializers import (
         AgentDefinitionWriteSerializer,
     )
 
@@ -1092,7 +1092,7 @@ def test_agent_write_serializer_accepts_arbitrary_metadata(org):
 
 @pytest.mark.django_db
 def test_agent_read_serializer_returns_stored_metadata(org):
-    from tables.serializers.model_serializers.agent_definition_serializers import (
+    from agents.serializers.agent_definition_serializers import (
         AgentDefinitionReadSerializer,
     )
 
@@ -1114,7 +1114,7 @@ def test_agent_read_serializer_returns_stored_metadata(org):
 
 @pytest.mark.django_db
 def test_owned_surface_without_explicit_row_appears_as_all(org, agent):
-    from tables.serializers.model_serializers.agent_definition_serializers import (
+    from agents.serializers.agent_definition_serializers import (
         AgentDefinitionReadSerializer,
     )
 
@@ -1133,7 +1133,7 @@ def test_owned_surface_without_explicit_row_appears_as_all(org, agent):
 def test_owned_surface_with_explicit_row_keeps_explicit_place_not_duplicated(
     org, agent
 ):
-    from tables.serializers.model_serializers.agent_definition_serializers import (
+    from agents.serializers.agent_definition_serializers import (
         AgentDefinitionReadSerializer,
     )
 
@@ -1159,7 +1159,7 @@ def test_owned_surface_with_explicit_row_keeps_explicit_place_not_duplicated(
 def test_shared_surface_not_explicitly_assigned_does_not_appear(
     org, agent, shared_surface
 ):
-    from tables.serializers.model_serializers.agent_definition_serializers import (
+    from agents.serializers.agent_definition_serializers import (
         AgentDefinitionReadSerializer,
     )
 
@@ -1171,7 +1171,7 @@ def test_shared_surface_not_explicitly_assigned_does_not_appear(
 
 @pytest.mark.django_db
 def test_mix_shared_explicit_and_owned_implicit(org, agent, shared_surface):
-    from tables.serializers.model_serializers.agent_definition_serializers import (
+    from agents.serializers.agent_definition_serializers import (
         AgentDefinitionReadSerializer,
     )
 

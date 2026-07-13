@@ -7,15 +7,15 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
-from tables.models.agent_models.surface_models import Surface
+from agents.models.surface_models import Surface
 from tables.models.rbac_models import Organization
-from tables.serializers.model_serializers.surface_serializers import (
+from agents.serializers.surface_serializers import (
     SurfaceCombineRequestSerializer,
     SurfacePatchWriteSerializer,
     SurfaceReadSerializer,
     SurfaceWriteSerializer,
 )
-from tables.services.surface_combine_service import SurfaceCombineService
+from agents.services.surface_combine_service import SurfaceCombineService
 
 
 class SurfaceViewSet(viewsets.ModelViewSet):

@@ -25,16 +25,16 @@ from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
 )
-from tables.serializers.model_serializers.inline_surface_serializers import (
+from agents.serializers.inline_surface_serializers import (
     AgentInlineSurfaceReadSerializer,
     AgentInlineSurfaceWriteSerializer,
     InlineSurfaceReadSerializer,
     InlineSurfaceWriteSerializer,
 )
 from tables.serializers.utils.mixins import NestedPythonCodeMixin
-from tables.services.agent_inline_surface_service import AgentInlineSurfaceService
-from tables.services.inline_surface_service import InlineSurfaceService
-from tables.validators.surface_validator import SurfaceValidator
+from agents.services.agent_inline_surface_service import AgentInlineSurfaceService
+from agents.services.inline_surface_service import InlineSurfaceService
+from agents.validators.surface_validator import SurfaceValidator
 
 # Top-level keywords a real JSON Schema might use even without "type" (e.g.
 # "$ref", "allOf"). Used only to tell a bare field map ("reasoning":

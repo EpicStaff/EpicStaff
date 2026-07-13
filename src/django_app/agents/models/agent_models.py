@@ -1,6 +1,6 @@
 from django.db import models
 
-from tables.models import AbstractDefaultFillableModel
+from tables.models.base_models import AbstractDefaultFillableModel
 
 
 class DefaultAgentDefinitionConfig(models.Model):
@@ -69,7 +69,7 @@ class DefaultAgentDefinitionConfig(models.Model):
 class AgentDefinition(AbstractDefaultFillableModel):
     # Identity
     organization = models.ForeignKey(
-        "Organization",
+        "tables.Organization",
         on_delete=models.CASCADE,
         related_name="agent_definitions",
         help_text="Organization this agent belongs to.",
@@ -96,7 +96,7 @@ class AgentDefinition(AbstractDefaultFillableModel):
 
     # LLM linkage
     llm_config = models.ForeignKey(
-        "LLMConfig",
+        "tables.LLMConfig",
         on_delete=models.SET_NULL,
         null=True,
         related_name="agent_definitions",
@@ -104,7 +104,7 @@ class AgentDefinition(AbstractDefaultFillableModel):
         help_text="Primary LLM used for reasoning and tool selection.",
     )
     fcm_llm_config = models.ForeignKey(
-        "LLMConfig",
+        "tables.LLMConfig",
         on_delete=models.SET_NULL,
         null=True,
         related_name="fcm_agent_definitions",

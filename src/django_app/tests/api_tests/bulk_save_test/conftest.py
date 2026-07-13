@@ -1,7 +1,7 @@
 import pytest
 
 from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
-from tables.models.agent_models import AgentDefinition, Surface
+from agents.models import AgentDefinition, Surface
 from tables.models.graph_models import (
     CrewNode,
     DecisionTableNode,

@@ -16,7 +16,7 @@ import pytest
 from django.urls import reverse
 from rest_framework import status
 
-from tables.models.agent_models import AgentDefinition, InlineSurface, Surface
+from agents.models import AgentDefinition, InlineSurface, Surface
 from tables.models.graph_models import Edge, TaskNode
 from tests.fixtures import *  # noqa: F401,F403
 

@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from tables.models.agent_models.surface_models import AgentInlineSurface, InlineSurface
-from tables.serializers.model_serializers.inline_surface_serializers import (
+from agents.models.surface_models import AgentInlineSurface, InlineSurface
+from agents.serializers.inline_surface_serializers import (
     AgentInlineSurfaceReadSerializer,
     InlineSurfaceReadSerializer,
 )
-from tables.serializers.model_serializers.surface_serializers import (
+from agents.serializers.surface_serializers import (
     SurfaceReadSerializer,
 )
-from tables.services.surface_combine_service import SurfaceCombineService
+from agents.services.surface_combine_service import SurfaceCombineService
 
 
 class NodeSurfaceService:

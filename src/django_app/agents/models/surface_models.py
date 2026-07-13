@@ -18,7 +18,7 @@ class StorageAccess(models.TextChoices):
 
 class Surface(TimestampMixin, models.Model):
     organization = models.ForeignKey(
-        "Organization",
+        "tables.Organization",
         on_delete=models.CASCADE,
         related_name="surfaces",
         help_text="Organization this surface belongs to.",
@@ -56,7 +56,7 @@ class Surface(TimestampMixin, models.Model):
 
 class BaseSurfacePythonTool(models.Model):
     python_tool = models.ForeignKey(
-        "PythonCodeTool",
+        "tables.PythonCodeTool",
         on_delete=models.CASCADE,
         related_name="+",
         help_text="PythonCodeTool being allowed or denied on this surface.",
@@ -90,7 +90,7 @@ class SurfacePythonTool(BaseSurfacePythonTool):
 
 class BaseSurfaceMcpTool(models.Model):
     mcp_tool = models.ForeignKey(
-        "McpTool",
+        "tables.McpTool",
         on_delete=models.CASCADE,
         related_name="+",
         help_text="McpTool being allowed or denied on this surface.",
@@ -160,7 +160,7 @@ class SurfaceStorageItem(BaseSurfaceStorageItem):
         help_text="Surface this storage permission entry belongs to.",
     )
     storage_file = models.ForeignKey(
-        "StorageFile",
+        "tables.StorageFile",
         on_delete=models.CASCADE,
         related_name="+",
         help_text="StorageFile whose access is being configured for this surface.",
@@ -177,7 +177,7 @@ class SurfaceStorageItem(BaseSurfaceStorageItem):
 
 class BaseSurfaceKnowledge(models.Model):
     collection = models.ForeignKey(
-        "SourceCollection",
+        "tables.SourceCollection",
         on_delete=models.CASCADE,
         related_name="+",
         help_text="SourceCollection available within this surface.",
@@ -307,7 +307,7 @@ class SurfaceGraphLocalSearchConfig(BaseSurfaceGraphLocalSearchConfig):
 
 class InlineSurface(TimestampMixin, models.Model):
     task_node = models.OneToOneField(
-        "TaskNode",
+        "tables.TaskNode",
         on_delete=models.CASCADE,
         related_name="inline_surface",
         help_text="TaskNode that owns this ad-hoc surface. Deleted with the node.",
@@ -364,7 +364,7 @@ class InlineSurfaceStorageItem(BaseSurfaceStorageItem):
         help_text="InlineSurface this storage permission entry belongs to.",
     )
     storage_file = models.ForeignKey(
-        "StorageFile",
+        "tables.StorageFile",
         on_delete=models.CASCADE,
         related_name="+",
         help_text="StorageFile whose access is being configured for this surface.",
@@ -425,7 +425,7 @@ class InlineSurfaceGraphLocalSearchConfig(BaseSurfaceGraphLocalSearchConfig):
 
 class AgentInlineSurface(TimestampMixin, models.Model):
     agent_node = models.OneToOneField(
-        "AgentNode",
+        "tables.AgentNode",
         on_delete=models.CASCADE,
         related_name="inline_surface",
         help_text="AgentNode that owns this ad-hoc surface. Deleted with the node.",
@@ -482,7 +482,7 @@ class AgentInlineSurfaceStorageItem(BaseSurfaceStorageItem):
         help_text="AgentInlineSurface this storage permission entry belongs to.",
     )
     storage_file = models.ForeignKey(
-        "StorageFile",
+        "tables.StorageFile",
         on_delete=models.CASCADE,
         related_name="+",
         help_text="StorageFile whose access is being configured for this surface.",

@@ -5,9 +5,9 @@ from rest_framework import status, viewsets
 from rest_framework.response import Response
 
 from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
-from tables.models.agent_models import AgentDefinition
+from agents.models import AgentDefinition
 from tables.models.rbac_models import Organization
-from tables.serializers.model_serializers.agent_definition_serializers import (
+from agents.serializers.agent_definition_serializers import (
     AgentDefinitionReadSerializer,
     AgentDefinitionWriteSerializer,
 )

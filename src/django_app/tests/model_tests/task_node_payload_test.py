@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from tables.models.agent_models import AgentDefinition
+from agents.models import AgentDefinition
 from tables.models.graph_models import Graph, TaskNode
 from tables.models.rbac_models import Organization
 from tables.services.converter_service import ConverterService

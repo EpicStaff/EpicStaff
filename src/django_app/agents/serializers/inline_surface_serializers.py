@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from tables.exceptions import SurfaceValidationError
-from tables.models.agent_models.surface_models import (
+from agents.exceptions import SurfaceValidationError
+from agents.models.surface_models import (
     AgentInlineSurface,
     AgentInlineSurfaceGraphBasicSearchConfig,
     AgentInlineSurfaceGraphLocalSearchConfig,
@@ -21,13 +21,13 @@ from tables.models.agent_models.surface_models import (
     InlineSurfacePythonTool,
     InlineSurfaceStorageItem,
 )
-from tables.serializers.model_serializers.surface_serializers import (
+from agents.serializers.surface_serializers import (
     SurfaceKnowledgeWriteSerializer,
     SurfaceMcpToolWriteSerializer,
     SurfacePythonToolWriteSerializer,
     SurfaceStorageItemWriteSerializer,
 )
-from tables.validators.surface_validator import SurfaceValidator
+from agents.validators.surface_validator import SurfaceValidator
 
 
 class InlineSurfacePythonToolReadSerializer(serializers.ModelSerializer):

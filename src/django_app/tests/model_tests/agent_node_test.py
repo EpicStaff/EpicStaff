@@ -19,8 +19,8 @@ import pytest
 from rest_framework.test import APIClient
 
 from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
-from tables.models.agent_models import AgentDefinition
-from tables.models.agent_models.surface_models import AgentInlineSurface
+from agents.models import AgentDefinition
+from agents.models.surface_models import AgentInlineSurface
 from tables.models.graph_models import AgentNode, AgentNodeTask, Graph
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
@@ -28,10 +28,10 @@ from tables.models.rbac_models import Organization
 from tables.serializers.model_serializers.node_serializers.basic_node_serializers import (
     AgentNodeSerializer,
 )
-from tables.services.agent_inline_surface_service import AgentInlineSurfaceService
+from agents.services.agent_inline_surface_service import AgentInlineSurfaceService
 from tables.services.agent_node_payload_service import AgentNodePayloadService
 from tables.services.converter_service import ConverterService
-from tables.services.node_surface_service import NodeSurfaceService
+from agents.services.node_surface_service import NodeSurfaceService
 
 
 # ---------------------------------------------------------------------------

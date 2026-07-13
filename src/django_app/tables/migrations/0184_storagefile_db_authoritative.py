@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tables', '0183_inlinesurface_surface_agentnode_and_more'),
+        ('tables', '0181_merge_schedule_trigger_node'),
     ]
 
     operations = [

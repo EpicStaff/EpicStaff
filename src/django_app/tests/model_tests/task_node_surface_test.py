@@ -16,11 +16,11 @@ from __future__ import annotations
 import pytest
 from rest_framework.test import APIClient
 
-from tables.exceptions import SurfaceValidationError
-from tables.models.agent_models import AgentDefinition, Surface
+from agents.exceptions import SurfaceValidationError
+from agents.models import AgentDefinition, Surface
 from tables.models.graph_models import Graph, TaskNode
 from tables.models.rbac_models import Organization
-from tables.validators.surface_validator import SurfaceValidator
+from agents.validators.surface_validator import SurfaceValidator
 
 
 # ---------------------------------------------------------------------------

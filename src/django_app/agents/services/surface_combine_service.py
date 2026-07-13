@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from tables.exceptions import SurfaceValidationError
-from tables.models.agent_models.surface_models import StorageAccess, ToolMode
+from agents.exceptions import SurfaceValidationError
+from agents.models.surface_models import StorageAccess, ToolMode
 
 
 _TOOL_MODE_PRECEDENCE: dict[str, int] = {
