@@ -382,3 +382,38 @@ Special cases handled outside this loop:
 | Header malformed on `/api/profile/` | `200` with both active fields `null` (soft-fail) | Same as above. |
 | Zero-membership user calls `/api/profile/` | `200` with `memberships: []` and both active fields `null` | Show "ask an admin to invite you" empty state. |
 | Superadmin sets header to any org (member or not) | `200` — superadmin bypasses membership check | No special handling. |
+
+---
+
+## Resource scoping coverage (EST-2423)
+
+Every workspace/config resource is now scoped to the active org and gated by its `resource_type`.
+Two patterns beyond plain org ownership:
+
+- **Hybrid (built-in + custom).** Custom **models** (`llm-models`, `embedding-models`,
+  `realtime-models`, `realtime-transcription-models` via `is_custom`) and **python-code tools**
+  (`python-code-tool` via `built_in`) show *built-ins to every org* + *that org's custom rows*.
+  Creating one through the API always makes it the org's custom row (never a global built-in).
+- **Global registry, superadmin-only writes.** `providers`, `ngrok-config`, the `default-*` config
+  singletons, and `voice-settings`/Twilio are readable by any member but writable only by a
+  superadmin (`voice-settings`/Twilio are superadmin for **read too** — they hold the platform
+  Twilio secret). Cross-org file `move`/`copy` is likewise superadmin-only.
+
+| Resource type | Endpoints (examples) | Member | Org Admin |
+|---|---|---|---|
+| FLOWS | graphs, nodes, sessions, **labels**, **webhook-triggers** | C R U | C R U D E |
+| AGENTS | agents, realtime-agents, **realtime-agent-chats** | C R U | C R U D E |
+| PROJECTS | crews, tasks | C R U | C R U D E |
+| TOOLS | python-code-tool(-configs/-fields), mcp-tools, python-code | C R U | C R U D |
+| KNOWLEDGE_SOURCES | source-collections, documents, naive-rag, graph-rag, indexing | **R** | C R U D |
+| LLM_CONFIGS | llm/embedding/realtime configs **and custom models** | **R** | C R U D |
+| FILES | storage | C R U E | C R U D E |
+
+**Cross-org references are rejected** like a non-existent pk (`400 Invalid pk … does not exist`): a
+write in org A cannot attach org B's tool (`tool_ids`), knowledge collection, rag, or LLM/embedding
+config.
+
+**Deprecated / deferred (not gated):** `/api/tools/`, `/api/tool-configs/`, `*-tags`,
+`template-agents`, `environment/config` (deprecating); `memory`, `realtime-session-items`,
+`python-code-result` (opaque runtime — pending a denormalized org); and the run/voice/trigger
+execution callbacks.

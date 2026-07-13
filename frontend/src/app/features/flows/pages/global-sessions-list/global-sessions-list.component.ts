@@ -20,6 +20,8 @@ import {
     SelectComponent,
     SelectItem,
 } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { catchError, EMPTY, finalize, interval, Observable, Subject, switchMap, takeUntil } from 'rxjs';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
@@ -48,6 +50,7 @@ import {
         GraphMessagesComponent,
         ActionDropdownButtonComponent,
         SelectComponent,
+        HasPermissionDirective,
     ],
     templateUrl: './global-sessions-list.component.html',
     styleUrls: ['./global-sessions-list.component.scss'],
@@ -366,4 +369,7 @@ export class GlobalSessionsListComponent {
                 this.totalCount.set(response.count);
             });
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

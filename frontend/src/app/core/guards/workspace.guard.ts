@@ -14,10 +14,10 @@ export const workspaceGuard: CanActivateFn = () => {
 
     const hasAccess =
         permissionsService.isSuperadmin ||
-        permissionsService.can('organizations', 'read') ||
-        permissionsService.can('users', 'read') ||
-        permissionsService.can('roles', 'read');
-    return hasAccess ? true : router.parseUrl('/projects/my');
+        permissionsService.can(ResourceCode.Organizations, ActionCode.Read) ||
+        permissionsService.can(ResourceCode.Users, ActionCode.Read) ||
+        permissionsService.can(ResourceCode.Roles, ActionCode.Read);
+    return hasAccess ? true : router.parseUrl(permissionsService.resolveDefaultRoute());
 };
 
 /** /workspace/main — superadmins only. */
@@ -29,11 +29,11 @@ export const superAdminGuard: CanActivateFn = () => {
 
 /**
  * Generic permission guard. Reads [ResourceCode, ActionCode] from route.data['permission'].
- * Redirects to /workspace/users on failure.
+ * Redirects to the first accessible route on failure.
  */
 export const permissionGuard: CanActivateFn = (route) => {
     const permissionsService = inject(PermissionsService);
     const router = inject(Router);
     const [resource, action] = route.data['permission'] as [ResourceCode, ActionCode];
-    return permissionsService.can(resource, action) ? true : router.parseUrl('/workspace/users');
+    return permissionsService.can(resource, action) ? true : router.parseUrl(permissionsService.resolveDefaultRoute());
 };

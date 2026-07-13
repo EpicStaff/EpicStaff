@@ -1,17 +1,27 @@
-export type ActionCode = 'create' | 'read' | 'update' | 'delete' | 'export' | 'download' | 'use' | 'list';
+export enum ActionCode {
+    Create = 'create',
+    Read = 'read',
+    Update = 'update',
+    Delete = 'delete',
+    Export = 'export',
+    Download = 'download',
+    Use = 'use',
+    List = 'list',
+}
 
-export type ResourceCode =
-    | 'organizations'
-    | 'users'
-    | 'roles'
-    | 'flows'
-    | 'agents'
-    | 'tools'
-    | 'knowledge_sources'
-    | 'files'
-    | 'projects'
-    | 'llm_configs'
-    | 'secrets';
+export enum ResourceCode {
+    Organizations = 'organizations',
+    Users = 'users',
+    Roles = 'roles',
+    Flows = 'flows',
+    Agents = 'agents',
+    Tools = 'tools',
+    KnowledgeSources = 'knowledge_sources',
+    Files = 'files',
+    Projects = 'projects',
+    LlmConfigs = 'llm_configs',
+    Secrets = 'secrets',
+}
 
 export interface ActivePermissions {
     org_id: number;

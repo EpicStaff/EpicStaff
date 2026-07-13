@@ -8,6 +8,39 @@ Base path: `/api/storage/`
 
 ---
 
+## Authentication & organization scoping
+
+All storage endpoints require authentication and the `X-Organization-Id` header
+identifying the **active organization** (see `rbac/roles_and_permissions.md` and
+`rbac/organization_scoping.md`). Files are stored and served **per organization** —
+every operation acts only on the active org's files (internally keyed by
+`org_{id}/…`; the path never contains a user identifier).
+
+Access is gated by the caller's **FILES** permission in the active org:
+
+| Permission | Endpoints |
+|---|---|
+| `READ` | list, tree, search, info, download, graph-files |
+| `EXPORT` | download-zip |
+| `CREATE` | upload, mkdir, add-to-graph |
+| `UPDATE` | rename, move, copy |
+| `DELETE` | delete, remove-from-graph |
+
+A caller lacking the required permission gets `403`. Built-in role grants:
+Org Admin = C R U D E; Member = C R U E; Viewer = R.
+
+**Cross-org file transfer** — `move` / `copy` with
+`source_org_id != destination_org_id` — is **superadmin-only**; any other caller
+gets `403`. Such a request must still send the `X-Organization-Id` header (any org
+the caller can resolve); the active org is otherwise unused for the transfer.
+
+**Graph references are org-scoped.** `add-to-graph` links files only to graphs in the
+active org, and `graph-files` serves only an active-org graph — a graph id from
+another org (or a non-existent one) is rejected exactly like a missing id, with no
+existence leak.
+
+---
+
 ## Table of Contents
 
 1. [List Files](#list-files)
@@ -521,10 +554,14 @@ Links one or more existing storage paths to one or more graphs. Creates `Storage
 {"paths": ["Path does not exist: bad/path.txt"]}
 ```
 
-**Error (invalid graph IDs):** `400 Bad Request`
+**Error (graph not in the active org, or non-existent):** `400 Bad Request`
 ```json
 {"graph_ids": ["Graphs not found: [999, 1000]"]}
 ```
+
+Only graphs in the caller's **active organization** may be linked. A cross-org id
+and a non-existent id are reported identically (no existence leak), and the whole
+request is rejected atomically — nothing is linked unless every id is valid.
 
 ---
 

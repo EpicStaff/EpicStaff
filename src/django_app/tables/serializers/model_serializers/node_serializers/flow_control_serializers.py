@@ -16,11 +16,16 @@ from tables.models.graph_models import (
 )
 from tables.models.python_models import PythonCode
 from tables.models.llm_models import LLMConfig
+from tables.models.graph_models import Graph
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
 )
-from tables.serializers.utils.mixins import NestedPythonCodeMixin
+from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
+from tables.serializers.utils.mixins import (
+    NestedPythonCodeMixin,
+    assert_node_ref_in_graph,
+)
 from tables.services.persistent_variables_service import (
     PersistentVariablesService,
 )
@@ -39,6 +44,7 @@ class ConditionalEdgeSerializer(
     ContentHashWritableMixin, NestedPythonCodeMixin, serializers.ModelSerializer
 ):
     python_code = PythonCodeSerializer()
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta(BaseGraphEntityMixin.Meta):
         model = ConditionalEdge
@@ -47,6 +53,7 @@ class ConditionalEdgeSerializer(
 
 class StartNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
     node_name = serializers.SerializerMethodField(read_only=True)
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta(BaseGraphEntityMixin.Meta):
         model = StartNode
@@ -69,6 +76,7 @@ class StartNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
             setattr(instance, attr, value)
         instance.save()
 
+        # TODO: rbac refactor
         graph_organization = GraphOrganization.objects.filter(
             graph=instance.graph
         ).first()
@@ -81,6 +89,7 @@ class StartNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
 
         return instance
 
+    # TODO: refactor, persistant variables story
     def validate(self, attrs):
         variables = attrs.get("variables")
         actual_variables = variables.get(DOMAIN_VARIABLES_KEY, {})
@@ -102,6 +111,7 @@ class StartNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
 
 class EndNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
     node_name = serializers.SerializerMethodField(read_only=True)
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta(BaseGraphEntityMixin.Meta):
         model = EndNode
@@ -138,10 +148,24 @@ class DecisionTableNodeSerializer(
     ContentHashWritableMixin, serializers.ModelSerializer
 ):
     condition_groups = ConditionGroupSerializer(many=True, required=False)
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta:
         model = DecisionTableNode
         fields = "__all__"
+
+    def validate(self, attrs):
+        # default/error next nodes and each condition group's next node must live
+        # in the same graph as this decision table (same org). Raw int refs.
+        graph = attrs.get("graph") or getattr(self.instance, "graph", None)
+        for field in ("default_next_node_id", "next_error_node_id"):
+            node_id = attrs.get(field, getattr(self.instance, field, None))
+            assert_node_ref_in_graph(node_id, graph, field)
+        for group in attrs.get("condition_groups", []) or []:
+            assert_node_ref_in_graph(
+                group.get("next_node_id"), graph, "condition_groups.next_node_id"
+            )
+        return attrs
 
 
 def validate_classification_condition_group_names(condition_groups_data) -> list[str]:

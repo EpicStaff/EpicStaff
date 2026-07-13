@@ -15,9 +15,14 @@
                     [autofocus]="true"
                     (keydown.enter)="onContinue()"
                 />
+                <app-validation-errors [control]="orgNameControl" />
                 <p class="hint">You can rename this anytime in settings</p>
             </div>
-            <app-button (click)="onContinue()">Continue</app-button>
+            <app-button
+                [disabled]="orgNameControl.invalid"
+                (click)="onContinue()"
+                >Continue</app-button
+            >
         </div>
     } @else if (step() === 2) {
         <div class="hero">

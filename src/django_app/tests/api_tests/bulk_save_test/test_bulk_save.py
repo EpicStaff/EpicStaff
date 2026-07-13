@@ -425,7 +425,7 @@ def test_invalid_node_id_in_payload(auth_client, graph):
 
 @pytest.mark.django_db
 def test_delete_node_from_different_graph(auth_client, graph, python_code):
-    other_graph = Graph.objects.create(name="other_graph")
+    other_graph = Graph.objects.create(name="other_graph", org=graph.org)
     other_node = PythonNode.objects.create(graph=other_graph, python_code=python_code)
 
     payload = {

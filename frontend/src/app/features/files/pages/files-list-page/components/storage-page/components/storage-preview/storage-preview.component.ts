@@ -124,7 +124,7 @@ export class StoragePreviewComponent {
     onDownload(): void {
         const item = this.item();
         if (item) {
-            this.storageApiService.download(item.path);
+            this.contextAction.emit({ action: 'download', item });
         }
     }
 

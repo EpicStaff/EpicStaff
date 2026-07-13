@@ -1,5 +1,7 @@
 from copy import deepcopy
 
+from django.db.models import Q
+
 from tables.models import McpTool
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.serializers.mcp_tools import McpToolImportSerializer
@@ -27,22 +29,36 @@ class McpToolStrategy(EntityImportExportStrategy):
     def export_entity(self, instance: McpTool) -> dict:
         return self.serializer_class(instance).data
 
+    def get_org_scope_q(self, org_id: int) -> Q:
+        if org_id is None:
+            return Q()
+        return Q(org_id=org_id)
+
     def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> McpTool:
+        org_id = kwargs.get("org_id")
         if "name" in data:
-            existing_names = McpTool.objects.values_list("name", flat=True)
+            existing_names = McpTool.objects.filter(org_id=org_id).values_list(
+                "name", flat=True
+            )
             data["name"] = ensure_unique_identifier(
                 base_name=data["name"],
                 existing_names=existing_names,
             )
 
-        serializer = self.serializer_class(data=data)
+        serializer = self.serializer_class(data={**data, "org": org_id})
         serializer.is_valid(raise_exception=True)
         return serializer.save()
 
-    def find_existing(self, data: dict, id_mapper: IDMapper) -> McpTool:
+    def find_existing(
+        self, data: dict, id_mapper: IDMapper, org_id: int = None
+    ) -> McpTool:
         data_copy = deepcopy(data)
         data_copy.pop("id", None)
 
         filters, null_filters = create_filters(data_copy)
-        existing = McpTool.objects.filter(**filters, **null_filters).first()
+        existing = (
+            McpTool.objects.filter(**filters, **null_filters)
+            .filter(self.get_org_scope_q(org_id))
+            .first()
+        )
         return existing
