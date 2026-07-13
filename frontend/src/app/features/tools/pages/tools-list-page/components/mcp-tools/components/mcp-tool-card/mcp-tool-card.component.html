@@ -28,7 +28,7 @@
     <div class="tool-footer">
         <app-button
             type="ghost"
-            *appHasPermission="[ResourceCode.Tools, [ActionCode.Update, ActionCode.Read]]"
+            *appHasPermission="[ResourceCode.Tools, ActionCode.Update]"
             (click)="onConfigure()"
             >Configure</app-button
         >

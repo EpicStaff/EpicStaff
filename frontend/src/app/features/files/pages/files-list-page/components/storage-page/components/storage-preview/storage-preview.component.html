@@ -73,18 +73,21 @@
                 [style.top.px]="kebabMenuPosition().top"
             >
                 <button
+                    *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
                     class="storage-preview__context-menu-item"
                     (click)="onKebabMenuAction('download')"
                 >
                     Download
                 </button>
                 <button
+                    *appHasPermission="[ResourceCode.Files, ActionCode.Create]"
                     class="storage-preview__context-menu-item"
                     (click)="onKebabMenuAction('copy')"
                 >
                     Copy to...
                 </button>
                 <button
+                    *appHasPermission="[ResourceCode.Files, ActionCode.Update]"
                     class="storage-preview__context-menu-item"
                     (click)="onKebabMenuAction('rename')"
                 >
@@ -98,6 +101,7 @@
                 </button>
                 <div class="storage-preview__context-menu-divider"></div>
                 <button
+                    *appHasPermission="[ResourceCode.Files, ActionCode.Delete]"
                     class="storage-preview__context-menu-item"
                     (click)="onKebabMenuAction('delete')"
                 >
@@ -142,6 +146,7 @@
                         ></app-svg-icon>
                         <p>{{ previewError() }}</p>
                         <app-button
+                            *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
                             type="ghost"
                             (click)="onDownload()"
                             >Download file</app-button
@@ -252,6 +257,7 @@
                                     <p class="storage-preview__unsupported-size">{{ item()!.size | number }} bytes</p>
                                 }
                                 <app-button
+                                    *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
                                     type="ghost"
                                     [leftIcon]="'download'"
                                     (click)="onDownload()"
