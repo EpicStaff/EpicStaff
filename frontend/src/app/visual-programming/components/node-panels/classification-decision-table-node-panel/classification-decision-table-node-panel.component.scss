@@ -29,6 +29,14 @@
     overflow: hidden;
 }
 
+// Header lock zone must keep its intrinsic height; the body lock zone
+// (class="fill") takes the remaining space and owns the inner scroll.
+.cdt-header-lock {
+    flex-shrink: 0;
+    background: var(--color-nodes-sidepanel-bg);
+    z-index: 10;
+}
+
 // Sticky header block
 .panel-sticky-header {
     position: sticky;
@@ -280,7 +288,7 @@
     overflow-x: hidden;
     overflow-y: auto;
     min-height: 0;
-    padding: 0;
+    padding: 0 5px 0 0;
 }
 
 .computation-section {

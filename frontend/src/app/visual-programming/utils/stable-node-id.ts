@@ -1,8 +1,23 @@
 const NODE_TYPE_INDEX: Record<string, number> = {
-    start: 1, end: 2, project: 3, task: 4, tool: 5, llm: 6,
-    python: 7, edge: 8, table: 9, note: 10, 'file-extractor': 11,
-    'webhook-trigger': 12, 'telegram-trigger': 13, subgraph: 14,
-    'audio-to-text-node': 15, 'schedule-trigger': 16, 'code-agent': 17, agent: 18,
+    start: 1,
+    end: 2,
+    project: 3,
+    task: 4,
+    tool: 5,
+    llm: 6,
+    python: 7,
+    edge: 8,
+    table: 9,
+    note: 10,
+    'file-extractor': 11,
+    'webhook-trigger': 12,
+    'telegram-trigger': 13,
+    subgraph: 14,
+    'audio-to-text-node': 15,
+    'schedule-trigger': 16,
+    'code-agent': 17,
+    agent: 18,
+    'classification-decision-table': 19,
 };
 
 /**

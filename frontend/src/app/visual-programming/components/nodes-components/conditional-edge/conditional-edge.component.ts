@@ -61,6 +61,16 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
                     color: var(--edge-node-accent-color);
                 }
             }
+
+            :host-context(.remote-selected) svg path {
+                stroke: var(--remote-selection-color) !important;
+                filter: drop-shadow(0 0 3px var(--remote-selection-color));
+            }
+
+            :host-context(.is-locked) svg path {
+                stroke: var(--lock-color) !important;
+                filter: drop-shadow(0 0 3px var(--lock-color));
+            }
         `,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,

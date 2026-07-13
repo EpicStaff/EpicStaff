@@ -126,12 +126,17 @@
                                 </div>
                             </app-lockable-field>
 
-                            <app-node-storage-section
-                                [useStorage]="useStorage()"
-                                (onToggleChange)="onStorageToggle($event)"
-                                (onInsertCode)="insertStorageCode($event)"
-                                (onRemoveCode)="removeStorageCode($event)"
-                            ></app-node-storage-section>
+                            <app-lockable-field
+                                fieldId="use_storage"
+                                [nodeId]="node().id"
+                            >
+                                <app-node-storage-section
+                                    [useStorage]="useStorage()"
+                                    (onToggleChange)="onStorageToggle($event)"
+                                    (onInsertCode)="insertStorageCode($event)"
+                                    (onRemoveCode)="removeStorageCode($event)"
+                                ></app-node-storage-section>
+                            </app-lockable-field>
 
                             <app-lockable-field
                                 fieldId="stream_config"
@@ -358,12 +363,17 @@
                         ></app-custom-input>
                     </app-lockable-field>
 
-                    <app-node-storage-section
-                        [useStorage]="useStorage()"
-                        (onToggleChange)="onStorageToggle($event)"
-                        (onInsertCode)="insertStorageCode($event)"
-                        (onRemoveCode)="removeStorageCode($event)"
-                    ></app-node-storage-section>
+                    <app-lockable-field
+                        fieldId="use_storage"
+                        [nodeId]="node().id"
+                    >
+                        <app-node-storage-section
+                            [useStorage]="useStorage()"
+                            (onToggleChange)="onStorageToggle($event)"
+                            (onInsertCode)="insertStorageCode($event)"
+                            (onRemoveCode)="removeStorageCode($event)"
+                        ></app-node-storage-section>
+                    </app-lockable-field>
 
                     <app-lockable-field
                         fieldId="stream_config"

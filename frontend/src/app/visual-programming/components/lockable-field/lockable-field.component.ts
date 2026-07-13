@@ -68,6 +68,16 @@ import { getAvatarColor } from '../../core/helpers/avatar-colors';
                 pointer-events: auto;
                 cursor: default;
             }
+            /* Inset variant for large container fields whose outer outline and
+               indicator would be clipped by a parent with overflow: hidden. */
+            :host(.lock-inset).locked-by-other {
+                outline: none;
+                box-shadow: inset 0 0 0 2px var(--field-lock-color);
+            }
+            :host(.lock-inset) .lock-indicator {
+                top: 8px;
+                right: 8px;
+            }
         `,
     ],
     host: {

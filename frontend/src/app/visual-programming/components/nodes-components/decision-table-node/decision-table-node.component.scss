@@ -181,3 +181,13 @@
 :host-context(.f-selected) .decision-table .group-name .group-status {
     color: rgba(255, 255, 255, 0.7);
 }
+
+:host-context(.remote-selected) .decision-table {
+    border-color: var(--remote-selection-color);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--remote-selection-color) 30%, transparent);
+}
+
+:host-context(.is-locked) .decision-table {
+    border-color: var(--lock-color);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--lock-color) 25%, transparent);
+}

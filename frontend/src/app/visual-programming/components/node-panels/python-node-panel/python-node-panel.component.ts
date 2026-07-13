@@ -76,20 +76,25 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                                 ></app-custom-input>
                             </app-lockable-field>
 
-                            <div class="input-map">
-                                <app-input-map
-                                    [activeColor]="activeColor"
-                                    [showTestMode]="true"
-                                    [testMode]="isOpenTestMode()"
-                                    [pythonNodeId]="node().backendId"
-                                    [graphId]="graphId()"
-                                    [nodeName]="node().node_name"
-                                    [testRunning]="testRunning()"
-                                    [testInputDirty]="testInputDirty()"
-                                    (testModeChange)="isOpenTestMode.set($event)"
-                                    (runTest)="onRunTest($event)"
-                                ></app-input-map>
-                            </div>
+                            <app-lockable-field
+                                fieldId="input_map"
+                                [nodeId]="node().id"
+                            >
+                                <div class="input-map">
+                                    <app-input-map
+                                        [activeColor]="activeColor"
+                                        [showTestMode]="true"
+                                        [testMode]="isOpenTestMode()"
+                                        [pythonNodeId]="node().backendId"
+                                        [graphId]="graphId()"
+                                        [nodeName]="node().node_name"
+                                        [testRunning]="testRunning()"
+                                        [testInputDirty]="testInputDirty()"
+                                        (testModeChange)="isOpenTestMode.set($event)"
+                                        (runTest)="onRunTest($event)"
+                                    ></app-input-map>
+                                </div>
+                            </app-lockable-field>
 
                             <app-lockable-field
                                 fieldId="output_variable_path"
@@ -117,33 +122,43 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                                 ></app-custom-input>
                             </app-lockable-field>
 
-                            <div
-                                class="stream-config-section"
-                                formGroupName="stream_config"
+                            <app-lockable-field
+                                fieldId="stream_config"
+                                [nodeId]="node().id"
                             >
-                                <span class="section-label">Streaming to EpicChat</span>
-                                <div class="checkbox-list">
-                                    <label class="checkbox-item">
-                                        <input
-                                            type="checkbox"
-                                            formControlName="execution_status"
-                                            [style.accent-color]="activeColor"
-                                        />
-                                        <span>Execution status</span>
-                                        <app-help-tooltip
-                                            size="18px"
-                                            text="When enabled, this node's execution status updates (started, finished, errored) are streamed to EpicChat."
-                                        />
-                                    </label>
+                                <div
+                                    class="stream-config-section"
+                                    formGroupName="stream_config"
+                                >
+                                    <span class="section-label">Streaming to EpicChat</span>
+                                    <div class="checkbox-list">
+                                        <label class="checkbox-item">
+                                            <input
+                                                type="checkbox"
+                                                formControlName="execution_status"
+                                                [style.accent-color]="activeColor"
+                                            />
+                                            <span>Execution status</span>
+                                            <app-help-tooltip
+                                                size="18px"
+                                                text="When enabled, this node's execution status updates (started, finished, errored) are streamed to EpicChat."
+                                            />
+                                        </label>
+                                    </div>
                                 </div>
-                            </div>
+                            </app-lockable-field>
 
-                            <app-node-storage-section
-                                [useStorage]="useStorage()"
-                                (onToggleChange)="onStorageToggle($event)"
-                                (onInsertCode)="insertStorageCode($event)"
-                                (onRemoveCode)="removeStorageCode($event)"
-                            ></app-node-storage-section>
+                            <app-lockable-field
+                                fieldId="use_storage"
+                                [nodeId]="node().id"
+                            >
+                                <app-node-storage-section
+                                    [useStorage]="useStorage()"
+                                    (onToggleChange)="onStorageToggle($event)"
+                                    (onInsertCode)="insertStorageCode($event)"
+                                    (onRemoveCode)="removeStorageCode($event)"
+                                ></app-node-storage-section>
+                            </app-lockable-field>
                         </div>
 
                         <!-- Code editor area: toggle button only present in expanded mode -->
