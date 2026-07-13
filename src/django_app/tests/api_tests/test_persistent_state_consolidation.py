@@ -87,30 +87,61 @@ def test_graph_organization_api_has_no_organization_field(org_client):
 
 
 @pytest.mark.django_db
-def test_graph_enable_persistent_variables_round_trips(org_client):
-    """The renamed boolean flag round-trips through create and update; the old
-    `persistent_variables` name is absent from the graph payload."""
-    url = reverse("graphs-list")
+def test_enable_persistent_variables_is_read_only_and_derived(org_client, default_org):
+    """The flag is not client-settable; it is derived on Domain save."""
+    from tables.models import StartNode
 
+    # client cannot turn it on directly
     created = org_client.post(
-        url,
+        reverse("graphs-list"),
         {"name": "flag flow", "enable_persistent_variables": True},
         format="json",
     )
     assert created.status_code == status.HTTP_201_CREATED, created.content
-    assert created.data["enable_persistent_variables"] is True
-    assert "persistent_variables" not in created.data
-
     graph = Graph.objects.get(id=created.data["id"])
-    assert graph.enable_persistent_variables is True
+    assert graph.enable_persistent_variables is False  # ignored on write
 
-    detail_url = reverse("graphs-detail", args=[graph.id])
-    patched = org_client.patch(
-        detail_url,
-        {"enable_persistent_variables": False, "save_version": graph.save_version},
+    # declaring an org persistent variable in the Domain flips it on
+    sn = StartNode.objects.create(graph=graph, variables={"variables": {"counter": 0}})
+    patch = org_client.patch(
+        reverse("startnode-detail", args=[sn.id]),
+        {
+            "variables": {
+                "variables": {"counter": 0},
+                "persistent_variables": {"organization": ["counter"], "user": []},
+            }
+        },
         format="json",
     )
-    assert patched.status_code == status.HTTP_200_OK, patched.content
-    assert patched.data["enable_persistent_variables"] is False
+    assert patch.status_code == status.HTTP_200_OK, patch.content
     graph.refresh_from_db()
-    assert graph.enable_persistent_variables is False
+    assert graph.enable_persistent_variables is True
+
+
+@pytest.mark.django_db
+def test_graph_organization_endpoint_is_read_only(org_client):
+    resp = org_client.post(reverse("graphs-list"), {"name": "ro flow"}, format="json")
+    assert resp.status_code == status.HTTP_201_CREATED, resp.content
+    go = GraphOrganization.objects.get(graph_id=resp.data["id"])
+    detail = reverse("graphorganization-detail", args=[go.id])
+
+    # writes are rejected on a ReadOnlyModelViewSet: the write verbs are not
+    # mapped actions, so HasOrgPermission default-denies (403) before DRF would
+    # reach method-not-allowed (405). Either way the write does not go through.
+    patched = org_client.patch(
+        detail, {"persistent_variables": {"x": 1}}, format="json"
+    )
+    assert patched.status_code in (
+        status.HTTP_403_FORBIDDEN,
+        status.HTTP_405_METHOD_NOT_ALLOWED,
+    ), patched.content
+
+    # reads still work and expose the same fields
+    got = org_client.get(detail)
+    assert got.status_code == status.HTTP_200_OK
+    assert set(got.data.keys()) == {
+        "id",
+        "graph",
+        "persistent_variables",
+        "user_variables",
+    }

@@ -29,7 +29,6 @@ from tables.models.graph_models import (
     GraphOrganization,
     GraphOrganizationUser,
     GraphSessionMessage,
-    StartNode,
 )
 from tables.models.label_models import Label
 from tables.serializers.base_serializer import BaseGraphEntityMixin
@@ -111,6 +110,7 @@ class GraphSessionMessageSerializer(serializers.ModelSerializer):
 
 
 class GraphOrganizationSerializer(serializers.ModelSerializer):
+    # Storage is derived — seeded on Domain save and written back at session end
     class Meta:
         model = GraphOrganization
         fields = [
@@ -119,45 +119,7 @@ class GraphOrganizationSerializer(serializers.ModelSerializer):
             "persistent_variables",
             "user_variables",
         ]
-
-    def validate(self, attrs):
-        graph = attrs.get("graph") or getattr(self.instance, "graph", None)
-        if not graph:
-            raise serializers.ValidationError("Graph is required to validate variables")
-
-        organization_variables = attrs.get("persistent_variables", {})
-        user_variables = attrs.get("user_variables", {})
-
-        qs = GraphOrganization.objects.filter(graph=graph)
-        if self.instance:
-            qs = qs.exclude(pk=self.instance.pk)
-
-        if qs.exists():
-            raise serializers.ValidationError("This flow already has an organization")
-
-        start_node: StartNode = graph.start_node_list.first()
-        for key in user_variables:
-            if key not in start_node.variables:
-                raise serializers.ValidationError(
-                    {
-                        "user_variables": f"Provided user_variables have to be in flow domain. Variable `{key}` is not in domain."
-                    }
-                )
-        for key in organization_variables:
-            if key not in start_node.variables:
-                raise serializers.ValidationError(
-                    {
-                        "persistent_variables": f"Provided persistent_variables have to be in flow domain. Variable `{key}` is not in domain."
-                    }
-                )
-            if key in user_variables:
-                raise serializers.ValidationError(
-                    {
-                        "user_variables": f"User variables and Organization variables cannot have same values. Issue with key `{key}`"
-                    }
-                )
-
-        return super().validate(attrs)
+        read_only_fields = ["persistent_variables", "user_variables"]
 
 
 class GraphOrganizationUserSerializer(serializers.ModelSerializer):
@@ -260,6 +222,8 @@ class GraphSerializer(serializers.ModelSerializer):
             "graph_note_list",
             "save_version",
         ]
+        # Derived on Domain save — never set directly by the client.
+        read_only_fields = ["enable_persistent_variables"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -1669,7 +1669,11 @@ class McpToolViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewS
         return Response(serializer.data)
 
 
-class GraphOrganizationViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+class GraphOrganizationViewSet(
+    OrgScopedChildViewSetMixin, viewsets.ReadOnlyModelViewSet
+):
+    # Read-only: persistent-variable storage is derived (Domain-save sync +
+    # session write-back), never hand-edited over the API.
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     org_filter_path = "graph__org_id"
