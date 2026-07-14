@@ -1,8 +1,7 @@
 import { ApplicationRef, Component, computed, DestroyRef, effect, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormBuilder, FormGroup, ValidatorFn, Validators } from '@angular/forms';
+import { AbstractControl, FormBuilder, FormGroup, ValidatorFn, Validators } from '@angular/forms';
 import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
-import { ProfileService } from 'src/app/services/auth/profile.service';
 
 import { UniqueNodeNameValidatorService } from '../../services/unique-node-name.validator';
 import { NodeModel } from './node.model';
@@ -17,7 +16,6 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     protected uniqueNameValidator = inject(UniqueNodeNameValidatorService);
     protected destroyRef = inject(DestroyRef);
     protected readonly wsService = inject(GraphCollaborationWsService);
-    private readonly profileService = inject(ProfileService);
     private lastInitializedNodeId: string | null = null;
 
     node = input.required<T>();
@@ -56,14 +54,47 @@ export abstract class BaseSidePanel<T extends NodeModel> {
 
         this.wsService.nodeUpdated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
             if (!this.isSameNode(msg.node)) return;
-            if (this.userHoldsLock()) return;
 
             appRef.tick();
             const node = this.node();
             if (!node) return;
-            this.reinitializeForm(node);
+
+            if (!this.form) {
+                this.reinitializeForm(node);
+            } else {
+                this.mergeRemoteIntoForm();
+            }
             appRef.tick();
         });
+    }
+
+    // Merge a remote update into the form without discarding the user's in-progress
+    // edits: fields the user has not touched take the remote value, dirty fields are
+    // preserved so a subsequent save does not overwrite the remote change on them.
+    private mergeRemoteIntoForm(): void {
+        this.mergeGroup(this.form, this.initializeForm());
+
+        if (!this.form.dirty) {
+            this.initialNodeSnapshot = JSON.stringify(this.createUpdatedNode());
+        }
+        this.dirtyCheckTick.update((v) => v + 1);
+    }
+
+    private mergeGroup(target: FormGroup, source: FormGroup): void {
+        for (const key of Object.keys(source.controls)) {
+            const targetControl: AbstractControl | null = target.get(key);
+            const sourceControl: AbstractControl | null = source.get(key);
+            if (!targetControl || !sourceControl) continue;
+
+            if (!targetControl.dirty) {
+                target.setControl(key, sourceControl, { emitEvent: false });
+                continue;
+            }
+
+            if (targetControl instanceof FormGroup && sourceControl instanceof FormGroup) {
+                this.mergeGroup(targetControl, sourceControl);
+            }
+        }
     }
 
     private reinitializeForm(node: T): void {
@@ -85,18 +116,6 @@ export abstract class BaseSidePanel<T extends NodeModel> {
         return false;
     }
 
-    private userHoldsLock(): boolean {
-        const node = this.node();
-        if (!node) return false;
-        const fields = this.wsService.lockedNodeFields().get(node.id);
-        if (!fields) return false;
-        const currentUserId = this.profileService.currentUserSignal()?.id;
-        for (const editor of fields.values()) {
-            if (editor.user_id === currentUserId) return true;
-        }
-        return false;
-    }
-
     public onSave(): T | null {
         if (this.form && this.form.invalid) {
             const originalNode = this.node();
@@ -107,6 +126,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
         }
         const updatedNode = this.createUpdatedNode();
         this.initialNodeSnapshot = JSON.stringify(updatedNode);
+        this.form.markAsPristine();
         this.dirtyCheckTick.update((v) => v + 1);
         return updatedNode;
     }
@@ -118,6 +138,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
         try {
             const updatedNode = this.createUpdatedNode();
             this.initialNodeSnapshot = JSON.stringify(updatedNode);
+            this.form.markAsPristine();
             this.dirtyCheckTick.update((v) => v + 1);
             return updatedNode;
         } catch {
