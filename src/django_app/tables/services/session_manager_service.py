@@ -248,14 +248,11 @@ class SessionManagerService(metaclass=SingletonMeta):
             session.save()
         return session.pk
 
-    # message_type values handled generically by the branch below: both are a
-    # plain GraphSessionMessage row + redis republish, just with different
-    # message_data shapes. "user" is the original AnswerToLLM path (kept
-    # byte-for-byte); "wait_for_decision" is the EST-3285 4.8 human-in-the-loop
-    # decision-open notification (see OpenSessionDecisionView in
-    # tables/views/views.py). Adding a message_type here never requires a
-    # migration -- message_data is a free-form JSONField.
-    _GENERIC_MESSAGE_TYPES = ("user", "wait_for_decision")
+    # message_type values handled generically by the branch below: this is a
+    # plain GraphSessionMessage row + redis republish. "user" is the original
+    # AnswerToLLM path (kept byte-for-byte). Adding a message_type here never
+    # requires a migration -- message_data is a free-form JSONField.
+    _GENERIC_MESSAGE_TYPES = ("user",)
 
     def register_message(self, data: dict, created_at_dt) -> None:
         if data["message_data"]["message_type"] in self._GENERIC_MESSAGE_TYPES:

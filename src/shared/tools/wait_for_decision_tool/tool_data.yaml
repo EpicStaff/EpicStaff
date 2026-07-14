@@ -1,7 +1,0 @@
-tool-data:
-  name: "Wait For Decision Tool"
-  description: "Pauses the flow and asks a human to pick one of 2-4 options (optionally with free text) via the session's structured decision channel, then blocks until an answer is recorded or a bounded timeout is hit. Requires the 'api_key' (an EpicStaff API key) configuration field to be set when configuring this tool for an agent. The agent supplies 'question', 'options' and 'allow_free_text' -- it never chooses which session to pause, that is always the flow's own running session."
-  args-schema: "args_schema.json"
-  code-file: "main.py"
-  entrypoint: "main"
-  requirements: "requirements.txt"

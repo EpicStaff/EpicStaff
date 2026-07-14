@@ -55,9 +55,6 @@ from tables.views.model_view_sets import (
 
 from tables.views.views import (
     AnswerToLLM,
-    OpenSessionDecisionView,
-    AnswerSessionDecisionView,
-    CancelSessionDecisionView,
     NotifyEmailView,
     InitRealtimeAPIView,
     RegisterTelegramTriggerApiView,
@@ -238,21 +235,6 @@ urlpatterns = [
         name="get-updates",
     ),
     path("sessions/<int:session_id>/stop/", StopSession.as_view(), name="stop-session"),
-    path(
-        "sessions/<int:session_id>/decisions/open/",
-        OpenSessionDecisionView.as_view(),
-        name="open-session-decision",
-    ),
-    path(
-        "sessions/<int:session_id>/decisions/answer/",
-        AnswerSessionDecisionView.as_view(),
-        name="answer-session-decision",
-    ),
-    path(
-        "sessions/<int:session_id>/decisions/cancel/",
-        CancelSessionDecisionView.as_view(),
-        name="cancel-session-decision",
-    ),
     path("notify/email/", NotifyEmailView.as_view(), name="notify-email"),
     path(
         "run-python-code/",

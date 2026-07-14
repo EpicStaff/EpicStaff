@@ -1,7 +1,0 @@
-tool-data:
-  name: "Spawn Agent Tool"
-  description: "Spawns an ad-hoc single-purpose sub-agent (role/goal/backstory + a task prompt, with an optional LLM config override) as a one-off transient flow, runs it to completion and returns its output together with its per-spawn token usage. Requires the 'api_key' (an EpicStaff API key) and 'default_llm_config_id' (which LLM config to use when no override is supplied) configuration fields to be set when configuring this tool for an agent. The agent supplies 'prompt' (required) and optionally 'role', 'goal', 'backstory', 'expected_output' and 'llm_config_id' (per-call model override)."
-  args-schema: "args_schema.json"
-  code-file: "main.py"
-  entrypoint: "main"
-  requirements: "requirements.txt"

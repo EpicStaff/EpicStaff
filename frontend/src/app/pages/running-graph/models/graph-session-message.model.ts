@@ -35,7 +35,6 @@ export enum MessageType {
     CONDITION_GROUP_MANIPULATION = 'condition_group_manipulation',
     CODE_AGENT_STREAM = 'code_agent_stream',
     FINDINGS = 'findings',
-    WAIT_FOR_DECISION = 'wait_for_decision',
 }
 
 // Message data interfaces - these match the camelCase structure used in your code
@@ -241,14 +240,6 @@ export interface FindingsMessageData {
     message_type: MessageType.FINDINGS;
 }
 
-export interface WaitForDecisionMessageData {
-    decision_id: string;
-    question: string;
-    options: string[];
-    allow_free_text: boolean;
-    message_type: MessageType.WAIT_FOR_DECISION;
-}
-
 // Type union for all message data types
 export type MessageData =
     | FinishMessageData
@@ -269,5 +260,4 @@ export type MessageData =
     | ClassificationPromptMessageData
     | ConditionGroupManipulationMessageData
     | CodeAgentStreamMessageData
-    | FindingsMessageData
-    | WaitForDecisionMessageData;
+    | FindingsMessageData;

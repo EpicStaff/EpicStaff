@@ -75,11 +75,9 @@ def test_unauthenticated_request_still_sends_via_default_permission(
     api_client, mailoutbox
 ):
     """NotifyEmailView relies purely on DRF's global default
-    IsAuthenticated permission (no view-level ownership check like the
-    decision endpoints -- there's no per-org resource here, just "does the
-    caller hold a valid API key/JWT at all"). `tests/settings.py` disables
-    DRF auth/permission enforcement for the whole suite (see
-    wait_for_decision_endpoints_test.py's module docstring for why), so in
+    IsAuthenticated permission -- there's no per-org resource here, just
+    "does the caller hold a valid API key/JWT at all". `tests/settings.py`
+    disables DRF auth/permission enforcement for the whole suite, so in
     THIS test environment the request reaches the view regardless of
     credentials -- in production, IsAuthenticated would return 401 before
     the view ever runs."""
