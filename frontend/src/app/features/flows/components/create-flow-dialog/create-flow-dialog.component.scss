@@ -1,7 +1,7 @@
 .dialog-container {
     background: var(--color-sidenav-background);
     border-radius: var(--radius-2xl);
-    padding: 1.5rem;
+    padding: var(--space-2xl);
     width: 500px;
     max-width: 100%;
     color: var(--color-text-primary);
@@ -10,7 +10,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 1.5rem;
+        margin-bottom: var(--space-2xl);
 
         .dialog-title {
             margin: 0;
@@ -24,12 +24,12 @@
             border: none;
             color: var(--color-text-secondary);
             cursor: pointer;
-            padding: 4px;
+            padding: var(--space-2xs);
             display: flex;
             align-items: center;
             justify-content: center;
             border-radius: var(--radius-sm);
-            margin-left: 10px;
+            margin-left: var(--space-md);
 
             &:hover {
                 background-color: var(--white-alpha-10);
@@ -39,21 +39,21 @@
     }
 
     .dialog-content {
-        margin-bottom: 1.5rem;
+        margin-bottom: var(--space-2xl);
 
         .form-group {
-            margin-bottom: 1rem;
+            margin-bottom: var(--space-lg);
             position: relative;
 
             label {
                 display: block;
-                margin-bottom: 0.5rem;
+                margin-bottom: var(--space-sm);
                 font-size: var(--font-size-md);
                 color: var(--color-text-secondary);
 
                 .required {
                     color: var(--color-required-asterisk, var(--accent-color));
-                    margin-left: 2px;
+                    margin-left: var(--space-3xs);
                 }
             }
 
@@ -81,7 +81,7 @@
             .error-message {
                 font-size: var(--font-size-xs);
                 color: var(--color-error);
-                margin-top: 4px;
+                margin-top: var(--space-2xs);
             }
 
             &.name-with-icon {
@@ -91,8 +91,8 @@
                     background-color: var(--color-input-background);
                     border: 1px solid var(--color-input-border);
                     border-radius: var(--radius-md);
-                    padding: 0.125rem;
-                    padding-left: 0.35rem;
+                    padding: var(--space-3xs);
+                    padding-left: var(--space-xs);
 
                     &:focus-within {
                         border-color: var(--accent-color);
@@ -103,7 +103,7 @@
                         border: none;
                         box-shadow: none;
                         flex: 1;
-                        padding-inline: 0.875rem;
+                        padding-inline: var(--space-lg);
                         color: var(--color-text-primary);
 
                         &:focus {
@@ -133,8 +133,8 @@
     color: var(--red-500);
     font-size: var(--font-size-sm);
     text-align: center;
-    margin-top: 10px;
-    margin-bottom: 10px;
+    margin-top: var(--space-md);
+    margin-bottom: var(--space-md);
 }
 
 .spinner {
@@ -145,7 +145,7 @@
     border-radius: 50%;
     border-top-color: var(--white);
     animation: spin 1s ease-in-out infinite;
-    margin-right: 8px;
+    margin-right: var(--space-sm);
     vertical-align: middle;
 }
 

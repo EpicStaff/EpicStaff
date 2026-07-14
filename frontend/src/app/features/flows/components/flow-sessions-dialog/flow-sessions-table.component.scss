@@ -1,5 +1,5 @@
 .table-header {
-    margin-bottom: 12px;
+    margin-bottom: var(--space-md);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -11,7 +11,7 @@
         flex: 1;
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: var(--space-md);
     }
 
     .bulk-actions-section {
@@ -22,7 +22,7 @@
         .delete-btn {
             min-width: auto;
             max-width: none;
-            padding: 8px 16px;
+            padding: var(--space-sm) var(--space-lg);
         }
     }
 }
@@ -45,7 +45,7 @@ table {
 
     th,
     td {
-        padding: 12px 15px;
+        padding: var(--space-md) var(--space-lg);
         text-align: left;
         border-bottom: 1px solid var(--color-divider-subtle);
     }
@@ -95,7 +95,7 @@ table {
         min-width: 140px;
         width: 140px;
         text-align: center;
-        padding: 12px 8px;
+        padding: var(--space-md) var(--space-sm);
     }
 
     td[colspan='7'],
@@ -138,7 +138,7 @@ table {
 
     td[colspan='7'],
     td[colspan='8'] {
-        padding: 40px;
+        padding: var(--space-4xl);
         vertical-align: middle;
     }
 
@@ -157,7 +157,7 @@ table {
             }
 
             .sort-icon {
-                margin-left: 4px;
+                margin-left: var(--space-2xs);
                 font-size: 0.85em;
                 opacity: 0.8;
                 position: relative;
@@ -204,8 +204,8 @@ table {
 .delete-btn {
     border: none;
     outline: none;
-    padding: 6px 14px;
-    margin-right: 8px;
+    padding: var(--space-xs) var(--space-lg);
+    margin-right: var(--space-sm);
     border-radius: var(--radius-md);
     font-size: 0.95em;
     font-weight: var(--font-weight-medium);
@@ -232,8 +232,8 @@ table {
     color: var(--white) !important;
     border: none;
     outline: none;
-    padding: 6px 14px;
-    margin-right: 8px;
+    padding: var(--space-xs) var(--space-lg);
+    margin-right: var(--space-sm);
     border-radius: var(--radius-md);
     font-size: 0.95em;
     font-weight: var(--font-weight-medium);
@@ -248,7 +248,7 @@ table {
 }
 
 .session-search-input {
-    padding: 6px 12px;
+    padding: var(--space-xs) var(--space-md);
     border: 1px solid var(--color-divider-regular, var(--gray-300));
     border-radius: var(--radius-md);
     font-size: 1em;
@@ -268,8 +268,8 @@ table {
     color: var(--white);
     border: none;
     outline: none;
-    padding: 6px 14px;
-    margin-right: 8px;
+    padding: var(--space-xs) var(--space-lg);
+    margin-right: var(--space-sm);
     border-radius: var(--radius-md);
     font-size: 0.95em;
     font-weight: var(--font-weight-medium);
@@ -293,12 +293,12 @@ table {
     align-items: center;
     justify-content: center;
     text-align: center;
-    padding: 2rem;
+    padding: var(--space-3xl);
     height: 100%;
     min-height: 180px;
 
     p {
-        margin: 0 0 8px 0;
+        margin: 0 0 var(--space-sm) 0;
         font-size: 1.1em;
         color: var(--color-text-primary);
     }
@@ -315,7 +315,7 @@ table {
 }
 
 app-icon-button {
-    margin-left: 10px;
+    margin-left: var(--space-md);
 }
 
 tr.row-expanded td {
@@ -338,7 +338,7 @@ tr.preview-row td.preview-cell {
 
     border-top: 1px solid var(--border-color, #2a2a3a);
     background: var(--black-alpha-32);
-    padding: 5px;
+    padding: var(--space-xs);
 }
 
 .view-btn--active {

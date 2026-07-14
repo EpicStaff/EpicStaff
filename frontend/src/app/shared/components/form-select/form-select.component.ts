@@ -58,7 +58,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     display: flex;
                     align-items: center;
                     gap: var(--space-sm);
-                    margin-bottom: 8px;
+                    margin-bottom: var(--space-sm);
                 }
 
                 label {
@@ -70,7 +70,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 
                 .text-input {
                     width: 100%;
-                    padding: 8px 12px;
+                    padding: var(--space-sm) var(--space-md);
                     background-color: var(--color-input-background);
                     border: 1px solid rgba(255, 255, 255, 0.1);
                     border-radius: 6px;
@@ -91,7 +91,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                 .error-message {
                     color: #ef4444;
                     font-size: var(--font-size-xs);
-                    margin-top: 4px;
+                    margin-top: var(--space-2xs);
                     line-height: 1.4;
                 }
             }

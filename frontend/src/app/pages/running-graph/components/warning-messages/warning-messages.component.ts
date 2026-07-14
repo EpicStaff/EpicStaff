@@ -54,10 +54,10 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
             .warning-container {
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
-                padding: 1rem 1.25rem;
+                padding: var(--space-lg) var(--space-xl);
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 border-left: 4px solid #f56a00;
-                margin-bottom: 1rem;
+                margin-bottom: var(--space-lg);
             }
 
             .warning-header {
@@ -117,7 +117,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
                 flex-direction: column;
                 gap: var(--space-sm);
                 padding-left: 56px;
-                margin-top: 0.75rem;
+                margin-top: var(--space-md);
             }
 
             .warning-item {

@@ -111,14 +111,14 @@ interface EnableFilterHeaderParams extends IHeaderParams {
                 background: #212325;
                 border: 1px solid #2b2d30;
                 border-radius: 8px;
-                padding: 4px;
+                padding: var(--space-2xs);
                 box-shadow:
                     0 6px 10px 4px rgba(0, 0, 0, 0.15),
                     0 2px 3px rgba(0, 0, 0, 0.3);
                 min-width: 160px;
             }
             .ef-item {
-                padding: 8px 12px;
+                padding: var(--space-sm) var(--space-md);
                 font-size: var(--font-size-sm);
                 color: var(--color-text-primary);
                 border-radius: 4px;

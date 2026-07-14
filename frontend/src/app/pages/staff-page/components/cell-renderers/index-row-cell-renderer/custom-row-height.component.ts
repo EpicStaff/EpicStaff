@@ -37,7 +37,7 @@ import { ICellRendererParams } from 'ag-grid-community';
                 flex-direction: column;
                 justify-content: center;
                 align-items: center;
-                padding-bottom: 5px;
+                padding-bottom: var(--space-xs);
                 position: relative;
                 user-select: none;
             }

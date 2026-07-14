@@ -54,7 +54,7 @@ import { GraphMessage } from '../../models/graph-session-message.model';
                     display: flex;
                     overflow: hidden;
                     gap: var(--space-lg);
-                    padding: 1rem 0rem;
+                    padding: var(--space-lg) 0rem;
                     padding-top: 0;
                 }
             }

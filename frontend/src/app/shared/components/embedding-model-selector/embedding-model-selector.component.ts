@@ -135,7 +135,7 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
                 background-color: var(--color-input-background);
                 border: 1px solid var(--color-input-border);
                 border-radius: 6px;
-                padding: 0.625rem 0.75rem;
+                padding: var(--space-md) var(--space-md);
                 cursor: pointer;
                 transition: border-color 0.2s ease;
                 min-height: 42px;
@@ -152,7 +152,7 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
             .model-info {
                 display: flex;
                 align-items: center;
-                gap: 10px;
+                gap: var(--space-md);
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
@@ -190,7 +190,7 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
             }
 
             .dropdown-icon {
-                margin-left: 8px;
+                margin-left: var(--space-sm);
                 color: var(--color-text-secondary);
                 transition: transform 0.2s ease;
             }
@@ -223,7 +223,7 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
             }
 
             .search-container {
-                padding: 6px 8px;
+                padding: var(--space-xs) var(--space-sm);
                 border-bottom: 1px solid var(--color-divider-subtle);
             }
 
@@ -232,7 +232,7 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
                 background-color: var(--color-input-background);
                 border: 1px solid var(--color-input-border);
                 border-radius: 4px;
-                padding: 6px 10px;
+                padding: var(--space-xs) var(--space-md);
                 color: var(--color-text-primary);
                 font-size: var(--font-size-md);
                 outline: none;
@@ -245,11 +245,11 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
             .models-list {
                 overflow-y: auto;
                 max-height: 250px;
-                padding: 4px 4px 8px 4px;
+                padding: var(--space-2xs) var(--space-2xs) var(--space-sm) var(--space-2xs);
             }
 
             .no-results {
-                padding: 12px;
+                padding: var(--space-md);
                 text-align: center;
                 color: var(--color-text-secondary);
                 font-size: var(--font-size-md);

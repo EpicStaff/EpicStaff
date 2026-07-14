@@ -20,21 +20,21 @@ import { ChangeDetectionStrategy, Component, OnDestroy, OnInit } from '@angular/
             .processing-indicator {
                 display: flex;
                 width: fit-content;
-                padding: 10px;
+                padding: var(--space-md);
                 margin: 0 auto;
-                margin-bottom: 2rem;
+                margin-bottom: var(--space-3xl);
             }
 
             .dots-container {
                 display: flex;
                 align-items: center;
-                margin-right: 8px;
+                margin-right: var(--space-sm);
             }
 
             .dot {
                 width: 6px;
                 height: 6px;
-                margin: 0 3px;
+                margin: 0 var(--space-2xs);
                 background-color: #666;
                 border-radius: 50%;
                 animation: bounce 1.4s infinite ease-in-out both;

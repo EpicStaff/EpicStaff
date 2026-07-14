@@ -11,7 +11,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1.25rem 1.5rem;
+    padding: var(--space-xl) var(--space-2xl);
 
     .dialog-title-row {
         display: flex;
@@ -35,7 +35,7 @@
         border: none;
         color: var(--color-text-secondary);
         cursor: pointer;
-        padding: 4px;
+        padding: var(--space-2xs);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -54,7 +54,7 @@
 }
 
 .dialog-message {
-    padding: 1rem 1.5rem 0.5rem;
+    padding: var(--space-lg) var(--space-2xl) var(--space-sm);
     margin: 0;
     font-size: var(--font-size-md);
     color: var(--color-text-secondary);
@@ -62,7 +62,7 @@
 }
 
 .warnings-list {
-    padding: 0.75rem 1.5rem;
+    padding: var(--space-md) var(--space-2xl);
     display: flex;
     flex-direction: column;
     gap: var(--space-sm);
@@ -74,7 +74,7 @@
     display: flex;
     align-items: flex-start;
     gap: var(--space-md);
-    padding: 0.75rem 1rem;
+    padding: var(--space-md) var(--space-lg);
     background: var(--color-input-background);
     border-left: 3px solid var(--color-warning, var(--amber-500));
     border-radius: var(--radius-sm);
@@ -84,13 +84,13 @@
     .warning-item-icon {
         color: var(--color-warning, var(--amber-500));
         flex-shrink: 0;
-        margin-top: 1px;
+        margin-top: var(--space-3xs);
     }
 
     .warning-item-arrow {
         color: var(--color-text-secondary);
         flex-shrink: 0;
-        margin-top: 1px;
+        margin-top: var(--space-3xs);
         margin-left: auto;
         transition: color 0.15s ease;
     }
@@ -114,5 +114,5 @@
     justify-content: flex-end;
     align-items: center;
     gap: var(--space-md);
-    padding: 1rem 1.5rem;
+    padding: var(--space-lg) var(--space-2xl);
 }

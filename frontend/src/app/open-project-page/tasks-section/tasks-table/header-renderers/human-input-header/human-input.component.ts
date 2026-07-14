@@ -27,7 +27,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                padding-right: 3px;
+                padding-right: var(--space-2xs);
             }
             .header-container {
                 display: flex;

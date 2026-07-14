@@ -43,7 +43,7 @@ import { ICellRendererParams, IRowNode } from 'ag-grid-community';
                 display: flex;
                 align-items: center;
                 gap: var(--space-sm);
-                padding-left: 4px;
+                padding-left: var(--space-2xs);
             }
             .drag-grip {
                 display: inline-grid;
@@ -51,7 +51,7 @@ import { ICellRendererParams, IRowNode } from 'ag-grid-community';
                 grid-template-rows: repeat(3, 3px);
                 gap: var(--space-3xs);
                 cursor: grab;
-                padding: 4px 2px;
+                padding: var(--space-2xs) var(--space-3xs);
             }
             .drag-grip:active {
                 cursor: grabbing;

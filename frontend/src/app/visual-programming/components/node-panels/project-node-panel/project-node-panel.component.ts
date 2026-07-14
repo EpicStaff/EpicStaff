@@ -112,15 +112,15 @@ interface InputMapPair {
             }
 
             .status-section {
-                margin-top: 1rem;
-                padding: 1rem;
+                margin-top: var(--space-lg);
+                padding: var(--space-lg);
                 border: 1px solid #e0e0e0;
                 border-radius: 4px;
                 background-color: #f9f9f9;
             }
 
             .status-section h4 {
-                margin: 0 0 0.5rem 0;
+                margin: 0 0 var(--space-sm) 0;
                 color: #333;
             }
 

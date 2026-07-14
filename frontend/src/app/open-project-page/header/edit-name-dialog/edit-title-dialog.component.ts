@@ -43,7 +43,7 @@ import { FormsModule } from '@angular/forms';
     styles: [
         `
             .dialog-container {
-                padding: 24px;
+                padding: var(--space-2xl);
                 background-color: #1e1e1e;
                 border-radius: 12px;
                 color: #ebebeb;
@@ -54,16 +54,16 @@ import { FormsModule } from '@angular/forms';
                 margin-top: 0;
                 font-size: var(--font-size-xl);
                 font-weight: var(--font-weight-medium);
-                margin-bottom: 16px;
+                margin-bottom: var(--space-lg);
             }
 
             .dialog-content {
-                margin-bottom: 24px;
+                margin-bottom: var(--space-2xl);
             }
 
             .title-input {
                 width: 100%;
-                padding: 10px 12px;
+                padding: var(--space-md) var(--space-md);
                 background-color: rgba(255, 255, 255, 0.1);
                 border: 1px solid rgba(255, 255, 255, 0.2);
                 border-radius: 6px;
@@ -85,7 +85,7 @@ import { FormsModule } from '@angular/forms';
             }
 
             button {
-                padding: 8px 16px;
+                padding: var(--space-sm) var(--space-lg);
                 border-radius: 6px;
                 font-size: var(--font-size-md);
                 font-weight: var(--font-weight-medium);

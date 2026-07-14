@@ -12,13 +12,13 @@
     &__files-wrapper {
         overflow-y: auto;
         overflow-x: hidden;
-        margin-right: 0.7rem;
-        margin-bottom: 2rem;
+        margin-right: var(--space-md);
+        margin-bottom: var(--space-3xl);
     }
 
     &__rows {
         overflow: hidden;
-        margin: 0.5rem 0 0.5rem 2.5rem;
+        margin: var(--space-sm) 0 var(--space-sm) var(--space-4xl);
         width: 645px;
         border-radius: var(--radius-xl);
         border: 1px solid var(--color-divider-subtle);
@@ -49,26 +49,26 @@
             105px // overlap
             90px; // tune chunks
         gap: var(--space-sm);
-        padding: 0.5rem 0.625rem;
+        padding: var(--space-sm) var(--space-md);
         align-items: center;
     }
 
     &__row-error {
         display: block;
         font-size: var(--font-size-xs);
-        margin: 0 0.625rem 0.5rem;
+        margin: 0 var(--space-md) var(--space-sm);
         border-radius: var(--radius-md);
         border-left: 3px solid var(--color-status-failed);
         background-color: var(--red-600-alpha-6);
         color: var(--color-status-failed);
-        padding: 0.25rem 0.5rem;
+        padding: var(--space-2xs) var(--space-sm);
     }
 
     &__header {
         font-weight: var(--font-weight-bold);
         font-size: var(--font-size-md);
         width: calc(645px - 1.25rem);
-        margin: 0 0 0.5rem 3.125rem;
+        margin: 0 0 var(--space-sm) 3.125rem;
         padding: 0;
         color: var(--color-text-primary);
         border-bottom: unset;
@@ -76,7 +76,7 @@
 
     &__bulk-row {
         font-size: var(--font-size-xs);
-        padding: 0 2.5rem 0.5rem 3.125rem;
+        padding: 0 var(--space-4xl) var(--space-sm) 3.125rem;
         color: var(--fog-alpha-80);
     }
 

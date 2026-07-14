@@ -1,5 +1,5 @@
 @mixin panel-footer {
-    padding: 1rem;
+    padding: var(--space-lg);
     border-top: 1px solid var(--color-divider-subtle, var(--graphite-640));
     display: flex;
     justify-content: space-between;
@@ -10,7 +10,7 @@
 }
 
 @mixin primary-button {
-    padding: 0.5rem 1rem;
+    padding: var(--space-sm) var(--space-lg);
     border: none;
     border-radius: var(--radius-md);
     font-size: var(--font-size-md);
@@ -39,7 +39,7 @@
 }
 
 @mixin secondary-button {
-    padding: 0.5rem 1rem;
+    padding: var(--space-sm) var(--space-lg);
     border: 1px solid var(--color-divider-subtle, var(--graphite-640));
     border-radius: var(--radius-md);
     font-size: var(--font-size-md);
@@ -61,7 +61,7 @@
 }
 
 @mixin danger-button {
-    padding: 0.5rem 1rem;
+    padding: var(--space-sm) var(--space-lg);
     border: none;
     border-radius: var(--radius-md);
     font-size: var(--font-size-md);
@@ -123,7 +123,7 @@
 @mixin panel-content {
     flex: 1;
     overflow-y: auto;
-    padding: 1rem;
+    padding: var(--space-lg);
     display: flex;
     flex-direction: column;
     gap: var(--space-lg);
@@ -135,8 +135,8 @@
     font-size: var(--font-size-lg);
     font-weight: var(--font-weight-semibold);
     color: var(--white);
-    margin: 0 0 1rem 0;
-    padding-bottom: 0.5rem;
+    margin: 0 0 var(--space-lg) 0;
+    padding-bottom: var(--space-sm);
     border-bottom: 1px solid var(--color-divider-subtle, var(--graphite-640));
 }
 

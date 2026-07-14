@@ -15,7 +15,7 @@
         top: 0;
         z-index: 5;
         width: 100%;
-        padding: 2rem 2.5rem 0;
+        padding: var(--space-3xl) var(--space-4xl) 0;
         box-sizing: border-box;
         background-color: var(--color-background-body);
 
@@ -23,7 +23,7 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 1rem;
+            margin-bottom: var(--space-lg);
 
             .header-titles {
                 display: flex;
@@ -39,13 +39,13 @@
                 }
 
                 .subtitle {
-                    margin-top: 0.5rem;
+                    margin-top: var(--space-sm);
                     font-size: var(--font-size-xl);
                     color: var(--color-text-secondary);
                 }
 
                 .subtitle-inline {
-                    margin-left: 0.7rem;
+                    margin-left: var(--space-md);
                     font-size: var(--font-size-xl);
                     font-weight: var(--font-weight-regular);
                     color: var(--color-text-secondary);
@@ -65,7 +65,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-bottom: 1.5rem;
+        margin-bottom: var(--space-2xl);
         background: transparent;
         border-bottom: 1px solid var(--color-divider-subtle);
 
@@ -85,7 +85,7 @@
         display: flex;
         flex-direction: column;
         align-items: stretch;
-        padding: 0 2.5rem 2rem;
+        padding: 0 var(--space-4xl) var(--space-3xl);
     }
 
     // Search input styles
@@ -104,7 +104,7 @@
         .search-input {
             width: 100%;
             height: 100%;
-            padding: 0 2.5rem 0 2.5rem;
+            padding: 0 var(--space-4xl) 0 var(--space-4xl);
             border-radius: var(--radius-lg);
             border: 1px solid var(--color-input-border);
             background-color: var(--color-input-background);
@@ -130,7 +130,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 0.25rem;
+            padding: var(--space-2xs);
             background: transparent;
             border: none;
             cursor: pointer;

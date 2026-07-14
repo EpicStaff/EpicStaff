@@ -39,7 +39,7 @@ import { ResizeHandleComponent } from '../../resize-handle/resize-handle.compone
                 width: 100%;
                 height: 100%;
 
-                padding: 8px;
+                padding: var(--space-sm);
                 overflow: auto;
                 white-space: pre-wrap;
                 word-break: break-word;

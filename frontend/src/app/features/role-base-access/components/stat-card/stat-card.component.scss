@@ -2,7 +2,7 @@
     height: 100%;
     border: 1px solid var(--color-divider-subtle);
     border-radius: var(--radius-lg);
-    padding: 1rem 1.25rem;
+    padding: var(--space-lg) var(--space-xl);
     display: flex;
     flex-direction: column;
     gap: var(--space-xs);

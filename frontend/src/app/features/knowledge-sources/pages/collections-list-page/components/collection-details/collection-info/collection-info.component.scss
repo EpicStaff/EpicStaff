@@ -5,12 +5,12 @@
 .info {
     display: flex;
     flex-direction: column;
-    padding: 1rem 3rem 1rem 0;
+    padding: var(--space-lg) var(--space-5xl) var(--space-lg) 0;
 
     &__meta {
         display: flex;
         flex-direction: column;
-        padding: 1.875rem 1.875rem 2.5rem 1.875rem;
+        padding: var(--space-3xl) var(--space-3xl) var(--space-4xl) var(--space-3xl);
         row-gap: var(--space-3xl);
         border: 1px solid var(--color-divider-subtle);
         border-radius: var(--radius-xl);
@@ -21,7 +21,7 @@
         font-weight: var(--font-weight-bold);
         line-height: 130%;
         color: var(--color-text-primary);
-        margin-bottom: 0.25rem;
+        margin-bottom: var(--space-2xs);
     }
 
     &__meta-list {
@@ -50,7 +50,7 @@
         display: flex;
         flex-wrap: wrap;
         justify-content: space-between;
-        margin: 1.25rem 0;
+        margin: var(--space-xl) 0;
     }
 
     &__issues-title {
@@ -67,7 +67,7 @@
     }
 
     &__issue {
-        padding: 0.5rem 1rem;
+        padding: var(--space-sm) var(--space-lg);
         font-size: var(--font-size-2xs);
         color: var(--color-text-primary);
         display: flex;
@@ -90,7 +90,7 @@
     }
 
     &__issue-type {
-        padding: 0.25rem 0.5rem;
+        padding: var(--space-2xs) var(--space-sm);
         border-radius: var(--radius-sm);
         color: var(--color-status-warning);
         background-color: var(--yellow-alpha-6);

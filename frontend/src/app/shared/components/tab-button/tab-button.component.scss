@@ -3,7 +3,7 @@
     border: none;
     color: var(--color-text-secondary);
     font-size: var(--font-size-lg);
-    padding: 1rem 1.5rem 0.7rem 1.5rem;
+    padding: var(--space-lg) var(--space-2xl) var(--space-md) var(--space-2xl);
     cursor: pointer;
     border-bottom: 2px solid transparent;
     transition:
@@ -18,7 +18,7 @@
     outline: none;
 
     &.sm {
-        padding: 0.5rem;
+        padding: var(--space-sm);
         font-size: var(--font-size-md);
     }
 

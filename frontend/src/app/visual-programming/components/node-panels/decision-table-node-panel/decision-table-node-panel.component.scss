@@ -35,7 +35,7 @@
     grid-template-columns: 1fr 1fr 1fr auto;
     gap: var(--space-2xl);
     flex-shrink: 0;
-    padding: 1.5rem 1.5rem 0 1.5rem;
+    padding: var(--space-2xl) var(--space-2xl) 0 var(--space-2xl);
     align-items: start;
 }
 
@@ -70,7 +70,7 @@
     border: none;
     padding: 0;
     transition: background 0.2s ease;
-    margin-top: 2px;
+    margin-top: var(--space-3xs);
 
     &:hover {
         background: var(--purple-alpha-35);
@@ -94,5 +94,5 @@
     flex: 1;
     overflow: hidden;
     min-height: 0;
-    padding: 0 1.5rem 1.5rem 1.5rem;
+    padding: 0 var(--space-2xl) var(--space-2xl) var(--space-2xl);
 }

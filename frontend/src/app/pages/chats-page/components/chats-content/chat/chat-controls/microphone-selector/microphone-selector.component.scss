@@ -21,7 +21,7 @@
         align-items: center;
         width: 100%;
         min-width: 0;
-        padding: 0.6rem 1rem;
+        padding: var(--space-sm) var(--space-lg);
         transition: all 0.2s ease;
         gap: var(--space-sm);
 
@@ -100,13 +100,13 @@
     .device-item {
         display: flex;
         align-items: center;
-        padding: 10px 12px;
+        padding: var(--space-md) var(--space-md);
         cursor: pointer;
         color: var(--gray-300);
         transition: all 0.2s ease;
 
         i {
-            margin-right: 8px;
+            margin-right: var(--space-sm);
             width: 16px;
             opacity: 0;
             color: var(--accent-color, var(--accent-color));

@@ -64,7 +64,7 @@
     }
 
     &__label {
-        margin-top: 6px;
+        margin-top: var(--space-xs);
         font-size: var(--font-size-md);
         line-height: 130%;
         color: var(--fog-alpha-80);

@@ -21,7 +21,7 @@
         .remember-row {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: var(--space-md);
             font-size: var(--font-size-md);
 
             .remember-label {

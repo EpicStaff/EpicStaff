@@ -13,7 +13,7 @@
         justify-content: space-between;
         align-items: center;
         gap: var(--space-lg);
-        padding: 1.25rem 2.5rem;
+        padding: var(--space-xl) var(--space-4xl);
         border-bottom: 1px solid var(--color-divider-subtle);
         min-width: 0;
         overflow: hidden;
@@ -51,7 +51,7 @@
             align-items: center;
             justify-content: center;
             width: 40px;
-            margin-left: 0.5rem;
+            margin-left: var(--space-sm);
             border-radius: 50%;
             border: 1px solid var(--accent-color);
             background: transparent;

@@ -50,7 +50,7 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                 position: fixed;
                 z-index: 20000;
                 display: flex;
-                gap: 10px;
+                gap: var(--space-md);
                 max-width: 350px;
                 width: 350px;
                 max-height: 80vh;
@@ -104,7 +104,7 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
 
             .toast-item {
                 width: 100%;
-                padding: 12px 16px;
+                padding: var(--space-md) var(--space-lg);
                 border-radius: 6px;
                 display: flex;
                 align-items: center;
@@ -127,7 +127,7 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                         display: inline-flex;
                         align-items: center;
                         flex-shrink: 0;
-                        margin-right: 16px;
+                        margin-right: var(--space-lg);
                     }
                 }
 
@@ -180,8 +180,8 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                 border: none;
                 color: #a0a0a0;
                 cursor: pointer;
-                padding: 4px;
-                margin-left: 10px;
+                padding: var(--space-2xs);
+                margin-left: var(--space-md);
                 flex-shrink: 0;
 
                 &:hover {

@@ -1,7 +1,7 @@
 .project-card {
     background: var(--color-sidenav-background);
     border-radius: var(--radius-2xl);
-    padding: 13px;
+    padding: var(--space-lg);
     color: var(--color-text-primary);
 
     box-shadow:
@@ -30,7 +30,7 @@
         flex-direction: row;
         align-items: center;
         gap: var(--space-md);
-        margin-bottom: 10px;
+        margin-bottom: var(--space-md);
 
         &__icon {
             width: 40px;
@@ -46,7 +46,7 @@
                 font-size: var(--font-size-lg);
                 width: 1.05rem;
                 height: 1.05rem;
-                margin-top: 2px;
+                margin-top: var(--space-3xs);
                 color: var(--accent-color);
                 transition: transform 0.25s cubic-bezier(0.68, -0.55, 0.27, 1.55);
             }
@@ -81,7 +81,7 @@
         }
 
         &__title {
-            margin: 0 0 2px;
+            margin: 0 0 var(--space-3xs);
             font-size: var(--font-size-md);
             font-weight: var(--font-weight-medium);
             line-height: 1.2;
@@ -117,7 +117,7 @@
         }
 
         &__sep {
-            margin: 0 6px;
+            margin: 0 var(--space-xs);
             opacity: 0.6;
             font-weight: var(--font-weight-medium);
             font-size: var(--font-size-2xs);

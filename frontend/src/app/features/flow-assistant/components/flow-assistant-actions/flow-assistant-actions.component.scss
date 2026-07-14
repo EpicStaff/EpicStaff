@@ -8,7 +8,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-sm);
-    margin-top: 0.5rem;
+    margin-top: var(--space-sm);
 }
 
 .action-btn {
@@ -16,7 +16,7 @@
     align-items: center;
     justify-content: center;
     height: 28px;
-    padding: 6px 12px;
+    padding: var(--space-xs) var(--space-md);
     border-radius: var(--ep-button-radius);
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-semibold);
@@ -36,7 +36,7 @@
     align-items: center;
     gap: var(--space-sm);
     height: 28px;
-    padding: 4px 10px;
+    padding: var(--space-2xs) var(--space-md);
     border-radius: var(--ep-button-radius);
     font-size: var(--font-size-xs);
     background-color: transparent;

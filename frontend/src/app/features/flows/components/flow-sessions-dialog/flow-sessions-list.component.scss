@@ -3,7 +3,7 @@
     flex-direction: column;
     background-color: var(--color-background-body);
     color: var(--color-text-primary);
-    padding: 32px;
+    padding: var(--space-3xl);
     border-radius: var(--radius-2xl);
     box-shadow: 0 8px 32px var(--black-alpha-25);
     margin: 0 auto;
@@ -17,7 +17,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding-bottom: 2rem;
+        padding-bottom: var(--space-3xl);
         gap: var(--space-lg);
         flex-shrink: 0;
 
@@ -43,8 +43,8 @@
         .filter-controls {
             display: flex;
             align-items: center;
-            gap: 10px;
-            margin-bottom: 16px;
+            gap: var(--space-md);
+            margin-bottom: var(--space-lg);
             flex-shrink: 0;
 
             .action-buttons {
@@ -65,7 +65,7 @@
 
         .pagination-container {
             flex-shrink: 0;
-            margin-top: 16px;
+            margin-top: var(--space-lg);
             display: flex;
             align-items: center;
             justify-content: flex-start;
@@ -91,7 +91,7 @@
     font-size: var(--font-size-sm);
     color: var(--color-text-primary, var(--white));
     user-select: none;
-    padding: 5px;
+    padding: var(--space-xs);
 
     span {
         white-space: nowrap;
@@ -139,7 +139,7 @@
     color: var(--white) !important;
     border: none;
     outline: none;
-    padding: 6px 14px;
+    padding: var(--space-xs) var(--space-lg);
     border-radius: var(--radius-md);
     font-size: 0.95em;
     font-weight: var(--font-weight-medium);

@@ -21,14 +21,14 @@
     .connection-status {
         width: 100%;
         max-width: 850px;
-        padding: 0.75rem 1rem;
-        margin-bottom: 0.5rem;
+        padding: var(--space-md) var(--space-lg);
+        margin-bottom: var(--space-sm);
 
         .status-indicator {
             display: flex;
             align-items: center;
             gap: var(--space-sm);
-            padding: 0.75rem 1rem;
+            padding: var(--space-md) var(--space-lg);
             border-radius: var(--radius-lg);
             font-size: var(--font-size-md);
             font-weight: var(--font-weight-medium);
@@ -36,7 +36,7 @@
 
             &.reconnecting {
                 background-color: var(--amber-alpha-10);
-                color: #f59e0b;
+                color: var(--amber-500);
                 border: 1px solid var(--amber-alpha-20);
             }
 
@@ -72,7 +72,7 @@
         display: flex;
         flex-direction: column;
         gap: var(--space-lg);
-        padding: 1rem 0rem;
+        padding: var(--space-lg) 0rem;
 
         .message {
             &.animate-message {
@@ -85,13 +85,13 @@
             // Subflow grouping styles - Tree-like visualization with connecting lines
             &.inside-subflow {
                 position: relative;
-                padding-left: 2.5rem;
+                padding-left: var(--space-4xl);
                 transition: all 0.2s ease;
 
                 // Level 1 - First nesting level
                 &.subflow-level-1 {
-                    padding-left: 2.5rem;
-                    margin-left: 0.5rem;
+                    padding-left: var(--space-4xl);
+                    margin-left: var(--space-sm);
                     background-color: rgba(var(--teal-rgb), 0.015);
                     border-left: 2px solid rgba(var(--teal-rgb), 0.2);
                     border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
@@ -99,8 +99,8 @@
 
                 // Level 2 - Second nesting level
                 &.subflow-level-2 {
-                    padding-left: 2.5rem;
-                    margin-left: 1rem;
+                    padding-left: var(--space-4xl);
+                    margin-left: var(--space-lg);
                     background-color: rgba(var(--teal-rgb), 0.03);
                     border-left: 2px solid rgba(var(--teal-rgb), 0.3);
                     border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
@@ -108,8 +108,8 @@
 
                 // Level 3 - Third nesting level
                 &.subflow-level-3 {
-                    padding-left: 2.5rem;
-                    margin-left: 1.5rem;
+                    padding-left: var(--space-4xl);
+                    margin-left: var(--space-2xl);
                     background-color: rgba(var(--teal-rgb), 0.045);
                     border-left: 2px solid rgba(var(--teal-rgb), 0.4);
                     border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
@@ -117,8 +117,8 @@
 
                 // Level 4+ - Deep nesting
                 &.subflow-level-4 {
-                    padding-left: 2.5rem;
-                    margin-left: 2rem;
+                    padding-left: var(--space-4xl);
+                    margin-left: var(--space-3xl);
                     background-color: rgba(var(--teal-rgb), 0.06);
                     border-left: 2px solid rgba(var(--teal-rgb), 0.5);
                     border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
@@ -192,8 +192,8 @@
 
                 // Level 1 - First nesting
                 &.subflow-level-1 {
-                    margin-left: 0.5rem;
-                    padding-left: 2rem;
+                    margin-left: var(--space-sm);
+                    padding-left: var(--space-3xl);
                     border-left: 2px solid rgba(var(--teal-rgb), 0.2);
                     background-color: rgba(var(--teal-rgb), 0.015);
 
@@ -211,8 +211,8 @@
 
                 // Level 2 - Second nesting
                 &.subflow-level-2 {
-                    margin-left: 1rem;
-                    padding-left: 2rem;
+                    margin-left: var(--space-lg);
+                    padding-left: var(--space-3xl);
                     border-left: 2px solid rgba(var(--teal-rgb), 0.3);
                     background-color: rgba(var(--teal-rgb), 0.03);
 
@@ -230,8 +230,8 @@
 
                 // Level 3 - Third nesting
                 &.subflow-level-3 {
-                    margin-left: 1.5rem;
-                    padding-left: 2rem;
+                    margin-left: var(--space-2xl);
+                    padding-left: var(--space-3xl);
                     border-left: 2px solid rgba(var(--teal-rgb), 0.4);
                     background-color: rgba(var(--teal-rgb), 0.045);
 
@@ -249,8 +249,8 @@
 
                 // Level 4+ - Deep nesting
                 &.subflow-level-4 {
-                    margin-left: 2rem;
-                    padding-left: 2rem;
+                    margin-left: var(--space-3xl);
+                    padding-left: var(--space-3xl);
                     border-left: 2px solid rgba(var(--teal-rgb), 0.5);
                     background-color: rgba(var(--teal-rgb), 0.06);
 
@@ -277,7 +277,7 @@
             align-items: center;
             gap: var(--space-sm);
             width: 100%;
-            margin-bottom: 0.75rem;
+            margin-bottom: var(--space-md);
             color: var(--gray-300);
             font-size: var(--font-size-md);
             animation: crumbsDownSlideIn 0.3s ease-out both;
@@ -331,7 +331,7 @@
             height: 40px;
             width: 40px;
             border-radius: var(--radius-lg);
-            border: 1px solid #00ac98;
+            border: 1px solid var(--teal-500);
             background-color: var(--white-alpha-4);
             color: var(--gray-300);
             overflow: hidden;
@@ -352,7 +352,7 @@
             height: 40px;
             border: none;
             background: transparent;
-            color: #00ac98;
+            color: var(--teal-500);
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -399,11 +399,11 @@
             overflow-y: hidden;
             flex: 1 1 0;
             min-width: 0;
-            padding: 0.25rem 0;
+            padding: var(--space-2xs) 0;
             scroll-behavior: smooth;
             scrollbar-gutter: stable;
             scrollbar-width: thin;
-            scrollbar-color: #313137 transparent;
+            scrollbar-color: var(--graphite-640) transparent;
         }
 
         .breadcrumbs-scroll::-webkit-scrollbar {
@@ -431,7 +431,7 @@
             border: none;
             color: var(--teal-500);
             cursor: pointer;
-            padding: 8px 16px;
+            padding: var(--space-sm) var(--space-lg);
             font-weight: var(--font-weight-medium);
             border-left: 4px solid var(--teal-500);
             border-radius: var(--radius-lg);
@@ -452,15 +452,15 @@
 
         .icon-container {
             font-size: var(--font-size-3xl);
-            color: #ffffff99;
+            color: var(--white-alpha-60);
         }
 
         .subgraph-drilldown__messages {
             display: flex;
             flex-direction: column;
             gap: var(--space-lg);
-            padding-left: 2.5rem;
-            padding-top: 1rem;
+            padding-left: var(--space-4xl);
+            padding-top: var(--space-lg);
             animation: drilldownSlideIn 0.3s ease-out both;
         }
 
@@ -470,7 +470,7 @@
     }
 
     .loading-indicator {
-        margin-top: 2rem;
+        margin-top: var(--space-3xl);
     }
 
     .scroll-to-top-btn,
@@ -478,7 +478,7 @@
         position: sticky;
         bottom: 16px;
         align-self: flex-end;
-        margin-right: 16px;
+        margin-right: var(--space-lg);
         width: 36px;
         height: 36px;
         flex-shrink: 0;
@@ -520,7 +520,7 @@
             right: -6px;
             min-width: 18px;
             height: 18px;
-            padding: 0 5px;
+            padding: 0 var(--space-xs);
             border-radius: 9px;
             background-color: var(--accent-color);
             color: var(--white);
@@ -656,7 +656,7 @@
 
     .messages-list {
         max-width: 100%;
-        padding: 0 1rem;
+        padding: 0 var(--space-lg);
         gap: var(--space-sm);
     }
 
@@ -667,12 +667,12 @@
 
 .empty-list {
     font-weight: var(--font-weight-semibold);
-    color: #c69999;
-    margin: 10px;
+    color: var(--red-400);
+    margin: var(--space-md);
 }
 
 .loading-more-indicator {
     display: flex;
     justify-content: center;
-    padding: 12px 0;
+    padding: var(--space-md) 0;
 }

@@ -21,7 +21,7 @@
     .header {
         display: flex;
         align-items: center;
-        padding: 28px 60px 16px 40px;
+        padding: var(--space-3xl) 60px var(--space-lg) var(--space-4xl);
 
         .header-titles {
             .title {
@@ -32,7 +32,7 @@
             }
 
             .subtitle-inline {
-                margin-left: 0.7rem;
+                margin-left: var(--space-md);
                 font-size: var(--font-size-xl);
                 font-weight: var(--font-weight-regular);
                 color: var(--color-text-secondary);
@@ -43,7 +43,7 @@
 
 .overview-tabs {
     display: flex;
-    padding: 4px 60px 0 40px;
+    padding: var(--space-2xs) 60px 0 var(--space-4xl);
     margin-bottom: -1px;
     gap: 0;
 }
@@ -52,7 +52,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    padding: 8px;
+    padding: var(--space-sm);
     font-size: var(--font-size-md);
     color: var(--accent-color);
     text-decoration: none;
@@ -74,7 +74,7 @@
 .tab-divider {
     text-align: center;
     font-size: var(--font-size-4xl);
-    padding: 8px 12px;
+    padding: var(--space-sm) var(--space-md);
     color: var(--transparent-white-8);
 }
 
@@ -82,5 +82,5 @@
     display: flex;
     flex: 1;
     overflow: hidden;
-    padding: 16px 60px 16px 40px;
+    padding: var(--space-lg) 60px var(--space-lg) var(--space-4xl);
 }

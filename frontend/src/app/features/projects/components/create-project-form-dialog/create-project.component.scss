@@ -11,7 +11,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 1.5rem;
+        padding: var(--space-2xl);
     }
 
     &__title {
@@ -36,13 +36,13 @@
     &__content {
         flex: 1;
         overflow-y: auto;
-        padding: 1.5rem;
-        padding-top: 5px;
+        padding: var(--space-2xl);
+        padding-top: var(--space-xs);
         max-height: calc(90vh - 200px);
     }
 
     &__field {
-        margin-bottom: 1rem;
+        margin-bottom: var(--space-lg);
 
         &--full-width {
             width: 100%;
@@ -50,7 +50,7 @@
     }
 
     &__process-section {
-        margin-bottom: 1.5rem;
+        margin-bottom: var(--space-2xl);
     }
 
     &__process-group {
@@ -67,14 +67,14 @@
         font-size: var(--font-size-xs);
         color: var(--color-text-secondary, var(--gray-500));
         font-style: italic;
-        margin-left: 0.5rem;
+        margin-left: var(--space-sm);
         display: inline;
     }
 
     &__sidebar {
         min-width: 400px;
         flex-shrink: 0;
-        padding: 1.5rem;
+        padding: var(--space-2xl);
         padding-top: 0;
         border-left: 1px solid var(--color-border, var(--gray-200));
     }
@@ -82,14 +82,14 @@
     &__setting {
         display: flex;
         flex-direction: column;
-        margin-bottom: 1.5rem;
+        margin-bottom: var(--space-2xl);
     }
 
     &__setting-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 0.5rem;
+        margin-bottom: var(--space-sm);
     }
 
     &__setting-label {
@@ -99,7 +99,7 @@
         align-items: center;
         gap: var(--space-2xs);
 
-        margin-bottom: 0.5rem;
+        margin-bottom: var(--space-sm);
     }
 
     &__help-icon {
@@ -134,7 +134,7 @@
     &__footer {
         display: flex;
         justify-content: flex-end;
-        padding: 1.5rem;
+        padding: var(--space-2xl);
         gap: var(--space-md);
     }
 }

@@ -59,7 +59,7 @@ $transition-default: all 0.2s ease;
 .header {
     display: flex;
     flex-direction: column;
-    padding: 16px;
+    padding: var(--space-lg);
     padding-bottom: 0px; // Match LLM popup header padding
 
     .list-header {
@@ -67,11 +67,11 @@ $transition-default: all 0.2s ease;
         align-items: center;
         justify-content: space-between;
         gap: var(--space-lg);
-        margin-bottom: 8px;
+        margin-bottom: var(--space-sm);
 
         input {
             flex: 1;
-            padding: 7px 14px;
+            padding: var(--space-sm) var(--space-lg);
             border-radius: var(--radius-md);
             background-color: $bg-input;
             color: $text-primary;
@@ -94,7 +94,7 @@ $transition-default: all 0.2s ease;
             display: flex;
             align-items: center;
             gap: var(--space-sm);
-            padding: 8px 12px;
+            padding: var(--space-sm) var(--space-md);
             background-color: $bg-input;
             color: $text-secondary;
             border-radius: var(--radius-md);
@@ -108,7 +108,7 @@ $transition-default: all 0.2s ease;
                 font-size: var(--font-size-md);
                 width: 14px;
                 height: 14px;
-                margin-bottom: 2px;
+                margin-bottom: var(--space-3xs);
             }
 
             &:hover {
@@ -123,21 +123,21 @@ $transition-default: all 0.2s ease;
     display: flex;
     justify-content: space-between;
     padding: 0;
-    margin-bottom: 8px; // Match LLM popup spacing
+    margin-bottom: var(--space-sm); // Match LLM popup spacing
     border-bottom: 1px solid $border-color;
-    gap: 10px;
+    gap: var(--space-md);
 
     .menu-tabs {
         display: flex;
         justify-content: flex-start;
-        gap: 10px;
+        gap: var(--space-md);
 
         button {
             background: transparent;
             border: none;
             color: $text-secondary;
             font-size: var(--font-size-sm);
-            padding: 8px 16px;
+            padding: var(--space-sm) var(--space-lg);
             cursor: pointer;
             position: relative;
             transition: color 0.2s;
@@ -162,9 +162,9 @@ $transition-default: all 0.2s ease;
 .body {
     flex: 1;
     overflow-y: auto;
-    padding: 16px;
-    padding-top: 8px;
-    padding-bottom: 8px;
+    padding: var(--space-lg);
+    padding-top: var(--space-sm);
+    padding-bottom: var(--space-sm);
 }
 
 // Loading spinner
@@ -219,19 +219,19 @@ $transition-default: all 0.2s ease;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 1.5rem;
+    padding: var(--space-2xl);
     text-align: center;
     color: $text-secondary;
 
     p {
-        margin-bottom: 1rem;
+        margin-bottom: var(--space-lg);
         font-size: var(--font-size-sm);
     }
 
     .create-tool-btn {
         background-color: $accent-blue;
         color: white;
-        padding: 8px 16px;
+        padding: var(--space-sm) var(--space-lg);
         border-radius: var(--radius-md);
         font-weight: var(--font-weight-medium);
         display: flex;
@@ -265,7 +265,7 @@ $transition-default: all 0.2s ease;
 .footer {
     display: flex;
     justify-content: flex-end;
-    padding: 12px;
+    padding: var(--space-md);
     border-top: 1px solid $border-color;
     gap: var(--space-sm);
 }

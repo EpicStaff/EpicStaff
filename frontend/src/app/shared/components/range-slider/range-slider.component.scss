@@ -1,7 +1,7 @@
 .slider-container {
     label {
         display: block;
-        margin-bottom: 8px;
+        margin-bottom: var(--space-sm);
         font-size: var(--font-size-md);
         color: var(--white-alpha-70);
     }

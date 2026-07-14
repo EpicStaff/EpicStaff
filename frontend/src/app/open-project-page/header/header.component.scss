@@ -6,7 +6,7 @@
     height: 5rem;
     width: 100%;
     min-width: 0;
-    padding: 0 3rem;
+    padding: 0 var(--space-5xl);
     background-color: transparent; // No background color
 
     // Left side with title
@@ -18,7 +18,7 @@
         min-width: 0;
         max-width: 100%;
         overflow: hidden;
-        margin-right: 1.5rem;
+        margin-right: var(--space-2xl);
 
         .title {
             font-size: var(--font-size-3xl);
@@ -43,7 +43,7 @@
                 flex-shrink: 0;
 
                 .back-arrow {
-                    margin-top: 3px;
+                    margin-top: var(--space-2xs);
                     opacity: 1;
                     transform: translateX(0);
                     transition: all 0.3s ease;
@@ -56,7 +56,7 @@
 
             .separator {
                 color: var(--white-alpha-40);
-                margin: 0 0.5rem;
+                margin: 0 var(--space-sm);
                 flex-shrink: 0;
             }
 

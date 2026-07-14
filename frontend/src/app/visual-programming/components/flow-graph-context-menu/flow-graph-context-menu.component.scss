@@ -14,13 +14,13 @@
         display: flex;
         align-items: center;
         background: var(--graphite-875); /* Darker background */
-        margin: 16px;
-        padding: 10px 10px; /* Smaller padding for compact size */
+        margin: var(--space-lg);
+        padding: var(--space-md) var(--space-md); /* Smaller padding for compact size */
         border-radius: var(--radius-md); /* Slightly rounded corners */
         border: 1px solid var(--graphite-640); /* Thin, subtle border */
 
         max-height: 40px; /* Reduce height */
-        margin-bottom: 8px;
+        margin-bottom: var(--space-sm);
         &:focus-within {
             border-color: var(--gray-600); /* Softer focus effect */
         }
@@ -28,7 +28,7 @@
         i {
             font-size: var(--font-size-md); /* Make the icon smaller */
             color: var(--gray-500); /* Soft color */
-            margin-right: 6px;
+            margin-right: var(--space-xs);
         }
 
         input {
@@ -38,7 +38,7 @@
             color: var(--gray-100);
             font-size: var(--font-size-sm); /* Slightly smaller text */
             outline: none;
-            padding: 2px;
+            padding: var(--space-3xs);
             line-height: 1; /* Align text properly */
 
             &::placeholder {
@@ -51,15 +51,15 @@
     .menu-header {
         display: flex;
         justify-content: flex-start; /* Keep buttons aligned */
-        padding: 0px 16px;
-        margin-bottom: 8px;
+        padding: 0px var(--space-lg);
+        margin-bottom: var(--space-sm);
 
         button {
             background: transparent;
             border: none;
             color: var(--gray-400);
             font-size: var(--font-size-md);
-            padding: 8px;
+            padding: var(--space-sm);
             cursor: pointer;
             border-bottom: 2px solid transparent;
             transition:
@@ -82,7 +82,7 @@
     .menu-content {
         overflow-y: auto;
         font-size: var(--font-size-md);
-        padding-bottom: 16px;
+        padding-bottom: var(--space-lg);
         height: auto;
         max-height: 420px;
         ul {
@@ -91,7 +91,7 @@
             margin: 0;
 
             li {
-                padding: 8px 0;
+                padding: var(--space-sm) 0;
                 border-bottom: 1px solid var(--graphite-640);
                 &:last-child {
                     border-bottom: none;

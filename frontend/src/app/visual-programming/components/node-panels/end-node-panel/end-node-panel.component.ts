@@ -58,7 +58,7 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
                 display: flex;
                 align-items: center;
                 gap: var(--space-sm);
-                margin-bottom: 0.25rem;
+                margin-bottom: var(--space-2xs);
             }
 
             .label-container label {
@@ -69,8 +69,8 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
             }
 
             :host ::ng-deep app-json-editor .editor-header {
-                padding-top: 0.25rem;
-                padding-bottom: 0.25rem;
+                padding-top: var(--space-2xs);
+                padding-bottom: var(--space-2xs);
             }
 
             .output-map-container {

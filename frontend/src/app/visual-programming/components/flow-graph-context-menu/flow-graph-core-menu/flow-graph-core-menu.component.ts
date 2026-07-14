@@ -36,7 +36,7 @@ interface FlowGraphBlock {
         `
             ul {
                 list-style: none;
-                padding: 0 16px;
+                padding: 0 var(--space-lg);
                 margin: 0;
             }
 
@@ -44,7 +44,7 @@ interface FlowGraphBlock {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                padding: 12px 16px;
+                padding: var(--space-md) var(--space-lg);
                 border-radius: 8px;
                 gap: var(--space-lg);
                 cursor: pointer;

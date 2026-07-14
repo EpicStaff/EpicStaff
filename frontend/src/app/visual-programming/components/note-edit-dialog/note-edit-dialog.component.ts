@@ -82,8 +82,8 @@ import { GraphNoteModel } from '../../core/models/node.model';
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 1.5rem;
-                padding-bottom: 0.5rem;
+                padding: var(--space-2xl);
+                padding-bottom: var(--space-sm);
             }
 
             .icon-and-title {
@@ -119,7 +119,7 @@ import { GraphNoteModel } from '../../core/models/node.model';
                 font-size: var(--font-size-xs);
                 color: #666;
                 font-weight: var(--font-weight-medium);
-                padding: 0.15rem 0.3rem;
+                padding: 0.15rem var(--space-2xs);
                 border: 1px solid #444;
                 border-radius: 4px;
                 background: #2a2a2a;
@@ -141,12 +141,12 @@ import { GraphNoteModel } from '../../core/models/node.model';
             .dialog-content {
                 flex: 1;
                 overflow-y: auto;
-                padding: 1.5rem;
+                padding: var(--space-2xl);
                 min-height: 200px;
             }
 
             .form-group {
-                margin-bottom: 1rem;
+                margin-bottom: var(--space-lg);
                 width: 100%;
             }
 
@@ -156,7 +156,7 @@ import { GraphNoteModel } from '../../core/models/node.model';
                 background-color: var(--color-input-background, #2a2a2a);
                 border: 1px solid var(--color-input-border, #444);
                 border-radius: 6px;
-                padding: 0.625rem 0.75rem;
+                padding: var(--space-md) var(--space-md);
                 color: #fff;
                 font-size: var(--font-size-md);
                 outline: none;

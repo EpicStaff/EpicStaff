@@ -9,10 +9,10 @@
 .section__header {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--space-md);
     height: 44px;
     box-sizing: border-box;
-    padding: 0 16px;
+    padding: 0 var(--space-lg);
 }
 
 .section__header--with-table {

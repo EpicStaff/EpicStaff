@@ -6,7 +6,7 @@
     .header {
         display: flex;
         align-items: center;
-        margin-bottom: 12px;
+        margin-bottom: var(--space-md);
         gap: var(--space-sm);
 
         h3 {
@@ -22,7 +22,7 @@
     .libraries-wrapper {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: var(--space-md);
 
         .libraries-list {
             display: flex;
@@ -36,7 +36,7 @@
                 background-color: var(--color-backdrop);
                 border: 1px solid var(--white-alpha-10);
                 border-radius: var(--radius-md);
-                padding: 8px 12px;
+                padding: var(--space-sm) var(--space-md);
                 transition: all 0.2s ease;
                 max-width: 100%;
                 flex: 0 1 auto;
@@ -53,7 +53,7 @@
                     white-space: nowrap;
                     overflow: hidden;
                     text-overflow: ellipsis;
-                    margin-right: 8px;
+                    margin-right: var(--space-sm);
                 }
 
                 .delete-library-btn {
@@ -91,7 +91,7 @@
 
                 .library-input {
                     height: 38px;
-                    padding: 0 12px;
+                    padding: 0 var(--space-md);
                     background-color: var(--color-backdrop);
                     border: 1px solid var(--white-alpha-10);
                     border-radius: var(--radius-md);

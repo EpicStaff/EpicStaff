@@ -12,7 +12,7 @@
     &.default {
         .item {
             height: 40px;
-            padding: 0.5rem 1rem;
+            padding: var(--space-sm) var(--space-lg);
             font-size: var(--font-size-md);
         }
     }
@@ -20,7 +20,7 @@
     &.small {
         .item {
             height: 28px;
-            padding: 0.625rem 0.5rem;
+            padding: var(--space-md) var(--space-sm);
             font-size: var(--font-size-2xs);
         }
     }

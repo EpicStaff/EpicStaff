@@ -5,7 +5,7 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `<p>No templates available yet.</p>`,
-    styles: ['p { color: #ccc; padding: 1rem; }'],
+    styles: ['p { color: #ccc; padding: var(--space-lg); }'],
 })
 export class ProjectTemplatesComponent {
     constructor() {}

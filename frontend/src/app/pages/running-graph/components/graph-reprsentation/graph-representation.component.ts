@@ -66,7 +66,7 @@ interface NodeStatus {
             flex-direction: column;
             width: 100%;
             max-width: 100%;
-            padding: 1rem 3.8rem;
+            padding: var(--space-lg) 3.8rem;
 
             & > div {
                 width: 100%;
@@ -76,7 +76,7 @@ interface NodeStatus {
         .section-title {
             font-size: var(--font-size-xl);
             font-weight: var(--font-weight-medium);
-            margin-bottom: 1rem;
+            margin-bottom: var(--space-lg);
             color: var(--white);
             letter-spacing: -0.02em;
         }
@@ -90,8 +90,8 @@ interface NodeStatus {
         }
 
         li {
-            padding: 0.75rem 1rem;
-            margin-bottom: 1rem;
+            padding: var(--space-md) var(--space-lg);
+            margin-bottom: var(--space-lg);
             border-radius: 6px;
             background: var(--gray-850);
             border: 1px solid var(--gray-800);
@@ -100,7 +100,7 @@ interface NodeStatus {
                 border-color 0.2s;
 
             &:last-child {
-                margin-bottom: 0.5rem;
+                margin-bottom: var(--space-sm);
             }
 
             &:hover {
@@ -114,14 +114,14 @@ interface NodeStatus {
             font-weight: var(--font-weight-medium);
             text-overflow: ellipsis;
             white-space: nowrap;
-            margin-bottom: 0.5rem;
+            margin-bottom: var(--space-sm);
         }
 
         .status-badge {
             font-size: var(--font-size-sm);
             margin-top: 0rem;
             font-weight: var(--font-weight-medium);
-            padding: 0.25rem 0.75rem;
+            padding: var(--space-2xs) var(--space-md);
             border-radius: 12px;
             display: inline-flex;
             align-items: center;
@@ -176,10 +176,10 @@ interface NodeStatus {
             font-style: italic;
             text-align: center;
             width: 100%;
-            padding: 2rem;
+            padding: var(--space-3xl);
             background: var(--gray-850);
             border-radius: 6px;
-            margin-top: 1rem;
+            margin-top: var(--space-lg);
         }
 
         /* Item active state */

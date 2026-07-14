@@ -14,7 +14,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 16px 24px;
+        padding: var(--space-lg) var(--space-2xl);
         border-bottom: 1px solid var(--graphite-750);
     }
 
@@ -44,14 +44,14 @@
     }
 
     &__content {
-        padding: 20px;
+        padding: var(--space-xl);
         overflow-y: auto;
         flex: 1;
         min-height: 0;
     }
 
     &__section {
-        padding: 24px 0;
+        padding: var(--space-2xl) 0;
         border-bottom: 1px solid var(--fog-alpha-14);
 
         &:first-child {
@@ -65,7 +65,7 @@
     }
 
     &__section-title {
-        margin-bottom: 24px;
+        margin-bottom: var(--space-2xl);
         color: var(--fog-alpha-70);
         font-size: var(--font-size-md);
         font-weight: var(--font-weight-bold);
@@ -77,7 +77,7 @@
     &__data-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 24px 36px;
+        gap: var(--space-2xl) var(--space-4xl);
     }
 
     &__cell {
@@ -109,7 +109,7 @@
         align-items: center;
         justify-content: space-between;
         gap: var(--space-md);
-        padding: 6px 8px;
+        padding: var(--space-xs) var(--space-sm);
         border-radius: var(--radius-sm);
         border: 1px solid var(--fog-alpha-22);
         background: var(--white-alpha-3);
@@ -154,7 +154,7 @@
         align-items: center;
         gap: var(--space-md);
         height: 28px;
-        padding: 0 10px;
+        padding: 0 var(--space-md);
         border-radius: var(--radius-sm);
         border: 1px solid var(--fog-alpha-16);
         background: var(--white-alpha-3);

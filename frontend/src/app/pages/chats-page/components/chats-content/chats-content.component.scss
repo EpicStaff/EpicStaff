@@ -29,20 +29,20 @@
         align-items: center;
         justify-content: center;
         text-align: center;
-        padding: 2rem;
+        padding: var(--space-3xl);
 
         border-radius: var(--radius-lg);
 
         max-width: 500px;
 
         h3 {
-            margin-bottom: 1rem;
+            margin-bottom: var(--space-lg);
             font-weight: var(--font-weight-medium);
             color: #5a5a5a;
         }
 
         p {
-            margin-bottom: 2rem;
+            margin-bottom: var(--space-3xl);
             color: var(--gray-600);
             line-height: 1.5;
         }
@@ -50,7 +50,7 @@
         .action-button {
             background-color: var(--accent-color);
             color: white;
-            padding: 0.5rem 1.5rem;
+            padding: var(--space-sm) var(--space-2xl);
             border-radius: var(--radius-sm);
             text-decoration: none;
             font-weight: var(--font-weight-medium);

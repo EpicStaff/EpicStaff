@@ -15,7 +15,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1.25rem 1.5rem;
+    padding: var(--space-xl) var(--space-2xl);
     border-bottom: 1px solid var(--color-divider-subtle);
 }
 
@@ -55,7 +55,7 @@
 }
 
 .dialog-content {
-    padding: 1.5rem;
+    padding: var(--space-2xl);
     display: flex;
     flex-direction: column;
     gap: var(--space-xl);

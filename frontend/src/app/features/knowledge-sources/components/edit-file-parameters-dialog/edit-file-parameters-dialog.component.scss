@@ -12,7 +12,7 @@
         flex-wrap: wrap;
         justify-content: space-between;
         align-items: center;
-        padding: 1.25rem 2.5rem;
+        padding: var(--space-xl) var(--space-4xl);
         border-bottom: 1px solid var(--color-divider-subtle);
     }
 
@@ -33,7 +33,7 @@
         column-gap: var(--space-lg);
         font-size: var(--font-size-md);
         line-height: 130%;
-        margin-right: 1.875rem;
+        margin-right: var(--space-3xl);
     }
 
     &__action {
@@ -68,7 +68,7 @@
 
     &__chunk-preview {
         border-right: 1px solid var(--color-divider-subtle);
-        padding-left: 0.625rem;
+        padding-left: var(--space-md);
         flex-grow: 1;
         flex-shrink: 0;
         min-width: 500px;

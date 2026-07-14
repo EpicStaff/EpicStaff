@@ -6,7 +6,7 @@ $tooltip-text: var(--gray-200);
     color: $tooltip-text;
     font-weight: var(--font-weight-medium);
     font-size: var(--font-size-md); // 14px
-    padding: 0.5rem 0.75rem;
+    padding: var(--space-sm) var(--space-md);
     border-radius: var(--radius-lg);
     white-space: nowrap;
     pointer-events: none;

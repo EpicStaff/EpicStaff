@@ -15,7 +15,7 @@
             display: flex;
             align-items: center;
             gap: var(--space-lg);
-            padding: 1.25rem 1.875rem 1.25rem 2.5rem;
+            padding: var(--space-xl) var(--space-3xl) var(--space-xl) var(--space-4xl);
             border-bottom: 1px solid var(--color-divider-subtle);
 
             .header-title {
@@ -35,8 +35,8 @@
             display: flex;
             align-items: flex-start;
             gap: var(--space-sm);
-            margin: 0.75rem 1.875rem 0 2.5rem;
-            padding: 0.625rem 0.75rem;
+            margin: var(--space-md) var(--space-3xl) 0 var(--space-4xl);
+            padding: var(--space-md) var(--space-md);
             background: var(--amber-alpha-8);
             border: 1px solid var(--amber-alpha-30);
             border-radius: var(--radius-md);
@@ -45,12 +45,12 @@
             line-height: 1.4;
 
             .warning-icon {
-                margin-top: 1px;
+                margin-top: var(--space-3xs);
             }
         }
 
         .files-content {
-            padding: 1.25rem 0 1.25rem 2.5rem;
+            padding: var(--space-xl) 0 var(--space-xl) var(--space-4xl);
             flex-grow: 1;
             overflow: hidden;
         }

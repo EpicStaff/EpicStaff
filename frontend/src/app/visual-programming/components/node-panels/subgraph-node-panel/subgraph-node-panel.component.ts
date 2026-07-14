@@ -117,7 +117,7 @@ interface InputMapPair {
                 font-size: var(--font-size-md);
                 color: rgba(255, 255, 255, 0.7);
                 font-weight: var(--font-weight-medium);
-                margin-bottom: 0.5rem;
+                margin-bottom: var(--space-sm);
             }
 
             .select-field {
@@ -127,7 +127,7 @@ interface InputMapPair {
 
             .selected-flow-row {
                 display: flex;
-                gap: 10px;
+                gap: var(--space-md);
                 align-items: center;
             }
 

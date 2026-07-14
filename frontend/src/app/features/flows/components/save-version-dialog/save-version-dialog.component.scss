@@ -11,7 +11,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1.25rem 1.5rem;
+    padding: var(--space-xl) var(--space-2xl);
 
     .dialog-title {
         margin: 0;
@@ -25,7 +25,7 @@
         border: none;
         color: var(--color-text-secondary);
         cursor: pointer;
-        padding: 4px;
+        padding: var(--space-2xs);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -44,10 +44,10 @@
 }
 
 .dialog-content {
-    padding: 1.25rem 1.5rem;
+    padding: var(--space-xl) var(--space-2xl);
 
     .form-group {
-        margin-bottom: 1rem;
+        margin-bottom: var(--space-lg);
 
         &:last-child {
             margin-bottom: 0;
@@ -55,20 +55,20 @@
 
         label {
             display: block;
-            margin-bottom: 0.5rem;
+            margin-bottom: var(--space-sm);
             font-size: var(--font-size-md);
             font-weight: var(--font-weight-medium);
             color: var(--color-text-primary);
 
             .required {
                 color: var(--accent-color);
-                margin-left: 2px;
+                margin-left: var(--space-3xs);
             }
         }
 
         .form-control {
             width: 100%;
-            padding: 0.625rem 0.75rem;
+            padding: var(--space-md) var(--space-md);
             background-color: var(--color-input-background);
             border: 1px solid var(--color-input-border);
             border-radius: var(--radius-md);
@@ -96,7 +96,7 @@
         .error-message {
             font-size: var(--font-size-xs);
             color: var(--color-error, #e0575b);
-            margin-top: 0.25rem;
+            margin-top: var(--space-2xs);
         }
     }
 }
@@ -106,5 +106,5 @@
     justify-content: flex-end;
     align-items: center;
     gap: var(--space-md);
-    padding: 1rem 1.5rem;
+    padding: var(--space-lg) var(--space-2xl);
 }

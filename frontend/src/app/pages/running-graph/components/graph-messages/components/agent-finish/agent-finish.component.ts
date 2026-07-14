@@ -105,7 +105,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
             .agent-flow-container {
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
-                padding: var(--message-padding, 1.25rem);
+                padding: var(--message-padding, var(--space-xl));
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 border-left: 4px solid #8e5cd9;
             }
@@ -118,8 +118,8 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
             }
 
             .play-arrow {
-                margin-top: 2px;
-                margin-right: 16px;
+                margin-top: var(--space-3xs);
+                margin-right: var(--space-lg);
                 display: flex;
                 align-items: center;
 
@@ -136,7 +136,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                margin-right: 20px;
+                margin-right: var(--space-xl);
                 flex-shrink: 0;
 
                 app-svg-icon {
@@ -154,7 +154,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
             .agent-name {
                 color: #8e5cd9;
                 font-weight: var(--font-weight-regular);
-                margin-right: 5px;
+                margin-right: var(--space-xs);
             }
 
             .agent-content {
@@ -162,7 +162,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
                 flex-direction: column;
                 gap: var(--space-lg);
                 padding-left: 5.5rem;
-                margin-top: 1.25rem;
+                margin-top: var(--space-xl);
                 overflow: hidden;
             }
 
@@ -180,7 +180,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
             .section-heading {
                 font-weight: var(--font-weight-medium);
                 color: var(--gray-300);
-                margin-bottom: 0.5rem;
+                margin-bottom: var(--space-sm);
                 cursor: pointer;
                 user-select: none;
                 display: flex;
@@ -188,7 +188,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
             }
 
             .section-heading app-svg-icon {
-                margin-right: 8px;
+                margin-right: var(--space-sm);
                 color: #8e5cd9;
                 margin-left: -3px;
             }
@@ -197,7 +197,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
                 border-radius: 8px;
-                padding: 1rem;
+                padding: var(--space-lg);
                 position: relative;
                 color: var(--gray-200);
                 font-style: italic;
@@ -222,7 +222,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
                 background-color: var(--gray-850);
                 border-radius: 18px;
                 border-top-left-radius: 4px;
-                padding: 1rem;
+                padding: var(--space-lg);
                 color: white;
                 word-break: break-word;
                 overflow-y: auto;

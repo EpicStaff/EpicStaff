@@ -1,7 +1,7 @@
 .dialog-container {
     background: var(--graphite-875);
     border-radius: var(--radius-lg);
-    padding: 24px;
+    padding: var(--space-2xl);
     min-width: 320px;
     max-width: 100%;
     color: var(--white);
@@ -16,7 +16,7 @@
     justify-content: space-between;
     align-items: flex-start;
     border-bottom: 1px solid var(--white-alpha-10);
-    padding-bottom: 16px;
+    padding-bottom: var(--space-lg);
 }
 
 .close-button {
@@ -51,7 +51,7 @@
 
 .caution-block {
     border-left: 3px solid var(--color-error);
-    padding: 8px 12px;
+    padding: var(--space-sm) var(--space-md);
     border-radius: var(--radius-sm);
     display: flex;
     flex-direction: column;
@@ -98,7 +98,7 @@
 
 .button {
     height: 40px;
-    padding: 0 24px;
+    padding: 0 var(--space-2xl);
     border-radius: var(--radius-lg);
     font-family: var(--font-family-base);
     font-size: var(--font-size-md);
@@ -184,8 +184,8 @@
 .dialog-title-row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 4px;
+    gap: var(--space-md);
+    margin-bottom: var(--space-2xs);
 }
 
 .dialog-icon {

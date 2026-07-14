@@ -20,7 +20,7 @@
         background-color: var(--color-nodes-actionbar-bg);
         color: var(--gray-300);
         font-size: var(--font-size-xs);
-        padding: 2px 6px;
+        padding: var(--space-3xs) var(--space-xs);
         border-radius: var(--radius-sm);
         white-space: nowrap;
         overflow: hidden;
@@ -37,7 +37,7 @@
         top: -45px;
         gap: var(--space-sm);
         z-index: 11;
-        padding: 8px;
+        padding: var(--space-sm);
         border-radius: var(--radius-lg);
         transition: opacity 0.2s ease;
 
@@ -131,7 +131,7 @@
         background-color: var(--color-nodes-background);
         border: 2px solid var(--color-divider-subtle);
         cursor: pointer;
-        padding: 1rem;
+        padding: var(--space-lg);
         border-radius: var(--radius-3xl);
         .header {
             display: flex;
@@ -174,7 +174,7 @@
             .blocked-badge {
                 margin-left: auto;
                 font-size: var(--font-size-xs);
-                padding: 2px 6px;
+                padding: var(--space-3xs) var(--space-xs);
                 border-radius: var(--radius-xl);
                 background: var(--red-400-alpha-15);
                 color: #ffb3b3;
@@ -184,7 +184,7 @@
         }
 
         .node-details {
-            margin-top: 1rem;
+            margin-top: var(--space-lg);
         }
     }
 
@@ -249,7 +249,7 @@
 
     .go-to-flow {
         margin-left: auto;
-        margin-right: 8px;
+        margin-right: var(--space-sm);
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.2s ease;

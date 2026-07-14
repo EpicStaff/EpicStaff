@@ -35,7 +35,7 @@ app-flow-header {
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    padding: 0.5rem 1rem;
+    padding: var(--space-sm) var(--space-lg);
     background: #2a1a1a;
     color: var(--red-400);
     border: 1px solid #7f1d1d;

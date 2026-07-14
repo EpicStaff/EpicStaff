@@ -40,7 +40,7 @@ import { Component, Input } from '@angular/core';
                 justify-content: center;
                 z-index: 10;
                 border-radius: 4px;
-                padding: 20px;
+                padding: var(--space-xl);
             }
 
             .overlay {
@@ -55,7 +55,7 @@ import { Component, Input } from '@angular/core';
                 flex-shrink: 0;
                 border-radius: 50%;
                 animation: spin 1s ease-in-out infinite;
-                margin-bottom: 16px;
+                margin-bottom: var(--space-lg);
             }
 
             .loading-text {

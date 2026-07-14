@@ -362,7 +362,7 @@
     align-items: center;
     justify-content: center;
     gap: var(--space-sm);
-    padding: 0.4rem 1rem;
+    padding: var(--space-xs) var(--space-lg);
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-regular);
     border-radius: var(--radius-sm);
@@ -415,7 +415,7 @@
 }
 
 .show-inputs-btn {
-    padding: 0.5rem 1.25rem;
+    padding: var(--space-sm) var(--space-xl);
     font-size: var(--font-size-xs);
     border-radius: var(--radius-sm);
     border: 1.5px solid var(--color-divider-subtle, var(--gray-700));
@@ -447,7 +447,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    padding: 0.4rem 1rem;
+    padding: var(--space-xs) var(--space-lg);
     background: var(--color-surface-card, var(--graphite-825));
     border: 1.5px solid var(--color-divider-subtle, var(--gray-700));
     border-radius: var(--radius-sm);
@@ -460,7 +460,7 @@
     width: 38px;
     height: 38px;
     min-width: 38px;
-    padding: 1px;
+    padding: var(--space-3xs);
     background-color: var(--gray-800);
     border: 1px solid var(--gray-750);
     border-radius: var(--radius-md);

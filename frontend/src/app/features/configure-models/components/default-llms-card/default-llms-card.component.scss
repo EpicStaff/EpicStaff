@@ -5,7 +5,7 @@
 .default-llms-card {
     border: 1px solid var(--white-alpha-8);
     border-radius: var(--radius-2xl);
-    padding: 16px;
+    padding: var(--space-lg);
     display: flex;
     flex-grow: 1;
     flex-direction: column;
@@ -39,7 +39,7 @@
 
     &__close-icon {
         cursor: pointer;
-        padding: 4px;
+        padding: var(--space-2xs);
         border-radius: 50%;
         border: 1px solid var(--accent-color);
         color: var(--accent-color);

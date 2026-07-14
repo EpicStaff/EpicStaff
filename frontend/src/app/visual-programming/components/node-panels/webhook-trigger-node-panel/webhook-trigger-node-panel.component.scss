@@ -180,7 +180,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-md);
-    margin-top: 6px;
+    margin-top: var(--space-xs);
 }
 
 .webhook-url-text {
@@ -199,7 +199,7 @@
     border: 1px solid var(--white-alpha-15);
     background: transparent;
     color: var(--white-alpha-80);
-    padding: 4px 8px;
+    padding: var(--space-2xs) var(--space-sm);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-xs);
     cursor: pointer;
@@ -225,7 +225,7 @@
     width: 14px;
     height: 10px;
     display: inline-block;
-    margin-right: 6px;
+    margin-right: var(--space-xs);
 }
 
 .copy-icon::before,

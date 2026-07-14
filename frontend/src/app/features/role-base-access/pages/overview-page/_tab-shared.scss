@@ -85,7 +85,7 @@
     .overflow-badge {
         display: none; // shown via inline style by OverflowItemsDirective when needed
         align-items: center;
-        padding: 2px 6px;
+        padding: var(--space-3xs) var(--space-xs);
         border-radius: var(--radius-sm);
         font-size: var(--font-size-xs);
         color: var(--color-text-secondary);

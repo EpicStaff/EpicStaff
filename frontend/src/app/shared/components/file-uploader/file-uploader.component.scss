@@ -6,14 +6,14 @@
     &__label {
         text-align: center;
         font-size: var(--font-size-xl);
-        padding: 2.5rem 0;
+        padding: var(--space-4xl) 0;
     }
 
     &__area {
         display: flex;
         flex-direction: column;
         align-items: center;
-        padding: 0 2.5rem 2.5rem;
+        padding: 0 var(--space-4xl) var(--space-4xl);
         border-radius: 15px;
         border: 1px dashed var(--color-input-border);
 
@@ -49,9 +49,9 @@
 :host(.mod-sm) {
     .file-uploader {
         &__label {
-            margin-top: 16px;
+            margin-top: var(--space-lg);
             font-size: var(--font-size-md);
-            padding: 16px 0;
+            padding: var(--space-lg) 0;
         }
 
         &__button {

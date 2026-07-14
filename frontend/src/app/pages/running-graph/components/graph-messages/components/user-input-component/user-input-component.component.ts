@@ -59,13 +59,13 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
             :host {
                 width: 100%;
                 max-width: 850px;
-                margin-bottom: 1rem;
+                margin-bottom: var(--space-lg);
             }
 
             .wait-for-user-container {
                 background-color: #151515;
                 border-radius: 6px;
-                padding: 1.25rem;
+                padding: var(--space-xl);
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 border-left: 4px solid #ffa726;
                 display: flex;
@@ -103,7 +103,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                 color: var(--gray-200);
                 border: 1px solid var(--gray-750);
                 border-radius: 6px;
-                padding: 0.75rem;
+                padding: var(--space-md);
                 font-family: inherit;
                 font-size: var(--font-size-lg);
                 width: 100%;
@@ -130,7 +130,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                 width: auto;
                 min-width: 80px;
                 height: 38px;
-                padding: 0.5rem 0.875rem;
+                padding: var(--space-sm) var(--space-lg);
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -160,7 +160,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                 color: var(--gray-200);
                 border: 1px solid var(--gray-700);
                 border-radius: 6px;
-                padding: 0.5rem 0.875rem;
+                padding: var(--space-sm) var(--space-lg);
                 font-size: var(--font-size-md);
                 cursor: pointer;
                 transition: all 0.2s ease;

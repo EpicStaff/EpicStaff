@@ -47,14 +47,14 @@ $transition-default: all 0.2s ease;
 //tags column
 //cells
 ::ng-deep .ag-grid-staff .tags-cell-wrapper {
-    padding: 5px;
+    padding: var(--space-xs);
 }
 
 ::ng-deep .ag-grid-staff .tag {
     display: inline-flex;
     align-items: center;
     font-size: var(--font-size-sm);
-    padding: 4px 10px;
+    padding: var(--space-2xs) var(--space-md);
     line-height: 1.2;
     border-radius: var(--radius-md);
     background-color: var(--graphite-780);
@@ -69,7 +69,7 @@ $transition-default: all 0.2s ease;
     text-overflow: ellipsis;
     white-space: nowrap;
     height: 24px;
-    margin-bottom: 6px;
+    margin-bottom: var(--space-xs);
 }
 
 ::ng-deep .ag-grid-staff .tag:hover {
@@ -85,8 +85,8 @@ $transition-default: all 0.2s ease;
     flex-direction: column;
 
     gap: var(--space-2xs);
-    margin: 5px 0;
-    padding: 5px;
+    margin: var(--space-xs) 0;
+    padding: var(--space-xs);
     color: var(--gray-100); // Light text for visibility
 
     .tool-item {
@@ -96,12 +96,12 @@ $transition-default: all 0.2s ease;
         border: 1px solid $border-color;
 
         border-radius: var(--radius-sm);
-        padding: 6px 8px;
+        padding: var(--space-xs) var(--space-sm);
 
-        margin-bottom: 4px; // Adds spacing between tool items
+        margin-bottom: var(--space-2xs); // Adds spacing between tool items
 
         .tool-icon {
-            margin-right: 6px;
+            margin-right: var(--space-xs);
             font-style: normal;
             color: var(--gray-100); // Light icon color
         }
@@ -126,7 +126,7 @@ $transition-default: all 0.2s ease;
     justify-content: flex-end;
     color: $text-secondary;
     font-style: italic;
-    padding: 4px 8px;
+    padding: var(--space-2xs) var(--space-sm);
     font-size: var(--font-size-sm);
 }
 //checkbox cells
@@ -185,8 +185,8 @@ $transition-default: all 0.2s ease;
 ::ng-deep .ag-grid-staff .llm-item {
     display: inline-flex;
     align-items: center;
-    margin: 6px auto !important;
-    padding: 6px 8px;
+    margin: var(--space-xs) auto !important;
+    padding: var(--space-xs) var(--space-sm);
     background-color: var(--graphite-780);
     border-radius: var(--radius-sm);
     cursor: default; // or pointer if you want it clickable
@@ -209,7 +209,7 @@ $transition-default: all 0.2s ease;
         flex-shrink: 0;
         width: 20px;
         height: 20px;
-        margin-right: 6px;
+        margin-right: var(--space-xs);
         border-radius: var(--radius-sm);
     }
 
@@ -232,7 +232,7 @@ $transition-default: all 0.2s ease;
 
             .custom-name {
                 color: var(--gray-400);
-                margin-left: 5px;
+                margin-left: var(--space-xs);
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
@@ -248,7 +248,7 @@ $transition-default: all 0.2s ease;
 :host ::ng-deep .required-header .ag-header-cell-text::after {
     content: '*';
     color: var(--color-required-asterisk, var(--accent-color));
-    margin-left: 4px;
+    margin-left: var(--space-2xs);
 }
 
 :host ::ng-deep .cell-required-invalid {

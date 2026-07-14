@@ -102,7 +102,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                 width: 100%;
                 min-width: 0;
                 overflow: visible;
-                padding: 0 clamp(1rem, 4vw, 3rem);
+                padding: 0 clamp(var(--space-lg), 4vw, var(--space-5xl));
                 border-bottom: 1px solid var(--color-divider-subtle);
 
                 position: relative;
@@ -138,7 +138,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                         flex-shrink: 0;
 
                         .back-arrow {
-                            margin-top: 3px;
+                            margin-top: var(--space-2xs);
                             opacity: 1;
                             transform: translateX(0);
                             transition: all 0.3s ease;
@@ -155,7 +155,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
 
                     .slash {
                         color: var(--gray-500);
-                        margin: 0 0.5rem;
+                        margin: 0 var(--space-sm);
                         flex-shrink: 0;
                     }
 
@@ -206,7 +206,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                     background: transparent !important;
                     border: none !important;
                     border-radius: 6px !important;
-                    padding: 8px 12px !important;
+                    padding: var(--space-sm) var(--space-md) !important;
                     min-width: 0 !important;
                     max-width: 100%;
                     flex: 0 1 auto;
@@ -241,7 +241,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                         font-size: var(--font-size-xl);
                         width: 18px;
                         height: 18px;
-                        margin-top: 2px;
+                        margin-top: var(--space-3xs);
                     }
 
                     span {
@@ -267,7 +267,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
 
                     .sessions-button,
                     .memories-button {
-                        padding: 8px 10px !important;
+                        padding: var(--space-sm) var(--space-md) !important;
                     }
                 }
             }

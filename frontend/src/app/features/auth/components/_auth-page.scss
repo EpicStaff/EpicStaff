@@ -15,7 +15,7 @@
     gap: var(--space-4xl);
     width: 480px;
     background: var(--color-background-body);
-    padding: 1.875rem 1.875rem 2.5rem 1.875rem;
+    padding: var(--space-3xl) var(--space-3xl) var(--space-4xl) var(--space-3xl);
     border-radius: var(--radius-xl);
     border: 1px solid var(--color-divider-subtle);
 
@@ -74,7 +74,7 @@
     color: var(--color-status-failed);
     font-size: var(--font-size-md);
     text-align: center;
-    padding: 0.5rem 0.75rem;
+    padding: var(--space-sm) var(--space-md);
     background: var(--red-600-alpha-6);
     border-radius: var(--radius-md);
 }

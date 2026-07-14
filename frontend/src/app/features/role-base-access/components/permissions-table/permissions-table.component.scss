@@ -9,7 +9,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding-bottom: 4px;
+    padding-bottom: var(--space-2xs);
     flex-shrink: 0;
 }
 
@@ -46,7 +46,7 @@
     grid-template-columns: var(--perm-row-grid);
     min-width: max-content;
     align-items: center;
-    padding: 0 8px;
+    padding: 0 var(--space-sm);
     font-size: var(--font-size-md);
     color: var(--color-text-primary);
     height: 60px;
@@ -59,7 +59,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 10px;
+        gap: var(--space-md);
         border-left: 1px solid var(--color-divider-subtle);
     }
 }
@@ -77,7 +77,7 @@
         display: flex;
         align-items: center;
         gap: var(--space-sm);
-        padding: 4px 8px;
+        padding: var(--space-2xs) var(--space-sm);
         min-width: max-content;
         background: var(--color-background-body);
         border-bottom: 2px solid var(--color-divider-subtle);
@@ -107,7 +107,7 @@
         .group-count {
             color: var(--color-text-secondary);
             background: var(--transparent-white-8);
-            padding: 2px 6px;
+            padding: var(--space-3xs) var(--space-xs);
             border-radius: var(--radius-sm);
         }
 
@@ -139,7 +139,7 @@
     grid-template-columns: var(--perm-row-grid);
     min-width: max-content;
     align-items: center;
-    padding: 0 8px;
+    padding: 0 var(--space-sm);
     height: 40px;
     border-bottom: 1px solid var(--color-divider-subtle);
     transition: background-color 0.12s ease;
@@ -187,7 +187,7 @@
     display: inline-flex;
     align-items: center;
     gap: var(--space-sm);
-    padding: 8px 16px 8px 12px;
+    padding: var(--space-sm) var(--space-lg) var(--space-sm) var(--space-md);
     cursor: pointer;
     font-size: var(--font-size-md);
     color: var(--color-text-primary);

@@ -57,7 +57,7 @@ import {
             .search-node-item {
                 display: flex;
                 align-items: center;
-                padding: 10px 10px;
+                padding: var(--space-md) var(--space-md);
                 height: 56px;
                 width: 100%;
                 cursor: pointer;
@@ -91,7 +91,7 @@ import {
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    margin-right: 10px;
+                    margin-right: var(--space-md);
                     color: var(--node-color);
                     transition: all 0.2s ease;
 
@@ -105,7 +105,7 @@ import {
                     display: flex;
                     flex-direction: column;
                     flex: 1;
-                    gap: 5px;
+                    gap: var(--space-xs);
                     overflow: hidden;
                     min-width: 0;
 
@@ -137,7 +137,7 @@ import {
                 .show-in-canvas {
                     display: none;
                     flex-shrink: 0;
-                    margin-left: 8px;
+                    margin-left: var(--space-sm);
                     align-items: center;
                     justify-content: center;
                     color: var(--accent-color, #685fff);

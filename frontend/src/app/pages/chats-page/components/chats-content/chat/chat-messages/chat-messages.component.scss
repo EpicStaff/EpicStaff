@@ -5,7 +5,7 @@
     flex-direction: column;
     align-items: center;
     padding: 6rem 0rem;
-    padding-top: 3rem;
+    padding-top: var(--space-5xl);
     overflow-y: auto;
 }
 
@@ -42,7 +42,7 @@
 
         p {
             font-size: var(--font-size-lg);
-            margin-top: 0.5rem;
+            margin-top: var(--space-sm);
         }
     }
 
@@ -83,17 +83,17 @@
     .message-role {
         font-size: var(--font-size-md);
         color: var(--gray-400);
-        margin-bottom: 0.25rem;
+        margin-bottom: var(--space-2xs);
     }
 
     .message-content {
-        padding: 0.75rem 1rem;
+        padding: var(--space-md) var(--space-lg);
         overflow-wrap: break-word;
     }
 
     .message-item {
         &:not(:last-child) {
-            margin-bottom: 0.5rem;
+            margin-bottom: var(--space-sm);
         }
     }
 
@@ -104,7 +104,7 @@
     .tool-call {
         .tool-call-name {
             font-weight: var(--font-weight-medium);
-            margin-bottom: 0.5rem;
+            margin-bottom: var(--space-sm);
             display: flex;
             align-items: center;
             gap: var(--space-sm);
@@ -116,7 +116,7 @@
                 span {
                     width: 6px;
                     height: 6px;
-                    margin: 0 2px;
+                    margin: 0 var(--space-3xs);
                     background-color: currentColor;
                     border-radius: 50%;
                     display: inline-block;
@@ -146,7 +146,7 @@
             align-items: center;
             gap: var(--space-sm);
             cursor: pointer;
-            padding: 0.25rem 0;
+            padding: var(--space-2xs) 0;
             font-weight: var(--font-weight-regular);
 
             i {
@@ -165,8 +165,8 @@
 
         .tool-arguments-content,
         .tool-response-content {
-            margin-top: 0.5rem;
-            padding: 0.5rem;
+            margin-top: var(--space-sm);
+            padding: var(--space-sm);
             background-color: var(--black-alpha-10);
             border-radius: var(--radius-sm);
             font-family: monospace;
@@ -187,6 +187,6 @@
     .timestamp {
         font-size: var(--font-size-xs);
         color: var(--gray-500);
-        margin-top: 0.25rem;
+        margin-top: var(--space-2xs);
     }
 }

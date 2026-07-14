@@ -12,7 +12,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 1.5rem;
+        padding: var(--space-2xl);
     }
 
     &__title {
@@ -44,7 +44,7 @@
         gap: var(--space-lg);
         flex: 1;
         overflow-y: auto;
-        padding: 0.5rem 1.5rem;
+        padding: var(--space-sm) var(--space-2xl);
     }
 
     &__sidebar {
@@ -52,7 +52,7 @@
         display: flex;
         flex-direction: column;
         flex-shrink: 0;
-        padding: 0 1.5rem 1.5rem 1.5rem;
+        padding: 0 var(--space-2xl) var(--space-2xl) var(--space-2xl);
         border-left: 1px solid var(--color-divider-subtle);
         overflow-y: auto; // Account for header and footer\
         height: calc(90vh - 200px);
@@ -61,7 +61,7 @@
     &__footer {
         display: flex;
         justify-content: flex-end;
-        padding: 1.5rem;
+        padding: var(--space-2xl);
         gap: var(--space-md);
     }
 }
@@ -70,7 +70,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem;
+    margin-bottom: var(--space-lg);
     border-bottom: 1px solid var(--color-divider-subtle);
 
     .divider {

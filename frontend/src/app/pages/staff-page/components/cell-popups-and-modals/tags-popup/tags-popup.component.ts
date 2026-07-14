@@ -76,7 +76,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
         `
             .tags-popup {
                 width: 350px;
-                padding: 16px;
+                padding: var(--space-lg);
                 background: #1a1a1a;
                 border: 1px solid #333;
                 color: #f0f0f0;
@@ -95,8 +95,8 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    margin-bottom: 16px;
-                    padding-bottom: 12px;
+                    margin-bottom: var(--space-lg);
+                    padding-bottom: var(--space-md);
                     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 
                     h3 {
@@ -113,7 +113,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                         cursor: pointer;
                         user-select: none;
                         transition: all 0.2s ease;
-                        padding: 4px 8px;
+                        padding: var(--space-2xs) var(--space-sm);
                         border-radius: 4px;
 
                         &:hover {
@@ -128,8 +128,8 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                     overflow-y: auto;
                     min-height: 120px;
                     max-height: 200px;
-                    margin-bottom: 16px;
-                    padding-bottom: 4px;
+                    margin-bottom: var(--space-lg);
+                    padding-bottom: var(--space-2xs);
                     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
                     scrollbar-width: thin;
                     scrollbar-color: #444 #222;
@@ -151,7 +151,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
 
                     .tag-item {
                         background: #2a2a2a;
-                        padding: 0 6px 0 12px;
+                        padding: 0 var(--space-xs) 0 var(--space-md);
                         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
                         border: 1px solid #3a3a3a;
 
@@ -168,7 +168,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
 
                         .tag-text {
                             font-size: var(--font-size-sm);
-                            margin-right: 8px;
+                            margin-right: var(--space-sm);
                             color: #e6e6e6;
                             font-weight: var(--font-weight-medium);
                         }
@@ -187,7 +187,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                             border-radius: 50%;
                             transition: all 0.15s ease;
                             padding: 0;
-                            margin-left: 4px;
+                            margin-left: var(--space-2xs);
 
                             &:hover {
                                 background: rgba(255, 107, 107, 0.15);
@@ -199,7 +199,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                     .tag-input-item {
                         background: #252525;
                         border: 1px solid #3a3a3a;
-                        padding: 0 6px 0 12px;
+                        padding: 0 var(--space-xs) 0 var(--space-md);
                         min-width: 120px;
                         transition: all 0.2s ease;
 
@@ -255,7 +255,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                 .save {
                     display: block;
                     margin-left: auto;
-                    padding: 6px 12px; // Reduced padding for smaller button
+                    padding: var(--space-xs) var(--space-md); // Reduced padding for smaller button
                     font-size: var(--font-size-xs); // Reduced font size
                     font-weight: var(--font-weight-medium);
                     background: #5e9ced;

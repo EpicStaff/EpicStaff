@@ -19,7 +19,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 1rem;
+        padding: var(--space-lg);
         border-bottom: 1px solid var(--color-divider-subtle);
 
         .title {
@@ -38,12 +38,12 @@
             border: none;
             color: var(--white);
             cursor: pointer;
-            padding: 8px;
+            padding: var(--space-sm);
             display: flex;
             align-items: center;
             justify-content: center;
             border-radius: var(--radius-md);
-            margin-left: 10px;
+            margin-left: var(--space-md);
             transition: all 0.2s ease;
             opacity: 0.8;
 
@@ -65,7 +65,7 @@
 
             .form-fields {
                 flex-shrink: 0;
-                padding: 1rem;
+                padding: var(--space-lg);
                 overflow-y: auto;
                 display: flex;
                 flex-direction: column;
@@ -76,7 +76,7 @@
                         display: flex;
                         align-items: center;
                         gap: var(--space-sm);
-                        margin-bottom: 0.5rem;
+                        margin-bottom: var(--space-sm);
                     }
 
                     h3 {
@@ -87,7 +87,7 @@
 
                         .required {
                             color: var(--color-required-asterisk, var(--accent-color));
-                            margin-left: 4px;
+                            margin-left: var(--space-2xs);
                         }
                     }
 
@@ -96,7 +96,7 @@
 
                         .input-field {
                             width: 100%;
-                            padding: 0.5rem 0.75rem;
+                            padding: var(--space-sm) var(--space-md);
                             background-color: var(--color-backdrop);
                             border: 1px solid var(--white-alpha-10);
                             border-radius: var(--radius-md);
@@ -122,7 +122,7 @@
                         .error-message {
                             font-size: var(--font-size-xs);
                             color: var(--red-500);
-                            margin-top: 0.25rem;
+                            margin-top: var(--space-2xs);
                             display: block;
                         }
                     }
@@ -180,7 +180,7 @@
                     display: flex;
                     align-items: center;
                     gap: var(--space-sm);
-                    padding: 1rem;
+                    padding: var(--space-lg);
                     border-bottom: 1px solid var(--color-divider-subtle);
 
                     h3 {
@@ -196,7 +196,7 @@
 
     .dialog-footer {
         border-top: 1px solid var(--color-divider-subtle);
-        padding: 1rem;
+        padding: var(--space-lg);
         display: flex;
         justify-content: flex-end;
         gap: var(--space-lg);

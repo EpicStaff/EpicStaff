@@ -37,9 +37,9 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
             .model-item {
                 display: flex;
                 align-items: center;
-                gap: 10px;
-                padding: 8px 12px;
-                margin-bottom: 4px;
+                gap: var(--space-md);
+                padding: var(--space-sm) var(--space-md);
+                margin-bottom: var(--space-2xs);
                 cursor: pointer;
                 transition: background-color 0.2s ease;
                 border-radius: 4px;

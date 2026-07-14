@@ -24,7 +24,7 @@
 
     .loading-state {
         text-align: center;
-        padding: 2rem;
+        padding: var(--space-3xl);
         color: var(--color-text-secondary);
 
         &.error {
@@ -89,7 +89,7 @@
             }
 
             .divider {
-                margin-top: 6px;
+                margin-top: var(--space-xs);
                 border-top: var(--color-divider-subtle);
             }
 
@@ -109,7 +109,7 @@
                 display: flex;
                 justify-content: flex-end;
                 gap: var(--space-md);
-                margin-top: 6px;
+                margin-top: var(--space-xs);
             }
         }
     }
@@ -118,13 +118,13 @@
         flex: 0 0 calc(45% - 24px);
         display: flex;
         flex-direction: column;
-        gap: 18px;
+        gap: var(--space-xl);
 
         .card {
             border-radius: var(--radius-2xl);
             border: 1px solid var(--white-alpha-8);
             background: var(--white-alpha-2);
-            padding: 24px;
+            padding: var(--space-2xl);
 
             .card-title {
                 display: flex;
@@ -135,15 +135,15 @@
             }
 
             .card-text {
-                margin: 12px 0 0;
+                margin: var(--space-md) 0 0;
                 font-size: var(--font-size-sm);
                 color: var(--color-text-secondary);
                 line-height: 1.6;
             }
 
             .steps {
-                margin: 16px 0 0;
-                padding-left: 20px;
+                margin: var(--space-lg) 0 0;
+                padding-left: var(--space-xl);
                 display: flex;
                 flex-direction: column;
                 gap: var(--space-md);
@@ -153,7 +153,7 @@
                 list-style: decimal;
 
                 li {
-                    padding-left: 4px;
+                    padding-left: var(--space-2xs);
 
                     &::marker {
                         color: var(--color-text-secondary);

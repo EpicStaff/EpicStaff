@@ -2,7 +2,7 @@
     position: relative;
     display: inline-block;
     min-width: 220px;
-    margin-left: 10px;
+    margin-left: var(--space-md);
 }
 
 .dropdown-panel {
@@ -21,7 +21,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-xs);
-    padding: 8px 10px;
+    padding: var(--space-sm) var(--space-md);
     border-bottom: 1px solid var(--color-divider-regular, var(--graphite-640));
 
     .search-icon {
@@ -60,18 +60,18 @@
 .dropdown-menu {
     list-style: none;
     margin: 0;
-    padding: 8px;
+    padding: var(--space-sm);
     min-width: 268px;
     max-height: 360px;
     overflow-y: auto;
-    row-gap: 5px;
+    row-gap: var(--space-xs);
 
     li {
-        padding: 6px 18px 6px 14px;
+        padding: var(--space-xs) var(--space-xl) var(--space-xs) var(--space-lg);
         display: flex;
         align-items: center;
-        gap: 10px;
-        margin-bottom: 5px;
+        gap: var(--space-md);
+        margin-bottom: var(--space-xs);
         cursor: pointer;
         font-size: 1em;
         color: var(--color-text-primary, var(--white));
@@ -111,7 +111,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    padding: 4px;
+    padding: var(--space-2xs);
     justify-content: space-between;
     border: 1px solid var(--color-divider-regular, var(--graphite-640));
     border-radius: var(--radius-md);
@@ -165,7 +165,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    padding: 6px 14px 4px;
+    padding: var(--space-xs) var(--space-lg) var(--space-2xs);
     font-family: var(--font-family-base);
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-regular);
@@ -185,14 +185,14 @@
 }
 
 .group-item {
-    padding-left: 18px !important;
+    padding-left: var(--space-xl) !important;
     border: 1px solid var(--fog-alpha-16);
     border-radius: var(--radius-sm);
     background-color: var(--graphite-750);
 }
 
 .clear-filter-footer {
-    padding: 8px 10px;
+    padding: var(--space-sm) var(--space-md);
     border-top: 1px solid var(--color-divider-regular, var(--graphite-640));
     display: flex;
     justify-content: flex-end;
@@ -204,7 +204,7 @@
     border-radius: var(--radius-md);
     color: var(--accent-color, var(--blue-400));
     font-size: var(--font-size-xs);
-    padding: 4px 12px;
+    padding: var(--space-2xs) var(--space-md);
     cursor: pointer;
     transition: background 0.15s;
 

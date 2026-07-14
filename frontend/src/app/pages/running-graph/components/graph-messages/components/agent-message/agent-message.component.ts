@@ -161,7 +161,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
             position: relative;
             background-color: var(--color-nodes-background);
             border-radius: 8px;
-            padding: var(--message-padding, 1.25rem);
+            padding: var(--message-padding, var(--space-xl));
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             border-left: 4px solid #8e5cd9;
         }
@@ -174,7 +174,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
         }
 
         .play-arrow {
-            margin-right: 16px;
+            margin-right: var(--space-lg);
             display: flex;
             align-items: center;
 
@@ -191,7 +191,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-right: 20px;
+            margin-right: var(--space-xl);
             flex-shrink: 0;
 
             app-svg-icon {
@@ -224,7 +224,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
             flex-direction: column;
             gap: var(--space-lg);
             padding-left: 5.5rem;
-            margin-top: 1.25rem;
+            margin-top: var(--space-xl);
             overflow: hidden;
         }
 
@@ -241,14 +241,14 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
         .section-heading {
             font-weight: var(--font-weight-medium);
             color: var(--gray-300);
-            margin-bottom: 0.5rem;
+            margin-bottom: var(--space-sm);
             cursor: pointer;
             user-select: none;
             display: flex;
             align-items: center;
 
             app-svg-icon {
-                margin-right: 8px;
+                margin-right: var(--space-sm);
                 color: #8e5cd9;
                 margin-left: -3px;
             }
@@ -258,7 +258,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
             background-color: var(--gray-800);
             border: 1px solid var(--gray-750);
             border-radius: 8px;
-            padding: 1rem;
+            padding: var(--space-lg);
             position: relative;
             color: var(--gray-200);
             font-style: italic;
@@ -284,23 +284,23 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
         .tool-name {
             font-weight: var(--font-weight-semibold);
             color: #8e5cd9;
-            margin-bottom: 0.5rem;
+            margin-bottom: var(--space-sm);
         }
 
         .tool-input-container {
             background-color: var(--gray-800);
             border: 1px solid var(--gray-750);
             border-radius: 8px;
-            padding: 1rem;
+            padding: var(--space-lg);
             overflow: auto;
             max-height: 400px;
-            padding-inline: 3px;
+            padding-inline: var(--space-2xs);
         }
 
         .input-label {
             font-weight: var(--font-weight-medium);
             color: var(--gray-300);
-            margin-bottom: 0.5rem;
+            margin-bottom: var(--space-sm);
         }
 
         .formatted-content {
@@ -321,7 +321,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
             background-color: var(--gray-850);
             border: 1px solid var(--gray-750);
             border-radius: 8px;
-            padding: 1rem;
+            padding: var(--space-lg);
             color: #e3e3e3;
             word-break: break-word;
             overflow-y: auto;

@@ -10,13 +10,13 @@
         display: flex;
         flex-direction: column;
         gap: var(--space-sm);
-        padding: 12px 40px 8px 40px;
+        padding: var(--space-md) var(--space-4xl) var(--space-sm) var(--space-4xl);
 
         .control {
             display: flex;
             align-items: center;
             gap: var(--space-lg);
-            padding-top: 8px;
+            padding-top: var(--space-sm);
 
             .label {
                 width: 110px;
@@ -31,7 +31,7 @@
                 align-items: flex-start;
 
                 .label {
-                    padding-top: 10px;
+                    padding-top: var(--space-md);
                 }
             }
         }
@@ -44,7 +44,7 @@
     .secondary {
         display: flex;
         gap: var(--space-lg);
-        padding: 8px 40px 20px 40px;
+        padding: var(--space-sm) var(--space-4xl) var(--space-xl) var(--space-4xl);
         border-bottom: 1px solid var(--color-divider-subtle);
 
         .label {

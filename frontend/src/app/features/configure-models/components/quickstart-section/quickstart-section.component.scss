@@ -75,12 +75,12 @@
         display: flex;
         justify-content: flex-end;
         gap: var(--space-md);
-        margin-top: 6px;
+        margin-top: var(--space-xs);
     }
 
     &__primary {
         height: 36px;
-        padding: 0 18px;
+        padding: 0 var(--space-xl);
         border-radius: var(--radius-lg);
         border: none;
         background: var(--accent-color);
@@ -97,14 +97,14 @@
         flex: 0 0 calc(45% - 24px);
         display: flex;
         flex-direction: column;
-        gap: 18px;
+        gap: var(--space-xl);
     }
 
     &__card {
         border-radius: var(--radius-2xl);
         border: 1px solid var(--white-alpha-8);
         background: var(--white-alpha-2);
-        padding: 24px;
+        padding: var(--space-2xl);
     }
 
     &__card-title {
@@ -128,8 +128,8 @@
     }
 
     &__steps {
-        margin: 16px 0 0;
-        padding-left: 20px;
+        margin: var(--space-lg) 0 0;
+        padding-left: var(--space-xl);
         display: flex;
         flex-direction: column;
         gap: var(--space-md);
@@ -139,7 +139,7 @@
         list-style: decimal;
 
         li {
-            padding-left: 4px;
+            padding-left: var(--space-2xs);
 
             &::marker {
                 color: var(--fog-alpha-80);
@@ -152,7 +152,7 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        margin: 0 6px;
+        margin: 0 var(--space-xs);
         position: relative;
         top: 3px;
 
@@ -162,7 +162,7 @@
     }
 
     &__card-text {
-        margin: 12px 0 0;
+        margin: var(--space-md) 0 0;
         font-size: var(--font-size-sm);
         color: var(--fog-alpha-70);
         line-height: 1.6;
@@ -187,7 +187,7 @@
     &__card-actions {
         display: flex;
         justify-content: flex-end;
-        margin-top: 16px;
+        margin-top: var(--space-lg);
     }
 }
 

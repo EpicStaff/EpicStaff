@@ -105,7 +105,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                         <tr>
                             <td
                                 [attr.colspan]="showFlowName ? 7 : 6"
-                                style="text-align: center; padding: 40px;"
+                                style="text-align: center; padding: var(--space-4xl);"
                             >
                                 <app-loading-spinner
                                     size="md"
@@ -117,7 +117,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                         <tr>
                             <td
                                 [attr.colspan]="showFlowName ? 7 : 6"
-                                style="text-align: center; padding: 40px;"
+                                style="text-align: center; padding: var(--space-4xl);"
                             >
                                 <div class="no-sessions-message">
                                     <p>No sessions found for the selected filters.</p>

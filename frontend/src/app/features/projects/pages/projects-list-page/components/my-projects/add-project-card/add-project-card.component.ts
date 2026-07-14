@@ -29,7 +29,7 @@ import { AppSvgIconComponent } from '../../../../../../../shared/components/app-
             .add-project-card {
                 background: transparent;
                 border-radius: 12px;
-                padding: 1.5rem;
+                padding: var(--space-2xl);
                 color: var(--color-text-primary);
                 font-size: var(--font-size-lg);
                 display: flex;
@@ -63,7 +63,7 @@ import { AppSvgIconComponent } from '../../../../../../../shared/components/app-
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                margin-bottom: 0.5rem;
+                margin-bottom: var(--space-sm);
             }
 
             .plus-icon app-svg-icon {

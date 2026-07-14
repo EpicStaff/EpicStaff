@@ -120,7 +120,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 width: 36px;
                 height: 36px;
                 min-width: 36px;
-                padding: 8px;
+                padding: var(--space-sm);
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
                 border-radius: 8px;
@@ -169,7 +169,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 background-color: var(--gray-850, #1a1a1a);
                 border: 1px solid var(--gray-750, #2f2f2f);
                 border-radius: 6px;
-                padding: 0 32px 0 12px;
+                padding: 0 var(--space-3xl) 0 var(--space-md);
                 color: var(--gray-200, #e3e3e3);
                 font-size: var(--font-size-sm);
                 outline: none;
@@ -210,7 +210,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
             }
 
             .search-results {
-                margin-top: 0.5rem;
+                margin-top: var(--space-sm);
                 width: 100%;
                 background-color: var(--vscode-panel-background, #151515);
                 border: 1px solid var(--vscode-panel-border, #3e3e3eff);
@@ -223,7 +223,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
             }
 
             .panel-title {
-                padding: 0.75rem 1rem;
+                padding: var(--space-md) var(--space-lg);
                 border-bottom: 1px solid var(--gray-750, #2f2f2f);
 
                 h3 {
@@ -237,7 +237,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
             .node-list {
                 max-height: calc(100vh - 16.5rem);
                 overflow-y: auto;
-                padding: 0.75rem;
+                padding: var(--space-md);
                 list-style: none;
                 margin: 0;
 
@@ -258,7 +258,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 li {
                     padding: 0;
                     margin: 0;
-                    margin-bottom: 10px;
+                    margin-bottom: var(--space-md);
 
                     &.last-node {
                         margin-bottom: 0;

@@ -40,7 +40,7 @@ import { IHeaderParams } from 'ag-grid-community';
                 display: flex;
                 align-items: center;
 
-                padding-right: 3px;
+                padding-right: var(--space-2xs);
             }
             .header-container {
                 display: flex;
@@ -49,7 +49,7 @@ import { IHeaderParams } from 'ag-grid-community';
             .icon {
                 height: 24px;
                 width: 24px;
-                margin-right: 10px; /* Space between icon and title */
+                margin-right: var(--space-md); /* Space between icon and title */
             }
             .title {
                 font-size: var(--font-size-lg);

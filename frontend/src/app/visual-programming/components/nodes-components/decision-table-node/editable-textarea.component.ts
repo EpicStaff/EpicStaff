@@ -28,7 +28,7 @@ import { FormsModule } from '@angular/forms';
                 left: 0;
                 width: 100%;
                 height: 100%;
-                padding: 12px 18px;
+                padding: var(--space-md) var(--space-xl);
                 resize: none;
                 border: none;
                 outline: none;

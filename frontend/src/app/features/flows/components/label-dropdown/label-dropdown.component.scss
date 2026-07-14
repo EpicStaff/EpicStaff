@@ -8,7 +8,7 @@
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    padding: 0.525rem 0.625rem;
+    padding: 0.525rem var(--space-md);
     background-color: var(--color-input-background);
     border: 1px solid var(--color-input-border);
     border-radius: var(--radius-md);
@@ -34,7 +34,7 @@
 
     .chevron {
         flex-shrink: 0;
-        margin-left: 0.5rem;
+        margin-left: var(--space-sm);
         color: var(--color-text-secondary);
         transition: transform 0.15s ease;
 
@@ -62,7 +62,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1.25rem 1.25rem 0.75rem;
+    padding: var(--space-xl) var(--space-xl) var(--space-md);
 
     .header-labels-left {
         display: flex;
@@ -90,7 +90,7 @@
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-regular);
     height: 28px;
-    padding: 0 0.5rem;
+    padding: 0 var(--space-sm);
     white-space: nowrap;
     flex-shrink: 0;
     transition: background 0.15s;
@@ -108,7 +108,7 @@
     max-height: 260px;
     overflow-y: auto;
     overflow-x: auto;
-    padding: 0 1.25rem 0.5rem;
+    padding: 0 var(--space-xl) var(--space-sm);
 
     // Custom scrollbar
     scrollbar-width: thin;
@@ -132,14 +132,14 @@
     font-size: var(--font-size-sm);
     color: var(--color-text-secondary);
     text-align: center;
-    padding: 0.5rem 0.75rem 0.75rem;
+    padding: var(--space-sm) var(--space-md) var(--space-md);
 }
 
 .tree-row {
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    padding: 0 1rem 0 0.25rem;
+    padding: 0 var(--space-lg) 0 var(--space-2xs);
     cursor: pointer;
     color: var(--color-text-primary);
     font-size: var(--font-size-md);
@@ -244,11 +244,11 @@
     display: flex;
     align-items: center;
     gap: var(--space-2xs);
-    padding: 0.3rem 0.5rem;
+    padding: var(--space-2xs) var(--space-sm);
     min-width: max-content;
 
     &.child-add {
-        padding-right: 0.5rem;
+        padding-right: var(--space-sm);
     }
 
     .label-input {
@@ -258,7 +258,7 @@
         border: 1px solid var(--color-input-border);
         border-radius: var(--radius-sm);
         color: var(--color-text-primary);
-        padding: 0.25rem 0.5rem;
+        padding: var(--space-2xs) var(--space-sm);
         font-size: var(--font-size-md);
         outline: none;
 
@@ -284,7 +284,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 0.2rem;
+        padding: var(--space-3xs);
         border-radius: var(--radius-sm);
         flex-shrink: 0;
         width: 26px;
@@ -303,7 +303,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 0.2rem;
+        padding: var(--space-3xs);
         border-radius: var(--radius-sm);
         flex-shrink: 0;
         width: 26px;
@@ -316,8 +316,8 @@
 }
 
 .label-error {
-    margin: 0.1rem 0.5rem 0.3rem;
-    padding: 0.35rem 0.6rem;
+    margin: 0.1rem var(--space-sm) var(--space-2xs);
+    padding: var(--space-xs) var(--space-sm);
     background: var(--red-600-alpha-12);
     border: 1px solid var(--red-600-alpha-30);
     border-radius: var(--radius-sm);
@@ -330,7 +330,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.75rem 1.25rem;
+    padding: var(--space-md) var(--space-xl);
     border-top: 1px solid var(--color-input-border);
     gap: var(--space-sm);
 

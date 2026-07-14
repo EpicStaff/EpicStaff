@@ -40,7 +40,7 @@ import { FormsModule } from '@angular/forms';
                 justify-content: space-between;
                 height: 4.3rem !important;
                 width: 100%;
-                padding: 1rem 3rem;
+                padding: var(--space-lg) var(--space-5xl);
                 border-bottom: 1px solid var(--color-divider-subtle);
             }
             .title-container {
@@ -67,7 +67,7 @@ import { FormsModule } from '@angular/forms';
                 gap: var(--space-sm);
             }
             .save-button {
-                padding: 8px 12px;
+                padding: var(--space-sm) var(--space-md);
                 border: none;
                 background-color: var(--accent-color);
                 color: var(--white);
@@ -85,7 +85,7 @@ import { FormsModule } from '@angular/forms';
                 align-items: center;
             }
             .input-with-toggle input {
-                padding: 8px 36px 8px 12px;
+                padding: var(--space-sm) var(--space-4xl) var(--space-sm) var(--space-md);
                 border-radius: 6px;
                 border: 1px solid var(--gray-600);
                 background-color: rgba(255, 255, 255, 0.05);
@@ -126,7 +126,7 @@ import { FormsModule } from '@angular/forms';
                 display: flex;
                 background-color: rgba(255, 255, 255, 0.05);
                 border-radius: 6px;
-                padding: 3px;
+                padding: var(--space-2xs);
                 border: 1px solid var(--gray-600);
                 overflow: hidden;
             }
@@ -140,7 +140,7 @@ import { FormsModule } from '@angular/forms';
                 background: none;
                 border: none;
                 color: var(--gray-300);
-                padding: 6px 12px;
+                padding: var(--space-xs) var(--space-md);
                 font-size: var(--font-size-md);
                 border-radius: 4px;
                 cursor: pointer;

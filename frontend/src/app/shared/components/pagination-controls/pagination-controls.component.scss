@@ -17,7 +17,7 @@
     background: var(--color-secondary-btn-background);
     color: var(--color-text-primary);
     border: none;
-    padding: 0.4rem 0.75rem;
+    padding: var(--space-xs) var(--space-md);
     font-size: var(--font-size-md);
     border-radius: var(--radius-sm);
     cursor: pointer;
@@ -58,6 +58,6 @@
 
     li.ellipsis .dots {
         color: var(--color-text-secondary);
-        padding: 0.4rem 0.75rem;
+        padding: var(--space-xs) var(--space-md);
     }
 }

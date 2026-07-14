@@ -123,7 +123,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 1rem 1.5rem;
+                padding: var(--space-lg) var(--space-2xl);
                 border-bottom: 1px solid var(--color-divider-subtle, #444);
             }
 
@@ -139,7 +139,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                 border: none;
                 color: var(--color-text-secondary, #aaa);
                 cursor: pointer;
-                padding: 0.5rem;
+                padding: var(--space-sm);
                 border-radius: 4px;
                 transition: all 0.2s ease;
                 display: flex;
@@ -155,7 +155,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
 
             .dialog-content {
                 flex: 1;
-                padding: 1.5rem;
+                padding: var(--space-2xl);
                 overflow: hidden;
                 display: flex;
                 flex-direction: column;
@@ -165,15 +165,15 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                 color: #6b7280;
                 font-size: var(--font-size-md);
                 line-height: 1.4;
-                margin-bottom: 0.75rem;
+                margin-bottom: var(--space-md);
             }
 
             .autocomplete-hint {
                 display: flex;
                 align-items: flex-start;
                 gap: var(--space-sm);
-                padding: 0.6rem 0.85rem;
-                margin-bottom: 1rem;
+                padding: var(--space-sm) 0.85rem;
+                margin-bottom: var(--space-lg);
                 background: rgba(101, 98, 245, 0.08);
                 border: 1px solid rgba(101, 98, 245, 0.2);
                 border-radius: 6px;
@@ -184,7 +184,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                 app-svg-icon {
                     color: #685fff;
                     flex-shrink: 0;
-                    margin-top: 1px;
+                    margin-top: var(--space-3xs);
                 }
 
                 kbd {
@@ -207,8 +207,8 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
             }
 
             .path-validation-errors {
-                padding: 0.5rem 0.75rem;
-                margin-bottom: 1rem;
+                padding: var(--space-sm) var(--space-md);
+                margin-bottom: var(--space-lg);
                 background: rgba(239, 68, 68, 0.1);
                 border: 1px solid rgba(239, 68, 68, 0.3);
                 border-radius: 6px;
@@ -224,7 +224,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
 
                 app-svg-icon {
                     flex-shrink: 0;
-                    margin-top: 2px;
+                    margin-top: var(--space-3xs);
                 }
 
                 span {
@@ -249,7 +249,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                 display: flex;
                 justify-content: flex-end;
                 gap: var(--space-md);
-                padding: 1rem 1.5rem;
+                padding: var(--space-lg) var(--space-2xl);
                 border-top: 1px solid var(--color-divider-subtle, #444);
             }
         `,

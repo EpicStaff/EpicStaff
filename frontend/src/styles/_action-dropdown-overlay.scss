@@ -11,14 +11,14 @@
     &__separator {
         height: 1px;
         background: var(--color-divider-regular, var(--graphite-640));
-        margin: 4px 0;
+        margin: var(--space-2xs) 0;
     }
 
     &__item {
         display: flex;
         align-items: center;
         width: 100%;
-        padding: 10px 16px;
+        padding: var(--space-md) var(--space-lg);
         background: transparent;
         border: none;
         color: var(--color-text-primary);

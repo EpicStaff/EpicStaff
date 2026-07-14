@@ -27,10 +27,10 @@
     box-shadow:
         0 8px 32px var(--black-alpha-50),
         0 0 0 1px var(--white-alpha-5);
-    padding: 12px;
+    padding: var(--space-md);
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--space-md);
     animation: ptp-fade-in 0.12s ease-out;
 
     &::-webkit-scrollbar {
@@ -55,7 +55,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    padding-bottom: 6px;
+    padding-bottom: var(--space-xs);
     border-bottom: 1px solid var(--white-alpha-8);
 }
 
@@ -70,7 +70,7 @@
     font-size: var(--font-size-xs);
     color: var(--purple-alpha-90);
     background: var(--purple-alpha-12);
-    padding: 2px 8px;
+    padding: var(--space-3xs) var(--space-sm);
     border-radius: var(--radius-sm);
     white-space: nowrap;
 }
@@ -95,7 +95,7 @@
     color: var(--gray-300);
     border: 1px solid var(--white-alpha-10);
     border-radius: var(--radius-md);
-    padding: 8px 10px;
+    padding: var(--space-sm) var(--space-md);
     font-family: var(--font-family-mono);
     font-size: var(--font-size-xs);
     line-height: 1.5;

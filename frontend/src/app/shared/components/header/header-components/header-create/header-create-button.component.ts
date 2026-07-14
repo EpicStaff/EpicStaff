@@ -39,7 +39,7 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
                 gap: var(--space-sm);
                 font-size: var(--font-size-md);
                 font-weight: var(--font-weight-regular);
-                padding: 0.4rem 1.2rem;
+                padding: var(--space-xs) 1.2rem;
                 height: 36px;
                 line-height: 14px;
                 background-color: var(--accent-color);
@@ -59,7 +59,7 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
                 }
 
                 svg {
-                    margin-top: 2px;
+                    margin-top: var(--space-3xs);
                     color: var(--white);
                     stroke-width: 1.5;
                     color: var(--white);

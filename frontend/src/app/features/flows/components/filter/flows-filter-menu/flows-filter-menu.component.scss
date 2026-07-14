@@ -2,7 +2,7 @@
     display: flex;
     flex-direction: column;
     min-width: 12rem;
-    padding: 0.25rem;
+    padding: var(--space-2xs);
     background: var(--color-sidenav-background);
     border: 1px solid var(--color-input-border);
     border-radius: var(--radius-lg);
@@ -16,7 +16,7 @@
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    padding: 0.55rem 0.75rem;
+    padding: 0.55rem var(--space-md);
     background: transparent;
     border: none;
     border-radius: var(--radius-md);
@@ -36,6 +36,6 @@
 
     .chevron {
         color: var(--color-text-secondary);
-        margin-left: 0.5rem;
+        margin-left: var(--space-sm);
     }
 }

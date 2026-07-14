@@ -26,7 +26,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
                 justify-content: center;
                 width: 100%;
                 min-height: 300px;
-                padding: 2rem;
+                padding: var(--space-3xl);
                 animation: fadeIn 0.3s ease-out;
 
                 .no-messages-content {

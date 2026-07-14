@@ -17,7 +17,7 @@ import { Component } from '@angular/core';
     styles: [
         `
             .project-transition {
-                padding: 2rem 0;
+                padding: var(--space-3xl) 0;
                 width: 100%;
                 margin-bottom: 0.8rem;
             }
@@ -35,7 +35,7 @@ import { Component } from '@angular/core';
             }
 
             .transition-text {
-                padding: 0 1rem;
+                padding: 0 var(--space-lg);
                 color: var(--gray-500);
                 font-size: var(--font-size-md);
                 font-weight: var(--font-weight-medium);

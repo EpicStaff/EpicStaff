@@ -42,7 +42,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                padding-right: 3px;
+                padding-right: var(--space-2xs);
             }
             .header-container {
                 display: flex;
@@ -52,7 +52,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
             .tooltip {
                 background-color: #2a2a2a;
                 color: #d9d9de;
-                padding: 6px 10px;
+                padding: var(--space-xs) var(--space-md);
                 border-radius: 4px;
                 font-size: var(--font-size-xs);
                 white-space: nowrap;

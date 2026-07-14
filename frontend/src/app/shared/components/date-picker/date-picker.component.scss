@@ -13,7 +13,7 @@
         gap: var(--space-sm);
         width: 100%;
         height: 40px;
-        padding: 0 0.75rem;
+        padding: 0 var(--space-md);
         border-radius: var(--radius-lg);
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
@@ -89,7 +89,7 @@
     }
 
     &__calendar {
-        padding: 12px;
+        padding: var(--space-md);
         display: flex;
         flex-direction: column;
         gap: var(--space-sm);
@@ -99,7 +99,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding-bottom: 4px;
+        padding-bottom: var(--space-2xs);
     }
 
     &__month-year {
@@ -146,7 +146,7 @@
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-medium);
         color: var(--color-input-text-placeholder);
-        padding: 2px 0 6px;
+        padding: var(--space-3xs) 0 var(--space-xs);
     }
 
     &__days {
@@ -200,7 +200,7 @@
     &__error {
         color: var(--red-500);
         font-size: var(--font-size-xs);
-        margin-top: 4px;
+        margin-top: var(--space-2xs);
         line-height: 1.4;
     }
 }

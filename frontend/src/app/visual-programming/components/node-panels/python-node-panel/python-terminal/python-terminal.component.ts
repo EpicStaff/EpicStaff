@@ -138,7 +138,7 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                padding: 0.25rem 0.75rem;
+                padding: var(--space-2xs) var(--space-md);
                 border-bottom: 1px solid rgba(255, 255, 255, 0.05);
                 color: #8b949e;
                 font-size: var(--font-size-xs);
@@ -200,7 +200,7 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
                 border: none;
                 color: #8b949e;
                 cursor: pointer;
-                padding: 2px;
+                padding: var(--space-3xs);
                 border-radius: 4px;
 
                 &:hover {
@@ -211,7 +211,7 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
 
             .terminal-body {
                 overflow-y: auto;
-                padding: 0.5rem 0.75rem;
+                padding: var(--space-sm) var(--space-md);
                 min-height: 60px;
                 max-height: 500px;
             }
@@ -224,7 +224,7 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
 
             .timestamp {
                 color: #6e7681;
-                margin-right: 0.5rem;
+                margin-right: var(--space-sm);
             }
 
             .log-info .message {

@@ -77,18 +77,18 @@ import { AddProjectCardComponent } from './add-project-card/add-project-card.com
             .empty-message {
                 grid-column: 1 / -1;
                 text-align: center;
-                padding: 2rem;
+                padding: var(--space-3xl);
                 color: var(--color-text-secondary);
                 font-size: var(--font-size-xl);
                 background: var(--color-sidenav-background);
                 border-radius: 8px;
-                margin-top: 1rem;
+                margin-top: var(--space-lg);
             }
             .loading,
             .error {
                 font-size: var(--font-size-xl);
                 color: #b0b8c1;
-                margin-top: 2rem;
+                margin-top: var(--space-3xl);
             }
             .error {
                 color: #d32f2f;

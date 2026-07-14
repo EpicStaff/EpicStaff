@@ -230,7 +230,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                     background-color: var(--color-input-background);
                     border: 1px solid var(--color-input-border);
                     border-radius: 6px;
-                    padding: 0.625rem 0.75rem;
+                    padding: var(--space-md) var(--space-md);
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
@@ -284,7 +284,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                 overflow: hidden;
 
                 .tools-dialog-header {
-                    padding: 1rem 1.25rem;
+                    padding: var(--space-lg) var(--space-xl);
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
@@ -301,18 +301,18 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                 }
 
                 .tools-header {
-                    padding: 0rem 1.25rem;
+                    padding: 0rem var(--space-xl);
                     border-bottom: 1px solid var(--color-divider-subtle);
 
                     .search-bar {
-                        margin-bottom: 1rem;
+                        margin-bottom: var(--space-lg);
 
                         input {
                             width: 100%;
                             background-color: var(--color-input-background);
                             border: 1px solid var(--color-input-border);
                             border-radius: 6px;
-                            padding: 0.625rem 0.75rem;
+                            padding: var(--space-md) var(--space-md);
                             color: #fff;
                             font-size: var(--font-size-md);
                             outline: none;
@@ -336,7 +336,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                         button {
                             background: transparent;
                             border: none;
-                            padding: 0.5rem 1rem;
+                            padding: var(--space-sm) var(--space-lg);
                             font-size: var(--font-size-md);
                             color: var(--color-text-secondary);
                             cursor: pointer;
@@ -368,7 +368,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                 }
 
                 .tools-dialog-body {
-                    padding: 1rem 1.25rem;
+                    padding: var(--space-lg) var(--space-xl);
                     overflow-y: auto;
                     flex: 1;
                     max-height: 50vh;
@@ -404,14 +404,14 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                         }
 
                         .loading-text {
-                            margin-top: 1rem;
+                            margin-top: var(--space-lg);
                             color: var(--color-text-secondary);
                             font-size: var(--font-size-md);
                         }
                     }
 
                     .empty-state {
-                        padding: 2rem 0;
+                        padding: var(--space-3xl) 0;
                         text-align: center;
                         color: var(--color-text-secondary);
                         font-size: var(--font-size-md);
@@ -426,7 +426,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                             display: flex;
                             justify-content: space-between;
                             align-items: center;
-                            padding: 0.75rem 1rem;
+                            padding: var(--space-md) var(--space-lg);
                             border-radius: 6px;
                             background: var(--color-input-background);
                             transition: all 0.2s ease;
@@ -451,7 +451,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                                     font-size: var(--font-size-md);
                                     font-weight: var(--font-weight-medium);
                                     color: var(--color-text-primary);
-                                    margin-bottom: 0.25rem;
+                                    margin-bottom: var(--space-2xs);
                                 }
 
                                 .tool-description {
@@ -473,14 +473,14 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                 }
 
                 .tools-dialog-footer {
-                    padding: 1rem 1.25rem;
+                    padding: var(--space-lg) var(--space-xl);
                     border-top: 1px solid var(--color-divider-subtle);
                     display: flex;
                     justify-content: flex-end;
                     gap: var(--space-md);
 
                     button {
-                        padding: 0.5rem 1rem;
+                        padding: var(--space-sm) var(--space-lg);
                         border-radius: 6px;
                         font-size: var(--font-size-md);
                         font-weight: var(--font-weight-medium);

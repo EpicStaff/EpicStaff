@@ -3,7 +3,7 @@
 }
 
 .rag {
-    padding: 1.5rem 1rem 1.5rem 1.5rem;
+    padding: var(--space-2xl) var(--space-lg) var(--space-2xl) var(--space-2xl);
     border-radius: var(--radius-xl);
     background-color: var(--color-line);
     display: flex;
@@ -39,7 +39,7 @@
         font-size: var(--font-size-md);
         line-height: 130%;
         color: var(--color-text-primary);
-        padding-bottom: 1.25rem;
+        padding-bottom: var(--space-xl);
         border-bottom: 1px solid var(--color-divider-subtle);
     }
 

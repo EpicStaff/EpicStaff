@@ -14,7 +14,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 8px;
+        padding: var(--space-sm);
         border-bottom: 1px solid var(--color-divider-subtle);
     }
 
@@ -35,7 +35,7 @@
 
     &__add-btn {
         cursor: pointer;
-        padding: 4px;
+        padding: var(--space-2xs);
         border-radius: 50%;
         border: 1px solid var(--accent-color);
         color: var(--accent-color);
@@ -101,7 +101,7 @@
         position: relative;
         height: 28px;
         box-sizing: border-box;
-        padding: 0 8px;
+        padding: 0 var(--space-sm);
         text-align: left;
         font-family: var(--font-family-base);
         font-size: var(--font-size-xs);
@@ -164,7 +164,7 @@
 
     &__th-required {
         color: var(--color-status-failed, var(--red-550));
-        margin-left: 2px;
+        margin-left: var(--space-3xs);
     }
 
     &__col-drag-handle {
@@ -222,7 +222,7 @@
         &--drag {
             width: 36px;
             min-width: 36px;
-            padding: 0 6px;
+            padding: 0 var(--space-xs);
             text-align: center;
             border-right: 1px solid var(--color-divider-subtle);
         }
@@ -230,7 +230,7 @@
         &--action {
             width: 36px;
             min-width: 36px;
-            padding: 0 6px;
+            padding: 0 var(--space-xs);
             text-align: center;
             position: sticky;
             right: 0;
@@ -244,7 +244,7 @@
         overflow: hidden;
         white-space: nowrap;
         text-overflow: ellipsis;
-        padding: 0 8px;
+        padding: 0 var(--space-sm);
     }
 
     &__row-drag-handle {
@@ -286,7 +286,7 @@
     &__cell-select {
         cursor: pointer;
         appearance: none;
-        padding-right: 24px;
+        padding-right: var(--space-2xl);
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23D9D9DE' stroke-opacity='0.8' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
         background-repeat: no-repeat;
         background-position: right 8px center;
@@ -369,8 +369,8 @@
     justify-content: space-between;
     gap: var(--space-sm);
     background-color: var(--color-flow-card-bg);
-    padding: 8px 8px 8px 16px;
-    margin-top: 8px;
+    padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space-lg);
+    margin-top: var(--space-sm);
     border-radius: var(--radius-lg);
     border-left: 2px solid var(--color-status-failed);
 

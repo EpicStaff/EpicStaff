@@ -30,7 +30,7 @@ header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1rem;
+    padding: var(--space-lg);
     border-bottom: 1px solid var(--color-divider-subtle);
 
     .icon-and-title {
@@ -40,7 +40,7 @@ header {
 
         i {
             font-size: var(--font-size-2xl);
-            margin-right: 0.5rem;
+            margin-right: var(--space-sm);
             flex-shrink: 0;
         }
 
@@ -63,7 +63,7 @@ header {
             border: none;
             color: var(--gray-300);
             cursor: pointer;
-            padding: 0.25rem;
+            padding: var(--space-2xs);
             border-radius: var(--radius-sm);
             transition: all 0.2s ease;
             display: flex;
@@ -85,7 +85,7 @@ header {
             align-items: center;
             justify-content: center;
             gap: var(--space-sm);
-            padding: 0 0.75rem;
+            padding: 0 var(--space-md);
             height: 32px;
             border-radius: var(--radius-md);
             font-size: var(--font-size-md);
@@ -121,7 +121,7 @@ header {
             }
 
             &.save-btn--icon-only {
-                padding: 0 0.35rem;
+                padding: 0 var(--space-xs);
                 gap: 0;
 
                 .btn-label {
@@ -140,7 +140,7 @@ header {
                 font-size: var(--font-size-xs);
                 color: var(--gray-600);
                 font-weight: var(--font-weight-medium);
-                padding: 0.15rem 0.3rem;
+                padding: 0.15rem var(--space-2xs);
                 border: 1px solid var(--gray-700);
                 border-radius: var(--radius-sm);
                 background: var(--graphite-780);
@@ -151,7 +151,7 @@ header {
                 border: none;
                 color: var(--gray-300);
                 cursor: pointer;
-                padding: 0.25rem;
+                padding: var(--space-2xs);
                 border-radius: var(--radius-sm);
                 transition: all 0.2s ease;
                 display: flex;

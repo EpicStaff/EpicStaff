@@ -17,14 +17,14 @@
     &.position-right {
         left: 100%;
         right: auto;
-        margin-left: 8px;
+        margin-left: var(--space-sm);
         margin-right: 0;
     }
 
     &.position-left {
         right: 100%;
         left: auto;
-        margin-right: 8px;
+        margin-right: var(--space-sm);
         margin-left: 0;
     }
 }
@@ -32,7 +32,7 @@
 .breadcrumbs {
     display: flex;
     align-items: center;
-    padding: 8px 10px;
+    padding: var(--space-sm) var(--space-md);
     background-color: #1e1e20;
     border-bottom: 1px solid var(--color-divider-subtle, var(--graphite-640));
     font-size: var(--font-size-xs);
@@ -57,7 +57,7 @@
         cursor: pointer;
         transition: all 0.15s ease;
         flex-shrink: 0;
-        margin-right: 4px;
+        margin-right: var(--space-2xs);
 
         i {
             font-size: var(--font-size-md);
@@ -71,7 +71,7 @@
 
     .crumb {
         cursor: pointer;
-        padding: 2px 4px;
+        padding: var(--space-3xs) var(--space-2xs);
         border-radius: var(--radius-sm);
         transition: all 0.15s ease;
 
@@ -82,7 +82,7 @@
     }
 
     .separator {
-        margin: 0 2px;
+        margin: 0 var(--space-3xs);
         color: var(--gray-600);
     }
 }
@@ -90,7 +90,7 @@
 .autocomplete-list {
     list-style: none;
     margin: 0;
-    padding: 4px;
+    padding: var(--space-2xs);
     max-height: 220px;
     overflow-y: auto;
     color: var(--color-text-primary);
@@ -98,7 +98,7 @@
     font-size: var(--font-size-sm);
 
     li {
-        padding: 8px 10px;
+        padding: var(--space-sm) var(--space-md);
         cursor: pointer;
         border-radius: var(--radius-sm);
         display: flex;
@@ -125,15 +125,15 @@
             font-size: var(--font-size-xs);
             justify-content: flex-start;
             cursor: default;
-            padding: 12px 14px;
-            gap: 10px;
+            padding: var(--space-md) var(--space-lg);
+            gap: var(--space-md);
             line-height: 1.4;
 
             i {
                 font-size: var(--font-size-lg);
                 color: var(--accent-color);
                 flex-shrink: 0;
-                margin-top: 1px;
+                margin-top: var(--space-3xs);
             }
 
             span {

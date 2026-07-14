@@ -66,8 +66,8 @@ input[type='number'] {
     background-color: var(--color-input-background);
     color: var(--color-text-primary);
     transition: border-color 0.2s ease;
-    padding-left: 2rem;
-    padding-right: 2rem;
+    padding-left: var(--space-3xl);
+    padding-right: var(--space-3xl);
     text-align: center;
 
     &:focus {
@@ -81,13 +81,13 @@ input[type='number'] {
 
     &--mod-default {
         height: 40px;
-        padding: 0 2.5rem;
+        padding: 0 var(--space-4xl);
         font-size: var(--font-size-md);
     }
 
     &--mod-small {
         height: 28px;
-        padding: 0.625rem 0.5rem;
+        padding: var(--space-md) var(--space-sm);
         font-size: var(--font-size-2xs);
     }
 }

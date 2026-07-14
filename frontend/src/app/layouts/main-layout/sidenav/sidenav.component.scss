@@ -21,14 +21,14 @@
     justify-content: center;
     width: 100%;
     position: relative;
-    margin: 1rem 0;
+    margin: var(--space-lg) 0;
     flex-shrink: 0;
 
     .app-logo {
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 0.5rem;
+        padding: var(--space-sm);
         width: 100%;
         cursor: pointer;
         position: relative;
@@ -79,7 +79,7 @@
 
     &.bottom-nav {
         flex-shrink: 0;
-        padding-bottom: 0.75rem;
+        padding-bottom: var(--space-md);
     }
 
     .sidenav-nav-item {

@@ -3,7 +3,7 @@
 }
 
 .validation-errors {
-    margin: 0.5rem 0;
+    margin: var(--space-sm) 0;
     row-gap: var(--space-sm);
     &__item {
         display: block;
@@ -12,6 +12,6 @@
         border-left: 3px solid var(--color-status-failed);
         background-color: var(--red-600-alpha-6);
         color: var(--color-status-failed);
-        padding: 0.25rem 0.5rem;
+        padding: var(--space-2xs) var(--space-sm);
     }
 }

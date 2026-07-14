@@ -36,7 +36,7 @@ import { GraphMessage, UpdateSessionStatusMessageData } from '../../../../models
     styles: [
         `
             .status-update-message {
-                padding: 1rem;
+                padding: var(--space-lg);
                 border: 1px solid var(--gray-750);
                 border-radius: 8px;
                 background-color: var(--gray-900);
@@ -45,7 +45,7 @@ import { GraphMessage, UpdateSessionStatusMessageData } from '../../../../models
                     display: flex;
                     gap: var(--space-lg);
                     flex-wrap: wrap;
-                    margin-bottom: 0.75rem;
+                    margin-bottom: var(--space-md);
                     .project-name {
                         color: var(--gray-500);
                     }
@@ -60,10 +60,10 @@ import { GraphMessage, UpdateSessionStatusMessageData } from '../../../../models
                         display: flex;
                         align-items: center;
                         font-weight: var(--font-weight-medium);
-                        margin-bottom: 0.25rem;
+                        margin-bottom: var(--space-2xs);
                         color: var(--gray-400);
                         app-svg-icon {
-                            margin-right: 0.5rem;
+                            margin-right: var(--space-sm);
                         }
                     }
                     .status-data-wrapper {
@@ -77,7 +77,7 @@ import { GraphMessage, UpdateSessionStatusMessageData } from '../../../../models
                     .status-data-content {
                         background-color: var(--gray-800);
                         border-radius: 6px;
-                        padding: 0.75rem;
+                        padding: var(--space-md);
                         font-family: 'Courier New', monospace;
                         font-size: var(--font-size-sm);
                         overflow-x: auto;

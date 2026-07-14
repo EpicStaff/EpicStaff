@@ -90,37 +90,37 @@ interface FlowRenameData {
             .dialog-container {
                 background: var(--color-sidenav-background);
                 border-radius: 12px;
-                padding: 1.5rem;
+                padding: var(--space-2xl);
                 width: 500px;
                 max-width: 100%;
             }
 
             .dialog-title {
                 margin-top: 0;
-                margin-bottom: 1.5rem;
+                margin-bottom: var(--space-2xl);
                 color: var(--color-text-primary);
                 font-size: var(--font-size-2xl);
                 font-weight: var(--font-weight-semibold);
             }
 
             .dialog-content {
-                margin-bottom: 1.5rem;
+                margin-bottom: var(--space-2xl);
             }
 
             .form-group {
-                margin-bottom: 1rem;
+                margin-bottom: var(--space-lg);
             }
 
             label {
                 display: block;
-                margin-bottom: 0.5rem;
+                margin-bottom: var(--space-sm);
                 color: var(--color-text-secondary);
                 font-size: var(--font-size-md);
             }
 
             .form-control {
                 width: 100%;
-                padding: 0.625rem;
+                padding: var(--space-md);
                 background-color: var(--color-input-background);
                 border: 1px solid var(--color-input-border);
                 border-radius: 6px;
@@ -143,10 +143,10 @@ interface FlowRenameData {
             }
 
             .error-message-block {
-                padding: 0.5rem 0.75rem;
+                padding: var(--space-sm) var(--space-md);
                 color: var(--color-error);
                 font-size: var(--font-size-xs);
-                margin-top: 4px;
+                margin-top: var(--space-2xs);
             }
         `,
     ],

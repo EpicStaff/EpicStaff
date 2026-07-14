@@ -50,7 +50,7 @@ export interface IconHeaderParams extends IHeaderParams {
                 height: 100%;
                 cursor: default;
                 gap: var(--space-2xs);
-                padding: 0 4px;
+                padding: 0 var(--space-2xs);
             }
             .icon-header-label {
                 font-size: var(--font-size-md);
@@ -95,7 +95,7 @@ export interface IconHeaderParams extends IHeaderParams {
                 color: rgba(255, 255, 255, 0.4) !important;
                 flex-shrink: 0;
                 transition: color 0.15s ease;
-                padding: 2px;
+                padding: var(--space-3xs);
             }
             .icon-header-delete:hover {
                 color: rgba(255, 100, 100, 0.85) !important;

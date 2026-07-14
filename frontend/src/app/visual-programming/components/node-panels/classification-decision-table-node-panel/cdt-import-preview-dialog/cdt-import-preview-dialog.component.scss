@@ -15,7 +15,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1.25rem 1.5rem;
+    padding: var(--space-xl) var(--space-2xl);
     border-bottom: 1px solid var(--white-alpha-8);
 }
 
@@ -64,7 +64,7 @@
 .dialog-body {
     flex: 1;
     overflow-y: auto;
-    padding: 1.25rem 1.5rem;
+    padding: var(--space-xl) var(--space-2xl);
     display: flex;
     flex-direction: column;
     gap: var(--space-xl);
@@ -90,7 +90,7 @@
     background: var(--white-alpha-4);
     border: 1px solid var(--white-alpha-6);
     border-radius: var(--radius-lg);
-    padding: 0.6rem 0.75rem;
+    padding: var(--space-sm) var(--space-md);
 }
 
 .meta-label {
@@ -127,7 +127,7 @@
     margin: 0;
     font-size: var(--font-size-sm);
     color: var(--white-alpha-45);
-    padding: 0.75rem;
+    padding: var(--space-md);
     border: 1px dashed var(--white-alpha-12);
     border-radius: var(--radius-lg);
     text-align: center;
@@ -150,14 +150,14 @@
         top: 0;
         background: #2a2a30;
         text-align: left;
-        padding: 0.5rem 0.75rem;
+        padding: var(--space-sm) var(--space-md);
         font-weight: var(--font-weight-medium);
         color: var(--white-alpha-70);
         border-bottom: 1px solid var(--white-alpha-8);
     }
 
     tbody td {
-        padding: 0.5rem 0.75rem;
+        padding: var(--space-sm) var(--space-md);
         border-bottom: 1px solid var(--white-alpha-5);
         color: var(--white-alpha-85);
         word-break: break-word;
@@ -172,14 +172,14 @@
     display: flex;
     justify-content: flex-end;
     gap: var(--space-md);
-    padding: 1rem 1.5rem;
+    padding: var(--space-lg) var(--space-2xl);
     border-top: 1px solid var(--white-alpha-8);
 }
 
 .btn {
     border: none;
     border-radius: var(--radius-lg);
-    padding: 0.55rem 1.1rem;
+    padding: 0.55rem var(--space-xl);
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-medium);
     cursor: pointer;

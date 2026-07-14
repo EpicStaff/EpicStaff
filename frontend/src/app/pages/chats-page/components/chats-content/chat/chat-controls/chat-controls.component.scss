@@ -10,10 +10,10 @@
     justify-content: center;
     align-items: center;
     width: auto;
-    padding: 0.5rem;
+    padding: var(--space-sm);
     background-color: var(--gray-900);
     border-radius: var(--radius-2xl);
-    margin-bottom: 1.5rem;
+    margin-bottom: var(--space-2xl);
     box-shadow: 0 4px 16px var(--black-alpha-30);
     border: 1px solid var(--gray-800);
     max-width: calc(100% - 1rem);
@@ -22,11 +22,11 @@
     .text-input-container {
         width: 100%;
         position: relative;
-        margin-bottom: 0.5rem;
+        margin-bottom: var(--space-sm);
         background-color: var(--gray-800);
         border-radius: var(--radius-lg);
-        padding: 0.5rem;
-        margin-inline: 0.5rem;
+        padding: var(--space-sm);
+        margin-inline: var(--space-sm);
         display: flex;
         align-items: center;
         border: 1px solid var(--gray-750);
@@ -37,7 +37,7 @@
             border: none;
             color: var(--white);
             resize: none;
-            padding: 0.5rem;
+            padding: var(--space-sm);
             max-height: 120px;
             min-height: 40px;
             overflow-y: auto;
@@ -61,8 +61,8 @@
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            padding: 0.5rem;
-            margin-right: 0.25rem;
+            padding: var(--space-sm);
+            margin-right: var(--space-2xs);
             height: 40px;
             width: 40px;
             border-radius: 50%;
@@ -102,7 +102,7 @@
         color: var(--white);
         border: none;
         border-radius: var(--radius-lg);
-        padding: 0.6rem 1.2rem;
+        padding: var(--space-sm) 1.2rem;
         font-weight: var(--font-weight-medium);
         font-size: var(--font-size-md);
         cursor: pointer;
@@ -134,8 +134,8 @@
         }
 
         &.start-speaking-btn--only-icon {
-            padding-left: 0.6rem;
-            padding-right: 0.6rem;
+            padding-left: var(--space-sm);
+            padding-right: var(--space-sm);
 
             .start-speaking-btn__label {
                 display: none;
@@ -148,7 +148,7 @@
         align-items: center;
         background-color: var(--gray-800);
         border-radius: var(--radius-lg);
-        padding: 4px;
+        padding: var(--space-2xs);
         gap: var(--space-2xs);
         height: 41px;
         border: 1px solid var(--gray-750);
@@ -195,12 +195,12 @@
             &.generate-btn {
                 width: auto;
                 border-radius: var(--radius-md);
-                padding: 0 12px 0 10px;
+                padding: 0 var(--space-md) 0 var(--space-md);
                 display: flex;
                 align-items: center;
 
                 i {
-                    margin-right: 6px;
+                    margin-right: var(--space-xs);
                 }
             }
         }
@@ -209,7 +209,7 @@
             width: 1px;
             height: 24px;
             background-color: var(--gray-700);
-            margin: 0 2px;
+            margin: 0 var(--space-3xs);
         }
     }
 }
@@ -217,11 +217,11 @@
 @media (max-width: 576px) {
     .chat-controls {
         min-width: 320px;
-        padding: 0.5rem;
+        padding: var(--space-sm);
 
         .start-speaking-btn {
             font-size: var(--font-size-sm);
-            padding: 0.5rem 1rem;
+            padding: var(--space-sm) var(--space-lg);
         }
 
         .controls-container {

@@ -74,8 +74,8 @@
 .member-row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
+    gap: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
     border-bottom: 1px solid var(--color-divider-subtle);
 
     &:last-child {

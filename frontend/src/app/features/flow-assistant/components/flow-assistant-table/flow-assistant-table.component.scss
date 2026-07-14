@@ -1,6 +1,6 @@
 .table-wrapper {
     overflow-x: auto;
-    margin-top: 0.5rem;
+    margin-top: var(--space-sm);
     border-radius: var(--radius-md);
     border: 1px solid var(--color-divider-subtle);
 }
@@ -20,7 +20,7 @@
 
         th {
             text-align: left;
-            padding: 0.4rem 0.65rem;
+            padding: var(--space-xs) 0.65rem;
             font-weight: var(--font-weight-medium);
             color: var(--color-text-secondary);
             white-space: nowrap;
@@ -60,14 +60,14 @@
         }
 
         td {
-            padding: 0.4rem 0.65rem;
+            padding: var(--space-xs) 0.65rem;
             word-break: break-word;
         }
     }
 }
 
 .sort-indicator {
-    margin-left: 0.25rem;
+    margin-left: var(--space-2xs);
     font-size: var(--font-size-xs);
     color: var(--accent-color);
 }

@@ -15,7 +15,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 0.5rem;
+    padding: 0 var(--space-sm);
     flex-shrink: 0;
 
     h3 {
@@ -88,7 +88,7 @@
             }
 
             .ag-overlay-no-rows-wrapper {
-                padding: 3rem 1rem !important;
+                padding: var(--space-5xl) var(--space-lg) !important;
                 min-height: 150px !important;
                 height: auto !important;
                 display: flex !important;
@@ -104,7 +104,7 @@
                     white-space: normal !important;
                     word-wrap: break-word !important;
                     line-height: 1.6 !important;
-                    padding: 1rem 0 !important;
+                    padding: var(--space-lg) 0 !important;
                     margin: 0 !important;
                     height: auto !important;
                 }

@@ -2,7 +2,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    padding: 1rem 3rem;
+    padding: var(--space-lg) var(--space-5xl);
     container-type: inline-size;
 
     &__header {
@@ -28,7 +28,7 @@
     }
 
     &__actions {
-        margin-top: 1.5rem;
+        margin-top: var(--space-2xl);
         display: flex;
         gap: var(--space-sm);
         min-width: 0;
@@ -51,7 +51,7 @@
         align-items: center;
         overflow: auto;
         row-gap: var(--space-lg);
-        margin-top: 1rem;
+        margin-top: var(--space-lg);
     }
 
     &__item {
@@ -60,7 +60,7 @@
     }
 
     &__empty {
-        margin: 0.5rem 0 1rem 0;
+        margin: var(--space-sm) 0 var(--space-lg) 0;
         font-size: var(--font-size-xl);
         color: var(--color-text-primary);
     }

@@ -13,7 +13,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 1.5rem;
+        padding: var(--space-2xl);
     }
 
     &__title {
@@ -29,8 +29,8 @@
         gap: var(--space-sm);
         flex: 1;
         overflow-y: auto;
-        padding: 1.5rem;
-        padding-top: 5px;
+        padding: var(--space-2xl);
+        padding-top: var(--space-xs);
         max-height: calc(90vh - 200px);
     }
 
@@ -38,8 +38,8 @@
         display: flex;
         align-items: center;
         gap: var(--space-md);
-        padding: 0.75rem 1rem;
-        margin-bottom: 1rem;
+        padding: var(--space-md) var(--space-lg);
+        margin-bottom: var(--space-lg);
         background-color: var(--red-alpha-10);
         border: 1px solid var(--red-alpha-30);
         border-radius: var(--radius-lg);
@@ -60,7 +60,7 @@
     &__footer {
         display: flex;
         justify-content: flex-end;
-        padding: 1.5rem;
+        padding: var(--space-2xl);
         gap: var(--space-md);
     }
 }

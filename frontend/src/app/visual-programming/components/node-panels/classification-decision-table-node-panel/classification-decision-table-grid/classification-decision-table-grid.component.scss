@@ -13,7 +13,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 0.5rem;
+    padding: 0 var(--space-sm);
     flex-shrink: 0;
 
     h3 {
@@ -58,7 +58,7 @@
 
 .grid-header-secondary-btn {
     height: 32px;
-    padding: 0 12px;
+    padding: 0 var(--space-md);
     border-radius: var(--radius-md);
     background: transparent;
     border: 1px solid var(--graphite-750);
@@ -103,11 +103,11 @@
     border-radius: var(--radius-md);
     box-shadow: 0 4px 16px var(--black-alpha-50);
     min-width: 180px;
-    padding: 4px 0;
+    padding: var(--space-2xs) 0;
 }
 
 .group-menu-item {
-    padding: 0.45rem 0.75rem;
+    padding: 0.45rem var(--space-md);
     font-size: var(--font-size-sm);
     color: var(--white-alpha-85);
     cursor: pointer;
@@ -133,7 +133,7 @@
     color: var(--white);
     border: none;
     border-radius: var(--radius-md);
-    padding: 0.4rem 0.85rem;
+    padding: var(--space-xs) 0.85rem;
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-medium);
     cursor: pointer;
@@ -161,14 +161,14 @@
     width: 1px;
     height: 18px;
     background: var(--white-alpha-15);
-    margin: 0 0.2rem;
+    margin: 0 var(--space-3xs);
 }
 
 .field-chip {
     display: inline-flex;
     align-items: center;
     gap: var(--space-2xs);
-    padding: 0.2rem 0.5rem;
+    padding: var(--space-3xs) var(--space-sm);
     border-radius: var(--radius-sm);
     color: var(--white-alpha-85);
     font-size: var(--font-size-xs);
@@ -249,7 +249,7 @@
     display: inline-flex;
     align-items: center;
     gap: var(--space-2xs);
-    padding: 0.25rem 0.6rem;
+    padding: var(--space-2xs) var(--space-sm);
     border: 1px solid var(--white-alpha-15);
     border-radius: var(--radius-sm);
     background: var(--white-alpha-6);
@@ -275,12 +275,12 @@
     position: relative;
     width: 100%;
     overflow: visible;
-    padding-left: 28px;
+    padding-left: var(--space-3xl);
 
     // When at least one params group is absent, reserve space above the ag-grid
     // for the floating "+" button row.
     &.has-above-btns {
-        padding-top: 36px;
+        padding-top: var(--space-4xl);
     }
 }
 
@@ -306,7 +306,7 @@
     width: 22px;
     height: 22px;
     padding: 0;
-    margin-left: 2px;
+    margin-left: var(--space-3xs);
     border: 1px solid var(--color-text-primary);
     border-radius: var(--radius-sm);
     background: var(--color-background-body);
@@ -332,7 +332,7 @@
 }
 
 .group-overlay-bracket {
-    margin-left: 13px;
+    margin-left: var(--space-lg);
     margin-top: 0;
     width: 10px;
     flex: 1;
@@ -442,14 +442,14 @@
     border-radius: var(--radius-md);
     box-shadow: 0 4px 16px var(--black-alpha-50);
     min-width: 160px;
-    padding: 4px 0;
+    padding: var(--space-2xs) 0;
 }
 
 .context-menu-item {
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    padding: 0.45rem 0.75rem;
+    padding: 0.45rem var(--space-md);
     font-size: var(--font-size-sm);
     color: var(--white-alpha-85);
     cursor: pointer;
@@ -492,7 +492,7 @@
 .context-menu-divider {
     height: 1px;
     background: var(--white-alpha-10);
-    margin: 3px 0;
+    margin: var(--space-2xs) 0;
 }
 
 :host ::ng-deep {
@@ -566,7 +566,7 @@
         background: transparent !important;
         width: 100% !important;
         height: 100% !important;
-        padding: 0 8px !important;
+        padding: 0 var(--space-sm) !important;
     }
 
     // Fix Issue 2 — range-selected cells that are NOT the active focus cell must

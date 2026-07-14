@@ -4,9 +4,9 @@
     border: 1px solid #333741;
     border-radius: var(--radius-lg);
     box-shadow: 0 4px 12px var(--black-alpha-15);
-    padding: 0.25rem 0;
+    padding: var(--space-2xs) 0;
     z-index: 1000;
-    padding: 8px;
+    padding: var(--space-sm);
     ul {
         list-style: none;
         margin: 0;
@@ -16,7 +16,7 @@
             display: flex;
             align-items: center;
             gap: var(--space-sm);
-            padding: 8px 15px;
+            padding: var(--space-sm) var(--space-lg);
             cursor: pointer;
             transition:
                 background 0.15s ease,
@@ -28,7 +28,7 @@
             &.divider {
                 height: 1px;
                 background-color: #333741;
-                margin: 8px 0;
+                margin: var(--space-sm) 0;
                 padding: 0;
                 cursor: default;
                 pointer-events: none;
@@ -53,7 +53,7 @@
             }
 
             i.icon {
-                margin-right: 0.5rem;
+                margin-right: var(--space-sm);
             }
         }
     }

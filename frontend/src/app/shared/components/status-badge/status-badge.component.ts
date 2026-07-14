@@ -30,11 +30,11 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
     styles: [
         `
             .status-badge {
-                margin-left: 0.5rem;
-                margin-top: 0.4rem;
+                margin-left: var(--space-sm);
+                margin-top: var(--space-xs);
                 display: inline-flex;
                 align-items: center;
-                padding: 0.25rem 0.75rem;
+                padding: var(--space-2xs) var(--space-md);
                 border-radius: 12px;
                 font-size: var(--font-size-sm);
                 font-weight: var(--font-weight-medium);
@@ -42,7 +42,7 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
                 flex-shrink: 0;
 
                 &.status-badge--icon-only {
-                    padding: 0.25rem 0.5rem;
+                    padding: var(--space-2xs) var(--space-sm);
 
                     .status-text {
                         display: none;

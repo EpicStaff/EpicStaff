@@ -2,7 +2,7 @@
     display: flex;
     justify-content: flex-end;
     align-items: center;
-    padding: 1.25rem 1.5rem;
+    padding: var(--space-xl) var(--space-2xl);
     gap: var(--space-lg);
     border-top: 1px solid var(--gray-800);
     height: 75px;
@@ -11,7 +11,7 @@
         color: var(--gray-300);
         border: 1px solid var(--gray-700);
         background-color: var(--gray-850);
-        padding: 0.625rem 1.25rem;
+        padding: var(--space-md) var(--space-xl);
         border-radius: var(--radius-lg);
         font-weight: var(--font-weight-medium);
         font-size: var(--font-size-md);
@@ -32,7 +32,7 @@
         color: white;
         font-weight: var(--font-weight-medium);
         border-radius: var(--radius-lg);
-        padding: 0.625rem 1.25rem;
+        padding: var(--space-md) var(--space-xl);
         font-size: var(--font-size-md);
         cursor: pointer;
         border: none;

@@ -10,8 +10,8 @@ $purple-accent: var(--purple-alpha-50);
 
 .settings-section {
     color: $text-color;
-    padding-inline: 3rem;
-    padding-top: 1rem;
+    padding-inline: var(--space-5xl);
+    padding-top: var(--space-lg);
     padding-bottom: 1.7rem;
     box-sizing: border-box;
     max-width: 100%;
@@ -27,7 +27,7 @@ $purple-accent: var(--purple-alpha-50);
         box-sizing: border-box;
 
         .group-header {
-            padding: 1rem 1.5rem;
+            padding: var(--space-lg) var(--space-2xl);
             background: var(--white-alpha-5);
             border-bottom: 1px solid var(--white-alpha-8);
             border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
@@ -40,7 +40,7 @@ $purple-accent: var(--purple-alpha-50);
             }
 
             p {
-                margin: 0.5rem 0 0;
+                margin: var(--space-sm) 0 0;
                 font-size: var(--font-size-md);
                 color: $muted-text-color;
                 line-height: 1.4;
@@ -49,7 +49,7 @@ $purple-accent: var(--purple-alpha-50);
 
         &.hierarchical-group,
         &.memory-group {
-            margin-top: 2rem;
+            margin-top: var(--space-3xl);
             background: var(--white-alpha-3);
             border: 1px solid var(--white-alpha-8);
 
@@ -69,7 +69,7 @@ $purple-accent: var(--purple-alpha-50);
         .setting-item {
             display: flex;
             align-items: center;
-            padding: 1rem 1.5rem;
+            padding: var(--space-lg) var(--space-2xl);
             transition: background 0.2s ease;
             position: relative;
             min-width: 650px;
@@ -80,7 +80,7 @@ $purple-accent: var(--purple-alpha-50);
                 display: flex;
                 align-items: center;
                 gap: var(--space-sm);
-                margin-bottom: 8px;
+                margin-bottom: var(--space-sm);
             }
 
             h3 {
@@ -108,7 +108,7 @@ $purple-accent: var(--purple-alpha-50);
                 width: 280px;
                 flex-shrink: 0;
                 min-width: 0;
-                padding-right: 1.5rem;
+                padding-right: var(--space-2xl);
 
                 .setting-title {
                     color: $text-color;
@@ -122,7 +122,7 @@ $purple-accent: var(--purple-alpha-50);
                 .setting-description {
                     font-size: var(--font-size-sm);
                     color: $muted-text-color;
-                    margin-top: 0.25rem;
+                    margin-top: var(--space-2xs);
                     line-height: 1.4;
                 }
             }
@@ -132,7 +132,7 @@ $purple-accent: var(--purple-alpha-50);
                 min-width: 0;
                 display: flex;
                 align-items: center;
-                gap: 10px;
+                gap: var(--space-md);
 
                 app-llm-model-selector,
                 app-embedding-model-selector {
@@ -169,7 +169,7 @@ $purple-accent: var(--purple-alpha-50);
                     }
 
                     .toggle-option {
-                        padding: 0.5rem 1rem;
+                        padding: var(--space-sm) var(--space-lg);
                         font-size: var(--font-size-md);
                         color: $muted-text-color;
                         transition: all 0.2s ease;
@@ -217,7 +217,7 @@ $purple-accent: var(--purple-alpha-50);
                     flex-direction: column;
 
                     .slider-value {
-                        margin-bottom: 0.5rem;
+                        margin-bottom: var(--space-sm);
                     }
 
                     input[type='range'].gradient-slider {
@@ -285,7 +285,7 @@ $purple-accent: var(--purple-alpha-50);
                     .slider-labels {
                         display: flex;
                         justify-content: space-between;
-                        margin-top: 0.5rem;
+                        margin-top: var(--space-sm);
 
                         span {
                             font-size: var(--font-size-sm);
@@ -297,12 +297,12 @@ $purple-accent: var(--purple-alpha-50);
                 .selector {
                     position: relative;
                     width: 220px;
-                    margin-left: 1rem;
+                    margin-left: var(--space-lg);
 
                     select {
                         width: 100%;
-                        padding: 0.6rem 1rem;
-                        padding-right: 2rem;
+                        padding: var(--space-sm) var(--space-lg);
+                        padding-right: var(--space-3xl);
                         background: var(--black-alpha-40);
                         border: 1px solid var(--white-alpha-10);
                         border-radius: var(--radius-lg);
@@ -353,7 +353,7 @@ $purple-accent: var(--purple-alpha-50);
 
                 input[type='number'] {
                     width: 120px;
-                    padding: 0.6rem 1rem;
+                    padding: var(--space-sm) var(--space-lg);
                     background: var(--black-alpha-40);
                     border: 1px solid var(--white-alpha-10);
                     border-radius: var(--radius-lg);

@@ -1,6 +1,6 @@
 :host ::ng-deep {
     .editor-header {
-        padding: 1.25rem 1rem !important;
+        padding: var(--space-xl) var(--space-lg) !important;
     }
 }
 
@@ -19,7 +19,7 @@
         row-gap: var(--space-lg);
         column-gap: var(--space-3xl);
         align-items: center;
-        padding: 1.25rem 2.5rem 1rem 1.875rem;
+        padding: var(--space-xl) var(--space-4xl) var(--space-lg) var(--space-3xl);
 
         &--pt-0 {
             padding-top: 0;

@@ -1,7 +1,7 @@
 .tool-card {
     background-color: var(--color-nodes-background);
     border-radius: var(--radius-lg);
-    padding: 1.25rem;
+    padding: var(--space-xl);
     border: 1.5px solid var(--color-components-card-border);
     box-shadow:
         0 8px 16px var(--black-alpha-12),
@@ -59,7 +59,7 @@
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-semibold);
     color: var(--color-text-primary);
-    margin-bottom: 0.2rem;
+    margin-bottom: var(--space-3xs);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -107,7 +107,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.7rem 1.1rem;
+    padding: var(--space-md) var(--space-xl);
     border-top: 1.5px solid var(--color-components-card-border);
     opacity: 0;
     pointer-events: none;
@@ -124,7 +124,7 @@
         color: var(--white);
         border: none;
         border-radius: var(--radius-md);
-        padding: 0.35rem 1.1rem;
+        padding: var(--space-xs) var(--space-xl);
         font-size: var(--font-size-lg);
         font-weight: var(--font-weight-medium);
         cursor: pointer;
@@ -143,7 +143,7 @@
     .star-btn {
         background: none;
         border: none;
-        padding: 0.2rem;
+        padding: var(--space-3xs);
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -160,7 +160,7 @@
     .delete-btn {
         background: none;
         border: none;
-        padding: 0.2rem;
+        padding: var(--space-3xs);
         cursor: pointer;
         display: flex;
         align-items: center;

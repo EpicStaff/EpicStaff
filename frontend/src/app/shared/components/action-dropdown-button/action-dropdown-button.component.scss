@@ -21,7 +21,7 @@
         background: var(--accent-color, var(--blue-400));
         color: var(--white);
         border: none;
-        padding: 6px 14px;
+        padding: var(--space-xs) var(--space-lg);
         font-size: 0.95em;
         font-weight: var(--font-weight-medium);
         cursor: pointer;
@@ -46,7 +46,7 @@
         color: var(--white);
         border: none;
         border-left: 1px solid var(--white-alpha-20);
-        padding: 6px 8px;
+        padding: var(--space-xs) var(--space-sm);
         cursor: pointer;
         display: flex;
         align-items: center;

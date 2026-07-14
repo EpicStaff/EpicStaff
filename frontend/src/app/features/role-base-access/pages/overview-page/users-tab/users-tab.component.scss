@@ -11,7 +11,7 @@
 }
 
 .role-chip {
-    padding: 2px 8px;
+    padding: var(--space-3xs) var(--space-sm);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-xs);
     color: var(--color-text-primary);

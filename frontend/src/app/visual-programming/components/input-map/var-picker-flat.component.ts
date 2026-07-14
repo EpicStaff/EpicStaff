@@ -60,13 +60,13 @@ export interface PickerItem {
             }
 
             .vpf-search {
-                padding: 8px;
+                padding: var(--space-sm);
                 border-bottom: 1px solid var(--color-divider-subtle);
 
                 input {
                     width: 100%;
                     box-sizing: border-box;
-                    padding: 6px 10px;
+                    padding: var(--space-xs) var(--space-md);
                     background: var(--color-input-background);
                     border: 1px solid var(--color-input-border);
                     border-radius: 4px;
@@ -87,11 +87,11 @@ export interface PickerItem {
             .vpf-list {
                 overflow-y: auto;
                 flex: 1;
-                padding: 4px;
+                padding: var(--space-2xs);
             }
 
             .vpf-empty {
-                padding: 12px;
+                padding: var(--space-md);
                 text-align: center;
                 color: var(--color-text-secondary);
                 font-size: var(--font-size-sm);
@@ -103,7 +103,7 @@ export interface PickerItem {
                 gap: var(--space-xs);
                 width: 100%;
                 text-align: left;
-                padding: 5px 8px;
+                padding: var(--space-xs) var(--space-sm);
                 background: transparent;
                 border: none;
                 border-radius: 4px;
@@ -120,7 +120,7 @@ export interface PickerItem {
                 flex-shrink: 0;
                 font-size: var(--font-size-2xs);
                 font-weight: var(--font-weight-semibold);
-                padding: 1px 5px;
+                padding: var(--space-3xs) var(--space-xs);
                 border-radius: 3px;
                 background: rgba(104, 95, 255, 0.25);
                 color: rgba(170, 160, 255, 0.9);

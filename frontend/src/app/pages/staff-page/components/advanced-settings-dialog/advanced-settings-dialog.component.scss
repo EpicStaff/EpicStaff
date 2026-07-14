@@ -20,7 +20,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1.25rem 1.5rem;
+    padding: var(--space-xl) var(--space-2xl);
     border-bottom: 1px solid var(--color-divider-subtle);
 
     .icon-and-title {
@@ -31,7 +31,7 @@
         i,
         app-svg-icon {
             font-size: var(--font-size-3xl);
-            margin-right: 1rem;
+            margin-right: var(--space-lg);
             color: var(--accent-color);
         }
 
@@ -52,7 +52,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 1.5rem;
+    padding: 0 var(--space-2xl);
     border-bottom: 1px solid var(--color-divider-subtle);
 
     .divider {
@@ -65,7 +65,7 @@
 .scrollable-content {
     flex: 1;
     overflow-y: auto;
-    padding: 1.5rem;
+    padding: var(--space-2xl);
     min-height: 250px;
 
     .tab-content {
@@ -84,12 +84,12 @@
 .actions {
     display: flex;
     justify-content: flex-end;
-    padding: 1rem 1.5rem;
+    padding: var(--space-lg) var(--space-2xl);
     gap: var(--space-md);
     border-top: 1px solid var(--color-divider-subtle);
 
     button {
-        padding: 0.5rem 1rem;
+        padding: var(--space-sm) var(--space-lg);
         border-radius: var(--radius-md);
         font-size: var(--font-size-md);
         font-weight: var(--font-weight-medium);

@@ -26,14 +26,14 @@ import { Component, Input } from '@angular/core';
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                padding: 1.5rem 0;
+                padding: var(--space-2xl) 0;
             }
             .spinner {
                 border: 4px solid #44474f;
                 border-top: 4px solid #b0b8c1;
                 border-radius: 50%;
                 animation: spin 1s linear infinite;
-                margin-bottom: 1rem;
+                margin-bottom: var(--space-lg);
             }
             .spinner.sm {
                 width: 32px;

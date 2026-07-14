@@ -28,7 +28,7 @@ import { GraphMessage, MessageType, UserMessageData } from '../../../../models/g
                 position: relative;
                 background-color: #ffa726;
                 border-radius: 18px 18px 0 18px;
-                padding: 0.75rem 1rem;
+                padding: var(--space-md) var(--space-lg);
                 color: var(--gray-900);
                 max-width: 85%;
                 word-break: break-word;

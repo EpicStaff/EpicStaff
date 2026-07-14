@@ -51,7 +51,7 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
             .projects-page-search {
                 display: flex;
                 align-items: center;
-                padding: 0.4rem 0.7rem;
+                padding: var(--space-xs) var(--space-md);
                 width: 240px;
                 height: 36px;
                 transition: all 0.2s ease;
@@ -88,7 +88,7 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
                     color: #f9fafb;
                     width: 100%;
                     height: 100%;
-                    margin-left: 0.5rem;
+                    margin-left: var(--space-sm);
 
                     &::placeholder {
                         color: #6b7280;

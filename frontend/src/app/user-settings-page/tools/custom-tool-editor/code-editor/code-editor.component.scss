@@ -16,7 +16,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.5rem 1rem;
+    padding: var(--space-sm) var(--space-lg);
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-medium);
     line-height: 1;
@@ -32,12 +32,12 @@
         .editor-title {
             color: var(--gray-200);
             font-weight: var(--font-weight-medium);
-            margin-right: 1rem;
+            margin-right: var(--space-lg);
             display: flex;
             align-items: center;
 
             .python-icon {
-                margin-right: 0.5rem;
+                margin-right: var(--space-sm);
                 color: #ffdd57;
             }
         }
@@ -48,12 +48,12 @@
         }
 
         .error-message {
-            margin-top: 2px;
+            margin-top: var(--space-3xs);
             display: block;
             color: #ff5555;
             font-size: var(--font-size-md);
             font-weight: var(--font-weight-light);
-            margin-left: 0.2rem;
+            margin-left: var(--space-3xs);
             line-height: 1;
         }
     }
@@ -103,7 +103,7 @@
         transition: opacity 0.3s;
 
         span {
-            margin-top: 8px;
+            margin-top: var(--space-sm);
             color: var(--gray-200);
             font-size: var(--font-size-lg);
         }

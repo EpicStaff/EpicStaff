@@ -7,13 +7,13 @@ $text-secondary: var(--gray-500);
 $border-color: var(--white-alpha-10);
 
 .llm-item-container {
-    margin-bottom: 8px;
+    margin-bottom: var(--space-sm);
 }
 
 .llm-item {
     display: flex;
     align-items: center;
-    padding: 10px 12px;
+    padding: var(--space-md) var(--space-md);
     background-color: $bg-item;
     border-radius: var(--radius-sm);
     cursor: pointer;
@@ -54,11 +54,11 @@ $border-color: var(--white-alpha-10);
         overflow: hidden;
         text-overflow: ellipsis;
         min-width: 0;
-        margin-right: 16px;
+        margin-right: var(--space-lg);
 
         .custom-name {
             color: $text-secondary;
-            margin-left: 5px;
+            margin-left: var(--space-xs);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;

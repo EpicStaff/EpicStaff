@@ -121,7 +121,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 box-shadow:
                     0px 2px 3px 0px rgba(0, 0, 0, 0.3),
                     0px 6px 10px 4px rgba(0, 0, 0, 0.15);
-                padding: 20px;
+                padding: var(--space-xl);
                 display: flex;
                 flex-direction: column;
                 gap: var(--space-lg);
@@ -140,7 +140,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 color: var(--color-text-primary);
                 border: 1px solid rgba(217, 217, 222, 0.16);
                 border-radius: 4px;
-                padding: 0 16px;
+                padding: 0 var(--space-lg);
                 font-size: var(--font-size-md);
                 font-family: Inter, sans-serif;
                 line-height: 1.3;
@@ -185,7 +185,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 background: #2b2d30;
                 border: 1px solid rgba(217, 217, 222, 0.16);
                 border-radius: 4px;
-                padding: 0 8px 0 16px;
+                padding: 0 var(--space-sm) 0 var(--space-lg);
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
@@ -226,7 +226,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 align-items: center;
                 gap: var(--space-sm);
                 flex-shrink: 0;
-                margin-left: 8px;
+                margin-left: var(--space-sm);
             }
             .pe-item-llm {
                 font-size: var(--font-size-md);
@@ -266,7 +266,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 flex-direction: column;
                 align-items: center;
                 gap: var(--space-sm);
-                padding: 24px 0;
+                padding: var(--space-2xl) 0;
                 text-align: center;
             }
             .pe-empty-title {
@@ -288,7 +288,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 align-items: center;
                 justify-content: center;
                 align-self: flex-start;
-                padding: 6px 16px;
+                padding: var(--space-xs) var(--space-lg);
                 height: 32px;
                 background: transparent;
                 border: 1px solid var(--accent-color);

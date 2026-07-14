@@ -17,8 +17,8 @@
 .user-header {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 8px 16px;
+    gap: var(--space-md);
+    padding: var(--space-sm) var(--space-lg);
 }
 
 .user-info {
@@ -51,7 +51,7 @@
 
 .section-label {
     font-size: var(--font-size-md);
-    padding: 8px 16px;
+    padding: var(--space-sm) var(--space-lg);
     color: var(--color-text-secondary);
 }
 
@@ -68,7 +68,7 @@
     align-items: center;
     cursor: pointer;
     transition: background-color 0.15s ease;
-    padding: 4px 16px;
+    padding: var(--space-2xs) var(--space-lg);
 
     &:hover:not(.disabled) {
         background-color: var(--color-secondary-btn-background-hover);
@@ -94,7 +94,7 @@
     color: var(--color-text-primary);
     flex: 1;
     min-width: 0;
-    margin-left: 8px;
+    margin-left: var(--space-sm);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -110,7 +110,7 @@
     display: flex;
     align-items: center;
     width: 100%;
-    padding: 6px 16px;
+    padding: var(--space-xs) var(--space-lg);
     background: none;
     border: none;
     cursor: pointer;
@@ -124,7 +124,7 @@
 
     &.danger {
         color: var(--color-status-failed);
-        padding: 10px 16px;
+        padding: var(--space-md) var(--space-lg);
 
         .nav-icon {
             width: 24px;
@@ -138,7 +138,7 @@
 }
 
 .nav-label {
-    margin-left: 8px;
+    margin-left: var(--space-sm);
     font-weight: var(--font-weight-regular);
     line-height: 1;
 }

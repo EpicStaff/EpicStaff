@@ -1,7 +1,7 @@
 .menu-container {
     position: relative;
     z-index: 1;
-    margin-left: 1rem;
+    margin-left: var(--space-lg);
 
     &.menu-active {
         z-index: 2;
@@ -23,7 +23,7 @@
     justify-content: center;
     border-radius: var(--radius-md);
     transition: all 0.2s ease;
-    margin-bottom: 2px;
+    margin-bottom: var(--space-3xs);
     &:hover {
         background-color: var(--white-alpha-10);
         color: var(--color-text-primary);
@@ -58,7 +58,7 @@
     // This z-index is relative to its .menu-container.
     // It ensures the menu appears above the .menu-button within the same .menu-container.
     z-index: 1000;
-    padding: 6px;
+    padding: var(--space-xs);
     opacity: 0;
     animation: fadeIn 0.15s ease forwards;
     transform-origin: top right;

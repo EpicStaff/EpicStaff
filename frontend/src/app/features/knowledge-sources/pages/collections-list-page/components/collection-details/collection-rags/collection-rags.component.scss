@@ -4,7 +4,7 @@
     row-gap: var(--space-sm);
 
     &__item {
-        padding: 0.5rem;
+        padding: var(--space-sm);
         display: flex;
         align-items: center;
         column-gap: var(--space-sm);

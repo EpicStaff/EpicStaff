@@ -1,8 +1,8 @@
 .agents-section {
     height: auto;
-    padding-inline: 3rem;
-    padding-top: 1rem;
-    padding-bottom: 0.75rem;
+    padding-inline: var(--space-5xl);
+    padding-top: var(--space-lg);
+    padding-bottom: var(--space-md);
     color: var(--fog-100);
     box-sizing: border-box;
     max-width: 100%;
@@ -16,7 +16,7 @@
     gap: var(--space-lg);
     width: 100%;
     position: relative;
-    margin-bottom: 1rem;
+    margin-bottom: var(--space-lg);
 }
 
 /* Responsive adjustments based on grid size classes */
@@ -58,7 +58,7 @@
     border-radius: 50%;
     border-top-color: var(--blue-500);
     animation: spin 1s ease-in-out infinite;
-    margin-bottom: 1rem;
+    margin-bottom: var(--space-lg);
 }
 
 .loading-text {

@@ -6,7 +6,7 @@
 .preview {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--space-md);
     flex-wrap: nowrap;
     overflow: hidden;
 
@@ -41,7 +41,7 @@
     // Sample kinds (base look built from current theme tokens)
     // ---------------------------------------------------------------
     &__sample--button {
-        padding: 4px 10px;
+        padding: var(--space-2xs) var(--space-md);
         border-radius: var(--radius-md);
         background: var(--accent-color);
         color: var(--color-text-primary);
@@ -49,7 +49,7 @@
     }
 
     &__sample--ghost-button {
-        padding: 4px 10px;
+        padding: var(--space-2xs) var(--space-md);
         border-radius: var(--radius-md);
         background: transparent;
         color: var(--color-text-secondary);
@@ -57,7 +57,7 @@
     }
 
     &__sample--text {
-        padding: 3px 8px;
+        padding: var(--space-2xs) var(--space-sm);
         border-radius: var(--radius-sm);
         background: var(--color-background-body);
         color: var(--color-text-primary);
@@ -65,7 +65,7 @@
 
     &__sample--input {
         width: 84px;
-        padding: 4px 8px;
+        padding: var(--space-2xs) var(--space-sm);
         justify-content: flex-start;
         border: 1px solid var(--color-input-border);
         border-radius: var(--radius-md);
@@ -76,7 +76,7 @@
     }
 
     &__sample--surface {
-        padding: 5px 10px;
+        padding: var(--space-xs) var(--space-md);
         border: 1px solid var(--color-divider-subtle);
         border-radius: var(--radius-md);
         background: var(--color-surface);
@@ -84,7 +84,7 @@
     }
 
     &__sample--card {
-        padding: 5px 10px;
+        padding: var(--space-xs) var(--space-md);
         border: 1px solid var(--color-components-card-border);
         border-radius: var(--radius-lg);
         background: var(--color-surface-card);
@@ -117,7 +117,7 @@
     }
 
     &__sample--badge {
-        padding: 3px 8px;
+        padding: var(--space-2xs) var(--space-sm);
         border-radius: var(--radius-full);
         background: var(--transparent-white-4);
         color: var(--color-text-primary);
@@ -151,7 +151,7 @@
     }
 
     &__sample--node {
-        padding: 5px 10px;
+        padding: var(--space-xs) var(--space-md);
         border: 1px solid var(--color-nodes-actionbar-border);
         border-radius: var(--radius-lg);
         background: var(--color-nodes-background);
@@ -159,7 +159,7 @@
     }
 
     &__sample--link {
-        padding: 3px 6px;
+        padding: var(--space-2xs) var(--space-xs);
         border-radius: var(--radius-sm);
         background: transparent;
         color: var(--accent-color);
@@ -186,7 +186,7 @@
     }
 
     &__sample--asterisk {
-        padding: 3px 8px;
+        padding: var(--space-2xs) var(--space-sm);
         border-radius: var(--radius-sm);
         background: var(--color-background-body);
         color: var(--color-text-secondary);

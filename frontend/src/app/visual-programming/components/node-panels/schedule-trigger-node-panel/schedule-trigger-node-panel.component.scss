@@ -20,7 +20,7 @@
     overflow-x: hidden;
     display: flex;
     flex-direction: column;
-    padding-bottom: 1rem;
+    padding-bottom: var(--space-lg);
     scrollbar-width: none;
 
     &::-webkit-scrollbar {
@@ -150,14 +150,14 @@
     font-size: var(--font-size-xs);
     color: var(--red-500);
     line-height: 1.4;
-    margin-top: 4px;
+    margin-top: var(--space-2xs);
 }
 
 .field-col-full {
     display: flex;
     flex-direction: column;
     gap: var(--space-2xs);
-    margin-top: 0.75rem;
+    margin-top: var(--space-md);
 }
 
 .toggle-stack {
@@ -174,7 +174,7 @@
     font-size: var(--font-size-xs);
     color: var(--color-input-text-placeholder);
     line-height: 1.4;
-    margin-top: 0.25rem;
+    margin-top: var(--space-2xs);
 }
 
 .next-run-row {
@@ -182,7 +182,7 @@
     align-items: center;
     justify-content: flex-end;
     gap: var(--space-xs);
-    margin-top: 0.25rem;
+    margin-top: var(--space-2xs);
 }
 
 .next-run-label {

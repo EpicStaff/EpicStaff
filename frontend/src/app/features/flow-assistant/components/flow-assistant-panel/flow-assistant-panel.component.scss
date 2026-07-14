@@ -165,7 +165,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 1rem;
+    padding: 0 var(--space-lg);
     height: 3.5rem;
     border-bottom: 1px solid var(--color-divider-subtle);
     flex-shrink: 0;
@@ -265,7 +265,7 @@
 .messages-list {
     flex: 1 1 0;
     overflow-y: auto;
-    padding: 1rem 0 0.5rem;
+    padding: var(--space-lg) 0 var(--space-sm);
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
@@ -275,8 +275,8 @@
     display: flex;
     flex-direction: column;
     max-width: 100%;
-    padding: 0 20px;
-    margin-bottom: 16px;
+    padding: 0 var(--space-xl);
+    margin-bottom: var(--space-lg);
     gap: var(--space-sm);
 
     &--user {
@@ -286,11 +286,11 @@
             background-color: var(--ep-chat-bg-question);
             color: var(--ep-chat-text-question);
             border-radius: var(--ep-radius-sm);
-            padding: 12px;
+            padding: var(--space-md);
             font-size: var(--font-size-md);
             line-height: 20px;
             max-width: calc(100% - 30px);
-            margin-left: 30px;
+            margin-left: var(--space-3xl);
             word-break: break-word;
             white-space: pre-wrap;
         }
@@ -304,7 +304,7 @@
         .message__text {
             background-color: var(--ep-chat-bg-answer);
             border-radius: 0 var(--ep-radius-sm) var(--ep-radius-sm) var(--ep-radius-sm);
-            padding: 12px;
+            padding: var(--space-md);
             max-width: 100%;
             font-size: var(--font-size-md);
             line-height: 20px;
@@ -316,7 +316,7 @@
 
             ::ng-deep {
                 p {
-                    margin: 0 0 0.5rem;
+                    margin: 0 0 var(--space-sm);
                 }
 
                 p:last-child {
@@ -333,9 +333,9 @@
                 pre {
                     background-color: var(--color-input-background);
                     border-radius: var(--radius-md);
-                    padding: 0.75rem 1rem;
+                    padding: var(--space-md) var(--space-lg);
                     overflow-x: auto;
-                    margin: 0.5rem 0;
+                    margin: var(--space-sm) 0;
 
                     code {
                         background: none;
@@ -345,12 +345,12 @@
 
                 ul,
                 ol {
-                    padding-left: 1.25rem;
-                    margin: 0.25rem 0;
+                    padding-left: var(--space-xl);
+                    margin: var(--space-2xs) 0;
                 }
 
                 li {
-                    margin-bottom: 0.2rem;
+                    margin-bottom: var(--space-3xs);
                 }
             }
         }
@@ -365,8 +365,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0.25rem;
-    margin-top: 0.25rem;
+    padding: var(--space-2xs);
+    margin-top: var(--space-2xs);
     background: transparent;
     border: none;
     border-radius: var(--ep-radius-sm);
@@ -397,7 +397,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    padding: 4px 0;
+    padding: var(--space-2xs) 0;
 
     &__dots {
         display: inline-flex;
@@ -449,7 +449,7 @@
         display: flex;
         align-items: center;
         gap: var(--space-xs);
-        padding: 8px 12px;
+        padding: var(--space-sm) var(--space-md);
         cursor: pointer;
         color: var(--color-text-secondary);
         background-color: var(--ep-color-surface-alt);
@@ -462,7 +462,7 @@
     }
 
     &__result {
-        padding: 8px 12px;
+        padding: var(--space-sm) var(--space-md);
         color: var(--color-text-secondary);
         max-height: 200px;
         overflow-y: auto;
@@ -474,7 +474,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-xs);
-    padding: 0.5rem 1rem 0;
+    padding: var(--space-sm) var(--space-lg) 0;
 }
 
 .prompt-chip {
@@ -487,7 +487,7 @@
     cursor: pointer;
     font-size: var(--font-size-xs);
     line-height: 1.4;
-    padding: 0.2rem 0.6rem;
+    padding: var(--space-3xs) var(--space-sm);
     transition:
         background-color 0.15s ease,
         color 0.15s ease,
@@ -501,14 +501,14 @@
 }
 
 .input-area {
-    padding: 0 0 16px;
+    padding: 0 0 var(--space-lg);
     border-top: 1px solid var(--color-divider-subtle);
     background-color: var(--ep-color-surface);
     flex-shrink: 0;
 
     &__container {
-        margin: 8px 20px 0;
-        padding: 6px 8px;
+        margin: var(--space-sm) var(--space-xl) 0;
+        padding: var(--space-xs) var(--space-sm);
         border: 1px solid var(--ep-color-border);
         border-radius: var(--ep-radius-sm);
         background-color: var(--ep-color-surface);
@@ -550,8 +550,8 @@
         align-items: center;
         justify-content: flex-end;
         gap: var(--space-sm);
-        margin-top: 4px;
-        padding-top: 4px;
+        margin-top: var(--space-2xs);
+        padding-top: var(--space-2xs);
     }
 
     &__send-btn {
@@ -587,7 +587,7 @@
 }
 
 .message-interrupted {
-    margin-left: 0.5rem;
+    margin-left: var(--space-sm);
     color: var(--color-text-secondary);
     font-size: var(--font-size-xs);
     font-style: italic;
@@ -595,7 +595,7 @@
 
 .header-menu {
     min-width: 180px;
-    padding: 4px 0;
+    padding: var(--space-2xs) 0;
     background-color: var(--color-nodes-sidepanel-bg);
     border: 1px solid var(--color-divider-regular);
     border-radius: var(--radius-md);
@@ -606,7 +606,7 @@
     &__item {
         display: block;
         width: 100%;
-        padding: 10px 16px;
+        padding: var(--space-md) var(--space-lg);
         background: transparent;
         border: none;
         color: var(--color-text-primary);
@@ -626,7 +626,7 @@
 
     &__divider {
         height: 1px;
-        margin: 4px 0;
+        margin: var(--space-2xs) 0;
         background-color: var(--color-divider-subtle);
     }
 }

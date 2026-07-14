@@ -33,7 +33,7 @@
     color: var(--color-text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    padding: 0 0.5rem;
+    padding: 0 var(--space-sm);
 
     &.center {
         justify-content: center;
@@ -91,7 +91,7 @@
 .table-cell {
     display: flex;
     align-items: center;
-    padding: 0.375rem 0.75rem;
+    padding: var(--space-xs) var(--space-md);
     font-size: var(--font-size-md);
     color: var(--color-text-primary);
     min-width: 0;

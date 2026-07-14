@@ -6,9 +6,9 @@
 .feib {
     display: inline-flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--space-md);
     height: 36px;
-    padding: 0 10px;
+    padding: 0 var(--space-md);
     border-radius: var(--radius-sm);
     border: 1.5px solid var(--color-divider-subtle, var(--gray-700));
     background: var(--color-surface-card, var(--graphite-825));

@@ -81,7 +81,7 @@
 .btn {
     &--mod-default {
         height: 40px;
-        padding: 0.6rem 1.5rem;
+        padding: var(--space-sm) var(--space-2xl);
         font-size: var(--font-size-md);
         font-weight: var(--font-weight-medium);
     }
@@ -90,7 +90,7 @@
         height: 28px;
         font-weight: var(--font-weight-light);
         font-size: var(--font-size-xs);
-        padding: 0.625rem 0.5rem;
+        padding: var(--space-md) var(--space-sm);
     }
 
     &--icon-left {
@@ -99,7 +99,7 @@
         }
 
         &-small {
-            padding-left: 2rem;
+            padding-left: var(--space-3xl);
         }
     }
 
@@ -109,13 +109,13 @@
         }
 
         &-small {
-            padding-right: 2rem;
+            padding-right: var(--space-3xl);
         }
     }
 }
 
 .btn--icon {
-    padding: 0.6rem;
+    padding: var(--space-sm);
     .btn-icon.left,
     .btn-icon.right {
         margin-left: 0;
@@ -165,8 +165,8 @@ button:disabled {
 }
 
 .btn--only-icon {
-    padding-left: 0.6rem !important;
-    padding-right: 0.6rem !important;
+    padding-left: var(--space-sm) !important;
+    padding-right: var(--space-sm) !important;
 
     .btn-content {
         display: none;

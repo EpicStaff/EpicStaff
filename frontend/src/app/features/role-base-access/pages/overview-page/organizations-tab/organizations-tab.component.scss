@@ -5,7 +5,7 @@
 .org-cell {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--space-md);
     min-width: 0;
 }
 

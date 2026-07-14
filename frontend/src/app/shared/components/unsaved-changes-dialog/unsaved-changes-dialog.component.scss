@@ -21,7 +21,7 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    padding: 20px 24px;
+    padding: var(--space-xl) var(--space-2xl);
 }
 
 .close-button {
@@ -40,7 +40,7 @@
     font-size: var(--font-size-md);
     color: var(--color-text-secondary);
     margin: 0;
-    padding: 20px 24px;
+    padding: var(--space-xl) var(--space-2xl);
     line-height: 1.5;
     word-wrap: break-word;
     overflow-wrap: break-word;
@@ -60,7 +60,7 @@
     justify-content: space-between;
     align-items: center;
     gap: var(--space-sm);
-    padding: 16px 24px;
+    padding: var(--space-lg) var(--space-2xl);
 }
 
 .dialog-actions .right-buttons {
@@ -69,7 +69,7 @@
 }
 
 .button {
-    padding: 8px 12px;
+    padding: var(--space-sm) var(--space-md);
     border-radius: var(--radius-md);
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-medium);
@@ -158,8 +158,8 @@
 .dialog-title-row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 4px;
+    gap: var(--space-md);
+    margin-bottom: var(--space-2xs);
 }
 
 .dialog-icon {

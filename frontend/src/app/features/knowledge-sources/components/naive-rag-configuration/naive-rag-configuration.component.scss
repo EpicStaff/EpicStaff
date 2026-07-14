@@ -19,7 +19,7 @@
     &__files-searchbar {
         display: flex;
         gap: var(--space-sm);
-        padding: 1.25rem 2.5rem 1rem 2.5rem;
+        padding: var(--space-xl) var(--space-4xl) var(--space-lg) var(--space-4xl);
     }
 
     &__input {
@@ -29,7 +29,7 @@
     &__bulk-delete {
         width: 2.5rem;
         height: 2.5rem;
-        padding: 0.75rem;
+        padding: var(--space-md);
         border-radius: var(--radius-lg);
         border: 1px solid var(--accent-color);
         background: transparent;

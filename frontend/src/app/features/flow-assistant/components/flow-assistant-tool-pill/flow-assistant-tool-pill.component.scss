@@ -4,8 +4,8 @@
     @include ep.epicchat-tokens;
 
     display: block;
-    margin-top: 0.5rem;
-    margin-left: 0.75rem;
+    margin-top: var(--space-sm);
+    margin-left: var(--space-md);
 }
 
 .tool-pill {
@@ -20,7 +20,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-xs);
-    padding: 8px 12px;
+    padding: var(--space-sm) var(--space-md);
     background-color: var(--ep-color-surface-alt);
     border: none;
     cursor: pointer;
@@ -50,7 +50,7 @@
 }
 
 .tool-pill__item {
-    padding: 0.4rem 0.6rem;
+    padding: var(--space-xs) var(--space-sm);
     display: flex;
     flex-direction: column;
     gap: var(--space-3xs);

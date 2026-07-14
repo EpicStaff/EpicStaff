@@ -9,10 +9,10 @@ $border-color: var(--white-alpha-10);
 .mcp-tool-item {
     display: flex;
     align-items: center;
-    padding: 10px 12px;
+    padding: var(--space-md) var(--space-md);
     background-color: $bg-item;
     border-radius: var(--radius-sm);
-    margin-bottom: 8px;
+    margin-bottom: var(--space-sm);
     cursor: pointer;
     transition: all 0.2s ease;
     border: 1px solid #404040;
@@ -39,7 +39,7 @@ $border-color: var(--white-alpha-10);
         font-size: var(--font-size-lg);
         flex-shrink: 0;
         color: $text-primary;
-        margin-right: 8px;
+        margin-right: var(--space-sm);
     }
 
     .tool-name {
@@ -51,13 +51,13 @@ $border-color: var(--white-alpha-10);
         overflow: hidden;
         text-overflow: ellipsis;
         min-width: 0;
-        margin-right: 16px;
+        margin-right: var(--space-lg);
     }
 
     .tool-description {
         font-size: var(--font-size-xs);
         color: $text-secondary;
-        margin-right: 8px;
+        margin-right: var(--space-sm);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;

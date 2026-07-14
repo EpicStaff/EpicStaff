@@ -1,10 +1,10 @@
 .tool-variables {
-    margin-bottom: 1rem;
+    margin-bottom: var(--space-lg);
 
     .header {
         display: flex;
         align-items: center;
-        margin-bottom: 0.5rem;
+        margin-bottom: var(--space-sm);
         gap: var(--space-sm);
 
         h3 {
@@ -17,7 +17,7 @@
         .add-icon {
             color: var(--accent-color);
             cursor: pointer;
-            padding: 4px;
+            padding: var(--space-2xs);
             border-radius: var(--radius-sm);
             margin-left: auto;
 
@@ -41,7 +41,7 @@
                 .input-row {
                     display: flex;
                     align-items: center;
-                    gap: 10px;
+                    gap: var(--space-md);
                 }
             }
 
@@ -51,7 +51,7 @@
                 border: 1px solid var(--white-alpha-10);
                 border-radius: var(--radius-md);
                 color: var(--white);
-                padding: 8px 12px;
+                padding: var(--space-sm) var(--space-md);
                 font-size: var(--font-size-md);
 
                 &:focus {
@@ -101,7 +101,7 @@
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                padding: 4px;
+                padding: var(--space-2xs);
                 border-radius: var(--radius-sm);
                 transition: all 0.2s ease;
 

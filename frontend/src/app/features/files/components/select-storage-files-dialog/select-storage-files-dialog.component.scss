@@ -11,7 +11,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 1.5rem 2.5rem 1.25rem;
+        padding: var(--space-2xl) var(--space-4xl) var(--space-xl);
         border-bottom: 1px solid var(--color-divider-subtle);
         flex-shrink: 0;
     }
@@ -74,8 +74,8 @@
         align-items: center;
         justify-content: space-between;
         gap: var(--space-lg);
-        padding: 1rem 2.5rem 0.5rem;
-        margin-top: 1rem;
+        padding: var(--space-lg) var(--space-4xl) var(--space-sm);
+        margin-top: var(--space-lg);
         flex-shrink: 0;
     }
 
@@ -111,7 +111,7 @@
         gap: var(--space-sm);
         height: 28px;
         width: 280px;
-        padding: 0 0.75rem;
+        padding: 0 var(--space-md);
         background-color: var(--color-input-background);
         border: 1px solid var(--color-divider-regular);
         border-radius: var(--radius-sm);
@@ -145,7 +145,7 @@
         display: inline-flex;
         align-items: center;
         height: 28px;
-        padding: 0 14px;
+        padding: 0 var(--space-lg);
         border: 1px solid var(--accent-color);
         border-radius: var(--radius-md);
         font-size: var(--font-size-xs);
@@ -166,7 +166,7 @@
         flex-direction: column;
         flex: 1;
         min-height: 0;
-        padding: 0 2.5rem 1.5rem;
+        padding: 0 var(--space-4xl) var(--space-2xl);
         overflow: hidden;
     }
 
@@ -195,7 +195,7 @@
         align-items: center;
         gap: var(--space-sm);
         height: 28px;
-        padding-right: 1rem;
+        padding-right: var(--space-lg);
         cursor: pointer;
         flex-shrink: 0;
         min-width: max-content;
@@ -272,7 +272,7 @@
     &__item-size {
         flex-shrink: 0;
         margin-left: auto;
-        padding-left: 1rem;
+        padding-left: var(--space-lg);
         font-size: var(--font-size-md);
         font-weight: var(--font-weight-regular);
         color: var(--fog-alpha-16);

@@ -1,7 +1,7 @@
 .collection {
     border-radius: var(--radius-xl);
     background-color: var(--color-card-background);
-    padding: 0.75rem 1rem;
+    padding: var(--space-md) var(--space-lg);
 
     &--selected {
         border: 1px solid var(--accent-color);
@@ -36,7 +36,7 @@
     }
 
     &__status {
-        margin-top: 0.75rem;
+        margin-top: var(--space-md);
         font-size: var(--font-size-xs);
         display: flex;
         align-items: center;

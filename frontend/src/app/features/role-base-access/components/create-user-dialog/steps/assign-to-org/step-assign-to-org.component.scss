@@ -11,7 +11,7 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    padding: 20px 40px;
+    padding: var(--space-xl) var(--space-4xl);
     gap: var(--space-md);
 
     .engage-bar {
@@ -41,7 +41,7 @@ app-select.row-unselected {
 .org-cell {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--space-md);
 
     .org-name {
         font-size: var(--font-size-md);

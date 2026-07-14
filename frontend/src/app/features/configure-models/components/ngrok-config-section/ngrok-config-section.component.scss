@@ -45,13 +45,13 @@
 
         .loading-state {
             text-align: center;
-            padding: 2rem;
+            padding: var(--space-3xl);
             color: var(--color-text-secondary);
 
             &.error {
                 color: var(--color-error);
                 p {
-                    margin-bottom: 1rem;
+                    margin-bottom: var(--space-lg);
                 }
             }
         }

@@ -52,13 +52,13 @@
 
     text-align: center;
     align-self: end;
-    padding-bottom: 3px;
+    padding-bottom: var(--space-2xs);
 }
 
 .flow-shortcuts-btn__text--end {
     grid-column: 3;
     text-align: right;
-    padding-right: 4px;
+    padding-right: var(--space-2xs);
 }
 
 .flow-shortcuts-btn__icon {

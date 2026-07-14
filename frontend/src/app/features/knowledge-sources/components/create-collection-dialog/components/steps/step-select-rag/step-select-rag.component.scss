@@ -1,5 +1,5 @@
 .select-rag {
-    padding: 4.125rem 2.5rem;
+    padding: 4.125rem var(--space-4xl);
     width: 100%;
     display: flex;
     flex-direction: column;
@@ -11,7 +11,7 @@
     }
 
     &__title {
-        margin-bottom: 1rem;
+        margin-bottom: var(--space-lg);
         font-size: var(--font-size-3xl);
         font-weight: var(--font-weight-bold);
         color: var(--color-text-primary);
@@ -42,7 +42,7 @@
 
     &__config {
         width: 100%;
-        padding: 1.5rem 1rem 1.5rem 1.5rem;
+        padding: var(--space-2xl) var(--space-lg) var(--space-2xl) var(--space-2xl);
         border-radius: var(--radius-xl);
         row-gap: var(--space-2xl);
         background-color: var(--color-line);
@@ -71,8 +71,8 @@
 
     &__config-tooltip {
         flex-shrink: 0;
-        margin-left: 1rem;
+        margin-left: var(--space-lg);
         color: var(--accent-color);
-        margin-right: 1.875rem;
+        margin-right: var(--space-3xl);
     }
 }

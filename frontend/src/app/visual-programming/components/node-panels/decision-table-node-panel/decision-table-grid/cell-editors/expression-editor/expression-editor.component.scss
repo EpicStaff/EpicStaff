@@ -32,7 +32,7 @@
         z-index: 0;
         background-color: #1e1e20;
         color: var(--color-text-primary);
-        padding: 0.5rem;
+        padding: var(--space-sm);
         font-family: var(--font-family-mono);
         font-size: var(--font-size-md);
         line-height: 1.5;
@@ -57,7 +57,7 @@
             background-color: var(--purple-alpha-20);
             color: #a5a5ff;
             border-radius: var(--radius-sm);
-            padding: 0 2px;
+            padding: 0 var(--space-3xs);
             margin: 0 -2px;
             display: inline; // Ensure it behaves like text
         }
@@ -78,7 +78,7 @@
         color: transparent;
         caret-color: var(--color-text-primary);
         border: none;
-        padding: 0.5rem;
+        padding: var(--space-sm);
         font-family: var(--font-family-mono);
         font-size: var(--font-size-md);
         resize: none;
@@ -105,7 +105,7 @@
         position: absolute;
         top: 100%;
         left: 0;
-        margin-top: 4px;
+        margin-top: var(--space-2xs);
         z-index: 1000;
     }
 

@@ -38,21 +38,21 @@ $transition-default: all 0.2s ease;
     .ag-cell.ag-cell-value {
         &[col-id='goal'],
         &[col-id='backstory'] {
-            padding: 5px 11px;
+            padding: var(--space-xs) var(--space-md);
         }
     }
 }
 //tags column
 //cells
 ::ng-deep .ag-grid-staff .tags-cell-wrapper {
-    padding: 10px;
+    padding: var(--space-md);
 }
 
 ::ng-deep .ag-grid-staff .tag {
     display: inline-flex;
     align-items: center;
     font-size: var(--font-size-sm);
-    padding: 4px 10px;
+    padding: var(--space-2xs) var(--space-md);
     line-height: 1.2;
     border-radius: var(--radius-md);
     background-color: var(--graphite-780);
@@ -67,7 +67,7 @@ $transition-default: all 0.2s ease;
     text-overflow: ellipsis;
     white-space: nowrap;
     height: 24px;
-    margin-bottom: 6px;
+    margin-bottom: var(--space-xs);
 }
 
 ::ng-deep .ag-grid-staff .tag:hover {
@@ -83,8 +83,8 @@ $transition-default: all 0.2s ease;
     flex-direction: column;
 
     gap: var(--space-2xs);
-    margin: 5px 0;
-    padding: 5px;
+    margin: var(--space-xs) 0;
+    padding: var(--space-xs);
     color: var(--gray-100); // Light text for visibility
 
     .tool-item {
@@ -94,12 +94,12 @@ $transition-default: all 0.2s ease;
         border: 1px solid $border-color;
 
         border-radius: var(--radius-sm);
-        padding: 6px 8px;
+        padding: var(--space-xs) var(--space-sm);
 
-        margin-bottom: 4px; // Adds spacing between tool items
+        margin-bottom: var(--space-2xs); // Adds spacing between tool items
 
         .tool-icon {
-            margin-right: 6px;
+            margin-right: var(--space-xs);
             font-style: normal;
             color: var(--gray-100); // Light icon color
         }
@@ -124,7 +124,7 @@ $transition-default: all 0.2s ease;
     justify-content: flex-end;
     color: $text-secondary;
     font-style: italic;
-    padding: 4px 8px;
+    padding: var(--space-2xs) var(--space-sm);
     font-size: var(--font-size-sm);
 }
 //checkbox cells
@@ -147,7 +147,7 @@ $transition-default: all 0.2s ease;
     //   }
     font-weight: var(--font-weight-medium);
     font-size: var(--font-size-md);
-    padding: 5px 10px;
+    padding: var(--space-xs) var(--space-md);
     padding-left: 0;
 }
 
@@ -155,7 +155,7 @@ $transition-default: all 0.2s ease;
 ::ng-deep .ag-large-text-input .ag-input-field-input.ag-text-area-input {
     font-size: var(--font-size-md) !important; // Set minimum font size
     line-height: 1.6;
-    padding: 10px;
+    padding: var(--space-md);
     color: #dedede;
 }
 
@@ -187,7 +187,7 @@ $transition-default: all 0.2s ease;
 ::ng-deep .ag-grid-staff {
     .ag-cell.ag-cell-value {
         &[col-id='fullLlmConfig'] {
-            padding: 10px;
+            padding: var(--space-md);
         }
     }
 
@@ -195,7 +195,7 @@ $transition-default: all 0.2s ease;
         display: inline-flex;
         align-items: center;
         margin: 0 !important; // Remove the margin since we now have padding on the cell
-        padding: 8px 8px;
+        padding: var(--space-sm) var(--space-sm);
         background-color: var(--graphite-780);
         border-radius: var(--radius-sm);
         cursor: default;
@@ -213,7 +213,7 @@ $transition-default: all 0.2s ease;
             flex-shrink: 0;
             width: 20px;
             height: 20px;
-            margin-right: 8px;
+            margin-right: var(--space-sm);
             border-radius: var(--radius-sm);
         }
 
@@ -236,7 +236,7 @@ $transition-default: all 0.2s ease;
 
                 .custom-name {
                     color: var(--gray-400);
-                    margin-left: 5px;
+                    margin-left: var(--space-xs);
                     white-space: nowrap;
                     overflow: hidden;
                     text-overflow: ellipsis;
@@ -252,7 +252,7 @@ $transition-default: all 0.2s ease;
         justify-content: flex-end;
         color: var(--gray-400);
         font-style: italic;
-        padding: 4px 8px;
+        padding: var(--space-2xs) var(--space-sm);
         font-size: var(--font-size-sm);
     }
 }

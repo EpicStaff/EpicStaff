@@ -12,7 +12,7 @@
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        padding: 1.5rem;
+        padding: var(--space-2xl);
         border-bottom: 1px solid var(--graphite-750);
         flex-shrink: 0;
 
@@ -80,7 +80,7 @@
                 color: var(--color-text-secondary);
                 font-weight: var(--font-weight-regular);
                 font-size: var(--font-size-xs);
-                padding-left: 0.5rem;
+                padding-left: var(--space-sm);
                 gap: var(--space-sm);
             }
 
@@ -90,7 +90,7 @@
                 border-radius: 50%;
                 background-color: #4caf50;
                 flex-shrink: 0;
-                margin-bottom: 1px;
+                margin-bottom: var(--space-3xs);
             }
 
             .created {
@@ -104,7 +104,7 @@
             justify-content: center;
             width: 40px;
             height: 40px;
-            margin-left: 1rem;
+            margin-left: var(--space-lg);
             border-radius: 50%;
             border: 1px solid var(--accent-color);
             background: transparent;
@@ -129,7 +129,7 @@
             background: none;
             border: none;
             cursor: pointer;
-            padding: 0.5rem;
+            padding: var(--space-sm);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -151,7 +151,7 @@
     .dialog-content {
         flex: 1;
         overflow-y: auto;
-        padding: 1.5rem;
+        padding: var(--space-2xl);
         display: flex;
         flex-direction: column;
         gap: var(--space-3xl);
@@ -291,7 +291,7 @@
             scrollbar-width: none;
             flex: 1;
             min-width: 0;
-            padding: 12px 0;
+            padding: var(--space-md) 0;
             margin: -12px 0;
             &::-webkit-scrollbar {
                 display: none;
@@ -309,7 +309,7 @@
         .summary-item {
             display: flex;
             gap: var(--space-sm);
-            padding: 1rem;
+            padding: var(--space-lg);
             border-radius: var(--radius-xl);
             flex-direction: column;
             align-items: flex-start;
@@ -368,7 +368,7 @@
         flex-direction: column;
         gap: var(--space-lg);
         border-radius: var(--radius-lg);
-        padding: 0.5rem;
+        padding: var(--space-sm);
         margin: -0.5rem;
         transition:
             background-color 0.3s ease,
@@ -424,7 +424,7 @@
             display: flex;
             flex-direction: column;
             gap: var(--space-2xl);
-            margin-left: 1rem;
+            margin-left: var(--space-lg);
         }
 
         .entity-subgroup {
@@ -448,7 +448,7 @@
                     font-weight: var(--font-weight-medium);
                     color: var(--accent-color);
                     background-color: var(--color-input-background, var(--black-alpha-5));
-                    padding: 0.2rem 0.5rem;
+                    padding: var(--space-3xs) var(--space-sm);
                     border-radius: var(--radius-sm);
                 }
             }
@@ -456,7 +456,7 @@
             .entity-items-list {
                 display: flex;
                 flex-direction: column;
-                margin-left: 0.5rem;
+                margin-left: var(--space-sm);
                 border: 1px solid var(--graphite-750);
                 border-radius: var(--radius-lg);
                 overflow: hidden;
@@ -475,7 +475,7 @@
             display: flex;
             align-items: center;
             gap: var(--space-lg);
-            padding: 0.8rem 1rem;
+            padding: 0.8rem var(--space-lg);
             transition: all 0.2s ease;
 
             &:hover {
@@ -508,13 +508,13 @@
                 display: inline-flex;
                 gap: var(--space-2xs);
                 align-items: center;
-                padding: 0.25rem 0.35rem;
+                padding: var(--space-2xs) var(--space-xs);
                 border-radius: var(--radius-sm);
                 font-size: var(--font-size-xs);
                 font-weight: var(--font-weight-regular);
                 letter-spacing: 0.3px;
                 white-space: nowrap;
-                margin-right: calc(2rem + 1rem);
+                margin-right: calc(var(--space-3xl) + var(--space-lg));
 
                 &.status-created {
                     background-color: var(--purple-alpha-8);
@@ -574,7 +574,7 @@
                 display: grid;
                 grid-template-columns: auto 1fr;
                 gap: var(--space-2xs) var(--space-lg);
-                padding: 0.6rem 1rem 0.6rem 2.5rem;
+                padding: var(--space-sm) var(--space-lg) var(--space-sm) var(--space-4xl);
 
                 .detail-key {
                     font-size: var(--font-size-xs);
@@ -596,7 +596,7 @@
         display: flex;
         justify-content: flex-end;
         gap: var(--space-lg);
-        padding: 1.5rem;
+        padding: var(--space-2xl);
         border-top: 1px solid var(--color-border, var(--black-alpha-12));
         flex-shrink: 0;
         background-color: var(--color-sidenav-background);

@@ -64,7 +64,7 @@ interface PromptTooltipParams extends ICellRendererParams {
                 height: 100%;
                 display: flex;
                 align-items: center;
-                padding: 0 8px;
+                padding: 0 var(--space-sm);
                 gap: var(--space-xs);
                 cursor: default;
                 overflow: hidden;
@@ -123,7 +123,7 @@ interface PromptTooltipParams extends ICellRendererParams {
                 display: inline-flex;
                 align-items: center;
                 gap: var(--space-2xs);
-                padding: 2px 8px;
+                padding: var(--space-3xs) var(--space-sm);
                 background: rgba(255, 59, 48, 0.15);
                 color: var(--error-color, #ff3b30);
                 border: 1px solid rgba(255, 59, 48, 0.35);

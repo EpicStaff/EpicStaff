@@ -1,7 +1,7 @@
 .dialog-container {
     background-color: var(--graphite-875);
     border-radius: var(--radius-2xl);
-    padding: 24px;
+    padding: var(--space-2xl);
     color: var(--white-alpha-90);
     min-width: 400px;
 
@@ -9,7 +9,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 20px;
+        margin-bottom: var(--space-xl);
 
         .dialog-title {
             margin: 0;
@@ -22,12 +22,12 @@
             border: none;
             color: var(--white-alpha-60);
             cursor: pointer;
-            padding: 4px;
+            padding: var(--space-2xs);
             display: flex;
             align-items: center;
             justify-content: center;
             border-radius: var(--radius-sm);
-            margin-left: 10px;
+            margin-left: var(--space-md);
 
             &:hover {
                 background-color: var(--white-alpha-10);
@@ -37,22 +37,22 @@
     }
 
     .dialog-content {
-        margin-bottom: 24px;
+        margin-bottom: var(--space-2xl);
     }
 
     .form-group {
-        margin-bottom: 16px;
+        margin-bottom: var(--space-lg);
 
         label {
             display: block;
-            margin-bottom: 8px;
+            margin-bottom: var(--space-sm);
             font-size: var(--font-size-md);
             color: var(--white-alpha-70);
         }
 
         .text-input {
             width: 100%;
-            padding: 10px 12px;
+            padding: var(--space-md) var(--space-md);
             background-color: var(--color-backdrop);
             border: 1px solid var(--white-alpha-10);
             border-radius: var(--radius-md);
@@ -74,7 +74,7 @@
             position: relative;
 
             .text-input {
-                padding-right: 40px;
+                padding-right: var(--space-4xl);
             }
 
             .eye-button {
@@ -86,7 +86,7 @@
                 border: none;
                 color: var(--white-alpha-60);
                 cursor: pointer;
-                padding: 4px;
+                padding: var(--space-2xs);
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -100,7 +100,7 @@
         .error-message {
             font-size: var(--font-size-xs);
             color: var(--red-500);
-            margin-top: 4px;
+            margin-top: var(--space-2xs);
         }
     }
 
@@ -110,7 +110,7 @@
         gap: var(--space-md);
 
         .button {
-            padding: 8px 16px;
+            padding: var(--space-sm) var(--space-lg);
             border-radius: var(--radius-md);
             font-size: var(--font-size-md);
             font-weight: var(--font-weight-medium);

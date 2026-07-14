@@ -193,7 +193,7 @@ import {
             .dt-flow-container {
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
-                padding: 1.25rem;
+                padding: var(--space-xl);
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 border-left: 4px solid #a78bfa;
             }
@@ -214,7 +214,7 @@ import {
             }
 
             .play-arrow {
-                margin-right: 16px;
+                margin-right: var(--space-lg);
                 display: flex;
                 align-items: center;
             }
@@ -241,7 +241,7 @@ import {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                margin-right: 16px;
+                margin-right: var(--space-lg);
                 flex-shrink: 0;
             }
 
@@ -282,7 +282,7 @@ import {
 
             .badge {
                 font-size: var(--font-size-xs);
-                padding: 2px 10px;
+                padding: var(--space-3xs) var(--space-md);
                 border-radius: 12px;
                 font-weight: var(--font-weight-medium);
             }
@@ -309,7 +309,7 @@ import {
 
             .dt-content {
                 padding-left: 5.5rem;
-                margin-top: 1rem;
+                margin-top: var(--space-lg);
                 overflow: hidden;
             }
 
@@ -317,7 +317,7 @@ import {
                 display: flex;
                 align-items: baseline;
                 gap: var(--space-md);
-                margin-bottom: 0.5rem;
+                margin-bottom: var(--space-sm);
             }
 
             .detail-label {
@@ -336,7 +336,7 @@ import {
             .detail-value.code {
                 font-family: 'JetBrains Mono', 'Fira Code', monospace;
                 background-color: var(--gray-800);
-                padding: 2px 8px;
+                padding: var(--space-3xs) var(--space-sm);
                 border-radius: 4px;
                 border: 1px solid var(--gray-750);
             }
@@ -347,13 +347,13 @@ import {
             }
 
             .detail-section {
-                margin-bottom: 0.75rem;
+                margin-bottom: var(--space-md);
             }
 
             .section-heading {
                 font-weight: var(--font-weight-medium);
                 color: var(--gray-300);
-                margin-bottom: 0.5rem;
+                margin-bottom: var(--space-sm);
                 cursor: pointer;
                 user-select: none;
                 display: flex;
@@ -361,7 +361,7 @@ import {
             }
 
             .section-heading i {
-                margin-right: 8px;
+                margin-right: var(--space-sm);
                 color: #f59e0b;
                 font-size: var(--font-size-xl);
                 margin-left: -3px;
@@ -372,7 +372,7 @@ import {
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
                 border-radius: 8px;
-                padding: 1rem;
+                padding: var(--space-lg);
                 color: var(--gray-200);
                 white-space: pre-wrap;
                 word-break: break-word;

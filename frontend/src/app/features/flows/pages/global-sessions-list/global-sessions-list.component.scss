@@ -2,7 +2,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    padding: 24px 32px;
+    padding: var(--space-2xl) var(--space-3xl);
     background-color: var(--color-background-body);
     color: var(--color-text-primary);
 }
@@ -10,7 +10,7 @@
 .global-sessions-header {
     display: flex;
     align-items: center;
-    margin-bottom: 24px;
+    margin-bottom: var(--space-2xl);
     flex-shrink: 0;
 }
 
@@ -28,7 +28,7 @@
     color: var(--white);
 
     .back-arrow {
-        margin-top: 2px;
+        margin-top: var(--space-3xs);
         opacity: 1;
         transition: all 0.3s ease;
     }
@@ -57,13 +57,13 @@
     flex: 1;
     min-width: 0;
     overflow-x: hidden;
-    padding-right: 20px;
+    padding-right: var(--space-xl);
 
     .filter-controls {
         display: flex;
         align-items: center;
         gap: var(--space-md);
-        margin-bottom: 16px;
+        margin-bottom: var(--space-lg);
         flex-shrink: 0;
         min-height: 40px;
 
@@ -75,7 +75,7 @@
             font-size: var(--font-size-sm);
             color: var(--color-text-primary);
             user-select: none;
-            padding: 5px;
+            padding: var(--space-xs);
 
             span {
                 white-space: nowrap;
@@ -124,7 +124,7 @@
             color: var(--white);
             border: none;
             outline: none;
-            padding: 6px 16px;
+            padding: var(--space-xs) var(--space-lg);
             border-radius: var(--radius-md);
             font-size: 0.95em;
             font-weight: var(--font-weight-medium);
@@ -161,7 +161,7 @@
 
     .pagination-container {
         flex-shrink: 0;
-        margin-top: 16px;
+        margin-top: var(--space-lg);
         display: flex;
         align-items: center;
         justify-content: flex-start;
@@ -236,7 +236,7 @@
     padding-left: 0;
 
     &.right-panel--open {
-        padding-left: 20px;
+        padding-left: var(--space-xl);
         border-left: 1px solid var(--color-divider-regular);
     }
 
@@ -245,8 +245,8 @@
         align-items: center;
         justify-content: space-between;
         gap: var(--space-md);
-        padding-bottom: 12px;
-        margin-bottom: 4px;
+        padding-bottom: var(--space-md);
+        margin-bottom: var(--space-2xs);
         border-bottom: 1px solid var(--color-divider-regular);
         flex-shrink: 0;
     }
@@ -289,7 +289,7 @@
         color: var(--accent-color);
         background: color-mix(in srgb, var(--accent-color) 12%, transparent);
         border: 1px solid color-mix(in srgb, var(--accent-color) 30%, transparent);
-        padding: 2px 8px;
+        padding: var(--space-3xs) var(--space-sm);
         border-radius: var(--radius-sm);
         white-space: nowrap;
     }
@@ -320,7 +320,7 @@
         overflow: hidden;
         display: flex;
         flex-direction: column;
-        padding: 5px;
+        padding: var(--space-xs);
         // scoped re-binding: preview nodes use the translucent variant
         --color-nodes-background: var(--color-nodes-background-translucent);
     }

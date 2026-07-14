@@ -1,5 +1,5 @@
 .header-container {
-    padding: 1.25rem 1.5rem;
+    padding: var(--space-xl) var(--space-2xl);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -22,7 +22,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 6px;
+    padding: var(--space-xs);
     border-radius: var(--radius-md);
     transition: all 0.2s ease;
 }

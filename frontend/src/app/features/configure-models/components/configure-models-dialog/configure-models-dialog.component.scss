@@ -12,7 +12,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 20px 40px;
+        padding: var(--space-xl) var(--space-4xl);
         border-bottom: 1px solid var(--color-divider-regular);
     }
 
@@ -39,7 +39,7 @@
 
     &__close-btn {
         cursor: pointer;
-        padding: 4px;
+        padding: var(--space-2xs);
         border-radius: 50%;
         border: 1px solid var(--accent-color);
         color: var(--accent-color);
@@ -48,8 +48,8 @@
     &__tabs {
         display: flex;
         align-items: center;
-        gap: 10px;
-        padding: 0 40px;
+        gap: var(--space-md);
+        padding: 0 var(--space-4xl);
         border-bottom: 1px solid var(--color-divider-regular);
         min-height: 56px;
     }
@@ -61,11 +61,11 @@
         font-size: var(--font-size-2xl);
         font-weight: var(--font-weight-medium);
         line-height: 1;
-        padding: 0 8px;
+        padding: 0 var(--space-sm);
         cursor: pointer;
         display: inline-flex;
         align-items: center;
-        gap: 10px;
+        gap: var(--space-md);
         position: relative;
         height: 100%;
 
@@ -90,7 +90,7 @@
 
     &__tab + &__tab::before {
         content: '/';
-        margin-right: 10px;
+        margin-right: var(--space-md);
         color: var(--color-text-secondary, var(--color-text-primary));
         user-select: none;
         font-size: var(--font-size-2xl);
@@ -108,6 +108,6 @@
     &__content {
         flex: 1;
         overflow: auto;
-        padding: 20px 40px;
+        padding: var(--space-xl) var(--space-4xl);
     }
 }

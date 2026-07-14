@@ -72,7 +72,7 @@ import { ProjectSortButtonComponent } from './header-components/header-sort/head
                 justify-content: space-between;
                 height: 5rem;
                 width: 100%;
-                padding: 0 3rem;
+                padding: 0 var(--space-5xl);
                 border-bottom: 1px solid var(--color-divider-subtle);
                 .title-search {
                     display: flex;
@@ -95,8 +95,8 @@ import { ProjectSortButtonComponent } from './header-components/header-sort/head
 
                         line-height: 1;
                         color: var(--accent-color);
-                        margin-left: 8px;
-                        margin-top: 0.3rem;
+                        margin-left: var(--space-sm);
+                        margin-top: var(--space-2xs);
                     }
                 }
 

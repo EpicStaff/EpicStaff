@@ -8,7 +8,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0 1.875rem 1rem 0;
+        padding: 0 var(--space-3xl) var(--space-lg) 0;
         width: 100%;
         font-size: var(--font-size-md);
         font-weight: var(--font-weight-light);
@@ -24,8 +24,8 @@
 
     .files-wrapper {
         overflow: auto;
-        margin-right: 0.7rem;
-        padding-bottom: 2rem;
+        margin-right: var(--space-md);
+        padding-bottom: var(--space-3xl);
     }
 
     .file {

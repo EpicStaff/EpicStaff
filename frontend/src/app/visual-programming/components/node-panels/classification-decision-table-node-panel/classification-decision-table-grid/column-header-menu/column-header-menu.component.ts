@@ -106,7 +106,7 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
                 height: 100%;
                 cursor: default;
                 gap: var(--space-2xs);
-                padding: 0 4px;
+                padding: 0 var(--space-2xs);
             }
 
             .chm-label {
@@ -150,7 +150,7 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
                 color: rgba(255, 255, 255, 0.4) !important;
                 flex-shrink: 0;
                 transition: color 0.15s ease;
-                padding: 2px;
+                padding: var(--space-3xs);
             }
 
             .chm-icon-delete:hover {

@@ -17,7 +17,7 @@
     border-radius: var(--radius-md);
     box-shadow: 0 4px 20px var(--black-alpha-55);
     min-width: 140px;
-    padding: 4px 0;
+    padding: var(--space-2xs) 0;
     z-index: 10000;
 }
 

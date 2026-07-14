@@ -230,8 +230,8 @@ app-flow-assistant-panel .message__text {
 
         li {
             position: relative;
-            padding-left: 20px;
-            margin: 4px 0;
+            padding-left: var(--space-xl);
+            margin: var(--space-2xs) 0;
             line-height: 20px;
 
             &::before {
@@ -242,11 +242,11 @@ app-flow-assistant-panel .message__text {
             }
 
             ul {
-                margin: 4px 0;
+                margin: var(--space-2xs) 0;
                 padding-left: 0;
 
                 li {
-                    padding-left: 24px;
+                    padding-left: var(--space-2xl);
 
                     &::before {
                         content: '◦';
@@ -254,7 +254,7 @@ app-flow-assistant-panel .message__text {
                     }
 
                     ul li {
-                        padding-left: 28px;
+                        padding-left: var(--space-3xl);
 
                         &::before {
                             content: '▪';

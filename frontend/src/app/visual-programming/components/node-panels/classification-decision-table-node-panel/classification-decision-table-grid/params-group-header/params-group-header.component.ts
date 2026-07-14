@@ -86,7 +86,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 gap: var(--space-xs);
                 width: 100%;
                 height: 100%;
-                padding: 0 4px;
+                padding: 0 var(--space-2xs);
                 position: relative;
             }
             .params-group-header--add-only {
@@ -118,7 +118,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 color: rgba(255, 255, 255, 0.5);
                 background: none;
                 border: none;
-                padding: 0 2px;
+                padding: 0 var(--space-3xs);
                 font-size: var(--font-size-md);
                 flex-shrink: 0;
                 display: flex;
@@ -148,7 +148,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
             }
             .params-dropdown-item {
-                padding: 8px 14px;
+                padding: var(--space-sm) var(--space-lg);
                 font-size: var(--font-size-sm);
                 color: rgba(255, 255, 255, 0.85);
                 cursor: pointer;

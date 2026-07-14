@@ -11,7 +11,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 1.5rem 2.5rem 1.25rem;
+        padding: var(--space-2xl) var(--space-4xl) var(--space-xl);
         border-bottom: 1px solid var(--color-divider-subtle);
         flex-shrink: 0;
     }
@@ -85,7 +85,7 @@
         justify-content: space-between;
         gap: var(--space-lg);
         height: 80px;
-        padding: 0 1.5rem;
+        padding: 0 var(--space-2xl);
         border-top: 1px solid var(--color-flow-card-bg);
         font-family: var(--font-family-base);
         font-style: normal;
@@ -125,7 +125,7 @@
         width: 1px;
         height: 16px;
         background-color: var(--fog-alpha-16);
-        margin: 0 4px;
+        margin: 0 var(--space-2xs);
     }
 
     &__footer-view-all {
@@ -172,7 +172,7 @@
         align-items: center;
         justify-content: space-between;
         height: 72px;
-        padding: 0 24px;
+        padding: 0 var(--space-2xl);
         border-bottom: 1px solid var(--color-flow-card-bg);
     }
 
@@ -212,7 +212,7 @@
         display: flex;
         flex-direction: column;
         gap: var(--space-2xl);
-        padding: 24px;
+        padding: var(--space-2xl);
     }
 
     &__formats-section-title {
@@ -248,13 +248,13 @@
     &__formats-divider {
         height: 1px;
         background-color: var(--fog-alpha-16);
-        margin: 0 24px;
+        margin: 0 var(--space-2xl);
     }
 
     &__formats-rules {
         list-style: disc;
         margin: 0;
-        padding-left: 20px;
+        padding-left: var(--space-xl);
         font-size: var(--font-size-md);
         font-weight: var(--font-weight-regular);
         color: var(--color-text-secondary);
@@ -269,7 +269,7 @@
         display: flex;
         flex-direction: column;
         gap: var(--space-lg);
-        padding: 1.5rem 2.5rem;
+        padding: var(--space-2xl) var(--space-4xl);
         border-bottom: 1px solid var(--color-flow-card-bg);
         flex-shrink: 0;
     }
@@ -278,7 +278,7 @@
         display: flex;
         flex-direction: column;
         gap: var(--space-sm);
-        padding: 1.25rem 1.5rem;
+        padding: var(--space-xl) var(--space-2xl);
         flex: 1;
         min-height: 0;
         overflow-y: hidden;
@@ -305,7 +305,7 @@
     &__file-validation-error {
         display: inline-flex;
         align-items: center;
-        padding: 4px 8px;
+        padding: var(--space-2xs) var(--space-sm);
         border-radius: var(--radius-sm);
         background: var(--Transparent-red, var(--red-alpha-8));
         color: var(--color-error);
@@ -324,7 +324,7 @@
         display: inline-flex;
         align-items: center;
         height: 28px;
-        padding: 6.5px 10px;
+        padding: 6.5px var(--space-md);
         border: 1px solid var(--accent-color);
         border-radius: var(--radius-md);
         font-size: var(--font-size-xs);
@@ -395,7 +395,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0 0.75rem;
+        padding: 0 var(--space-md);
         height: 40px;
         min-width: 0;
         overflow: hidden;
@@ -458,7 +458,7 @@
         display: flex;
         align-items: center;
         gap: var(--space-sm);
-        padding: 0 0.75rem;
+        padding: 0 var(--space-md);
         height: 40px;
         border-bottom: 1px solid var(--color-divider-subtle);
         flex-shrink: 0;
@@ -488,7 +488,7 @@
         overflow-y: auto;
         overflow-x: auto;
         min-height: 60px;
-        padding: 0.25rem;
+        padding: var(--space-2xs);
     }
 
     &__state {
@@ -505,7 +505,7 @@
         align-items: center;
         gap: var(--space-sm);
         height: 36px;
-        padding-right: 1rem;
+        padding-right: var(--space-lg);
         border-radius: var(--radius-sm);
         cursor: pointer;
         flex-shrink: 0;
@@ -567,7 +567,7 @@
 
     // Input
     &__input {
-        padding: 0.5rem 0.75rem;
+        padding: var(--space-sm) var(--space-md);
         border: 1px solid var(--color-divider-regular);
         border-radius: var(--radius-md);
         background-color: var(--color-input-background);
@@ -604,7 +604,7 @@
         align-items: center;
         gap: var(--space-sm);
         height: 32px;
-        padding: 0 8px;
+        padding: 0 var(--space-sm);
 
         &:nth-child(even) {
             background-color: var(--color-scrim-subtle);
@@ -651,7 +651,7 @@
         flex-shrink: 0;
         display: inline-flex;
         align-items: center;
-        padding: 4px 8px;
+        padding: var(--space-2xs) var(--space-sm);
         border-radius: var(--radius-sm);
         font-size: var(--font-size-2xs);
         font-weight: var(--font-weight-regular);
@@ -679,7 +679,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 0.2rem;
+        padding: var(--space-3xs);
         background: transparent;
         border: none;
         cursor: pointer;

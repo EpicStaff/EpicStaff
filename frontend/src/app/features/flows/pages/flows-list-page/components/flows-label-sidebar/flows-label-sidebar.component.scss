@@ -16,7 +16,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 14px 8px 24px;
+    padding: var(--space-sm) var(--space-lg) var(--space-sm) var(--space-2xl);
     height: 40px;
     border-bottom: 1px solid var(--color-divider-subtle);
     flex-shrink: 0;
@@ -40,7 +40,7 @@
         color: var(--color-text-secondary);
         display: flex;
         align-items: center;
-        padding: 0.2rem;
+        padding: var(--space-3xs);
         border-radius: var(--radius-sm);
 
         &:hover {
@@ -53,14 +53,14 @@
     flex: 1;
     overflow-y: auto;
     overflow-x: auto;
-    padding-bottom: 1rem;
+    padding-bottom: var(--space-lg);
 }
 
 .tree-item {
     display: flex;
     align-items: center;
     gap: var(--space-xs);
-    padding: 0.45rem 0.75rem 0.45rem 1rem;
+    padding: 0.45rem var(--space-md) 0.45rem var(--space-lg);
     cursor: pointer;
     color: var(--color-text-primary);
     font-size: var(--font-size-md);
@@ -102,12 +102,12 @@
 }
 
 .all-flows-item {
-    margin-top: 0.75rem;
+    margin-top: var(--space-md);
     font-weight: var(--font-weight-medium);
     gap: var(--space-sm);
 
     span {
-        padding-top: 4px;
+        padding-top: var(--space-2xs);
     }
 }
 
@@ -115,7 +115,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.75rem 1rem 0.25rem;
+    padding: var(--space-md) var(--space-lg) var(--space-2xs);
 
     .section-label-header {
         display: flex;
@@ -158,14 +158,14 @@
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    padding: 0.3rem 0.5rem;
-    margin: 0.1rem 0.5rem;
+    padding: var(--space-2xs) var(--space-sm);
+    margin: 0.1rem var(--space-sm);
     min-width: max-content;
 
     &.child-add {
         padding-left: 0;
-        padding-right: 0.5rem;
-        margin: 0.1rem 0.5rem;
+        padding-right: var(--space-sm);
+        margin: 0.1rem var(--space-sm);
     }
 
     .label-input {
@@ -175,7 +175,7 @@
         border: 1px solid var(--color-input-border);
         border-radius: var(--radius-sm);
         color: var(--color-text-primary);
-        padding: 0.25rem 0.5rem;
+        padding: var(--space-2xs) var(--space-sm);
         font-size: var(--font-size-md);
         outline: none;
 
@@ -198,7 +198,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0.2rem;
+    padding: var(--space-3xs);
     border-radius: var(--radius-sm);
     flex-shrink: 0;
     width: 28px;
@@ -278,7 +278,7 @@
     border: 1px solid var(--accent-color);
     border-radius: var(--radius-sm);
     color: var(--color-text-primary);
-    padding: 0.15rem 0.4rem;
+    padding: 0.15rem var(--space-xs);
     font-size: var(--font-size-md);
     outline: none;
 }
@@ -315,8 +315,8 @@
 
 .unlabeled-item {
     border-top: 1px solid var(--color-divider-subtle);
-    margin-top: 0.75rem;
-    padding-top: 0.75rem;
+    margin-top: var(--space-md);
+    padding-top: var(--space-md);
 }
 
 // ── Icon color states ──
@@ -359,8 +359,8 @@
 // ── Validation error ──
 
 .label-error {
-    margin: 0.1rem 0 0.3rem;
-    padding: 0.35rem 0.6rem;
+    margin: 0.1rem 0 var(--space-2xs);
+    padding: var(--space-xs) var(--space-sm);
     background: var(--red-alpha-10);
     border: 1px solid var(--red-alpha-30);
     border-left: 3px solid var(--color-error);

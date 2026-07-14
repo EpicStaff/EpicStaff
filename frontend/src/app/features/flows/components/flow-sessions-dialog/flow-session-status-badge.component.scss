@@ -2,9 +2,9 @@
     display: inline-flex;
     align-items: center;
     gap: var(--space-2xs);
-    padding: 4px 8px;
+    padding: var(--space-2xs) var(--space-sm);
     border-radius: var(--radius-md);
-    font-size: 0.85em;
+    font-size: var(--font-size-md);
     font-weight: var(--font-weight-regular);
     color: var(--white);
     white-space: nowrap;
@@ -17,23 +17,23 @@
 }
 .status-error {
     background: var(--red-600-alpha-18);
-    color: #e0575b;
+    color: var(--red-600);
 }
 .status-stop {
     background: var(--black-alpha-18);
-    color: #eca6a8;
+    color: var(--red-400);
 }
 .status-completed {
     background: var(--green-alpha-18);
-    color: #3bb77e;
+    color: var(--green-500);
 }
 .status-waiting {
     background: var(--amber-alpha-18);
-    color: #ffc14d;
+    color: var(--yellow-500);
 }
 .status-pending {
     background: var(--steel-alpha-18);
-    color: #b0b8c1;
+    color: var(--gray-400);
 }
 .status-expired {
     background: var(--gray-alpha-18);
@@ -41,5 +41,5 @@
 }
 .status-unknown {
     background: var(--black-alpha-18);
-    color: #b0b8c1;
+    color: var(--gray-400);
 }

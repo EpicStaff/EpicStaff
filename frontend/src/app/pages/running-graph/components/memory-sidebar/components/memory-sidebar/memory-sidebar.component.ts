@@ -136,8 +136,8 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 16px 20px;
-                padding-bottom: 6px;
+                padding: var(--space-lg) var(--space-xl);
+                padding-bottom: var(--space-xs);
                 h2 {
                     margin: 0;
                     font-size: var(--font-size-xl);
@@ -168,7 +168,7 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
 
             /* Memory Filters */
             .memory-filters {
-                padding: 12px 20px;
+                padding: var(--space-md) var(--space-xl);
                 border-bottom: 1px solid var(--gray-800);
 
                 .filter-chips {
@@ -181,7 +181,7 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
                     background-color: var(--gray-800);
                     border: none;
                     border-radius: 16px;
-                    padding: 6px 12px;
+                    padding: var(--space-xs) var(--space-md);
                     font-size: var(--font-size-sm);
                     color: var(--gray-300);
                     cursor: pointer;
@@ -199,13 +199,13 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
 
             /* Memories List */
             .memories-list {
-                padding: 16px 20px;
+                padding: var(--space-lg) var(--space-xl);
 
                 .no-memories {
                     display: flex;
                     justify-content: center;
                     align-items: center;
-                    padding: 40px 0;
+                    padding: var(--space-4xl) 0;
                     color: var(--gray-400);
                 }
             }

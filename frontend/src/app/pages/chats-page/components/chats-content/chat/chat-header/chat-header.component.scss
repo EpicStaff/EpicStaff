@@ -7,7 +7,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem 3rem;
+    padding: var(--space-lg) var(--space-5xl);
     font-size: var(--font-size-lg);
     border-bottom: 1px solid var(--color-divider-subtle);
     /* Removed background color as requested */
@@ -27,7 +27,7 @@
         .model-info {
             font-size: var(--font-size-xs);
             color: var(--white-alpha-60);
-            margin-top: 2px;
+            margin-top: var(--space-3xs);
         }
     }
 
@@ -40,12 +40,12 @@
             display: flex;
             background-color: var(--gray-800);
             border-radius: 20px;
-            padding: 3px;
+            padding: var(--space-2xs);
             overflow: hidden;
             box-shadow: 0 2px 4px var(--black-alpha-20);
 
             .toggle-btn {
-                padding: 0.5rem 1.2rem;
+                padding: var(--space-sm) 1.2rem;
                 background: none;
                 border: none;
                 color: var(--gray-400);
@@ -75,7 +75,7 @@
                 align-items: center;
 
                 .voice-icon {
-                    margin-top: 1px;
+                    margin-top: var(--space-3xs);
                     height: 16px;
                     width: 16px;
                     position: absolute;
@@ -90,8 +90,8 @@
                     color: var(--white);
                     border: 1px solid var(--gray-700);
                     border-radius: var(--radius-sm);
-                    padding: 0.5rem;
-                    padding-left: 32px;
+                    padding: var(--space-sm);
+                    padding-left: var(--space-3xl);
                     outline: none;
                     appearance: none;
                     font-size: var(--font-size-md);
@@ -106,7 +106,7 @@
                     option {
                         background-color: var(--gray-800);
                         color: var(--white);
-                        padding: 8px;
+                        padding: var(--space-sm);
                     }
                 }
 
@@ -132,7 +132,7 @@
                 color: var(--gray-400);
                 border: 1px solid var(--gray-700);
                 border-radius: var(--radius-md);
-                padding: 0.5rem;
+                padding: var(--space-sm);
                 cursor: pointer;
                 transition: all 0.2s ease;
                 display: flex;

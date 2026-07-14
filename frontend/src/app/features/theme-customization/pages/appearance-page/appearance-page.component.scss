@@ -7,14 +7,14 @@
 .appearance {
     max-width: 880px;
     margin: 0 auto;
-    padding: 32px 24px 64px;
+    padding: var(--space-3xl) var(--space-2xl) 64px;
 
     &__header {
-        margin-bottom: 32px;
+        margin-bottom: var(--space-3xl);
     }
 
     &__title {
-        margin: 0 0 8px;
+        margin: 0 0 var(--space-sm);
         font-size: var(--font-size-3xl);
         font-weight: var(--font-weight-semibold);
         color: var(--color-text-primary);
@@ -28,11 +28,11 @@
     }
 
     &__section {
-        margin-bottom: 40px;
+        margin-bottom: var(--space-4xl);
     }
 
     &__section-title {
-        margin: 0 0 16px;
+        margin: 0 0 var(--space-lg);
         font-size: var(--font-size-xl);
         font-weight: var(--font-weight-medium);
         color: var(--color-text-primary);
@@ -45,7 +45,7 @@
     }
 
     &__hint {
-        margin: 16px 0 0;
+        margin: var(--space-lg) 0 0;
         font-size: var(--font-size-sm);
         color: var(--color-text-tertiary);
     }
@@ -63,7 +63,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
-    padding: 16px;
+    padding: var(--space-lg);
     border: 1px solid var(--color-components-card-border);
     border-radius: var(--radius-2xl);
     background: var(--color-surface-card);
@@ -153,13 +153,13 @@
         display: flex;
         align-items: center;
         gap: var(--space-md);
-        margin-bottom: 24px;
+        margin-bottom: var(--space-2xl);
     }
 
     &__name-input {
         flex: 1;
         min-width: 0;
-        padding: 8px 12px;
+        padding: var(--space-sm) var(--space-md);
         border: 1px solid var(--color-input-border);
         border-radius: var(--radius-md);
         background: var(--color-input-background);
@@ -174,14 +174,14 @@
 
     &__base-toggle {
         display: flex;
-        padding: 2px;
+        padding: var(--space-3xs);
         border: 1px solid var(--color-divider-regular);
         border-radius: var(--radius-md);
         background: var(--color-surface);
     }
 
     &__base-option {
-        padding: 6px 14px;
+        padding: var(--space-xs) var(--space-lg);
         border: none;
         border-radius: var(--radius-sm);
         background: transparent;
@@ -199,7 +199,7 @@
     }
 
     &__reset-all {
-        padding: 8px 14px;
+        padding: var(--space-sm) var(--space-lg);
         border: 1px solid var(--color-divider-regular);
         border-radius: var(--radius-md);
         background: var(--color-secondary-btn-background);
@@ -217,11 +217,11 @@
     }
 
     &__group {
-        margin-bottom: 28px;
+        margin-bottom: var(--space-3xl);
     }
 
     &__group-title {
-        margin: 0 0 8px;
+        margin: 0 0 var(--space-sm);
         font-size: var(--font-size-md);
         font-weight: var(--font-weight-semibold);
         color: var(--color-text-primary);
@@ -239,7 +239,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-lg);
-    padding: 10px 16px;
+    padding: var(--space-md) var(--space-lg);
 
     & + & {
         border-top: 1px solid var(--color-divider-subtle);
@@ -308,7 +308,7 @@
         position: relative;
         width: 44px;
         height: 26px;
-        padding: 2px;
+        padding: var(--space-3xs);
         border: 1px solid var(--color-divider-strong);
         border-radius: var(--radius-md);
         background:
@@ -325,7 +325,7 @@
 
     &__swatch-fill {
         position: absolute;
-        inset: 2px;
+        inset: var(--space-3xs);
         border-radius: var(--radius-sm);
     }
 }

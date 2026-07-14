@@ -134,7 +134,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                 position: relative;
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
-                padding: 1.25rem;
+                padding: var(--space-xl);
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 border-left: 4px solid #00bfa5;
             }
@@ -147,7 +147,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
             }
 
             .play-arrow {
-                margin-right: 16px;
+                margin-right: var(--space-lg);
                 display: flex;
                 align-items: center;
 
@@ -164,7 +164,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                margin-right: 20px;
+                margin-right: var(--space-xl);
                 flex-shrink: 0;
 
                 app-svg-icon {
@@ -199,14 +199,14 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                 flex-direction: column;
                 gap: var(--space-lg);
                 padding-left: 5.5rem;
-                margin-top: 1.25rem;
+                margin-top: var(--space-xl);
             }
 
             /* Section styling */
             .section-heading {
                 font-weight: var(--font-weight-medium);
                 color: var(--gray-300);
-                margin-bottom: 0.5rem;
+                margin-bottom: var(--space-sm);
                 cursor: pointer;
                 user-select: none;
                 display: flex;
@@ -214,7 +214,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
             }
 
             .section-heading app-svg-icon {
-                margin-right: 8px;
+                margin-right: var(--space-sm);
                 color: #00bfa5;
                 margin-left: -3px;
             }
@@ -222,7 +222,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
             .input-container,
             .variables-container,
             .state-history-container {
-                margin-bottom: 0.5rem;
+                margin-bottom: var(--space-sm);
             }
 
             .input-content,
@@ -231,7 +231,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
                 border-radius: 8px;
-                padding: 1rem;
+                padding: var(--space-lg);
                 overflow: auto;
                 max-height: 400px;
                 margin-left: 23px;
@@ -252,15 +252,15 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
                 border-radius: 8px;
-                padding: 1rem;
+                padding: var(--space-lg);
             }
 
             .state-history-item-header {
                 display: flex;
                 align-items: center;
                 gap: var(--space-md);
-                margin-bottom: 0.75rem;
-                padding-bottom: 0.75rem;
+                margin-bottom: var(--space-md);
+                padding-bottom: var(--space-md);
                 border-bottom: 1px solid var(--gray-750);
             }
 
@@ -268,7 +268,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                 background-color: #00bfa5;
                 color: var(--gray-900);
                 font-weight: var(--font-weight-semibold);
-                padding: 0.25rem 0.5rem;
+                padding: var(--space-2xs) var(--space-sm);
                 border-radius: 4px;
                 font-size: var(--font-size-md);
             }
@@ -283,7 +283,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                 color: #00bfa5;
                 font-size: var(--font-size-md);
                 background-color: rgba(0, 191, 165, 0.15);
-                padding: 0.25rem 0.5rem;
+                padding: var(--space-2xs) var(--space-sm);
                 border-radius: 4px;
             }
 
@@ -309,7 +309,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                 background-color: var(--gray-850);
                 border: 1px solid var(--gray-750);
                 border-radius: 6px;
-                padding: 0.75rem;
+                padding: var(--space-md);
                 overflow: auto;
                 max-height: 300px;
             }
@@ -320,7 +320,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                 color: rgb(255, 255, 255);
                 border: 2px solid rgba(0, 191, 165, 0.4);
                 border-radius: 6px;
-                padding: 0.5rem 0.75rem;
+                padding: var(--space-sm) var(--space-md);
                 font-weight: var(--font-weight-medium);
                 display: inline-flex;
                 align-items: center;
@@ -345,7 +345,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
             }
 
             .play-nested-arrow {
-                margin-top: 2px;
+                margin-top: var(--space-3xs);
                 display: inline-block;
                 transform: rotate(0deg);
                 transition: transform 0.2s ease;

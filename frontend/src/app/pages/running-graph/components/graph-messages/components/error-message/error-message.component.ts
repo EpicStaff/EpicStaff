@@ -105,7 +105,7 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
                 position: relative;
                 background-color: var(--color-nodes-background);
                 border-radius: 8px;
-                padding: var(--message-padding, 1.25rem);
+                padding: var(--message-padding, var(--space-xl));
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 border-left: 4px solid #ff6b6b;
             }
@@ -118,7 +118,7 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
             }
 
             .play-arrow {
-                margin-right: 16px;
+                margin-right: var(--space-lg);
                 display: flex;
                 align-items: center;
 
@@ -135,7 +135,7 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                margin-right: 20px;
+                margin-right: var(--space-xl);
                 flex-shrink: 0;
 
                 app-svg-icon {
@@ -165,21 +165,21 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
                 flex-direction: column;
                 gap: var(--space-lg);
                 padding-left: 5.5rem;
-                margin-top: 1.25rem;
+                margin-top: var(--space-xl);
             }
 
             /* Section styling */
             .section-heading {
                 font-weight: var(--font-weight-medium);
                 color: var(--gray-300);
-                margin-bottom: 0.5rem;
+                margin-bottom: var(--space-sm);
                 cursor: pointer;
                 user-select: none;
                 display: flex;
                 align-items: center;
 
                 app-svg-icon {
-                    margin-right: 8px;
+                    margin-right: var(--space-sm);
                     color: #ff6b6b;
                     margin-left: -3px;
                 }
@@ -194,14 +194,14 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
                 border-radius: 8px;
-                padding: 1rem;
+                padding: var(--space-lg);
                 color: var(--gray-200);
                 white-space: pre-wrap;
                 word-break: break-word;
                 overflow-y: auto;
                 transition: max-height 0.3s ease;
                 margin-left: 23px;
-                padding-inline: 10px;
+                padding-inline: var(--space-md);
 
                 &.collapsed {
                     max-height: 200px;
@@ -218,10 +218,10 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
                 color: #ff6b6b;
                 font-size: var(--font-size-md);
                 cursor: pointer;
-                padding: 0.5rem;
+                padding: var(--space-sm);
                 text-align: center;
                 width: 100%;
-                margin-top: 0.25rem;
+                margin-top: var(--space-2xs);
             }
 
             .toggle-button:hover {

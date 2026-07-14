@@ -43,7 +43,7 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
                 align-items: center;
                 justify-content: center;
                 background-color: rgba(255, 255, 255, 0.04);
-                padding: 0.4rem;
+                padding: var(--space-xs);
                 width: 36px;
                 height: 36px;
                 border-radius: 6px;

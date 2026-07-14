@@ -9,14 +9,14 @@
     display: flex;
     flex-direction: column;
     flex-grow: 1;
-    margin: 1.5rem 2.5rem 1.875rem 1.875rem;
+    margin: var(--space-2xl) var(--space-4xl) var(--space-3xl) var(--space-3xl);
     overflow: hidden;
 
     &__header {
         height: 40px;
         display: flex;
         justify-content: space-between;
-        margin-bottom: 0.75rem;
+        margin-bottom: var(--space-md);
         align-items: center;
         gap: var(--space-md);
         font-size: var(--font-size-xl);
@@ -29,7 +29,7 @@
         gap: var(--space-2xs);
         height: 28px;
         border-radius: var(--radius-md);
-        padding: 0.25rem 0.5rem;
+        padding: var(--space-2xs) var(--space-sm);
         font-size: var(--font-size-xs);
 
         &--synchronized {

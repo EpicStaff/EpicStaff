@@ -310,7 +310,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 
             .input-wrapper input {
                 width: 100%;
-                padding: 0.5rem 0.75rem;
+                padding: var(--space-sm) var(--space-md);
                 background-color: var(--color-input-background);
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 6px;
@@ -332,7 +332,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 font-size: var(--font-size-lg);
                 cursor: pointer;
                 color: #ccc;
-                padding: 0.2rem;
+                padding: var(--space-3xs);
                 border-radius: 4px;
                 transition: all 0.2s ease;
                 flex-shrink: 0;
@@ -352,7 +352,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 display: flex;
                 align-items: center;
                 gap: var(--space-sm);
-                padding: 6px 12px;
+                padding: var(--space-xs) var(--space-md);
                 background: var(--color-action-btn-background);
                 border: 1px solid var(--color-divider-subtle);
                 border-radius: 4px;
@@ -383,7 +383,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
             .btn-secondary,
             .btn-primary {
                 flex: 1;
-                padding: 8px 12px;
+                padding: var(--space-sm) var(--space-md);
                 border: 1px solid var(--color-divider-subtle);
                 border-radius: 4px;
                 font-size: var(--font-size-md);
@@ -426,10 +426,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
             .warning-banner {
                 border-left: 1px solid rgba(255, 207, 0, 1);
                 border-radius: 10px;
-                padding: 10px 12px;
+                padding: var(--space-md) var(--space-md);
                 font-size: var(--font-size-sm);
                 color: inherit;
-                margin-top: 8px;
+                margin-top: var(--space-sm);
             }
 
             .var-picker-btn {
@@ -478,7 +478,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                     border-left: 3px solid #efd616;
                     background-color: rgba(239, 214, 22, 0.08);
                     color: #efd616;
-                    padding: 0.25rem 0.5rem;
+                    padding: var(--space-2xs) var(--space-sm);
                     transform: translateY(-100%);
                     opacity: 0;
                     transition:
@@ -490,9 +490,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                     color: var(--accent-color);
                     background: var(--color-nodes-sidepanel-bg);
                     border: none;
-                    padding: 0.25rem;
+                    padding: var(--space-2xs);
                     border-radius: 4px;
-                    margin: 0 3px;
+                    margin: 0 var(--space-2xs);
                 }
             }
         `,

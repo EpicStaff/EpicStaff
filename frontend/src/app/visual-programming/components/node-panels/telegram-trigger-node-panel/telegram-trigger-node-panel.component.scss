@@ -37,7 +37,7 @@
     }
     .form-data {
         overflow: auto;
-        padding-right: 1rem;
+        padding-right: var(--space-lg);
         width: 550px;
     }
     .code-editor-section {
@@ -67,7 +67,7 @@
     flex-shrink: 0;
 
     .json-wrapper {
-        margin-top: 0.75rem;
+        margin-top: var(--space-md);
         flex-grow: 1;
     }
 
@@ -92,7 +92,7 @@
 
     &__info-link {
         color: var(--accent-color);
-        margin: 0 0.25rem;
+        margin: 0 var(--space-2xs);
     }
 }
 
@@ -131,7 +131,7 @@
 .webhook-status {
     &__container {
         width: 100%;
-        padding: 0.5rem 0.75rem;
+        padding: var(--space-sm) var(--space-md);
         background-color: var(--color-input-background);
         border: 1px solid var(--white-alpha-10);
         border-radius: var(--radius-xl);
@@ -182,7 +182,7 @@
     }
 
     &__count {
-        padding: 0.2rem 0.5rem;
+        padding: var(--space-3xs) var(--space-sm);
         border-radius: var(--radius-sm);
         background-color: #44464a4d;
         color: var(--fog-alpha-40);
@@ -190,7 +190,7 @@
 
     &__container {
         width: 100%;
-        padding: 0.5rem;
+        padding: var(--space-sm);
         background-color: var(--color-input-background);
         border: 1px solid var(--white-alpha-10);
         border-radius: var(--radius-lg);
@@ -217,7 +217,7 @@
         border: 1px solid var(--white-alpha-10);
         background-color: #44464a4d;
         border-radius: var(--radius-sm);
-        padding: 0.25rem 0.5rem;
+        padding: var(--space-2xs) var(--space-sm);
     }
 
     &__item-tip {

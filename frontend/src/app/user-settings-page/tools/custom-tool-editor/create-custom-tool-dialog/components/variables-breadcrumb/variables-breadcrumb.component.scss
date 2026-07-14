@@ -2,7 +2,7 @@
     display: flex;
     align-items: stretch;
     gap: var(--space-xs);
-    padding: 4px 0 8px;
+    padding: var(--space-2xs) 0 var(--space-sm);
     min-width: 0;
 
     .breadcrumb-scroll-left {
@@ -42,7 +42,7 @@
         overflow-x: auto;
         overflow-y: hidden;
         scroll-behavior: smooth;
-        padding-bottom: 4px;
+        padding-bottom: var(--space-2xs);
 
         &::-webkit-scrollbar {
             height: 6px;
@@ -75,7 +75,7 @@
         min-height: 36px;
         flex-shrink: 0;
         box-sizing: border-box;
-        padding: 0 14px;
+        padding: 0 var(--space-lg);
         background: var(--white-alpha-6);
         border-radius: var(--radius-lg);
         color: var(--accent-color);
@@ -120,7 +120,7 @@
         color: #9b9ba6;
         font-size: var(--font-size-xs);
         user-select: none;
-        padding: 0 2px;
+        padding: 0 var(--space-3xs);
         flex-shrink: 0;
     }
 

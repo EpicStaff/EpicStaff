@@ -11,7 +11,7 @@
     justify-content: space-between;
     align-items: center;
     border-radius: var(--radius-lg);
-    margin-bottom: 1rem;
+    margin-bottom: var(--space-lg);
     position: relative;
     height: 2.5rem;
     width: 100%;
@@ -31,7 +31,7 @@
     .search-container {
         display: flex;
         align-items: center;
-        padding: 0.4rem 0.7rem;
+        padding: var(--space-xs) var(--space-md);
         width: 320px;
         max-width: 100%;
         min-width: 0;
@@ -70,7 +70,7 @@
             color: #f9fafb;
             width: 100%;
             height: 100%;
-            margin-left: 0.5rem;
+            margin-left: var(--space-sm);
             padding-right: 6.5rem; /* Add padding for the close button */
 
             &::placeholder {
@@ -93,7 +93,7 @@
             align-items: center;
             justify-content: center;
             color: #6b7280;
-            padding: 0.25rem 0.5rem;
+            padding: var(--space-2xs) var(--space-sm);
             border-radius: var(--radius-sm);
             max-width: calc(100% - 16px);
             white-space: nowrap;
@@ -104,7 +104,7 @@
 
             .close-label {
                 font-size: var(--font-size-xs);
-                margin-right: 0.5rem;
+                margin-right: var(--space-sm);
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
@@ -122,12 +122,12 @@
     .size-slider {
         display: flex;
         align-items: center;
-        margin-left: 1.5rem;
+        margin-left: var(--space-2xl);
         height: 100%;
         flex-shrink: 0;
 
         .slider-label {
-            margin-right: 0.75rem;
+            margin-right: var(--space-md);
             font-size: var(--font-size-md);
             color: #6b7280;
         }

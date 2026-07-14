@@ -17,7 +17,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 12px 16px;
+        padding: var(--space-md) var(--space-lg);
         background-color: var(--gray-900);
         border-bottom: 1px solid var(--gray-750);
         height: 60px;
@@ -145,7 +145,7 @@
 
     .body {
         flex: 1;
-        padding: 16px;
+        padding: var(--space-lg);
         transition:
             max-height 0.3s ease,
             opacity 0.3s ease,
@@ -154,7 +154,7 @@
         visibility: visible;
 
         .section {
-            margin-bottom: 16px;
+            margin-bottom: var(--space-lg);
 
             &:last-child {
                 margin-bottom: 0;
@@ -167,7 +167,7 @@
                 text-transform: uppercase;
                 color: var(--gray-400);
                 margin: 0;
-                margin-bottom: 4px; /* Reduced from 8px to 4px to make spacing smaller */
+                margin-bottom: var(--space-2xs); /* Reduced from 8px to 4px to make spacing smaller */
                 height: 20px;
             }
 
@@ -207,7 +207,7 @@
                 align-items: center;
                 cursor: pointer;
                 user-select: none;
-                padding: 4px 6px;
+                padding: var(--space-2xs) var(--space-xs);
                 margin: -4px -6px;
                 border-radius: var(--radius-sm);
                 transition: background-color 0.2s ease;
@@ -238,26 +238,26 @@
                 &.expanded {
                     max-height: 800px;
                     opacity: 1;
-                    margin-top: 8px; /* Reduced from 12px to 8px */
+                    margin-top: var(--space-sm); /* Reduced from 12px to 8px */
                 }
             }
 
             .details-subsection {
-                margin-bottom: 16px;
+                margin-bottom: var(--space-lg);
 
                 &:last-child {
-                    margin-bottom: 8px;
+                    margin-bottom: var(--space-sm);
                 }
 
                 .subsection-title {
                     font-size: var(--font-size-xs);
                     font-weight: var(--font-weight-semibold);
                     color: var(--gray-400);
-                    margin: 0 0 8px 0;
+                    margin: 0 0 var(--space-sm) 0;
                     text-transform: uppercase;
                     /* Added hover styles for subsection title */
-                    padding: 2px 4px;
-                    margin: -2px -4px 6px -4px;
+                    padding: var(--space-3xs) var(--space-2xs);
+                    margin: -2px -4px var(--space-xs) -4px;
                     border-radius: var(--radius-sm);
                     transition: background-color 0.2s ease;
                     display: flex;
@@ -284,8 +284,8 @@
             color: var(--accent-color);
             cursor: pointer;
             font-size: var(--font-size-xs);
-            padding: 2px 0;
-            margin-top: 4px;
+            padding: var(--space-3xs) 0;
+            margin-top: var(--space-2xs);
             display: block;
             text-align: left;
             height: 20px;
@@ -296,7 +296,7 @@
 
             &.tools-toggle,
             &.tags-toggle {
-                margin-top: 8px;
+                margin-top: var(--space-sm);
                 font-size: var(--font-size-sm);
             }
         }
@@ -311,7 +311,7 @@
         .model-custom-name {
             font-size: var(--font-size-xs);
             color: var(--gray-400);
-            margin: 4px 0 0;
+            margin: var(--space-2xs) 0 0;
         }
 
         .model-info-container {
@@ -348,13 +348,13 @@
         .tools-container {
             display: flex;
             flex-direction: column;
-            margin-top: 4px;
+            margin-top: var(--space-2xs);
 
             .tool-item {
                 display: flex;
                 align-items: center;
                 gap: var(--space-sm);
-                padding: 4px 0;
+                padding: var(--space-2xs) 0;
                 height: 28px;
                 position: relative;
 
@@ -399,7 +399,7 @@
         .body {
             max-height: 0;
             opacity: 0;
-            padding: 0 16px;
+            padding: 0 var(--space-lg);
             visibility: hidden;
             transition:
                 max-height 0.3s ease,

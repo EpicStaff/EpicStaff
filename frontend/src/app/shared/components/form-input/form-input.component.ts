@@ -85,7 +85,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     display: flex;
                     align-items: center;
                     gap: var(--space-sm);
-                    margin-bottom: 8px;
+                    margin-bottom: var(--space-sm);
 
                     .required {
                         color: var(--color-required-asterisk, var(--accent-color));
@@ -108,7 +108,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 
                 .text-input {
                     width: 100%;
-                    padding: 8px 12px;
+                    padding: var(--space-sm) var(--space-md);
 
                     &::-ms-reveal {
                         display: none;
@@ -129,7 +129,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     }
 
                     &.has-toggle {
-                        padding-right: 36px;
+                        padding-right: var(--space-4xl);
                     }
 
                     &:focus {
@@ -166,7 +166,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                 .error-message {
                     color: #ef4444;
                     font-size: var(--font-size-xs);
-                    margin-top: 4px;
+                    margin-top: var(--space-2xs);
                     line-height: 1.4;
                 }
             }

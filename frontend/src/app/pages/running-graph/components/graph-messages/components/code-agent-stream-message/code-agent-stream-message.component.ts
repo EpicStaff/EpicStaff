@@ -152,7 +152,7 @@ interface ThinkingStep {
         .code-agent-container {
             background-color: var(--color-nodes-background);
             border-radius: 8px;
-            padding: var(--message-padding, 1.25rem);
+            padding: var(--message-padding, var(--space-xl));
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             border-left: 4px solid #2dd4bf;
         }
@@ -165,7 +165,7 @@ interface ThinkingStep {
         }
 
         .play-arrow {
-            margin-right: 16px;
+            margin-right: var(--space-lg);
             display: flex;
             align-items: center;
 
@@ -182,7 +182,7 @@ interface ThinkingStep {
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-right: 20px;
+            margin-right: var(--space-xl);
             flex-shrink: 0;
 
             app-svg-icon {
@@ -237,7 +237,7 @@ interface ThinkingStep {
 
         .final-result {
             position: relative;
-            padding: 1rem 1rem 0 5.5rem;
+            padding: var(--space-lg) var(--space-lg) 0 5.5rem;
             color: var(--gray-200);
             max-height: 400px;
             overflow-y: auto;
@@ -260,9 +260,9 @@ interface ThinkingStep {
             display: flex;
             flex-direction: column;
             gap: var(--space-2xs);
-            padding: 0.75rem 0 0 5.5rem;
+            padding: var(--space-md) 0 0 5.5rem;
             border-top: 1px solid var(--gray-750);
-            margin-top: 0.75rem;
+            margin-top: var(--space-md);
         }
 
         .step-item {
@@ -275,7 +275,7 @@ interface ThinkingStep {
             gap: var(--space-sm);
             cursor: pointer;
             user-select: none;
-            padding: 0.35rem 0.5rem;
+            padding: var(--space-xs) var(--space-sm);
             border-radius: 4px;
 
             &:hover {
@@ -309,14 +309,14 @@ interface ThinkingStep {
             display: flex;
             flex-direction: column;
             gap: var(--space-sm);
-            padding: 0.5rem 0 0.5rem 1.5rem;
+            padding: var(--space-sm) 0 var(--space-sm) var(--space-2xl);
         }
 
         .tool-call-item {
             background-color: var(--gray-800);
             border: 1px solid var(--gray-750);
             border-radius: 6px;
-            padding: 0.6rem 0.75rem;
+            padding: var(--space-sm) var(--space-md);
         }
 
         .tool-call-name {
@@ -331,7 +331,7 @@ interface ThinkingStep {
         .tool-call-input {
             color: var(--gray-400);
             font-size: var(--font-size-xs);
-            margin-top: 3px;
+            margin-top: var(--space-2xs);
             white-space: pre-wrap;
             word-break: break-word;
             max-height: 80px;
@@ -341,8 +341,8 @@ interface ThinkingStep {
         .tool-call-output {
             color: var(--gray-500);
             font-size: var(--font-size-xs);
-            margin-top: 4px;
-            padding-top: 4px;
+            margin-top: var(--space-2xs);
+            padding-top: var(--space-2xs);
             border-top: 1px solid var(--gray-750);
             white-space: pre-wrap;
             word-break: break-word;
@@ -375,7 +375,7 @@ interface ThinkingStep {
                     background-color: var(--gray-850);
                     border: 1px solid var(--gray-750);
                     border-radius: 6px;
-                    padding: 0.75rem;
+                    padding: var(--space-md);
                     overflow-x: auto;
                 }
             }

@@ -420,7 +420,7 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                 display: flex;
                 justify-content: flex-end;
                 align-items: center;
-                padding: 0 0 0.75rem 0;
+                padding: 0 0 var(--space-md) 0;
                 flex-shrink: 0;
             }
         `,

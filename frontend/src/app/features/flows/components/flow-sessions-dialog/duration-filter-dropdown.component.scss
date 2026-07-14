@@ -37,10 +37,10 @@
     border-radius: var(--radius-lg);
     box-shadow: 0 4px 24px var(--black-alpha-18);
     min-width: 240px;
-    padding: 12px;
+    padding: var(--space-md);
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--space-md);
 }
 
 .op-row {
@@ -50,7 +50,7 @@
 
 .op-btn {
     flex: 1;
-    padding: 4px;
+    padding: var(--space-2xs);
     border: 1px solid var(--color-divider-regular, var(--graphite-640));
     border-radius: var(--radius-sm);
     background: transparent;
@@ -79,7 +79,7 @@
 
 .unit-btn {
     flex: 1;
-    padding: 4px;
+    padding: var(--space-2xs);
     border: 1px solid var(--color-divider-regular, var(--graphite-640));
     border-radius: var(--radius-sm);
     background: transparent;
@@ -110,7 +110,7 @@
 .dur-input {
     flex: 1;
     min-width: 0;
-    padding: 6px 8px;
+    padding: var(--space-xs) var(--space-sm);
     border: 1px solid var(--color-divider-regular, var(--graphite-640));
     border-radius: var(--radius-sm);
     background: transparent;
@@ -139,7 +139,7 @@
 }
 
 .apply-btn {
-    padding: 4px 14px;
+    padding: var(--space-2xs) var(--space-lg);
     border: none;
     border-radius: var(--radius-sm);
     background: var(--accent-color, var(--blue-400));
@@ -153,7 +153,7 @@
 }
 
 .clear-btn {
-    padding: 4px 14px;
+    padding: var(--space-2xs) var(--space-lg);
     border: 1px solid var(--color-divider-regular, var(--graphite-640));
     border-radius: var(--radius-sm);
     background: transparent;

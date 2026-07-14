@@ -51,7 +51,7 @@ import { MergedConfig } from '../../../../../features/staff/services/full-agent.
             display: flex;
             flex-direction: column;
             gap: var(--space-sm);
-            padding: 10px 5px;
+            padding: var(--space-md) var(--space-xs);
             height: 100%;
         }
 
@@ -60,7 +60,7 @@ import { MergedConfig } from '../../../../../features/staff/services/full-agent.
             align-items: center;
             background-color: #2a2a2a;
             border-radius: 4px;
-            padding: 8px;
+            padding: var(--space-sm);
             border: 1px solid #404040;
             transition:
                 background-color 0.3s,
@@ -76,7 +76,7 @@ import { MergedConfig } from '../../../../../features/staff/services/full-agent.
             flex-shrink: 0;
             width: 20px;
             height: 20px;
-            margin-right: 8px;
+            margin-right: var(--space-sm);
             border-radius: 4px;
             display: flex;
             align-items: center;
@@ -103,7 +103,7 @@ import { MergedConfig } from '../../../../../features/staff/services/full-agent.
 
         .custom-name {
             color: #aaa;
-            margin-left: 5px;
+            margin-left: var(--space-xs);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -116,7 +116,7 @@ import { MergedConfig } from '../../../../../features/staff/services/full-agent.
             justify-content: flex-end;
             color: #aaa;
             font-style: italic;
-            padding: 4px 8px;
+            padding: var(--space-2xs) var(--space-sm);
             font-size: var(--font-size-sm);
         }
     `,

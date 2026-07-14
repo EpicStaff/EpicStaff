@@ -1,6 +1,6 @@
 .editor-toolbar {
     display: flex;
-    padding: 4px 8px;
+    padding: var(--space-2xs) var(--space-sm);
     background-color: #252526;
     border-bottom: 1px solid var(--color-divider-subtle, var(--graphite-640));
     border-top-left-radius: 3px;
@@ -11,14 +11,14 @@
     .separator {
         width: 1px;
         background-color: var(--color-divider-subtle, var(--gray-700));
-        margin: 0 2px;
+        margin: 0 var(--space-3xs);
     }
 
     .toolbar-btn {
         background: transparent;
         border: 1px solid var(--color-divider-subtle, var(--gray-700));
         border-radius: var(--radius-sm);
-        padding: 2px 6px;
+        padding: var(--space-3xs) var(--space-xs);
         cursor: pointer;
         display: flex;
         align-items: center;

@@ -1,7 +1,7 @@
 .menu-item {
     display: flex;
     align-items: center;
-    padding: 8px 12px;
+    padding: var(--space-sm) var(--space-md);
     font-size: var(--font-size-sm);
     color: var(--color-text-secondary);
     cursor: pointer;
@@ -10,7 +10,7 @@
     margin: 0;
 
     i {
-        margin-right: 10px;
+        margin-right: var(--space-md);
         font-size: var(--font-size-md);
     }
 

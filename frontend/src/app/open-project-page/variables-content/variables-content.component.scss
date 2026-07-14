@@ -42,9 +42,9 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
 
 .panel-content {
     color: $text-color;
-    padding-inline: 3rem;
-    padding-top: 1.5rem;
-    padding-bottom: 2rem;
+    padding-inline: var(--space-5xl);
+    padding-top: var(--space-2xl);
+    padding-bottom: var(--space-3xl);
 
     .variables-container {
         display: flex;
@@ -58,7 +58,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
             display: inline-flex;
             align-items: center;
             justify-content: space-between;
-            padding: 12px 16px;
+            padding: var(--space-md) var(--space-lg);
             background: $card-background;
             border: 1px solid var(--gray-700);
             border-radius: var(--radius-lg);
@@ -118,7 +118,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                     font-size: var(--font-size-md);
                     color: $text-color;
                     background: var(--gray-750);
-                    padding: 6px 12px;
+                    padding: var(--space-xs) var(--space-md);
                     border-radius: var(--radius-md);
                     min-width: 60px;
                     max-width: 120px;
@@ -127,7 +127,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                 }
 
                 .chain-separator {
-                    margin: 0 12px;
+                    margin: 0 var(--space-md);
                     font-weight: var(--font-weight-bold);
                     color: var(--accent-color, var(--accent-color));
                     flex-shrink: 0;
@@ -138,7 +138,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                     font-size: var(--font-size-md);
                     color: $muted-text-color;
                     background: var(--gray-800);
-                    padding: 6px 12px;
+                    padding: var(--space-xs) var(--space-md);
                     border-radius: var(--radius-md);
                     flex: 1;
                     min-width: 40px;
@@ -161,7 +161,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                     background: var(--gray-800);
                     border: 1px solid var(--gray-600);
                     border-radius: var(--radius-md);
-                    padding: 6px 12px;
+                    padding: var(--space-xs) var(--space-md);
                     color: $text-color;
                     font-size: var(--font-size-md);
                     transition: all 0.25s ease;
@@ -200,7 +200,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                 display: flex;
                 align-items: center;
                 gap: var(--space-sm);
-                margin-left: 12px;
+                margin-left: var(--space-md);
                 flex-shrink: 0;
 
                 .action-button {
@@ -211,7 +211,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                     border: none;
                     color: var(--gray-500);
                     cursor: pointer;
-                    padding: 6px;
+                    padding: var(--space-xs);
                     border-radius: var(--radius-md);
                     transition: all 0.25s ease;
 
@@ -282,7 +282,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                     background: var(--gray-750);
                     border: 1px solid var(--gray-700);
                     border-radius: var(--radius-md);
-                    padding: 6px 12px;
+                    padding: var(--space-xs) var(--space-md);
                     color: $text-color;
                     transition: all 0.25s ease;
                     font-size: var(--font-size-md);
@@ -334,7 +334,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                 gap: var(--space-sm);
                 font-size: var(--font-size-md);
                 font-weight: var(--font-weight-medium);
-                padding: 6px 12px;
+                padding: var(--space-xs) var(--space-md);
                 background-color: rgba($accent-color, 0.1);
                 color: var(--gray-200);
                 border: 1px solid var(--gray-700);
@@ -343,7 +343,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                 transition: all 0.25s ease;
                 min-width: 80px;
                 flex-shrink: 0;
-                margin-left: 12px;
+                margin-left: var(--space-md);
 
                 &:hover {
                     background-color: rgba($accent-color, 0.2);

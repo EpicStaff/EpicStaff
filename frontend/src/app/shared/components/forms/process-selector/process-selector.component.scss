@@ -13,7 +13,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0.5rem 0.4rem;
+    padding: var(--space-sm) var(--space-xs);
     border-radius: var(--radius-md);
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-medium);
@@ -32,6 +32,6 @@
     }
 
     .option-icon {
-        margin-right: 0.5rem;
+        margin-right: var(--space-sm);
     }
 }

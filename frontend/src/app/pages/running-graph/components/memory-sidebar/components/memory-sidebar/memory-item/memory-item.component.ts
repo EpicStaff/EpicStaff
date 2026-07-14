@@ -106,15 +106,15 @@ import {
                 background: var(--gray-800);
                 border: 1px solid var(--gray-700);
                 border-radius: 8px;
-                padding: 16px;
-                margin-bottom: 12px;
+                padding: var(--space-lg);
+                margin-bottom: var(--space-md);
             }
 
             .memory-header {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                margin-bottom: 12px;
+                margin-bottom: var(--space-md);
             }
 
             .memory-header-right {
@@ -129,7 +129,7 @@ import {
                 text-transform: capitalize;
                 color: var(--gray-300);
                 background: var(--gray-750);
-                padding: 4px 8px;
+                padding: var(--space-2xs) var(--space-sm);
                 border-radius: 4px;
             }
 
@@ -154,7 +154,7 @@ import {
             }
 
             .memory-content {
-                margin-bottom: 12px;
+                margin-bottom: var(--space-md);
                 font-size: var(--font-size-md);
                 line-height: 1.5;
                 color: var(--white);
@@ -168,11 +168,11 @@ import {
                 background-color: var(--gray-750);
                 border: none;
                 border-radius: 4px;
-                padding: 8px 12px;
+                padding: var(--space-sm) var(--space-md);
                 color: var(--gray-300);
                 font-size: var(--font-size-sm);
                 cursor: pointer;
-                margin-top: 10px;
+                margin-top: var(--space-md);
             }
 
             .details-toggle:hover {
@@ -196,20 +196,20 @@ import {
             .memory-details {
                 background-color: var(--gray-750);
                 border-radius: 4px;
-                padding: 12px;
-                padding-bottom: 4px;
-                margin-top: 8px;
+                padding: var(--space-md);
+                padding-bottom: var(--space-2xs);
+                margin-top: var(--space-sm);
                 font-size: var(--font-size-sm);
             }
 
             .memory-relationships,
             .memory-observation,
             .memory-quality {
-                margin-bottom: 8px;
+                margin-bottom: var(--space-sm);
             }
 
             .details-title {
-                margin: 0 0 4px 0;
+                margin: 0 0 var(--space-2xs) 0;
                 font-weight: var(--font-weight-medium);
                 color: var(--gray-300);
             }
@@ -221,17 +221,17 @@ import {
             }
 
             .suggestions {
-                margin-top: 8px;
+                margin-top: var(--space-sm);
             }
 
             .suggestions-list {
-                margin: 4px 0 0 0;
-                padding-left: 20px;
+                margin: var(--space-2xs) 0 0 0;
+                padding-left: var(--space-xl);
                 color: var(--gray-200);
             }
 
             .suggestions-list li {
-                margin-bottom: 4px;
+                margin-bottom: var(--space-2xs);
             }
         `,
     ],

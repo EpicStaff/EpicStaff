@@ -1,5 +1,5 @@
 .sessions-section {
-    padding: 20px;
+    padding: var(--space-xl);
     height: 100%;
     background: transparent;
 
@@ -7,7 +7,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 24px;
+        margin-bottom: var(--space-2xl);
 
         h2 {
             color: var(--gray-100);
@@ -20,7 +20,7 @@
             display: flex;
             gap: var(--space-sm);
             background: var(--black-alpha-80);
-            padding: 4px;
+            padding: var(--space-2xs);
             border-radius: var(--radius-md);
             border: 1px solid var(--white-alpha-10);
 
@@ -28,7 +28,7 @@
                 background: transparent;
                 border: none;
                 color: var(--gray-500);
-                padding: 6px 12px;
+                padding: var(--space-xs) var(--space-md);
                 border-radius: var(--radius-sm);
                 cursor: pointer;
                 font-size: var(--font-size-md);
@@ -49,7 +49,7 @@
     .sessions-list {
         display: flex;
         flex-direction: column;
-        gap: 1px;
+        gap: var(--space-3xs);
         background: #0a090a;
 
         .session-item {
@@ -57,7 +57,7 @@
             justify-content: space-between;
             align-items: center;
             background: #0e0c0e;
-            padding: 16px;
+            padding: var(--space-lg);
             transition: all 0.2s ease;
 
             &:hover {
@@ -139,7 +139,7 @@
                     background: var(--white-alpha-5);
                     border: 1px solid var(--white-alpha-10);
                     color: var(--gray-100);
-                    padding: 6px 12px;
+                    padding: var(--space-xs) var(--space-md);
                     border-radius: var(--radius-sm);
                     cursor: pointer;
                     transition: all 0.2s ease;

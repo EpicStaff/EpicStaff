@@ -1,9 +1,9 @@
 .chat-item {
     display: flex;
     align-items: center;
-    padding: 10px 16px;
+    padding: var(--space-md) var(--space-lg);
     border-radius: var(--radius-xl);
-    margin-bottom: 8px;
+    margin-bottom: var(--space-sm);
     background-color: #151515;
     cursor: pointer;
     transition: background-color 0.2s ease;
@@ -30,8 +30,8 @@
         background: none;
         border: none;
         color: var(--white-alpha-50);
-        margin-left: 8px;
-        padding: 4px;
+        margin-left: var(--space-sm);
+        padding: var(--space-2xs);
         cursor: pointer;
         display: flex;
         align-items: center;

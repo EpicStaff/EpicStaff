@@ -23,13 +23,13 @@ import { CreateNodeRequest } from '../../../core/models/node-creation.types';
         `
             ul {
                 list-style: none;
-                padding: 0 16px;
+                padding: 0 var(--space-lg);
                 margin: 0;
             }
             li {
                 display: flex;
                 align-items: center;
-                padding: 12px 16px;
+                padding: var(--space-md) var(--space-lg);
                 border-radius: 8px;
                 cursor: pointer;
                 transition: background 0.2s ease;

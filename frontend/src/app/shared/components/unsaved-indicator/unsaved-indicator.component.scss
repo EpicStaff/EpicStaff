@@ -1,7 +1,7 @@
 .unsaved-indicator {
     display: inline-flex;
     align-items: center;
-    margin-left: 0.75rem;
+    margin-left: var(--space-md);
     color: var(--accent-color);
     font-size: var(--font-size-md);
     min-width: 0;
@@ -9,7 +9,7 @@
     overflow: hidden;
 
     .unsaved-dot {
-        margin-right: 6px;
+        margin-right: var(--space-xs);
         flex-shrink: 0;
     }
 

@@ -3,15 +3,15 @@
     flex-direction: column;
     height: 100%;
     width: 100%;
-    padding: 2rem 0 0 2.5rem;
+    padding: var(--space-3xl) 0 0 var(--space-4xl);
 
     &__title {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 1rem;
+        margin-bottom: var(--space-lg);
         width: 100%;
-        padding-right: 1.875rem;
+        padding-right: var(--space-3xl);
         font-size: var(--font-size-md);
         font-weight: var(--font-weight-light);
         min-width: 0;
@@ -23,8 +23,8 @@
 
     &__files-wrapper {
         overflow: auto;
-        margin-right: 0.7rem;
-        padding-bottom: 2rem;
+        margin-right: var(--space-md);
+        padding-bottom: var(--space-3xl);
     }
 
     &__file {
@@ -59,7 +59,7 @@
         border-radius: var(--radius-md);
         background-color: var(--red-600-alpha-6);
         color: var(--color-status-failed);
-        padding: 0.25rem 0.5rem;
+        padding: var(--space-2xs) var(--space-sm);
 
         &--medium {
             font-size: var(--font-size-md);

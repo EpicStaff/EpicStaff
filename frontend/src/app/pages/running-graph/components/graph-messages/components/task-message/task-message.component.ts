@@ -150,7 +150,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
         .agent-flow-container {
             background-color: var(--color-nodes-background);
             border-radius: 8px;
-            padding: 1.25rem;
+            padding: var(--space-xl);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             border-left: 4px solid #30a46c;
         }
@@ -162,7 +162,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
             user-select: none;
 
             .play-arrow {
-                margin-right: 16px;
+                margin-right: var(--space-lg);
                 display: flex;
                 align-items: center;
 
@@ -179,7 +179,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                margin-right: 20px;
+                margin-right: var(--space-xl);
                 flex-shrink: 0;
 
                 app-svg-icon {
@@ -200,7 +200,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
                 .task-name {
                     color: #30a46c;
                     font-weight: var(--font-weight-regular);
-                    margin: 0 5px;
+                    margin: 0 var(--space-xs);
                 }
             }
         }
@@ -210,7 +210,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
             flex-direction: column;
             gap: var(--space-lg);
             padding-left: 5.5rem;
-            margin-top: 1.25rem;
+            margin-top: var(--space-xl);
             overflow: hidden;
         }
 
@@ -228,14 +228,14 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
         .section-heading {
             font-weight: var(--font-weight-medium);
             color: var(--gray-300);
-            margin-bottom: 0.5rem;
+            margin-bottom: var(--space-sm);
             cursor: pointer;
             user-select: none;
             display: flex;
             align-items: center;
 
             app-svg-icon {
-                margin-right: 8px;
+                margin-right: var(--space-sm);
                 color: #30a46c;
                 margin-left: -3px;
             }
@@ -245,15 +245,15 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
             background-color: var(--gray-800);
             border: 1px solid var(--gray-750);
             border-radius: 8px;
-            padding: 1rem;
+            padding: var(--space-lg);
             color: var(--gray-200);
             margin-left: 23px;
 
             .subsection-heading {
                 font-weight: var(--font-weight-medium);
                 color: #30a46c;
-                margin-bottom: 0.5rem;
-                margin-top: 1rem;
+                margin-bottom: var(--space-sm);
+                margin-top: var(--space-lg);
 
                 &:first-child {
                     margin-top: 0;
@@ -263,14 +263,14 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
             .description-content,
             .expected-output-content,
             .agentData-content {
-                padding: 0.5rem;
+                padding: var(--space-sm);
                 background-color: var(--gray-850);
                 border-radius: 6px;
             }
 
             .expected-output-section,
             .agent-section {
-                margin-top: 1rem;
+                margin-top: var(--space-lg);
             }
         }
 
@@ -279,7 +279,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
             background-color: var(--gray-800);
             border: 1px solid var(--gray-750);
             border-radius: 8px;
-            padding: 1rem;
+            padding: var(--space-lg);
             color: var(--gray-200);
             margin-left: 23px;
             overflow-y: auto;
@@ -305,10 +305,10 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
             color: #30a46c;
             font-size: var(--font-size-md);
             cursor: pointer;
-            padding: 0.5rem;
+            padding: var(--space-sm);
             text-align: center;
             width: 100%;
-            margin-top: 0.25rem;
+            margin-top: var(--space-2xs);
 
             &:hover {
                 text-decoration: underline;

@@ -67,8 +67,8 @@ import { CardState } from '../staff-agent-card.component';
             .menu-item {
                 display: flex;
                 align-items: center;
-                gap: 10px;
-                padding: 10px 14px;
+                gap: var(--space-md);
+                padding: var(--space-md) var(--space-lg);
                 color: var(--gray-300);
                 cursor: pointer;
                 transition: all 0.2s ease;
@@ -86,8 +86,8 @@ import { CardState } from '../staff-agent-card.component';
             .remove-item {
                 color: var(--red-color, #dc3545);
                 border-top: 1px solid var(--gray-750);
-                margin-top: 5px;
-                padding-top: 10px;
+                margin-top: var(--space-xs);
+                padding-top: var(--space-md);
             }
             .remove-item:hover {
                 background-color: rgba(220, 53, 69, 0.1);

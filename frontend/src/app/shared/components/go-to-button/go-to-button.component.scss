@@ -52,6 +52,6 @@
 // full
 .go-to-button.full {
     height: 36px;
-    padding: 0 8px;
-    gap: 10px;
+    padding: 0 var(--space-sm);
+    gap: var(--space-md);
 }

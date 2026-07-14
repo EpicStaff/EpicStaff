@@ -8,7 +8,7 @@
     flex-direction: column;
     height: 100%;
     gap: var(--space-lg);
-    padding: 1.25rem 2.5rem 1.25rem 1.875rem;
+    padding: var(--space-xl) var(--space-4xl) var(--space-xl) var(--space-3xl);
 
     .json-wrapper {
         flex-grow: 1;

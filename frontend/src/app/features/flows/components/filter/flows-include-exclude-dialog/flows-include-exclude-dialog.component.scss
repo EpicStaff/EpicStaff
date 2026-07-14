@@ -8,14 +8,14 @@
     background: var(--color-sidenav-background);
     border: 1px solid var(--color-input-border);
     border-radius: var(--radius-xl);
-    padding: 1.25rem;
+    padding: var(--space-xl);
     color: var(--color-text-primary);
     box-shadow:
         0 6px 10px var(--black-alpha-15),
         0 2px 3px var(--black-alpha-30);
 
     .dialog-header {
-        margin-bottom: 0.75rem;
+        margin-bottom: var(--space-md);
 
         .title {
             font-size: var(--font-size-lg);
@@ -29,9 +29,9 @@
     display: flex;
     gap: var(--space-sm);
     background: var(--color-input-background);
-    padding: 0.25rem;
+    padding: var(--space-2xs);
     border-radius: var(--radius-lg);
-    margin-bottom: 10px;
+    margin-bottom: var(--space-md);
 
     .tab-btn {
         display: flex;
@@ -39,7 +39,7 @@
         justify-content: center;
         gap: var(--space-sm);
         flex: 1;
-        padding: 0.55rem 0.75rem;
+        padding: 0.55rem var(--space-md);
         background: transparent;
         border: none;
         border-radius: var(--radius-md);
@@ -67,7 +67,7 @@
     justify-content: space-between;
     font-size: var(--font-size-md);
     color: var(--color-text-secondary);
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-sm);
 
     .count-current {
         color: var(--accent-color);
@@ -81,13 +81,13 @@
 
 .search-input {
     width: 100%;
-    padding: 0.6rem 0.75rem;
+    padding: var(--space-sm) var(--space-md);
     background: var(--color-input-background);
     border: 1px solid var(--color-input-border);
     border-radius: var(--radius-md);
     color: var(--color-text-primary);
     font-size: var(--font-size-md);
-    margin-bottom: 0.75rem;
+    margin-bottom: var(--space-md);
     box-sizing: border-box;
 
     &:focus {
@@ -107,8 +107,8 @@
     max-height: 22rem;
     overflow-y: auto;
     overflow-x: auto;
-    padding-right: 0.25rem;
-    padding-bottom: 0.75rem;
+    padding-right: var(--space-2xs);
+    padding-bottom: var(--space-md);
     margin-bottom: 0;
 
     scrollbar-width: thin;
@@ -128,7 +128,7 @@
         font-size: var(--font-size-md);
         color: var(--color-text-secondary);
         text-align: center;
-        padding: 1rem 0;
+        padding: var(--space-lg) 0;
     }
 }
 
@@ -137,7 +137,7 @@
     align-items: center;
     gap: var(--space-sm);
     min-height: 2.85rem;
-    padding: 0.5rem 0.75rem;
+    padding: var(--space-sm) var(--space-md);
     background: var(--color-input-background);
     border: 1px solid var(--fog-alpha-16);
     border-radius: var(--radius-md);
@@ -209,7 +209,7 @@
     justify-content: space-between;
     gap: var(--space-sm);
     margin: auto -1.25rem -1.25rem;
-    padding: 0.75rem 1.25rem;
+    padding: var(--space-md) var(--space-xl);
     border-top: 1px solid var(--color-divider-subtle);
 
     .footer-right {

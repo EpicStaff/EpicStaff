@@ -15,7 +15,7 @@
     }
 
     &__header {
-        padding: 1rem 3rem;
+        padding: var(--space-lg) var(--space-5xl);
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -36,7 +36,7 @@
 
     &__name-input {
         height: 2.5rem;
-        padding: 0 1rem;
+        padding: 0 var(--space-lg);
         border-radius: var(--radius-lg);
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
@@ -73,7 +73,7 @@
         &--large {
             width: 2.5rem;
             height: 2.5rem;
-            padding: 0.75rem;
+            padding: var(--space-md);
         }
     }
 
@@ -95,7 +95,7 @@
         flex: 1;
         min-height: 0;
         overflow: hidden;
-        margin: 1.5rem 3rem;
+        margin: var(--space-2xl) var(--space-5xl);
         row-gap: var(--space-3xl);
     }
 
@@ -144,13 +144,13 @@
         justify-content: center;
         height: 100%;
         text-align: center;
-        padding: 2rem 3rem;
+        padding: var(--space-3xl) var(--space-5xl);
     }
 
     &__empty-text {
         font-size: var(--font-size-lg);
         color: var(--white-alpha-80);
-        margin-bottom: 20px;
+        margin-bottom: var(--space-xl);
     }
 
     &__empty-icon {
@@ -158,7 +158,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        margin-bottom: 1rem;
+        margin-bottom: var(--space-lg);
         color: var(--white-alpha-70);
 
         svg {

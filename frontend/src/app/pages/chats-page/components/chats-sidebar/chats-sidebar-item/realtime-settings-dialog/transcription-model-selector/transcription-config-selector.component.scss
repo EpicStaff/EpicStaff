@@ -4,7 +4,7 @@
 
     label {
         display: block;
-        margin-bottom: 8px;
+        margin-bottom: var(--space-sm);
         font-size: var(--font-size-md);
         color: var(--white-alpha-70);
     }
@@ -14,7 +14,7 @@
         justify-content: space-between;
         align-items: center;
         width: 100%;
-        padding: 10px 12px;
+        padding: var(--space-md) var(--space-md);
         background-color: var(--color-backdrop);
         border: 1px solid var(--white-alpha-10);
         border-radius: var(--radius-md);
@@ -45,7 +45,7 @@
             color: var(--white-alpha-80);
             transition: transform 0.2s ease;
             flex-shrink: 0;
-            margin-left: 8px;
+            margin-left: var(--space-sm);
 
             &.open {
                 transform: rotate(180deg);
@@ -67,7 +67,7 @@
         box-shadow: 0 4px 12px var(--black-alpha-50);
 
         .dropdown-item {
-            padding: 10px 12px;
+            padding: var(--space-md) var(--space-md);
             color: var(--gray-100);
             font-size: var(--font-size-md);
             cursor: pointer;
@@ -87,7 +87,7 @@
                 display: inline-flex;
                 align-items: center;
                 gap: var(--space-sm);
-                margin-left: 8px;
+                margin-left: var(--space-sm);
                 flex-shrink: 0;
             }
 
@@ -135,7 +135,7 @@
                 align-items: center;
 
                 .create-new-icon {
-                    margin-right: 8px;
+                    margin-right: var(--space-sm);
 
                     font-size: var(--font-size-lg);
                     font-weight: var(--font-weight-bold);

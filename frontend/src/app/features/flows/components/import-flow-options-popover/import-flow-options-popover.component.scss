@@ -12,7 +12,7 @@
 }
 
 .popover__header {
-    padding: 0.75rem 1rem;
+    padding: var(--space-md) var(--space-lg);
     color: var(--color-text-primary);
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-semibold);
@@ -30,7 +30,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-lg);
-    padding: 0.625rem 1rem;
+    padding: var(--space-md) var(--space-lg);
 }
 
 .popover__row + .popover__row {
@@ -89,7 +89,7 @@
     grid-template-columns: 1fr 1fr;
     background: var(--color-background-body);
     border-radius: var(--radius-md);
-    padding: 3px;
+    padding: var(--space-2xs);
     flex-shrink: 0;
     cursor: pointer;
 }
@@ -113,7 +113,7 @@
 .toggle-btn {
     position: relative;
     z-index: 1;
-    padding: 0.2rem 0.75rem;
+    padding: var(--space-3xs) var(--space-md);
     border: 1px solid var(--color-divider-subtle);
     border-radius: var(--radius-sm);
     background: transparent;
@@ -147,7 +147,7 @@
 .popover__footer {
     display: flex;
     justify-content: flex-end;
-    padding: 0.5rem 1rem 0.75rem;
+    padding: var(--space-sm) var(--space-lg) var(--space-md);
     border-top: 1px solid var(--color-divider-subtle);
 }
 
@@ -157,7 +157,7 @@
     color: var(--color-text-secondary);
     font-size: var(--font-size-xs);
     cursor: pointer;
-    padding: 0.25rem 0.4rem;
+    padding: var(--space-2xs) var(--space-xs);
     border-radius: var(--radius-sm);
     transition: color 0.15s ease;
 

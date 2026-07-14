@@ -46,9 +46,9 @@ $hover-color: var(--gray-800);
 
 .panel-content {
     color: $text-color;
-    padding-inline: 3rem;
-    padding-top: 1.5rem;
-    padding-bottom: 1.5rem;
+    padding-inline: var(--space-5xl);
+    padding-top: var(--space-2xl);
+    padding-bottom: var(--space-2xl);
     max-width: 1200px;
 
     .section-title {
@@ -56,13 +56,13 @@ $hover-color: var(--gray-800);
         font-weight: var(--font-weight-medium);
         color: $text-color;
         margin-bottom: 1.2rem;
-        margin-top: 1.5rem;
+        margin-top: var(--space-2xl);
         letter-spacing: 0.2px;
     }
 
     .description {
         color: $muted-text-color;
-        margin-bottom: 28px;
+        margin-bottom: var(--space-3xl);
         position: relative;
         border-radius: var(--radius-lg);
         transition: all 0.2s ease;
@@ -91,7 +91,7 @@ $hover-color: var(--gray-800);
             font-size: var(--font-size-md);
             font-weight: var(--font-weight-regular);
             line-height: 1.6;
-            padding: 12px 16px;
+            padding: var(--space-md) var(--space-lg);
             font-family: inherit;
             resize: none;
             overflow-y: auto;

@@ -10,7 +10,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 1.25rem 1.5rem;
+        padding: var(--space-xl) var(--space-2xl);
         border-bottom: 1px solid var(--graphite-750);
         flex-shrink: 0;
     }
@@ -42,7 +42,7 @@
     &__body {
         display: flex;
         flex-direction: column;
-        padding: 1.25rem 1.5rem;
+        padding: var(--space-xl) var(--space-2xl);
         gap: var(--space-md);
     }
 
@@ -67,7 +67,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0 0.75rem;
+        padding: 0 var(--space-md);
         height: 40px;
         background-color: var(--graphite-750);
         border: 1px solid var(--fog-alpha-16);
@@ -129,7 +129,7 @@
         display: flex;
         align-items: center;
         gap: var(--space-sm);
-        padding: 0 0.75rem;
+        padding: 0 var(--space-md);
         height: 40px;
         border-bottom: 1px solid var(--graphite-750);
         flex-shrink: 0;
@@ -158,7 +158,7 @@
         flex-direction: column;
         overflow-y: auto;
         min-height: 80px;
-        padding: 0.25rem;
+        padding: var(--space-2xs);
     }
 
     &__state {
@@ -175,7 +175,7 @@
         align-items: center;
         gap: var(--space-sm);
         height: 40px;
-        padding-right: 1rem;
+        padding-right: var(--space-lg);
         border-radius: var(--radius-sm);
         cursor: pointer;
         flex-shrink: 0;
@@ -243,7 +243,7 @@
         align-items: center;
         justify-content: flex-end;
         gap: var(--space-md);
-        padding: 1rem 1.5rem;
+        padding: var(--space-lg) var(--space-2xl);
         border-top: 1px solid var(--graphite-750);
         flex-shrink: 0;
     }
