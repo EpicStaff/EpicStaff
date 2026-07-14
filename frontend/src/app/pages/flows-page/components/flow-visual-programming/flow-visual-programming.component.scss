@@ -36,9 +36,9 @@ app-flow-header {
     align-items: center;
     gap: var(--space-sm);
     padding: var(--space-sm) var(--space-lg);
-    background: #2a1a1a;
+    background: var(--red-alpha-15);
     color: var(--red-400);
-    border: 1px solid #7f1d1d;
+    border: 1px solid var(--red-700);
     border-radius: var(--radius-lg);
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-medium);
@@ -88,8 +88,8 @@ app-flow-header {
     position: absolute;
     top: 50%;
     left: 100%;
-    border-top-left-radius: 8px;
-    border-bottom-left-radius: 8px;
+    border-top-left-radius: var(--radius-lg);
+    border-bottom-left-radius: var(--radius-lg);
     transform: translate(-100%, -50%);
     width: 28px;
     height: 66px;
@@ -106,8 +106,7 @@ app-flow-header {
         border-color 0.15s ease;
 
     &:hover {
-        border-color: var(--accent-color, #675fff2a);
-        // border-color: var(--accent-color, var(--accent-color));
+        border-color: var(--accent-color);
     }
 
     &__icon {

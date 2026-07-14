@@ -80,8 +80,8 @@
         appearance: none;
         background: linear-gradient(
             to right,
-            #00dddd 0%,
-            #00dddd var(--slider-percentage, 0%),
+            var(--cyan-500) 0%,
+            var(--cyan-500) var(--slider-percentage, 0%),
             var(--fog-alpha-20) var(--slider-percentage, 0%),
             var(--fog-alpha-20) 100%
         );
@@ -94,7 +94,7 @@
             width: 1.25rem;
             height: 1.25rem;
             border-radius: 50%;
-            background: #00dddd;
+            background: var(--cyan-500);
             border: 2px solid var(--color-background-body, var(--color-background-body));
             cursor: pointer;
             box-shadow: 0 2px 4px var(--black-alpha-30);
@@ -104,7 +104,7 @@
             width: 1.25rem;
             height: 1.25rem;
             border-radius: 50%;
-            background: #00dddd;
+            background: var(--cyan-500);
             border: 2px solid var(--color-background-body, var(--color-background-body));
             cursor: pointer;
             box-shadow: 0 2px 4px var(--black-alpha-30);

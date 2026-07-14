@@ -56,7 +56,7 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Output } from '@angul
                     border: none;
 
                     &:hover {
-                        color: #8b5cf6;
+                        color: var(--violet-500);
                         background-color: rgba(139, 92, 246, 0.08);
                     }
 
